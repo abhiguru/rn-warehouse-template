@@ -31,7 +31,8 @@ import { validateStep3 } from '@/features/grn/schemas/grnValidation';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
-import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printGRNRange } from '@/services/print-service';
 import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSuccessDialog';
@@ -502,7 +503,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   return (
     <View style={styles.container}>
       <GRNStepIndicator
-        steps={GRN_STEPS}
+        steps={grnSteps()}
         currentStep={STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
@@ -629,7 +630,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         {/* Bottom action bar */}
         <WizardBottomBar
           currentStep={STEP_NUMBERS.REVIEW}
-          totalSteps={GRN_STEPS.length}
+          totalSteps={GRN_STEP_COUNT}
           onPrevious={handlePrevious}
           onNext={handleSubmit}
           nextLabel={ctaLabel}
@@ -657,7 +658,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
       <DocumentSuccessDialog
         isVisible={showSuccessDialog}
-        documentType="GRN"
+        entity="grn"
         documentData={successDialogData}
         onCreateAnother={handleCreateAnother}
         onViewList={handleViewList}
@@ -692,7 +693,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         }}
         title={tr('grn.details.printTitle')}
         defaultNumber={documentNumber || header.gr_no || ''}
-        label={tr('common.grnNumber')}
+        entity="grn"
         placeholder={tr('grn.form.forExample', { example: 'Z0797' })}
       />
 

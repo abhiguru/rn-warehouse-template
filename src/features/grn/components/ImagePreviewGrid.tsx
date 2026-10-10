@@ -18,7 +18,7 @@ import { deleteGRNImage } from '../services/imageUploadService';
 import { getSupabaseClient } from '@/config/supabaseConfig';
 
 import { showAlert } from '@/utils/alert';
-import { t as tr } from '@/i18n';
+import { localizeDigits, t as tr } from '@/i18n';
 interface ImagePreviewGridProps {
   // Legacy support for string URLs
   images?: string[];
@@ -201,11 +201,12 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return localizeDigits('0 B');
     const k = 1024;
     const sizes = ['B', 'KB', 'MB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    // The unit letters stay as they are; the number follows the language.
+    return localizeDigits(String(parseFloat((bytes / Math.pow(k, i)).toFixed(1)))) + ' ' + sizes[i];
   };
 
   if (effectiveImages.length === 0) {

@@ -14,7 +14,7 @@ import { t } from '@/i18n';
 /**
  * The wizard's steps with their names in the app's language. The names live in
  * the `dispatch.steps` texts, by step id (1 details, 2 items, 3 review), in the
- * same order as DISPATCH_STEPS in src/constants/dispatchSteps.ts. Call it while
+ * same order as DISPATCH_STEP_NUMBERS in src/constants/dispatchSteps.ts. Call it while
  * rendering (docs/I18N.md rule 2).
  */
 export const dispatchSteps = (): StepConfig[] => [
@@ -52,6 +52,8 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
       currentStep={currentStep}
       completedSteps={completedSteps}
       onCancel={onCancel}
+      entity="dispatch"
+      mode={isEditMode ? 'edit' : 'create'}
       entityName={isEditMode ? t('dispatch.wizard.editTitle') : t('dispatch.wizard.createTitle')}
       entityId={dispNo}
       cancelTitle={cancelTitle}

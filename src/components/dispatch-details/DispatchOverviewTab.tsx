@@ -132,7 +132,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
 
       {/* SECTION: ACTIONS */}
       <ActionsSection
-        entityType={tr('common.dispatch')}
+        entity="dispatch"
         entityNumber={disp_no}
         entityId={dispatch_id}
         onSharePDF={onSharePDF}

@@ -579,7 +579,7 @@ export function useCustomerForm(
         t('customers.save.validationTitle'),
         t('customers.save.validationMessage')
       );
-      return { success: false, error: 'Validation failed' };
+      return { success: false, error: t('errors.general.validationFailed') };
     }
 
     dispatch(setIsSubmitting(true));

@@ -5,38 +5,7 @@
  * Used by StepIndicator and navigation components.
  */
 
-import { StepConfig } from '@/components/StepIndicator';
-import { t } from '@/i18n';
-
-/**
- * Configuration for customer form steps
- *
- * The labels here are English and fixed when the file loads: use the array for
- * its length and order only. For labels on screen call `getCustomerSteps()`.
- */
-export const CUSTOMER_STEPS: StepConfig[] = [
-  {
-    label: 'Basic information',
-    shortLabel: 'Basic',
-  },
-  {
-    label: 'Address and tax details',
-    shortLabel: 'Details',
-  },
-  {
-    label: 'Documents and review',
-    shortLabel: 'Review',
-  },
-];
-
-/** The customer form steps with their labels in the app's language. Call it while rendering. */
-export function getCustomerSteps(): StepConfig[] {
-  return [
-    { label: t('validation.steps.customer.basic'), shortLabel: t('validation.steps.short.basic') },
-    { label: t('validation.steps.customer.details'), shortLabel: t('validation.steps.short.details') },
-    { label: t('validation.steps.customer.review'), shortLabel: t('validation.steps.short.review') },
-  ];
-}
+// The step names are text: `customerSteps()` in src/features/customer/customerStepLabels.ts.
 
 /**
  * Step numbers for easy reference
@@ -50,19 +19,7 @@ export const CUSTOMER_STEP_NUMBERS = {
 /**
  * Total number of steps
  */
-export const CUSTOMER_TOTAL_STEPS = CUSTOMER_STEPS.length;
-
-/**
- * Get next step label for navigation button
- */
-export function getNextStepLabel(currentStep: number, isEditMode: boolean = false): string {
-  const steps = getCustomerSteps();
-  if (currentStep >= steps.length) {
-    return isEditMode ? t('validation.steps.customer.update') : t('validation.steps.customer.create');
-  }
-  const nextStep = steps[currentStep];
-  return t('validation.steps.next', { step: nextStep.shortLabel });
-}
+export const CUSTOMER_TOTAL_STEPS = 3;
 
 /**
  * Get completed steps array for StepIndicator
@@ -100,25 +57,6 @@ export function getStepRoutePath(
   } else {
     return `/customer-edit/${customerId}/${stepPath}`;
   }
-}
-
-/**
- * Step titles for review display (English, fixed at load). For titles on
- * screen call `getCustomerStepTitles()`.
- */
-export const CUSTOMER_STEP_TITLES = {
-  [CUSTOMER_STEP_NUMBERS.BASIC]: 'Basic information',
-  [CUSTOMER_STEP_NUMBERS.DETAILS]: 'Address and tax details',
-  [CUSTOMER_STEP_NUMBERS.REVIEW]: 'Documents and review',
-} as const;
-
-/** Step titles for review display, in the app's language. Call it while rendering. */
-export function getCustomerStepTitles(): Record<1 | 2 | 3, string> {
-  return {
-    [CUSTOMER_STEP_NUMBERS.BASIC]: t('validation.steps.customer.basic'),
-    [CUSTOMER_STEP_NUMBERS.DETAILS]: t('validation.steps.customer.details'),
-    [CUSTOMER_STEP_NUMBERS.REVIEW]: t('validation.steps.customer.review'),
-  };
 }
 
 /**

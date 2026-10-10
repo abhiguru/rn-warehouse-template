@@ -19,7 +19,7 @@ export const nav: Translation<typeof source> = {
   screens: {
     signIn: 'સાઇન ઇન કરો',
     enterCode: 'OTP લખો',
-    waitingForApproval: 'મંજૂરીની રાહ જોઈ રહ્યા છીએ',
+    waitingForApproval: 'મંજૂરીની રાહ જોવાય છે',
     facility: 'કોલ્ડ સ્ટોરેજ',
     enrollmentReview: 'નોંધણીની ચકાસણી',
     editGrn: 'આવક પાવતીમાં ફેરફાર કરો',

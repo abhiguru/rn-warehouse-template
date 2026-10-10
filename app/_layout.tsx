@@ -13,9 +13,12 @@ LogBox.ignoreLogs([
   'Network request failed',
 ]);
 import { en, registerTranslation } from 'react-native-paper-dates';
+import { gujaratiCalendar } from '@/i18n/calendar';
 
-// Register English locale for react-native-paper-dates (pure JS date picker)
+// Register both languages for react-native-paper-dates (pure JS date picker).
+// Each DatePickerModal is given locale={getLanguage()}.
 registerTranslation('en', en);
+registerTranslation('gu', gujaratiCalendar);
 
 // The splash background is fixed per build in app.json (style guide §15), so
 // the JS splash and the native root background before React renders read it

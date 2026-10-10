@@ -239,7 +239,8 @@ export function CustomerReviewStep({
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        entityName={tr('common.customer')}
+        entity="customer"
+        mode={isCreateMode ? 'create' : 'edit'}
         entityId={isCreateMode ? undefined : formData.name || tr('customers.form.editing')}
         cancelTitle={tr('customers.form.discardHeaderTitle')}
       />

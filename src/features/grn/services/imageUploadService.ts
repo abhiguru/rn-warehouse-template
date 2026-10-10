@@ -410,7 +410,7 @@ export const uploadGRNImage = async (
         error:
           uploadOrConfirmError instanceof Error
             ? uploadOrConfirmError.message
-            : 'Upload failed',
+            : t('grn.photos.uploadFailed'),
       };
     }
   } catch (error) {
@@ -772,7 +772,7 @@ const uploadSingleDeferredImage = async (
       );
       return {
         success: false,
-        error: regResult?.error || 'Registration failed',
+        error: regResult?.error || t('grn.upload.registerFailed'),
       };
     }
 
@@ -831,7 +831,7 @@ const uploadSingleDeferredImage = async (
           `[ImageService] Confirmation rejected for deferred ${imageType} image:`,
           confirmResult?.error
         );
-        throw new Error(confirmResult?.error || 'Confirmation failed');
+        throw new Error(confirmResult?.error || t('grn.upload.confirmationFailed'));
       }
 
       return { success: true };
@@ -865,7 +865,7 @@ const uploadSingleDeferredImage = async (
         error:
           uploadOrConfirmError instanceof Error
             ? uploadOrConfirmError.message
-            : 'Upload failed',
+            : t('grn.photos.uploadFailed'),
       };
     }
   } catch (err) {
@@ -875,7 +875,7 @@ const uploadSingleDeferredImage = async (
     );
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: err instanceof Error ? err.message : t('grn.photos.uploadFailed'),
     };
   }
 };

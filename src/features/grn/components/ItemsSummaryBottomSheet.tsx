@@ -140,7 +140,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       onEditItem={onEditItem}
       editingItemKey={editingItemId}
       isItemProtected={isItemProtected}
-      entityName="item"
+      entity="item"
       emptyTitle={tr('grn.item.summaryEmptyTitle')}
       emptySubtitle={tr('grn.item.summaryEmptySubtitle')}
     />

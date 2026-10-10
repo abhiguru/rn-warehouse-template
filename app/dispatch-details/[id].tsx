@@ -648,7 +648,7 @@ function DispatchDetailScreen() {
         }}
         title={tr('dispatch.details.printTitle')}
         defaultNumber={dispatch.disp_no || ''}
-        label={tr('common.dispatchNumber')}
+        entity="dispatch"
         placeholder={tr('dispatch.review.printPlaceholder', { example: 'I4613' })}
       />
 

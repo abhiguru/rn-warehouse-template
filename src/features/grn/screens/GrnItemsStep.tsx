@@ -31,7 +31,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { deleteGRNImage, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
@@ -680,7 +681,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   return (
     <View style={styles.container}>
       <GRNStepIndicator
-        steps={GRN_STEPS}
+        steps={grnSteps()}
         currentStep={STEP_NUMBERS.ITEMS}
         completedSteps={getCompletedSteps(STEP_NUMBERS.ITEMS)}
         onCancel={handleCancel}
@@ -713,7 +714,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       {/* Back and Next run the same checks as the swipe (unsaved item, validation) */}
       <WizardBottomBar
         currentStep={STEP_NUMBERS.ITEMS}
-        totalSteps={GRN_STEPS.length}
+        totalSteps={GRN_STEP_COUNT}
         onPrevious={handleSwipeRight}
         onNext={handleSwipeLeft}
         isLoading={isNavigating}

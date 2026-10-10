@@ -68,7 +68,12 @@ export interface ItemsSummaryBottomSheetProps<T> {
   isItemProtected?: (item: T) => boolean;
   /** Title for the header (default: "Saved items") */
   title?: string;
-  /** Entity name for dialogs (default: "item") */
+  /** What the list holds. Selects whole-sentence texts in both languages (default: item). */
+  entity?: 'item';
+  /**
+   * Older way to name what the list holds: a word placed into the English
+   * sentences ("Delete {{entity}}?"). Overrides `entity` when given.
+   */
   entityName?: string;
   /** Empty state title */
   emptyTitle?: string;
@@ -93,15 +98,31 @@ function ItemsSummaryBottomSheetInner<T>(
     onEditItem,
     editingItemKey,
     isItemProtected,
-    title = tr('items.summary.title'),
-    entityName: entityNameProp,
+    title: titleProp,
+    entity = 'item',
+    entityName,
     emptyTitle = tr('items.summary.emptyTitle'),
     emptySubtitle = tr('items.summary.emptySubtitle'),
     headerIcon = 'package-variant',
   } = props;
 
-  // 'item' is the name callers pass for the usual case: it is shown in the app's language.
-  const entityName = entityNameProp === undefined || entityNameProp === 'item' ? tr('items.summary.entity') : entityNameProp;
+  const title = titleProp ?? tr('items.summary.title');
+  // Whole sentences for the kind of entry; a caller's own word only in the older English form.
+  const labels = entityName === undefined
+    ? {
+        protectedTitle: tr(`items.summary.${entity}.protectedTitle`),
+        deleteTitle: tr(`items.summary.${entity}.deleteTitle`),
+        deleteLabel: tr(`items.summary.${entity}.deleteLabel`),
+        editHint: tr(`items.summary.${entity}.editHint`),
+      }
+    : {
+        protectedTitle: tr('items.summary.protectedTitle', { entity: entityName }),
+        deleteTitle: tr('items.summary.deleteTitle', { entity: entityName }),
+        deleteLabel: tr('items.summary.deleteEntity', { entity: entityName }),
+        editHint: tr('items.summary.editHint', { entity: entityName }),
+      };
+  const { protectedTitle, deleteTitle, deleteLabel, editHint } = labels;
+  const closeLabel = titleProp === undefined ? tr('items.summary.closeDefault') : tr('items.summary.closeTitle', { title: titleProp.toLowerCase() });
   const insets = useSafeAreaInsets();
 
   const t = useTokens();
@@ -122,7 +143,7 @@ function ItemsSummaryBottomSheetInner<T>(
       // Check if item is protected
       if (checkItemProtected(item)) {
         showAlert(
-          tr('items.summary.protectedTitle', { entity: entityName }),
+          protectedTitle,
           tr('items.summary.protectedMessage', { name: itemName }),
           [{ text: tr('common.ok'), style: 'default' }]
         );
@@ -130,12 +151,12 @@ function ItemsSummaryBottomSheetInner<T>(
       }
 
       showAlert(
-        tr('items.summary.deleteTitle', { entity: entityName }),
+        deleteTitle,
         tr('items.summary.deleteMessage', { name: itemName }),
         [
           { text: tr('common.cancel'), style: 'cancel' },
           {
-            text: tr('items.summary.deleteEntity', { entity: entityName }),
+            text: deleteLabel,
             style: 'destructive',
             onPress: () => {
               if (__DEV__) console.log('[ItemsSummaryBottomSheet] Deleting:', itemKey);
@@ -145,7 +166,7 @@ function ItemsSummaryBottomSheetInner<T>(
         ]
       );
     },
-    [getItemKey, getItemName, checkItemProtected, entityName, onDeleteItem]
+    [getItemKey, getItemName, checkItemProtected, protectedTitle, deleteTitle, deleteLabel, onDeleteItem]
   );
 
   // Render swipe delete action
@@ -220,7 +241,7 @@ function ItemsSummaryBottomSheetInner<T>(
             style={dynamicStyles.backdrop}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel={tr('items.summary.closeTitle', { title: title.toLowerCase() })}
+            accessibilityLabel={closeLabel}
           />
 
         {/* Bottom Sheet Content */}
@@ -297,7 +318,7 @@ function ItemsSummaryBottomSheetInner<T>(
                       disabled={!onEditItem}
                       style={({ pressed }) => [dynamicStyles.itemRow, pressed && dynamicStyles.itemRowPressed]}
                       accessibilityRole={onEditItem ? 'button' : undefined}
-                      accessibilityHint={onEditItem ? tr('items.summary.editHint', { entity: entityName }) : undefined}
+                      accessibilityHint={onEditItem ? editHint : undefined}
                     >
                       {renderItem(item, index, isEditing, isProtected)}
                     </Pressable>

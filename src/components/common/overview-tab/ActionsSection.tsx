@@ -15,9 +15,16 @@ import { SectionHeader } from './SectionHeader';
 
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
+import type { DocumentEntity } from '@/i18n/entities';
+
 interface ActionsSectionProps {
-  /** Entity type label for edit/delete buttons (e.g., "GRN", "Dispatch", "Invoice") */
-  entityType: string;
+  /** Which document the actions are for. Selects whole-sentence texts in both languages. */
+  entity?: DocumentEntity;
+  /**
+   * Older way to name the document: a word placed into the English sentences
+   * ("Edit {{entity}}"). Used only when `entity` is not given.
+   */
+  entityType?: string;
   /** Entity number for delete confirmation message */
   entityNumber?: string;
   /** Entity ID - actions are disabled if not provided */
@@ -43,7 +50,8 @@ interface ActionsSectionProps {
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
-  entityType,
+  entity,
+  entityType = '',
   entityNumber,
   entityId,
   onSharePDF,
@@ -71,16 +79,30 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
     return null;
   }
 
+  const labels = entity
+    ? {
+        deleteNumberedTitle: (number: string) => t(`components.actions.${entity}.deleteNumberedTitle`, { number }),
+        deleteThisTitle: t(`components.actions.${entity}.deleteThisTitle`),
+        delete: t(`components.actions.${entity}.delete`),
+        print: t(`components.actions.${entity}.print`),
+        edit: t(`components.actions.${entity}.edit`),
+      }
+    : {
+        deleteNumberedTitle: (number: string) => t('components.actions.deleteNumberedTitle', { entity: entityType, number }),
+        deleteThisTitle: t('components.actions.deleteThisTitle', { entity: entityType }),
+        delete: t('components.actions.deleteEntity', { entity: entityType }),
+        print: t('components.actions.printEntity', { entity: entityType }),
+        edit: t('components.actions.editEntity', { entity: entityType }),
+      };
+
   const handleDeletePress = () => {
     showAlert(
-      entityNumber
-        ? t('components.actions.deleteNumberedTitle', { entity: entityType, number: entityNumber })
-        : t('components.actions.deleteThisTitle', { entity: entityType }),
+      entityNumber ? labels.deleteNumberedTitle(entityNumber) : labels.deleteThisTitle,
       t('components.actions.deleteMessage'),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
-          text: t('components.actions.deleteEntity', { entity: entityType }),
+          text: labels.delete,
           style: 'destructive',
           onPress: onDelete,
         },
@@ -130,7 +152,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={onPrint}
             disabled={isPrintLoading}
             accessibilityRole="button"
-            accessibilityLabel={t('components.actions.printEntity', { entity: entityType })}
+            accessibilityLabel={labels.print}
             accessibilityState={{ disabled: isPrintLoading, busy: isPrintLoading }}
           >
             {isPrintLoading ? (
@@ -139,7 +161,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               <Icon name="printer-outline" size={iconSize.lg} color={colorStyles.iconBrand} />
             )}
             <Text style={[overviewStyles.secondaryTintButtonText, colorStyles.secondaryTintButtonText]}>
-              {isPrintLoading ? t('components.printRange.printing') : t('components.actions.printEntity', { entity: entityType })}
+              {isPrintLoading ? t('components.printRange.printing') : labels.print}
             </Text>
           </Pressable>
         )}
@@ -154,10 +176,10 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             ]}
             onPress={onEdit}
             accessibilityRole="button"
-            accessibilityLabel={t('components.actions.editEntity', { entity: entityType })}
+            accessibilityLabel={labels.edit}
           >
             <Icon name="pencil-outline" size={iconSize.lg} color={colorStyles.iconOnFill} />
-            <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>{t('components.actions.editEntity', { entity: entityType })}</Text>
+            <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>{labels.edit}</Text>
           </Pressable>
         )}
 
@@ -173,7 +195,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={handleDeletePress}
             disabled={isDeleting}
             accessibilityRole="button"
-            accessibilityLabel={t('components.actions.deleteEntity', { entity: entityType })}
+            accessibilityLabel={labels.delete}
             accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
           >
             {isDeleting ? (
@@ -182,7 +204,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               <Icon name="trash-can-outline" size={iconSize.lg} color={colorStyles.iconError} />
             )}
             <Text style={[overviewStyles.secondaryNegativeButtonText, colorStyles.secondaryNegativeButtonText]}>
-              {isDeleting ? t('common.deleting') : t('components.actions.deleteEntity', { entity: entityType })}
+              {isDeleting ? t('common.deleting') : labels.delete}
             </Text>
           </Pressable>
         )}

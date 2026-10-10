@@ -360,7 +360,7 @@ export default function InvoiceFormStep4() {
         }}
         title={tr('invoice.print.title')}
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
-        label={tr('common.invoiceNumber')}
+        entity="invoice"
         placeholder={tr('invoice.print.example', { example: '123' })}
       />
 

@@ -30,7 +30,7 @@ export const sensors: Translation<typeof source> = {
   list: {
     loadError: 'સેન્સરનો ડેટા લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     loading: 'સેન્સર લોડ થઈ રહ્યા છે',
-    emptyTitle: 'હજી કોઈ સેન્સર નથી',
+    emptyTitle: 'હજુ કોઈ સેન્સર નથી',
     emptyDescription: 'આ કોલ્ડ સ્ટોરેજ માટે ગોઠવેલા સેન્સર અહીં દેખાશે.',
     demoTitle: 'સેન્સર ઉપલબ્ધ નથી',
     demoDescription: 'લોકલ ડેમોમાં સેન્સરની દેખરેખ ઉપલબ્ધ નથી.',
@@ -51,7 +51,7 @@ export const sensors: Translation<typeof source> = {
     notFound: 'આ સેન્સર મળ્યું નથી. કદાચ તે કાઢી નાખવામાં આવ્યું છે.',
     notFoundTitle: 'સેન્સર મળ્યું નથી',
     loading: 'સેન્સર લોડ થઈ રહ્યું છે',
-    noHistory: 'હજી કોઈ ઇતિહાસ નથી. સેન્સર રીડિંગ મોકલશે એટલે અહીં દેખાશે.',
+    noHistory: 'હજુ કોઈ ઇતિહાસ નથી. સેન્સર રીડિંગ મોકલશે એટલે અહીં દેખાશે.',
     periodLabel: 'ઇતિહાસનો સમયગાળો',
     history: 'ઇતિહાસ',
     connection: 'કનેક્શન',

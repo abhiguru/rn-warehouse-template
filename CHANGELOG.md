@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — English and Gujarati (2026-10-10)
+
+- The app can be used in English or Gujarati (ગુજરાતી). The language is chosen in
+  Settings (Phone language, English, ગુજરાતી) and, before signing in, with the
+  switch on the server and sign-in screens. The change shows at once, without a
+  restart; a half-typed mobile number is kept.
+- In Gujarati, counts, weights, amounts, dates and times are shown in ૦-૯.
+  Identifiers stay as typed in 0-9: GRN, dispatch and invoice numbers, vehicle
+  numbers, GST, PAN, phone numbers and login codes.
+- Numbers typed in ૦-૯ are accepted wherever a number is entered or searched.
+- Printed documents (GRN, dispatch and invoice PDFs and prints) and the login
+  SMS stay in English. The terms of service and the privacy policy stay in
+  English.
+- Text typed by people (customer, item and package names, notes) is never
+  translated.
+- The words follow `docs/GUJARATI_GLOSSARY.md`; how to add or change text is in
+  `docs/I18N.md`.
+- Needs no backend change.
+
 ## Unreleased — list search and new filters (2026-10-10)
 
 - GRNs, Dispatches, Invoices, Orders and the Queue have a search field. Every

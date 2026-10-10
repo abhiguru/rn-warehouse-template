@@ -46,6 +46,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { clearSignInDraft } from '@/utils/signInDraft';
 const CODE_LENGTH = 6;
 
 export default function OTPScreen() {
@@ -139,6 +140,8 @@ export default function OTPScreen() {
       const result = await verifyOTP(phoneNumber, code);
 
       if (result.success && result.data) {
+        // Signed in (or waiting for approval): the number typed on the sign-in screen is no longer needed.
+        clearSignInDraft();
         if (result.data.action === 'pending') {
           dispatch(setOtpSent(false));
           router.replace('/pending-enrollment');
@@ -188,7 +191,7 @@ export default function OTPScreen() {
           tr('auth.otp.codeSentMessage', { phone: formatMobile(phoneNumber) })
         );
       } else {
-        if (handleRateLimitError(result.error)) {
+        if (handleRateLimitError(result)) {
           return;
         }
         const friendlyMessage = parseErrorToFriendly(result.error);

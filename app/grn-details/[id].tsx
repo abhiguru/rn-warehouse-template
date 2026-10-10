@@ -761,7 +761,7 @@ function GRNDetailScreen() {
         }}
         title={tr('grn.details.printTitle')}
         defaultNumber={grn.gr_no || ''}
-        label={tr('common.grnNumber')}
+        entity="grn"
         placeholder={tr('grn.details.printPlaceholder', { example: 'Z0797' })}
       />
 

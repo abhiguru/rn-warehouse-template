@@ -37,11 +37,11 @@ import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBotto
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -570,7 +570,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             {/* Same bottom bar as every wizard step (guide §14.3); Next validates like the swipe */}
             <WizardBottomBar
                 currentStep={1}
-                totalSteps={DISPATCH_STEPS.length}
+                totalSteps={DISPATCH_STEP_COUNT}
                 onNext={() => { void navigateToStep(2); }}
             />
 
@@ -594,7 +594,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
 
             {/* Date Picker Modal - Pure JS with dark mode support */}
             <DatePickerModal
-                locale="en"
+                locale={getLanguage()}
                 mode="single"
                 visible={showDatePicker}
                 onDismiss={handleDateDismiss}

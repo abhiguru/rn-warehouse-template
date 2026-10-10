@@ -140,7 +140,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   onShare,
   isSharing,
   accessibilityLabel,
-  accessibilityHint = 'Opens details',
+  accessibilityHint = tr('reports.shared.opensDetailsHint'),
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();

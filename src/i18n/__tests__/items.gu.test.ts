@@ -12,7 +12,9 @@ describe('items in Gujarati', () => {
     expect(t('items.summary.titleCount', { title: t('items.summary.title', undefined, 'gu'), count: 3 }, 'gu')).toBe('સાચવેલી આઇટમ (૩)');
   });
   it('names the thing to delete inside the sentence', () => {
-    expect(t('items.summary.deleteTitle', { entity: t('items.summary.entity', undefined, 'gu') }, 'gu')).toBe('આઇટમ ડિલીટ કરવી છે?');
-    expect(t('items.summary.deleteTitle', { entity: t('items.summary.entity') })).toBe('Delete item?');
+    // Whole sentences for the usual list of items; a caller's own word only fits the English form.
+    expect(t('items.summary.item.deleteTitle', undefined, 'gu')).toBe('આઇટમ ડિલીટ કરવી છે?');
+    expect(t('items.summary.item.deleteTitle')).toBe('Delete item?');
+    expect(t('items.summary.deleteTitle', { entity: 'lot' })).toBe('Delete lot?');
   });
 });

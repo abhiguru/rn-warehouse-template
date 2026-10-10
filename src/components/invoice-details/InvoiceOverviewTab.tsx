@@ -434,7 +434,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
 
       {/* SECTION: ACTIONS */}
       <ActionsSection
-        entityType="Invoice"
+        entity="invoice"
         entityNumber={invoice_number}
         entityId={invoice_id || 'invoice'}
         onSharePDF={on_share_pdf}

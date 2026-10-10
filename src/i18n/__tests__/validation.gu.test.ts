@@ -8,10 +8,6 @@ import {
   requiredStringField,
 } from '@/utils/validationHelpers';
 import { ValidationError, validatePhone, validatePositiveDecimal, validatePositiveInt, validateSafeText } from '@/utils/inputValidation';
-import { GRN_STEPS, getGrnSteps, getNextStepLabel } from '@/constants/grnSteps';
-import { getDispatchNextStepLabel, getDispatchSteps } from '@/constants/dispatchSteps';
-import { CUSTOMER_STEP_TITLES, getCustomerStepTitles, getCustomerSteps, getNextStepLabel as getCustomerNextStepLabel } from '@/constants/customerSteps';
-import { getInvoiceSteps, INVOICE_STEPS } from '@/constants/invoiceSteps';
 
 afterEach(() => setLanguage('en'));
 
@@ -90,31 +86,5 @@ describe('typed numbers', () => {
     expect(validatePositiveDecimal('૧૨.૫')).toBe(12.5);
     expect(validatePhone('૯૮૭૬૫૪૩૨૧૦')).toBe('9876543210');
     expect(() => validatePositiveInt('abc')).toThrow(ValidationError);
-  });
-});
-
-describe('wizard steps', () => {
-  it('keeps the English constants and their length', () => {
-    expect(GRN_STEPS.map(step => step.label)).toEqual(['GRN details', 'Items', 'Review']);
-    expect(getGrnSteps()).toEqual(GRN_STEPS);
-    expect(getInvoiceSteps()).toEqual(INVOICE_STEPS);
-    expect(getCustomerStepTitles()).toEqual(CUSTOMER_STEP_TITLES);
-    expect(getNextStepLabel(1)).toBe('Next: Items');
-    expect(getNextStepLabel(3)).toBe('Create GRN');
-    expect(getDispatchNextStepLabel(2)).toBe('Next: Review');
-    expect(getCustomerNextStepLabel(3, true)).toBe('Update Customer');
-  });
-
-  it('returns Gujarati labels when asked after the language changed', () => {
-    setLanguage('gu');
-    expect(getGrnSteps().map(step => step.label)).toEqual(['આવક પાવતીની વિગતો', 'આઇટમ', 'ચકાસણી']);
-    expect(getDispatchSteps()[0]).toEqual({ label: 'જાવકની વિગતો', shortLabel: 'વિગતો' });
-    expect(getCustomerSteps().map(step => step.shortLabel)).toEqual(['મુખ્ય', 'વિગતો', 'ચકાસણી']);
-    expect(getNextStepLabel(1)).toBe('આગળ: આઇટમ');
-    expect(getNextStepLabel(3)).toBe('આવક પાવતી બનાવો');
-    expect(getDispatchNextStepLabel(3)).toBe('જાવક બનાવો');
-    expect(getCustomerNextStepLabel(3)).toBe('વેપારી ઉમેરો');
-    // The constant is fixed at load: screens must call the function.
-    expect(GRN_STEPS[0].label).toBe('GRN details');
   });
 });

@@ -868,7 +868,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {isCreateMode && (
                 <DocumentSuccessDialog
                     isVisible={showSuccessDialog}
-                    documentType="Dispatch"
+                    entity="dispatch"
                     documentData={successDialogData}
                     onCreateAnother={handleCreateAnother}
                     onViewList={handleViewList}
@@ -905,7 +905,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     }}
                     title={tr('dispatch.review.printTitle')}
                     defaultNumber={createdDispatchNumber}
-                    label={tr('common.dispatchNumber')}
+                    entity="dispatch"
                     placeholder={tr('dispatch.review.printPlaceholder', { example: 'D001' })}
                 />
             )}

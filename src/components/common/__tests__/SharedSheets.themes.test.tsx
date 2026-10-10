@@ -172,3 +172,45 @@ describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 });
+
+describe('items summary sheet wording', () => {
+  const { setLanguage } = jest.requireActual('@/i18n') as typeof import('@/i18n');
+  afterEach(() => setLanguage('en'));
+
+  const sheet = (props: { title?: string; entityName?: string } = {}) =>
+    renderIn('orange', 'light',
+      <ItemsSummaryBottomSheet<{ id: string }>
+        isVisible
+        onClose={jest.fn()}
+        items={[{ id: 'Garlic' }]}
+        getItemKey={i => i.id}
+        getItemName={i => i.id}
+        renderItem={i => <Text>{i.id}</Text>}
+        getTotals={() => []}
+        onDeleteItem={jest.fn()}
+        onEditItem={jest.fn()}
+        {...props}
+      />);
+  const spoken = (tree: ReactTestRenderer, prop: 'accessibilityLabel' | 'accessibilityHint') =>
+    tree.root.findAll(n => typeof n.type === 'string' && typeof n.props[prop] === 'string').map(n => n.props[prop] as string);
+
+  it('uses whole sentences for a list of items in both languages', () => {
+    const english = sheet();
+    expect(spoken(english, 'accessibilityLabel')).toContain('Close saved items');
+    expect(spoken(english, 'accessibilityHint')).toContain('Opens this item for editing');
+    act(() => english.unmount());
+
+    setLanguage('gu');
+    const gujarati = sheet();
+    expect(spoken(gujarati, 'accessibilityLabel')).toContain('સાચવેલી આઇટમ બંધ કરો');
+    expect(spoken(gujarati, 'accessibilityHint')).toContain('ફેરફાર માટે આ આઇટમ ખોલે છે');
+    act(() => gujarati.unmount());
+  });
+
+  it("still places a caller's own word into the English sentences", () => {
+    const tree = sheet({ title: 'Saved lots', entityName: 'lot' });
+    expect(spoken(tree, 'accessibilityLabel')).toContain('Close saved lots');
+    expect(spoken(tree, 'accessibilityHint')).toContain('Opens this lot for editing');
+    act(() => tree.unmount());
+  });
+});

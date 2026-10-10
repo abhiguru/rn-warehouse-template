@@ -34,6 +34,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
+import type { DocumentEntity } from '@/i18n/entities';
 
 interface PrintRangeDialogProps {
   visible: boolean;
@@ -41,7 +42,13 @@ interface PrintRangeDialogProps {
   onConfirm: (startNumber: string, endNumber: string) => Promise<void>;
   title: string;
   defaultNumber: string;
-  label: string;
+  /** Which document's numbers are printed. Selects whole-sentence texts in both languages. */
+  entity?: DocumentEntity;
+  /**
+   * Older way to name the number ("GRN number"): a word placed into the English
+   * sentences. Used only when `entity` is not given.
+   */
+  label?: string;
   placeholder?: string;
   onViewJobs?: () => void;
 }
@@ -235,7 +242,8 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   onConfirm,
   title,
   defaultNumber,
-  label,
+  entity,
+  label = '',
   placeholder = '',
   onViewJobs,
 }) => {
@@ -289,6 +297,23 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   if (!visible) return null;
 
   const lowerLabel = label.toLowerCase();
+  const texts = entity
+    ? {
+        chooseRange: tr(`components.printRange.${entity}.chooseRange`),
+        sameNumberHint: tr(`components.printRange.${entity}.sameNumberHint`),
+        startPlaceholder: tr(`components.printRange.${entity}.startPlaceholder`),
+        endPlaceholder: tr(`components.printRange.${entity}.endPlaceholder`),
+        fromLabel: tr(`components.printRange.${entity}.fromLabel`),
+        toLabel: tr(`components.printRange.${entity}.toLabel`),
+      }
+    : {
+        chooseRange: tr('components.printRange.chooseRange', { label: lowerLabel }),
+        sameNumberHint: tr('components.printRange.sameNumberHint', { label: lowerLabel }),
+        startPlaceholder: tr('components.printRange.startPlaceholder', { label: lowerLabel }),
+        endPlaceholder: tr('components.printRange.endPlaceholder', { label: lowerLabel }),
+        fromLabel: tr('components.printRange.fromLabel', { label: lowerLabel }),
+        toLabel: tr('components.printRange.toLabel', { label: lowerLabel }),
+      };
 
   // Keep every entry point honest, including direct document detail actions.
   if (!DEMO_CAPABILITIES.printing)
@@ -382,10 +407,10 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
             {/* Content */}
             <View style={styles.content}>
               <Text style={styles.description}>
-                {tr('components.printRange.chooseRange', { label: lowerLabel })}
+                {texts.chooseRange}
               </Text>
               <Text style={styles.helpText}>
-                {tr('components.printRange.sameNumberHint', { label: lowerLabel })}
+                {texts.sameNumberHint}
               </Text>
 
               <View style={styles.rangeSection}>
@@ -397,7 +422,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                   <TextInput
                     value={startNumber}
                     onChangeText={setStartNumber}
-                    placeholder={placeholder || tr('components.printRange.startPlaceholder', { label: lowerLabel })}
+                    placeholder={placeholder || texts.startPlaceholder}
                     placeholderTextColor={t.text.placeholder}
                     editable={!loading}
                     onFocus={() => setFocused('start')}
@@ -407,7 +432,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       focused === 'start' && styles.inputFocused,
                       loading && styles.inputDisabled,
                     ]}
-                    accessibilityLabel={tr('components.printRange.fromLabel', { label: lowerLabel })}
+                    accessibilityLabel={texts.fromLabel}
                     accessibilityLabelledBy="print-range-from"
                     returnKeyType="next"
                   />
@@ -421,7 +446,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                   <TextInput
                     value={endNumber}
                     onChangeText={setEndNumber}
-                    placeholder={placeholder || tr('components.printRange.endPlaceholder', { label: lowerLabel })}
+                    placeholder={placeholder || texts.endPlaceholder}
                     placeholderTextColor={t.text.placeholder}
                     editable={!loading}
                     onFocus={() => setFocused('end')}
@@ -431,7 +456,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       focused === 'end' && styles.inputFocused,
                       loading && styles.inputDisabled,
                     ]}
-                    accessibilityLabel={tr('components.printRange.toLabel', { label: lowerLabel })}
+                    accessibilityLabel={texts.toLabel}
                     accessibilityLabelledBy="print-range-to"
                     returnKeyType="done"
                     onSubmitEditing={handleConfirm}

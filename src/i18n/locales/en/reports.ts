@@ -19,6 +19,7 @@ export const reports = {
     markA11y: 'mark {{mark}}',
     receivedOn: 'Received {{date}}',
     opensGrnHint: 'Opens the GRN',
+    opensDetailsHint: 'Opens details',
     hidesGrnsHint: 'Hides the GRNs',
     errorTitle: 'Something went wrong',
     noCustomerLinked: 'No customer linked',

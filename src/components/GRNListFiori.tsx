@@ -900,7 +900,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         onConfirm={handlePrintConfirm}
         title={translate('lists.grn.printRangeTitle')}
         defaultNumber={selectedGRNForPrint}
-        label={translate('common.grnNumber')}
+        entity="grn"
         placeholder={translate('lists.grn.printRangePlaceholder', { example: 'Z0797' })}
         onViewJobs={() => {
           setShowPrintDialog(false);

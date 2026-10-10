@@ -138,7 +138,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
 
       {/* SECTION: ACTIONS */}
       <ActionsSection
-        entityType="GRN"
+        entity="grn"
         entityNumber={gr_no}
         entityId={grn_id}
         onSharePDF={onSharePDF}

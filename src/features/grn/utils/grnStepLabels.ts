@@ -1,21 +1,14 @@
 /**
- * Names of the GRN wizard steps in the app's language.
+ * Names of the GRN wizard steps in the app's language: the one source for every
+ * GRN screen. The step numbers and count are in src/constants/grnSteps.ts.
  *
- * The steps are identified by position (1 details, 2 items, 3 review); the
- * English labels in src/constants/grnSteps.ts are not shown.
+ * Call it while rendering, never at module level (docs/I18N.md).
  */
 import type { StepConfig } from '@/components/StepIndicator';
-import { t, type TranslationKey } from '@/i18n';
+import { t } from '@/i18n';
 
-const STEP_KEYS: { label: TranslationKey; shortLabel: TranslationKey }[] = [
-  { label: 'grn.steps.details', shortLabel: 'grn.steps.detailsShort' },
-  { label: 'grn.steps.items', shortLabel: 'grn.steps.items' },
-  { label: 'grn.steps.review', shortLabel: 'grn.steps.review' },
+export const grnSteps = (): StepConfig[] => [
+  { label: t('grn.steps.details'), shortLabel: t('grn.steps.detailsShort') },
+  { label: t('grn.steps.items'), shortLabel: t('grn.steps.items') },
+  { label: t('grn.steps.review'), shortLabel: t('grn.steps.review') },
 ];
-
-/** The given steps with their names in the app's language; a step beyond the three known ones keeps its own label. */
-export const localizeGRNSteps = (steps: StepConfig[]): StepConfig[] =>
-  steps.map((step, index) => {
-    const keys = STEP_KEYS[index];
-    return keys ? { ...step, label: t(keys.label), shortLabel: t(keys.shortLabel) } : step;
-  });

@@ -1,6 +1,6 @@
 import { setLanguage, t } from '..';
 import { en } from '../locales/en';
-import { localizeGRNSteps } from '@/features/grn/utils/grnStepLabels';
+import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { parseReceiptQuantity, parseReceiptWeight, validateStep2 } from '@/features/grn/schemas/grnValidation';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { formatCount, formatNumber } from '@/utils/formatters';
@@ -35,7 +35,7 @@ describe('grn texts in Gujarati', () => {
     setLanguage('gu');
     expect(t('grn.sourceGrns.receivedBags', { bags: formatCount(50, 'bag') })).toBe('આવક ૫૦ બોરી');
     expect(t('grn.upload.fileTooLarge', { size: formatNumber(12.34, 1) })).toBe(
-      'ફાઇલ (૧૨.૩MB) વધુમાં વધુ ૧૦MB ની મર્યાદાથી મોટી છે'
+      'ફાઇલ (૧૨.૩MB) બહુ મોટી છે. વધુમાં વધુ ૧૦MB ચાલશે.'
     );
     expect(t('grn.form.forExample', { example: 'GJ01AB1234' })).toBe('દા.ત. GJ01AB1234');
   });
@@ -71,15 +71,14 @@ describe('grn code that follows the language', () => {
     expect(parseReceiptQuantity('૦')).toBeNull();
   });
 
-  it('names the wizard steps by position, not by the English label passed in', () => {
-    const steps = [
+  it('names the wizard steps in the language at the time of the call', () => {
+    expect(grnSteps()).toEqual([
       { label: 'GRN details', shortLabel: 'Details' },
       { label: 'Items', shortLabel: 'Items' },
       { label: 'Review', shortLabel: 'Review' },
-    ];
-    expect(localizeGRNSteps(steps)).toEqual(steps);
+    ]);
     setLanguage('gu');
-    expect(localizeGRNSteps(steps)).toEqual([
+    expect(grnSteps()).toEqual([
       { label: 'આવક પાવતીની વિગતો', shortLabel: 'વિગતો' },
       { label: 'આઇટમ', shortLabel: 'આઇટમ' },
       { label: 'ચકાસણી', shortLabel: 'ચકાસણી' },

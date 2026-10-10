@@ -404,7 +404,7 @@ export function useInvoiceForm({
     const validation = await validateFullInvoice({ header, items });
     if (!validation.isValid) {
       showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
-      return { success: false, error: 'Validation failed' };
+      return { success: false, error: t('errors.general.validationFailed') };
     }
 
     dispatch(setIsSaving(true));

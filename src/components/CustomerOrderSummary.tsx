@@ -17,7 +17,8 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { t as tr } from '@/i18n';
+import { getLanguage, t as tr } from '@/i18n';
+import { commonWords } from '@/i18n/locales/common';
 
 interface CustomerOrderSummaryProps {
   order: Order;
@@ -62,7 +63,9 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
 
   // Relative time under 24 hours, then the date (style guide §12.3)
   const relative = formatRelativeTime(order.updated_at || order.created_at);
-  const timeAgo = relative === 'Just now' ? 'just now' : relative;
+  // "Just now" sits inside a sentence here: lower case where the language has it.
+  const justNow = commonWords(getLanguage()).justNow;
+  const timeAgo = relative === justNow ? justNow.toLowerCase() : relative;
   const updatedBy = order.updated_by_display_name || order.updated_by_name;
   const savedText = updatedBy
     ? tr('components.orderSummary.savedBy', { time: timeAgo, name: updatedBy })

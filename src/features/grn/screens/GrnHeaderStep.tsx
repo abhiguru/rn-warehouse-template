@@ -24,13 +24,14 @@ import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBotto
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatDate, formatNumber } from '@/utils/formatters';
-import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
 import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
-import { normalizeDigits, t as tr } from '@/i18n';
+import { getLanguage, normalizeDigits, t as tr } from '@/i18n';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
@@ -242,7 +243,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   return (
     <View style={styles.container}>
       <GRNStepIndicator
-        steps={GRN_STEPS}
+        steps={grnSteps()}
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
@@ -475,12 +476,12 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
       <WizardBottomBar
         currentStep={STEP_NUMBERS.HEADER}
-        totalSteps={GRN_STEPS.length}
+        totalSteps={GRN_STEP_COUNT}
         onNext={handleNext}
       />
 
       <DatePickerModal
-        locale="en"
+        locale={getLanguage()}
         mode="single"
         visible={showDatePicker}
         onDismiss={handleDateDismiss}

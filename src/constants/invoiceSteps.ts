@@ -1,5 +1,4 @@
 import { StyleSheet } from 'react-native';
-import type { StepConfig } from '@/components/StepIndicator';
 import {
   fontWeight,
   layout,
@@ -10,26 +9,8 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { formatDate, toDate } from '@/utils/formatters';
-import { t as translate } from '@/i18n';
 
-// Step names are nouns (style guide §14.3).
-// The labels here are English and fixed when the file loads: use the array for
-// its length and order only. For labels on screen call `getInvoiceSteps()`.
-export const INVOICE_STEPS: StepConfig[] = [
-  { number: 1, label: 'Details', shortLabel: 'Details' },
-  { number: 2, label: 'Items', shortLabel: 'Items' },
-  { number: 3, label: 'Review', shortLabel: 'Review' },
-];
-
-/** The invoice steps with their labels in the app's language. Call it while rendering. */
-export function getInvoiceSteps(): StepConfig[] {
-  return [
-    { number: 1, label: translate('validation.steps.short.details'), shortLabel: translate('validation.steps.short.details') },
-    { number: 2, label: translate('validation.steps.short.items'), shortLabel: translate('validation.steps.short.items') },
-    { number: 3, label: translate('validation.steps.short.review'), shortLabel: translate('validation.steps.short.review') },
-  ];
-}
-
+// The step names are text: `invoiceSteps()` in src/components/InvoiceStepIndicator.tsx.
 export const STEP_NUMBERS = {
   HEADER: 1,
   ITEMS: 2,

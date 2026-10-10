@@ -7,6 +7,11 @@
  *   node scripts/i18n-report.mjs            # app/ and src/
  *   node scripts/i18n-report.mjs src/features/grn
  *   node scripts/i18n-report.mjs --summary  # counts per file only
+ *   node scripts/i18n-report.mjs --allowed  # also list what the allow list skipped, with the reason
+ *
+ * English that is meant to stay is named in ALLOW below, one reason each. Keep
+ * the list short: add to it only what no person reads in the app.
+ * src/i18n/__tests__/guards.test.ts runs this script and fails when it finds anything.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -15,6 +20,7 @@ import ts from 'typescript';
 const root = process.cwd();
 const args = process.argv.slice(2);
 const summary = args.includes('--summary');
+const showAllowed = args.includes('--allowed');
 const targets = args.filter(arg => !arg.startsWith('--'));
 const SKIP = [/__tests__/, /\.test\.tsx?$/, /^src\/tests\//, /^src\/i18n\//, /^app\/style-guide\.tsx$/, /^app\/(terms-of-service|privacy-policy)\.tsx$/, /\.d\.ts$/];
 const PROPS = new Set([
@@ -23,6 +29,17 @@ const PROPS = new Set([
   'createButtonLabel', 'clearFiltersLabel', 'confirmLabel', 'cancelLabel', 'headerTitle', 'loadingText', 'footer', 'caption',
   'buttonText', 'actionLabel', 'tabBarLabel', 'headerBackTitle', 'summary', 'heading', 'content', 'body', 'name',
 ]);
+// English that stays. An entry matches on every field it gives: file (path), kind (prop or key name), text.
+const ALLOW = [
+  { file: /^app\/(.+\/)?_layout\.tsx$/, kind: /^name$/, reason: 'route name of a Stack.Screen or Tabs.Screen, never shown' },
+  { file: /^src\/components\/BrandMark\.tsx$/, text: /^GCSA$/, reason: "the association's wordmark, the same in every language" },
+  { kind: /^placeholder$/, text: /^(https:\/\/warehouse\.example\.com|[a-z]+@example\.com)$/, reason: 'sample address: an address is written in Latin letters' },
+  { file: /^src\/components\/PrintJobsBottomSheet\.tsx$/, kind: /^error$/, text: /^Failed to fetch \w+ jobs$/, reason: 'only written to the log; the sheet shows components.printJobs.loadFailed' },
+  { file: /^src\/utils\/schemaValidator\.ts$/, kind: /^error$/, reason: 'developer diagnostics of stored-data checks; no screen shows them' },
+];
+const allowedBy = entry =>
+  ALLOW.find(rule => (!rule.file || rule.file.test(entry.file)) && (!rule.kind || rule.kind.test(entry.kind)) && (!rule.text || rule.text.test(entry.text)));
+
 // Words, not codes: at least one run of three letters, and not an identifier, path, colour or icon name.
 const isProse = text =>
   /[A-Za-z]{3,}/.test(text) &&
@@ -40,6 +57,7 @@ function files(dir) {
 }
 
 const found = [];
+const allowed = [];
 for (const target of targets.length ? targets : ['app', 'src']) {
   const start = join(root, target);
   for (const file of statSync(start).isDirectory() ? files(start) : [start]) {
@@ -48,7 +66,10 @@ for (const target of targets.length ? targets : ['app', 'src']) {
     const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
     const report = (node, text, kind) => {
       const { line } = source.getLineAndCharacterOfPosition(node.getStart());
-      found.push({ file: rel, line: line + 1, kind, text: text.trim().replace(/\s+/g, ' ').slice(0, 90) });
+      const entry = { file: rel, line: line + 1, kind, text: text.trim().replace(/\s+/g, ' ').slice(0, 90) };
+      const rule = allowedBy(entry);
+      if (rule) allowed.push({ ...entry, reason: rule.reason });
+      else found.push(entry);
     };
     const inLog = node => {
       for (let current = node.parent; current; current = current.parent) {
@@ -96,6 +117,10 @@ if (summary) {
   for (const [file, count] of [...perFile].sort((a, b) => b[1] - a[1])) console.log(String(count).padStart(5), file);
 } else {
   for (const entry of found) console.log(`${entry.file}:${entry.line}  [${entry.kind}]  ${entry.text}`);
+}
+if (showAllowed) {
+  console.log(`\nAllowed (${allowed.length}):`);
+  for (const entry of allowed) console.log(`${entry.file}:${entry.line}  [${entry.kind}]  ${entry.text}  -- ${entry.reason}`);
 }
 console.log(`\n${found.length} visible English text${found.length === 1 ? '' : 's'} in ${new Set(found.map(entry => entry.file)).size} files`);
 process.exit(found.length ? 1 : 0);

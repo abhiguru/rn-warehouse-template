@@ -1,7 +1,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
-import { toLocalISODate } from '@/utils/formatters';
+import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
 export interface SearchResult {
   label: string;
@@ -232,7 +232,7 @@ class SearchService {
             return {
               label: `#${dispNo}`,
               value: dispatch.id as string,
-              detail: `${customerName} • ${dispDate ? new Date(dispDate as string).toLocaleDateString() : ''}`,
+              detail: `${customerName} • ${dispDate ? formatDate(dispDate as string) : ''}`,
               type: 'dispatch' as const
             };
           });
@@ -288,7 +288,7 @@ class SearchService {
           return grns.map((grn) => ({
             label: grn.gr_no,
             value: grn.id,
-            detail: `${grn.customer_name} • ${new Date(grn.date).toLocaleDateString()}`,
+            detail: `${grn.customer_name} • ${formatDate(grn.date)}`,
             type: 'grn' as const
           }));
         }

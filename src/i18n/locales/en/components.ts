@@ -267,6 +267,31 @@ export const components = {
     endPlaceholder: 'End {{label}}',
     fromLabel: 'From {{label}}',
     toLabel: 'To {{label}}',
+    // Whole sentences by document (PrintRangeDialog `entity`).
+    grn: {
+      chooseRange: 'Choose the range of grn numbers to print.',
+      sameNumberHint: 'Use the same number in both fields to print one grn number.',
+      startPlaceholder: 'Start grn number',
+      endPlaceholder: 'End grn number',
+      fromLabel: 'From grn number',
+      toLabel: 'To grn number',
+    },
+    dispatch: {
+      chooseRange: 'Choose the range of dispatch numbers to print.',
+      sameNumberHint: 'Use the same number in both fields to print one dispatch number.',
+      startPlaceholder: 'Start dispatch number',
+      endPlaceholder: 'End dispatch number',
+      fromLabel: 'From dispatch number',
+      toLabel: 'To dispatch number',
+    },
+    invoice: {
+      chooseRange: 'Choose the range of invoice numbers to print.',
+      sameNumberHint: 'Use the same number in both fields to print one invoice number.',
+      startPlaceholder: 'Start invoice number',
+      endPlaceholder: 'End invoice number',
+      fromLabel: 'From invoice number',
+      toLabel: 'To invoice number',
+    },
     viewJobs: 'View print jobs',
     printingLabel: 'Printing',
     printing: 'Printing…',
@@ -294,6 +319,20 @@ export const components = {
     discardTitle: 'Discard this {{entity}}?',
     cancelEditing: 'Cancel editing',
     cancelEntity: 'Cancel {{entity}}',
+    // Spoken name of the close button, by what the wizard is about and whether it creates or edits.
+    cancelFor: {
+      grn: { create: 'Cancel GRN', edit: 'Cancel editing' },
+      dispatch: { create: 'Cancel Dispatch', edit: 'Cancel editing' },
+      invoice: { create: 'Cancel Invoice', edit: 'Cancel Edit invoice' },
+      customer: { create: 'Cancel Customer', edit: 'Cancel Customer' },
+    },
+    // The discard question when a screen gives no title of its own.
+    discardFor: {
+      grn: 'Discard this GRN?',
+      dispatch: 'Discard this Dispatch?',
+      invoice: 'Discard this Invoice?',
+      customer: 'Discard this Customer?',
+    },
     cancelHint: 'Asks before discarding your changes',
   },
   input: {
@@ -328,6 +367,28 @@ export const components = {
     deleteEntity: 'Delete {{entity}}',
     printEntity: 'Print {{entity}}',
     editEntity: 'Edit {{entity}}',
+    // Whole sentences by document (ActionsSection `entity`).
+    grn: {
+      deleteNumberedTitle: 'Delete GRN {{number}}?',
+      deleteThisTitle: 'Delete this GRN?',
+      delete: 'Delete GRN',
+      print: 'Print GRN',
+      edit: 'Edit GRN',
+    },
+    dispatch: {
+      deleteNumberedTitle: 'Delete Dispatch {{number}}?',
+      deleteThisTitle: 'Delete this Dispatch?',
+      delete: 'Delete Dispatch',
+      print: 'Print Dispatch',
+      edit: 'Edit Dispatch',
+    },
+    invoice: {
+      deleteNumberedTitle: 'Delete Invoice {{number}}?',
+      deleteThisTitle: 'Delete this Invoice?',
+      delete: 'Delete Invoice',
+      print: 'Print Invoice',
+      edit: 'Edit Invoice',
+    },
   },
   contact: {
     call: 'Call {{name}}, {{phone}}',
@@ -347,6 +408,25 @@ export const components = {
     legacyWarning: 'This rack uses an old format. Select a floor and chamber.',
     incomplete: 'Enter a rack, floor and chamber.',
     tooLong: 'Use {{max}} characters or fewer for the full rack ({{count}}/{{max}}).',
+  },
+  // The calendar (react-native-paper-dates). English uses the library's own text; these are the source for Gujarati (src/i18n/calendar.ts).
+  calendar: {
+    save: 'Save',
+    selectSingle: 'Select date',
+    selectMultiple: 'Select dates',
+    selectRange: 'Select period',
+    notAccordingToDateFormat: 'Date format must be {{format}}',
+    mustBeHigherThan: 'Must be later than {{date}}',
+    mustBeLowerThan: 'Must be earlier than {{date}}',
+    mustBeBetween: 'Must be between {{start}} - {{end}}',
+    dateIsDisabled: 'Day is not allowed',
+    previous: 'Previous',
+    next: 'Next',
+    typeInDate: 'Type in date',
+    pickDateFromCalendar: 'Pick date from calendar',
+    close: 'Close',
+    hour: 'Hour',
+    minute: 'Minute',
   },
   datePicker: {
     time: 'Time',

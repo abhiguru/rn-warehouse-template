@@ -581,7 +581,7 @@ function InvoiceDetailScreen() {
         }}
         title={tr('invoice.print.titleRange')}
         defaultNumber={String(invoice.invoice_number) || ''}
-        label={tr('common.invoiceNumber')}
+        entity="invoice"
         placeholder={tr('invoice.print.exampleShort', { example: '2555' })}
       />
 

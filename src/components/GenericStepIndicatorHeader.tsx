@@ -36,6 +36,18 @@ import type { StepConfig } from '@/components/StepIndicator';
 
 import { showAlert } from '@/utils/alert';
 import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
+import type { AppEntity, EntityMode } from '@/i18n/entities';
+
+/** What a wizard can be about. */
+export type StepEntity = Exclude<AppEntity, 'item'>;
+
+/** The header label when the caller gives none. */
+const ENTITY_TITLE_KEY: Record<StepEntity, TranslationKey> = {
+  grn: 'common.grn',
+  dispatch: 'common.dispatch',
+  invoice: 'common.invoice',
+  customer: 'common.customer',
+};
 type StepState = 'completed' | 'current' | 'upcoming';
 
 /** Key of the spoken label of a step circle, by its state. */
@@ -58,8 +70,19 @@ export interface GenericStepIndicatorHeaderProps {
   completedSteps: number[];
   /** Callback when cancel is confirmed */
   onCancel: () => void;
-  /** Entity name displayed in cancel pill (e.g., "GRN", "Dispatch", "Invoice") */
-  entityName: string;
+  /**
+   * What the wizard is about. Selects the whole-sentence texts (the spoken name of
+   * the close button, the default discard question), so pass it from every screen.
+   */
+  entity?: StepEntity;
+  /** Whether the wizard creates a record or edits one (default: create). */
+  mode?: EntityMode;
+  /**
+   * The label shown next to the close button ("GRN", "Edit invoice"), already in the
+   * app's language. Defaults to the name of `entity`. Without `entity` it is also
+   * placed into the English sentences, as before: new code passes `entity`.
+   */
+  entityName?: string;
   /** Optional entity ID displayed below entity name (e.g., "Z0813") */
   entityId?: string;
   /** Title for cancel confirmation alert */
@@ -94,7 +117,9 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   currentStep,
   completedSteps,
   onCancel,
-  entityName,
+  entity,
+  mode = 'create',
+  entityName: entityNameProp,
   entityId,
   cancelTitle,
   cancelMessage: cancelMessageProp,
@@ -104,6 +129,15 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const cancelMessage = cancelMessageProp ?? tr('components.steps.cancelMessage');
+  const entityName = entityNameProp ?? (entity ? tr(ENTITY_TITLE_KEY[entity]) : '');
+  const closeLabel = entity
+    ? tr(`components.steps.cancelFor.${entity}.${mode}`)
+    : mode === 'edit'
+      ? tr('components.steps.cancelEditing')
+      : tr('components.steps.cancelEntity', { entity: entityName });
+  const defaultDiscardTitle = entity
+    ? tr(`components.steps.discardFor.${entity}`)
+    : tr('components.steps.discardTitle', { entity: entityName });
 
   // Debounce state to prevent multiple rapid taps
   const [navigatingToStep, setNavigatingToStep] = useState<number | null>(null);
@@ -144,7 +178,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
   const handleCancelPress = () => {
     showAlert(
-      cancelTitle || tr('components.steps.discardTitle', { entity: entityName }),
+      cancelTitle || defaultDiscardTitle,
       cancelMessage,
       [
         {
@@ -266,7 +300,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
             style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
             onPress={handleCancelPress}
             accessibilityRole="button"
-            accessibilityLabel={entityName.toLowerCase() === 'edit' || entityName === tr('common.edit') ? tr('components.steps.cancelEditing') : tr('components.steps.cancelEntity', { entity: entityName })}
+            accessibilityLabel={closeLabel}
             accessibilityHint={tr('components.steps.cancelHint')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />

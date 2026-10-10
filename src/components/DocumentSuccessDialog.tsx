@@ -31,6 +31,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCurrency } from '@/utils/formatters';
 import { localizeDigits, t as tr } from '@/i18n';
+import type { DocumentEntity } from '@/i18n/entities';
 
 export type DocumentType = 'GRN' | 'Dispatch' | 'Invoice';
 
@@ -45,7 +46,10 @@ export interface DocumentData {
 
 interface DocumentSuccessDialogProps {
   isVisible: boolean;
-  documentType: DocumentType;
+  /** Which document was saved. Selects whole-sentence texts in both languages. */
+  entity?: DocumentEntity;
+  /** Older name of `entity` ('GRN' | 'Dispatch' | 'Invoice'). Used when `entity` is not given. */
+  documentType?: DocumentType;
   documentData: DocumentData | null;
   onCreateAnother: () => void;
   onViewList: () => void;
@@ -55,27 +59,24 @@ interface DocumentSuccessDialogProps {
   isEditMode?: boolean;
 }
 
-const DOCUMENT_GROUPS = { GRN: 'grn', Dispatch: 'dispatch', Invoice: 'invoice' } as const;
-const DOCUMENT_NOUN_KEYS = { GRN: 'common.grn', Dispatch: 'common.dispatch', Invoice: 'common.invoice' } as const;
+const DOCUMENT_ENTITIES: Record<DocumentType, DocumentEntity> = { GRN: 'grn', Dispatch: 'dispatch', Invoice: 'invoice' };
+const DOCUMENT_NOUN_KEYS = { grn: 'common.grn', dispatch: 'common.dispatch', invoice: 'common.invoice' } as const;
 const DOCUMENT_NUMBER_KEYS = {
-  GRN: 'common.grnNumber',
-  Dispatch: 'common.dispatchNumber',
-  Invoice: 'common.invoiceNumber',
+  grn: 'common.grnNumber',
+  dispatch: 'common.dispatchNumber',
+  invoice: 'common.invoiceNumber',
 } as const;
 
 /** The texts for one kind of document. Called while rendering, so they follow the language. */
-const getDocumentConfig = (type: DocumentType, isEditMode: boolean) => {
-  const group = DOCUMENT_GROUPS[type];
-  return {
-    noun: tr(DOCUMENT_NOUN_KEYS[type]),
-    title: tr(isEditMode ? `components.documentSuccess.${group}.updatedTitle` : `components.documentSuccess.${group}.createdTitle`),
-    message: tr(isEditMode ? `components.documentSuccess.${group}.updatedMessage` : `components.documentSuccess.${group}.createdMessage`),
-    listLabel: tr(`components.documentSuccess.${group}.listLabel`),
-    createText: tr(isEditMode ? `components.documentSuccess.${group}.editAnother` : `components.documentSuccess.${group}.createAnother`),
-    numberLabel: tr(DOCUMENT_NUMBER_KEYS[type]),
-    printLabel: tr(`components.documentSuccess.${group}.printLabel`),
-  };
-};
+const getDocumentConfig = (entity: DocumentEntity, isEditMode: boolean) => ({
+  noun: tr(DOCUMENT_NOUN_KEYS[entity]),
+  title: tr(isEditMode ? `components.documentSuccess.${entity}.updatedTitle` : `components.documentSuccess.${entity}.createdTitle`),
+  message: tr(isEditMode ? `components.documentSuccess.${entity}.updatedMessage` : `components.documentSuccess.${entity}.createdMessage`),
+  listLabel: tr(`components.documentSuccess.${entity}.listLabel`),
+  createText: tr(isEditMode ? `components.documentSuccess.${entity}.editAnother` : `components.documentSuccess.${entity}.createAnother`),
+  numberLabel: tr(DOCUMENT_NUMBER_KEYS[entity]),
+  printLabel: tr(`components.documentSuccess.${entity}.printLabel`),
+});
 
 const makeStyles = (t: ThemeTokens) => ({
   overlay: {
@@ -201,6 +202,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
 export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
   isVisible,
+  entity,
   documentType,
   documentData,
   onCreateAnother,
@@ -214,7 +216,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  const config = getDocumentConfig(documentType, isEditMode);
+  const config = getDocumentConfig(entity ?? DOCUMENT_ENTITIES[documentType ?? 'GRN'], isEditMode);
 
   // Early return after hooks
   if (!documentData) return null;

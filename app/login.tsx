@@ -3,7 +3,7 @@
  *
  * Implements SAP Fiori onboarding/welcome screen pattern (style guide §14.8)
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -44,12 +44,12 @@ import {
 import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { LanguageSwitch } from '@/components/LanguageSwitch';
+import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
 const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';
 /** Splits the agreement sentence at its two link placeholders, keeping them. */
 const AGREEMENT_LINKS = /(\{\{terms\}\}|\{\{privacy\}\})/;
 
 export default function LoginScreen() {
-  const [phoneNumber, setPhoneNumber] = useState('');
   const dispatch = useAppDispatch();
   const { isAuthenticating } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
@@ -58,6 +58,25 @@ export default function LoginScreen() {
   // The warehouse this sign-in is for; becomes the facility picker with central login.
   const facility = getActiveOperatorServer();
   const facilityHost = facility ? facility.origin.replace(/^https:\/\//, '') : '';
+  const facilityOrigin = facility?.origin ?? '';
+
+  // The language switch below rebuilds every screen (app/_layout.tsx), this one
+  // included: the number typed so far is kept outside the component and read back.
+  const [phoneNumber, setPhoneNumberState] = useState(() => readSignInDraft(facilityOrigin));
+  const setPhoneNumber = useCallback((value: string) => {
+    setPhoneNumberState(value);
+    saveSignInDraft(value, facilityOrigin);
+  }, [facilityOrigin]);
+  const typedNumber = useRef(phoneNumber);
+  typedNumber.current = phoneNumber;
+  useEffect(() => {
+    const languageAtMount = getLanguage();
+    saveSignInDraft(typedNumber.current, facilityOrigin);
+    // Leaving for another screen forgets the number; a rebuild for a new language keeps it.
+    return () => {
+      if (getLanguage() === languageAtMount) clearSignInDraft();
+    };
+  }, [facilityOrigin]);
 
   useEffect(() => {
     let active = true;
@@ -126,7 +145,7 @@ export default function LoginScreen() {
         dispatch(setOtpSent(true));
         router.push('/otp');
       } else {
-        if (handleRateLimitError(result.error)) {
+        if (handleRateLimitError(result)) {
           return;
         }
         showAlert(

@@ -21,7 +21,7 @@ describe('customers in Gujarati', () => {
     expect(customerNextStepLabel(1)).toBe('Next: Details');
     expect(customerNextStepLabel(3, true)).toBe('Update Customer');
     setLanguage('gu');
-    expect(customerSteps().map(step => step.shortLabel)).toEqual(['મૂળ માહિતી', 'વિગતો', 'ચકાસણી']);
+    expect(customerSteps().map(step => step.shortLabel)).toEqual(['મુખ્ય માહિતી', 'વિગતો', 'ચકાસણી']);
     expect(customerNextStepLabel(2)).toBe('આગળ: ચકાસણી');
   });
 });

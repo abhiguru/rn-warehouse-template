@@ -280,7 +280,7 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
       onDeleteItem={onDeleteItem}
       onEditItem={onEditItem}
       editingItemKey={editingItemId}
-      entityName="item"
+      entity="item"
       emptyTitle={tr('dispatch.summarySheet.emptyTitle')}
       emptySubtitle={tr('dispatch.summarySheet.emptySubtitle')}
     />

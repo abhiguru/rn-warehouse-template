@@ -40,13 +40,6 @@ export interface StockStatusColors {
   border: string;
 }
 
-/** The English status word for each level. Shown text comes from `getStockLabel`, which follows the app's language. */
-export const STOCK_LABELS: Record<StockLevel, string> = {
-  positive: 'In stock',
-  critical: 'Low stock',
-  negative: 'Out of stock',
-};
-
 const STOCK_LABEL_KEYS: Record<StockLevel, TranslationKey> = {
   positive: 'common.inStock',
   critical: 'common.lowStock',

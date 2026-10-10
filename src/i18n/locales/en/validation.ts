@@ -52,28 +52,4 @@ export const validation = {
     limit: 'Limit',
     offset: 'Offset',
   },
-  steps: {
-    short: {
-      details: 'Details',
-      items: 'Items',
-      review: 'Review',
-      basic: 'Basic',
-    },
-    next: 'Next: {{step}}',
-    grn: {
-      details: 'GRN details',
-      create: 'Create GRN',
-    },
-    dispatch: {
-      details: 'Dispatch details',
-      create: 'Create dispatch',
-    },
-    customer: {
-      basic: 'Basic information',
-      details: 'Address and tax details',
-      review: 'Documents and review',
-      create: 'Create Customer',
-      update: 'Update Customer',
-    },
-  },
 };

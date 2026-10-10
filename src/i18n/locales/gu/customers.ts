@@ -5,7 +5,7 @@ import type { Translation } from '../../types';
 export const customers: Translation<typeof source> = {
   // The three steps of the customer form, by step id (src/constants/customerSteps.ts).
   steps: {
-    basic: { label: 'મૂળ માહિતી', shortLabel: 'મૂળ માહિતી' },
+    basic: { label: 'મુખ્ય માહિતી', shortLabel: 'મુખ્ય માહિતી' },
     details: { label: 'સરનામું અને ટેક્સની વિગતો', shortLabel: 'વિગતો', next: 'આગળ: વિગતો' },
     review: { label: 'દસ્તાવેજો અને ચકાસણી', shortLabel: 'ચકાસણી', next: 'આગળ: ચકાસણી' },
     createCustomer: 'વેપારી બનાવો',
@@ -151,7 +151,7 @@ export const customers: Translation<typeof source> = {
   validation: {
     nameRequired: 'વેપારીનું નામ લખો.',
     minLength: 'ઓછામાં ઓછા {{min}} અક્ષર લખો.',
-    maxLength: '{{max}} અથવા ઓછા અક્ષર વાપરો.',
+    maxLength: 'વધુમાં વધુ {{max}} અક્ષર વાપરો.',
     mobileRequired: 'મોબાઇલ નંબર લખો.',
     mobileInvalid: '{{length}} આંકડાનો મોબાઇલ નંબર લખો.',
     emailInvalid: '{{example}} જેવું ઇમેઇલ સરનામું લખો.',

@@ -129,7 +129,8 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.BASIC)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        entityName={tr('common.customer')}
+        entity="customer"
+        mode={isCreateMode ? 'create' : 'edit'}
         entityId={isCreateMode ? undefined : formData.name || tr('customers.form.editing')}
         cancelTitle={tr('customers.form.discardHeaderTitle')}
       />

@@ -433,7 +433,7 @@ export const grn = {
     photoOfItem: 'Photo of {{item}}',
     photoOfUnnamedItem: 'Photo of item',
     // English keeps the label exactly as the app has always announced it.
-    deleteGrnPhoto: 'Delete gRN photo',
+    deleteGrnPhoto: 'Delete GRN photo',
     deletePhotoOfItem: 'Delete photo of {{item}}',
     deletePhotoOfUnnamedItem: 'Delete photo of item',
     openHint: 'Opens the photo full screen',
