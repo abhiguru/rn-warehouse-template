@@ -163,7 +163,7 @@ export interface UseDispatchFormReturn {
   canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
 
   // Submission
-  submitForm: (generateInvoice?: boolean) => Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean }>;
+  submitForm: (generateInvoice?: boolean) => Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }>;
 
   // Reset
   resetFormState: () => void;
@@ -647,7 +647,7 @@ export function useDispatchForm({
   /**
    * Submit the form (create or update)
    */
-  const submitForm = useCallback(async (generateInvoice: boolean = false): Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean }> => {
+  const submitForm = useCallback(async (generateInvoice: boolean = false): Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }> => {
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
@@ -674,6 +674,7 @@ export function useDispatchForm({
           success: true,
           dispatchId: result.dispatch_id,
           sourceOrderCleared: result.source_order_cleared,
+          failedPhotos: result.failed_photos ?? [],
         };
       } else {
         showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed')));

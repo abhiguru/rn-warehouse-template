@@ -598,8 +598,10 @@ const uploadSingleDeferredImage = async (
 export const uploadDeferredDispatchImages = async (
   realDispatchId: string,
   images: DispatchImageData[]
-): Promise<{ success: boolean; uploadedCount: number; errors: string[] }> => {
+): Promise<{ success: boolean; uploadedCount: number; errors: string[]; failed: DispatchImageData[] }> => {
   const errors: string[] = [];
+  // The photos that did not arrive, so the caller can name them and try again.
+  const failed: DispatchImageData[] = [];
   let uploadedCount = 0;
 
   // Filter to only deferred images (have image_url but no storage_path)
@@ -608,7 +610,7 @@ export const uploadDeferredDispatchImages = async (
   );
 
   if (deferredImages.length === 0) {
-    return { success: true, uploadedCount: 0, errors: [] };
+    return { success: true, uploadedCount: 0, errors: [], failed: [] };
   }
 
   let finishMutation: (() => void) | undefined;
@@ -619,7 +621,7 @@ export const uploadDeferredDispatchImages = async (
     // Upload all images in parallel
     const uploadPromises = deferredImages.map(image =>
       uploadSingleDeferredImage(supabase, realDispatchId, image).then(
-        result => ({ ...result, file_name: image.file_name })
+        result => ({ ...result, image })
       )
     );
 
@@ -628,21 +630,25 @@ export const uploadDeferredDispatchImages = async (
     for (const result of results) {
       if (result.success) {
         uploadedCount++;
-      } else if (result.error) {
-        errors.push(`${result.file_name}: ${result.error}`);
+      } else {
+        failed.push(result.image);
+        errors.push(`${result.image.file_name}: ${result.error ?? t('dispatch.photos.deferredFailed')}`);
       }
     }
 
     return {
-      success: errors.length === 0,
+      success: failed.length === 0,
       uploadedCount,
       errors,
+      failed,
     };
   } catch (error) {
     console.error(
       '[DispatchImageService] uploadDeferredDispatchImages exception:',
       error
     );
+    // Nothing is known to have arrived beyond the counted ones: every photo
+    // not counted is reported, so none is passed over.
     return {
       success: false,
       uploadedCount,
@@ -651,6 +657,7 @@ export const uploadDeferredDispatchImages = async (
           ? error.message
           : t('dispatch.photos.deferredFailed'),
       ],
+      failed: failed.length > 0 ? failed : deferredImages,
     };
   } finally {
     finishMutation?.();

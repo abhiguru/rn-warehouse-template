@@ -146,6 +146,8 @@ export interface DispatchApiResponse {
   invoiceNumber?: string;
   source_order_cleared?: boolean;  // True when dispatch was created from an order and the order was soft-deleted
   source_order_id?: string;        // The order ID that was cleared
+  /** Create only: photos picked in the form that did not upload after the dispatch was saved. */
+  failed_photos?: DispatchImageData[];
 }
 
 // ============================================================================

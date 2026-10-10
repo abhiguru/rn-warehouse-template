@@ -18,7 +18,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { triggerSuccess, triggerError } from '@/hooks/useHaptics';
+import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
+import { uploadDeferredDispatchImages } from '@/features/dispatch/services/dispatchImageService';
 import { Snackbar } from 'react-native-paper';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -118,6 +119,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Local submitting state - prevents duplicate submissions
     // This is set immediately when user confirms dialog, before any async work
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Photos of the dispatch just created that did not upload; the user is asked to try again or go on.
+    const [photosNotUploaded, setPhotosNotUploaded] = useState<{ dispatchId: string; failed: DispatchImageData[] } | null>(null);
+    const [isRetryingPhotos, setIsRetryingPhotos] = useState(false);
 
     // Image overlay state
     const [showImageOverlay, setShowImageOverlay] = useState(false);
@@ -310,16 +314,59 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 date: formatDisplayDate(header.disp_date),
                 itemCount: items.length,
             });
-            setShowSuccessDialog(true);
 
             // Show snackbar if order was cleared
             if (result.sourceOrderCleared) {
                 setSnackbarMessage(tr('dispatch.review.orderFulfilled'));
                 setSnackbarVisible(true);
             }
+
+            // The dispatch is saved. Photos that did not upload are named with a
+            // retry before the success dialog, never passed over.
+            if (result.dispatchId && result.failedPhotos && result.failedPhotos.length > 0) {
+                triggerWarning();
+                setPhotosNotUploaded({ dispatchId: result.dispatchId, failed: result.failedPhotos });
+                return;
+            }
+            setShowSuccessDialog(true);
         } else {
             setShowEditSuccessDialog(true);
         }
+    };
+
+    /** How each photo that was not uploaded is named: its place among the photos picked in the form. */
+    const photosNotUploadedMessage = (failed: DispatchImageData[]) =>
+        tr('dispatch.review.photosNotUploadedMessage', {
+            number: formatIdentifier(header.disp_no),
+            photos: failed
+                .map((photo) => `\u2022 ${tr('dispatch.review.failedPhoto', { position: images.findIndex((img) => img.id === photo.id) + 1 || failed.indexOf(photo) + 1 })}`)
+                .join('\n'),
+        });
+
+    const handleRetryPhotos = async () => {
+        if (!photosNotUploaded || isRetryingPhotos) return;
+        const { dispatchId: savedDispatchId, failed } = photosNotUploaded;
+        setPhotosNotUploaded(null);
+        setIsRetryingPhotos(true);
+        try {
+            const outcome = await uploadDeferredDispatchImages(savedDispatchId, failed);
+            if (outcome.failed.length > 0) {
+                triggerWarning();
+                setPhotosNotUploaded({ dispatchId: savedDispatchId, failed: outcome.failed });
+                return;
+            }
+            triggerSuccess();
+            setSnackbarMessage(tr('dispatch.review.photosUploaded'));
+            setSnackbarVisible(true);
+            setShowSuccessDialog(true);
+        } finally {
+            setIsRetryingPhotos(false);
+        }
+    };
+
+    const handleContinueWithoutPhotos = () => {
+        setPhotosNotUploaded(null);
+        setShowSuccessDialog(true);
     };
 
     const handleEditSuccessConfirm = () => {
@@ -375,7 +422,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowPrintDialog(true);
     };
 
-    const isBusy = isSaving || isSubmitting;
+    const isBusy = isSaving || isSubmitting || isRetryingPhotos;
 
     // Render hero metrics (key totals at top for quick scanning)
     const renderHeroMetrics = () => (
@@ -863,6 +910,20 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onCancel={() => setShowConfirmDialog(false)}
                 variant="default"
                 icon={isCreateMode ? 'check-circle' : 'pencil-outline'}
+            />
+
+            {/* Photos of the created dispatch that did not upload */}
+            <ConfirmDialog
+                visible={photosNotUploaded !== null}
+                title={tr('dispatch.review.photosNotUploadedTitle')}
+                message={photosNotUploaded ? photosNotUploadedMessage(photosNotUploaded.failed) : ''}
+                confirmText={tr('dispatch.review.retryPhotos')}
+                cancelText={tr('dispatch.review.continueWithoutPhotos')}
+                onConfirm={handleRetryPhotos}
+                onCancel={handleContinueWithoutPhotos}
+                variant="warning"
+                icon="image-off-outline"
+                dismissible={false}
             />
 
             {/* Success Dialog (create mode) */}

@@ -238,7 +238,10 @@ export const createDispatch = async (payload: {
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
 
-    // Upload deferred images if any
+    // Upload deferred images if any. The dispatch is saved either way; photos
+    // that did not arrive are returned so the screen can name them and offer
+    // another try, instead of reporting a clean save.
+    let failedPhotos: DispatchImageData[] = [];
     if (payload.images && payload.images.length > 0 && data.dispatch_id) {
       log.debug('Uploading deferred dispatch images', { imageCount: payload.images.length });
 
@@ -246,12 +249,13 @@ export const createDispatch = async (payload: {
         data.dispatch_id,
         payload.images
       );
+      failedPhotos = imageUploadResult.failed;
 
       if (!imageUploadResult.success) {
         log.warn('Some deferred dispatch images failed to upload', {
           uploadedCount: imageUploadResult.uploadedCount,
+          failedCount: failedPhotos.length,
         });
-        // Don't fail the dispatch creation, just log the warning
       } else {
         log.info('Deferred dispatch images uploaded', { uploadedCount: imageUploadResult.uploadedCount });
       }
@@ -259,6 +263,7 @@ export const createDispatch = async (payload: {
 
     return {
       success: true,
+      failed_photos: failedPhotos,
       dispatch_id: data.dispatch_id,
       dispatch_items: data.dispatch_items,
       message: serverText(data.message, t('dispatch.service.created')),
