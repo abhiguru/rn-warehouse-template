@@ -59,6 +59,7 @@ jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: je
 // below prove every draft is gone before the new origin commits.
 jest.mock('@/utils/cacheManager', () => ({ clearAllCaches: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn() }));
+jest.mock('@/utils/imageCache', () => ({ clearImageCaches: jest.fn(async () => {}) }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: jest.fn(), cancelQueries: jest.fn(), clear: jest.fn() } }));
 jest.mock('@/config/supabaseConfig', () => ({
   beginOperatorSwitch: jest.fn(), endOperatorSwitch: jest.fn(),

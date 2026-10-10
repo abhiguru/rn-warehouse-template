@@ -10,6 +10,7 @@ import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearSessionScopedState } from '../sessionScopedState';
 import { recentSearches, rememberSearch } from '@/features/filters/recentSearches';
+import { Image } from 'expo-image';
 
 jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
@@ -17,6 +18,9 @@ jest.mock('@/lib/queryClient', () => ({
 jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn() }));
+jest.mock('expo-image', () => ({
+  Image: { clearDiskCache: jest.fn(async () => true), clearMemoryCache: jest.fn(async () => true) },
+}));
 
 const makeStore = () =>
   configureStore({
@@ -113,4 +117,23 @@ it('forgets the recent searches of every list', async () => {
 
   expect(recentSearches('grn')).toEqual([]);
   expect(recentSearches('dispatch')).toEqual([]);
+});
+
+// Photos are cached by address, not by account: a photo seen under one account
+// would otherwise stay on the phone after sign-out, for the next account.
+describe('the image cache', () => {
+  it('is emptied, on disk and in memory, when a session ends', async () => {
+    await clearSessionScopedState(makeStore().dispatch);
+    expect(Image.clearDiskCache).toHaveBeenCalledTimes(1);
+    expect(Image.clearMemoryCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not stop the teardown when it cannot be emptied', async () => {
+    jest.mocked(Image.clearDiskCache).mockRejectedValueOnce(new Error('fictional cache failure'));
+    await AsyncStorage.setItem(`${CACHE_PREFIXES.DISPATCH_LIST}_x`, '{}');
+    await expect(clearSessionScopedState(makeStore().dispatch)).resolves.toBeUndefined();
+    expect(Image.clearMemoryCache).toHaveBeenCalledTimes(1);
+    expect(sweepSharedDocuments).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
+  });
 });
