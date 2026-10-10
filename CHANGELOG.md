@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased — sign-in session, profile, customer lists and crash reports from the 2026-10-10 review
+
+Backend migrations that belong with this: 42 (`direct_write_guard`), 43
+(`image_paths_and_document_expiry`) and 44 (`auth_hardening`). The app works
+against a server without 44, but only with it does a lost refresh answer no
+longer sign the user out. Customer accounts still cannot search or sort their
+dispatches and invoices on the server: the list RPCs that can
+(`get_dispatch_list_with_items`, `get_invoices_list`) are for warehouse roles,
+so that part is done in the app until the backend offers it.
+
+- Slow network: when the app stops waiting for a session renewal (15 seconds)
+  it asks once more with the same token instead of keeping a token the server
+  has already replaced. Before, the next renewal signed the user out.
+- Wrong device clock: a phone whose clock is hours fast can sign in, and a
+  phone whose clock is slow no longer gets a stretch of failing requests every
+  hour. The app follows the server's clock for token expiry, and when the
+  server says a token has expired it renews the session and repeats the
+  request if it was a read. A save is not repeated by itself; it can be tried
+  again at once.
+- A session that the server refuses is also ended on the server. Signing in
+  while another session is still stored ends that session on the server too.
+- "Change facility" is no longer blocked by a list that is still loading or
+  hanging: only a save in progress holds it back. A request the app has
+  stopped waiting for is cancelled.
+- After the app starts from its stored profile it checks the profile with the
+  server, so a changed role or customer assignment shows without signing in
+  again.
+- Profile: changing your own name works (every save was refused by the
+  server). A save that changes nothing is reported instead of called a success.
+- Customer accounts, dispatches and invoices: the default dispatch list loads
+  one page from the server. Sorting, searching, paging and the "Show N" count
+  use one download of the customer's history for two minutes instead of one
+  download each; pull down to read it again. A search reaches dispatches
+  older than the newest 1000, and if a customer has more than 10000 the list
+  says that only the newest are searched. Today's invoices are no longer
+  hidden on a device whose date is behind.
+- New invoice: going back to step 1, or looking at the GRN and returning, no
+  longer resets rates typed on step 2.
+- New dispatch: photos that do not upload after the dispatch is saved are
+  named, with "Try again", instead of a clean "saved".
+- GRN: the server's photo refusals (a photo that is not in the receipt's own
+  folder, not in storage, already attached elsewhere) are shown in the app's
+  language. A new GRN is saved without an image list; its photos follow.
+- Searches: a comma, bracket, `%` or `_` typed into the customer list filter,
+  the GRN number search or the price form's item search is searched for as
+  typed.
+- Customers, Items, Users and the change log now sign out when the server
+  says the session was revoked, like the other screens.
+- Server address: an address that forwards to another server is named as such.
+- Privacy: crash reports (when a facility has turned them on) no longer carry
+  the raw text of an error, which could include a phone number or a row from
+  the server. Customer rows and search text are no longer written to the
+  device log. The recent-customer, recent-sender and recent-item lists are
+  removed whenever a session ends, not only on "Log out".
+
 ## Unreleased — invoice, pricing and customer fixes from the 2026-10-10 review
 
 Needs backend migrations 39 (`dispatch_lot_ownership`) and 41

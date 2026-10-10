@@ -25,6 +25,15 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   clears stored tokens and dispatches `forceLogoutOnInvalidToken` exactly once per generation;
   transport errors keep credentials. `useSessionGenerationGuard` moves the UI to the login screen when
   a profile is present but no tokens remain.
+- A refresh that times out (15 s) is sent once more with the same token: the backend (migration 44)
+  answers a repeat within its grace period with the same successor. A refused refresh re-reads the
+  secure store before the session ends, and a session that ends is also reported to `logout_session`.
+- Expiry is judged on the device clock but set from the server's: the stored expiry is `exp` moved by
+  (time received - `iat`). When the server refuses a token as expired anyway (`JWT expired`,
+  `Invalid or expired access token`), the session is renewed once; a read is sent again, a write is not.
+- `isReadRequest` decides which requests of the authenticated client are reads (GET/HEAD, read RPCs by
+  name, Storage sign/list). Reads are aborted by a server switch; only writes hold it back. Name a new
+  read RPC `get_`/`search_`/`check_`/`list_`/`count_`, or it is treated as a write.
 
 ## Session-scoped state
 
