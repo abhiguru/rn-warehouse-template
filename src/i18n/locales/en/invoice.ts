@@ -108,6 +108,7 @@ export const invoice = {
     itemsToInvoiceA11y: { one: '{{count}} item to invoice', other: '{{count}} items to invoice' },
     checkPricesTitle: 'Check the item prices',
     checkPricesMessage: 'Every item needs a charge and a duration greater than 0.',
+    checkRateMessage: 'A rate field holds a value that was not accepted. Correct it, then continue.',
     missingPrice: {
       one: '{{count}} item has no charge or duration. Enter a charge and duration greater than 0.',
       other: '{{count}} items have no charge or duration. Enter a charge and duration greater than 0.',
@@ -192,9 +193,6 @@ export const invoice = {
     discountA11y: 'Invoice discount',
     discountNotNumber: 'Enter the discount as a number, for example 250.50.',
     discountTooLarge: "The discount can't be more than {{amount}}.",
-    discountTooLargeTitle: 'Discount too large',
-    discountTooLargeMessage:
-      "The discount can't be more than the invoice amount ({{amount}}). Enter a smaller discount.",
     discountReasonRequired: 'Discount reason (required)',
     discountReasonPlaceholder: 'Why is this discount given?',
     roundingAdjustment: 'Rounding adjustment',
@@ -242,6 +240,8 @@ export const invoice = {
     discountReasonTitle: 'Enter a discount reason',
     discountReasonCreateMessage: 'Enter the reason for this discount before submitting the invoice.',
     discountReasonUpdateMessage: 'Enter the reason for this discount change before updating the invoice.',
+    discountCheckTitle: 'Check the discount',
+    discountNotApplied: 'The invoice still has a discount of {{amount}}. Correct the discount field or clear it.',
     updateFailedTitle: "Couldn't update the invoice",
     grnNotInvoiceable:
       'This GRN can no longer be invoiced. It may already have an invoice, or it is no longer fully dispatched. Check the invoice list.',
@@ -400,6 +400,10 @@ export const invoice = {
     taxRequired: 'Tax is required',
     taxNegative: 'Tax cannot be negative',
     taxTooHigh: 'Tax cannot exceed 100%',
+    chargeRange: 'Enter a charge from 0 to 999999.',
+    labourRateRange: 'Enter a labour rate from 0 to 999999.',
+    taxRange: 'Enter a tax from 0 to 100.',
+    rateNotNumber: 'Enter a number with up to 2 decimals, for example 5.50.',
     itemsMin: 'Add at least one item.',
     itemsRequired: 'Items are required',
     labourTotalRequired: 'Labour total is required',

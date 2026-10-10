@@ -46,6 +46,7 @@ export default function InvoiceEditStep2() {
   const invoiceId = useAppSelector(selectInvoiceFormId);
 
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [hasRateInputError, setHasRateInputError] = useState(false);
 
   const handleItemUpdate = (tempId: string, field: string, value: number) => {
     dispatch(updateEditedItem({ temp_id: tempId, values: { [field]: value } }));
@@ -67,6 +68,12 @@ export default function InvoiceEditStep2() {
   };
 
   const handleNext = async () => {
+    // A rate field still shows text that was not accepted (out of range, not a number).
+    if (hasRateInputError) {
+      showAlert(tr('invoice.items.checkPricesTitle'), tr('invoice.items.checkRateMessage'));
+      return;
+    }
+
     // Validate items
     const validation = await validateStep2(items);
 
@@ -149,6 +156,7 @@ export default function InvoiceEditStep2() {
           items={items}
           onItemUpdate={handleItemUpdate}
           onBulkEdit={handleBulkEdit}
+          onInputErrorChange={setHasRateInputError}
           renderItem={renderItem}
         />
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
@@ -7,7 +7,10 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData } from '@/types/invoice.types';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatNumber } from '@/utils/formatters';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, t as tr } from '@/i18n';
+import { InlineValidation } from '@/components/fiori';
+import { RateInput } from '@/features/invoice/components/RateInput';
+import type { RateField } from '@/features/invoice/utils/amountInput';
 
 interface InvoiceItemCardProps {
   item: InvoiceItemData;
@@ -155,6 +158,10 @@ const makeStyles = (t: ThemeTokens) => ({
     borderWidth: 2,
     borderColor: t.brand.tint,
   },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
   input: {
     ...typography.body,
     ...tabular,
@@ -265,16 +272,10 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
   // Helper to check if a field is overridden
   const isOverridden = (field: string) => overriddenFields.includes(field);
 
-  const handleFieldChange = (field: string, typed: string) => {
-    // Digits typed as ૦-૯ are read as 0-9.
-    const text = normalizeDigits(typed);
-    const value = parseFloat(text);
-    if (!isNaN(value) && value >= 0) {
-      onUpdate(item.temp_id, field, value);
-    } else if (text === '') {
-      onUpdate(item.temp_id, field, 0);
-    }
-  };
+  // Text in a rate field that was not accepted (not a number, or outside the server's range).
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<RateField, string>>>({});
+  const setFieldError = (field: RateField, error: string | null) =>
+    setFieldErrors((prev) => ((prev[field] ?? null) === error ? prev : { ...prev, [field]: error ?? undefined }));
 
   const toggleExpand = () => {
     setIsExpanded(!isExpanded);
@@ -377,18 +378,20 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 </Text>
                 {isOverridden('charge') && customBadge}
               </View>
-              <View style={[styles.field, isOverridden('charge') && styles.fieldOverridden]}>
+              <View style={[styles.field, isOverridden('charge') && styles.fieldOverridden, !!fieldErrors.charge && styles.fieldError]}>
                 <Text style={[styles.affix, styles.prefix]}>₹</Text>
-                <TextInput
+                <RateInput
                   style={styles.input}
                   accessibilityLabel={tr('invoice.itemCard.chargeA11y')}
-                  value={item.charge > 0 ? localizeDigits(item.charge.toString()) : ''}
-                  onChangeText={(text) => handleFieldChange('charge', text)}
+                  field="charge"
+                  value={item.charge}
+                  onCommit={(value) => onUpdate(item.temp_id, 'charge', value)}
+                  onErrorChange={(error) => setFieldError('charge', error)}
                   placeholder={localizeDigits('0.00')}
-                  keyboardType="decimal-pad"
                   placeholderTextColor={t.text.placeholder}
                 />
               </View>
+              <InlineValidation message={fieldErrors.charge || ''} variant="error" visible={!!fieldErrors.charge} />
             </View>
 
             {/* Labour rate */}
@@ -399,18 +402,20 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 </Text>
                 {isOverridden('labour_rate') && customBadge}
               </View>
-              <View style={[styles.field, isOverridden('labour_rate') && styles.fieldOverridden]}>
+              <View style={[styles.field, isOverridden('labour_rate') && styles.fieldOverridden, !!fieldErrors.labour_rate && styles.fieldError]}>
                 <Text style={[styles.affix, styles.prefix]}>₹</Text>
-                <TextInput
+                <RateInput
                   style={styles.input}
                   accessibilityLabel={tr('invoice.itemCard.labourRateA11y')}
-                  value={item.labour_rate > 0 ? localizeDigits(item.labour_rate.toString()) : ''}
-                  onChangeText={(text) => handleFieldChange('labour_rate', text)}
+                  field="labour_rate"
+                  value={item.labour_rate}
+                  onCommit={(value) => onUpdate(item.temp_id, 'labour_rate', value)}
+                  onErrorChange={(error) => setFieldError('labour_rate', error)}
                   placeholder={localizeDigits('0.00')}
-                  keyboardType="decimal-pad"
                   placeholderTextColor={t.text.placeholder}
                 />
               </View>
+              <InlineValidation message={fieldErrors.labour_rate || ''} variant="error" visible={!!fieldErrors.labour_rate} />
             </View>
 
             {/* Tax */}
@@ -421,18 +426,20 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 </Text>
                 {isOverridden('tax') && customBadge}
               </View>
-              <View style={[styles.field, isOverridden('tax') && styles.fieldOverridden]}>
-                <TextInput
+              <View style={[styles.field, isOverridden('tax') && styles.fieldOverridden, !!fieldErrors.tax && styles.fieldError]}>
+                <RateInput
                   style={styles.input}
                   accessibilityLabel={tr('invoice.itemCard.taxA11y')}
-                  value={item.tax > 0 ? localizeDigits(item.tax.toString()) : ''}
-                  onChangeText={(text) => handleFieldChange('tax', text)}
+                  field="tax"
+                  value={item.tax}
+                  onCommit={(value) => onUpdate(item.temp_id, 'tax', value)}
+                  onErrorChange={(error) => setFieldError('tax', error)}
                   placeholder={localizeDigits('0')}
-                  keyboardType="decimal-pad"
                   placeholderTextColor={t.text.placeholder}
                 />
                 <Text style={[styles.affix, styles.suffix]}>%</Text>
               </View>
+              <InlineValidation message={fieldErrors.tax || ''} variant="error" visible={!!fieldErrors.tax} />
             </View>
           </View>
 

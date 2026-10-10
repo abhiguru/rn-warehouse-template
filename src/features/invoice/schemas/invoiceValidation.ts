@@ -10,12 +10,12 @@ import { t, type TranslationKey, type TranslationParams } from '@/i18n';
  */
 const msg = (key: TranslationKey, params?: TranslationParams) => () => t(key, params);
 
-/** A required amount of money from 0 to 999999.99. */
+/** A required line rate from 0 to 999999, the range the server accepts (backend migration 41). */
 const moneyField = (messages: { negative: TranslationKey; tooLarge: TranslationKey; required: TranslationKey }) =>
   yup
     .number()
     .min(0, msg(messages.negative))
-    .max(999999.99, msg(messages.tooLarge))
+    .max(999999, msg(messages.tooLarge))
     .required(msg(messages.required));
 
 // Step 1: Invoice Header Schema

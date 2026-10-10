@@ -51,6 +51,8 @@ export default function InvoiceFormStep2() {
     resetFormState,
   } = useInvoiceForm({ mode: 'create' });
 
+  const [hasRateInputError, setHasRateInputError] = useState(false);
+
   // State for loading when navigating to pricing form
   const [isLoadingPricing, setIsLoadingPricing] = useState(false);
 
@@ -205,6 +207,12 @@ export default function InvoiceFormStep2() {
   };
 
   const handleNext = async () => {
+    // A rate field still shows text that was not accepted (out of range, not a number).
+    if (hasRateInputError) {
+      showError(tr('invoice.items.checkPricesTitle'), tr('invoice.items.checkRateMessage'));
+      return;
+    }
+
     // Check if all items have valid pricing before navigating
     const invalidItems = items.filter(
       (item) => item.charge === 0 || item.duration === 0
@@ -277,6 +285,7 @@ export default function InvoiceFormStep2() {
           onItemUpdate={handleItemUpdate}
           onBulkEdit={handleBulkEdit}
           onEditPricing={handleEditPricing}
+          onInputErrorChange={setHasRateInputError}
           renderItem={renderItem}
         />
 

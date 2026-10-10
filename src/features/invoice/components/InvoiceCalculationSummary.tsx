@@ -14,11 +14,18 @@ import {
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
 import { localizeDigits, normalizeDigits, t as tr, numericInput } from '@/i18n';
+import { amountText, parseDiscountInput } from '@/features/invoice/utils/amountInput';
 
 interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
   items: InvoiceItemData[];
   onDiscountChange: (value: number) => void;
+  /**
+   * Told the message while the discount field holds text that was not accepted
+   * (and null once it does not), so the step can hold "Save": the invoice keeps
+   * its previous discount while the field shows something else.
+   */
+  onDiscountErrorChange?: (error: string | null) => void;
   /** Shown whenever there is a discount; omit to hide the reason field. */
   onDiscountReasonChange?: (reason: string) => void;
   /** The current user must give a reason before saving (staff changing the discount). */
@@ -293,16 +300,19 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   header,
   items,
   onDiscountChange,
+  onDiscountErrorChange,
   onDiscountReasonChange,
   reasonRequired = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const [discountError, setDiscountError] = useState<string | null>(null);
-  // Local state for the input text to preserve decimal point while typing
-  const [discountText, setDiscountText] = useState<string>(
-    header.discount !== 0 ? header.discount.toString() : ''
-  );
+  const [discountError, setDiscountErrorState] = useState<string | null>(null);
+  const setDiscountError = (error: string | null) => {
+    setDiscountErrorState(error);
+    onDiscountErrorChange?.(error);
+  };
+  // The typed text is kept while the field is edited, so a decimal point or a minus sign survives.
+  const [discountText, setDiscountText] = useState<string>(amountText(header.discount));
   // Collapsible discount calculator state
   const [isCalculatorExpanded, setIsCalculatorExpanded] = useState(false);
   const [finalAmountText, setFinalAmountText] = useState<string>('');
@@ -316,47 +326,30 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
 
   // Sync local text when header.discount changes externally
   useEffect(() => {
-    // Only update if the numeric values are different (avoid overwriting during typing)
-    const currentValue = parseFloat(normalizeDigits(discountText)) || 0;
+    // Only update if the numeric values are different (avoid overwriting during typing).
+    // Text that was not accepted stays until it is corrected or the field is left.
+    if (discountError) return;
+    const currentValue = parseFloat(discountText) || 0;
     if (currentValue !== header.discount) {
-      setDiscountText(header.discount !== 0 ? header.discount.toString() : '');
+      setDiscountText(amountText(header.discount));
     }
   }, [header.discount]);
 
   const handleDiscountChange = (typed: string) => {
-    // Digits typed as ૦-૯ are read as 0-9.
-    const text = normalizeDigits(typed);
-    // Always update local text state to preserve typing (including trailing dots and minus)
-    setDiscountText(text);
+    // Digits typed as ૦-૯ are read as 0-9. The maximum is the amount before discount.
+    const parsed = parseDiscountInput(typed, base, formatInvoiceAmount);
+    setDiscountText(parsed.text);
+    setDiscountError(parsed.error);
+    // Only a complete number inside the limit reaches the invoice. "1,500" or
+    // a discount above the invoice amount leaves the previous discount in place.
+    if (parsed.value !== null) onDiscountChange(parsed.value);
+  };
 
-    const value = parseFloat(text);
-
-    // Calculate subtotal first to determine max discount
-    const maxDiscount = base;
-
-    if (text === '') {
-      setDiscountError(null);
-      onDiscountChange(0);
-    } else if (text === '-' || text === '-.') {
-      // Allow typing minus sign - don't update parent yet, wait for full number
-      setDiscountError(null);
-    } else if (isNaN(value)) {
-      // Allow partial input like "235." or "-235." - don't show error, just don't update parent
-      if (!text.endsWith('.') && text !== '-') {
-        setDiscountError(tr('invoice.summary.discountNotNumber'));
-      }
-    } else if (value > maxDiscount) {
-      setDiscountError(tr('invoice.summary.discountTooLarge', { amount: formatInvoiceAmount(maxDiscount) }));
-      setErrorDialog({
-        visible: true,
-        title: tr('invoice.summary.discountTooLargeTitle'),
-        message: tr('invoice.summary.discountTooLargeMessage', { amount: formatInvoiceAmount(maxDiscount) }),
-      });
-    } else {
-      // Valid number (positive or negative)
-      setDiscountError(null);
-      onDiscountChange(value);
-    }
+  // Leaving the field with text that was not accepted: show the discount the invoice really has.
+  const handleDiscountBlur = () => {
+    if (!discountError && parseDiscountInput(discountText, base, formatInvoiceAmount).value !== null) return;
+    setDiscountText(amountText(header.discount));
+    setDiscountError(null);
   };
 
   const { subtotal, base, rounding } = calculateInvoiceBreakdown(items, header);
@@ -466,8 +459,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
             accessibilityLabel={tr('invoice.summary.discountA11y')}
             value={localizeDigits(discountText)}
             onChangeText={handleDiscountChange}
+            onBlur={handleDiscountBlur}
             placeholder={localizeDigits('0.00')}
-            keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+            // Android's number keyboard has the minus sign a surcharge needs; the iOS number pads do not.
+            keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
             placeholderTextColor={t.text.placeholder}
           />
         </View>
