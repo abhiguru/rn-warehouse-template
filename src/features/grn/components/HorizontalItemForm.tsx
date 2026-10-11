@@ -30,66 +30,39 @@ const FIELD_WIDTH_MARK = 270; // 50% wider mark field
 const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
 const CHAMBER_OPTIONS = ['C4', 'C7', 'C2', 'Anti-Ch'];
 
-// Parse rack value to extract user input, floor, and chamber
+// A rack is free text. The floor and chamber chips are optional help: they only
+// add "/Floor/Chamber" to what is typed. A stored rack is split into text and
+// chips only when it ends in a floor and a chamber from the lists above; any
+// other rack ("C3", "20B/F1", "A/1/2") is shown whole in the text field, so it
+// is saved as it was unless the user changes it.
 const parseRackValue = (rack: string): { userInput: string; floor: string; chamber: string } => {
     if (!rack || rack.trim() === '') {
         return { userInput: '', floor: '', chamber: '' };
     }
     const parts = rack.split('/');
-
-    // Check for full format: userInput/floor/chamber (at least 3 parts)
-    if (parts.length >= 3) {
+    if (parts.length >= 2) {
         const chamber = parts[parts.length - 1];
         const floor = parts[parts.length - 2];
-        const userInput = parts.slice(0, parts.length - 2).join('/');
         if (FLOOR_OPTIONS.includes(floor) && CHAMBER_OPTIONS.includes(chamber)) {
-            return { userInput, floor, chamber };
+            return { userInput: parts.slice(0, parts.length - 2).join('/'), floor, chamber };
         }
     }
-
-    // Check for floor/chamber only format (exactly 2 parts: floor/chamber)
-    if (parts.length === 2) {
-        const firstPart = parts[0];
-        const secondPart = parts[1];
-
-        // Check if it's floor/chamber format (no userInput)
-        if (FLOOR_OPTIONS.includes(firstPart) && CHAMBER_OPTIONS.includes(secondPart)) {
-            return { userInput: '', floor: firstPart, chamber: secondPart };
-        }
-
-        // Check if last part is just floor (userInput/floor)
-        if (FLOOR_OPTIONS.includes(secondPart)) {
-            return { userInput: firstPart, floor: secondPart, chamber: '' };
-        }
-
-        // Check if last part is just chamber (userInput/chamber)
-        if (CHAMBER_OPTIONS.includes(secondPart)) {
-            return { userInput: firstPart, floor: '', chamber: secondPart };
-        }
-    }
-
-    // No floor/chamber detected - entire value is userInput
     return { userInput: rack, floor: '', chamber: '' };
 };
 
-// Build rack value from parts
-// Format: userInput/floor/chamber OR floor/chamber (when userInput is empty)
-// IMPORTANT: Only include floor/chamber suffix when BOTH are selected (minimum valid combination)
+// Build the rack from the typed text and the chips. Floor and chamber are added
+// only when BOTH are chosen, so that a rack read back is split the same way.
+// The text is kept as typed (the items step trims it when the line is saved);
+// trimming here would swallow every space typed at the end.
 const buildRackValue = (userInput: string, floor: string, chamber: string): string => {
-    const trimmedInput = userInput.trim();
-
-    // Full format with all three parts (rack text + floor + chamber)
-    if (trimmedInput && floor && chamber) {
-        return `${trimmedInput}/${floor}/${chamber}`;
-    }
-    // Floor and chamber only (no rack text) - minimum valid combination
+    const hasText = userInput.trim() !== '';
     if (floor && chamber) {
-        return `${floor}/${chamber}`;
+        return hasText ? `${userInput}/${floor}/${chamber}` : `${floor}/${chamber}`;
     }
-    // Return just the rack text if provided (floor/chamber not complete yet)
-    // This prevents partial selections from being saved and parsed incorrectly
-    return trimmedInput;
+    return hasText ? userInput : '';
 };
+
+const NO_CHIPS = { floor: '', chamber: '' };
 
 export interface ItemFormData {
     grn_trl_id: string;
@@ -189,55 +162,43 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
 
 
 
-        // Local state for floor and chamber selection (separate from rack text)
-        const [selectedFloor, setSelectedFloor] = useState<string>('');
-        const [selectedChamber, setSelectedChamber] = useState<string>('');
         // Fiori: Track focused field for blue border
         const [focusedField, setFocusedField] = useState<string | null>(null);
 
-        // Parse rack value on mount/change to extract floor/chamber
+        // Floor and chamber come from the rack itself when it ends in both. A
+        // choice of only one of them is not part of the rack yet and is kept
+        // here until the other is chosen.
+        const [pendingChips, setPendingChips] = useState(NO_CHIPS);
+        const parsedRack = useMemo(() => parseRackValue(currentItem.rack), [currentItem.rack]);
+        const rackTextOnly = parsedRack.userInput;
+        const rackHasChips = !!parsedRack.floor && !!parsedRack.chamber;
+        const halfChosen = pendingChips.floor && pendingChips.chamber ? NO_CHIPS : pendingChips;
+        const selectedFloor = rackHasChips ? parsedRack.floor : halfChosen.floor;
+        const selectedChamber = rackHasChips ? parsedRack.chamber : halfChosen.chamber;
+
+        // Another line in the form starts without the half-made choice of the one before.
         useEffect(() => {
-            const parsed = parseRackValue(currentItem.rack);
-            if (parsed.floor && parsed.floor !== selectedFloor) {
-                setSelectedFloor(parsed.floor);
-            }
-            if (parsed.chamber && parsed.chamber !== selectedChamber) {
-                setSelectedChamber(parsed.chamber);
-            }
-        }, [currentItem.rack]);
+            setPendingChips(NO_CHIPS);
+        }, [currentItem.grn_trl_id]);
 
-        // Get just the rack text part (without floor/chamber)
-        const rackTextOnly = useMemo(() => {
-            const parsed = parseRackValue(currentItem.rack);
-            return parsed.userInput;
-        }, [currentItem.rack]);
+        const changeRack = useCallback((text: string, floor: string, chamber: string) => {
+            setPendingChips({ floor, chamber });
+            onFieldChange('rack', buildRackValue(text, floor, chamber));
+        }, [onFieldChange]);
 
-        const fullRackValue = useMemo(() => (
-            buildRackValue(rackTextOnly, selectedFloor, selectedChamber)
-        ), [rackTextOnly, selectedFloor, selectedChamber]);
-
-        // Handle rack text input change (only the rack number part)
+        // Handle rack text input change (the part before floor and chamber)
         const handleRackTextChange = useCallback((text: string) => {
-            // Combine with current floor/chamber selections
-            const combined = buildRackValue(text, selectedFloor, selectedChamber);
-            onFieldChange('rack', combined || text);
-        }, [selectedFloor, selectedChamber, onFieldChange]);
+            changeRack(text, selectedFloor, selectedChamber);
+        }, [changeRack, selectedFloor, selectedChamber]);
 
-        // Handle floor chip selection (radio-style)
+        // A chip is chosen by a tap and taken off again by a second tap.
         const handleFloorSelect = useCallback((floor: string) => {
-            setSelectedFloor(floor);
-            // Update the combined rack value
-            const combined = buildRackValue(rackTextOnly, floor, selectedChamber);
-            onFieldChange('rack', combined || rackTextOnly);
-        }, [rackTextOnly, selectedChamber, onFieldChange]);
+            changeRack(rackTextOnly, floor === selectedFloor ? '' : floor, selectedChamber);
+        }, [changeRack, rackTextOnly, selectedFloor, selectedChamber]);
 
-        // Handle chamber chip selection (radio-style)
         const handleChamberSelect = useCallback((chamber: string) => {
-            setSelectedChamber(chamber);
-            // Update the combined rack value
-            const combined = buildRackValue(rackTextOnly, selectedFloor, chamber);
-            onFieldChange('rack', combined || rackTextOnly);
-        }, [rackTextOnly, selectedFloor, onFieldChange]);
+            changeRack(rackTextOnly, selectedFloor, chamber === selectedChamber ? '' : chamber);
+        }, [changeRack, rackTextOnly, selectedFloor, selectedChamber]);
 
         const imageCount = currentItem.trl_images?.length || 0;
         const canViewAll = savedItemsCount > 0 && !!onViewAll;
@@ -471,8 +432,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <View style={styles.labelRow}>
                             <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.rack')}</Text>
-                            {!!fullRackValue && (
-                                <Text style={styles.rackPreviewInline} numberOfLines={1}>{fullRackValue}</Text>
+                            {/* The rack as it will be saved */}
+                            {!!currentItem.rack?.trim() && (
+                                <Text style={styles.rackPreviewInline} numberOfLines={1}>{currentItem.rack}</Text>
                             )}
                         </View>
                         <TextInput

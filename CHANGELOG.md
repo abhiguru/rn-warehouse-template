@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — owner decisions of 2026-10-11
+
+Racks (decision 1) — no backend change
+- A rack is any text. The rule "Floor/Chamber or Rack/Floor/Chamber" is gone
+  from the item form, from the Save button of a line and from the checks before
+  the review and before saving, in a new GRN and in an edit. A GRN whose lines
+  were stored with racks such as "C3" or "20B" can be edited and saved again;
+  before, such a line held the whole edit back. Only the length is still
+  checked (30 characters, what the server column holds).
+- The Floor and Chamber chips are optional. They add "/Floor/Chamber" to the
+  typed text once both are chosen, and a second tap on a chosen chip takes it
+  off again. A stored rack is shown as text plus chips only when it ends in a
+  floor and a chamber from the chip lists; every other rack is shown whole in
+  the text field. The value next to the "Rack" label is what will be saved.
+  Opening another line no longer shows the chips of the line edited before.
+- A space can be typed at the end of the rack text ("ROW 3" could not be typed
+  in one go); spaces at the two ends are dropped when the line is saved.
+
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 
 No backend change.
