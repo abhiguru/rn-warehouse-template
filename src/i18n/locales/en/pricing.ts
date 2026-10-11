@@ -101,6 +101,36 @@ export const pricing = {
     checkFieldsTitle: 'Check the highlighted fields',
     fixFields: { one: 'Fix {{count}} field.', other: 'Fix {{count}} fields.' },
   },
+  // The record of price changes (administrators and supervisors; backend migration 48).
+  history: {
+    open: 'History',
+    title: 'Price history',
+    loadingLabel: 'Loading price history',
+    loadingMoreLabel: 'Loading more price changes',
+    loadErrorTitle: "Couldn't load the price history",
+    loadMoreFailed: "Couldn't load more price changes.",
+    // The server has no price history: a backend older than migration 48. Trying again cannot help.
+    serverNeedsUpdate: "This facility's server needs an update before the price history is available.",
+    emptyTitle: 'No price changes yet',
+    emptySubtitle: 'Prices that are added, changed or deleted appear here.',
+    // What happened, by the stored action.
+    action: {
+      insert: 'Price added',
+      update: 'Price changed',
+      delete: 'Price deleted',
+      truncate: 'All prices removed',
+    },
+    defaultPrice: 'Default price',
+    deletedItem: 'Deleted item',
+    deletedCustomer: 'Deleted customer',
+    nameWithRole: '{{name}} ({{role}})',
+    notAppUser: 'Not an app user',
+    noValuesChanged: 'No values changed',
+    pricesRemoved: { one: '{{count}} price removed', other: '{{count}} prices removed' },
+    percentValue: '{{percent}}%',
+    // Read by a screen reader for one changed value.
+    changeLabel: '{{label}}: {{old}} changed to {{new}}',
+  },
   validation: {
     itemRequired: 'Select an item.',
     unitPrice: 'Enter a price of 0 or more.',

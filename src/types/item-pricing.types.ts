@@ -98,3 +98,58 @@ export interface ItemPricingDeleteResponse {
   message: string;
   error?: string;
 }
+
+// Price history (backend migration 48, get_item_price_history): administrators and supervisors only.
+
+export type ItemPriceHistoryAction = 'insert' | 'update' | 'delete' | 'truncate';
+
+/** A price as the history keeps it. Every key can be missing or null in an old or hand-made row. */
+export interface ItemPriceHistoryValues {
+  price_type?: string | null;
+  unit_price?: number | null;
+  unit_price_monthly?: number | null;
+  unit_price_one_time?: number | null;
+  labour_rate?: number | null;
+  tax_percent?: number | null;
+  weight_min?: number | null;
+  weight_max?: number | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  /** A truncate only: how many prices were removed. */
+  rows?: number | null;
+}
+
+export interface ItemPriceHistoryEntry {
+  id: number;
+  changed_at: string;
+  action: ItemPriceHistoryAction;
+  price_id: string | null;
+  item_id: string | null;
+  /** Null for a truncate, and when the item has since been deleted. */
+  item_name: string | null;
+  /** Null for a default price (and for a truncate). */
+  customer_id: string | null;
+  customer_name: string | null;
+  old_values: ItemPriceHistoryValues | null;
+  new_values: ItemPriceHistoryValues | null;
+  /** Null when the change was not made by an app user (service key, database). */
+  changed_by: string | null;
+  changed_by_name: string | null;
+  changed_by_role: string | null;
+}
+
+export interface ItemPriceHistoryPagination {
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface ItemPriceHistoryResponse {
+  success: boolean;
+  data: ItemPriceHistoryEntry[];
+  pagination: ItemPriceHistoryPagination;
+  /** On a failure: text the screen can show, in the app's language. */
+  message?: string;
+  error?: string;
+}

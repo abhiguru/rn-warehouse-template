@@ -10,6 +10,8 @@ import type {
   UpdateItemPricingPayload,
   ItemPricingMutationResponse,
   ItemPricingDeleteResponse,
+  ItemPriceHistoryEntry,
+  ItemPriceHistoryResponse,
 } from '../types/item-pricing.types';
 import {
   ItemStoragePrice
@@ -18,9 +20,9 @@ import { createLogger } from '@/utils/logger';
 import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { failureText, serverText } from '@/utils/serverText';
 
 const itemPricingLogger = createLogger('ItemPricingService');
 
@@ -287,4 +289,93 @@ export const deleteItemStoragePrice = async (
     success: true,
     message: serverText(result.message, t('errors.price.deleted')),
   };
+};
+
+/**
+ * True when the server answered that it has no `get_item_price_history`: a backend without
+ * migration 48. PostgREST says PGRST202 "Could not find the function ... in the schema
+ * cache"; the database itself says 42883 "function ... does not exist". Trying again cannot
+ * help until the facility's server is updated.
+ */
+function priceHistoryMissing(error: { code?: unknown; message?: unknown } | null | undefined): boolean {
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  if (error?.code === 'PGRST202' || message.includes('could not find the function')) return true;
+  return message.includes('get_item_price_history') && (error?.code === '42883' || message.includes('does not exist'));
+}
+
+/** One page of the price history is 50 entries; the server allows 1 to 200. */
+export const PRICE_HISTORY_PAGE_SIZE = 50;
+
+/**
+ * The record of price changes, newest first (backend migration 48). The server gives it to
+ * administrators and supervisors only and refuses everyone else with an error.
+ *
+ * A failure carries `message` for the screen to show under its own "Couldn't load" title:
+ * that the server needs an update when it does not have the function (a backend older than
+ * migration 48), the reason in the app's words when the server names one the app knows (no
+ * permission, connection), otherwise "Try again in a moment."
+ */
+export const getItemPriceHistory = async (
+  params: { limit?: number; offset?: number } = {}
+): Promise<ItemPriceHistoryResponse> => {
+  const limit = params.limit ?? PRICE_HISTORY_PAGE_SIZE;
+  const offset = params.offset ?? 0;
+  const failed = (message: string, error?: string): ItemPriceHistoryResponse => ({
+    success: false,
+    data: [],
+    pagination: { total: 0, limit, offset, has_more: false },
+    message,
+    error,
+  });
+
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const { data, error } = await authenticatedClient.rpc('get_item_price_history', {
+      p_limit: limit,
+      p_offset: offset,
+    });
+
+    if (error) {
+      itemPricingLogger.error('get_item_price_history RPC error:', error);
+      handleGlobalAuthError(error);
+      if (priceHistoryMissing(error)) return failed(t('pricing.history.serverNeedsUpdate'), error.message);
+      // The raw text is developer wording: only a reason the app knows is shown.
+      return failed(failureText(error.message, null, t('pricing.list.tryAgainInAMoment')), error.message);
+    }
+
+    const response = unwrapArrayResponse(data) as
+      | { success?: unknown; data?: unknown; pagination?: Partial<ItemPriceHistoryResponse['pagination']>; message?: unknown; error?: unknown }
+      | null;
+
+    if (!response || typeof response !== 'object' || response.success !== true) {
+      itemPricingLogger.warn('get_item_price_history refused or returned no data');
+      handleGlobalAuthError(response);
+      const serverSaid = response?.message ?? response?.error;
+      return failed(
+        serverText(serverSaid, t('pricing.list.tryAgainInAMoment')),
+        typeof serverSaid === 'string' ? serverSaid : undefined
+      );
+    }
+
+    const entries = Array.isArray(response.data) ? (response.data as ItemPriceHistoryEntry[]) : [];
+    const total = Number(response.pagination?.total ?? entries.length) || 0;
+    return {
+      success: true,
+      data: entries,
+      pagination: {
+        total,
+        limit: Number(response.pagination?.limit ?? limit) || limit,
+        offset: Number(response.pagination?.offset ?? offset) || 0,
+        has_more: response.pagination?.has_more ?? hasMoreItems(offset, limit, total),
+      },
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    itemPricingLogger.error('Exception in getItemPriceHistory:', { error: errorMessage });
+    handleGlobalAuthError(err);
+    if (priceHistoryMissing({ code: (err as { code?: unknown } | null)?.code, message: errorMessage })) {
+      return failed(t('pricing.history.serverNeedsUpdate'), errorMessage);
+    }
+    return failed(failureText(errorMessage, null, t('pricing.list.tryAgainInAMoment')), errorMessage);
+  }
 };
