@@ -31,6 +31,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
 import { formatRelativeTime, formatWeight } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { useModalSheet } from '@/hooks/useModalSheet';
 
 interface ChangeLogBottomSheetProps {
   isVisible: boolean;
@@ -61,6 +62,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
   analytics,
 }, ref) => {
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const sheet = useModalSheet(bottomSheetModalRef);
   const snapPoints = useMemo(() => ['25%', '50%', '90%'], []);
 
   const t = useTokens();
@@ -68,15 +70,15 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
   const insets = useSafeAreaInsets();
 
   useImperativeHandle(ref, () => ({
-    present: () => bottomSheetModalRef.current?.present(),
-    dismiss: () => bottomSheetModalRef.current?.dismiss(),
+    present: () => sheet.present(),
+    dismiss: () => sheet.dismiss(),
   }));
 
   React.useEffect(() => {
     if (isVisible) {
-      bottomSheetModalRef.current?.present();
+      sheet.present();
     } else {
-      bottomSheetModalRef.current?.dismiss();
+      sheet.dismiss();
     }
   }, [isVisible]);
 
@@ -405,7 +407,10 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       ref={bottomSheetModalRef}
       index={1}
       snapPoints={snapPoints}
-      onDismiss={onClose}
+      onDismiss={() => {
+        sheet.onDismissed();
+        onClose();
+      }}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
       backgroundStyle={dynamicStyles.sheetBackground}

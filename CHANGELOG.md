@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
+
+No backend change.
+
+- Six bottom sheets that are shown by a flag asked the sheet library to dismiss
+  them while they were still hidden, starting with their first render. With
+  `@gorhom/bottom-sheet` 5.2 that leaves the sheet in its "dismissing" state,
+  and a sheet in that state does not render when it is presented, so the tap did
+  nothing and no error was shown. Affected: the supervisor picker on the GRN and
+  dispatch forms and the customer pickers built on the same component
+  (`SearchableBottomSheet`), the dispatch item picker, the dispatch lot picker,
+  the item catalogue browser and the change log.
+- They now go through `useModalSheet` (`src/hooks/useModalSheet.ts`), which
+  dismisses a sheet only while it is on screen. A test keeps any
+  `BottomSheetModal` from being dismissed through its ref directly.
+- Seen on a phone on 2026-10-11: the supervisor picker opens with and without a
+  chosen supervisor and opens again after a choice; the dispatch item and lot
+  pickers open and list the lots of the chosen GRN; on an order, "Add items to
+  order" and "View order history" open, the first of them twice in a row.
+
+Also found by the same device checks
+- Leaving a GRN form with the X in the header asked "Discard?" twice: the
+  header asked, then the step asked again. The header now carries the step's
+  own message (how many items would be lost) and the step no longer asks.
+- New invoice: when the next invoice number could not be fetched and the user
+  typed one, the hint under the field changed to "The next number is filled
+  in. You can change it." It now keeps saying that the number could not be
+  fetched.
+
 ## Unreleased — follow-ups to backend migration 47 (GRN edit retry key, supervisors and access, supervisor picker)
 
 Needs backend migration `00000000000047_review_followups.sql`; merge and deploy

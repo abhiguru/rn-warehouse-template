@@ -39,6 +39,7 @@ import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
 import { showAlert } from '@/utils/alert';
 import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { useModalSheet } from '@/hooks/useModalSheet';
 type StockStatus = 'positive' | 'critical' | 'negative';
 
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
@@ -103,6 +104,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const styles = useThemedStyles(makeStyles);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const sheet = useModalSheet(bottomSheetModalRef);
   const snapPoints = useMemo(() => ['95%'], []);
 
   const [loading, setLoading] = useState(true);
@@ -182,9 +184,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // Handle bottom sheet visibility
   useEffect(() => {
     if (isVisible) {
-      bottomSheetModalRef.current?.present();
+      sheet.present();
     } else {
-      bottomSheetModalRef.current?.dismiss();
+      sheet.dismiss();
     }
   }, [isVisible]);
   
@@ -929,7 +931,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   useEffect(() => {
     if (!isVisible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      bottomSheetModalRef.current?.dismiss();
+      sheet.dismiss();
       return true;
     });
     return () => sub.remove();
@@ -1111,7 +1113,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     <BottomSheetModal
       ref={bottomSheetModalRef}
       snapPoints={snapPoints}
-      onDismiss={handleDismiss}
+      onDismiss={() => {
+        sheet.onDismissed();
+        handleDismiss();
+      }}
       enablePanDownToClose
       keyboardBehavior="extend"
       // SAP Fiori Bottom Sheet styling

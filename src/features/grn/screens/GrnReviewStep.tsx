@@ -114,23 +114,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
+  // The X in the step header asks before it calls this, so there is no second question here.
   const handleCancel = () => {
-    showAlert(
-      isCreateMode ? tr('grn.form.discardTitle') : tr('grn.form.discardChangesTitle'),
-      tr(isCreateMode ? 'grn.review.discardCreateMessage' : 'grn.review.discardEditMessage', { count: items.length }),
-      [
-        { text: tr('common.keepEditing'), style: 'cancel' },
-        {
-          text: isCreateMode ? tr('grn.form.discardGrn') : tr('grn.form.discardChanges'),
-          style: 'destructive',
-          onPress: () => {
-            resetFormState();
-            // Always navigate to GRN list directly, not back one step
-            router.replace('/grn');
-          },
-        },
-      ]
-    );
+    resetFormState();
+    // Always navigate to GRN list directly, not back one step
+    router.replace('/grn');
   };
 
   const calculateTotals = () => ({
@@ -616,6 +604,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         currentStep={STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
+        cancelMessage={tr(isCreateMode ? 'grn.review.discardCreateMessage' : 'grn.review.discardEditMessage', { count: items.length })}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
