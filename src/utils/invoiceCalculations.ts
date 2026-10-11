@@ -25,9 +25,19 @@ export function discountNeedsReason(
   return !(header.discount_reason || '').trim();
 }
 
-/** A line whose storage charge is 0 (owner decision 3 of 2026-10-11: allowed, with a reason). */
+/**
+ * A line whose storage charge is 0 (owner decision 3 of 2026-10-11: allowed, with a reason).
+ *
+ * Decided after rounding to two decimals, as the server decides it (migration
+ * 48 rounds the charge before it compares with 0). Everything that depends on
+ * a line being free goes through here: whether the reason field is shown,
+ * whether staff must fill it in, whether `zero_charge_reason` is sent, the
+ * line in the save question and the total of 0 that may be saved. So a charge
+ * the money fields cannot produce (0.004) cannot make the server ask for a
+ * reason while the app shows no field for it.
+ */
 export function isZeroChargeLine(item: { charge?: number | null }): boolean {
-  return (Number(item.charge) || 0) === 0;
+  return roundMoney(Number(item.charge) || 0) === 0;
 }
 
 export function hasZeroChargeLine(items: { charge?: number | null }[]): boolean {

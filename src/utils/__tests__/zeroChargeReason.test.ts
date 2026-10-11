@@ -16,6 +16,21 @@ describe('a line with a zero charge', () => {
     expect(isZeroChargeLine({ charge: 999999 })).toBe(false);
   });
 
+  // The server decides after rounding the charge to two decimals (migration
+  // 48). A charge the money fields cannot produce must be judged the same way
+  // here, or the server would ask for a reason the app shows no field for.
+  it('is decided after rounding to two decimals, as the server does', () => {
+    expect(isZeroChargeLine({ charge: 0.004 })).toBe(true);
+    expect(isZeroChargeLine({ charge: 0.0049 })).toBe(true);
+    expect(isZeroChargeLine({ charge: -0.004 })).toBe(true);
+    // Half a paisa rounds up to 0.01, away from zero, as NUMERIC does.
+    expect(isZeroChargeLine({ charge: 0.005 })).toBe(false);
+    expect(isZeroChargeLine({ charge: 0.006 })).toBe(false);
+    expect(hasZeroChargeLine([B, { charge: 0.004 }])).toBe(true);
+    expect(zeroChargeNeedsReason({}, [B, { charge: 0.004 }], 'staff')).toBe(true);
+    expect(zeroChargeNeedsReason({}, [B, { charge: 0.005 }], 'staff')).toBe(false);
+  });
+
   it('is looked for on every line of the invoice', () => {
     expect(hasZeroChargeLine([B, A])).toBe(true);
     expect(hasZeroChargeLine([B])).toBe(false);

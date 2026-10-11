@@ -94,6 +94,20 @@ describe.each([
     }
   );
 
+  // The server rounds the charge to two decimals before it decides whether a line is free.
+  it('carries the key for a charge that rounds to 0, and leaves it out for one that rounds to 0.01', async () => {
+    await save(payload([0.004, 5.5], 'Sample lot'));
+    expect(sentHeader(name)).toHaveProperty('zero_charge_reason', 'Sample lot');
+
+    rpc.mockClear();
+    await save(payload([0.004, 5.5], ''));
+    expect(sentHeader(name)).toHaveProperty('zero_charge_reason', null);
+
+    rpc.mockClear();
+    await save(payload([0.005, 5.5], 'Sample lot'));
+    expect(sentHeader(name)).not.toHaveProperty('zero_charge_reason');
+  });
+
   it('leaves the key out when no line has a charge of 0, also when a reason was written earlier', async () => {
     await save(payload([4, 5.5], 'Sample lot'));
 

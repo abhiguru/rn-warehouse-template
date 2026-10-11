@@ -99,6 +99,11 @@ Zero charge with a reason (decision 3) — backend migration 48
   of such an invoice, also when someone else made the line free, and takes an
   empty reason from an administrator or supervisor as "remove it". The app
   never clears the text itself; erasing it is the user's doing.
+- "A charge of 0" is decided after rounding the charge to two decimals, as the
+  server decides it: the reason field, the staff rule, the `zero_charge_reason`
+  key, the line in the save question and the total of 0 all use the one test
+  (`isZeroChargeLine`). A charge the money fields cannot produce, such as
+  0.004, counts as 0 on both sides; 0.005 is 0.01 on both sides.
 - New invoice: the reason belongs to the GRN it was written for. When another
   GRN is chosen in the same form the reason field starts empty again (it used
   to keep the text, which then met the staff rule for the new GRN's free lines

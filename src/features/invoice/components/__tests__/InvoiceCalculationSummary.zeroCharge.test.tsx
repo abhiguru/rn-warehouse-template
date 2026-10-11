@@ -54,6 +54,16 @@ describe('the reason field for a zero charge', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('is shown for a charge that rounds to 0 (the server would ask for the reason), not for one that rounds to 0.01', async () => {
+    let tree = await render({ items: [line('almost', 0.004), PAID] });
+    expect(reasonInput(tree)).toBeDefined();
+    await act(async () => { tree.unmount(); });
+
+    tree = await render({ items: [line('paisa', 0.005), PAID] });
+    expect(reasonInput(tree)).toBeUndefined();
+    await act(async () => { tree.unmount(); });
+  });
+
   it('is not shown where the step does not handle it', async () => {
     const tree = await render({ onZeroChargeReasonChange: undefined });
 

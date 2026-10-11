@@ -126,6 +126,14 @@ describe('a line with a charge of 0', () => {
     expect(result.errors['header.total']).toBe('Total must be positive');
   });
 
+  it('judges "nothing is charged" after rounding each charge to two decimals, as the server does', async () => {
+    const almostFree = line({ charge: 0.004, labour_rate: 0, tax: 0 });
+    expect(await validateFullInvoice({ header: totals(0), items: [almostFree] })).toEqual({ isValid: true, errors: {} });
+
+    const onePaisa = line({ charge: 0.005, labour_rate: 0, tax: 0 });
+    expect((await validateFullInvoice({ header: totals(0), items: [onePaisa] })).errors['header.total']).toBe('Total must be positive');
+  });
+
   it('accepts a free line with a surcharge: the total is above 0', async () => {
     const result = await validateFullInvoice({ header: { ...totals(50), discount: -50 }, items: [line({ labour_rate: 0, tax: 0 })] });
 
