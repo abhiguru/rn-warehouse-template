@@ -56,7 +56,11 @@ jobs:
 
   android-artifact:
     name: Android debug artifact audit
-    runs-on: ubuntu-latest
+    # The owner's runner VM, which keeps the Gradle caches and the Android SDK
+    # between runs; on a hosted runner the build below starts from nothing every
+    # time. The runner's environment provides ANDROID_HOME. This job is not a
+    # required check: when the VM is down it waits, and merging is not blocked.
+    runs-on: [self-hosted, linux, x64, warehouse-vm]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
