@@ -9,6 +9,7 @@ import { createGRN, updateGRN, findLinesSavedByLostUpdate } from '@/features/grn
 import { uploadGRNPhotos, unpreparedGRNPhotos } from '@/features/grn/services/imageUploadService';
 import { removeHeaderImage, adoptSavedLines, setSaveUnconfirmed } from '@/store/slices/grnFormSlice';
 import { showAlert } from '@/utils/alert';
+import { router } from 'expo-router';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
@@ -52,7 +53,7 @@ jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
-jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: () => null }));
+jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), findLinesSavedByLostUpdate: jest.fn() }));
@@ -354,6 +355,32 @@ describe('GRN review step photos', () => {
       await save(tree);
       expect(findLinesSavedByLostUpdate).not.toHaveBeenCalled();
       expect(updateGRN).toHaveBeenCalledTimes(1);
+      await act(async () => { tree.unmount(); });
+    });
+  });
+
+  // The X in the step header asks "Discard changes to this GRN?" itself and calls the
+  // step only after "Discard". The step used to ask the same question a second time.
+  describe('leaving with the X in the header', () => {
+    it('gives the header the question to ask and does not ask again (editing)', async () => {
+      const tree = await render('edit');
+      const header = one(tree, 'GRNStepIndicator');
+      expect(header.props.cancelMessage).toBe('1 item and your changes will be lost.');
+      act(() => header.props.onCancel());
+      expect(showAlert).not.toHaveBeenCalled();
+      expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+      expect(router.replace).toHaveBeenCalledWith('/grn');
+      await act(async () => { tree.unmount(); });
+    });
+
+    it('gives the header the question to ask and does not ask again (creating)', async () => {
+      const tree = await render('create');
+      const header = one(tree, 'GRNStepIndicator');
+      expect(header.props.cancelMessage).toBe('1 item and the GRN details will be lost.');
+      act(() => header.props.onCancel());
+      expect(showAlert).not.toHaveBeenCalled();
+      expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+      expect(router.replace).toHaveBeenCalledWith('/grn');
       await act(async () => { tree.unmount(); });
     });
   });

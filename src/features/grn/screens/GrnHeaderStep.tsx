@@ -80,41 +80,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     setShowOptionalFields((prev) => !prev);
   };
 
-  const hasUnsavedData = () => {
-    return !!(
-      header.sender_id ||
-      header.customer_id ||
-      header.note ||
-      header.registration ||
-      (header.gr_images?.length ?? 0) > 0
-    );
-  };
-
+  // The X in the step header asks before it calls this, so there is no second question here.
   const handleCancel = () => {
-    const confirmDiscard = () => {
-      resetFormState();
-      // Always navigate to GRN list directly, not back one step
-      router.replace('/grn');
-    };
-
-    if (hasUnsavedData()) {
-      showAlert(
-        isCreateMode ? tr('grn.form.discardTitle') : tr('grn.form.discardChangesTitle'),
-        isCreateMode
-          ? tr('grn.form.discardMessage')
-          : tr('grn.form.unsavedChangesMessage'),
-        [
-          { text: tr('common.keepEditing'), style: 'cancel' },
-          {
-            text: isCreateMode ? tr('grn.form.discardGrn') : tr('grn.form.discardChanges'),
-            style: 'destructive',
-            onPress: confirmDiscard,
-          },
-        ]
-      );
-    } else {
-      confirmDiscard();
-    }
+    resetFormState();
+    // Always navigate to GRN list directly, not back one step
+    router.replace('/grn');
   };
 
   // Date picker handlers

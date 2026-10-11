@@ -17,7 +17,17 @@ No backend change.
   `BottomSheetModal` from being dismissed through its ref directly.
 - Seen on a phone on 2026-10-11: the supervisor picker opens with and without a
   chosen supervisor and opens again after a choice; the dispatch item and lot
-  pickers open and list the lots of the chosen GRN.
+  pickers open and list the lots of the chosen GRN; on an order, "Add items to
+  order" and "View order history" open, the first of them twice in a row.
+
+Also found by the same device checks
+- Leaving a GRN form with the X in the header asked "Discard?" twice: the
+  header asked, then the step asked again. The header now carries the step's
+  own message (how many items would be lost) and the step no longer asks.
+- New invoice: when the next invoice number could not be fetched and the user
+  typed one, the hint under the field changed to "The next number is filled
+  in. You can change it." It now keeps saying that the number could not be
+  fetched.
 
 ## Unreleased — follow-ups to backend migration 47 (GRN edit retry key, supervisors and access, supervisor picker)
 

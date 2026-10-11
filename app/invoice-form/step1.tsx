@@ -261,7 +261,7 @@ export default function InvoiceFormStep1() {
           <Text style={styles.helperText}>
             {isLoading
               ? tr('invoice.form.gettingNumber')
-              : nextNumberFailed && !header.inv_no
+              : nextNumberFailed
                 ? tr('invoice.form.numberUnavailable')
                 : tr('invoice.form.numberHelp')}
           </Text>

@@ -135,29 +135,11 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const hasUnsavedData = () => savedItems.length > 0 || items.length > 0;
 
+  // The X in the step header asks before it calls this, so there is no second question here.
   const handleCancel = () => {
-    const confirmDiscard = () => {
-      resetFormState();
-      // Always navigate to GRN list directly, not back one step
-      router.replace('/grn');
-    };
-
-    if (hasUnsavedData()) {
-      showAlert(
-        isCreateMode ? tr('grn.form.discardTitle') : tr('grn.form.discardChangesTitle'),
-        tr('grn.itemsStep.itemsWillBeLost', { count: savedItems.length || items.length }),
-        [
-          { text: tr('common.keepEditing'), style: 'cancel' },
-          {
-            text: isCreateMode ? tr('grn.form.discardGrn') : tr('grn.form.discardChanges'),
-            style: 'destructive',
-            onPress: confirmDiscard,
-          },
-        ]
-      );
-    } else {
-      confirmDiscard();
-    }
+    resetFormState();
+    // Always navigate to GRN list directly, not back one step
+    router.replace('/grn');
   };
 
   useFocusEffect(
@@ -679,6 +661,11 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         currentStep={STEP_NUMBERS.ITEMS}
         completedSteps={getCompletedSteps(STEP_NUMBERS.ITEMS)}
         onCancel={handleCancel}
+        cancelMessage={
+          hasUnsavedData()
+            ? tr('grn.itemsStep.itemsWillBeLost', { count: savedItems.length || items.length })
+            : undefined
+        }
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
