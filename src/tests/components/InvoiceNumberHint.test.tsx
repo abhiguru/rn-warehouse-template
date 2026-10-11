@@ -99,6 +99,10 @@ describe('the hint under the invoice number', () => {
     expect(await hints(7301, true, true)).toEqual({ filled: false, unavailable: true, typed: false });
   });
 
+  it('claims nothing under a field the user has emptied', async () => {
+    expect(await hints(0, false)).toEqual({ filled: false, unavailable: false, typed: false });
+  });
+
   it('says the number is the user\'s own when it was typed over a suggestion', async () => {
     expect(await hints(7303, false, true)).toEqual({ filled: false, unavailable: false, typed: true });
   });

@@ -270,7 +270,10 @@ export default function InvoiceFormStep1() {
                 ? tr('invoice.form.numberUnavailable')
                 : header.inv_no_typed
                   ? tr('invoice.form.numberTyped')
-                  : tr('invoice.form.numberHelp')}
+                  : header.inv_no > 0
+                    ? tr('invoice.form.numberHelp')
+                    // An emptied field: nothing is filled in until the field is left.
+                    : ''}
           </Text>
         </View>
 

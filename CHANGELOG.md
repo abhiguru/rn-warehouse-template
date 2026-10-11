@@ -5,7 +5,9 @@
 - New invoice, step 1: under a number the user typed over the suggestion the
   hint said "The next number is filled in. You can change it." It now says
   "You typed this number. Clear the field to get the next number." After a
-  lookup that failed the hint still asks for a typed number.
+  lookup that failed the hint still asks for a typed number. Under a field the
+  user has emptied there is no hint until the field is left and the next
+  number arrives (it said "The next number is filled in" under an empty field).
   `src/tests/components/InvoiceNumberHint.test.tsx`. No backend change.
 
 ## Unreleased — owner decisions of 2026-10-11
