@@ -14,6 +14,7 @@ import {
   recalculateItemWithEdits,
   applyBulkPricingToAllItems,
   applyBulkGroupPricing,
+  zeroChargeLineSet,
 } from '@/utils/invoiceCalculations';
 
 import { toLocalISODate } from '@/utils/formatters';
@@ -85,6 +86,7 @@ const invoiceFormSlice = createSlice({
       state.header = { ...state.header, ...action.payload };
       // From here on the reason field holds what the person wrote, not what was stored.
       if ('discount_reason' in action.payload) state.header.discount_reason_edited = true;
+      if ('zero_charge_reason' in action.payload) state.header.zero_charge_reason_edited = true;
 
       // Auto-update financial year if date changes
       if (action.payload.inv_date) {
@@ -319,6 +321,13 @@ const invoiceFormSlice = createSlice({
         saved_discount_reason: state.header.saved_discount_reason,
         discount_reason_edited: state.header.discount_reason_edited,
       };
+      // The same for the reason of a zero charge.
+      const preservedZeroChargeRecord = {
+        zero_charge_reason: state.header.zero_charge_reason,
+        saved_zero_charge_reason: state.header.saved_zero_charge_reason,
+        saved_zero_charge_lines: state.header.saved_zero_charge_lines,
+        zero_charge_reason_edited: state.header.zero_charge_reason_edited,
+      };
 
       // The lines carry the GRN's pricing mode (`one_time`) and their amounts
       // are worked out here as the server works them out. The header flag only
@@ -341,6 +350,7 @@ const invoiceFormSlice = createSlice({
         one_time_charge: oneTimeCharge,
         discount: preservedDiscount,
         ...preservedDiscountRecord,
+        ...preservedZeroChargeRecord,
       };
       state.items = items;
       state.selected_gr_id = action.payload.grId;
@@ -373,6 +383,12 @@ const invoiceFormSlice = createSlice({
         saved_discount: action.payload.header.discount || 0,
         saved_discount_reason: action.payload.header.discount_reason || '',
         discount_reason_edited: false,
+        // The same for the reason of a zero charge: it goes with the lines that
+        // had a zero charge when the invoice was saved (see zeroChargeReason).
+        zero_charge_reason: action.payload.header.zero_charge_reason || '',
+        saved_zero_charge_reason: action.payload.header.zero_charge_reason || '',
+        saved_zero_charge_lines: zeroChargeLineSet(action.payload.items),
+        zero_charge_reason_edited: false,
         // As in loadInvoiceFormData: the flag reports how the lines are priced.
         one_time_charge:
           action.payload.items.length > 0 && action.payload.items.every((item) => item.one_time === true),

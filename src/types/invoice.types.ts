@@ -35,6 +35,14 @@ export interface InvoiceHeaderData {
   saved_discount_reason?: string;
   /** The reason field was typed in during this edit (client only, never sent). Typed text is never cleared by the app. */
   discount_reason_edited?: boolean;
+  /** Why a line has a storage charge of 0; the server requires it from staff when a line has one. */
+  zero_charge_reason?: string;
+  /** Reason stored with the invoice when it was loaded (client only, never sent). Set only while an existing invoice is edited. */
+  saved_zero_charge_reason?: string;
+  /** The lines that had a zero charge when the invoice was loaded, see zeroChargeLineSet (client only, never sent). */
+  saved_zero_charge_lines?: string;
+  /** The zero-charge reason was typed in during this form (client only, never sent). Typed text is never cleared by the app. */
+  zero_charge_reason_edited?: boolean;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total
@@ -158,6 +166,8 @@ export interface CreateInvoicePayload {
     inv_date: string; // ISO date string
     discount: number;
     discount_reason?: string | null;
+    /** Sent to the server only when a line has a charge of 0. */
+    zero_charge_reason?: string | null;
     labour: number;
     tax_amount: number;
     total: number;

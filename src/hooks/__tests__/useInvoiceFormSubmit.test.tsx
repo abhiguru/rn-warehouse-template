@@ -9,7 +9,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
-import invoiceFormReducer, { loadInvoiceEditData } from '@/store/slices/invoiceFormSlice';
+import invoiceFormReducer, { loadInvoiceEditData, resetForm, loadInvoiceFormData, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { checkGrnStillInvoiceable, createInvoice, updateInvoice } from '@/features/invoice/services/invoiceFormService';
 import { validateFullInvoice } from '@/features/invoice/schemas/invoiceValidation';
 import { showAlert } from '@/utils/alert';
@@ -135,6 +135,48 @@ describe('saving an existing invoice', () => {
     expect(checkGrnStillInvoiceable).not.toHaveBeenCalled();
     expect(updateInvoice).toHaveBeenCalledWith(INVOICE, expect.objectContaining({ items: [expect.objectContaining({ disp_trl_id: 'd1' })] }));
     expect(result.success).toBe(true);
+    await unmount();
+  });
+});
+
+// Owner decision 3 of 2026-10-11: the reason for a zero charge goes to the
+// service as the form holds it; the service sends it only with a free line
+// (invoiceZeroChargeReason.test.ts).
+describe('the reason for a zero charge in the save', () => {
+  /** A new invoice with the one line of the fixture, as the form holds it after a GRN is chosen. */
+  async function mountNew() {
+    const mounted = await mount('create');
+    await act(async () => {
+      mounted.store.dispatch(resetForm());
+      mounted.store.dispatch(loadInvoiceFormData({ header: { ...header, inv_no: undefined } as never, items: [line as never], grId: GRN }));
+    });
+    return mounted;
+  }
+  beforeEach(() => {
+    jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
+    jest.mocked(createInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 235 } } as never);
+  });
+  const sentHeader = () => jest.mocked(createInvoice).mock.calls[0][0].header;
+
+  it('is what the user wrote on the review step, with the line at a charge of 0', async () => {
+    const { form, store, unmount } = await mountNew();
+    await act(async () => { store.dispatch(updateEditedItem({ temp_id: 't1', values: { charge: 0 } })); });
+    await act(async () => { form().updateHeaderField('zero_charge_reason', 'Sample lot'); });
+
+    expect((await submit(form)).success).toBe(true);
+
+    expect(sentHeader().zero_charge_reason).toBe('Sample lot');
+    expect(jest.mocked(createInvoice).mock.calls[0][0].items[0].charge).toBe(0);
+    await unmount();
+  });
+
+  it('is empty when nothing was written', async () => {
+    const { form, store, unmount } = await mountNew();
+    await act(async () => { store.dispatch(updateEditedItem({ temp_id: 't1', values: { charge: 0 } })); });
+
+    await submit(form);
+
+    expect(sentHeader().zero_charge_reason).toBe('');
     await unmount();
   });
 });

@@ -25,6 +25,61 @@ export function discountNeedsReason(
   return !(header.discount_reason || '').trim();
 }
 
+/** A line whose storage charge is 0 (owner decision 3 of 2026-10-11: allowed, with a reason). */
+export function isZeroChargeLine(item: { charge?: number | null }): boolean {
+  return (Number(item.charge) || 0) === 0;
+}
+
+export function hasZeroChargeLine(items: { charge?: number | null }[]): boolean {
+  return items.some(isZeroChargeLine);
+}
+
+/** Which lines have a zero charge, as one text that can be compared: their dispatch lines, sorted. */
+export function zeroChargeLineSet(items: { charge?: number | null; disp_trl_id?: string; temp_id?: string }[]): string {
+  return items
+    .filter(isZeroChargeLine)
+    .map((item) => item.disp_trl_id || item.temp_id || '')
+    .sort()
+    .join('|');
+}
+
+type ZeroChargeHeader = Pick<
+  InvoiceHeaderData,
+  'zero_charge_reason' | 'saved_zero_charge_reason' | 'saved_zero_charge_lines' | 'zero_charge_reason_edited'
+>;
+
+/**
+ * The reason for the zero charge as the form holds it now.
+ *
+ * What the person wrote in this form is the reason, whatever the lines do
+ * afterwards. Until they write, an invoice being edited shows the reason it
+ * was saved with, but only while the same lines have a zero charge: the stored
+ * reason was given for those lines, so another set of lines needs its own.
+ */
+export function zeroChargeReason(
+  header: ZeroChargeHeader,
+  items: { charge?: number | null; disp_trl_id?: string; temp_id?: string }[]
+): string {
+  if (header.zero_charge_reason_edited || header.saved_zero_charge_reason === undefined) {
+    return header.zero_charge_reason || '';
+  }
+  return zeroChargeLineSet(items) === (header.saved_zero_charge_lines ?? '') ? header.saved_zero_charge_reason : '';
+}
+
+/**
+ * Staff must give a reason when a line of the invoice has a zero charge
+ * (server migration 48); administrators and supervisors may leave it empty.
+ */
+export function zeroChargeNeedsReason(
+  header: ZeroChargeHeader,
+  items: { charge?: number | null; disp_trl_id?: string; temp_id?: string }[],
+  role: string | null | undefined
+): boolean {
+  if (role !== 'staff') return false;
+  if (!hasZeroChargeLine(items)) return false;
+  return !zeroChargeReason(header, items).trim();
+}
+
 export function roundMoney(value: number): number {
   // Compensate only for binary representation noise at a decimal half-cent.
   // PostgreSQL NUMERIC rounds ties away from zero, including surcharges.

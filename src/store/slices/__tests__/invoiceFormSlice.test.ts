@@ -203,3 +203,200 @@ describe('editing a saved invoice', () => {
     expect(discountNeedsReason(state.header, 'staff')).toBe(true);
   });
 });
+
+// Owner decision 3 of 2026-10-11: a line may have a charge of 0, with a reason.
+describe('the reason for a zero charge', () => {
+  const slice: Slice = require('../invoiceFormSlice');
+  const reducer = slice.default;
+  const { zeroChargeNeedsReason, zeroChargeReason } = require('@/utils/invoiceCalculations');
+
+  const line = (id: string, charge: number): InvoiceItemData => ({
+    temp_id: `edit_${id}_0`,
+    disp_trl_id: `${id}-2222-4333-8444-555555555555`,
+    grn_item_id: 'g1',
+    item_id: 'i1',
+    item_name: 'Example Potatoes',
+    qty: 100,
+    grn_original_qty: 100,
+    package_mark: 'M1',
+    rack: '',
+    weight: 50,
+    dispatch_id: 'd1',
+    dispatch_no: 'I0001',
+    dispatch_date: '2026-10-01',
+    grn_id: 'gr1',
+    grn_no: 'A0010',
+    grn_date: '2026-09-01',
+    duration: 1,
+    no_of_days: 30,
+    charge,
+    labour_rate: 2,
+    tax: 5,
+    amount: charge * 100,
+    labour_amount: 200,
+    tax_amount: 10,
+    item_total: charge * 100 + 210,
+  });
+  const FREE = 'aaaaaaaa';
+  const PAID = 'bbbbbbbb';
+
+  const header = {
+    inv_date: '2026-10-05',
+    inv_fin_year: '2026-27',
+    inv_no: 42,
+    customer_id: 'c1',
+    customer_name: 'Example Traders',
+    gr_id: 'gr1',
+    gr_no: 'A0010',
+    one_time_charge: false,
+    discount: 0,
+    zero_charge_reason: 'Sample lot',
+    labour: 400,
+    tax_amount: 20,
+    total: 970,
+  };
+  /** An invoice saved with one free line, one paid line and the reason "Sample lot". */
+  const saved = () =>
+    reducer(undefined, slice.loadInvoiceEditData({ invoiceId: 'inv-42', grId: 'gr1', header, items: [line(FREE, 0), line(PAID, 5.5)] }));
+  const setCharge = (state: ReturnType<typeof saved>, id: string, charge: number) =>
+    reducer(state, slice.updateEditedItem({ temp_id: `edit_${id}_0`, values: { charge } }));
+  const reason = (state: ReturnType<typeof saved>) => zeroChargeReason(state.header, state.items);
+  const needed = (state: ReturnType<typeof saved>, role = 'staff') => zeroChargeNeedsReason(state.header, state.items, role);
+
+  it('is loaded with the invoice and satisfies the rule while the lines are unchanged', () => {
+    const state = saved();
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+    expect(state.header.zero_charge_reason_edited).toBe(false);
+  });
+
+  it('is kept when something other than a charge of 0 changes', () => {
+    let state = setCharge(saved(), PAID, 7);
+    state = reducer(state, slice.updateDiscount(50));
+    state = reducer(state, slice.updateHeader({ inv_date: '2026-10-06' }));
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('is taken out when another line gets a zero charge, so staff have to write a new one', () => {
+    const state = setCharge(saved(), PAID, 0);
+
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+    expect(needed(state, 'admin')).toBe(false);
+    expect(needed(state, 'supervisor')).toBe(false);
+  });
+
+  it('is taken out when the free line gets a charge, and nothing is asked for: no line is free', () => {
+    const state = setCharge(saved(), FREE, 4);
+
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('comes back when the charges are as they were saved', () => {
+    let state = setCharge(saved(), FREE, 4);
+    state = setCharge(state, FREE, 0);
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('follows a group price as it follows a line price', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: 'i1:::M1', pricing: { charge: 0, labour_rate: 2, tax: 5 } }));
+
+    expect(state.items.every((item) => item.charge === 0)).toBe(true);
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+  });
+
+  it('never clears a reason written in this edit, whatever the charges become', () => {
+    let state = setCharge(saved(), PAID, 0);
+    state = reducer(state, slice.updateHeader({ zero_charge_reason: 'Agreed with the owner' }));
+    expect(reason(state)).toBe('Agreed with the owner');
+
+    // Back to the lines as saved: the new text is not swapped for the stored one.
+    state = setCharge(state, PAID, 5.5);
+    expect(reason(state)).toBe('Agreed with the owner');
+    // No free line for a moment, then one again: the text is still there.
+    state = setCharge(state, FREE, 3);
+    state = setCharge(state, FREE, 0);
+    expect(reason(state)).toBe('Agreed with the owner');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('a reason the person erased stays erased', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: '' }));
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+
+    state = setCharge(state, PAID, 0);
+    state = setCharge(state, PAID, 5.5);
+    expect(reason(state)).toBe('');
+  });
+
+  it('a freshly loaded invoice starts with the stored reason as stored text again', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: 'typed' }));
+    state = reducer(state, slice.loadInvoiceEditData({ invoiceId: 'inv-42', grId: 'gr1', header, items: [line(FREE, 0), line(PAID, 5.5)] }));
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(reason(setCharge(state, PAID, 0))).toBe('');
+  });
+
+  it('an invoice saved without a free line has no reason, and asks staff for one when a line becomes free', () => {
+    let state = reducer(undefined, slice.loadInvoiceEditData({ invoiceId: 'inv-43', grId: 'gr1', header: { ...header, zero_charge_reason: undefined }, items: [line(PAID, 5.5)] }));
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(false);
+
+    state = setCharge(state, PAID, 0);
+    expect(needed(state)).toBe(true);
+  });
+
+  it('keeps what was written when another GRN is chosen', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: 'Agreed with the owner' }));
+    state = reducer(state, slice.loadInvoiceFormData({
+      grId: 'gr2',
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'gr2', gr_no: 'A0011' },
+      items: [{ ...line('cccccccc', 0), temp_id: 'temp_1_0', one_time: false } as InvoiceItemData],
+    }));
+
+    expect(reason(state)).toBe('Agreed with the owner');
+  });
+
+  it('does not carry the stored reason over to the lines of another GRN', () => {
+    const state = reducer(saved(), slice.loadInvoiceFormData({
+      grId: 'gr2',
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'gr2', gr_no: 'A0011' },
+      items: [{ ...line('cccccccc', 0), temp_id: 'temp_1_0', one_time: false } as InvoiceItemData],
+    }));
+
+    expect(state.header.saved_zero_charge_reason).toBe('Sample lot');
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+  });
+
+  it('a new invoice has no reason until one is written, and keeps it afterwards', () => {
+    let state = reducer(undefined, slice.loadInvoiceFormData({
+      grId: 'gr1',
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'gr1', gr_no: 'A0010' },
+      items: [{ ...line(FREE, 0), temp_id: 'edit_aaaaaaaa_0', one_time: false } as InvoiceItemData],
+    }));
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+
+    state = reducer(state, slice.updateHeader({ zero_charge_reason: 'Sample lot' }));
+    state = setCharge(state, FREE, 4);
+    state = setCharge(state, FREE, 0);
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('is gone with the form when the form is reset', () => {
+    const state = reducer(reducer(saved(), slice.updateHeader({ zero_charge_reason: 'typed' })), slice.resetForm());
+
+    expect(state.header.zero_charge_reason ?? '').toBe('');
+    expect(state.header.saved_zero_charge_reason).toBeUndefined();
+  });
+});

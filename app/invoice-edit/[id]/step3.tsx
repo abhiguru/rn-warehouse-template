@@ -35,7 +35,7 @@ import {
 } from '@/features/invoice/services/invoiceFormService';
 import { SavedInvoiceData } from '@/types/invoice.types';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { discountNeedsReason, formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { discountNeedsReason, formatInvoiceAmount, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
   STEP_NUMBERS,
@@ -74,6 +74,11 @@ export default function InvoiceEditStep3() {
   const reasonRequired = discountNeedsReason(header, role);
   const handleDiscountReasonChange = (reason: string) => {
     dispatch(updateHeader({ discount_reason: reason }));
+  };
+  // A line with a charge of 0 needs a reason from staff (server migration 48).
+  const zeroChargeReasonRequired = zeroChargeNeedsReason(header, items, role);
+  const handleZeroChargeReasonChange = (reason: string) => {
+    dispatch(updateHeader({ zero_charge_reason: reason }));
   };
 
   const handleBack = () => {
@@ -116,6 +121,11 @@ export default function InvoiceEditStep3() {
 
     if (reasonRequired) {
       showAlert(tr('invoice.review.discountReasonTitle'), tr('invoice.review.discountReasonUpdateMessage'));
+      return;
+    }
+
+    if (zeroChargeReasonRequired) {
+      showAlert(tr('invoice.review.zeroChargeReasonTitle'), tr('invoice.review.zeroChargeReasonUpdateMessage'));
       return;
     }
 
@@ -355,6 +365,8 @@ export default function InvoiceEditStep3() {
           onDiscountErrorChange={setDiscountError}
           onDiscountReasonChange={handleDiscountReasonChange}
           reasonRequired={reasonRequired}
+          onZeroChargeReasonChange={handleZeroChargeReasonChange}
+          zeroChargeReasonRequired={zeroChargeReasonRequired}
         />
       </KeyboardAwareScrollView>
 

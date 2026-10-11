@@ -156,6 +156,7 @@ export const errors = {
     invoiceCustomerMismatch: "The invoice's customer is not the customer of the GRN.",
     discountTooLarge: 'The discount is more than the invoice amount.',
     discountReasonRequired: 'Give a reason for the discount.',
+    zeroChargeReasonRequired: 'Give a reason for the zero charge.',
     mobileInvalid: 'Enter a 10-digit Indian mobile number.',
     customerAssignmentRequired: 'Assign at least one customer first.',
     grnAlreadyInvoiced: 'This GRN already has an invoice. Someone may have saved it while you were working. Check the invoice list.',

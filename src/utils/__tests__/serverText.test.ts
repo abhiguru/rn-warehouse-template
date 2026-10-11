@@ -126,6 +126,7 @@ describe('business-rule refusals in Gujarati', () => {
     ['Invoice customer and GRN must match', 'errors.parsed.invoiceCustomerMismatch'],
     ['Discount exceeds the invoice amount', 'errors.parsed.discountTooLarge'],
     ['A reason is required for an invoice discount', 'errors.parsed.discountReasonRequired'],
+    ['Enter a reason for the zero charge', 'errors.parsed.zeroChargeReasonRequired'],
     ['Expected a 10-digit Indian mobile number', 'errors.parsed.mobileInvalid'],
     ['At least one valid customer assignment is required', 'errors.parsed.customerAssignmentRequired'],
     ['Pending enrollment must be reviewed with a customer assignment', 'errors.parsed.customerAssignmentRequired'],

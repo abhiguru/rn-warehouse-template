@@ -43,6 +43,34 @@ Invoice number per financial year (decision 2) — backend migration 48
 - An answer that is not a number is treated as "could not get the next
   number"; it used to be shown as 1.
 
+Zero charge with a reason (decision 3) — backend migration 48
+- An invoice line may have a storage charge of 0. The items step of a new
+  invoice and of an edit no longer refuses such a line. A duration of 0 is
+  still refused, and the two messages now speak of the duration only: "1 item
+  has a duration of 0. The duration must be greater than 0." and "Every item
+  needs a duration greater than 0."
+- Review step (new invoice and edit): while a line has a charge of 0 the
+  summary shows "Reason for zero charge" under the discount reason, built the
+  same way (500 characters, several lines). Staff must fill it in: the label
+  reads "Reason for zero charge (required)" with a red border, and Save answers
+  "Enter a reason for the zero charge". Administrators and supervisors may
+  leave it empty. Without such a line the field is not shown.
+- The reason goes to the server as `zero_charge_reason` in the header of
+  `save_invoice` and `update_invoice`, only when a line has a charge of 0
+  (trimmed; `null` when nothing was written). Without such a line the key is
+  left out. Who gave the reason and when is recorded by the server.
+- Edit: the stored reason is read from `get_invoice_detail` and sent again
+  while the same lines have a zero charge. When another line becomes free, or
+  the free line gets a charge and another one becomes free, the stored reason
+  is taken out of the field and a new one has to be written; charges set back
+  to what was saved bring it back. A reason written in the form is never
+  cleared by the app, as with the discount reason.
+- The server's refusal "Enter a reason for the zero charge" is shown in
+  Gujarati as its own sentence.
+- An invoice with a zero-charge line may be saved with a total of 0 (nothing
+  else charged on it). For every other invoice the total must still be more
+  than 0.
+
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 
 No backend change.

@@ -22,7 +22,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { discountNeedsReason, formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { discountNeedsReason, formatInvoiceAmount, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
@@ -91,6 +91,11 @@ export default function InvoiceFormStep3() {
   const handleDiscountReasonChange = (reason: string) => {
     updateHeaderField('discount_reason', reason);
   };
+  // A line with a charge of 0 needs a reason from staff (server migration 48).
+  const zeroChargeReasonRequired = zeroChargeNeedsReason(header, items, role);
+  const handleZeroChargeReasonChange = (reason: string) => {
+    updateHeaderField('zero_charge_reason', reason);
+  };
 
   const handleBack = async () => {
     await navigateToStep(2);
@@ -137,6 +142,15 @@ export default function InvoiceFormStep3() {
         visible: true,
         title: tr('invoice.review.discountReasonTitle'),
         message: tr('invoice.review.discountReasonCreateMessage'),
+      });
+      return;
+    }
+
+    if (zeroChargeReasonRequired) {
+      setErrorDialog({
+        visible: true,
+        title: tr('invoice.review.zeroChargeReasonTitle'),
+        message: tr('invoice.review.zeroChargeReasonCreateMessage'),
       });
       return;
     }
@@ -345,6 +359,8 @@ export default function InvoiceFormStep3() {
           onDiscountErrorChange={setDiscountError}
           onDiscountReasonChange={handleDiscountReasonChange}
           reasonRequired={reasonRequired}
+          onZeroChargeReasonChange={handleZeroChargeReasonChange}
+          zeroChargeReasonRequired={zeroChargeReasonRequired}
         />
       </KeyboardAwareScrollView>
 

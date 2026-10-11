@@ -10,7 +10,9 @@ import {
   calculateInvoiceBreakdown,
   formatInvoiceAmount,
   formatInvoiceDeduction,
+  hasZeroChargeLine,
   roundMoney,
+  zeroChargeReason,
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
 import { localizeDigits, normalizeDigits, t as tr, numericInput } from '@/i18n';
@@ -30,6 +32,10 @@ interface InvoiceCalculationSummaryProps {
   onDiscountReasonChange?: (reason: string) => void;
   /** The current user must give a reason before saving (staff changing the discount). */
   reasonRequired?: boolean;
+  /** Shown whenever a line has a charge of 0; omit to hide the reason field. */
+  onZeroChargeReasonChange?: (reason: string) => void;
+  /** The current user must give a reason for the zero charge before saving (staff). */
+  zeroChargeReasonRequired?: boolean;
 }
 
 /** Visual size of the round up/down buttons; hitSlop pads them to the touch target. */
@@ -303,6 +309,8 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   onDiscountErrorChange,
   onDiscountReasonChange,
   reasonRequired = false,
+  onZeroChargeReasonChange,
+  zeroChargeReasonRequired = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -483,6 +491,25 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
             value={header.discount_reason || ''}
             onChangeText={onDiscountReasonChange}
             placeholder={tr('invoice.summary.discountReasonPlaceholder')}
+            placeholderTextColor={t.text.placeholder}
+            maxLength={500}
+            multiline
+          />
+        </View>
+      )}
+
+      {/* Reason for a line with a charge of 0: recorded with the invoice, required from staff */}
+      {onZeroChargeReasonChange && hasZeroChargeLine(items) && (
+        <View style={styles.reasonContainer}>
+          <Text style={styles.fieldLabel}>
+            {zeroChargeReasonRequired ? tr('invoice.summary.zeroChargeReasonRequired') : tr('invoice.label.zeroChargeReason')}
+          </Text>
+          <TextInput
+            style={[styles.reasonInput, zeroChargeReasonRequired && styles.fieldError]}
+            accessibilityLabel={tr('invoice.label.zeroChargeReason')}
+            value={zeroChargeReason(header, items)}
+            onChangeText={onZeroChargeReasonChange}
+            placeholder={tr('invoice.summary.zeroChargeReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}
             maxLength={500}
             multiline

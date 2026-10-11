@@ -1,6 +1,7 @@
 import * as yup from 'yup';
 import { createStepValidator, type ValidationResult } from '@/utils/validationHelpers';
 import { t, type TranslationKey, type TranslationParams } from '@/i18n';
+import { hasZeroChargeLine } from '@/utils/invoiceCalculations';
 
 /**
  * A message that is read when validation fails, not when this file is loaded,
@@ -121,6 +122,9 @@ export const step2Schema = yup.object().shape({
 });
 
 // Step 3: Full Invoice Schema (for final validation)
+// The total must be more than 0, with one exception: an invoice that has a line
+// with a charge of 0 (allowed since the owner decision of 2026-10-11) may come
+// to exactly 0, which is what it does when nothing else is charged on it.
 export const fullInvoiceSchema = yup.object().shape({
   header: step1Schema.concat(
     yup.object().shape({
@@ -134,11 +138,17 @@ export const fullInvoiceSchema = yup.object().shape({
         .min(0, msg('invoice.validation.taxAmountNegative')),
       total: yup
         .number()
-        .required(msg('invoice.validation.totalRequired'))
-        .positive(msg('invoice.validation.totalPositive')),
+        .required(msg('invoice.validation.totalRequired')),
     })
   ),
   items: step2Schema.fields.items,
+}).test('total-positive', function (value) {
+  const total = Number(value?.header?.total);
+  // A missing or unreadable total is reported by the field itself.
+  if (Number.isNaN(total) || total > 0) return true;
+  const lines = Array.isArray(value?.items) ? (value.items as { charge?: number | null }[]) : [];
+  if (total === 0 && hasZeroChargeLine(lines)) return true;
+  return this.createError({ path: 'header.total', message: t('invoice.validation.totalPositive') });
 });
 
 // ============================================================================

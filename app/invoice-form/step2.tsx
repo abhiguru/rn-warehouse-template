@@ -228,15 +228,14 @@ export default function InvoiceFormStep2() {
       return;
     }
 
-    // Check if all items have valid pricing before navigating
-    const invalidItems = items.filter(
-      (item) => item.charge === 0 || item.duration === 0
-    );
+    // A charge of 0 is allowed; its reason is asked for on the review step.
+    // A line without a duration is not: it would be charged for no time at all.
+    const invalidItems = items.filter((item) => item.duration === 0);
 
     if (invalidItems.length > 0) {
       showError(
         tr('invoice.items.checkPricesTitle'),
-        tr('invoice.items.missingPrice', { count: invalidItems.length })
+        tr('invoice.items.zeroDuration', { count: invalidItems.length })
       );
       return;
     }

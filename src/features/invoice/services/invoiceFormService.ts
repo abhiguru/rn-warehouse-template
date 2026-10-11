@@ -12,7 +12,7 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
-import { calculateItemAmounts } from '@/utils/invoiceCalculations';
+import { calculateItemAmounts, hasZeroChargeLine, zeroChargeReason } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -77,6 +77,18 @@ async function savedInvoiceTotal(client: RpcClient, answer: any, invoiceId: stri
   } catch {
     return null;
   }
+}
+
+/**
+ * The header field for a zero charge (backend migration 48). It is sent only
+ * when a line of the invoice has a charge of 0: the reason, or null when none
+ * was written (the server then refuses staff with "Enter a reason for the zero
+ * charge" and lets administrators and supervisors through). Without such a
+ * line the key is left out, and the server stores no reason.
+ */
+function zeroChargeHeader(payload: CreateInvoicePayload): { zero_charge_reason?: string | null } {
+  if (!hasZeroChargeLine(payload.items)) return {};
+  return { zero_charge_reason: payload.header.zero_charge_reason?.trim() || null };
 }
 
 function invoiceSaveMessage(text: unknown, fallback: string): string {
@@ -534,6 +546,7 @@ export const createInvoice = async (
       total: payload.header.total || 0,
       one_time_charge: Boolean(payload.header.one_time_charge),
       is_auto_generated: false, // Manual creation
+      ...zeroChargeHeader(payload),
     };
 
     // Transform items to match RPC expected format
@@ -725,6 +738,7 @@ export const loadInvoiceData = async (
       one_time_charge: oneTime,
       discount: header.discount || 0,
       discount_reason: header.discount_reason || '',
+      zero_charge_reason: header.zero_charge_reason || '',
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,
@@ -857,6 +871,7 @@ export const updateInvoice = async (
       tax_amount: payload.header.tax_amount || 0,
       total: payload.header.total || 0,
       one_time_charge: payload.header.one_time_charge || false,
+      ...zeroChargeHeader(payload),
     };
 
     const invoiceItems = payload.items.map((item) => ({
@@ -932,6 +947,8 @@ export const transformFormDataToPayload = (
         : header.inv_date + 'T00:00:00Z',
       discount: header.discount || 0,
       discount_reason: header.discount_reason?.trim() || null,
+      // The reason as the form holds it now; the save sends it only when a line has a zero charge.
+      zero_charge_reason: zeroChargeReason(header, items).trim() || null,
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,

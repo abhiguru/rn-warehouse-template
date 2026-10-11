@@ -159,6 +159,7 @@ export const errors: Translation<typeof source> = {
     invoiceCustomerMismatch: 'ઇન્વૉઇસનો વેપારી અને આવક પાવતીનો વેપારી એક નથી.',
     discountTooLarge: 'છૂટ ઇન્વૉઇસની રકમ કરતાં વધારે છે.',
     discountReasonRequired: 'છૂટનું કારણ લખો.',
+    zeroChargeReasonRequired: 'શૂન્ય ભાડાનું કારણ લખો.',
     mobileInvalid: '૧૦ આંકડાનો ભારતીય મોબાઇલ નંબર લખો.',
     customerAssignmentRequired: 'પહેલાં ઓછામાં ઓછો એક વેપારી સોંપો.',
     grnAlreadyInvoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ પહેલેથી બની ગયું છે. તમે કામ કરતા હતા ત્યારે કોઈએ તે સાચવ્યું હોઈ શકે. ઇન્વૉઇસની યાદી તપાસો.',
