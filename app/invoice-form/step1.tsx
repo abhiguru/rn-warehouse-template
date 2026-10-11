@@ -268,7 +268,9 @@ export default function InvoiceFormStep1() {
               ? tr('invoice.form.gettingNumber')
               : nextNumberFailed
                 ? tr('invoice.form.numberUnavailable')
-                : tr('invoice.form.numberHelp')}
+                : header.inv_no_typed
+                  ? tr('invoice.form.numberTyped')
+                  : tr('invoice.form.numberHelp')}
           </Text>
         </View>
 

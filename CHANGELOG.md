@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — hint under a typed invoice number (2026-10-11)
+
+- New invoice, step 1: under a number the user typed over the suggestion the
+  hint said "The next number is filled in. You can change it." It now says
+  "You typed this number. Clear the field to get the next number." After a
+  lookup that failed the hint still asks for a typed number.
+  `src/tests/components/InvoiceNumberHint.test.tsx`. No backend change.
+
 ## Unreleased — owner decisions of 2026-10-11
 
 Needs backend migration 48 (owner decisions of 2026-10-11) for the invoice

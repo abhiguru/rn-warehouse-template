@@ -58,6 +58,7 @@ export const invoice = {
     generating: 'Generating…',
     gettingNumber: 'Getting the next invoice number…',
     numberHelp: 'The next number is filled in. You can change it.',
+    numberTyped: 'You typed this number. Clear the field to get the next number.',
     numberUnavailable: "Couldn't get the next number. Type the invoice number.",
     numberFailedTitle: "Couldn't get an invoice number",
     selectGrn: 'Select GRN',

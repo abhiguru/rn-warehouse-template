@@ -61,6 +61,7 @@ export const invoice: Translation<typeof source> = {
     generating: 'નંબર બની રહ્યો છે…',
     gettingNumber: 'આગળનો ઇન્વૉઇસ નંબર લાવી રહ્યા છીએ…',
     numberHelp: 'આગળનો નંબર ભરી દીધો છે. તમે તે બદલી શકો છો.',
+    numberTyped: 'આ નંબર તમે લખ્યો છે. આગળનો નંબર મેળવવા તેને ભૂંસી નાખો.',
     numberUnavailable: 'આગળનો નંબર મળી શક્યો નથી. ઇન્વૉઇસ નંબર જાતે લખો.',
     numberFailedTitle: 'ઇન્વૉઇસ નંબર મળી શક્યો નથી',
     selectGrn: 'આવક પાવતી પસંદ કરો',
