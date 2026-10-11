@@ -56,3 +56,20 @@ test('every Dependabot ignore entry names the update types it ignores', () => {
   }
   assert.doesNotMatch(dependabot, /^\s+versions:/m);
 });
+
+// A self-hosted label written into a workflow would leave that job waiting for
+// ever in every fork. The one job that may run on such a runner takes it from a
+// repository variable and falls back to a hosted runner.
+test('no workflow names a self-hosted runner; the Android artifact job takes its runner from a repository variable', () => {
+  let count = 0;
+  for (const [file, lines] of workflows) {
+    for (const line of lines.filter(text => /^\s*runs-on:/.test(text))) {
+      assert.doesNotMatch(line, /self-hosted/, `${file}: ${line.trim()}`);
+      count += 1;
+    }
+  }
+  assert.ok(count >= 5, 'the jobs were read');
+  const ci = workflows.find(([file]) => file === 'ci.yml')[1].join('\n');
+  const job = ci.slice(ci.indexOf('\n  android-artifact:\n') + 1).split(/\n {2}[a-z-]+:\n/)[0];
+  assert.match(job, /\n {4}runs-on: \$\{\{ fromJSON\(vars\.ANDROID_ARTIFACT_RUNNER \|\| '"ubuntu-latest"'\) \}\}\n/);
+});
