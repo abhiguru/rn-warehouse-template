@@ -64,6 +64,7 @@ export type RoleGatedScreen =
   | 'operationsDashboard'
   | 'itemPricing'
   | 'itemPricingWrite'
+  | 'itemPriceHistory'
   | 'sensors'
   | 'userManagement'
   | 'enrollmentReview'
@@ -78,6 +79,9 @@ export function canOpenScreen(role: string | null | undefined, screen: RoleGated
     case 'operationsDashboard':
     case 'userManagement':
     case 'masterData':
+    case 'itemPriceHistory':
+      // The price history too: staff change prices, but the server gives the record of the
+      // changes to managers only (get_item_price_history, migration 48).
       return isManager(role);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';

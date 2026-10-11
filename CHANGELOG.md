@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — price history screen (2026-10-11)
+
+Needs backend migration 48 (`get_item_price_history`), which is in backend
+release v0.4.0. Against an older backend the screen shows "Couldn't load the
+price history".
+
+- New read-only screen **Price history** (`app/item-price-history.tsx`) for
+  administrators and supervisors, opened with the **History** action in the
+  header of Item pricing. Staff and customer accounts are not offered the
+  action, a link to the route sends them home (`itemPriceHistory` in
+  `src/config/roles.ts`, `item-price-history` in
+  `src/navigation/routeAccess.ts`), and the server refuses them.
+- Newest first, 50 at a time, more on reaching the end of the list, pull to
+  refresh. Each entry shows what happened (Price added, Price changed, Price
+  deleted, All prices removed), the item, the customer or "Default price", the
+  date and time, and who made the change with the role ("Not an app user" for
+  a change made with the service key or in the database).
+- A changed price lists only the values that differ, old then new; an added
+  price lists its values and a deleted price the values it had; "All prices
+  removed" says how many. Labels and formats are those of the price form and
+  card. The server keeps a price in `unit_price` and again in the column of
+  its kind: the screen shows that as one value, "Monthly price" or "One-time
+  price" (`src/features/item-pricing/utils/priceHistory.ts`).
+- `getItemPriceHistory` in `src/services/item-pricing-service.ts`. English and
+  Gujarati text under `pricing.history`; the Gujarati is a draft for the
+  owner's wording review.
+
 ## Unreleased — the Android artifact CI job can run on a self-hosted runner (2026-10-11)
 
 CI only; the app does not change.

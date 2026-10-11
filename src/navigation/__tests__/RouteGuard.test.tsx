@@ -201,6 +201,8 @@ describe('signed in', () => {
     ['customer', 'items', ['items']],
     ['customer', 'item-pricing', ['item-pricing']],
     ['customer', 'sensors', ['sensors']],
+    ['customer', 'item-price-history', ['item-price-history']],
+    ['staff', 'item-price-history', ['item-price-history']],
     ['staff', 'customers', ['customers']],
     ['staff', 'users', ['users']],
     ['staff', 'reports/operations-dashboard', ['reports', 'operations-dashboard']],

@@ -104,6 +104,34 @@ export const pricing: Translation<typeof source> = {
     checkFieldsTitle: 'લાલ નિશાનીવાળી વિગતો તપાસો',
     fixFields: { one: '{{count}} વિગત સુધારો.', other: '{{count}} વિગતો સુધારો.' },
   },
+  // The record of price changes (administrators and supervisors; backend migration 48).
+  history: {
+    open: 'ઇતિહાસ',
+    title: 'દરનો ઇતિહાસ',
+    loadingLabel: 'દરનો ઇતિહાસ લોડ થઈ રહ્યો છે',
+    loadingMoreLabel: 'દરના વધુ ફેરફાર લોડ થઈ રહ્યા છે',
+    loadErrorTitle: 'દરનો ઇતિહાસ લોડ કરી શકાયો નથી',
+    loadMoreFailed: 'દરના વધુ ફેરફાર લોડ કરી શકાયા નથી.',
+    emptyTitle: 'હજુ દરમાં કોઈ ફેરફાર નથી',
+    emptySubtitle: 'ઉમેરેલા, બદલેલા અને ડિલીટ કરેલા દર અહીં દેખાશે.',
+    // What happened, by the stored action.
+    action: {
+      insert: 'દર ઉમેરાયો',
+      update: 'દર બદલાયો',
+      delete: 'દર ડિલીટ થયો',
+      truncate: 'બધા દર કાઢી નખાયા',
+    },
+    defaultPrice: 'મૂળ દર',
+    deletedItem: 'ડિલીટ થયેલી આઇટમ',
+    deletedCustomer: 'ડિલીટ થયેલો વેપારી',
+    nameWithRole: '{{name}} ({{role}})',
+    notAppUser: 'ઍપનો યુઝર નથી',
+    noValuesChanged: 'કોઈ વિગત બદલાઈ નથી',
+    pricesRemoved: { one: '{{count}} દર કાઢી નખાયો', other: '{{count}} દર કાઢી નખાયા' },
+    percentValue: '{{percent}}%',
+    // Read by a screen reader for one changed value.
+    changeLabel: '{{label}}: {{old}} બદલાઈને {{new}}',
+  },
   validation: {
     itemRequired: 'આઇટમ પસંદ કરો.',
     unitPrice: 'શૂન્ય અથવા તેથી વધુ દર લખો.',

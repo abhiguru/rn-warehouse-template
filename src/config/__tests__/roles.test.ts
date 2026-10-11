@@ -49,13 +49,15 @@ describe('role by screen', () => {
     'userManagement',
     'enrollmentReview',
     'masterData',
+    'itemPriceHistory',
   ];
   it.each([
-    ['admin', [true, true, true, true, true, true, true]],
-    ['supervisor', [true, true, true, true, true, false, true]],
-    ['staff', [false, true, true, true, false, false, false]],
-    ['customer', [false, false, false, false, false, false, false]],
-    [null, [false, false, false, false, false, false, false]],
+    ['admin', [true, true, true, true, true, true, true, true]],
+    ['supervisor', [true, true, true, true, true, false, true, true]],
+    // Staff change prices but do not read the record of the changes (server migration 48).
+    ['staff', [false, true, true, true, false, false, false, false]],
+    ['customer', [false, false, false, false, false, false, false, false]],
+    [null, [false, false, false, false, false, false, false, false]],
   ])('%s', (role, expected) => {
     expect(SCREENS.map((screen) => canOpenScreen(role, screen))).toEqual(expected);
   });

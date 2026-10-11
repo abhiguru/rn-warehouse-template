@@ -92,6 +92,8 @@ const ItemPricingScreen: React.FC = () => {
     () => canOpenScreen(userProfile?.role, 'itemPricingWrite'),
     [userProfile]
   );
+  // The record of price changes is for administrators and supervisors (server migration 48).
+  const canSeeHistory = canOpenScreen(userProfile?.role, 'itemPriceHistory');
 
   // Toggle section expansion (item group) - accordion style, only one open at a time
   const toggleSectionExpansion = useCallback((itemId: string) => {
@@ -449,6 +451,17 @@ const ItemPricingScreen: React.FC = () => {
           </Text>
         </View>
         <View style={styles.headerActions}>
+          {showActions && canSeeHistory && (
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => router.push('/item-price-history')}
+              accessibilityRole="button"
+              accessibilityLabel={tr('pricing.history.open')}
+              testID="item-pricing-history"
+            >
+              <Icon name="history" size={iconSize.lg} color={t.brand.tint} />
+            </Pressable>
+          )}
           {showActions && canManagePrices() && (
             <Pressable
               style={styles.iconButton}
