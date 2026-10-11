@@ -321,9 +321,14 @@ const invoiceFormSlice = createSlice({
         saved_discount_reason: state.header.saved_discount_reason,
         discount_reason_edited: state.header.discount_reason_edited,
       };
-      // The reason for a zero charge is the person's text (or the stored one of
-      // an invoice being edited): it is not lost with the lines of the GRN before.
-      const preservedZeroChargeReason = state.header.zero_charge_reason;
+      // The reason for a zero charge is about the goods of one GRN. It stays
+      // with an invoice that is being edited (the stored reason, or the text
+      // written in this edit) and when the same GRN is loaded again. In a new
+      // invoice it goes with the GRN it was written for: carried over, it would
+      // meet the staff rule for the next GRN's free lines with text about
+      // other goods.
+      const keepsZeroChargeReason = state.invoice_id !== null || state.selected_gr_id === action.payload.grId;
+      const preservedZeroChargeReason = keepsZeroChargeReason ? state.header.zero_charge_reason : undefined;
 
       // The lines carry the GRN's pricing mode (`one_time`) and their amounts
       // are worked out here as the server works them out. The header flag only

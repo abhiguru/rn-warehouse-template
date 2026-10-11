@@ -344,7 +344,7 @@ describe('the reason for a zero charge', () => {
     expect(needed(state)).toBe(true);
   });
 
-  it('keeps the reason when another GRN is chosen', () => {
+  it('keeps the reason of an invoice that is being edited, also when another GRN is loaded into it', () => {
     let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: 'Agreed with the owner' }));
     state = reducer(state, slice.loadInvoiceFormData({
       grId: 'gr2',
@@ -370,6 +370,45 @@ describe('the reason for a zero charge', () => {
     state = setCharge(state, FREE, 0);
     expect(reason(state)).toBe('Sample lot');
     expect(needed(state)).toBe(false);
+  });
+
+  // A reason is about the goods of one GRN. In a new invoice it must not meet
+  // the staff rule for the lines of the GRN chosen after it.
+  describe('in a new invoice, when another GRN is chosen', () => {
+    const grn = (grId: string, grNo: string, id: string) => slice.loadInvoiceFormData({
+      grId,
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: grId, gr_no: grNo },
+      items: [{ ...line(id, 0), temp_id: `temp_${id}_0`, one_time: false } as InvoiceItemData],
+    });
+    const withReasonForGrnA = () => {
+      const state = reducer(undefined, grn('gr1', 'A0010', 'aaaaaaaa'));
+      return reducer(state, slice.updateHeader({ zero_charge_reason: 'Sample lot' }));
+    };
+
+    it('the reason written for the GRN before is not carried over: staff are asked again', () => {
+      const state = reducer(withReasonForGrnA(), grn('gr2', 'A0011', 'cccccccc'));
+
+      expect(state.header.gr_id).toBe('gr2');
+      expect(reason(state)).toBe('');
+      expect(needed(state)).toBe(true);
+      expect(needed(state, 'admin')).toBe(false);
+    });
+
+    it('the reason stays when the same GRN is loaded again', () => {
+      const state = reducer(withReasonForGrnA(), grn('gr1', 'A0010', 'aaaaaaaa'));
+
+      expect(reason(state)).toBe('Sample lot');
+      expect(needed(state)).toBe(false);
+    });
+
+    it('the discount and its reason still stay with the form, as before', () => {
+      let state = reducer(withReasonForGrnA(), slice.updateDiscount(25));
+      state = reducer(state, slice.updateHeader({ discount_reason: 'Old customer' }));
+      state = reducer(state, grn('gr2', 'A0011', 'cccccccc'));
+
+      expect(state.header).toMatchObject({ discount: 25, discount_reason: 'Old customer' });
+      expect(reason(state)).toBe('');
+    });
   });
 
   it('is gone with the form when the form is reset', () => {

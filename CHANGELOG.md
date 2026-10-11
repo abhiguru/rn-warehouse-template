@@ -93,6 +93,11 @@ Zero charge with a reason (decision 3) — backend migration 48
   of such an invoice, also when someone else made the line free, and takes an
   empty reason from an administrator or supervisor as "remove it". The app
   never clears the text itself; erasing it is the user's doing.
+- New invoice: the reason belongs to the GRN it was written for. When another
+  GRN is chosen in the same form the reason field starts empty again (it used
+  to keep the text, which then met the staff rule for the new GRN's free lines
+  with a reason about other goods). Choosing the same GRN again keeps it; so
+  does an invoice that is being edited.
 - The server's refusal "Enter a reason for the zero charge" is shown in
   Gujarati as its own sentence.
 - Group rates no longer undo a free line. On the items step a group field
