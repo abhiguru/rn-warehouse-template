@@ -59,17 +59,11 @@ import {
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 
+import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { calculateFinancialYear } from '@/utils/invoiceCalculations';
-
-/** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
-function describeValidationErrors(errors: Record<string, string>): string {
-  const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
-  if (messages.length === 0) return t('invoice.form.fillRequired');
-  return messages.slice(0, 5).join('\n');
-}
 
 export type InvoiceFormMode = 'create' | 'edit';
 

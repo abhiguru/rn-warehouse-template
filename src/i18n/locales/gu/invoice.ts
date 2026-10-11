@@ -106,7 +106,6 @@ export const invoice: Translation<typeof source> = {
     itemsToInvoice: 'ઇન્વૉઇસ માટેની આઇટમ',
     itemsToInvoiceA11y: { one: 'ઇન્વૉઇસ માટે {{count}} આઇટમ', other: 'ઇન્વૉઇસ માટે {{count}} આઇટમ' },
     checkPricesTitle: 'આઇટમના દર તપાસો',
-    checkPricesMessage: 'દરેક આઇટમની મુદત ૦ થી વધુ હોવી જોઈએ.',
     checkRateMessage: 'દરના એક ખાનામાં લખેલો આંકડો સ્વીકારાયો નથી. તે સુધારો, પછી આગળ વધો.',
     // A charge of 0 is allowed (with a reason, on the review step); a duration of 0 is not.
     zeroDuration: {

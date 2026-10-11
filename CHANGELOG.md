@@ -67,9 +67,15 @@ Invoice number per financial year (decision 2) — backend migration 48
 Zero charge with a reason (decision 3) — backend migration 48
 - An invoice line may have a storage charge of 0. The items step of a new
   invoice and of an edit no longer refuses such a line. A duration of 0 is
-  still refused, and the two messages now speak of the duration only: "1 item
-  has a duration of 0. The duration must be greater than 0." and "Every item
-  needs a duration greater than 0."
+  still refused, in a new invoice and in an edit, with a message that speaks
+  of the duration only: "1 item has a duration of 0. The duration must be
+  greater than 0."
+- Edit, items step: every other failure of the items check is reported in its
+  own words ("Duration must be at least 0.5 months", "Days cannot be
+  negative", "Tax cannot exceed 100%", ...), each once, as the new-invoice
+  form does. The edit form used to answer all of them with one fixed sentence
+  about the duration, which named a rule the line already met. That sentence
+  (`invoice.items.checkPricesMessage`) is removed.
 - Review step (new invoice and edit): while a line has a charge of 0 the
   summary shows "Reason for zero charge" under the discount reason, built the
   same way (500 characters, several lines). Staff must fill it in: the label

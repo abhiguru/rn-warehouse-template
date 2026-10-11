@@ -25,6 +25,7 @@ import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTab
 import type { GroupRates } from '@/types/invoice.types';
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { validateStep2 } from '@/features/invoice/schemas/invoiceValidation';
+import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
   STEP_NUMBERS,
@@ -75,19 +76,9 @@ export default function InvoiceEditStep2() {
       return;
     }
 
-    // Validate items
-    const validation = await validateStep2(items);
-
-    if (!validation.isValid) {
-      setLocalValidationErrors(validation.errors);
-      dispatch(setValidationErrors(validation.errors));
-
-      showAlert(tr('invoice.items.checkPricesTitle'), tr('invoice.items.checkPricesMessage'));
-      return;
-    }
-
     // A charge of 0 is allowed; its reason is asked for on the review step.
     // A line without a duration is not: it would be charged for no time at all.
+    // Asked first, as in a new invoice, so the message counts the lines.
     const invalidItems = items.filter((item) => item.duration === 0);
 
     if (invalidItems.length > 0) {
@@ -95,6 +86,18 @@ export default function InvoiceEditStep2() {
         tr('invoice.items.checkPricesTitle'),
         tr('invoice.items.zeroDuration', { count: invalidItems.length })
       );
+      return;
+    }
+
+    // Everything else the items check refuses (a duration under half a month,
+    // days below 0, a rate out of range) is reported in its own words.
+    const validation = await validateStep2(items);
+
+    if (!validation.isValid) {
+      setLocalValidationErrors(validation.errors);
+      dispatch(setValidationErrors(validation.errors));
+
+      showAlert(tr('invoice.items.checkPricesTitle'), describeValidationErrors(validation.errors));
       return;
     }
 

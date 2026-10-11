@@ -103,7 +103,6 @@ export const invoice = {
     itemsToInvoice: 'Items to invoice',
     itemsToInvoiceA11y: { one: '{{count}} item to invoice', other: '{{count}} items to invoice' },
     checkPricesTitle: 'Check the item prices',
-    checkPricesMessage: 'Every item needs a duration greater than 0.',
     checkRateMessage: 'A rate field holds a value that was not accepted. Correct it, then continue.',
     // A charge of 0 is allowed (with a reason, on the review step); a duration of 0 is not.
     zeroDuration: {

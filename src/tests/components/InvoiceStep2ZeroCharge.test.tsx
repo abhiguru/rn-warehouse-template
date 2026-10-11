@@ -9,6 +9,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import invoiceFormReducer, { loadInvoiceEditData, resetForm } from '@/store/slices/invoiceFormSlice';
 import { showAlert } from '@/utils/alert';
+import { setLanguage } from '@/i18n/language';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import InvoiceFormStep2 from '../../../app/invoice-form/step2';
 import InvoiceEditStep2 from '../../../app/invoice-edit/[id]/step2';
@@ -176,8 +177,51 @@ describe('invoice edit, items step', () => {
     await pressNext(tree);
 
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(showAlert).toHaveBeenCalledWith('Check the item prices', 'Every item needs a duration greater than 0.');
+    // The same sentence as in a new invoice, with the number of lines.
+    expect(showAlert).toHaveBeenCalledWith('Check the item prices', '1 item has a duration of 0. The duration must be greater than 0.');
     expect(router.push).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
+  });
+
+  // Every other failure of the items check used to be answered with "Every
+  // item needs a duration greater than 0.", a rule the line already met.
+  it.each([
+    ['a duration under half a month', { duration: 0.3 }, 'Duration must be at least 0.5 months'],
+    ['days below 0', { no_of_days: -1 }, 'Days cannot be negative'],
+    ['a tax above 100%', { tax: 150 }, 'Tax cannot exceed 100%'],
+    ['a charge out of range', { charge: 1000000 }, 'Charge is too large'],
+  ])('stops for %s and says what is wrong with it', async (_what, overrides, message) => {
+    load([line('aaaaaaaa', overrides), line('bbbbbbbb')]);
+    const tree = await render(<InvoiceEditStep2 />);
+
+    await pressNext(tree);
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith('Check the item prices', message);
+    expect(router.push).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('names each kind of failure once when several lines fail', async () => {
+    load([line('aaaaaaaa', { duration: 0.3 }), line('bbbbbbbb', { duration: 0.2, tax: 150 }), line('cccccccc')]);
+    const tree = await render(<InvoiceEditStep2 />);
+
+    await pressNext(tree);
+
+    expect(showAlert).toHaveBeenCalledWith('Check the item prices', 'Duration must be at least 0.5 months\nTax cannot exceed 100%');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('says it in Gujarati', async () => {
+    load([line('aaaaaaaa', { duration: 0.3 })]);
+    const tree = await render(<InvoiceEditStep2 />);
+
+    // The message is worded when Next is pressed, in the language of that moment.
+    setLanguage('gu');
+    await pressNext(tree);
+
+    expect(showAlert).toHaveBeenCalledWith('આઇટમના દર તપાસો', 'મુદત ઓછામાં ઓછી ૦.૫ મહિના હોવી જોઈએ');
+    await act(async () => { tree.unmount(); });
+    setLanguage('en');
   });
 });
