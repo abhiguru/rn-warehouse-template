@@ -1,5 +1,6 @@
 import { deleteWarehouseImage } from '@/services/imageDeletion';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { compressPhoto, PHOTO_PROCESSING_FAILED } from '@/utils/photoCompression';
 import { File } from 'expo-file-system';
 import {
   getSupabaseWithJWT,
@@ -20,6 +21,9 @@ import { isTemporaryGRNImageId } from './imageId';
 import { formatNumber } from '@/utils/formatters';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn-photos');
 
 export interface ImageUploadProgress {
   loaded: number;
@@ -58,8 +62,9 @@ export interface ImageMetadata {
 const IMAGE_COMPRESSION_SETTINGS = {
   compress: 0.6,
   format: ImageManipulator.SaveFormat.WEBP,
-  maxWidth: 1280,
-  maxHeight: 1280,
+  maxEdge: 1280,
+  // Some devices cannot write WebP; the photo is then written as JPEG.
+  fallbackFormat: ImageManipulator.SaveFormat.JPEG,
 };
 
 // Maximum file size (10MB)
@@ -75,7 +80,7 @@ const imageToBase64 = async (uri: string): Promise<string> => {
     const base64 = await file.base64();
     return base64;
   } catch (error) {
-    console.error('[ImageService] Error converting image to base64:', error);
+    log.error('Error converting image to base64', loggableError(error));
     throw new Error('Failed to read image file');
   }
 };
@@ -108,55 +113,8 @@ const imageToArrayBuffer = async (
 
     return { buffer: arrayBuffer, size: arrayBuffer.byteLength };
   } catch (error) {
-    console.error(
-      '[ImageService] Error converting image to ArrayBuffer:',
-      error
-    );
+    log.error('Error converting image to ArrayBuffer', loggableError(error));
     throw new Error('Failed to read image file');
-  }
-};
-
-/**
- * Compress image before upload to reduce file size
- */
-const compressImage = async (
-  uri: string
-): Promise<{ uri: string; fileSize: number }> => {
-  try {
-    const manipulatedImage = await ImageManipulator.manipulateAsync(
-      uri,
-      [
-        {
-          resize: {
-            width: IMAGE_COMPRESSION_SETTINGS.maxWidth,
-            height: IMAGE_COMPRESSION_SETTINGS.maxHeight,
-          },
-        },
-      ],
-      {
-        compress: IMAGE_COMPRESSION_SETTINGS.compress,
-        format: IMAGE_COMPRESSION_SETTINGS.format,
-      }
-    );
-
-    // Get file size (approximate)
-    const response = await fetch(manipulatedImage.uri);
-    const blob = await response.blob();
-    const fileSize = blob.size;
-
-    return {
-      uri: manipulatedImage.uri,
-      fileSize: fileSize,
-    };
-  } catch (error) {
-    console.error('[ImageService] Error compressing image:', error);
-    // Fallback to original image
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return {
-      uri: uri,
-      fileSize: blob.size,
-    };
   }
 };
 
@@ -211,7 +169,12 @@ export const uploadGRNImage = async (
     }
 
     // Compress image
-    const { uri: compressedUri, fileSize } = await compressImage(asset.uri);
+    const {
+      uri: compressedUri,
+      fileSize,
+      mimeType: contentType,
+      extension,
+    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS);
 
     // Check compressed file size
     if (fileSize > MAX_FILE_SIZE) {
@@ -221,10 +184,9 @@ export const uploadGRNImage = async (
       };
     }
 
-    // Determine content type (always WebP after compression for better compression)
-    const contentType = 'image/webp';
+    // The name follows the format that was really written.
     const fileName =
-      asset.fileName?.replace(/\.[^/.]+$/, '.webp') || 'image.webp';
+      asset.fileName?.replace(/\.[^/.]+$/, extension) || `image${extension}`;
 
     // Check for temporary GRN ID BEFORE making RPC call - skip RPC entirely for temp IDs
     if (grnId.startsWith('temp_grn_')) {
@@ -271,7 +233,7 @@ export const uploadGRNImage = async (
     );
 
     if (regError) {
-      console.error('[ImageService] Registration failed:', regError);
+      log.error('Registration failed', loggableError(regError));
       return {
         success: false,
         error: serverText(regError.message, t('grn.upload.registerFailed')),
@@ -279,7 +241,7 @@ export const uploadGRNImage = async (
     }
 
     if (!regResult?.success) {
-      console.error('[ImageService] Registration rejected:', regResult?.error);
+      log.error('Registration rejected');
       return {
         success: false,
         error: serverText(regResult?.error, t('grn.upload.registrationRejected')),
@@ -316,7 +278,7 @@ export const uploadGRNImage = async (
       const uploadDuration = Date.now() - startTime;
 
       if (uploadError) {
-        console.error('[ImageService] Storage upload failed:', uploadError);
+        log.error('Storage upload failed', loggableError(uploadError));
         throw uploadError;
       }
 
@@ -336,15 +298,12 @@ export const uploadGRNImage = async (
       );
 
       if (confirmError) {
-        console.error('[ImageService] Confirmation failed:', confirmError);
+        log.error('Confirmation failed', loggableError(confirmError));
         throw confirmError;
       }
 
       if (!confirmResult?.success) {
-        console.error(
-          '[ImageService] Confirmation rejected:',
-          confirmResult?.error
-        );
+        log.error('Confirmation rejected');
         throw new Error(
           serverText(confirmResult?.error, t('grn.upload.confirmationFailed'))
         );
@@ -357,7 +316,7 @@ export const uploadGRNImage = async (
 
       let finalImageUrl: string;
       if (urlError || !urlData?.signedUrl) {
-        console.warn('[ImageService] Could not create signed URL:', urlError);
+        log.warn('Could not create signed URL', loggableError(urlError));
         // Use direct storage URL as fallback
         finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${storagePath}`;
       } else {
@@ -383,27 +342,18 @@ export const uploadGRNImage = async (
       };
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
-      console.error(
-        '[ImageService] Upload/confirm failed, rolling back:',
-        uploadOrConfirmError
-      );
+      log.error('Upload/confirm failed, rolling back', loggableError(uploadOrConfirmError));
 
       try {
         await supabase.rpc('cancel_grn_image_upload', { p_image_id: imageId });
       } catch (cancelError) {
-        console.warn(
-          '[ImageService] Failed to cancel pending record:',
-          cancelError
-        );
+        log.warn('Failed to cancel pending record', loggableError(cancelError));
       }
 
       try {
         await supabase.storage.from('grn-images').remove([storagePath]);
       } catch (removeError) {
-        console.warn(
-          '[ImageService] Failed to remove partial upload:',
-          removeError
-        );
+        log.warn('Failed to remove partial upload', loggableError(removeError));
       }
 
       return {
@@ -415,14 +365,17 @@ export const uploadGRNImage = async (
       };
     }
   } catch (error) {
-    console.error('[ImageService] Upload exception:', error);
+    log.error('Upload exception', loggableError(error));
 
     let errorMessage = t('grn.photos.uploadFailed');
     if (error instanceof Error) {
       if (error.message.includes('Network request failed')) {
         errorMessage =
           t('grn.upload.networkFailed');
-      } else if (error.message.includes('Failed to read image')) {
+      } else if (
+        error.message.includes('Failed to read image') ||
+        error.message === PHOTO_PROCESSING_FAILED
+      ) {
         errorMessage =
           t('grn.upload.processFailed');
       } else {
@@ -511,16 +464,16 @@ export const getImageSignedUrl = async (
       if (attempt < 3) {
         await new Promise(resolve => setTimeout(resolve, attempt * 500));
       } else {
-        console.error('[ImageService] Final signed URL attempt failed:', error);
+        log.error('Final signed URL attempt failed', loggableError(error));
       }
     }
 
     // Fallback to direct storage URL
     const baseUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${filePath}`;
-    console.warn('[ImageService] Using fallback direct storage URL:', baseUrl);
+    log.warn('Using fallback direct storage URL');
     return baseUrl;
   } catch (error) {
-    console.error('[ImageService] Error getting signed URL:', error);
+    log.error('Error getting signed URL', loggableError(error));
     return filePath; // Fallback to original path
   }
 };
@@ -535,7 +488,7 @@ export const getImagePublicUrl = (filePath: string): string => {
     // In the future, if we store only paths, we can generate URLs here
     return filePath;
   } catch (error) {
-    console.error('[ImageService] Error getting public URL:', error);
+    log.error('Error getting public URL', loggableError(error));
     return filePath; // Fallback to original path
   }
 };
@@ -574,142 +527,6 @@ export const validateImageFile = (
 };
 
 /**
- * Save image metadata to database after GRN creation
- * This is used for images uploaded with temporary GRN IDs
- */
-export const saveImageMetadataAfterGRN = async (
-  grnId: string,
-  imageData: GRNImageData,
-  imageType: 'header' | 'item',
-  itemId?: string
-): Promise<{ success: boolean; imageId?: string; error?: string }> => {
-  try {
-    if (!imageData.storagePath) {
-      throw new Error('Storage path is required to save metadata');
-    }
-
-    const supabase = await getSupabaseWithJWT();
-
-    // Check if we have a non-temp ID that needs to be passed to the RPC
-    const hasExistingId = imageData.id && !isTemporaryGRNImageId(imageData.id);
-
-    // Always use the RPC function which should handle user authentication properly
-
-    // Build RPC parameters
-    const rpcParams: any = {
-      p_grn_id: grnId,
-      p_storage_path: imageData.storagePath,
-      p_image_type: imageType,
-      p_grn_item_id: itemId || null,
-      p_file_size: imageData.fileSize || 0, // Default to 0 if undefined
-      p_original_filename: imageData.fileName,
-      p_mime_type: imageData.mimeType || 'image/webp', // Default to webp if undefined
-    };
-
-    // Add image ID if it exists (backend needs to support this parameter)
-    if (hasExistingId) {
-      rpcParams.p_image_id = imageData.id;
-    }
-
-    const { data: metadataResult, error: metadataError } = await (
-      await getAuthenticatedClient()
-    ).rpc('upload_grn_image', rpcParams);
-
-    if (metadataError) {
-      console.error('[ImageService] Metadata save error:', metadataError);
-      return {
-        success: false,
-        error: serverText(metadataError.message, t('grn.upload.metadataFailed')),
-      };
-    }
-
-    return {
-      success: true,
-      imageId: metadataResult?.image_id || metadataResult?.id,
-    };
-  } catch (error) {
-    console.error('[ImageService] Save metadata exception:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : t('grn.upload.metadataFailedShort'),
-    };
-  }
-};
-
-/**
- * Save all pending image metadata after GRN creation
- */
-export const savePendingImageMetadata = async (
-  grnId: string,
-  headerImages: GRNImageData[],
-  itemImages: Array<{ itemId: string; image: GRNImageData }>
-): Promise<{ success: boolean; errors: string[] }> => {
-  const errors: string[] = [];
-
-  try {
-    if (__DEV__) {
-      /* No action needed. */
-    }
-
-    // Save header images
-    for (const image of headerImages) {
-      if (image.storagePath && isTemporaryGRNImageId(image.id)) {
-        // If the ID has temp_edit_ prefix, extract the original ID
-        const imageToSave = { ...image };
-        if (image.id?.startsWith('temp_edit_')) {
-          imageToSave.id = image.id.replace('temp_edit_', '');
-        }
-        const result = await saveImageMetadataAfterGRN(
-          grnId,
-          imageToSave,
-          'header'
-        );
-
-        if (!result.success) {
-          errors.push(`Header image: ${result.error}`);
-        }
-      }
-    }
-
-    // Save item images
-    for (const { itemId, image } of itemImages) {
-      if (image.storagePath && isTemporaryGRNImageId(image.id)) {
-        // If the ID has temp_edit_ prefix, extract the original ID
-        const imageToSave = { ...image };
-        if (image.id?.startsWith('temp_edit_')) {
-          imageToSave.id = image.id.replace('temp_edit_', '');
-        }
-        const result = await saveImageMetadataAfterGRN(
-          grnId,
-          imageToSave,
-          'item',
-          itemId
-        );
-
-        if (!result.success) {
-          errors.push(`Item ${itemId} image: ${result.error}`);
-        }
-      }
-    }
-
-    return {
-      success: errors.length === 0,
-      errors,
-    };
-  } catch (error) {
-    console.error('[ImageService] Save pending metadata exception:', error);
-    return {
-      success: false,
-      errors: [
-        error instanceof Error
-          ? error.message
-          : 'Failed to save pending metadata',
-      ],
-    };
-  }
-};
-
-/**
  * Generate a temporary GRN ID for uploads before GRN creation
  */
 export const generateTempGRNId = (): string => {
@@ -740,7 +557,7 @@ const uploadSingleDeferredImage = async (
         fileBuffer = result.buffer;
         actualFileSize = result.size;
       } catch (sizeError) {
-        console.error(`[ImageService] Failed to get file size:`, sizeError);
+        log.error(`Failed to get file size`, loggableError(sizeError));
         return { success: false, error: t('grn.upload.readFailed') };
       }
     }
@@ -759,18 +576,12 @@ const uploadSingleDeferredImage = async (
     );
 
     if (regError) {
-      console.error(
-        `[ImageService] Registration failed for deferred ${imageType} image:`,
-        regError
-      );
+      log.error(`Registration failed for deferred ${imageType} image`, loggableError(regError));
       return { success: false, error: regError.message };
     }
 
     if (!regResult?.success) {
-      console.error(
-        `[ImageService] Registration rejected for deferred ${imageType} image:`,
-        regResult?.error
-      );
+      log.error(`Registration rejected for deferred ${imageType} image`);
       return {
         success: false,
         error: serverText(regResult?.error, t('grn.upload.registerFailed')),
@@ -802,10 +613,7 @@ const uploadSingleDeferredImage = async (
         });
 
       if (uploadError) {
-        console.error(
-          `[ImageService] Storage upload failed for deferred ${imageType} image:`,
-          uploadError
-        );
+        log.error(`Storage upload failed for deferred ${imageType} image`, loggableError(uploadError));
         throw uploadError;
       }
 
@@ -820,45 +628,30 @@ const uploadSingleDeferredImage = async (
       );
 
       if (confirmError) {
-        console.error(
-          `[ImageService] Confirmation failed for deferred ${imageType} image:`,
-          confirmError
-        );
+        log.error(`Confirmation failed for deferred ${imageType} image`, loggableError(confirmError));
         throw confirmError;
       }
 
       if (!confirmResult?.success) {
-        console.error(
-          `[ImageService] Confirmation rejected for deferred ${imageType} image:`,
-          confirmResult?.error
-        );
+        log.error(`Confirmation rejected for deferred ${imageType} image`);
         throw new Error(serverText(confirmResult?.error, t('grn.upload.confirmationFailed')));
       }
 
       return { success: true };
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
-      console.error(
-        `[ImageService] Upload/confirm failed for deferred ${imageType} image, rolling back:`,
-        uploadOrConfirmError
-      );
+      log.error(`Upload/confirm failed for deferred ${imageType} image, rolling back`, loggableError(uploadOrConfirmError));
 
       try {
         await supabase.rpc('cancel_grn_image_upload', { p_image_id: imageId });
       } catch (cancelError) {
-        console.warn(
-          `[ImageService] Failed to cancel pending record for deferred ${imageType} image:`,
-          cancelError
-        );
+        log.warn(`Failed to cancel pending record for deferred ${imageType} image`, loggableError(cancelError));
       }
 
       try {
         await supabase.storage.from('grn-images').remove([storagePath]);
       } catch (removeError) {
-        console.warn(
-          `[ImageService] Failed to remove partial upload for deferred ${imageType} image:`,
-          removeError
-        );
+        log.warn(`Failed to remove partial upload for deferred ${imageType} image`, loggableError(removeError));
       }
 
       return {
@@ -870,10 +663,7 @@ const uploadSingleDeferredImage = async (
       };
     }
   } catch (err) {
-    console.error(
-      `[ImageService] Error uploading deferred ${imageType} image:`,
-      err
-    );
+    log.error(`Error uploading deferred ${imageType} image`, loggableError(err));
     return {
       success: false,
       error: err instanceof Error ? err.message : t('grn.photos.uploadFailed'),
@@ -881,133 +671,181 @@ const uploadSingleDeferredImage = async (
   }
 };
 
+// ============================================================================
+// PHOTOS KEPT ON THE DEVICE UNTIL THE GRN IS SAVED
+// ============================================================================
+
 /**
- * Upload deferred images after GRN creation
- * This handles images that were selected with a temp GRN ID and need to be uploaded with the real GRN ID
- * Uses parallel uploads for better performance
+ * A photo picked in the GRN form. It stays on the device (a local file) until
+ * the GRN is saved, in create and in edit mode alike, so that discarding the
+ * form leaves the server as it was.
  */
-export const uploadDeferredImages = async (
-  realGrnId: string,
+export interface PendingGRNPhoto {
+  image: GRNImageData;
+  imageType: 'header' | 'item';
+  /** goodsreceived_trl id for an item photo; empty when the saved line could not be identified. */
+  itemId?: string;
+  /** Name of the line, to tell the user which photo this is. */
+  itemName?: string;
+  /** 1-based place among the photos picked for the GRN, or for that line. */
+  position: number;
+}
+
+/** A photo that did not reach the server. */
+export interface FailedGRNPhoto extends PendingGRNPhoto {
+  error?: string;
+  /**
+   * Set when the upload was still running when the wait ended. A retry waits
+   * for this same upload before it starts another, so a slow upload that lands
+   * late is not uploaded twice.
+   */
+  inFlight?: Promise<{ success: boolean; error?: string }>;
+}
+
+export interface GRNPhotoUploadOutcome {
+  uploadedCount: number;
+  failed: FailedGRNPhoto[];
+}
+
+/** How long a save waits for its photos before reporting the rest as not uploaded. */
+export const GRN_PHOTO_UPLOAD_WAIT_MS = 30000;
+
+/**
+ * A photo that exists only on the device and is ready to be uploaded: the
+ * prepared (re-encoded) local file, no storage path, no server id.
+ *
+ * Until its preparation has finished, and when it has failed, the entry still
+ * points at the original camera or gallery file, with its EXIF block. That file
+ * is never uploaded, so only a 'completed' entry counts.
+ */
+export const isDeferredGRNPhoto = (image: GRNImageData): boolean =>
+  image.uploadStatus === 'completed' &&
+  !!image.imageUrl &&
+  image.imageUrl.startsWith('file://') &&
+  !image.storagePath &&
+  isTemporaryGRNImageId(image.id);
+
+/**
+ * What keeps a form from being saved because of its photos: one that is still
+ * being prepared, or one whose preparation failed. Null when every photo is
+ * either on the server or prepared.
+ */
+export const unpreparedGRNPhotos = (
   headerImages: GRNImageData[],
-  items: Array<{ grn_trl_id: string; trl_images?: GRNImageData[] }>,
-  itemMapping?: Array<{ index: number; item_id: string; item_name: string }>
-): Promise<{ success: boolean; uploadedCount: number; errors: string[] }> => {
-  const errors: string[] = [];
-  let uploadedCount = 0;
+  lines: Array<{ images?: GRNImageData[] }>
+): 'preparing' | 'failed' | null => {
+  const local = [...headerImages, ...lines.flatMap(line => line.images || [])].filter(
+    image => !image.storagePath && isTemporaryGRNImageId(image.id)
+  );
+  if (local.some(image => image.uploadStatus === 'failed')) return 'failed';
+  if (local.some(image => image.uploadStatus !== 'completed')) return 'preparing';
+  return null;
+};
 
-  // Filter to only deferred images (have local file:// imageUrl but no storagePath)
-  // Also exclude images that already have a valid database ID (not temp_*) as they're already uploaded
-  const deferredHeaderImages = headerImages.filter(img => {
-    const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
-    const hasNoStoragePath = !img.storagePath;
-    const isNotAlreadyUploaded = isTemporaryGRNImageId(img.id);
+/**
+ * The photos of a form that still have to be uploaded.
+ * @param lines the saved lines, each with the id the server gave it
+ */
+export const collectDeferredGRNPhotos = (
+  headerImages: GRNImageData[],
+  lines: Array<{ itemId?: string; itemName?: string; images?: GRNImageData[] }>
+): PendingGRNPhoto[] => {
+  const photos: PendingGRNPhoto[] = headerImages
+    .filter(isDeferredGRNPhoto)
+    .map((image, index) => ({ image, imageType: 'header' as const, position: index + 1 }));
 
-    // Skip if image already has a real database ID (was already uploaded)
-    if (!isTemporaryGRNImageId(img.id)) {
-      return false;
-    }
-
-    return hasLocalUrl && hasNoStoragePath;
-  });
-  const deferredItemImages: Array<{ image: GRNImageData; itemId: string }> = [];
-
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
-    const item = items[itemIndex];
-    // Same logic as header images - exclude already-uploaded images
-    const itemImages = (item.trl_images || []).filter(img => {
-      const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
-      const hasNoStoragePath = !img.storagePath;
-
-      // Skip if image already has a real database ID
-      if (!isTemporaryGRNImageId(img.id)) {
-        return false;
-      }
-
-      return hasLocalUrl && hasNoStoragePath;
+  for (const line of lines) {
+    (line.images || []).filter(isDeferredGRNPhoto).forEach((image, index) => {
+      photos.push({
+        image,
+        imageType: 'item',
+        itemId: line.itemId,
+        itemName: line.itemName,
+        position: index + 1,
+      });
     });
-
-    // Get the real item ID from the mapping if available
-    let realItemId = item.grn_trl_id;
-    if (itemMapping && itemMapping[itemIndex]) {
-      realItemId = itemMapping[itemIndex].item_id;
-    }
-
-    for (const image of itemImages) {
-      deferredItemImages.push({ image, itemId: realItemId });
-    }
   }
 
-  const totalImages = deferredHeaderImages.length + deferredItemImages.length;
+  return photos;
+};
 
-  if (totalImages === 0) {
-    return { success: true, uploadedCount: 0, errors: [] };
+/**
+ * Upload photos to a saved GRN, in parallel, and report each one that did not
+ * arrive. Never throws.
+ *
+ * Pass the `failed` list of an earlier call to try those photos again.
+ */
+export const uploadGRNPhotos = async (
+  realGrnId: string,
+  photos: Array<PendingGRNPhoto | FailedGRNPhoto>,
+  waitMs: number = GRN_PHOTO_UPLOAD_WAIT_MS
+): Promise<GRNPhotoUploadOutcome> => {
+  if (photos.length === 0) {
+    return { uploadedCount: 0, failed: [] };
   }
+
+  const describe = ({ image, imageType, itemId, itemName, position }: PendingGRNPhoto): PendingGRNPhoto => ({
+    image,
+    imageType,
+    itemId,
+    itemName,
+    position,
+  });
 
   let finishMutation: (() => void) | undefined;
+  let supabase: Awaited<ReturnType<typeof getAuthenticatedClient>>;
   try {
     finishMutation = beginOperatorMutation();
-    const supabase = await getAuthenticatedClient();
-
-    // Upload all images in parallel for better performance
-    const uploadPromises: Promise<{
-      success: boolean;
-      error?: string;
-      type: string;
-    }>[] = [];
-
-    // Add header image uploads
-    for (const image of deferredHeaderImages) {
-      uploadPromises.push(
-        uploadSingleDeferredImage(supabase, realGrnId, image, 'header').then(
-          result => ({ ...result, type: `header:${image.fileName}` })
-        )
-      );
-    }
-
-    // Add item image uploads
-    for (const { image, itemId } of deferredItemImages) {
-      uploadPromises.push(
-        uploadSingleDeferredImage(
-          supabase,
-          realGrnId,
-          image,
-          'item',
-          itemId
-        ).then(result => ({ ...result, type: `item:${image.fileName}` }))
-      );
-    }
-
-    // Wait for all uploads to complete
-    const results = await Promise.all(uploadPromises);
-
-    // Count successes and collect errors
-    for (const result of results) {
-      if (result.success) {
-        uploadedCount++;
-      } else if (result.error) {
-        errors.push(`${result.type}: ${result.error}`);
-      }
-    }
-
-    return {
-      success: errors.length === 0,
-      uploadedCount,
-      errors,
-    };
+    supabase = await getAuthenticatedClient();
   } catch (error) {
-    console.error('[ImageService] uploadDeferredImages exception:', error);
-    return {
-      success: false,
-      uploadedCount,
-      errors: [
-        error instanceof Error
-          ? error.message
-          : 'Failed to upload deferred images',
-      ],
-    };
-  } finally {
     finishMutation?.();
+    log.error('uploadGRNPhotos could not start', loggableError(error));
+    return {
+      uploadedCount: 0,
+      failed: photos.map(photo => ({ ...describe(photo), error: t('grn.photos.uploadFailed') })),
+    };
   }
+
+  const attempts = photos.map(async (photo): Promise<{ success: boolean; error?: string }> => {
+    // An upload from an earlier try may still be running: its result counts.
+    const earlier = (photo as FailedGRNPhoto).inFlight;
+    if (earlier) {
+      const earlierResult = await earlier;
+      if (earlierResult.success) return earlierResult;
+    }
+    if (photo.imageType === 'item' && !photo.itemId) {
+      return { success: false, error: t('grn.upload.lineNotFound') };
+    }
+    // Only the prepared copy is ever sent, whatever list the caller built.
+    if (!isDeferredGRNPhoto(photo.image)) {
+      return { success: false, error: t('grn.upload.notPrepared') };
+    }
+    return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
+  });
+  // The uploads are not cancelled when the wait ends, so the mutation ends with them.
+  void Promise.all(attempts).then(() => finishMutation?.());
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>(resolve => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  const results = await Promise.all(attempts.map(attempt => Promise.race([attempt, deadline])));
+  if (timer !== undefined) clearTimeout(timer);
+
+  let uploadedCount = 0;
+  const failed: FailedGRNPhoto[] = [];
+  results.forEach((result, index) => {
+    if (result?.success) {
+      uploadedCount++;
+    } else if (result) {
+      failed.push({ ...describe(photos[index]), error: result.error });
+    } else {
+      log.warn('Photo upload still running when the wait ended');
+      failed.push({ ...describe(photos[index]), error: t('grn.upload.stillUploading'), inFlight: attempts[index] });
+    }
+  });
+
+  return { uploadedCount, failed };
 };
 
 // Note: imageToBase64 helper is defined at the top of this file

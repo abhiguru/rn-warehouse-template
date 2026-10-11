@@ -5,16 +5,28 @@ import { fileURLToPath } from 'node:url';
 import { securityBackports } from './patch-security-backports.mjs';
 import { isMain } from './is-main.mjs';
 
-const repairs = {
-  'GHSA-86w9-cpqp-85rv': { package: 'node-forge', range: '<=1.4.0' },
-  'GHSA-vfj7-8cjw-p6xm': { package: 'braces', range: '<=3.0.3' },
-  'GHSA-hp3w-g68c-fv3c': { package: 'sprintf-js', range: '<=1.1.3' },
+// The whole list of advisories this project accepts. Each one has no fixed
+// upstream release and is repaired in the installed source by
+// scripts/security-backports.json. An entry is accepted only for the named
+// package and affected range, only while every installed copy carries the
+// repair, and only until `reviewBy` (UTC date). After that day the gate fails
+// until someone checks upstream for a release and either removes the entry
+// with its backport or moves the date; see docs/DEPENDENCY_SECURITY.md.
+export const acceptedAdvisories = {
+  'GHSA-86w9-cpqp-85rv': { package: 'node-forge', range: '<=1.4.0', reviewBy: '2027-01-10', reason: 'RSA signature check backported from upstream PR 1152; no release has it' },
+  'GHSA-vfj7-8cjw-p6xm': { package: 'braces', range: '<=3.0.3', reviewBy: '2027-01-10', reason: 'local depth bound; no patched release' },
+  'GHSA-hp3w-g68c-fv3c': { package: 'sprintf-js', range: '<=1.1.3', reviewBy: '2027-01-10', reason: 'local precision bound; no patched release' },
 };
-const high = new Set(['high', 'critical']);
+// Any other advisory at one of these severities fails the gate. Low and info
+// entries are listed in the result and do not fail it.
+const gated = new Set(['moderate', 'high', 'critical']);
+const refused = reason => reason.startsWith('UNREPAIRED:') || reason.startsWith('REVIEW_OVERDUE:');
 
 // npm's registry report describes published tarballs. Retain that report and
 // require the installed source repair for every affected copy and graph path.
-export function assessDependencyAudit(report, verified) {
+export function assessDependencyAudit(report, verified, { today = new Date().toISOString().slice(0, 10), accepted = acceptedAdvisories } = {}) {
+  const isDate = text => typeof text === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(text);
+  if (!isDate(today) || Object.values(accepted).some(entry => !isDate(entry.reviewBy))) throw new Error('Audit date and review dates must be YYYY-MM-DD');
   if (report.auditReportVersion !== 2 || report.error || !report.metadata?.vulnerabilities || !report.vulnerabilities) {
     throw new Error('Missing or unsupported npm audit report');
   }
@@ -36,7 +48,7 @@ export function assessDependencyAudit(report, verified) {
       }
       if (!reason || typeof reason !== 'object' || typeof reason.url !== 'string') throw new Error('Malformed advisory');
       const id = reason.url.replace('https://github.com/advisories/', '');
-      const repair = repairs[id];
+      const repair = Object.hasOwn(accepted, id) ? accepted[id] : undefined;
       if (!repair || reason.url !== `https://github.com/advisories/${id}` || name !== repair.package || reason.name !== repair.package || reason.range.replaceAll(' ', '') !== repair.range) {
         reasons.add(`UNREPAIRED:${reason.url}`);
         continue;
@@ -45,7 +57,7 @@ export function assessDependencyAudit(report, verified) {
       if (!entry.nodes.length || entry.nodes.length !== installedPaths.size || entry.nodes.some(path => !installedPaths.has(path))) {
         throw new Error('Audit nodes do not match every verified installed dependency');
       }
-      reasons.add(id);
+      reasons.add(today > repair.reviewBy ? `REVIEW_OVERDUE:${id}` : id);
     }
     roots.set(name, reasons);
     dependencies.set(name, parents);
@@ -60,15 +72,26 @@ export function assessDependencyAudit(report, verified) {
     if (!changed) break;
   }
   const covered = [];
+  const belowThreshold = [];
   for (const [name, entry] of entries) {
-    if (!high.has(entry.severity)) continue;
-    const reasons = [...roots.get(name)];
-    if (!reasons.length || reasons.some(reason => reason.startsWith('UNREPAIRED:'))) unresolved.push({ package: name, reasons });
-    else covered.push({ package: name, advisories: reasons.sort() });
+    const reasons = [...roots.get(name)].sort();
+    if (!gated.has(entry.severity)) belowThreshold.push({ package: name, severity: entry.severity, reasons });
+    else if (!reasons.length || reasons.some(refused)) unresolved.push({ package: name, reasons });
+    else covered.push({ package: name, advisories: reasons });
   }
-  const reportedHigh = report.metadata.vulnerabilities.high + report.metadata.vulnerabilities.critical;
-  if (!Number.isInteger(reportedHigh) || reportedHigh !== covered.length + unresolved.length) throw new Error('Audit severity counts do not reconcile');
-  return { status: unresolved.length ? 'FAIL_UNREPAIRED_DEPENDENCIES' : covered.length ? 'PASS_WITH_VERIFIED_BACKPORTS' : 'PASS', rawHighOrCritical: reportedHigh, covered, unresolved };
+  // npm's own totals must agree with the entries that were judged, at every
+  // severity, so nothing in the report is passed over.
+  const counts = report.metadata.vulnerabilities;
+  const reported = severity => counts[severity] ?? (severity === 'info' || severity === 'low' ? 0 : NaN);
+  const reportedHigh = reported('high') + reported('critical');
+  const reportedModerate = reported('moderate');
+  const reportedBelow = reported('low') + reported('info');
+  if (![reportedHigh, reportedModerate, reportedBelow].every(Number.isInteger)
+    || reportedHigh + reportedModerate !== covered.length + unresolved.length
+    || reportedHigh !== entries.filter(([, entry]) => entry.severity === 'high' || entry.severity === 'critical').length
+    || reportedBelow !== belowThreshold.length) throw new Error('Audit severity counts do not reconcile');
+  const reviewBy = Object.values(accepted).map(entry => entry.reviewBy).sort()[0] ?? null;
+  return { status: unresolved.length ? 'FAIL_UNREPAIRED_DEPENDENCIES' : covered.length ? 'PASS_WITH_VERIFIED_BACKPORTS' : 'PASS', rawHighOrCritical: reportedHigh, rawModerate: reportedModerate, reviewBy, covered, unresolved, belowThreshold };
 }
 
 export function auditDependencies(root, reportDirectory) {

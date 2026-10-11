@@ -60,7 +60,7 @@ interface GRNAutocompleteBottomSheetProps {
     id: string;
     gr_no: string;
   };
-  customerId?: string; // Optional filter by customer
+  customerId?: string; // The dispatch's customer: only this customer's GRNs are listed and searched
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -697,9 +697,15 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
       return;
     }
 
+    // A dispatch only takes its own customer's stock: without a customer there is nothing to search.
+    if (!customerId) {
+      setGrnList([]);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const results = await searchGRNNumbers(query);
+      const results = await searchGRNNumbers(query, customerId);
       setGrnList(results);
     } catch (error) {
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Search error:', error);
@@ -707,7 +713,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [customerId]);
 
   // Handle clear from CustomKeyboard
   const handleClear = useCallback(() => {

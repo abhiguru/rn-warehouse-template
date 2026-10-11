@@ -5,6 +5,7 @@
  */
 import { useCallback, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { toLocalISODate } from '@/utils/formatters';
 import {
   applyListFilters,
   clearListFilters,
@@ -40,9 +41,15 @@ export function useListFilters<TRequest>(config: FilterListConfig<TRequest>) {
   const stored = useAppSelector(state => selectListFilters(state, config.listKey));
   const key = config.listKey;
 
-  const values = stored.values;
+  // Stored values are read through the account as it is now: a field that has
+  // become hidden, or a customer no longer assigned, is not used or sent.
+  const values = useMemo(() => normalizeValues(config, stored.values, ctx), [config, stored.values, ctx]);
   const sort = currentSort(config, stored.sort);
-  const request = useMemo(() => config.toRequest(values, sort, ctx), [config, values, sort, ctx]);
+  // "Today", "Yesterday" and "This month" are stored as words and turned into
+  // dates here. The day is part of the key, so a list left open past midnight
+  // asks for the new day the next time it is drawn.
+  const day = toLocalISODate(new Date());
+  const request = useMemo(() => config.toRequest(values, sort, ctx), [config, values, sort, ctx, day]);
   const fields = useMemo(() => visibleFields(config, ctx), [config, ctx]);
 
   const apply = useCallback(

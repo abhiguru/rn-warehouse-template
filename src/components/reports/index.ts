@@ -25,3 +25,6 @@ export { FactLines, joinFacts, stacksFacts } from './FactLines';
 
 // Search
 export { ReportCustomerSearch, type ReportCustomerSearchProps } from './ReportCustomerSearch';
+
+// Whose data a report shows (role and assigned customers)
+export { ReportCustomerScope, type ReportScope, type ReportCustomerScopeProps } from './ReportCustomerScope';

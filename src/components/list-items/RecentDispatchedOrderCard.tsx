@@ -438,6 +438,9 @@ const areEqual = (
     prevDispatch.item_count === nextDispatch.item_count &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&
+    // Drawn on the card but not part of any total above.
+    prevDispatch.created_by_name === nextDispatch.created_by_name &&
+    prevDispatch.items === nextDispatch.items &&
     prevProps.onPress === nextProps.onPress
   );
 };

@@ -287,13 +287,42 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         <ContactCard type="Customer" name="Patel Traders" phone="9876543210" iconName="account-outline" iconColor={t.brand.tint} iconBgColor={t.brand.subtle} />
         <InfoChip icon="calendar" label="9 Oct 2026" />
         <NotesSection note="Handle with care" />
-        <ActionsSection entityType="GRN" entityNumber="311" entityId="g1" onEdit={jest.fn()} onDelete={jest.fn()} onSharePDF={jest.fn()} />
+        <ActionsSection entityType="GRN" entityNumber="311" entityId="g1" canEdit onEdit={jest.fn()} onDelete={jest.fn()} onSharePDF={jest.fn()} />
       </>
     );
     expect(hasBackground(tree, t.surface.card)).toBe(true);
     expect(hasBackground(tree, t.status.neutral.background)).toBe(true);
     expect(hasBackground(tree, t.brand.fill)).toBe(true);
     expect(texts(tree)).toEqual(expect.arrayContaining(['CUSTOMER', '+91 98765 43210', 'Edit GRN', 'Delete GRN']));
+    act(() => tree.unmount());
+  });
+});
+
+describe('contact card without a number', () => {
+  const card = (phone: string | undefined) => {
+    mockState = { ...mockState, theme: { preference: 'light', brand: 'orange' } };
+    let tree!: ReactTestRenderer;
+    act(() => {
+      tree = create(
+        <ContactCard type="Supervisor" name="Ravi Example" phone={phone} iconName="account-tie" iconColor="#111111" iconBgColor="#eeeeee" />
+      );
+    });
+    return tree;
+  };
+  const callActions = (tree: ReactTestRenderer) =>
+    tree.root.findAll(node => typeof node.type !== 'string' && node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function');
+
+  // The server leaves the supervisor's mobile out for a customer account (migration 45).
+  it.each([[undefined], [''], ['   ']])('shows the name and no Call action when the phone is %j', (phone) => {
+    const tree = card(phone);
+    expect(JSON.stringify(tree.toJSON())).toContain('Ravi Example');
+    expect(callActions(tree)).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
+  it('shows Call when there is a number', () => {
+    const tree = card('9876543210');
+    expect(callActions(tree)).toHaveLength(1);
     act(() => tree.unmount());
   });
 });

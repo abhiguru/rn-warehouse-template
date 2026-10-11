@@ -10,8 +10,6 @@ import type {
   UpdateItemPricingPayload,
   ItemPricingMutationResponse,
   ItemPricingDeleteResponse,
-  FindOrCreatePricingParams,
-  FindOrCreatePricingResponse,
 } from '../types/item-pricing.types';
 import {
   ItemStoragePrice
@@ -288,51 +286,5 @@ export const deleteItemStoragePrice = async (
   return {
     success: true,
     message: serverText(result.message, t('errors.price.deleted')),
-  };
-};
-
-/**
- * Find existing item storage price or create one if not found
- * Used when navigating to edit pricing from invoice items screen
- */
-export const findOrCreateItemStoragePrice = async (
-  params: FindOrCreatePricingParams
-): Promise<FindOrCreatePricingResponse> => {
-  itemPricingLogger.debug('Finding or creating price:', params);
-
-  const result = await executeRPC<ItemStoragePrice & { was_created: boolean }>(
-    getAuthenticatedClient,
-    'find_or_create_item_storage_price',
-    {
-      p_item_id: params.item_id,
-      p_customer_id: params.customer_id,
-      p_weight: params.weight,
-      p_price_type: params.price_type,
-      p_default_unit_price: params.default_values?.unit_price ?? 0,
-      p_default_labour_rate: params.default_values?.labour_rate ?? 0,
-      p_default_tax_percent: params.default_values?.tax_percent ?? 18,
-      p_default_weight_min: params.default_values?.weight_min ?? 0,
-      p_default_weight_max: params.default_values?.weight_max ?? params.weight,
-    },
-    {
-      context: 'ItemPricingService.findOrCreateItemStoragePrice',
-      errorMessage: t('errors.price.findOrCreateFailed'),
-    }
-  );
-
-  if (!result.success) {
-    return {
-      success: false,
-      message: result.message,
-      error: result.error,
-    };
-  }
-
-  return {
-    success: true,
-    data: result.data,
-    message: result.data?.was_created
-      ? t('errors.price.created')
-      : t('errors.price.existingFound'),
   };
 };

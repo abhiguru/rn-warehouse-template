@@ -53,6 +53,7 @@ export function FieldEditor({ field, value, onChange, ctx, onInvalid }: FieldEdi
           onChange={onChange}
           unit={field.unit}
           integer={field.integer}
+          identifier={field.identifier}
           onInvalid={onInvalid}
         />
       );

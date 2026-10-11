@@ -33,13 +33,13 @@ import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
-import { deleteGRNImage, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
-import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
+import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
 import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
 import {
   validateStep2,
   isValidReceiptQuantity,
+  isValidRackFormat,
   parseReceiptQuantity,
   parseReceiptWeight,
 } from '@/features/grn/schemas/grnValidation';
@@ -47,6 +47,9 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn');
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   item_table_id: '',
@@ -98,28 +101,17 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     const newItem = EMPTY_GRN_ITEM();
     if (savedItems.length > 0 && savedItems[0].rack) {
       newItem.rack = savedItems[0].rack;
-      console.log('[GrnItemsStep] Auto-populating rack from first item:', savedItems[0].rack);
     }
     return newItem;
   }, [savedItems]);
 
   const isCurrentItemValid = useMemo(() => {
-    const isRackValid = (rack: string) => {
-      if (!rack || rack.trim() === '') return true;
-      // Allow two formats:
-      // 1. floor/chamber only: e.g., "F1/C4", "BASE/Anti-Ch"
-      // 2. rack/floor/chamber: e.g., "20B/F1/C4", "20B-20C/BASE/C7"
-      const floorChamberOnlyPattern = /^(BASE|F1|F2|F3|F4)\/(C4|C7|C2|Anti-Ch)$/;
-      const fullPattern = /^.+\/(BASE|F1|F2|F3|F4)\/(C4|C7|C2|Anti-Ch)$/;
-      return floorChamberOnlyPattern.test(rack) || fullPattern.test(rack);
-    };
-
     return !!(
       currentItem.item_table_id &&
       currentItem.item_name &&
       currentItem.qty &&
       isValidReceiptQuantity(currentItem.qty) &&
-      isRackValid(currentItem.rack)
+      isValidRackFormat(currentItem.rack)
     );
   }, [currentItem.item_table_id, currentItem.item_name, currentItem.qty, currentItem.rack]);
 
@@ -181,7 +173,6 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
               // Only add new items with dispatches, preserve existing entries
               if (item.qty !== item.stock && !newMap.has(item.grn_trl_id)) {
                 newMap.set(item.grn_trl_id, item.stock);
-                console.log('[GrnItemsStep] Item has dispatches:', item.grn_trl_id, 'qty:', item.qty, 'original stock:', item.stock);
               }
             });
             return newMap;
@@ -384,19 +375,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     dispatch(failItemImageUpload({ itemId: currentItem.grn_trl_id, imageId: '', error }));
   };
 
+  // Nothing is deleted on the server here. The photo leaves the form; a saved photo is
+  // remembered by the store and deleted when the GRN is saved, so "Discard changes" keeps it.
   const handleImageRemove = async (imageId: string) => {
-    const image = (currentItem.trl_images || []).find((candidate) => candidate.id === imageId);
-    if (image && !isTemporaryGRNImageId(image.id)) {
-      const result = await deleteGRNImage(image.id, image.imageUrl);
-      if (!result.success) {
-        showAlert(tr('grn.photos.removeFailedTitle'), tr('common.checkConnection'));
-        return;
-      }
-      if (result.partial) {
-        showAlert(tr('grn.itemsStep.photoRemovedTitle'), tr('grn.itemsStep.photoRemovedPartial'));
-      }
-    }
-
     dispatch(removeItemImage({ itemId: currentItem.grn_trl_id, imageId }));
     setCurrentItem((prev) => ({
       ...prev,
@@ -426,25 +407,37 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
       handleImageUploadStart(tempImageData);
 
-      const effectiveGrnId = grnId || tempGrnId;
-      if (effectiveGrnId) {
-        try {
-          const uploadResult = await uploadGRNItemImage(asset, effectiveGrnId, currentItem.grn_trl_id);
-          const uploadedImageData: GRNImageData = {
-            id: uploadResult.imageId || tempImageData.id,
-            fileName: uploadResult.metadata?.fileName || 'item-image.jpg',
-            imageUrl: uploadResult.imageUrl || '',
-            storagePath: uploadResult.metadata?.storagePath,
-            uploadStatus: uploadResult.success ? 'completed' : 'failed',
-            fileSize: uploadResult.metadata?.fileSize,
-            mimeType: uploadResult.metadata?.mimeType,
-            uploadTimestamp: uploadResult.metadata?.uploadTimestamp,
-            error: uploadResult.error,
-          };
-          handleImageUploadComplete(uploadedImageData, tempImageData.id);
-        } catch (error) {
-          console.error('[GrnItemsStep] Upload failed:', error);
+      // A temporary id only prepares the photo on the device. It is uploaded when the GRN
+      // is saved, in create and in edit mode: an edit that is discarded must not have added
+      // photos, and a line added in this edit has no server id to attach a photo to yet.
+      const deferredUploadId = tempGrnId || generateTempGRNId();
+      try {
+        const uploadResult = await uploadGRNItemImage(asset, deferredUploadId, currentItem.grn_trl_id);
+        if (!uploadResult.success) {
+          // The photo could not be prepared (too large, unreadable): say so and take it out again.
+          handleImageRemove(tempImageData.id);
+          showAlert(
+            tr('grn.photos.captureFailedTitle'),
+            serverText(uploadResult.error, tr('grn.photos.captureFailedMessage'))
+          );
+          return;
         }
+        const uploadedImageData: GRNImageData = {
+          id: uploadResult.imageId || tempImageData.id,
+          fileName: uploadResult.metadata?.fileName || 'item-image.jpg',
+          imageUrl: uploadResult.imageUrl || '',
+          storagePath: uploadResult.metadata?.storagePath,
+          uploadStatus: 'completed',
+          fileSize: uploadResult.metadata?.fileSize,
+          mimeType: uploadResult.metadata?.mimeType,
+          uploadTimestamp: uploadResult.metadata?.uploadTimestamp,
+        };
+        handleImageUploadComplete(uploadedImageData, tempImageData.id);
+      } catch (error) {
+        log.error('Upload failed', loggableError(error));
+        // The entry still points at the original file: it is taken out, like a refused photo.
+        handleImageRemove(tempImageData.id);
+        showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
       }
     }
   };
@@ -474,7 +467,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             );
             await processPickedImage(result);
           } catch (error) {
-            console.error('[GrnItemsStep] Camera error:', error);
+            log.error('Camera error', loggableError(error));
           }
         },
       },
@@ -493,7 +486,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             );
             await processPickedImage(result);
           } catch (error) {
-            console.error('[GrnItemsStep] Gallery error:', error);
+            log.error('Gallery error', loggableError(error));
           }
         },
       },
@@ -588,7 +581,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           router.push('/grn-form/step3');
         });
       } catch (error) {
-        console.error('[GrnItemsStep] Navigation error:', error);
+        log.error('Navigation error', loggableError(error));
         setIsNavigating(false);
       }
     } else {
@@ -602,7 +595,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           router.push(`/grn-edit/${grnId}/step3`);
         });
       } catch (error) {
-        console.error('[GrnItemsStep] Navigation error:', error);
+        log.error('Navigation error', loggableError(error));
         setIsNavigating(false);
       }
     }

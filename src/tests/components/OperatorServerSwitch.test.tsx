@@ -59,6 +59,7 @@ jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: je
 // below prove every draft is gone before the new origin commits.
 jest.mock('@/utils/cacheManager', () => ({ clearAllCaches: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn() }));
+jest.mock('@/utils/imageCache', () => ({ clearImageCaches: jest.fn(async () => {}) }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: jest.fn(), cancelQueries: jest.fn(), clear: jest.fn() } }));
 jest.mock('@/config/supabaseConfig', () => ({
   beginOperatorSwitch: jest.fn(), endOperatorSwitch: jest.fn(),
@@ -78,6 +79,21 @@ let store: ReturnType<typeof makeStore>;
 let emptyState: ReturnType<typeof store.getState>;
 let renderer: ReturnType<typeof create> | undefined;
 let events: string[];
+
+// A reset form is dated "now" (the default dispatch date), so the clock is held
+// still: only then is a reset store exactly equal to a fresh one. Timers are
+// left real; only Date is fixed.
+beforeAll(() => {
+  jest.useFakeTimers({
+    now: new Date('2026-10-10T06:00:00Z'),
+    doNotFake: [
+      'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame',
+      'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval',
+      'setTimeout', 'clearTimeout',
+    ],
+  });
+});
+afterAll(() => jest.useRealTimers());
 
 beforeEach(() => {
   jest.resetAllMocks();

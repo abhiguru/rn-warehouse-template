@@ -31,4 +31,13 @@ export const FILTER_CONFIGS: Record<string, CountableFilterList> = {
   [ITEM_PRICING_FILTERS.listKey]: countable(ITEM_PRICING_FILTERS),
 };
 
+/**
+ * The configuration for a `listKey` that came from outside (a route parameter).
+ * Only the app's own lists count: "__proto__" or "constructor" would otherwise
+ * find a property that every object has.
+ */
+export function filterConfigFor(listKey: string | null | undefined): CountableFilterList | undefined {
+  return listKey && Object.prototype.hasOwnProperty.call(FILTER_CONFIGS, listKey) ? FILTER_CONFIGS[listKey] : undefined;
+}
+
 export { DISPATCH_FILTERS, GRN_FILTERS, INVOICE_FILTERS, ITEM_PRICING_FILTERS, ORDER_FILTERS, ORDER_QUEUE_FILTERS };

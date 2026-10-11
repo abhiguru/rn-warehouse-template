@@ -3,8 +3,8 @@
  * many filters are on, and what a chip says. Every list uses these, so counts
  * and wording cannot drift apart between screens.
  */
-import { localizeDigits, normalizeDigits, t } from '@/i18n';
-import { formatDate, formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { formatIdentifier, localizeDigits, normalizeDigits, t } from '@/i18n';
+import { formatDate, formatNumber as formatQuantity, parseLocalISODate } from '@/utils/formatters';
 import { DATE_PRESETS, resolveDateRange } from './datePresets';
 import { parseQuickSearch, type QuickSearchResult } from './parseQuickSearch';
 import {
@@ -52,6 +52,9 @@ export function isFieldActive(field: FilterFieldDef, value: FilterValue | undefi
   }
 }
 
+/** The key every list gives its Customer picker. */
+const CUSTOMERS_KEY = 'customers';
+
 /** The fields this account may use, in config order. */
 export function visibleFields(config: FilterListDefinition, ctx: FilterContext): FilterFieldDef[] {
   return config.fields.filter(field => !field.visibleTo || field.visibleTo(ctx));
@@ -61,7 +64,13 @@ export function visibleFields(config: FilterListDefinition, ctx: FilterContext):
 export function normalizeValues(config: FilterListDefinition, values: FilterValues, ctx: FilterContext): FilterValues {
   const result: FilterValues = {};
   for (const field of visibleFields(config, ctx)) {
-    const value = values[field.key];
+    let value = values[field.key];
+    // A customer account may only filter by customers it is assigned now: one
+    // that was taken away would have every request refused.
+    if (field.kind === 'picker' && field.key === CUSTOMERS_KEY && !ctx.isWarehouseRole && Array.isArray(value)) {
+      const assigned = new Set(ctx.assignedCustomers.map(customer => customer.id));
+      value = (value as PickedOption[]).filter(option => assigned.has(option.id));
+    }
     if (!isFieldActive(field, value)) continue;
     result[field.key] = typeof value === 'string' ? value.trim() : value;
   }
@@ -150,6 +159,8 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
       const { min, max } = value as NumberRangeValue;
       // Whole sentences, with and without a unit: the words around the numbers move in Gujarati.
       const unit = field.unit;
+      // An identifier is shown as written; a quantity gets grouping and the language's digits.
+      const formatNumber = field.identifier ? formatIdentifier : formatQuantity;
       if (typeof min === 'number' && typeof max === 'number') {
         return unit
           ? t('filters.chip.numberBetweenUnit', { min: formatNumber(min), max: formatNumber(max), unit })

@@ -1,4 +1,5 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
@@ -67,6 +68,8 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
+
+const logger = createLogger('OrderList');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -241,7 +244,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       if (!isMountedRef.current) {
         return;
       }
-      console.error('[OrderFlashList] Error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('List did not load', err instanceof Error ? err.message : err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
       setSnackbarMessage(translate('lists.order.loadFailed'));
@@ -300,7 +304,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
-      console.error('[OrderFlashList] Load more error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('Next page did not load', err instanceof Error ? err.message : err);
       setSnackbarMessage(translate('lists.order.loadMoreFailed'));
       setSnackbarVisible(true);
     } finally {

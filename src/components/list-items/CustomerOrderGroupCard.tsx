@@ -39,6 +39,9 @@ import {
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger('OrderGroupCard');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -70,6 +73,10 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
   const [fetchedItems, setFetchedItems] = useState<OrderItem[] | null>(null);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [fullOrder, setFullOrder] = useState<Order | null>(null);
+  // Why the lines could not be loaded. While it is set the card does not ask
+  // again by itself: a request that fails would otherwise be repeated without
+  // end for as long as the card stays open.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Calculate totals - handle both legacy and new field names
   const itemCount = order.item_count ?? order.total_items ?? order.items?.length ?? 0;
@@ -89,11 +96,17 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     // Clear cached data when order is updated
     setFetchedItems(null);
     setFullOrder(null);
+    setLoadError(null);
   }, [order.updated_at, order.item_count, order.quantity_sum]);
+
+  // Closing the card forgets a failed load, so opening it again asks once more.
+  useEffect(() => {
+    if (!isExpanded) setLoadError(null);
+  }, [isExpanded]);
 
   // Fetch full order details when expanded (if items not already loaded)
   useEffect(() => {
-    if (isExpanded && !fetchedItems && !isLoadingItems) {
+    if (isExpanded && !fetchedItems && !isLoadingItems && !loadError) {
       const fetchOrderDetails = async () => {
         setIsLoadingItems(true);
         try {
@@ -103,16 +116,22 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
             setFetchedItems(result.data.items ?? []);
             setFullOrder(result.data);
             if (__DEV__) console.log('[CustomerOrderGroupCard] Fetched items:', result.data.items?.length ?? 0);
+          } else {
+            // The service's message is already in the app's language.
+            setLoadError(result.message || translate('lists.orderGroup.loadFailed'));
           }
         } catch (error) {
-          console.error('[CustomerOrderGroupCard] Error fetching items:', error);
+          logger.warn('Order lines did not load', error);
+          setLoadError(translate('lists.orderGroup.loadFailed'));
         } finally {
           setIsLoadingItems(false);
         }
       };
       fetchOrderDetails();
     }
-  }, [isExpanded, fetchedItems, isLoadingItems, order.id]);
+  }, [isExpanded, fetchedItems, isLoadingItems, loadError, order.id]);
+
+  const handleRetryLoad = useCallback(() => setLoadError(null), []);
 
   // Toggle expand with animation
   const handleToggle = useCallback(() => {
@@ -233,6 +252,20 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
             <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={translate('lists.orderGroup.loadingItems')}>
               <ActivityIndicator size="small" color={t.brand.tint} />
               <Text style={styles.loadingText}>{translate('lists.orderGroup.loadingItemsText')}</Text>
+            </View>
+          ) : loadError && displayItems.length === 0 ? (
+            <View style={styles.emptyItemsContainer}>
+              <Icon name="alert-circle-outline" size={iconSize.xl} color={t.status.negative.text} />
+              <Text style={styles.loadErrorText} accessibilityRole="alert">{loadError}</Text>
+              <Pressable
+                style={({ pressed }) => [styles.retryButton, pressed && styles.editButtonPressed]}
+                onPress={handleRetryLoad}
+                accessibilityRole="button"
+                accessibilityLabel={translate('lists.orderGroup.retryLabel')}
+              >
+                <Icon name="refresh" size={iconSize.md} color={t.text.primary} />
+                <Text style={styles.editButtonText}>{translate('common.retry')}</Text>
+              </Pressable>
             </View>
           ) : displayItems.length > 0 ? (
             <View>
@@ -532,6 +565,23 @@ const makeStyles = (t: ThemeTokens) => ({
   noItemsText: {
     ...typography.subhead,
     color: t.text.secondary,
+  },
+  loadErrorText: {
+    ...typography.subhead,
+    color: t.status.negative.text,
+    textAlign: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+  },
+  retryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    gap: space.s6,
   },
 
   // Key-value footer

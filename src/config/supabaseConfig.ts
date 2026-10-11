@@ -15,9 +15,10 @@ import { getActiveOperatorServer } from '@/config/operatorServer';
 import {
   advanceSessionGeneration,
   getSessionGeneration,
+  renewAheadMs,
   serializeCredentials,
 } from './sessionLifecycle';
-import { AppError } from '@/utils/appError';
+import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 
@@ -121,6 +122,40 @@ function noteUnauthorized(response: Response, generation: number): void {
     .catch(() => {});
 }
 
+/**
+ * How long a request may wait for the server's answer before it is aborted.
+ * Without a limit a request on a connection that never answers stays in
+ * flight until the app is killed, and a write in flight holds a server switch
+ * back. Uploads and the document and print functions get longer.
+ */
+export const REQUEST_TIME_LIMIT_MS = { read: 30000, write: 60000, transfer: 120000 } as const;
+
+function requestTimeLimit(input: RequestInfo | URL, mutation: boolean): number {
+  if (!mutation) return REQUEST_TIME_LIMIT_MS.read;
+  const url = typeof input === 'object' && input !== null && 'url' in input ? input.url : String(input);
+  return /\/(storage\/v1\/object|functions\/v1)\//.test(url.split(/[?#]/)[0])
+    ? REQUEST_TIME_LIMIT_MS.transfer
+    : REQUEST_TIME_LIMIT_MS.write;
+}
+
+/**
+ * A request the gated fetch gave up waiting for and aborted. Like 'Session
+ * changed' it is a signal: the PostgREST client turns it into the text
+ * "TimeoutError: Request timeout", which the error tables class as a timeout,
+ * so the message stays English. `code` is what postgrest-js reads to leave an
+ * aborted request alone; without it a GET would be sent three more times.
+ * A write that timed out may still have been applied by the server.
+ */
+export class RequestTimeoutError extends Error {
+  readonly appErrorCode = 'TIMEOUT' as const;
+  readonly code = 'ABORT_ERR';
+
+  constructor() {
+    super('Request timeout');
+    this.name = 'TimeoutError';
+  }
+}
+
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -137,8 +172,21 @@ async function gatedFetch(
   if (init?.signal?.aborted) controller.abort();
   else init?.signal?.addEventListener('abort', abort, { once: true });
   activeRequests.add(request);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await fetch(input, { ...init, signal: controller.signal });
+    // The race ends the wait even when the platform's fetch does not settle on abort.
+    const response = await Promise.race([
+      fetch(input, { ...init, signal: controller.signal }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          // Rejected first, so the caller hears "timeout" and not the abort it causes.
+          reject(new RequestTimeoutError());
+          controller.abort();
+        }, requestTimeLimit(input, mutation));
+        // Under Node (tests) a waiting request must not keep the process alive.
+        (timer as { unref?: () => void }).unref?.();
+      }),
+    ]);
     noteUnauthorized(response, generation);
     if (!honorSwitch) return response;
     if (invalidated()) throw new Error('Session changed');
@@ -159,21 +207,121 @@ async function gatedFetch(
       },
     });
   } finally {
+    clearTimeout(timer);
     activeRequests.delete(request);
     init?.signal?.removeEventListener('abort', abort);
   }
 }
 
+// RPCs that only read. PostgREST sends every RPC as POST, so the method cannot
+// tell a list query from a save; the name does. A name that is not listed here
+// counts as a write, which is the safe side: a write blocks a server switch
+// and is never sent twice.
+const READ_RPC = /^(get_(?!or_create_)|search_|check_|list_|count_|generate_invoice_data_|user_accessible_customers$)/;
+
+/**
+ * True for a request that changes nothing on the server: GET and HEAD, a read
+ * RPC, and the Storage calls that sign or list objects. A read is aborted by a
+ * server switch and may be sent again; everything else is a write.
+ */
+export function isReadRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const request = typeof input === 'object' && input !== null && 'url' in input ? input : undefined;
+  const method = String(init?.method ?? request?.method ?? 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD') return true;
+  if (method !== 'POST') return false;
+  const path = String(request?.url ?? input).split(/[?#]/)[0];
+  const rpcName = /\/rest\/v1\/rpc\/([A-Za-z0-9_]+)$/.exec(path)?.[1];
+  if (rpcName) return READ_RPC.test(rpcName);
+  return /\/storage\/v1\/object\/(sign|list)\//.test(path);
+}
+
+const headerValue = (headers: RequestInit['headers'] | undefined, name: string): string | undefined => {
+  if (!headers) return undefined;
+  if (typeof (headers as Headers).get === 'function') return (headers as Headers).get(name) ?? undefined;
+  const entries = Array.isArray(headers) ? headers : Object.entries(headers as Record<string, string>);
+  return entries.find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
+};
+
+const bearerOf = (init: RequestInit | undefined): string | undefined =>
+  /^Bearer (.+)$/.exec(headerValue(init?.headers, 'Authorization') ?? '')?.[1];
+
+function withBearer(init: RequestInit | undefined, token: string): RequestInit {
+  const source = init?.headers;
+  const entries: [string, string][] = [];
+  if (source && typeof (source as Headers).forEach === 'function')
+    (source as Headers).forEach((value, key) => entries.push([key, value]));
+  else if (Array.isArray(source)) entries.push(...(source as [string, string][]));
+  else if (source) entries.push(...Object.entries(source as Record<string, string>));
+  const headers: Record<string, string> = {};
+  for (const [key, value] of entries) if (key.toLowerCase() !== 'authorization') headers[key] = value;
+  headers.Authorization = `Bearer ${token}`;
+  return { ...init, headers };
+}
+
+// The server, not the device clock, has the last word on whether an access
+// token is still good. PostgREST answers an expired one with 401 "JWT expired",
+// the edge functions with 401 "Invalid or expired access token", and Storage
+// with "jwt expired" under a 400 or 403.
+async function isExpiredTokenResponse(response: Response): Promise<boolean> {
+  if (![400, 401, 403].includes(response.status) || typeof response.clone !== 'function') return false;
+  try {
+    const body = (await response.clone().json()) as { message?: unknown; error?: unknown } | null;
+    const text = String(body?.message ?? body?.error ?? '');
+    return /^jwt expired$/i.test(text) || text === 'Invalid or expired access token';
+  } catch {
+    return false;
+  }
+}
+
+// The access token the server refused as expired is replaced once. A token that
+// was itself just issued is not replaced again: the server would refuse the
+// next one too, and every request would rotate the session.
+let lastIssued: { token: string; at: number } | undefined;
+const JUST_ISSUED_MS = 60 * 1000;
+async function accessTokenAfterExpiry(refused: string, generation: number): Promise<string | null> {
+  if (generation !== getSessionGeneration()) return null;
+  const stored = await getStoredToken();
+  // Another request has renewed the session while this one was in flight.
+  if (stored.authToken && stored.authToken !== refused) return stored.authToken;
+  if (lastIssued?.token === refused && Math.abs(Date.now() - lastIssued.at) < JUST_ISSUED_MS) return null;
+  return (await refreshCustomJWT())?.accessToken ?? null;
+}
+
+// Application traffic that carries the access token. When the server says the
+// token has expired the session is renewed once. A read is then sent again
+// with the new token; a write is not replayed (its caller reports the failure
+// and the next attempt uses the renewed session).
+async function sessionFetch(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  generation: number,
+  mutation: boolean
+): Promise<Response> {
+  const response = await gatedFetch(input, init, { generation, mutation, honorSwitch: true });
+  const refused = bearerOf(init);
+  if (!refused || !(await isExpiredTokenResponse(response))) return response;
+  const renewed = await accessTokenAfterExpiry(refused, generation);
+  if (!renewed || mutation) return response;
+  return gatedFetch(input, withBearer(init, renewed), { generation, mutation, honorSwitch: true });
+}
+
+// The document, print and download services call these directly and show the
+// error's message, so a timeout reaches them in the app's own words.
+const inOwnWords = (error: unknown): never => {
+  if (error instanceof RequestTimeoutError) throw new AppError('TIMEOUT', t('errors.network.requestTimedOut'));
+  throw error;
+};
+
 export function createAuthenticatedFetch() {
   const generation = getSessionGeneration();
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    gatedFetch(input, init, { generation, mutation: true, honorSwitch: true });
+    sessionFetch(input, init, generation, true).catch(inOwnWords);
 }
 
 export function createSessionReadFetch() {
   const generation = getSessionGeneration();
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    gatedFetch(input, init, { generation, mutation: false, honorSwitch: true });
+    sessionFetch(input, init, generation, false).catch(inOwnWords);
 }
 
 export function beginOperatorSwitch(): boolean {
@@ -268,8 +416,9 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
     __authenticatedClientInstance = createClient(config.url, config.anonKey, {
       global: {
         headers: { Authorization: 'Bearer ' + token.authToken },
+        // Only a write holds a server switch back; a read is aborted by it.
         fetch: (input, init) =>
-          gatedFetch(input, init, { generation, mutation: true, honorSwitch: true }),
+          sessionFetch(input, init, generation, !isReadRequest(input, init)),
       },
       auth: {
         autoRefreshToken: false,
@@ -284,10 +433,13 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
 
 export const getSupabaseWithJWT = getAuthenticatedClient;
 
+const AUTH_RPC_TIMEOUT_MS = 15000;
+
 async function boundedAuthRPC(
   name: string,
   args: Record<string, unknown>,
-  generation = getSessionGeneration()
+  generation = getSessionGeneration(),
+  timeoutMs = AUTH_RPC_TIMEOUT_MS
 ) {
   // The anonymous client's fetch is gated as well; waiting here first keeps the
   // refresh credential out of the request until identity verification passes.
@@ -308,7 +460,7 @@ async function boundedAuthRPC(
         timer = setTimeout(() => {
           controller.abort();
           reject(new AppError('TIMEOUT', t('errors.network.authTimedOut')));
-        }, 15000);
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -316,12 +468,53 @@ async function boundedAuthRPC(
   }
 }
 
+/** A limit the server applied to a sign-in code request or check (backend migration 44). */
+export type OtpLimitCode = 'otp_wait' | 'otp_rate_limited' | 'enrollment_limited';
+
 type OperatorEnvelope = {
   success: boolean;
   error?: string;
   message?: string;
   data?: Record<string, unknown>;
+  /** Set on a refusal the app has its own words for; `error` is then already translated. */
+  errorCode?: OtpLimitCode;
+  /** How long the server said to wait, when it said (the 60 s resend wait or the 15 minute slow lane). */
+  retryAfterSeconds?: number;
 };
+
+/** The longest wait the app will count down; anything longer is not a wait the server sends. */
+const MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60;
+
+/** `retry_after_seconds` of the answer, or its Retry-After header, as whole seconds. */
+function retryAfterSecondsOf(response: Response, body: unknown): number | undefined {
+  const fromBody = (body as { retry_after_seconds?: unknown } | null)?.retry_after_seconds;
+  const fromHeader = typeof response.headers?.get === 'function' ? response.headers.get('Retry-After') : null;
+  for (const candidate of [fromBody, fromHeader]) {
+    const seconds = typeof candidate === 'number' ? candidate : typeof candidate === 'string' && /^\d+$/.test(candidate.trim()) ? Number(candidate) : NaN;
+    if (Number.isFinite(seconds) && seconds > 0) return Math.min(Math.ceil(seconds), MAX_RETRY_AFTER_SECONDS);
+  }
+  return undefined;
+}
+
+/** "Wait 42 seconds" or "wait 15 minutes" before asking for another code. */
+export function otpWaitText(seconds: number): string {
+  return seconds < 120
+    ? t('errors.auth.otpWaitSeconds', { seconds: localizeDigits(String(seconds)) })
+    : t('errors.auth.otpWaitMinutes', { minutes: localizeDigits(String(Math.ceil(seconds / 60))) });
+}
+
+/**
+ * The limits the sign-in endpoint answers with HTTP 429, in the app's words.
+ * The endpoint sends a sentence and no code, so the sentence is what is read.
+ */
+function otpLimit(status: number, serverError: unknown, retryAfterSeconds: number | undefined): { errorCode: OtpLimitCode; error: string } | undefined {
+  if (status !== 429) return undefined;
+  const text = typeof serverError === 'string' ? serverError.toLowerCase() : '';
+  if (text.includes('new access requests')) return { errorCode: 'enrollment_limited', error: t('errors.auth.enrollmentLimited') };
+  if (retryAfterSeconds !== undefined) return { errorCode: 'otp_wait', error: otpWaitText(retryAfterSeconds) };
+  if (text.includes('please wait')) return { errorCode: 'otp_wait', error: t('errors.auth.otpWait') };
+  return { errorCode: 'otp_rate_limited', error: t('errors.auth.otpTooMany') };
+}
 
 async function operatorOtpRequest(
   action: 'request' | 'verify' | 'status' | 'signout',
@@ -351,6 +544,9 @@ async function operatorOtpRequest(
     });
     const result = (await response.json()) as OperatorEnvelope;
     if (!response.ok || result.success !== true) {
+      const retryAfterSeconds = retryAfterSecondsOf(response, result);
+      const limit = otpLimit(response.status, result.error || result.message, retryAfterSeconds);
+      if (limit) return { success: false, ...limit, retryAfterSeconds };
       return { success: false, error: serverText(result.error || result.message, t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
     }
     return result;
@@ -436,8 +632,21 @@ export const signInWithPhone = async (phone: string) => {
 
       return { success: true, data: responseData };
     } else {
-      const errorMsg = serverText(responseData.error || responseData.message, t('errors.auth.otpSendFailed'));
       console.error('[Auth] Send OTP failed:');
+      // A limit of the server: its wait (60 seconds, or 15 minutes for a number
+      // that has used up its hourly codes) is returned as a number, so the
+      // screens count down from it. "Try again later" has no wait to count.
+      if (responseData.errorCode) {
+        return {
+          success: false,
+          error: responseData.error ?? t('errors.auth.otpSendFailed'),
+          errorCode: responseData.errorCode,
+          rateLimited: true as const,
+          rateLimitReason: 'server' as const,
+          retryAfterSeconds: responseData.retryAfterSeconds,
+        };
+      }
+      const errorMsg = serverText(responseData.error || responseData.message, t('errors.auth.otpSendFailed'));
       return { success: false, error: errorMsg };
     }
   } catch (error) {
@@ -470,6 +679,8 @@ interface AuthPendingResult {
 interface AuthFailureResult {
   success: false;
   error: string;
+  /** Set when `error` is the app's own sentence for a server limit: show it as it is. */
+  errorCode?: OtpLimitCode;
 }
 
 type AuthResult = AuthSuccessResult | AuthPendingResult | AuthFailureResult;
@@ -486,12 +697,14 @@ const formatPhoneNumber = (phone: string): string => {
 };
 
 /**
- * S9 Fix: Validate JWT token structure and expiration
- * Returns decoded payload if valid, null otherwise
+ * S9 Fix: Validate JWT token structure.
+ * Whether a token has expired is not judged here: `exp` is on the server's
+ * clock, and a token the server has just issued is good whatever the device
+ * clock says (see deviceExpiry).
  */
 const validateJWTToken = (
   token: string
-): { valid: boolean; exp?: number; sub?: string } => {
+): { valid: boolean; exp?: number; iat?: number; sub?: string } => {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) {
@@ -510,16 +723,10 @@ const validateJWTToken = (
       return { valid: false };
     }
 
-    // Check if token is already expired
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp < now) {
-      console.warn('[Auth] Invalid JWT: Token already expired');
-      return { valid: false };
-    }
-
     return {
       valid: true,
       exp: payload.exp,
+      iat: payload.iat,
       sub: payload.sub,
     };
   } catch (error) {
@@ -527,6 +734,36 @@ const validateJWTToken = (
     return { valid: false };
   }
 };
+
+// With neither `iat` nor `expires_in` and an `exp` the device clock already
+// calls past, the token is still used for a short while: the server decides.
+const UNKNOWN_LIFETIME_MS = 10 * 60 * 1000;
+
+/**
+ * When a token received just now expires, on the device's clock.
+ *
+ * `exp` and `iat` are both on the server's clock. The token was issued at
+ * `iat` and received now, so (now - iat) is how far the device clock is from
+ * the server's, and the expiry moves by the same amount. A device that is two
+ * hours fast or thirty minutes slow then renews its token at the right moment.
+ * The stored expiry is always on the device clock.
+ */
+export function deviceExpiry(
+  claims: { exp?: number; iat?: number },
+  session: { expires_in?: unknown },
+  receivedAt = Date.now()
+): number {
+  const exp = Number(claims.exp);
+  const iat = Number(claims.iat);
+  if (Number.isFinite(exp) && Number.isFinite(iat) && iat > 0 && exp > iat) {
+    const clockSkewMs = receivedAt - iat * 1000;
+    return exp * 1000 + clockSkewMs;
+  }
+  const expiresIn = Number(session.expires_in);
+  if (Number.isFinite(expiresIn) && expiresIn > 0) return receivedAt + expiresIn * 1000;
+  if (Number.isFinite(exp) && exp * 1000 > receivedAt) return exp * 1000;
+  return receivedAt + UNKNOWN_LIFETIME_MS;
+}
 
 // ============================================================================
 // MAIN AUTH FUNCTIONS
@@ -555,8 +792,13 @@ export const verifyOTP = async (
   token: string,
   userName?: string
 ): Promise<AuthResult> => {
+  // A session that is still stored (the sign-in screen opened by a link while
+  // signed in) is ended on the server too, not only forgotten by this device.
+  const previous = serializeCredentials(readStoredToken);
   const generation = advanceSessionGeneration();
   await serializeCredentials(clearStoredTokensRaw);
+  const replaced = (await previous).refreshToken;
+  if (replaced) void revokeSession(replaced);
   try {
     const formattedPhone = formatPhoneNumber(phone);
 
@@ -574,8 +816,11 @@ export const verifyOTP = async (
     const isSuccess = rpcResponse?.success === true;
 
     if (!isSuccess || !rpcResponse?.data) {
-      const errorMsg = serverText(rpcResponse?.error || rpcResponse?.message, t('errors.auth.verificationFailed'));
       console.error('[Auth] OTP verification failed:');
+      if (rpcResponse?.errorCode) {
+        return { success: false, error: rpcResponse.error ?? t('errors.auth.verificationFailed'), errorCode: rpcResponse.errorCode };
+      }
+      const errorMsg = serverText(rpcResponse?.error || rpcResponse?.message, t('errors.auth.verificationFailed'));
       return { success: false, error: errorMsg };
     }
 
@@ -623,13 +868,12 @@ export const verifyOTP = async (
       return { success: false, error: t('errors.auth.invalidToken') };
     }
 
-    // Calculate expiration time
-    const expiresAt = validation.exp
-      ? validation.exp * 1000
-      : new Date(session.expires_at).getTime();
+    // Expiry on the device clock
+    const expiresAt = deviceExpiry(validation, session);
 
     // Store the JWT tokens
     await storeTokens(accessTokenStr, refreshTokenStr, expiresAt, generation);
+    lastIssued = { token: accessTokenStr, at: Date.now() };
     await clearPendingEnrollment();
 
     // Clear cached authenticated client so it picks up the new token
@@ -740,12 +984,17 @@ function dispatchForcedLogout(reason: string): void {
 
 // One forced logout per rejected session generation: the credential is cleared
 // first so no later refresh can resend it, then Redux ends the session.
+// A refused refresh token is also reported to the server (best effort):
+// logout_session ends the session the token belonged to, so a copy of a later
+// token of that session stops working.
 let rejectedGeneration = -1;
-async function rejectSession(generation: number, reason: string): Promise<void> {
+async function rejectSession(generation: number, reason: string, refusedRefreshToken?: string): Promise<void> {
   if (generation !== getSessionGeneration() || rejectedGeneration === generation) return;
   rejectedGeneration = generation;
+  clearRefreshRetry();
   await clearStoredTokens();
   dispatchForcedLogout(reason);
+  if (refusedRefreshToken) void revokeSession(refusedRefreshToken);
 }
 
 /**
@@ -763,6 +1012,61 @@ let refreshInFlight: {
   generation: number;
   promise: Promise<RefreshedSession | null>;
 } | null = null;
+
+// A refresh whose answer is lost (the app gave up waiting, or the connection
+// dropped) may have rotated the token on the server. The server answers a
+// repeat of the same token with the same successor only inside its grace
+// period (refresh_grace_seconds, 60 by default); after that the stored token is
+// refused and the person is signed out. So the same token is sent again at
+// once, and if that fails too, a few more times in the background while the
+// grace period can still be running. The stored session is never touched by a
+// connectivity failure, and no caller waits for the background attempts.
+const REFRESH_REPEAT_TIMEOUT_MS = 5000;
+export const REFRESH_RETRY_DELAYS_MS = [2000, 5000, 10000, 20000] as const;
+export const REFRESH_RETRY_WINDOW_MS = 50 * 1000;
+let refreshRetry: {
+  generation: number;
+  token: string;
+  /** When the first unanswered refresh of this token was sent. */
+  since: number;
+  attempt: number;
+  timer?: ReturnType<typeof setTimeout>;
+} | null = null;
+
+function clearRefreshRetry(): void {
+  if (refreshRetry?.timer) clearTimeout(refreshRetry.timer);
+  refreshRetry = null;
+}
+
+function scheduleRefreshRetry(generation: number, token: string, sentAt: number): void {
+  if (refreshRetry && (refreshRetry.generation !== generation || refreshRetry.token !== token)) clearRefreshRetry();
+  const state = refreshRetry ?? (refreshRetry = { generation, token, since: sentAt, attempt: 0 });
+  if (state.timer) return;
+  const delay = REFRESH_RETRY_DELAYS_MS[state.attempt];
+  if (delay === undefined || Date.now() + delay - state.since > REFRESH_RETRY_WINDOW_MS) {
+    clearRefreshRetry();
+    return;
+  }
+  state.attempt += 1;
+  state.timer = setTimeout(() => {
+    state.timer = undefined;
+    void (async () => {
+      if (refreshRetry !== state || generation !== getSessionGeneration()) return;
+      // Another request may have renewed the session meanwhile.
+      const stored = await getStoredToken();
+      if (refreshRetry !== state) return;
+      if (stored.refreshToken !== token) return clearRefreshRetry();
+      await refreshCustomJWT();
+    })();
+  }, delay);
+  // Under Node (tests) a waiting attempt must not keep the process alive.
+  (state.timer as { unref?: () => void }).unref?.();
+}
+
+// Raised inside the gated fetch and turned into text by the PostgREST client:
+// not connectivity, so not a reason to send the refresh token again.
+const isGateSignal = (error: unknown): boolean =>
+  /session changed|identity verification/i.test(String((error as { message?: unknown } | null)?.message ?? ''));
 export const refreshCustomJWT = (): Promise<RefreshedSession | null> => {
   const generation = getSessionGeneration();
   if (refreshInFlight?.generation === generation)
@@ -778,75 +1082,133 @@ const refreshSession = async (
 ): Promise<RefreshedSession | null> => {
   try {
     // Get stored refresh token from SecureStore
-    const { refreshToken } = await getStoredToken();
+    let { refreshToken } = await getStoredToken();
 
     if (!refreshToken || generation !== getSessionGeneration()) {
       return null;
     }
 
-    // Call backend RPC to refresh tokens
-    const { data, error } = await boundedAuthRPC(
-      'refresh_jwt_token',
-      { p_refresh_token: refreshToken },
-      generation
-    );
+    const sentAt = Date.now();
+    // One immediate repeat per token: a background attempt is itself a repeat.
+    let repeated = refreshRetry?.generation === generation && refreshRetry.token === refreshToken;
+    let successorTried = false;
+    for (;;) {
+      // Call backend RPC to refresh tokens
+      let answer: { data: unknown; error: unknown };
+      try {
+        answer = await boundedAuthRPC(
+          'refresh_jwt_token',
+          { p_refresh_token: refreshToken },
+          generation,
+          // The repeat gets a short limit: the server answers it from what it
+          // stored, and a start of the app must not wait twice as long.
+          repeated ? REFRESH_REPEAT_TIMEOUT_MS : AUTH_RPC_TIMEOUT_MS
+        );
+      } catch (error) {
+        if (getAppErrorCode(error) !== 'TIMEOUT' || generation !== getSessionGeneration()) throw error;
+        // A refresh the app gave up waiting for: the same token is sent once
+        // more, then left to the background attempts.
+        if (!repeated) {
+          repeated = true;
+          continue;
+        }
+        scheduleRefreshRetry(generation, refreshToken, sentAt);
+        return null;
+      }
+      const { data, error } = answer;
+      // Handle array response from RPC
+      const responseData = (Array.isArray(data) ? data[0] : data) as
+        | { success?: unknown; access_token?: unknown; refresh_token?: unknown; expires_in?: unknown }
+        | null
+        | undefined;
 
-    if (generation !== getSessionGeneration()) {
-      const obsolete = Array.isArray(data) ? data[0] : data;
-      if (obsolete?.success && obsolete.refresh_token)
-        await revokeSession(String(obsolete.refresh_token));
-      return null;
-    }
-    if (error) {
-      console.error('[Auth] Token refresh RPC error:');
+      if (generation !== getSessionGeneration()) {
+        if (responseData?.success && responseData.refresh_token)
+          await revokeSession(String(responseData.refresh_token));
+        return null;
+      }
+      if (error && isGatewayKeyRejection(error)) {
+        // A gateway key rejection is definitive: the keys were rotated.
+        console.error('[Auth] Token refresh RPC error:');
+        await rejectSession(generation, keysChangedMessage());
+        return null;
+      }
       // Only the backend's definitive rejection ends the device session; a
       // transport or serialization failure keeps the credential for retry.
-      // A gateway key rejection is definitive too: the keys were rotated.
-      if (isDefinitiveRefreshException(error))
-        await rejectSession(generation, sessionRejectedMessage());
-      else if (isGatewayKeyRejection(error))
-        await rejectSession(generation, keysChangedMessage());
-      return null;
+      const refused = error
+        ? isDefinitiveRefreshException(error)
+        : (!responseData?.success || !responseData?.access_token) &&
+          isDefinitiveRefreshRejection(responseData);
+      if (refused) {
+        // The stored token may no longer be the one that was refused: another
+        // refresh can have stored its successor meanwhile. Look before ending
+        // the session.
+        const current = await getStoredToken();
+        if (generation !== getSessionGeneration()) return null;
+        if (current.refreshToken && current.refreshToken !== refreshToken) {
+          if (current.authToken && current.expiresAt && current.isValid)
+            return {
+              accessToken: current.authToken,
+              refreshToken: current.refreshToken,
+              expiresAt: current.expiresAt,
+            };
+          if (!successorTried) {
+            successorTried = true;
+            refreshToken = current.refreshToken;
+            continue;
+          }
+        }
+        console.error('[Auth] Token refresh failed:');
+        await rejectSession(generation, sessionRejectedMessage(), refreshToken);
+        return null;
+      }
+      if (error) {
+        console.error('[Auth] Token refresh RPC error:');
+        if (isGateSignal(error)) return null;
+        // No answer, or one that is not the server's decision: the token is
+        // kept and sent again, like after a timeout.
+        if (!repeated) {
+          repeated = true;
+          continue;
+        }
+        scheduleRefreshRetry(generation, refreshToken, sentAt);
+        return null;
+      }
+
+      // A success without both tokens is not stored: the old refresh token is
+      // never paired with a new access token, and nothing stored is replaced
+      // by half an answer.
+      const validation =
+        responseData?.success === true &&
+        typeof responseData.access_token === 'string' &&
+        typeof responseData.refresh_token === 'string' &&
+        responseData.refresh_token
+          ? validateJWTToken(responseData.access_token)
+          : { valid: false };
+      if (!validation.valid) {
+        console.error('[Auth] Token refresh answer is incomplete');
+        return null;
+      }
+      const newAccessToken = String(responseData!.access_token);
+      const newRefreshToken = String(responseData!.refresh_token);
+
+      // Expiry on the device clock
+      const expiresAt = deviceExpiry(validation, responseData!);
+
+      // Store the new tokens
+      await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation);
+      lastIssued = { token: newAccessToken, at: Date.now() };
+      clearRefreshRetry();
+
+      // Clear cached authenticated client so it picks up new token
+      clearAuthenticatedClientCache();
+
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresAt,
+      };
     }
-
-    // Handle array response from RPC
-    const responseData = Array.isArray(data) ? data[0] : data;
-
-    if (!responseData?.success || !responseData?.access_token) {
-      if (isDefinitiveRefreshRejection(responseData))
-        await rejectSession(generation, sessionRejectedMessage());
-      console.error('[Auth] Token refresh failed:');
-      return null;
-    }
-
-    const newAccessToken = String(responseData.access_token);
-    const newRefreshToken = String(responseData.refresh_token || refreshToken);
-
-    // Validate the new JWT
-    const validation = validateJWTToken(newAccessToken);
-    if (!validation.valid) {
-      console.error('[Auth] Refreshed token is invalid');
-      return null;
-    }
-
-    // Calculate expiration
-    const expiresAt = validation.exp
-      ? validation.exp * 1000
-      : responseData.expires_at
-        ? new Date(responseData.expires_at).getTime()
-        : Date.now() + 24 * 60 * 60 * 1000; // Default 24h
-
-    // Store the new tokens
-    await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation);
-
-    // Clear cached authenticated client so it picks up new token
-    clearAuthenticatedClientCache();
-
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      expiresAt,
-    };
   } catch (error) {
     console.error('[Auth] Token refresh exception:');
     return null;
@@ -866,10 +1228,21 @@ export const ensureValidTokens = async (): Promise<boolean> => {
     if (tokenData.type === 'jwt') {
       const expiresAt = tokenData.expiresAt || 0;
       const now = Date.now();
-      const bufferMs = 5 * 60 * 1000; // 5 minute buffer
 
-      // Token still valid with buffer
-      if (expiresAt > now + bufferMs) {
+      // Token still valid with its renew-ahead margin
+      if (expiresAt > now + renewAheadMs(tokenData.authToken)) {
+        return true;
+      }
+      // A token issued within the last minute is used, not renewed again: with
+      // a lifetime the margin cannot be read from, every request would
+      // otherwise rotate the session.
+      const issued = lastIssued;
+      if (
+        tokenData.isValid &&
+        issued !== undefined &&
+        issued.token === tokenData.authToken &&
+        Math.abs(now - issued.at) < JUST_ISSUED_MS
+      ) {
         return true;
       }
 
@@ -1138,27 +1511,48 @@ export const getCachedUserProfile = async () => {
 
     // A profile cache timeout is not a session timeout. Reload the active profile
     // through RLS instead of discarding a still-refreshable login.
-    const client = await getAuthenticatedClient();
-    const stored = await getStoredToken();
-    const subject = stored.authToken
-      ? validateJWTToken(stored.authToken).sub
-      : undefined;
-    if (!subject) return null;
-    const { data: profile, error } = await client
-      .from('user_profiles')
-      .select('*')
-      .eq('auth_user_id', subject)
-      .eq('active', true)
-      .single();
-    if (error || !profile) return null;
-    const { data: customerIds } = await client.rpc('user_accessible_customers');
-    const result = { ...profile, assignedCustomerIds: customerIds || [] };
-    await cacheUserProfile(result, generation);
-    return generation === getSessionGeneration() ? result : null;
+    return await loadUserProfile(generation, false);
   } catch (error) {
     console.error('[Auth] Error getting cached profile:');
   }
   return null;
+};
+
+// The signed-in person's profile and customer assignments as the server has
+// them now; the result replaces the cached copy. `strict` gives nothing when
+// the assignments could not be read, instead of a profile without any.
+async function loadUserProfile(generation: number, strict: boolean) {
+  const client = await getAuthenticatedClient();
+  const stored = await getStoredToken();
+  const subject = stored.authToken
+    ? validateJWTToken(stored.authToken).sub
+    : undefined;
+  if (!subject) return null;
+  const { data: profile, error } = await client
+    .from('user_profiles')
+    .select('*')
+    .eq('auth_user_id', subject)
+    .eq('active', true)
+    .single();
+  if (error || !profile) return null;
+  const { data: customerIds, error: customersError } = await client.rpc('user_accessible_customers');
+  if (customersError && strict) return null;
+  const result = { ...profile, assignedCustomerIds: customerIds || [] };
+  await cacheUserProfile(result, generation);
+  return generation === getSessionGeneration() ? result : null;
+}
+
+/**
+ * Reads the profile from the server after a start from the cached copy, so a
+ * role or customer assignment the facility changed shows without a new
+ * sign-in. Null when the server could not be asked; the cached copy stays.
+ */
+export const reloadUserProfile = async () => {
+  try {
+    return await loadUserProfile(getSessionGeneration(), true);
+  } catch {
+    return null;
+  }
 };
 
 // Decode JWT claims without validating expiry; callers decide what to accept.

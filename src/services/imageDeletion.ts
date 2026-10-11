@@ -1,5 +1,6 @@
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
+import { serverReason } from '@/utils/serverText';
 
 export interface ImageDeletionResult {
   success: boolean;
@@ -23,8 +24,11 @@ export async function deleteWarehouseImage(
     const { data, error } = await client.rpc(`delete_${kind}_image`, {
       p_image_id: imageId,
     });
-    if (error || data?.success !== true)
-      return { success: false, error: t('errors.image.deletionRejected') };
+    if (error || data?.success !== true) {
+      // Name the server's reason (no permission, not found) when it gave one the app knows.
+      const reason = serverReason(String(error?.message ?? data?.message ?? data?.error ?? ''));
+      return { success: false, error: reason ?? t('errors.image.deletionRejected') };
+    }
     // Use the authorized RPC's path, never a signed URL containing a query token.
     const path = data.data?.storage_path;
     if (typeof path !== 'string' || !path)

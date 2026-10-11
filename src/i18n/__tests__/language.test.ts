@@ -28,6 +28,15 @@ describe('digits', () => {
     expect(normalizeDigits('DD૦૦૧૦ બટાકા 7')).toBe('DD0010 બટાકા 7');
     expect(Number(normalizeDigits('૪૫.૫'))).toBe(45.5);
   });
+  // M4-17: a Hindi keyboard is common in Gujarat.
+  it('reads Devanagari and Arabic-Indic digits as 0-9 too', () => {
+    expect(normalizeDigits('१२३')).toBe('123');
+    expect(normalizeDigits('A००१०')).toBe('A0010');
+    expect(normalizeDigits('٠١٢٣٤٥٦٧٨٩')).toBe('0123456789');
+    expect(normalizeDigits('۰۱۲۳۴۵۶۷۸۹')).toBe('0123456789');
+    expect(normalizeDigits('०१२३४५६७८९')).toBe('0123456789');
+    expect(normalizeDigits('बटाटा 7')).toBe('बटाटा 7');
+  });
   it('round-trips', () => {
     expect(normalizeDigits(localizeDigits('2026-10-07', 'gu'))).toBe('2026-10-07');
   });

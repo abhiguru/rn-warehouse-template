@@ -22,9 +22,9 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportHeader, KPIGrid, ReportEmptyState, type KPIItem } from '@/components/reports';
+import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerScope, type KPIItem, type ReportScope } from '@/components/reports';
 import { StockService } from '@/services/stock-service';
-import { getAllGRNItems, type GRNItem } from '@/services/grn-service';
+import { getAllGRNItems, getCustomerGRNItems, type GRNItem } from '@/services/grn-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -425,8 +425,20 @@ const placeholderKpis = (): KPIItem[] => [
 // Main Screen
 // ============================================================================
 export default function ItemStockSummaryScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.itemStockSummary')}>
+      {(scope) => <ItemStockSummaryReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // Warehouse users see every customer's stock. A customer account names one of its
+  // customers on every request: the server refuses it the all-customers form.
+  const customerId = scope.shouldShowListView ? undefined : scope.singleAssignedCustomerId ?? undefined;
+  const noCustomer = !scope.shouldShowListView && !customerId;
 
   const [items, setItems] = useState<ItemWiseStockItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -473,6 +485,11 @@ export default function ItemStockSummaryScreen() {
     isLoadMore = false,
     isRefresh = false
   ) => {
+    if (noCustomer) {
+      setError(tr('reports.shared.noCustomer'));
+      setIsLoading(false);
+      return;
+    }
     if (fetchInProgressRef.current && !isRefresh) return;
     fetchInProgressRef.current = true;
 
@@ -489,6 +506,7 @@ export default function ItemStockSummaryScreen() {
       logger.debug('Fetching items', { query, offset, isLoadMore });
 
       const response = await StockService.getItemWiseStockList({
+        customerId,
         searchQuery: query || undefined,
         limit: 50,
         offset,
@@ -535,7 +553,7 @@ export default function ItemStockSummaryScreen() {
         setIsLoadingMore(false);
       }
     }
-  }, []);
+  }, [customerId, noCustomer]);
 
   // Fetch GRN details for an item
   const fetchGRNDetails = useCallback(async (itemId: string) => {
@@ -550,10 +568,10 @@ export default function ItemStockSummaryScreen() {
     try {
       logger.debug('Fetching GRN details for item', { itemId });
 
-      const response = await getAllGRNItems({
-        p_filters: { item_ids: [itemId], stock_status: 'in_stock' },
-        p_limit: 100,
-      });
+      const drillDown = { p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const }, p_limit: 100 };
+      const response = customerId
+        ? await getCustomerGRNItems(customerId, drillDown)
+        : await getAllGRNItems(drillDown);
 
       if (!isMountedRef.current) return;
 
@@ -586,7 +604,7 @@ export default function ItemStockSummaryScreen() {
         });
       }
     }
-  }, [grnDetailsCache, loadingGRNs]);
+  }, [grnDetailsCache, loadingGRNs, customerId]);
 
   // Toggle item expansion
   const toggleItem = useCallback((itemId: string) => {
@@ -679,7 +697,7 @@ export default function ItemStockSummaryScreen() {
   if (isLoading && items.length === 0) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.itemStockSummary')} />
+        <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={placeholderKpis()}
@@ -697,21 +715,25 @@ export default function ItemStockSummaryScreen() {
   if (error && items.length === 0) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.itemStockSummary')} />
+        <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
         <KPIGrid
           items={placeholderKpis()}
           isLoading={false}
           compact
         />
         <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
-        <ReportEmptyState
-          icon="alert-circle-outline"
-          tone="error"
-          message={tr('reports.shared.errorTitle')}
-          description={error}
-          actionLabel={tr('common.retry')}
-          onAction={() => fetchItems(debouncedQuery, 0)}
-        />
+        {noCustomer ? (
+          <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
+        ) : (
+          <ReportEmptyState
+            icon="alert-circle-outline"
+            tone="error"
+            message={tr('reports.shared.errorTitle')}
+            description={error}
+            actionLabel={tr('common.retry')}
+            onAction={() => fetchItems(debouncedQuery, 0)}
+          />
+        )}
       </View>
     );
   }
@@ -720,7 +742,7 @@ export default function ItemStockSummaryScreen() {
   if (items.length === 0 && !isLoading) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.itemStockSummary')} />
+        <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
         <KPIGrid
           items={placeholderKpis()}
           isLoading={false}
@@ -744,7 +766,7 @@ export default function ItemStockSummaryScreen() {
 
   return (
     <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.itemStockSummary')} />
+      <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
 
       <FlatList
         data={items}

@@ -188,12 +188,16 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSearch = useRef(0);
   const visibleIdsRef = useRef(visibleCustomerIds);
   visibleIdsRef.current = visibleCustomerIds;
 
   // Debounced backend search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // The number of this search. An answer to an earlier one is dropped:
+    // answers can arrive out of order on a slow link, or after the field was cleared.
+    const search = ++latestSearch.current;
 
     if (searchQuery.trim().length < SEARCH.minQueryLength) {
       setDropdownResults([]);
@@ -206,6 +210,7 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
     debounceRef.current = setTimeout(async () => {
       try {
         const results = await searchService.searchCustomers(searchQuery.trim());
+        if (search !== latestSearch.current) return;
         const visibleSet = new Set(visibleIdsRef.current);
         const filtered = results
           .filter((r) => !visibleSet.has(r.value))
@@ -213,10 +218,11 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
         setDropdownResults(filtered);
         setShowDropdown(filtered.length > 0);
       } catch {
+        if (search !== latestSearch.current) return;
         setDropdownResults([]);
         setShowDropdown(false);
       } finally {
-        setIsSearching(false);
+        if (search === latestSearch.current) setIsSearching(false);
       }
     }, SEARCH.debounceMs);
 

@@ -24,12 +24,82 @@ export function validateText(text) {
   if (match) throw new Error(`Artifact contains forbidden secret or workstation-path pattern: ${match}`);
 }
 
-export function validatePermissions(output, blocked, { requireCamera = true } = {}) {
-  const permissions = new Set([...output.matchAll(/(?:uses-permission(?:: name=)?|permission: )'?(android\.permission\.[A-Z0-9_]+)/g)].map(match => match[1]));
+/**
+ * Every permission the built app is expected to request. Anything else in the
+ * merged manifest fails the audit: a dependency or SDK upgrade can add a
+ * permission (location, contacts, phone state, notifications, advertising id)
+ * without any change in this repository, and a list of forbidden names cannot
+ * know about the ones nobody thought of.
+ *
+ * Add a name here only after reviewing why the app needs it, in the same change
+ * that introduces it. Where each one comes from today:
+ *   CAMERA                  expo-camera, expo-image-picker (QR codes, GRN and dispatch photos)
+ *   INTERNET                the app itself
+ *   ACCESS_NETWORK_STATE    @react-native-community/netinfo, expo-image, expo-updates
+ *   ACCESS_WIFI_STATE       @react-native-community/netinfo
+ *   USE_BIOMETRIC,
+ *   USE_FINGERPRINT         expo-local-authentication (app lock)
+ *   VIBRATE                 expo-haptics
+ *   SYSTEM_ALERT_WINDOW     the Expo prebuild template (React Native's developer overlay)
+ */
+export const EXPECTED_ANDROID_PERMISSIONS = [
+  'android.permission.ACCESS_NETWORK_STATE',
+  'android.permission.ACCESS_WIFI_STATE',
+  'android.permission.CAMERA',
+  'android.permission.INTERNET',
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.USE_BIOMETRIC',
+  'android.permission.USE_FINGERPRINT',
+  'android.permission.VIBRATE',
+];
+
+/**
+ * Permissions the app declares for itself, by suffix of its own package name.
+ * androidx.core adds this one to every app so its runtime receivers are not exported.
+ */
+const OWN_PACKAGE_PERMISSIONS = ['DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'];
+
+/** Every permission name in `aapt dump permissions` output, whatever its namespace. */
+function permissionNames(output) {
+  const used = [...output.matchAll(/^\s*uses-permission(?:-sdk-\d+)?:\s*(?:name=)?'?([A-Za-z0-9_.]+)'?/gm)].map(match => match[1]);
+  const declared = [...output.matchAll(/^\s*permission:\s*(?:name=)?'?([A-Za-z0-9_.]+)'?/gm)].map(match => match[1]);
+  return new Set([...used, ...declared]);
+}
+
+export function validatePermissions(output, blocked, { requireCamera = true, allowed = EXPECTED_ANDROID_PERMISSIONS, packageName } = {}) {
+  const permissions = permissionNames(output);
   const presentBlocked = blocked.filter(permission => permissions.has(permission));
   if (presentBlocked.length) throw new Error(`Blocked Android permission(s) present: ${presentBlocked.join(', ')}`);
+  const expected = new Set([...allowed, ...(packageName ? OWN_PACKAGE_PERMISSIONS.map(suffix => `${packageName}.${suffix}`) : [])]);
+  const unexpected = [...permissions].filter(permission => !expected.has(permission)).sort();
+  if (unexpected.length) {
+    throw new Error(
+      `Unexpected Android permission(s) present: ${unexpected.join(', ')}. ` +
+      'Find the dependency that adds each one, decide whether the app needs it, and either block it ' +
+      '(app.json android.blockedPermissions) or add it to EXPECTED_ANDROID_PERMISSIONS in scripts/artifact-audit.mjs.'
+    );
+  }
   if (requireCamera && !permissions.has('android.permission.CAMERA')) throw new Error('Expected Android camera permission is missing.');
   return [...permissions].sort();
+}
+
+/**
+ * The built app must say `android:allowBackup="false"`. Without the attribute
+ * Android backs the app's data up to the user's Google account and lets it be
+ * moved to another phone, outside the facility's control. Takes the output of
+ * `aapt2 dump xmltree --file AndroidManifest.xml` or `aapt dump xmltree`.
+ */
+export function validateBackup(output) {
+  const match = /android:allowBackup\(0x01010280\)=(\S+(?: \S+)?)/.exec(output);
+  const value = match?.[1];
+  const off = value === 'false' || /^\(type 0x12\)0x0+$/.test(value ?? '');
+  if (!off) {
+    throw new Error(
+      `Android backup is not turned off (android:allowBackup is ${value ?? 'not set'}). ` +
+      'Set "allowBackup": false under expo.android in app.json and rebuild.'
+    );
+  }
+  return false;
 }
 
 function filesUnder(directory, prefix = '') {
@@ -92,7 +162,11 @@ export function auditArtifact(input, root = resolve(new URL('..', import.meta.ur
     const aapt = findAapt();
     if (!aapt) throw new Error('Android build-tools aapt/aapt2 is required to verify manifest permissions.');
     const args = basename(aapt) === 'aapt2' ? ['dump', 'permissions', artifact] : ['dump', 'permissions', artifact];
-    permissions = validatePermissions(run(aapt, args), blocked);
+    permissions = validatePermissions(run(aapt, args), blocked, { packageName: app.android.package });
+    const manifestArgs = basename(aapt) === 'aapt2'
+      ? ['dump', 'xmltree', '--file', 'AndroidManifest.xml', artifact]
+      : ['dump', 'xmltree', artifact, 'AndroidManifest.xml'];
+    validateBackup(run(aapt, manifestArgs));
     digest = createHash('sha256').update(readFileSync(artifact)).digest('hex');
   } else {
     throw new Error('Audit accepts an Android APK or an exported bundle directory.');

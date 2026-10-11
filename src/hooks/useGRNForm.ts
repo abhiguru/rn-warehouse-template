@@ -4,12 +4,18 @@
  * Custom hook that consolidates GRN form logic from multiple screen components.
  * Handles form initialization, validation, navigation, and data management.
  *
- * ## Auto-Navigation Feature (GRN Number Change Detection)
+ * ## GRN number check
  *
- * When user types a GRN number, the hook automatically:
- * - In CREATE mode: If number exists → navigates to EDIT mode for that GRN
- * - In EDIT mode: If number doesn't exist → navigates to CREATE mode
- * - In EDIT mode: If number exists but different → navigates to EDIT that GRN
+ * When the user types a GRN number, the hook asks the server whether it is taken:
+ * - taken by another GRN → the field shows "already exists" and step 1 does not
+ *   pass; the form (lines, photos, mode) is left exactly as it was
+ * - the number of the GRN being edited → nothing to report
+ * - free, or the check failed → nothing to report (`save_grn`/`update_grn`
+ *   refuse a duplicate in any case)
+ *
+ * The check never navigates and never loads or resets the form. Its answer has
+ * no lines and no photos; a form filled from it would make `update_grn` delete
+ * every photo of that GRN on save.
  *
  * ### Key Patterns Used:
  *
@@ -33,15 +39,13 @@
  *    - grnId is NOT in load effect deps (prevents reload on resetForm)
  *    - Only grnIdParam triggers reload (URL param change = new GRN to load)
  *
- * ### Important: For Invoice Form Implementation
- * When implementing similar auto-navigation for invoices, follow these patterns.
- * See plan file: ~/.claude/plans/buzzing-leaping-spark.md for detailed guide.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { createLogger } from '@/utils/logger';
 import {
   updateHeader,
   addItem,
@@ -63,6 +67,9 @@ import {
   selectGRNFormItems,
   selectGRNFormId,
   selectGRNTempId,
+  selectGRNRemovedImages,
+  selectGRNTakenNumberError,
+  setTakenNumberError,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
@@ -72,8 +79,9 @@ import { getNextGRNNumber, createGRN, updateGRN, loadGRNData as loadGRNDataServi
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { documentNumberState } from '@/utils/documentNumberCheck';
 /** Plain-language list of validation messages for an alert (never raw field keys). */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
@@ -88,6 +96,8 @@ function describeValidationErrors(errors: Record<string, string>): string {
  * Pattern: Increment before navigation, check in async functions before state updates.
  * If session changed, the async operation was cancelled and should not update state.
  */
+const log = createLogger('useGRNForm');
+
 let globalSessionId = 0;
 
 export type GRNFormMode = 'create' | 'edit';
@@ -162,11 +172,19 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   const items = useAppSelector(selectGRNFormItems);
   const grnId = useAppSelector(selectGRNFormId);
   const tempGrnId = useAppSelector(selectGRNTempId);
+  const removedImages = useAppSelector(selectGRNRemovedImages);
 
   const isCreateMode = mode === 'create';
 
+  // Message for a typed number that another GRN already holds; step 1 does not pass while it
+  // is set. It lives in the form slice: a screen's own copy was lost when step 1 was left
+  // and reopened, and the taken number then passed until save_grn refused it.
+  const takenNumberError = useAppSelector(selectGRNTakenNumberError);
+
   // Local state
-  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
+    (): Record<string, string> => (takenNumberError ? { gr_no: takenNumberError } : {})
+  );
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.gr_no);
 
   // AbortController for cancelling pending GRN number change operations
@@ -252,7 +270,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Auto-set supervisor to current user
     if (!header.supervisor_id && userProfile && !hasSetSupervisor.current) {
       hasSetSupervisor.current = true;
-      console.log('[useGRNForm] Auto-setting supervisor to current user:', userProfile.name);
+      log.debug('Auto-setting supervisor to the current user');
       dispatch(updateHeader({
         supervisor_id: userProfile.id,
         supervisor_name: userProfile.name,
@@ -263,6 +281,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   /**
    * Load existing GRN data for edit mode
    */
+  const loadExistingGRNRef = useRef<((id: string) => Promise<void>) | null>(null);
   const loadExistingGRN = useCallback(async (id: string) => {
     console.log('[useGRNForm] loadExistingGRN called for id:', id, {
       isLoadingData: isLoadingData.current,
@@ -295,7 +314,12 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert(t('errors.grn.form.loadFailedTitle'), serverText(result.error, t('common.checkConnection')));
+          // Nothing is put in the form: a GRN that was read only in part (its photo list
+          // missing) must not be opened for saving. The person can ask again.
+          showAlert(t('errors.grn.form.loadFailedTitle'), serverText(result.error, t('common.checkConnection')), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('common.retry'), onPress: () => { void loadExistingGRNRef.current?.(id); } },
+          ]);
         }
       }
     } catch (error) {
@@ -308,6 +332,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       isLoadingData.current = false;
     }
   }, [dispatch]);
+
+  loadExistingGRNRef.current = loadExistingGRN;
 
   // The screens read the local copy of the errors, so a changed field has to be cleared there too.
   const clearLocalErrors = useCallback((fields: string[]) => {
@@ -335,17 +361,20 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   }, [dispatch, clearLocalErrors]);
 
   /**
-   * Handle GRN number change with auto-navigation
+   * Handle GRN number change
    *
    * This function:
    * 1. Updates Redux immediately so UI is responsive
    * 2. Waits 750ms (debounce) before checking if number exists
-   * 3. If exists and different from current, navigates to edit that GRN
-   * 4. If doesn't exist and in edit mode, navigates to create mode
+   * 3. If another GRN holds the number, reports it on the field
    *
+   * It never navigates and never resets or reloads the form.
    * Uses AbortController to cancel pending operations when user types more
    */
-  const handleGrNoChange = useCallback((newGrNo: string) => {
+  const handleGrNoChange = useCallback((typedGrNo: string) => {
+    // A GRN number has no spaces; "G0001 " would be stored next to "G0001".
+    const newGrNo = typedGrNo.replace(/\s+/g, '');
+
     // Cancel any pending operation
     grNoChangeAbortRef.current?.abort();
     grNoChangeAbortRef.current = new AbortController();
@@ -354,65 +383,50 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Update Redux immediately so UI is responsive
     dispatch(updateHeader({ gr_no: newGrNo }));
     dispatch(clearValidationError('gr_no'));
+    dispatch(setTakenNumberError(null));
+    clearLocalErrors(['gr_no']);
 
     // Start async operation
     (async () => {
       // Skip check if < 5 chars
       if (newGrNo.length < 5) {
-        console.log('[useGRNForm] handleGrNoChange: Skipping check, < 5 chars');
+        log.debug('Number check skipped: fewer than 5 characters');
         return;
       }
 
       // Debounce 750ms
       await new Promise(r => setTimeout(r, 750));
       if (signal.aborted) {
-        console.log('[useGRNForm] handleGrNoChange: Aborted after debounce');
+        log.debug('Number check dropped after the wait');
         return;
       }
 
-      console.log('[useGRNForm] handleGrNoChange: Checking if GRN exists:', newGrNo);
+      // The typed number is not logged.
+      log.debug('Checking whether the typed GRN number exists');
 
       // Check existence
       const result = await checkGrnExists(newGrNo);
       if (signal.aborted) {
-        console.log('[useGRNForm] handleGrNoChange: Aborted after check');
+        log.debug('Number check dropped after the answer');
         return;
       }
 
-      console.log('[useGRNForm] handleGrNoChange: Check result:', result);
+      // In edit mode the GRN's own number is not a duplicate.
+      const state = documentNumberState(
+        { exists: result.exists, id: result.grnId, error: result.error },
+        mode === 'edit' ? grnIdParam : null
+      );
+      log.debug('Number check result', { state });
+      if (state !== 'taken') return;
 
-      // Navigate if needed
-      if (result.exists && result.grnId && result.grnId !== grnIdParam) {
-        // GRN exists and it's different from current - navigate to edit
-        console.log('[useGRNForm] handleGrNoChange: Navigating to edit mode for:', result.grnId);
-        globalSessionId += 1;
-
-        // Pre-load GRN data from checkGrnExists result (avoids second RPC call)
-        if (result.grnData) {
-          console.log('[useGRNForm] Pre-loading GRN data from check result');
-          dispatch(loadGRNData({
-            grnId: result.grnId,
-            header: result.grnData.header,
-            items: result.grnData.items,
-          }));
-        } else {
-          dispatch(resetForm());
-        }
-
-        router.replace(`/grn-edit/${result.grnId}/step1`);
-      } else if (!result.exists && mode === 'edit') {
-        // GRN doesn't exist and we're in edit mode - navigate to create
-        console.log('[useGRNForm] handleGrNoChange: Navigating to create mode');
-        globalSessionId += 1;
-        dispatch(resetForm());
-        // After reset, set the GRN number user typed
-        dispatch(updateHeader({ gr_no: newGrNo }));
-        router.replace('/grn-form/step1');
-      }
-      // If GRN exists and matches current (grnIdParam), do nothing - already editing it
-      // If GRN doesn't exist and in create mode, do nothing - user is creating new
+      const takenNumber = result.grNo || newGrNo;
+      const message = result.customerName
+        ? t('grn.form.numberTakenFor', { number: formatIdentifier(takenNumber), customer: result.customerName })
+        : t('grn.form.numberTaken', { number: formatIdentifier(takenNumber) });
+      dispatch(setTakenNumberError(message));
+      setLocalValidationErrors((prev) => ({ ...prev, gr_no: message }));
     })();
-  }, [grnIdParam, mode, dispatch]);
+  }, [grnIdParam, mode, dispatch, clearLocalErrors]);
 
   // Item actions
   const addFormItem = useCallback((item: GRNItemData) => {
@@ -465,6 +479,11 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         result = { isValid: true, errors: {} };
     }
 
+    // A number another GRN holds keeps step 1 from passing until it is changed.
+    if (step === 1 && takenNumberError) {
+      result = { isValid: false, errors: { ...result.errors, gr_no: takenNumberError } };
+    }
+
     if (!result.isValid) {
       setLocalValidationErrors(result.errors);
       dispatch(setValidationErrors(result.errors));
@@ -474,7 +493,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     return result;
-  }, [header, items, dispatch]);
+  }, [header, items, dispatch, takenNumberError]);
 
   const clearFieldError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {
@@ -554,7 +573,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
       const result = isCreateMode
         ? await createGRN(payload)
-        : await updateGRN(grnId!, payload);
+        : await updateGRN(grnId!, payload, { removedImages });
 
       if (result.success) {
         return { success: true, grnId: result.data?.id };
@@ -570,7 +589,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     } finally {
       dispatch(setIsSaving(false));
     }
-  }, [header, items, grnId, isCreateMode, validateCurrentStep, dispatch]);
+  }, [header, items, grnId, removedImages, isCreateMode, validateCurrentStep, dispatch]);
 
   /**
    * Reset form to initial state

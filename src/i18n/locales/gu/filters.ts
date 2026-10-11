@@ -121,6 +121,8 @@ export const filters: Translation<typeof source> = {
     searching: 'શોધી રહ્યા છીએ',
     recent: 'તાજેતરની શોધ',
     searchAgain: '{{text}} ફરીથી શોધો',
+    minLength: 'શોધવા ઓછામાં ઓછા બે અક્ષર લખો.',
+    tooManyWords: 'ફક્ત પહેલા આઠ શબ્દો શોધાય છે.',
   },
   sheet: {
     sortBy: 'આ મુજબ સૉર્ટ કરો',

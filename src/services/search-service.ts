@@ -3,6 +3,11 @@ import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { createLogger, loggableError } from '@/utils/logger';
+
+// Identifiers, counts and error codes only: what is typed into a search and
+// what the server answers (names, mobile numbers, cities) are never logged.
+const log = createLogger('search');
 export interface SearchResult {
   label: string;
   value: string;
@@ -16,21 +21,8 @@ class SearchService {
   // Search customers by name using RPC for proper security
   async searchCustomers(query: string): Promise<SearchResult[]> {
     try {
-      if (__DEV__) {
-        console.log('[SearchService] ====== CUSTOMER SEARCH DEBUG ======');
-        console.log('[SearchService] Query:', query);
-        console.log('[SearchService] Query length:', query?.length);
-      }
-
       if (!query || query.length < 1) {
-        if (__DEV__) console.log('[SearchService] Query too short, returning empty array');
         return [];
-      }
-
-      if (__DEV__) {
-        console.log('[SearchService] Calling search_customers RPC...');
-        console.log('[SearchService] - Query:', query);
-        console.log('[SearchService] - Limit: 20');
       }
 
       // Get authenticated client with JWT tokens
@@ -41,18 +33,8 @@ class SearchService {
           p_limit: 20
         });
 
-      if (__DEV__) {
-        console.log('[SearchService] RPC response received');
-        console.log('[SearchService] - Error:', error);
-        console.log('[SearchService] - Data type:', typeof data);
-        console.log('[SearchService] - Data is array:', Array.isArray(data));
-        console.log('[SearchService] - Data length:', data?.length);
-        console.log('[SearchService] - Raw data:', JSON.stringify(data, null, 2));
-      }
-
       if (error) {
-        console.error('[SearchService] Customer search RPC error:', error);
-        if (__DEV__) console.error('[SearchService] Error details:', JSON.stringify(error, null, 2));
+        log.error('searchCustomers error', loggableError(error));
         return [];
       }
 
@@ -60,7 +42,6 @@ class SearchService {
       const customerData = Array.isArray(data) ? data : (data?.data || []);
 
       if (!customerData || customerData.length === 0) {
-        if (__DEV__) console.log('[SearchService] No customers found for query:', query);
         return [];
       }
 
@@ -92,14 +73,11 @@ class SearchService {
         };
       });
 
-      console.log('[SearchService] Mapped results:', results.length);
-      console.log('[SearchService] First result:', results[0]);
-      console.log('[SearchService] ====================================');
+      log.debug('searchCustomers', { results: results.length });
 
       return results;
     } catch (error) {
-      console.error('[SearchService] Exception in searchCustomers:', error);
-      console.error('[SearchService] Exception details:', JSON.stringify(error, null, 2));
+      log.error('Exception in searchCustomers', loggableError(error));
       return [];
     }
   }
@@ -107,19 +85,9 @@ class SearchService {
   // Search items catalog by name or packaging
   async searchGRNItems(query: string): Promise<SearchResult[]> {
     try {
-      console.log('[SearchService] ====== ITEM SEARCH DEBUG ======');
-      console.log('[SearchService] Query:', query);
-      console.log('[SearchService] Query length:', query?.length);
-
       if (!query || query.length < 1) {
-        console.log('[SearchService] Query too short, returning empty array');
         return [];
       }
-
-      console.log('[SearchService] Calling search_items_autocomplete RPC...');
-      console.log('[SearchService] - Query:', query);
-      console.log('[SearchService] - Active only: true');
-      console.log('[SearchService] - Limit: 20');
 
       // Get authenticated client with JWT tokens
       const authenticatedClient = await getAuthenticatedClient();
@@ -129,23 +97,14 @@ class SearchService {
         p_limit: 20
       });
 
-      console.log('[SearchService] RPC response received');
-      console.log('[SearchService] - Error:', error);
-      console.log('[SearchService] - Data type:', typeof data);
-      console.log('[SearchService] - Raw data:', JSON.stringify(data, null, 2));
-
       if (error) {
-        console.error('[SearchService] Items search RPC error:', error);
-        console.error('[SearchService] Error details:', JSON.stringify(error, null, 2));
+        log.error('searchGRNItems error', loggableError(error));
         return [];
       }
 
       if (!data || !data.items) {
-        console.log('[SearchService] No items found - data structure:', data);
         return [];
       }
-
-      console.log('[SearchService] Items found:', data.items.length);
 
       interface RpcItemResult {
         id: string;
@@ -159,16 +118,11 @@ class SearchService {
         type: 'item' as const
       }));
 
-      console.log('[SearchService] Mapped results:', results.length);
-      if (results.length > 0) {
-        console.log('[SearchService] First result:', results[0]);
-      }
-      console.log('[SearchService] ====================================');
+      log.debug('searchGRNItems', { results: results.length });
 
       return results;
     } catch (error) {
-      console.error('[SearchService] Exception in searchGRNItems:', error);
-      console.error('[SearchService] Exception details:', JSON.stringify(error, null, 2));
+      log.error('Exception in searchGRNItems', loggableError(error));
       return [];
     }
   }
@@ -177,7 +131,6 @@ class SearchService {
   // Search dispatches by number using RPC
   // Updated 2026-01-03: Use get_dispatch_list_with_items which has correct filter structure
   async searchDispatches(query: string): Promise<SearchResult[]> {
-    if (__DEV__) console.log('[SearchService] searchDispatches called with query:', query);
     if (!query || query.length < 1) {
       return [];
     }
@@ -197,15 +150,6 @@ class SearchService {
       }>;
     }
 
-    if (__DEV__) console.log('[SearchService] Calling get_dispatch_list_with_items RPC with:', {
-      p_filters: { disp_no: query },  // String for prefix match
-      p_sort_by: 'disp_no',
-      p_sort_order: 'asc',
-      p_page: 1,
-      p_limit: 20,
-      p_include_items: false
-    });
-
     const result = await executeRPC<DispatchListResponse, SearchResult[]>(
       getAuthenticatedClient,
       'get_dispatch_list_with_items',
@@ -221,9 +165,7 @@ class SearchService {
         context: 'SearchService.searchDispatches',
         errorMessage: t('errors.dispatch.searchFailed'),
         transform: (data) => {
-          if (__DEV__) console.log('[SearchService] searchDispatches raw response:', JSON.stringify(data, null, 2).slice(0, 1000));
           const dispatches = Array.isArray(data?.dispatches) ? data.dispatches : [];
-          if (__DEV__) console.log('[SearchService] searchDispatches dispatches count:', dispatches.length);
           return dispatches.map((dispatch: Record<string, unknown>) => {
             // Handle both camelCase and snake_case field names
             const dispNo = dispatch.dispNo || dispatch.disp_no || '';
@@ -240,7 +182,7 @@ class SearchService {
       }
     );
 
-    if (__DEV__) console.log('[SearchService] searchDispatches result:', { success: result.success, dataLength: result.data?.length, message: result.message });
+    log.debug('searchDispatches', { success: result.success, results: result.data?.length ?? 0 });
 
     return result.success && result.data ? result.data : [];
   }
@@ -320,7 +262,7 @@ class SearchService {
         grnNumbers
       };
     } catch (error) {
-      console.error('[SearchService] Exception in searchAll:', error);
+      log.error('Exception in searchAll', loggableError(error));
       return {
         customers: [],
         items: [],

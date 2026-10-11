@@ -1,5 +1,81 @@
 # Dependency security review — 2026-09-14
 
+## The audit gate, install check and update channels — 11 October 2026
+
+From the 2026-10-10 review. No dependency version changed.
+
+**What `npm run audit:dependencies` accepts.** The gate replaces
+`npm audit --audit-level`, and it used to judge only high and critical
+entries: the 53 high entries passed because each one resolves to a backported
+advisory, and the 5 moderate ones were not looked at, so a new moderate
+advisory in a shipped package could not fail a build. It now works from one
+list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
+
+| Advisory            | Package and range    | Why it is accepted                                             | Review by  |
+| ------------------- | -------------------- | -------------------------------------------------------------- | ---------- |
+| GHSA-86w9-cpqp-85rv | node-forge `<=1.4.0` | Repaired locally from upstream PR 1152; no release has the fix | 2027-01-10 |
+| GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`     | Repaired locally (depth bound); no patched release             | 2027-01-10 |
+| GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3` | Repaired locally (precision bound); no patched release         | 2027-01-10 |
+
+- Every entry of the npm report at **moderate, high or critical** must resolve
+  to advisories on this list, with the same package and affected range, and
+  every installed copy must carry the repair
+  (`scripts/security-backports.json`). Anything else is `UNREPAIRED` and the
+  command exits 1.
+- Low and info entries do not fail the command. They are listed under
+  `belowThreshold` in its output and in the CI report artifact.
+- npm's totals are reconciled against the judged entries at every severity, so
+  an entry cannot be passed over.
+- **The acceptance ends on the review date.** From the day after `reviewBy`
+  the entry is reported as `REVIEW_OVERDUE` and the command exits 1, on every
+  branch, until someone does the review: check the advisory and the package
+  for a fixed release; if there is one, upgrade and delete the entry and its
+  backport; if not, move the date (three months is the habit) in the same pull
+  request as a note here. A test keeps this list equal to the advisories in the
+  backport manifest.
+- Review the `overrides` in `package.json` on the same date. They are exact
+  pins that Dependabot does not edit, so a later fix release of `postcss`,
+  `uuid`, `decode-uri-component`, `compression`, `source-map-js` or
+  `shell-quote` is adopted only by hand. A new advisory against a pinned
+  version at moderate or above now fails this gate.
+
+**Installs with scripts turned off.** The two adapters and the backports are
+applied by the npm `postinstall` script and by nothing else. `npm ci
+--ignore-scripts`, or `ignore-scripts=true` in a developer's own `.npmrc`,
+leaves `node_modules` as published and prints nothing. `npm start`, `npm run
+android`, `npm run ios`, `npm run web` and `npm test` now run
+`scripts/check-install.mjs` first; it reads the installed files, writes
+nothing, and stops with the command to run (`npm run postinstall`) when a
+patch is missing. Commands started with `npx` or Gradle directly (`npx expo
+export`, `npx expo prebuild`, `./gradlew`) are not covered: run
+`node scripts/check-install.mjs` or `npm run verify:backports` before them, as
+the build runbooks do.
+
+**Dependabot.** Every `ignore` entry in `.github/dependabot.yml` now names the
+update types it ignores. Version updates are held back exactly as before. An
+entry with a name alone can also hold back the security pull request for that
+package; an entry with `update-types` does not. A security pull request for a
+package that a backport or adapter pins will fail CI until the patch is
+reviewed; that failure is the notice.
+
+**Workflows.** Actions are referenced by commit with the release in a comment
+(`actions/checkout` v7.0.1, `actions/setup-node` v6.5.0, `actions/setup-java`
+v6.0.1, `actions/upload-artifact` v6.0.0, read with `git ls-remote` on
+2026-10-11); Dependabot's monthly `github-actions` update moves the hash and
+the comment together. Every checkout sets `persist-credentials: false`.
+`scripts/workflows.test.mjs` checks all three points.
+
+**Over-the-air updates are off, explicitly.** `expo-updates`, a runtime
+version, EAS channels and the in-app update prompt are present, and updates
+were off only because `app.json` had no `updates.url`. `app.json` now says
+`"updates": { "enabled": false }`; the generated Android manifest and iOS
+plist are the same as before (compared with `npx expo config --type
+introspect`). Turning updates on means remote JavaScript runs with the user's
+session, so it needs `updates.codeSigningCertificate`,
+`updates.codeSigningMetadata` and `updates.checkAutomatically` set to `NEVER`
+or `ON_ERROR_RECOVERY` in the same change; `scripts/ota-updates.test.mjs`
+fails otherwise.
+
 ## Expo SDK 57 upgrade — 10 October 2026
 
 The app moves from Expo SDK 54 / React Native 0.81.5 to **Expo SDK 57 / React

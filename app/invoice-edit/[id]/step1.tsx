@@ -1,11 +1,9 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
-  Switch,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,8 +26,6 @@ import {
   loadInvoiceFormData,
   setSelectedGrId,
   setItems,
-  updateAllDurations,
-  restoreOriginalDurations,
 } from '@/store/slices/invoiceFormSlice';
 import { GRNAutocomplete } from '@/features/invoice/components/GRNAutocomplete';
 import { validateStep1 } from '@/features/invoice/schemas/invoiceValidation';
@@ -66,9 +62,6 @@ export default function InvoiceEditStep1() {
   // Store original GRN ID to detect changes
   const [originalGrId] = useState(header.gr_id);
 
-  // Track focus count to skip initial mount for data reload
-  const focusCountRef = useRef(0);
-
   // Clear all local state on mount to prevent stale data
   useEffect(() => {
     setShowDatePicker(false);
@@ -76,56 +69,9 @@ export default function InvoiceEditStep1() {
     setShowGRNBottomSheet(false);
   }, []);
 
-  // Handle one_time_charge toggle - update all durations
-  useEffect(() => {
-    // Only run if items exist
-    if (items.length === 0) return;
-
-    if (header.one_time_charge) {
-      // Set all durations to 1 month
-      dispatch(updateAllDurations(1));
-    } else {
-      // Restore original durations from cache
-      dispatch(restoreOriginalDurations());
-    }
-  }, [header.one_time_charge, dispatch, items.length]);
-
-  // Reload GRN data when returning from details/edit screen
-  useFocusEffect(
-    useCallback(() => {
-      focusCountRef.current += 1;
-
-      // Only reload on subsequent focuses (not initial mount)
-      if (focusCountRef.current > 1 && header.gr_id) {
-        // Reload GRN data using the existing loadNewGRNData logic
-        const reloadGRNData = async () => {
-          dispatch(setIsLoadingItems(true));
-          try {
-            const response = await loadFormData(header.gr_id);
-            if (response.success && response.data) {
-              dispatch(
-                loadInvoiceFormData({
-                  header: {
-                    customer_id: response.data.header.customer_id,
-                    customer_name: response.data.header.customer_name,
-                    gr_id: response.data.header.gr_id,
-                    gr_no: response.data.header.gr_no,
-                  },
-                  items: response.data.items,
-                  grId: header.gr_id,
-                })
-              );
-            }
-          } catch (error) {
-            console.error('[InvoiceEditStep1] Error reloading GRN data:', error);
-          } finally {
-            dispatch(setIsLoadingItems(false));
-          }
-        };
-        reloadGRNData();
-      }
-    }, [header.gr_id, dispatch])
-  );
+  // Nothing is reloaded when this screen comes back into focus (for example
+  // after the GRN was viewed). The lines, the discount and its reason are the
+  // saved invoice's; only choosing another GRN below replaces the lines.
 
   // Navigate to GRN details screen
   const handleViewGRNDetails = useCallback(() => {
@@ -210,7 +156,7 @@ export default function InvoiceEditStep1() {
         showAlert(tr('invoice.form.grnLoadFailedTitle'), serverText(response.message, tr('common.checkConnection')));
       }
     } catch (error: any) {
-      console.error('[InvoiceEditStep1] Error loading GRN data:', error);
+      console.error('[InvoiceEditStep1] Error loading GRN data:', error instanceof Error ? error.message : String(error));
       // Clear failed GRN selection and reset items
       dispatch(setSelectedGrId(null));
       dispatch(setItems([]));
@@ -235,25 +181,6 @@ export default function InvoiceEditStep1() {
       dispatch(clearValidationError('inv_no'));
     } else if (text === '') {
       dispatch(updateHeader({ inv_no: 0 }));
-    }
-  };
-
-  const handleOneTimeChargeToggle = (value: boolean) => {
-    // ⚠️ Show confirmation when toggling one-time charge
-    if (value !== header.one_time_charge) {
-      const message = value
-        ? tr('invoice.form.oneTimeOnMessage')
-        : tr('invoice.form.oneTimeOffMessage');
-
-      showAlert(value ? tr('invoice.form.oneTimeOnTitle') : tr('invoice.form.oneTimeOffTitle'), message, [
-        { text: tr('common.cancel'), style: 'cancel' },
-        {
-          text: value ? tr('invoice.form.turnOn') : tr('invoice.form.turnOff'),
-          onPress: () => {
-            dispatch(updateHeader({ one_time_charge: value }));
-          },
-        },
-      ]);
     }
   };
 
@@ -306,6 +233,14 @@ export default function InvoiceEditStep1() {
       }
     }
   };
+
+  // Whether the GRN is priced one-time. The server decides the amounts from
+  // the GRN, so this is shown for information and cannot be switched here.
+  const oneTimeChargeText = !header.gr_id
+    ? tr('invoice.form.customerPlaceholder')
+    : header.one_time_charge
+      ? tr('common.yes')
+      : tr('common.no');
 
   const invDateError = validationErrors.inv_date;
   const invNoError = validationErrors.inv_no;
@@ -473,30 +408,18 @@ export default function InvoiceEditStep1() {
           </View>
         </View>
 
-        {/* One-time charge */}
-        <Pressable
-          style={({ pressed }) => [styles.switchRow, pressed && styles.switchRowPressed]}
-          onPress={() => handleOneTimeChargeToggle(!header.one_time_charge)}
-          accessibilityRole="switch"
-          accessibilityLabel={tr('invoice.label.oneTimeCharge')}
-          accessibilityState={{ checked: header.one_time_charge }}
-        >
-          <View style={styles.switchLabelContainer}>
-            <Text style={styles.switchLabel}>{tr('invoice.label.oneTimeCharge')}</Text>
-            <Text style={styles.helperText}>
-              {tr('invoice.form.oneTimeChargeHelp')}
-            </Text>
+        {/* One-time charge: the GRN's pricing mode, shown, not chosen here */}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>{tr('invoice.label.oneTimeCharge')}</Text>
+          <View
+            style={styles.readOnlyField}
+            accessible
+            accessibilityLabel={`${tr('invoice.label.oneTimeCharge')}, ${oneTimeChargeText}`}
+          >
+            <Text style={[styles.readOnlyText, !header.gr_id && styles.readOnlyPlaceholder]}>{oneTimeChargeText}</Text>
           </View>
-          <Switch
-            value={header.one_time_charge}
-            onValueChange={handleOneTimeChargeToggle}
-            trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
-            thumbColor={t.control.thumb}
-            ios_backgroundColor={t.control.trackOff}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
-        </Pressable>
+          <Text style={styles.helperText}>{tr('invoice.form.oneTimeChargeHelp')}</Text>
+        </View>
       </KeyboardAwareScrollView>
 
       {/* Bottom action bar */}

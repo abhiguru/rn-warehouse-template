@@ -114,7 +114,8 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
   // Fully dispatched is neutral; otherwise the app-wide low-stock rule.
   const stockStatus = getGRNStockStatus(stock, qty);
   const hasDetails = package_mark || packaging || rack;
-  const showWeight = weight !== undefined && weight !== null;
+  // A line saved without a weight carries 0; that is "no weight", not "0 kg".
+  const showWeight = Number(weight) > 0;
 
   const details = [
     package_mark ? { icon: 'label-outline', text: tr('grn.item.markWithValue', { mark: package_mark }) } : null,

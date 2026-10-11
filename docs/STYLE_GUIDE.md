@@ -796,7 +796,7 @@ Rules: label above the field, never only a placeholder. Height 44 minimum, radiu
 | `fiori/StepperInput.tsx` | Minus and plus buttons in `border.button` with `brand.tint` icons, `brand.subtle` while pressed; value in `body` with tabular numbers; the buttons disable at min and max; layouts `stacked`, `inline`, `compact`. |
 | `grn/components/item-form/QuantityWeightFields.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. |
 | `grn/components/item-form/RackChamberPicker.tsx` | Floor and chamber are single-choice chips with radio semantics (`brand.subtle` and a check when selected); use a bottom sheet only when there are more than eight options. Wrapping choice chips are at least 36 tall with an 8 gap and `hitSlop` up to `touchTarget`. |
-| `grn/components/item-form/ItemSearchField.tsx`, `ItemAutocomplete`, `CustomerAutocomplete`, `UserAutocomplete`, `invoice/components/GRNAutocomplete` | Search field plus suggestion list; recent picks first; empty state "No matches". |
+| `grn/components/item-form/ItemSearchField.tsx`, `ItemAutocomplete`, `invoice/components/GRNAutocomplete` | Search field plus suggestion list; recent picks first; empty state "No matches". |
 | `grn/components/ImageUploadButton.tsx`, `item-form/MarkImageField.tsx`, `CameraModal.tsx` | Dashed `border.field` tile with `camera-outline` icon and label; upload progress uses `FioriLinearProgress`; failure shows a retry action. |
 
 Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search field directly above the keypad rather than at the top of the sheet.

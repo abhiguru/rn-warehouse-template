@@ -44,3 +44,16 @@ it('asks for a discount reason only when there is a discount, and marks it requi
   expect(reasonInput(tree)!.props.value).toBe('Damaged bags');
   await act(async () => { tree.unmount(); });
 });
+
+it('keeps the reason field when the discount of a saved invoice is removed', async () => {
+  // Saved with a discount of 100; staff set it to 0, which the server also counts as a change.
+  const removed: InvoiceHeaderData = { ...header(0), saved_discount: 100, saved_discount_reason: 'Damaged bags' };
+  let tree!: ReturnType<typeof create>;
+  await act(async () => {
+    tree = create(<InvoiceCalculationSummary header={removed} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} reasonRequired />);
+  });
+
+  expect(reasonInput(tree)).toBeDefined();
+  expect(reasonInput(tree)!.props.value).toBe('');
+  await act(async () => { tree.unmount(); });
+});

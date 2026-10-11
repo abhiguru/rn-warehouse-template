@@ -22,6 +22,7 @@ import type {
 } from '@/types/dispatch.types';
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { serverText } from '@/utils/serverText';
+import { toCalendarDay } from '@/utils/formatters';
 
 const log = createLogger('dispatch');
 
@@ -34,22 +35,26 @@ const errorCode = (error: { code?: string | null } | null | undefined) =>
 // ============================================================================
 
 /**
- * Result from checkDispatchExists - includes full dispatch data to avoid second RPC call
+ * Result from checkDispatchExists.
+ *
+ * The check only says whether the number is taken and by which dispatch. It
+ * carries no items and no photos, so it must never be used to fill the form;
+ * load the dispatch with `loadDispatchData` instead. `error` tells a failed
+ * check apart from "not found".
  */
 export interface CheckDispatchExistsResult {
   exists: boolean;
   dispatchId?: string;
-  // Full dispatch data (when exists=true) - can be used to pre-populate form
-  dispatchData?: {
-    header: DispatchHeaderData;
-    items: DispatchItemData[];
-  };
+  dispNo?: string;
+  customerName?: string;
+  date?: string;
+  error?: boolean;
 }
 
 /**
  * Check if a dispatch number already exists in the database
- * Uses optimized check_dispatch_exists RPC (3-25ms vs 500-730ms direct query)
- * Returns full dispatch data to avoid redundant get_dispatch_details call
+ * Uses optimized check_dispatch_exists RPC (3-25ms vs 500-730ms direct query),
+ * which answers `{ success, data: { exists, dispatch_id, disp_no, customer_name, date } }`.
  */
 export const checkDispatchExists = async (
   dispNo: string
@@ -69,58 +74,32 @@ export const checkDispatchExists = async (
 
     if (error) {
       log.error('check_dispatch_exists failed', { code: errorCode(error) });
-      return { exists: false };
+      return { exists: false, error: true };
     }
 
-    if (!data || !data.exists || !data.dispatch) {
+    if (!data || data.success !== true) {
+      log.error('check_dispatch_exists was refused');
+      return { exists: false, error: true };
+    }
+
+    const found = data.data;
+    if (!found || found.exists !== true || !found.dispatch_id) {
       log.debug('Dispatch number not found', { dispNo });
       return { exists: false };
     }
 
-    const dispatch = data.dispatch;
-    log.debug('Dispatch number found', { dispNo, dispatchId: dispatch.id });
-
-    // Transform to DispatchHeaderData format
-    const header: DispatchHeaderData = {
-      disp_no: dispatch.disp_no,
-      disp_date: dispatch.disp_date,
-      registration: dispatch.registration || '',
-      customer_id: dispatch.customer_id,
-      customer_name: dispatch.customer_name,
-      supervisor_id: dispatch.supervisor_id || '',
-      supervisor_name: dispatch.supervisor_name || '',
-      note: dispatch.note || '',
-      source_order_id: dispatch.source_order_id || undefined,
-      source_order_no: dispatch.source_order_no || undefined,
-    };
-
-    // Transform items to DispatchItemData format
-    const items: DispatchItemData[] = (dispatch.items || []).map((item: any) => ({
-      unique_id: item.id,
-      grns_id: item.gr_id,
-      grns_gr_no: item.gr_no,
-      grns_date: item.grn_date,
-      grns_customer_name: dispatch.customer_name,
-      grnItems_id: item.gr_trl_id,
-      grnItems_item_id: item.item_id,
-      grnItems_item_name: item.item_name,
-      grnItems_quantity: item.grn_qty,
-      grnItems_stock: item.available_qty,
-      grnItems_package_mark: item.packaging || '',
-      grnItems_rack: item.rack || '',
-      grnItems_weight: item.weight || 0,
-      disp_quantity: item.disp_qty,
-      original_disp_quantity: item.disp_qty,
-    }));
+    log.debug('Dispatch number found', { dispNo, dispatchId: found.dispatch_id });
 
     return {
       exists: true,
-      dispatchId: dispatch.id,
-      dispatchData: { header, items },
+      dispatchId: found.dispatch_id,
+      dispNo: found.disp_no,
+      customerName: found.customer_name,
+      date: found.date,
     };
   } catch {
     log.error('Dispatch existence check failed', { dispNo });
-    return { exists: false };
+    return { exists: false, error: true };
   }
 };
 
@@ -218,7 +197,7 @@ export const createDispatch = async (payload: {
     const rpcBody = {
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
-        disp_date: payload.header.disp_date, // ISO timestamp
+        disp_date: toCalendarDay(payload.header.disp_date), // the day, 'YYYY-MM-DD': the server takes the day from this text
         registration: payload.header.registration.toUpperCase(), // Ensure uppercase
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
@@ -260,7 +239,10 @@ export const createDispatch = async (payload: {
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
 
-    // Upload deferred images if any
+    // Upload deferred images if any. The dispatch is saved either way; photos
+    // that did not arrive are returned so the screen can name them and offer
+    // another try, instead of reporting a clean save.
+    let failedPhotos: DispatchImageData[] = [];
     if (payload.images && payload.images.length > 0 && data.dispatch_id) {
       log.debug('Uploading deferred dispatch images', { imageCount: payload.images.length });
 
@@ -268,12 +250,13 @@ export const createDispatch = async (payload: {
         data.dispatch_id,
         payload.images
       );
+      failedPhotos = imageUploadResult.failed;
 
       if (!imageUploadResult.success) {
         log.warn('Some deferred dispatch images failed to upload', {
           uploadedCount: imageUploadResult.uploadedCount,
+          failedCount: failedPhotos.length,
         });
-        // Don't fail the dispatch creation, just log the warning
       } else {
         log.info('Deferred dispatch images uploaded', { uploadedCount: imageUploadResult.uploadedCount });
       }
@@ -281,6 +264,7 @@ export const createDispatch = async (payload: {
 
     return {
       success: true,
+      failed_photos: failedPhotos,
       dispatch_id: data.dispatch_id,
       dispatch_items: data.dispatch_items,
       message: serverText(data.message, t('dispatch.service.created')),
@@ -342,7 +326,7 @@ export const updateDispatch = async (
       p_dispatch_id: dispatchId,
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
-        disp_date: payload.header.disp_date,
+        disp_date: toCalendarDay(payload.header.disp_date),
         registration: payload.header.registration.toUpperCase(),
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,

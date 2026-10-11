@@ -27,9 +27,10 @@ import {
   ReportEmptyState,
   getDateRangeForPeriod,
   type KPIItem,
+  ReportCustomerScope,
+  type ReportScope,
 } from '@/components/reports';
 import { getCustomerDispatchActivity, getAllDispatchActivity } from '@/services/reporting';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -485,13 +486,14 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
       <View style={styles.itemRowAttributes}>
         <View style={styles.itemRowQtyRow}>
           <Text style={styles.itemRowQty}>{formatNumber(item.qty)}</Text>
-          {item.orig_qty && item.orig_qty !== item.qty && (
+          {/* Numbers are compared, never used as the left side of &&: 0 would be rendered as text. */}
+          {Number(item.orig_qty) > 0 && item.orig_qty !== item.qty ? (
             <Text style={styles.itemRowOrigQty}>{tr('reports.dispatchActivity.ofQuantity', { quantity: formatNumber(item.orig_qty) })}</Text>
-          )}
+          ) : null}
         </View>
-        {item.weight && (
+        {Number(item.weight) > 0 ? (
           <Text style={styles.itemRowWeight}>{formatWeight(item.weight)}</Text>
-        )}
+        ) : null}
       </View>
 
       {isNavigable && (
@@ -546,15 +548,19 @@ function groupDispatchesByDate(dispatches: DispatchActivityRecord[]): Map<string
 // CustomerCard moved to @/components/reports/ReportCustomerCard (J14 fix)
 
 export default function DispatchActivityScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.dispatchActivity')}>
+      {(scope) => <DispatchActivityReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function DispatchActivityReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   // Route params for direct navigation from customer activity
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
@@ -569,6 +575,8 @@ export default function DispatchActivityScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<TranslationKey | null>(null);
+  // The reason the server gave for refusing the report, already in the app's language.
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   const [expandedDispatches, setExpandedDispatches] = useState<Set<string>>(new Set());
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
   const [dateRange, setDateRange] = useState(() => getDateRangeForPeriod('last120days'));
@@ -590,6 +598,7 @@ export default function DispatchActivityScreen() {
       setIsLoading(true);
     }
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getAllDispatchActivity({
@@ -601,6 +610,7 @@ export default function DispatchActivityScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -614,7 +624,6 @@ export default function DispatchActivityScreen() {
 
   // Fetch single customer dispatch activity (for drill-down or regular users)
   const fetchSingleCustomerData = useCallback(async (customerId: string, showRefreshIndicator = false) => {
-    console.log('[DispatchActivity] fetchSingleCustomerData called, customerId:', customerId);
 
     if (showRefreshIndicator) {
       setIsRefreshing(true);
@@ -622,6 +631,7 @@ export default function DispatchActivityScreen() {
       setIsLoading(true);
     }
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getCustomerDispatchActivity({
@@ -633,6 +643,7 @@ export default function DispatchActivityScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -838,7 +849,7 @@ export default function DispatchActivityScreen() {
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers');
+  const listViewSubtitle = tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers');
 
   const refreshControl = (
     <RefreshControl
@@ -854,7 +865,7 @@ export default function DispatchActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
@@ -880,7 +891,7 @@ export default function DispatchActivityScreen() {
     );
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
@@ -888,7 +899,7 @@ export default function DispatchActivityScreen() {
         <ReportEmptyState
           icon="alert-circle-outline"
           message={tr('reports.dispatchActivity.errorTitle')}
-          description={tr(error)}
+          description={errorReason ?? tr(error)}
         />
         {canRetry && (
           <View style={styles.retryRow}>
@@ -989,8 +1000,8 @@ export default function DispatchActivityScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.dispatchActivity')}
-          subtitle={selectedCustomer?.customer_name}
-          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
+          subtitle={selectedCustomer?.customer_name || scope.customerName}
+          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
         />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
@@ -1009,8 +1020,8 @@ export default function DispatchActivityScreen() {
     <View style={styles.container}>
       <ReportHeader
         title={tr('reports.titles.dispatchActivity')}
-        subtitle={selectedCustomer?.customer_name || getDateRangeSubtitle()}
-        onBack={shouldShowListView ? handleBackToAll : undefined}
+        subtitle={selectedCustomer?.customer_name || scope.customerName || getDateRangeSubtitle()}
+        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
       />
 
       <PeriodSelector

@@ -17,6 +17,7 @@
  * @module lists/DispatchFlashList
  */
 
+import { createLogger } from '@/utils/logger';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl, LayoutAnimation } from 'react-native';
 
@@ -39,6 +40,7 @@ import {
 import {
   getDispatchListWithItems,
   getAssignedCustomerDispatchList,
+  CUSTOMER_DISPATCH_MAX,
   Dispatch,
 } from '@/services/dispatch-service';
 
@@ -47,7 +49,7 @@ import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { formatCount, formatNumber } from '@/utils/formatters';
-import { t as translate } from '@/i18n';
+import { localizeDigits, t as translate } from '@/i18n';
 
 // State
 import { usePermissions } from '@/hooks/usePermissions';
@@ -67,6 +69,8 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
+
+const logger = createLogger('DispatchList');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -159,7 +163,9 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // A newer request (the user kept typing, or changed a filter) replaces an
   // older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
-  const fetchDispatches = useCallback(async (offset: number = 0, append: boolean = false) => {
+  // `fresh`: pull to refresh and a return to the screen read the server again;
+  // a customer account's next page, sort and search use the history kept for it.
+  const fetchDispatches = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     try {
       if (append) setIsLoadingMore(true);
@@ -173,7 +179,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       // their assigned customers' dispatches.
       const response = isWarehouseRole
         ? await getDispatchListWithItems({ ...params, p_customer_id: customerId })
-        : await getAssignedCustomerDispatchList(customerId ? [customerId] : assignedCustomerIds, params);
+        : await getAssignedCustomerDispatchList(customerId ? [customerId] : assignedCustomerIds, { ...params, p_fresh: fresh });
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
       if (!response.success) {
@@ -193,9 +199,14 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       }
       setHasMore(pagination.has_more);
       setCurrentOffset(offset + newDispatches.length);
+      if (!append && pagination.history_limit_reached) {
+        setSnackbarMessage(translate('lists.dispatch.historyLimited', { count: localizeDigits(String(CUSTOMER_DISPATCH_MAX)) }));
+        setSnackbarVisible(true);
+      }
     } catch (err: unknown) {
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
-      console.error('[DispatchFlashList] Error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('List did not load', err instanceof Error ? err.message : err);
       setError(err instanceof Error ? err.message : 'Failed to load dispatches');
       setSnackbarMessage(append
         ? translate('lists.dispatch.loadMoreFailed')
@@ -224,7 +235,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) {
         setCurrentOffset(0);
-        fetchDispatches(0, false);
+        fetchDispatches(0, false, true);
       }
     }, [fetchDispatches])
   );
@@ -236,7 +247,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setCurrentOffset(0);
-    fetchDispatches(0, false);
+    fetchDispatches(0, false, true);
   }, [fetchDispatches]);
 
   const handleLoadMore = useCallback(() => {

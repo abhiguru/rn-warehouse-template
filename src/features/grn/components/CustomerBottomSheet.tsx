@@ -69,7 +69,6 @@ export const CustomerBottomSheet: React.FC<CustomerBottomSheetProps> = ({
 
   // Search function
   const searchCustomers = useCallback(async (query: string): Promise<Customer[]> => {
-    console.log('[CustomerBottomSheet] Searching customers with query:', query);
     const results = await searchService.searchCustomers(query);
 
     if (results && results.length > 0) {

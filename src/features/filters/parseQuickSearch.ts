@@ -14,6 +14,7 @@
 import { normalizeDigits } from '@/i18n/language';
 import { commonWords } from '@/i18n/locales/common';
 import { toLocalISODate } from '@/utils/formatters';
+import { compareDocumentNumbers } from '@/utils/documentNumber';
 
 export interface QuickSearchOptions {
   today?: Date;
@@ -50,6 +51,8 @@ const YESTERDAY_WORDS = new Set(['yesterday', plainSpelling(GUJARATI.yesterday)]
 
 /** The word between the two ends of a range: "10 to 20", "10 થી 20". */
 const RANGE_WORDS = new Set(['to', 'થી']);
+/** Between two dates a hyphen or dash, with spaces around it, does the same. */
+const DATE_RANGE_WORDS = new Set([...RANGE_WORDS, '-', '–', '—']);
 /** "થી" is usually written joined to the first number: "10થી 20". */
 const RANGE_SUFFIX = 'થી';
 /** "સુધી" may close a Gujarati range: "10 થી 20 સુધી". It is part of the range, not text to search for. */
@@ -126,7 +129,38 @@ function readRange(from: string, to: string, kind: 'document' | 'integer'): { fr
   const left = DOCUMENT.exec(from);
   const right = DOCUMENT.exec(to);
   if (!left || !right || left[1].toLowerCase() !== right[1].toLowerCase()) return null;
-  return { from, to };
+  return orderedDocumentRange(from, to);
+}
+
+/**
+ * A document-number range as the server can match it. Numbers are stored in
+ * capitals and the server's range compares the prefix as written, so small
+ * letters would match nothing; and a range typed the wrong way round is the
+ * same range, not an empty one.
+ */
+export function orderedDocumentRange(from: string, to: string): { from: string; to: string } {
+  const first = from.toUpperCase();
+  const second = to.toUpperCase();
+  return compareDocumentNumbers(first, second) > 0 ? { from: second, to: first } : { from: first, to: second };
+}
+
+/** Two dates as one range, earliest day first. */
+function joinDates(first: { from: string; to: string }, second: { from: string; to: string }) {
+  return {
+    from: first.from < second.from ? first.from : second.from,
+    to: first.to > second.to ? first.to : second.to,
+  };
+}
+
+/** The longest reading of the words at `index` as a date, and how many words it took. */
+function readDateAt(words: string[], index: number, today: Date): { date: { from: string; to: string }; taken: number } | null {
+  // Longest reading first: "7 oct 2026" before "7 oct".
+  for (const length of [3, 2, 1]) {
+    if (index + length > words.length) continue;
+    const date = readDate(words.slice(index, index + length), today);
+    if (date) return { date, taken: length };
+  }
+  return null;
 }
 
 export function parseQuickSearch(input: string, options: QuickSearchOptions = {}): QuickSearchResult {
@@ -186,19 +220,29 @@ export function parseQuickSearch(input: string, options: QuickSearchOptions = {}
     }
 
     if (options.dates && !result.date) {
-      // Longest reading first: "7 oct 2026" before "7 oct".
-      let taken = 0;
-      for (const length of [3, 2, 1]) {
-        if (index + length > words.length) continue;
-        const date = readDate(words.slice(index, index + length), today);
-        if (date) {
-          result.date = date;
-          taken = length;
-          break;
-        }
+      // "01/04/2025-31/03/2026": two dates in one word.
+      const pair = /^([^-]+)-([^-]+)$/.exec(word);
+      const left = pair ? readDate([pair[1]], today) : null;
+      const right = pair ? readDate([pair[2]], today) : null;
+      if (left && right) {
+        result.date = joinDates(left, right);
+        index += 1;
+        continue;
       }
-      if (taken > 0) {
-        index += taken;
+      const first = readDateAt(words, index, today);
+      if (first) {
+        result.date = first.date;
+        index += first.taken;
+        // "1 apr to 30 apr", "01/04/2025 - 31/03/2026", "૧/૪ થી ૩૦/૪ સુધી": a second date
+        // after a joining word closes a range. Without one, the word stays text.
+        if (DATE_RANGE_WORDS.has((words[index] ?? '').toLowerCase())) {
+          const second = readDateAt(words, index + 1, today);
+          if (second) {
+            result.date = joinDates(first.date, second.date);
+            index += 1 + second.taken;
+            if (words[index] === RANGE_END_WORD) index += 1;
+          }
+        }
         continue;
       }
     }

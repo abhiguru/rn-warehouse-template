@@ -4,6 +4,7 @@
  * Provides autocomplete search for GRN numbers
  */
 
+import { containsPattern } from '@/utils/postgrestFilter';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
 import type {
@@ -13,6 +14,7 @@ import type {
   GRNAutocompleteItem,
 } from '@/types/dispatch.types';
 import { serverText } from '@/utils/serverText';
+import { rpcRefusal } from '@/utils/rpcRefusal';
 
 // ============================================================================
 // SEARCH GRN NUMBERS (Autocomplete)
@@ -20,7 +22,8 @@ import { serverText } from '@/utils/serverText';
 
 /**
  * Search GRN numbers with autocomplete
- * Used in GRNAutocompleteBottomSheet
+ * Used in GRNAutocompleteBottomSheet, which always passes the dispatch's
+ * customer: a dispatch may only take that customer's stock.
  */
 export const searchGRNNumbers = async (
   query: string,
@@ -39,11 +42,11 @@ export const searchGRNNumbers = async (
     let queryBuilder = authenticatedClient
       .from('goodsreceived')
       .select('id, gr_no, date, customer_name')
-      .ilike('gr_no', `%${query}%`)
+      .ilike('gr_no', containsPattern(query))
       .order('gr_no', { ascending: false })
       .limit(50);
 
-    // Optionally filter by customer if provided
+    // Only this customer's GRNs
     if (customerId) {
       queryBuilder = queryBuilder.eq('customer_id', customerId);
     }
@@ -101,6 +104,12 @@ export const getGRNPrefixesWithStock = async (
     if (error) {
       console.error('[GRNDetailService] Error fetching GRN prefixes:', error);
       throw new Error(serverText(error.message, t('dispatch.service.grnPrefixesFailed')));
+    }
+
+    // A denial comes back as the answer ({success:false, message}); it is not "no GRNs".
+    const refusal = Array.isArray(data) ? undefined : rpcRefusal(data);
+    if (refusal) {
+      throw new Error(serverText(refusal.text, t('dispatch.service.grnPrefixesFailed')));
     }
 
     // Handle nested data structure: { data: [...], success: true }
@@ -164,6 +173,12 @@ export const getCustomerGRNsWithStock = async (
     if (error) {
       console.error('[GRNDetailService] Error fetching customer GRNs:', error);
       throw new Error(serverText(error.message, t('dispatch.service.customerGrnsFailed')));
+    }
+
+    // A denial comes back as the answer ({success:false, message}); it is not "no GRNs".
+    const refusal = Array.isArray(data) ? undefined : rpcRefusal(data);
+    if (refusal) {
+      throw new Error(serverText(refusal.text, t('dispatch.service.customerGrnsFailed')));
     }
 
     // Handle nested data structure: { data: [...], success: true }

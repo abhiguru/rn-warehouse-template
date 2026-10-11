@@ -203,7 +203,9 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         source={{ uri: item.image_url }}
         style={styles.image}
         contentFit="cover"
-        cachePolicy="memory-disk"
+        // A signed URL is new on every load, so a disk copy is never reused and
+        // would only leave the private photo on the device.
+        cachePolicy="memory"
         transition={150}
       />
     </Pressable>

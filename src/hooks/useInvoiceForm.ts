@@ -20,8 +20,6 @@ import {
   bulkUpdateItemGroupPricing,
   updateDiscount,
   recalculateTotals,
-  updateAllDurations,
-  restoreOriginalDurations,
   setCurrentStep,
   setIsLoading,
   setIsSaving,
@@ -57,6 +55,7 @@ import {
   loadInvoiceData as loadInvoiceDataService,
   createInvoice,
   updateInvoice,
+  checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 
 import { showAlert } from '@/utils/alert';
@@ -111,10 +110,6 @@ export interface UseInvoiceFormReturn {
   applyBulkPricing: (values: Partial<EditedItemValues>) => void;
   applyGroupPricing: (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => void;
 
-  // Duration actions (one_time_charge toggle)
-  setAllDurations: (duration: number) => void;
-  restoreOriginalItemDurations: () => void;
-
   // Validation
   validateCurrentStep: (step: number) => Promise<{ isValid: boolean; errors: Record<string, string> }>;
   clearFieldValidationError: (field: string) => void;
@@ -125,7 +120,8 @@ export interface UseInvoiceFormReturn {
   canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
 
   // Submission
-  submitForm: () => Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; error?: string }>;
+  /** `total` is the total the server stored, or null when it could not be read back after the save. */
+  submitForm: () => Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }>;
 
   // Reset
   resetFormState: () => void;
@@ -198,6 +194,7 @@ export function useInvoiceForm({
   /**
    * Load existing invoice data for edit mode
    */
+  const loadExistingInvoiceRef = useRef<((id: string) => Promise<void>) | null>(null);
   const loadExistingInvoice = useCallback(async (id: string) => {
     if (isLoadingData.current) return;
     isLoadingData.current = true;
@@ -215,7 +212,10 @@ export function useInvoiceForm({
           grId: loadedHeader.gr_id || '',
         }));
       } else {
-        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')));
+        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.retry'), onPress: () => { void loadExistingInvoiceRef.current?.(id); } },
+        ]);
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load invoice:', error);
@@ -225,6 +225,8 @@ export function useInvoiceForm({
       isLoadingData.current = false;
     }
   }, [dispatch]);
+
+  loadExistingInvoiceRef.current = loadExistingInvoice;
 
   /**
    * Load GRN data for invoice creation
@@ -299,15 +301,6 @@ export function useInvoiceForm({
 
   const applyGroupPricing = useCallback((groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => {
     dispatch(bulkUpdateItemGroupPricing({ group_key: groupKey, pricing }));
-  }, [dispatch]);
-
-  // Duration actions
-  const setAllDurations = useCallback((duration: number) => {
-    dispatch(updateAllDurations(duration));
-  }, [dispatch]);
-
-  const restoreOriginalItemDurations = useCallback(() => {
-    dispatch(restoreOriginalDurations());
   }, [dispatch]);
 
   // Totals recalculation
@@ -417,7 +410,7 @@ export function useInvoiceForm({
   /**
    * Submit the form (create or update)
    */
-  const submitForm = useCallback(async (): Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; error?: string }> => {
+  const submitForm = useCallback(async (): Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }> => {
     // Validate full invoice
     const validation = await validateFullInvoice({ header, items });
     if (!validation.isValid) {
@@ -428,12 +421,23 @@ export function useInvoiceForm({
     dispatch(setIsSaving(true));
 
     try {
+      // A new invoice: ask the server once more whether the GRN can still be
+      // invoiced and has the same dispatch lines. An existing invoice holds
+      // its GRN already, so the same question would always be refused.
+      if (isCreateMode) {
+        const check = await checkGrnStillInvoiceable(header.gr_id, items);
+        if (!check.ok) {
+          showAlert(t('invoice.form.saveFailedTitle'), check.message);
+          return { success: false, error: check.message };
+        }
+      }
+
       // Transform header to match CreateInvoicePayload format
       // The service internally converts inv_fin_year from string to number
       const payload = {
         header: {
           ...header,
-          inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0]) || 2025,
+          inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10),
         },
         items,
       };
@@ -447,6 +451,7 @@ export function useInvoiceForm({
           success: true,
           invoiceId: result.data?.invoice_id,
           invoiceNo: result.data?.invoice_no,
+          total: result.data?.total ?? null,
         };
       } else {
         showAlert(t('invoice.form.saveFailedTitle'), serverText(result.message, t('common.checkConnection')));
@@ -521,10 +526,6 @@ export function useInvoiceForm({
     // Bulk pricing actions
     applyBulkPricing,
     applyGroupPricing,
-
-    // Duration actions
-    setAllDurations,
-    restoreOriginalItemDurations,
 
     // Validation
     validateCurrentStep,

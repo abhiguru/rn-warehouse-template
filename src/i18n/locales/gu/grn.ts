@@ -26,6 +26,8 @@ export const grn: Translation<typeof source> = {
     forExample: 'દા.ત. {{example}}',
     checkNumberFailed: 'આવક પાવતી નંબર તપાસી શકાયો નથી',
     checkNumberNetwork: 'આવક પાવતી નંબર તપાસતી વખતે નેટવર્કની ભૂલ આવી',
+    numberTaken: 'આવક પાવતી {{number}} પહેલેથી છે. બીજો નંબર લખો.',
+    numberTakenFor: 'આવક પાવતી {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
     nextNumberFailed: 'આગળનો આવક પાવતી નંબર મળી શક્યો નથી',
     requestFailed: 'સર્વર સાથે કામ થઈ શક્યું નથી',
     creationFailed: 'આવક પાવતી બની શકી નથી',
@@ -208,6 +210,9 @@ export const grn: Translation<typeof source> = {
     metadataFailed: 'ફોટોની વિગતો સાચવી શકાઈ નથી',
     metadataFailedShort: 'ફોટોની વિગતો સાચવી શકાઈ નથી',
     readFailed: 'ફોટોની ફાઇલ વાંચી શકાઈ નથી',
+    lineNotFound: 'આ ફોટો જે આઇટમનો છે તે સચવાયેલી આવક પાવતીમાં મળી નથી',
+    stillUploading: 'અપલોડ હજુ ચાલુ હતું',
+    notPrepared: 'ફોટો અપલોડ માટે તૈયાર ન હતો',
   },
 
   review: {
@@ -231,6 +236,27 @@ export const grn: Translation<typeof source> = {
       'આવક પાવતી સચવાઈ ગઈ. કેટલાક નંગ બદલાયા નથી, કારણ કે તે આઇટમની જાવક થઈ ગઈ છે:\n{{items}}',
     savedWithNumber: 'આવક પાવતી {{number}} સચવાઈ ગઈ.',
     saved: 'આવક પાવતી સચવાઈ ગઈ.',
+    photosNotUploadedTitle: 'ફોટો અપલોડ થયા નથી',
+    photosPreparingTitle: 'ફોટો હજુ તૈયાર થઈ રહ્યા છે',
+    photosPreparingMessage: 'ફોટો તૈયાર થાય ત્યાં સુધી થોડી રાહ જુઓ, પછી ફરી સાચવો.',
+    photoNotPreparedTitle: 'એક ફોટો તૈયાર થઈ શક્યો નથી',
+    photoNotPreparedMessage: 'નિષ્ફળ બતાવેલો ફોટો કાઢી નાખો અથવા ફરી ઉમેરો, પછી સાચવો.',
+    saveUnanswered:
+      'સર્વર તરફથી જવાબ મળ્યો નથી, એટલે આવક પાવતી સચવાઈ છે કે નહીં તે નક્કી નથી. ફોર્મમાંથી કંઈ ગયું નથી. કનેક્શન તપાસો અને ફરી સાચવો: ઍપ પહેલાં તપાસશે કે શું સચવાયું છે.',
+    saveNotConfirmed:
+      'છેલ્લી વાર સાચવેલું સર્વર સુધી પહોંચ્યું કે નહીં તે તપાસી શકાયું નથી. કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
+    photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
+    failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
+    failedItemPhoto: '{{item}}, ફોટો {{position}}',
+    retryPhotos: 'ફરી પ્રયાસ કરો',
+    continueWithoutPhotos: 'ફોટો વગર આગળ વધો',
+    photosUploaded: 'ફોટો અપલોડ થઈ ગયા.',
+    uploadingPhotos: 'ફોટો અપલોડ થઈ રહ્યા છે…',
+    photosNotRemoved: {
+      one: 'કાઢેલો {{count}} ફોટો હજુ આવક પાવતી પર છે. આવક પાવતી ખોલીને ફરી કાઢો.',
+      other: 'કાઢેલા {{count}} ફોટો હજુ આવક પાવતી પર છે. આવક પાવતી ખોલીને ફરી કાઢો.',
+    },
     pdfCreateFailed: 'PDF બનાવી શકાઈ નથી. ફરી પ્રયાસ કરો.',
     pdfShareFailed: 'PDF શેર કરી શકાઈ નથી. ફરી પ્રયાસ કરો.',
     createGrn: 'આવક પાવતી બનાવો',
@@ -272,6 +298,8 @@ export const grn: Translation<typeof source> = {
   },
 
   validation: {
+    numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૮ અક્ષરનો હોઈ શકે',
+    numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૧૨ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',
     dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
@@ -308,8 +336,6 @@ export const grn: Translation<typeof source> = {
     packagingMax: 'પેકિંગ વધુમાં વધુ ૨૦ અક્ષરનું હોઈ શકે',
     rackMax: 'રેક વધુમાં વધુ ૩૦ અક્ષરની હોઈ શકે',
     rackFormat: 'રેક આ રીતે લખો: માળ/ચેમ્બર અથવા રેક/માળ/ચેમ્બર',
-    rackFormatDetailed:
-      'રેક આ રીતે લખો: માળ/ચેમ્બર અથવા રેક/માળ/ચેમ્બર. માળ આમાંથી: {{floors}}. ચેમ્બર આમાંથી: {{chambers}}',
     packageMarkMax: 'માર્કો વધુમાં વધુ ૬૦ અક્ષરનો હોઈ શકે',
     itemsMin: 'ઓછામાં ઓછી એક આઇટમ જરૂરી છે',
     itemsRequired: 'આઇટમ જરૂરી છે',

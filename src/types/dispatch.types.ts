@@ -7,6 +7,8 @@
 // DISPATCH IMAGE
 // ============================================================================
 
+import { toLocalISODate } from '@/utils/formatters';
+
 export interface DispatchImageData {
   id: string;
   file_name: string;
@@ -51,6 +53,8 @@ export interface DispatchItemData {
   grns_gr_no: string;           // GRN number
   grns_date: string;           // ISO timestamp
   grns_customer_name: string;
+  /** Customer of the GRN; known only for a GRN looked up in this session. */
+  grns_customer_id?: string;
 
   // GRN Item (lot) reference - the specific lot being dispatched
   grnItems_id: string;         // Lot ID (gr_trl_id) - CRITICAL: This is the lot reference
@@ -90,6 +94,10 @@ export interface DispatchFormState {
 
   // Validation
   validationErrors: Record<string, string>;
+
+  // Message for a typed dispatch number another dispatch holds. Kept with the form, not
+  // in a screen, so step 1 still refuses the number after it was left and reopened.
+  takenNumberError?: string | null;
 }
 
 // ============================================================================
@@ -144,6 +152,8 @@ export interface DispatchApiResponse {
   invoiceNumber?: string;
   source_order_cleared?: boolean;  // True when dispatch was created from an order and the order was soft-deleted
   source_order_id?: string;        // The order ID that was cleared
+  /** Create only: photos picked in the form that did not upload after the dispatch was saved. */
+  failed_photos?: DispatchImageData[];
 }
 
 // ============================================================================
@@ -357,9 +367,14 @@ export interface DispatchItemEntity {
 // CONSTANTS
 // ============================================================================
 
-export const EMPTY_DISPATCH_HEADER: DispatchHeaderData = {
+/**
+ * An empty dispatch header dated now. A function, not a constant: a constant
+ * would keep the moment the app was started as the default date for every
+ * later dispatch.
+ */
+export const createEmptyDispatchHeader = (): DispatchHeaderData => ({
   disp_no: '',
-  disp_date: new Date().toISOString(),
+  disp_date: toLocalISODate(new Date()),
   registration: '',
   customer_id: '',
   customer_name: '',
@@ -369,7 +384,7 @@ export const EMPTY_DISPATCH_HEADER: DispatchHeaderData = {
   supervisor_id: '',
   supervisor_name: '',
   note: '',
-};
+});
 
 export const EMPTY_DISPATCH_ITEM: ItemFormData = {
   unique_id: '',

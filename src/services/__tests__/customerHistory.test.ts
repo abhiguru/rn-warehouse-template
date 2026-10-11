@@ -225,3 +225,30 @@ it('surfaces customer-contract denials instead of returning an empty success', a
     message: 'Customer access denied',
   });
 });
+
+// get_customer_grn_items applies its date range only when both ends are given.
+describe('customer GRN list date range', () => {
+  beforeEach(() => rpc.mockResolvedValue({ data: { success: true, data: { items: [] } }, error: null }));
+
+  it('closes a range that has only a start, so the server does not drop the filter', async () => {
+    await getCustomerGRNItems('customer-a', { p_date_from: '2026-10-01T00:00:00+05:30' });
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_date_from: '2026-10-01T00:00:00+05:30',
+      p_date_to: '9999-12-31T23:59:59.999+05:30',
+    });
+  });
+
+  it('closes a range that has only an end', async () => {
+    await getCustomerGRNItems('customer-a', { p_date_to: '2026-10-11T23:59:59.999+05:30' });
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_date_from: '1900-01-01T00:00:00+05:30',
+      p_date_to: '2026-10-11T23:59:59.999+05:30',
+    });
+  });
+
+  it('sends no dates when none are asked for', async () => {
+    await getCustomerGRNItems('customer-a', {});
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_date_from');
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_date_to');
+  });
+});

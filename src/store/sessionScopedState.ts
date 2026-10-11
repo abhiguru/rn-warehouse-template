@@ -13,6 +13,8 @@ import { resetForm as resetCustomer } from './slices/customerFormSlice';
 import { resetAllListFilters } from './slices/listFilterSlice';
 import { clearAllCaches } from '@/utils/cacheManager';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
+import { clearImageCaches } from '@/utils/imageCache';
+import { forgetRecentSearches } from '@/features/filters/recentSearches';
 
 export async function clearSessionScopedState(
   dispatch: (action: UnknownAction) => unknown
@@ -26,7 +28,11 @@ export async function clearSessionScopedState(
   dispatch(resetCustomer());
   // Filters and searches name customers and items of this session's facility.
   dispatch(resetAllListFilters());
+  // So do the "Recent" searches offered under a search field; they are kept outside the store.
+  forgetRecentSearches();
   await clearAllCaches();
+  // Photos seen in this session must not stay on the phone for the next one.
+  await clearImageCaches();
   // Local teardown must not fail because a cached file could not be removed.
   await sweepSharedDocuments().catch(() => {});
 }

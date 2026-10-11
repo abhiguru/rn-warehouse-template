@@ -34,7 +34,10 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({
-  useRoleBasedAccess: () => ({ isStaff: true, singleAssignedCustomerId: null, shouldShowListView: true }),
+  useRoleBasedAccess: () => ({
+    isWarehouseUser: true, isManager: true, role: 'admin', reportScope: 'all-customers',
+    singleAssignedCustomerId: null, shouldShowListView: true, assignedCustomers: [], assignedCustomerIds: [],
+  }),
 }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 jest.mock('@/services/pdf-service', () => ({ generateCustomerStockPDF: jest.fn() }));

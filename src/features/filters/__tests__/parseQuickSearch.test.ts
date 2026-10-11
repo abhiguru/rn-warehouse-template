@@ -60,7 +60,42 @@ describe('parseQuickSearch', () => {
 
   it('reads a document number range with the same letters on both sides', () => {
     expect(parseQuickSearch('A0010-A0020', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
-    expect(parseQuickSearch('dv0101 to DV0110 garlic', grn)).toEqual({ text: 'garlic', range: { from: 'dv0101', to: 'DV0110' } });
+    expect(parseQuickSearch('dv0101 to DV0110 garlic', grn)).toEqual({ text: 'garlic', range: { from: 'DV0101', to: 'DV0110' } });
+  });
+
+  // Numbers are stored in capitals and the server's range compares the prefix
+  // as written, so "a0010-a0020" sent as typed matches nothing (M4-6).
+  it('reads a document range typed in small letters as capitals', () => {
+    expect(parseQuickSearch('a0010-a0020', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
+    expect(parseQuickSearch('a0010 to A0020', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
+    expect(parseQuickSearch('a0010થી a0020 સુધી', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
+  });
+
+  it('reads a document range typed the wrong way round as the same range (M4-7)', () => {
+    expect(parseQuickSearch('A0020-A0010', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
+    expect(parseQuickSearch('a0020 થી a0010', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
+    // X, Y and Z come before A in the warehouse's order; one prefix only, so this is by number.
+    expect(parseQuickSearch('X0200-X0100', grn)).toEqual({ text: '', range: { from: 'X0100', to: 'X0200' } });
+  });
+
+  // M4-11: a typed pair of dates used to become one day plus the text "- 31/03/2026".
+  it('reads two dates joined by a hyphen or "to" as one range', () => {
+    const range = { from: '2025-04-01', to: '2026-03-31' };
+    expect(parseQuickSearch('01/04/2025 - 31/03/2026', grn)).toEqual({ text: '', date: range });
+    expect(parseQuickSearch('01/04/2025-31/03/2026', grn)).toEqual({ text: '', date: range });
+    expect(parseQuickSearch('01/04/2025 to 31/03/2026 garlic', grn)).toEqual({ text: 'garlic', date: range });
+    expect(parseQuickSearch('૦૧/૦૪/૨૦૨૫ થી ૩૧/૦૩/૨૦૨૬', grn)).toEqual({ text: '', date: range });
+    expect(parseQuickSearch('1 apr 2025 to 31 mar 2026', grn)).toEqual({ text: '', date: range });
+    expect(parseQuickSearch('7 oct - 9 oct', grn)).toEqual({ text: '', date: { from: '2026-10-07', to: '2026-10-09' } });
+  });
+
+  it('puts two dates typed the wrong way round in order', () => {
+    expect(parseQuickSearch('31/03/2026 - 01/04/2025', grn)).toEqual({ text: '', date: { from: '2025-04-01', to: '2026-03-31' } });
+  });
+
+  it('keeps a hyphen or "to" after a date as text when no date follows it', () => {
+    expect(parseQuickSearch('7 oct to town', grn)).toEqual({ text: 'to town', date: day('2026-10-07') });
+    expect(parseQuickSearch('7/10 - red', grn)).toEqual({ text: '- red', date: day('2026-10-07') });
   });
 
   it('does not read a range from different letters, a number with a hyphen in it, or two words joined by "to"', () => {

@@ -44,6 +44,7 @@ import { ThemePreference } from '@/store/slices/themeSlice';
 import { showAlert } from '@/utils/alert';
 import { Avatar } from '@/components/ui';
 import { roleLabel as roleName } from '@/utils/roleLabel';
+import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: TranslationKey;
@@ -186,17 +187,21 @@ const SettingsScreen: React.FC = () => {
     router.push('/users');
   };
 
-  // Permissions
-  const canAccessItemPricing = !!userProfile;
-  const canManageCustomers =
-    !!userProfile &&
-    (userProfile.role === 'supervisor' || userProfile.role === 'admin');
-  const canManageItems =
-    !!userProfile &&
-    (userProfile.role === 'supervisor' || userProfile.role === 'admin');
-  const canManageUsers =
-    !!userProfile &&
-    (userProfile.role === 'supervisor' || userProfile.role === 'admin');
+  // Feature rows by role: the same table the server uses (src/config/roles.ts).
+  const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; onPress: () => void }> = {
+    customers: { icon: 'account-outline', label: t('common.customers'), subtitle: t('settings.features.customersSubtitle'), onPress: handleCustomers },
+    enrollmentReview: {
+      icon: 'account-plus-outline',
+      label: t('auth.review.screenTitle'),
+      subtitle: t('settings.features.enrollmentReviewSubtitle'),
+      onPress: () => router.push('/enrollment-review'),
+    },
+    items: { icon: 'cube-outline', label: t('common.items'), subtitle: t('settings.features.itemsSubtitle'), onPress: handleItems },
+    users: { icon: 'account-circle-outline', label: t('users.list.title'), subtitle: t('settings.features.usersSubtitle'), onPress: handleUsers },
+    itemPricing: { icon: 'tag-outline', label: t('settings.features.itemPricing'), subtitle: t('settings.features.itemPricingSubtitle'), onPress: handleItemPricing },
+    sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), onPress: handleSensors },
+  };
+  const featureRows = settingsFeatureRows(userProfile?.role);
 
   const roleLabel = roleName(userProfile?.role);
   const profileName = userProfile?.name || t('users.fallbackName');
@@ -235,56 +240,22 @@ const SettingsScreen: React.FC = () => {
           <Icon name="chevron-right" size={iconSize.md} color={tokens.icon.secondary} />
         </Pressable>
 
-        {/* App Features Section */}
-        <SettingsSection title={t('settings.features.title')}>
-          {canManageCustomers && (
-            <SettingsRow
-              icon="account-outline"
-              label={t('common.customers')}
-              subtitle={t('settings.features.customersSubtitle')}
-              onPress={handleCustomers}
-            />
-          )}
-          {userProfile?.role === 'admin' && (
-            <SettingsRow
-              icon="account-plus-outline"
-              label={t('auth.review.screenTitle')}
-              subtitle={t('settings.features.enrollmentReviewSubtitle')}
-              onPress={() => router.push('/enrollment-review')}
-            />
-          )}
-          {canManageItems && (
-            <SettingsRow
-              icon="cube-outline"
-              label={t('common.items')}
-              subtitle={t('settings.features.itemsSubtitle')}
-              onPress={handleItems}
-            />
-          )}
-          {canManageUsers && (
-            <SettingsRow
-              icon="account-circle-outline"
-              label={t('users.list.title')}
-              subtitle={t('settings.features.usersSubtitle')}
-              onPress={handleUsers}
-            />
-          )}
-          {canAccessItemPricing && (
-            <SettingsRow
-              icon="tag-outline"
-              label={t('settings.features.itemPricing')}
-              subtitle={t('settings.features.itemPricingSubtitle')}
-              onPress={handleItemPricing}
-            />
-          )}
-          <SettingsRow
-            icon="thermometer"
-            label={t('settings.features.sensors')}
-            subtitle={t('settings.features.sensorsSubtitle')}
-            onPress={handleSensors}
-            last
-          />
-        </SettingsSection>
+        {/* App Features Section: a customer account has no feature rows */}
+        {featureRows.length > 0 && (
+          <SettingsSection title={t('settings.features.title')}>
+            {featureRows.map((feature, index) => (
+              <SettingsRow
+                key={feature}
+                testID={`settings-feature-${feature}`}
+                icon={FEATURE_ROWS[feature].icon}
+                label={FEATURE_ROWS[feature].label}
+                subtitle={FEATURE_ROWS[feature].subtitle}
+                onPress={FEATURE_ROWS[feature].onPress}
+                last={index === featureRows.length - 1}
+              />
+            ))}
+          </SettingsSection>
+        )}
 
         {/* Appearance Section */}
         <SettingsSection
@@ -650,7 +621,9 @@ function SettingsRow({
   showChevron = true,
   destructive = false,
   last = false,
+  testID,
 }: {
+  testID?: string;
   icon: string;
   label: string;
   subtitle?: string;
@@ -663,6 +636,7 @@ function SettingsRow({
   const t = useTokens();
   return (
     <Pressable
+      testID={testID}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={onPress}
       accessibilityRole="button"

@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useIsFocused } from 'expo-router';
+import { canOpenScreen } from '@/config/roles';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -85,8 +86,7 @@ export default function UsersScreen() {
   });
 
   // Check access
-  const hasAccess =
-    userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
+  const hasAccess = canOpenScreen(userProfile?.role, 'userManagement');
 
   // ===========================================================================
   // FETCH LOGIC

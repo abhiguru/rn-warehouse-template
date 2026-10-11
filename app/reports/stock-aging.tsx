@@ -19,10 +19,9 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem } from '@/components/reports';
+import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem, ReportCustomerScope, type ReportScope, } from '@/components/reports';
 import { Button } from '@/components/ui/Button';
 import { getCustomerStockAging, getAllStockAging } from '@/services/reporting/stock-aging-service';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -472,15 +471,19 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
 // ============================================================================
 
 export default function StockAgingScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.stockAging')}>
+      {(scope) => <StockAgingReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function StockAgingReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   // Route params for direct navigation from customer activity
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
@@ -516,7 +519,7 @@ export default function StockAgingScreen() {
         setAllCustomersData(response.data);
       } else {
         logger.warn('All-customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('All-customer load exception', err);
@@ -539,7 +542,7 @@ export default function StockAgingScreen() {
         setData(response.data);
       } else {
         logger.warn('Customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('Customer load exception', err);
@@ -717,7 +720,7 @@ export default function StockAgingScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockAging')} />
+        <ReportHeader title={tr('reports.titles.stockAging')} onBack={scope.onChangeCustomer} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
@@ -736,7 +739,7 @@ export default function StockAgingScreen() {
   if (error && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockAging')} />
+        <ReportHeader title={tr('reports.titles.stockAging')} onBack={scope.onChangeCustomer} />
         {error === noCustomer() ? (
           <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
         ) : (
@@ -760,7 +763,7 @@ export default function StockAgingScreen() {
 
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockAging')} subtitle={isStaff ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers')} />
+        <ReportHeader title={tr('reports.titles.stockAging')} subtitle={isWarehouseUser ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers')} />
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -850,8 +853,8 @@ export default function StockAgingScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.stockAging')}
-          subtitle={selectedCustomer?.customer_name}
-          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
+          subtitle={selectedCustomer?.customer_name || scope.customerName}
+          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
         />
         <ReportEmptyState
           icon="package-variant-closed"
@@ -868,8 +871,8 @@ export default function StockAgingScreen() {
     <View style={styles.container}>
       <ReportHeader
         title={tr('reports.titles.stockAging')}
-        subtitle={selectedCustomer?.customer_name}
-        onBack={shouldShowListView ? handleBackToAll : undefined}
+        subtitle={selectedCustomer?.customer_name || scope.customerName}
+        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
       />
       <ScrollView
         style={styles.scrollView}

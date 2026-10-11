@@ -4,7 +4,7 @@
  */
 
 import * as yup from 'yup';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { t, type TranslationKey, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 
@@ -200,7 +200,10 @@ export const validateDispatchDateVsGRNDates = (
     const grnDate = new Date(item.grns_date);
     console.log('[validateDispatchDateVsGRNDates] 🔍 Parsed grnDate:', grnDate, 'isValid:', !isNaN(grnDate.getTime()));
     console.log('[validateDispatchDateVsGRNDates] 🔍 Comparison: dispDate < grnDate?', dispDate < grnDate, `(${dispDate.getTime()} < ${grnDate.getTime()})`);
-    if (dispDate < grnDate) {
+    // Whole days are compared, not instants: a dispatch dated today (a plain day)
+    // is not "before" a GRN that was stored today with a time of day.
+    const bothValid = !isNaN(dispDate.getTime()) && !isNaN(grnDate.getTime());
+    if (bothValid && toCalendarDay(dispatchDate) < toCalendarDay(item.grns_date)) {
       invalidItems.push({ grNo: item.grns_gr_no, grnDate });
     }
   }

@@ -24,14 +24,19 @@ const invoice = {
   total: 123456.5,
 };
 
-function renderIn(brand: (typeof BRANDS)[number], mode: Mode, isEditMode = false) {
+function renderIn(
+  brand: (typeof BRANDS)[number],
+  mode: Mode,
+  isEditMode = false,
+  invoiceData: React.ComponentProps<typeof InvoiceSuccessDialog>['invoiceData'] = invoice
+) {
   mockState = { theme: { preference: mode, brand } };
   let tree!: ReactTestRenderer;
   act(() => {
     tree = create(
       <InvoiceSuccessDialog
         isVisible
-        invoiceData={invoice}
+        invoiceData={invoiceData}
         onCreateAnother={jest.fn()}
         onViewList={jest.fn()}
         onPrint={jest.fn()}
@@ -72,5 +77,31 @@ describe('InvoiceSuccessDialog', () => {
     expect(text).toContain('View invoices');
     expect(text).not.toContain('Edit another invoice');
     expect(text).not.toContain('Create another invoice');
+  });
+
+  describe('the total it shows', () => {
+    it('is the stored total, with a note when it differs from the estimate shown before saving', () => {
+      // The form estimated 735; the server counted 1.5 periods and stored 998.
+      const text = allText(renderIn('orange', 'light', false, { ...invoice, total: 998, estimated_total: 735 }));
+
+      expect(text).toContain('₹998.00');
+      expect(text).not.toContain('₹735.00');
+      expect(text).toContain('The total saved by the server differs from the estimate of ₹735.00 shown before saving.');
+    });
+
+    it('has no note when the stored total is the estimate', () => {
+      const text = allText(renderIn('orange', 'light', false, { ...invoice, total: 998, estimated_total: 998 }));
+
+      expect(text).toContain('₹998.00');
+      expect(text.some((line) => line.includes('differs'))).toBe(false);
+    });
+
+    it('is left out, not replaced by the estimate, when the stored total could not be read', () => {
+      const text = allText(renderIn('orange', 'light', false, { ...invoice, total: null, estimated_total: 735 }));
+
+      expect(text).toContain('The saved total could not be read. Open the invoice to see it.');
+      expect(text).not.toContain('₹735.00');
+      expect(text).not.toContain('₹0.00');
+    });
   });
 });

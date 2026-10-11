@@ -12,20 +12,13 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
-export const SEARCH_DEBOUNCE_MS = 300;
-export const SEARCH_MIN_LENGTH = 2;
-const RECENT_LIMIT = 5;
+import { SEARCH_MIN_LENGTH, recentSearches, rememberSearch } from '../recentSearches';
+import { hasTooManyWords } from '../searchMatch';
 
-/** Recent searches per list. Module state: gone when the app closes. */
-const recentByList = new Map<string, string[]>();
-export function rememberSearch(listKey: string, text: string) {
-  const trimmed = text.trim();
-  if (trimmed.length < SEARCH_MIN_LENGTH) return;
-  const others = (recentByList.get(listKey) ?? []).filter(entry => entry.toLowerCase() !== trimmed.toLowerCase());
-  recentByList.set(listKey, [trimmed, ...others].slice(0, RECENT_LIMIT));
-}
-export const recentSearches = (listKey: string) => recentByList.get(listKey) ?? [];
-export const forgetRecentSearches = () => recentByList.clear();
+export const SEARCH_DEBOUNCE_MS = 300;
+/** The server reads at most this much of a search (search_terms, backend migrations 35 and 36). */
+export const SEARCH_MAX_LENGTH = 120;
+export { SEARCH_MIN_LENGTH, forgetRecentSearches, recentSearches, rememberSearch } from '../recentSearches';
 
 export interface ListSearchFieldProps {
   listKey: string;
@@ -71,6 +64,7 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingTop: space.sm,
   },
   recentLabel: { ...typography.footnote, color: t.text.secondary },
+  hint: { ...typography.footnote, color: t.text.secondary, paddingTop: space.xs },
   recentChip: {
     minHeight: 32,
     justifyContent: 'center' as const,
@@ -115,6 +109,11 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
   }, [text]);
 
   const recent = focused && text.trim() === '' ? recentSearches(listKey) : [];
+  // One letter is shown in the field but not searched for; say so, or the field and the list disagree.
+  const tooShort = text.trim().length > 0 && text.trim().length < SEARCH_MIN_LENGTH;
+
+  // The server searches for the first eight words only; say so, or the ninth looks searched for.
+  const tooManyWords = hasTooManyWords(text);
 
   return (
     <View style={styles.wrap}>
@@ -128,7 +127,9 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
           placeholderTextColor={t.text.placeholder}
           accessibilityLabel={placeholder}
           returnKeyType="search"
+          // Names and numbers are typed here; a number range is put in capitals when it is read.
           autoCapitalize="none"
+          maxLength={SEARCH_MAX_LENGTH}
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => {
@@ -158,6 +159,12 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
           </Pressable>
         ) : null}
       </View>
+      {tooShort ? (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">{translate('filters.search.minLength')}</Text>
+      ) : null}
+      {tooManyWords ? (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">{translate('filters.search.tooManyWords')}</Text>
+      ) : null}
       {recent.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.recentRow}>

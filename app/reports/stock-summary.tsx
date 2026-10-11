@@ -19,11 +19,10 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem } from '@/components/reports';
+import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem, ReportCustomerScope, type ReportScope } from '@/components/reports';
 import { getCustomerStockSummary, getAllStockSummary } from '@/services/reporting';
 import { generateCustomerStockPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -369,15 +368,19 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
 };
 
 export default function StockSummaryScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.stockSummary')}>
+      {(scope) => <StockSummaryReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function StockSummaryReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   // Single customer data (used for regular users OR staff drill-down)
   const [data, setData] = useState<StockSummaryData | null>(null);
@@ -419,7 +422,7 @@ export default function StockSummaryScreen() {
         setAllCustomersData(response.data);
       } else {
         logger.warn('All-customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('Error fetching all customers data', err);
@@ -448,7 +451,7 @@ export default function StockSummaryScreen() {
         setData(response.data);
       } else {
         logger.warn('Customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('Error fetching single customer data', err);
@@ -644,7 +647,7 @@ export default function StockSummaryScreen() {
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = isStaff ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers');
+  const listViewSubtitle = isWarehouseUser ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers');
 
   const refreshControl = (
     <RefreshControl
@@ -665,7 +668,7 @@ export default function StockSummaryScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockSummary')} />
+        <ReportHeader title={tr('reports.titles.stockSummary')} onBack={scope.onChangeCustomer} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
@@ -684,7 +687,7 @@ export default function StockSummaryScreen() {
   if (error && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockSummary')} />
+        <ReportHeader title={tr('reports.titles.stockSummary')} onBack={scope.onChangeCustomer} />
         {error === noCustomer() ? (
           <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
         ) : (
@@ -777,7 +780,7 @@ export default function StockSummaryScreen() {
 
   // Get current customer info for single customer view
   const currentCustomerId = selectedCustomer?.customer_id || singleAssignedCustomerId;
-  const currentCustomerName = selectedCustomer?.customer_name || 'Customer';
+  const currentCustomerName = selectedCustomer?.customer_name || scope.customerName || 'Customer';
   const pdfActions = currentCustomerId
     ? [
         {
@@ -796,8 +799,8 @@ export default function StockSummaryScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.stockSummary')}
-          subtitle={selectedCustomer?.customer_name}
-          onBack={shouldShowListView ? handleBackToAll : undefined}
+          subtitle={selectedCustomer?.customer_name || scope.customerName}
+          onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
           actions={pdfActions}
         />
         <ReportEmptyState
@@ -813,8 +816,8 @@ export default function StockSummaryScreen() {
     <View style={styles.container}>
       <ReportHeader
         title={tr('reports.titles.stockSummary')}
-        subtitle={selectedCustomer?.customer_name || getSubtitle()}
-        onBack={shouldShowListView ? handleBackToAll : undefined}
+        subtitle={selectedCustomer?.customer_name || scope.customerName || getSubtitle()}
+        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
         actions={pdfActions}
       />
 

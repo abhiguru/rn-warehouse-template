@@ -12,7 +12,79 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
-import { serverText } from '@/utils/serverText';
+import { calculateItemAmounts } from '@/utils/invoiceCalculations';
+import { serverReason, serverText } from '@/utils/serverText';
+import { createLogger } from '@/utils/logger';
+import { escapeLike } from '@/utils/postgrestFilter';
+
+const invoiceFormLogger = createLogger('InvoiceFormService');
+
+/**
+ * What goes to the device log for a failed call: the error's code and message.
+ * A PostgREST error also carries `details` and `hint`, where PostgreSQL repeats
+ * row values (a customer name, an amount, a discount reason); those are left out.
+ */
+const errorForLog = (error: unknown): { code?: string; message: string } => {
+  const source = (error ?? {}) as { code?: unknown; message?: unknown };
+  return {
+    code: typeof source.code === 'string' ? source.code : undefined,
+    message: typeof source.message === 'string' ? source.message : String(error),
+  };
+};
+
+/** The server's words for a GRN that the preview refuses: not fully dispatched, or already invoiced. */
+const NOT_INVOICEABLE = /not (be )?ready for invoicing/i;
+
+/** Thrown inside loadInvoiceFormData so the caller can tell this refusal from a failed request. */
+class GrnNotInvoiceableError extends Error {}
+
+/**
+ * Refusals of a save that the person can act on (the GRN was invoiced by
+ * someone else meanwhile, a rate is out of range). They are shown in the app's
+ * own words in every language; other server text goes through serverText.
+ */
+const INVOICE_REFUSAL = /already invoiced|already on another invoice|must be between/i;
+
+const isOneTime = (pricingMode: unknown): boolean => String(pricingMode ?? '').toUpperCase() === 'ONE_TIME';
+
+type RpcClient = Awaited<ReturnType<typeof getAuthenticatedClient>>;
+
+/** A money value the server sent, as a number; null when it sent none. */
+function serverAmount(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+/**
+ * The total the server stored for an invoice that was just saved.
+ *
+ * The server recomputes every invoice from its own durations and the GRN's
+ * pricing mode and ignores the totals the phone sends (backend migration 24),
+ * so the figure to show after a save is the stored one. `save_invoice(jsonb)`
+ * returns it as `totals.grand_total`; the three-argument save and
+ * `update_invoice` return no totals, so the invoice is read back. null when
+ * it cannot be read: the save itself has succeeded and stays reported as such.
+ */
+async function savedInvoiceTotal(client: RpcClient, answer: any, invoiceId: string | undefined): Promise<number | null> {
+  const fromAnswer = serverAmount(answer?.totals?.grand_total ?? answer?.totals?.total);
+  if (fromAnswer !== null) return fromAnswer;
+  if (!invoiceId) return null;
+  try {
+    const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
+    if (error || !data?.success) return null;
+    return serverAmount(data.invoice?.total);
+  } catch {
+    return null;
+  }
+}
+
+function invoiceSaveMessage(text: unknown, fallback: string): string {
+  if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
+    return serverReason(text) ?? serverText(text, fallback);
+  }
+  return serverText(text, fallback);
+}
 /**
  * Get the next available invoice number
  * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
@@ -27,7 +99,7 @@ export const getNextInvoiceNumber = async (
     const { data, error } = await authenticatedClient.rpc('get_next_invoice_number');
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error.message);
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
@@ -55,7 +127,7 @@ export const getNextInvoiceNumber = async (
     };
   } catch (error: any) {
     // Handled: the form then asks for the number to be typed.
-    console.warn('[InvoiceFormService] Error in getNextInvoiceNumber:', error);
+    invoiceFormLogger.warn('Error in getNextInvoiceNumber:', errorForLog(error));
     // Return 1 as default for first invoice of the year
     return {
       success: false,
@@ -76,20 +148,17 @@ export const getInvoiceableGrns = async (
   searchTerm?: string
 ): Promise<InvoiceableGrnsResponse> => {
   try {
-    // Extract the actual search term if it includes a reset counter suffix
-    // Format: "searchTerm_resetCounter" -> extract just "searchTerm"
-    const actualSearchTerm =
-      searchTerm && searchTerm.includes('_') ? searchTerm.split('_')[0] : searchTerm;
-
     const authenticatedClient = await getAuthenticatedClient();
 
     // Use the same RPC as web app: get_invoiceable_grns
     const { data, error } = await authenticatedClient.rpc('get_invoiceable_grns', {
-      p_search_grn_no: actualSearchTerm || null,
+      // The server matches with ILIKE '%' || text || '%': the typed text is
+      // sent whole, with its wildcard characters escaped.
+      p_search_grn_no: searchTerm ? escapeLike(searchTerm) : null,
     });
 
     if (error) {
-      console.error('[InvoiceFormService] Error fetching invoiceable GRNs:', error);
+      invoiceFormLogger.error('Error fetching invoiceable GRNs:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.grnsFailed')));
     }
 
@@ -143,7 +212,7 @@ export const getInvoiceableGrns = async (
       data: grns,
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in getInvoiceableGrns:', error);
+    invoiceFormLogger.error('Error in getInvoiceableGrns:', errorForLog(error));
     return {
       success: false,
       data: [],
@@ -175,7 +244,7 @@ export const loadInvoiceFormData = async (
     );
 
     if (error) {
-      console.error('[InvoiceFormService] Error loading invoice form data:', error);
+      invoiceFormLogger.error('Error loading invoice form data:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.formDataFailed')));
     }
 
@@ -194,8 +263,8 @@ export const loadInvoiceFormData = async (
       // Provide user-friendly error messages for common issues
       if (errorMsg.includes('column') && errorMsg.includes('does not exist')) {
         throw new Error(t('invoice.service.schemaError'));
-      } else if (errorMsg.includes('not be ready for invoicing')) {
-        throw new Error(t('invoice.service.noDispatchedItems'));
+      } else if (NOT_INVOICEABLE.test(errorMsg)) {
+        throw new GrnNotInvoiceableError(t('invoice.review.grnNotInvoiceable'));
       } else {
         throw new Error(errorMsg);
       }
@@ -227,8 +296,7 @@ export const loadInvoiceFormData = async (
       firstItem?.grnItems_pricing_mode ||   // camelCase variation
       firstItem?.pricing_mode ||
       'MONTHLY';
-    const pricingMode = String(rawPricingMode).toUpperCase();
-    const isOneTimeCharge = pricingMode === 'ONE_TIME';
+    const isOneTimeCharge = isOneTime(rawPricingMode);
 
     // Transform header to mobile format
     const header = {
@@ -269,6 +337,12 @@ export const loadInvoiceFormData = async (
       const charge = item.unit_price || item.charge || 0;
       const labourRate = item.labour_rate || 0;
       const tax = item.tax_percent || item.tax || 0;
+
+      // The GRN's pricing mode decides how the line is charged. Every row of
+      // the preview carries it; the header value covers a row that does not.
+      const oneTime = item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode
+        ? isOneTime(item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode)
+        : isOneTimeCharge;
 
       // Debug: Log item field extraction
       if (__DEV__ && index === 0) {
@@ -320,14 +394,9 @@ export const loadInvoiceFormData = async (
         labour_rate: labourRate,
         tax: tax,
 
-        // Calculate initial amounts using extracted values
-        amount: qty * charge * duration,
-        labour_amount: qty * labourRate,
-        tax_amount: ((qty * charge * duration) + (qty * labourRate)) * (tax / 100),
-        item_total:
-          (qty * charge * duration) +
-          (qty * labourRate) +
-          ((qty * charge * duration) + (qty * labourRate)) * (tax / 100),
+        // Amounts as the server computes them for this pricing mode
+        one_time: oneTime,
+        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime),
       };
     });
 
@@ -339,9 +408,10 @@ export const loadInvoiceFormData = async (
       },
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in loadInvoiceFormData:', error);
+    invoiceFormLogger.error('Error in loadInvoiceFormData:', errorForLog(error));
     return {
       success: false,
+      code: error instanceof GrnNotInvoiceableError ? 'not_invoiceable' : undefined,
       data: {
         header: {
           customer_id: '',
@@ -354,6 +424,37 @@ export const loadInvoiceFormData = async (
       message: serverText(error.message, t('invoice.service.formDataFailed')),
     };
   }
+};
+
+/**
+ * Ask the server again, just before a new invoice is saved, whether the GRN
+ * can still be invoiced and still has the dispatch lines the form holds. The
+ * form may have been open for a while: another user can have invoiced the GRN,
+ * or a dispatch can have been changed. The server refuses a second invoice by
+ * itself (migration 41); this check gives the reason before anything is sent
+ * and catches lines that changed.
+ */
+export const checkGrnStillInvoiceable = async (
+  grId: string,
+  formItems: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]
+): Promise<{ ok: true } | { ok: false; message: string }> => {
+  const fresh = await loadInvoiceFormData(grId);
+  if (!fresh.success) {
+    return {
+      ok: false,
+      message:
+        fresh.code === 'not_invoiceable'
+          ? t('invoice.review.grnNotInvoiceable')
+          : serverText(fresh.message, t('invoice.service.formDataFailed')),
+    };
+  }
+
+  const lines = (items: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]) =>
+    items.map((item) => `${item.disp_trl_id}:${Number(item.qty)}`).sort().join('|');
+  if (lines(fresh.data.items) !== lines(formItems)) {
+    return { ok: false, message: t('invoice.review.grnChanged') };
+  }
+  return { ok: true };
 };
 
 /**
@@ -428,9 +529,8 @@ export const createInvoice = async (
       };
     });
 
-    console.log('[InvoiceFormService] Calling save_invoice RPC with payload:', {
+    invoiceFormLogger.debug('Calling save_invoice RPC with payload:', {
       invoiceNo: invoiceData.inv_no,
-      customer: invoiceData.customer_name,
       itemsCount: invoiceItems.length,
     });
 
@@ -444,12 +544,12 @@ export const createInvoice = async (
     const { data, error } = await authenticatedClient.rpc('save_invoice', rpcPayload);
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(serverText(error.message, t('invoice.service.createFailed')));
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
+      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed')));
     }
 
     if (!data || !data.success) {
-      const errorMsg = serverText(data?.error || data?.message, t('invoice.service.createFailed'));
+      const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'));
       throw new Error(errorMsg);
     }
 
@@ -458,10 +558,11 @@ export const createInvoice = async (
       data: {
         invoice_id: data.invoice_id,
         invoice_no: data.invoice_no || payload.header.inv_no,
+        total: await savedInvoiceTotal(authenticatedClient, data, data.invoice_id),
       },
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in createInvoice:', error);
+    invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
     return {
       success: false,
       data: {
@@ -474,8 +575,23 @@ export const createInvoice = async (
 };
 
 /**
- * Helper function to transform form data to RPC payload
+ * How the GRN of a saved invoice is priced ('ONE_TIME' or 'MONTHLY').
+ * `read: false` when the server could not be asked or refused; `mode: null`
+ * when it answered without a mode, in which case the caller falls back.
  */
+async function invoiceGrnPricingMode(
+  client: RpcClient,
+  invoiceId: string
+): Promise<{ read: true; mode: string | null } | { read: false }> {
+  try {
+    const { data, error } = await client.rpc('get_invoice_data', { p_invoice_id: invoiceId });
+    if (error || !data?.success) return { read: false };
+    return { read: true, mode: data.data?.header?.grn?.pricing_mode || null };
+  } catch {
+    return { read: false };
+  }
+}
+
 /**
  * Load existing invoice data for editing
  * Calls get_invoice_detail RPC to fetch complete invoice with items
@@ -486,13 +602,16 @@ export const loadInvoiceData = async (
   try {
     const authenticatedClient = await getAuthenticatedClient();
 
-    // Call get_invoice_detail RPC
-    const { data, error } = await authenticatedClient.rpc('get_invoice_detail', {
-      p_invoice_id: invoiceId,
-    });
+    // get_invoice_detail has the invoice and its lines. It does not say how the
+    // GRN is priced, which decides how every line is charged, so the GRN's
+    // pricing mode is read from get_invoice_data alongside it.
+    const [{ data, error }, grnPricing] = await Promise.all([
+      authenticatedClient.rpc('get_invoice_detail', { p_invoice_id: invoiceId }),
+      invoiceGrnPricingMode(authenticatedClient, invoiceId),
+    ]);
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error);
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.fetchFailed')));
     }
 
@@ -544,6 +663,24 @@ export const loadInvoiceData = async (
       }
     }
 
+    // Without the GRN's pricing mode the form cannot say what a line costs: a
+    // one-time invoice priced as monthly shows, and after any change totals,
+    // amounts the server will not charge. The form is not opened on a guess.
+    if (!grnPricing.read) {
+      return {
+        success: false,
+        data: {
+          header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' },
+          items: [],
+        },
+        message: t('invoice.details.loadFailed'),
+      };
+    }
+
+    // A GRN without a mode of its own: the invoice's pricing_mode column is
+    // the fallback, and without either the lines are monthly.
+    const oneTime = isOneTime(grnPricing.mode ?? header.pricing_mode);
+
     // Convert header data - full InvoiceHeaderData format
     const formattedHeader: InvoiceHeaderData = {
       customer_id: header.customer_id || '',
@@ -553,7 +690,9 @@ export const loadInvoiceData = async (
       inv_date: header.inv_date ? header.inv_date.split('T')[0] : toLocalISODate(new Date()),
       inv_fin_year: finYear,
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
-      one_time_charge: Boolean(header.one_time_charge),
+      // The GRN's pricing mode, not the flag stored with the invoice: the
+      // server charges by the GRN whatever that flag says.
+      one_time_charge: oneTime,
       discount: header.discount || 0,
       discount_reason: header.discount_reason || '',
       labour: header.labour || 0,
@@ -578,12 +717,6 @@ export const loadInvoiceData = async (
       const tax = item.tax || 0;
       const no_of_days = Math.round(item.no_of_days || 30);
       const qty = item.qty || 0;
-
-      const amount = qty * charge * duration;
-      const labour_amount = qty * labour_rate;
-      const taxable_amount = amount + labour_amount;
-      const tax_amount_calc = taxable_amount * (tax / 100);
-      const item_total = taxable_amount + tax_amount_calc;
 
       return {
         // Generate temp_id for React keys
@@ -621,11 +754,9 @@ export const loadInvoiceData = async (
         labour_rate: labour_rate,
         tax: tax,
 
-        // Calculated fields
-        amount: Math.round(amount * 100) / 100,
-        labour_amount: Math.round(labour_amount * 100) / 100,
-        tax_amount: Math.round(tax_amount_calc * 100) / 100,
-        item_total: Math.round(item_total * 100) / 100,
+        // Calculated fields, as the server computes them for this pricing mode
+        one_time: oneTime,
+        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime),
       };
     });
 
@@ -638,7 +769,7 @@ export const loadInvoiceData = async (
       message: t('invoice.service.loaded'),
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error loading invoice:', error);
+    invoiceFormLogger.error('Error loading invoice:', errorForLog(error));
     return {
       success: false,
       data: {
@@ -716,15 +847,15 @@ export const updateInvoice = async (
     });
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(serverText(error.message, t('invoice.service.updateFailed')));
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
+      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed')));
     }
 
     // RPC returns an object directly
     const result = data;
 
     if (!result || !result.success) {
-      const errorMsg = serverText(result?.error, t('invoice.service.unknownRpcError'));
+      const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'));
       return {
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
@@ -737,11 +868,12 @@ export const updateInvoice = async (
       data: {
         invoice_id: result.invoice_id,
         invoice_no: parseInt(result.invoice_number),
+        total: await savedInvoiceTotal(authenticatedClient, result, result.invoice_id || invoiceId),
       },
       message: serverText(result.message, t('invoice.service.updated')),
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error updating invoice:', error);
+    invoiceFormLogger.error('Error updating invoice:', errorForLog(error));
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },

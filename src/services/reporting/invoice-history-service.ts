@@ -5,10 +5,7 @@
  * Returns invoices with line items, payment status, and monthly breakdown.
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type {
   InvoiceHistoryResponse,
   InvoiceHistoryData,
@@ -21,8 +18,12 @@ import type {
   CustomerInvoiceSummary,
 } from '@/types/report.types';
 
-import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { getDateDaysAgo, getToday } from './reportDates';
+import { createLogger } from '@/utils/logger';
+import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 /**
  * Default empty response for error cases
  */
@@ -58,22 +59,6 @@ const EMPTY_ALL_RESPONSE: AllInvoiceHistoryData = {
   by_month: [],
 };
 
-/**
- * Get date string for N days ago
- */
-function getDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalISODate(date);
-}
-
-/**
- * Get today's date string
- */
-function getToday(): string {
-  return toLocalISODate(new Date());
-}
-
 export interface InvoiceHistoryParams {
   customerId: string; // Required customer UUID
   fromDate?: string;
@@ -92,7 +77,7 @@ export async function getCustomerInvoiceHistory(
   params: InvoiceHistoryParams
 ): Promise<InvoiceHistoryResponse> {
   if (!params.customerId) {
-    console.error('[InvoiceHistory] Customer ID is required');
+    logger.error('[InvoiceHistory] Customer ID is required');
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -102,19 +87,6 @@ export async function getCustomerInvoiceHistory(
   }
 
   try {
-    console.time('⏱️ [InvoiceHistory] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[InvoiceHistory] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-      expiresAt: tokenData.expiresAt
-        ? new Date(tokenData.expiresAt).toISOString()
-        : 'none',
-    });
-
     const client = await getAuthenticatedClient();
 
     // Calculate date range
@@ -132,20 +104,13 @@ export async function getCustomerInvoiceHistory(
       rpcParams.p_financial_year = params.financialYear;
     }
 
-    console.log(
-      '[InvoiceHistory] Calling get_customer_invoice_summary with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_customer_invoice_summary',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [InvoiceHistory] RPC call duration');
-
     if (error) {
-      console.error('[InvoiceHistory] RPC error:', error.message);
+      logger.error('[InvoiceHistory] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_RESPONSE,
@@ -155,7 +120,6 @@ export async function getCustomerInvoiceHistory(
     }
 
     if (!data) {
-      console.log('[InvoiceHistory] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_RESPONSE,
@@ -163,21 +127,16 @@ export async function getCustomerInvoiceHistory(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [InvoiceHistory] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_RESPONSE, t('reports.invoiceHistory.errors.fetchFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const rawData = Array.isArray(data) ? data[0] : data;
+    const rawData = reportBody(data);
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log(
-      '[InvoiceHistory] Unwrapped responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map to our expected format
     const summary: InvoiceHistoryKPIs = {
@@ -248,17 +207,13 @@ export async function getCustomerInvoiceHistory(
       pending_amount: m.pending_amount ?? 0,
     }));
 
-    console.log(
-      `[InvoiceHistory] Parsed ${invoices.length} invoices, net amount: ${summary.net_amount}`
-    );
-
     return {
       success: true,
       data: { summary, invoices, by_month: byMonth },
       message: t('reports.invoiceHistory.retrieved'),
     };
   } catch (error) {
-    console.error('[InvoiceHistory] Unexpected error:', error);
+    logger.error('[InvoiceHistory] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -284,16 +239,6 @@ export async function getAllInvoiceHistory(
   params: AllInvoiceHistoryParams
 ): Promise<AllInvoiceHistoryResponse> {
   try {
-    console.time('⏱️ [AllInvoiceHistory] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[AllInvoiceHistory] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
-
     const client = await getAuthenticatedClient();
 
     const rpcParams: Record<string, unknown> = {
@@ -306,20 +251,13 @@ export async function getAllInvoiceHistory(
       rpcParams.p_financial_year = params.financialYear;
     }
 
-    console.log(
-      '[AllInvoiceHistory] Calling get_customer_invoice_summary with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_customer_invoice_summary',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [AllInvoiceHistory] RPC call duration');
-
     if (error) {
-      console.error('[AllInvoiceHistory] RPC error:', error.message);
+      logger.error('[AllInvoiceHistory] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
@@ -329,7 +267,6 @@ export async function getAllInvoiceHistory(
     }
 
     if (!data) {
-      console.log('[AllInvoiceHistory] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
@@ -337,21 +274,16 @@ export async function getAllInvoiceHistory(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [AllInvoiceHistory] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_ALL_RESPONSE, t('reports.invoiceHistory.errors.fetchAllFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const rawData = Array.isArray(data) ? data[0] : data;
+    const rawData = reportBody(data);
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log(
-      '[AllInvoiceHistory] Unwrapped responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map to our expected format
     const summary: AllInvoiceHistoryKPIs = {
@@ -379,17 +311,13 @@ export async function getAllInvoiceHistory(
       total_amount: m.total_amount ?? 0,
     }));
 
-    console.log(
-      `[AllInvoiceHistory] Parsed ${byCustomer.length} customers, total invoices: ${summary.total_invoices}`
-    );
-
     return {
       success: true,
       data: { summary, by_customer: byCustomer, by_month: byMonth },
       message: t('reports.invoiceHistory.retrievedAll'),
     };
   } catch (error) {
-    console.error('[AllInvoiceHistory] Unexpected error:', error);
+    logger.error('[AllInvoiceHistory] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,

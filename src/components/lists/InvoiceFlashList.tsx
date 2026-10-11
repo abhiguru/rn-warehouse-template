@@ -17,6 +17,7 @@
  * @module lists/InvoiceFlashList
  */
 
+import { createLogger } from '@/utils/logger';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -62,6 +63,8 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
+
+const logger = createLogger('InvoiceList');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -157,7 +160,9 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // A newer request (the user kept typing, or changed a filter) replaces an
   // older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
-  const fetchInvoices = useCallback(async (offset: number = 0, append: boolean = false) => {
+  // `fresh`: pull to refresh and a return to the screen read the server again;
+  // a customer account's next page, sort and search use the history kept for it.
+  const fetchInvoices = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     try {
       if (append) setIsLoadingMore(true);
@@ -168,7 +173,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       // their assigned customers' invoices.
       const result = isWarehouseRole
         ? await getInvoicesList(params)
-        : await getAssignedCustomerInvoices(assignedCustomerIds, { ...params, customerNames: assignedCustomerNames });
+        : await getAssignedCustomerInvoices(assignedCustomerIds, { ...params, customerNames: assignedCustomerNames, p_fresh: fresh });
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
       if (!result.success || !result.data) throw new Error(result.message || 'Failed to load invoices');
@@ -188,7 +193,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       setCurrentOffset(offset + page.length);
     } catch (err: unknown) {
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
-      console.error('[InvoiceFlashList] Error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('List did not load', err instanceof Error ? err.message : err);
       setError(err instanceof Error ? err.message : 'Failed to load invoices');
       setSnackbarMessage(append
         ? translate('lists.invoice.loadMoreFailed')
@@ -217,7 +223,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) {
         setCurrentOffset(0);
-        fetchInvoices(0, false);
+        fetchInvoices(0, false, true);
       }
     }, [fetchInvoices])
   );
@@ -229,7 +235,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setCurrentOffset(0);
-    fetchInvoices(0, false);
+    fetchInvoices(0, false, true);
   }, [fetchInvoices]);
 
   const handleLoadMore = useCallback(() => {

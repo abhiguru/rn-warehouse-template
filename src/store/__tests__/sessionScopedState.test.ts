@@ -9,6 +9,8 @@ import { queryClient } from '@/lib/queryClient';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearSessionScopedState } from '../sessionScopedState';
+import { recentSearches, rememberSearch } from '@/features/filters/recentSearches';
+import { Image } from 'expo-image';
 
 jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
@@ -16,11 +18,29 @@ jest.mock('@/lib/queryClient', () => ({
 jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn() }));
+jest.mock('expo-image', () => ({
+  Image: { clearDiskCache: jest.fn(async () => true), clearMemoryCache: jest.fn(async () => true) },
+}));
 
 const makeStore = () =>
   configureStore({
     reducer: { grnForm: grnReducer, dispatchForm: dispatchReducer, invoiceForm: invoiceReducer, customerForm: customerReducer },
   });
+
+// A reset form is dated "now" (the default dispatch date), so the clock is held
+// still: only then is a reset store exactly equal to a fresh one. Timers are
+// left real; only Date is fixed.
+beforeAll(() => {
+  jest.useFakeTimers({
+    now: new Date('2026-10-10T06:00:00Z'),
+    doNotFake: [
+      'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame',
+      'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval',
+      'setTimeout', 'clearTimeout',
+    ],
+  });
+});
+afterAll(() => jest.useRealTimers());
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -69,4 +89,51 @@ it('completes the teardown even when the shared document sweep fails', async () 
   expect(sweepSharedDocuments).toHaveBeenCalledTimes(1);
   expect(store.getState()).toEqual(empty);
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
+});
+
+// Review 2026-10-10, M2-11: these are keyed by user or customer id only, and a
+// forced logout or server switch does not run the logout button's own cleanup.
+it('removes the recent-customer, recent-sender and recent-item lists of the ended session', async () => {
+  const store = makeStore();
+  await AsyncStorage.multiSet([
+    ['recent_customers_user-a', '[{"id":"c1","name":"Fictional Traders"}]'],
+    ['recent_customers', '[]'],
+    ['recent_senders_user-a', '[{"name":"Fictional Sender"}]'],
+    ['session_recent_items_customer-1', '{"items":[{"gr_no":"A0010"}]}'],
+    ['operator_server_v1', '{"origin":"https://warehouse.example.test"}'],
+    ['app_language', 'gu'],
+  ]);
+  await clearSessionScopedState(store.dispatch);
+  expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['app_language', 'operator_server_v1']);
+});
+
+// M4-1: the "Recent" list under a search field is module state beside the filter slice.
+it('forgets the recent searches of every list', async () => {
+  rememberSearch('grn', 'Fictional Traders A0042');
+  rememberSearch('dispatch', 'DD0010');
+  expect(recentSearches('grn')).toEqual(['Fictional Traders A0042']);
+
+  await clearSessionScopedState(makeStore().dispatch);
+
+  expect(recentSearches('grn')).toEqual([]);
+  expect(recentSearches('dispatch')).toEqual([]);
+});
+
+// Photos are cached by address, not by account: a photo seen under one account
+// would otherwise stay on the phone after sign-out, for the next account.
+describe('the image cache', () => {
+  it('is emptied, on disk and in memory, when a session ends', async () => {
+    await clearSessionScopedState(makeStore().dispatch);
+    expect(Image.clearDiskCache).toHaveBeenCalledTimes(1);
+    expect(Image.clearMemoryCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not stop the teardown when it cannot be emptied', async () => {
+    jest.mocked(Image.clearDiskCache).mockRejectedValueOnce(new Error('fictional cache failure'));
+    await AsyncStorage.setItem(`${CACHE_PREFIXES.DISPATCH_LIST}_x`, '{}');
+    await expect(clearSessionScopedState(makeStore().dispatch)).resolves.toBeUndefined();
+    expect(Image.clearMemoryCache).toHaveBeenCalledTimes(1);
+    expect(sweepSharedDocuments).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
+  });
 });

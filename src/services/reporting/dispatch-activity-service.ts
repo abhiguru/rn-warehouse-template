@@ -5,10 +5,7 @@
  * Returns recent dispatch history with item-level details.
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type {
   DispatchActivityResponse,
   DispatchActivityData,
@@ -20,8 +17,12 @@ import type {
   CustomerDispatchRow,
 } from '@/types/report.types';
 
-import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { getDateDaysAgo, getToday } from './reportDates';
+import { createLogger } from '@/utils/logger';
+import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 /**
  * Default empty response for error cases
  */
@@ -47,22 +48,6 @@ const EMPTY_ALL_RESPONSE: AllDispatchActivityData = {
   by_customer: [],
 };
 
-/**
- * Get date string for N days ago
- */
-function getDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalISODate(date);
-}
-
-/**
- * Get today's date string
- */
-function getToday(): string {
-  return toLocalISODate(new Date());
-}
-
 export interface DispatchActivityParams {
   customerId: string; // Required customer UUID
   fromDate?: string;
@@ -80,7 +65,7 @@ export async function getCustomerDispatchActivity(
   params: DispatchActivityParams
 ): Promise<DispatchActivityResponse> {
   if (!params.customerId) {
-    console.error('[DispatchActivity] Customer ID is required');
+    logger.error('[DispatchActivity] Customer ID is required');
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -90,19 +75,6 @@ export async function getCustomerDispatchActivity(
   }
 
   try {
-    console.time('⏱️ [DispatchActivity] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[DispatchActivity] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-      expiresAt: tokenData.expiresAt
-        ? new Date(tokenData.expiresAt).toISOString()
-        : 'none',
-    });
-
     const client = await getAuthenticatedClient();
 
     // Calculate date range
@@ -116,20 +88,13 @@ export async function getCustomerDispatchActivity(
       p_to_date: toDate,
     };
 
-    console.log(
-      '[DispatchActivity] Calling get_customer_dispatch_activity with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_customer_dispatch_activity',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [DispatchActivity] RPC call duration');
-
     if (error) {
-      console.error('[DispatchActivity] RPC error:', error.message);
+      logger.error('[DispatchActivity] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_RESPONSE,
@@ -139,7 +104,6 @@ export async function getCustomerDispatchActivity(
     }
 
     if (!data) {
-      console.log('[DispatchActivity] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_RESPONSE,
@@ -147,14 +111,13 @@ export async function getCustomerDispatchActivity(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [DispatchActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_RESPONSE, t('reports.dispatchActivity.errors.fetchFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = Array.isArray(data) ? data[0] : data;
+    const responseData = reportBody(data);
 
     // Map to our expected format
     const summary: DispatchActivityKPIs = {
@@ -184,17 +147,13 @@ export async function getCustomerDispatchActivity(
       })),
     }));
 
-    console.log(
-      `[DispatchActivity] Parsed ${dispatches.length} dispatches, total qty: ${summary.total_quantity}`
-    );
-
     return {
       success: true,
       data: { summary, dispatches },
       message: t('reports.dispatchActivity.retrieved'),
     };
   } catch (error) {
-    console.error('[DispatchActivity] Unexpected error:', error);
+    logger.error('[DispatchActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -219,16 +178,6 @@ export async function getAllDispatchActivity(
   params: AllDispatchActivityParams
 ): Promise<AllDispatchActivityResponse> {
   try {
-    console.time('⏱️ [AllDispatchActivity] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[AllDispatchActivity] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
-
     const client = await getAuthenticatedClient();
 
     const rpcParams = {
@@ -236,20 +185,13 @@ export async function getAllDispatchActivity(
       p_to_date: params.toDate,
     };
 
-    console.log(
-      '[AllDispatchActivity] Calling get_all_dispatch_activity with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_all_dispatch_activity',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [AllDispatchActivity] RPC call duration');
-
     if (error) {
-      console.error('[AllDispatchActivity] RPC error:', error.message);
+      logger.error('[AllDispatchActivity] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
@@ -259,7 +201,6 @@ export async function getAllDispatchActivity(
     }
 
     if (!data) {
-      console.log('[AllDispatchActivity] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
@@ -267,14 +208,13 @@ export async function getAllDispatchActivity(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [AllDispatchActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_ALL_RESPONSE, t('reports.dispatchActivity.errors.fetchAllFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = Array.isArray(data) ? data[0] : data;
+    const responseData = reportBody(data);
 
     // Map to our expected format
     const summary: AllDispatchActivityKPIs = {
@@ -283,7 +223,6 @@ export async function getAllDispatchActivity(
       total_quantity: responseData?.summary?.total_quantity ?? 0,
       total_weight: responseData?.summary?.total_weight ?? 0,
     };
-
 
     const byCustomer: CustomerDispatchRow[] = (
       responseData?.by_customer ?? []
@@ -295,17 +234,13 @@ export async function getAllDispatchActivity(
       total_weight: customer.total_weight ?? 0,
     }));
 
-    console.log(
-      `[AllDispatchActivity] Parsed ${byCustomer.length} customers, total dispatches: ${summary.total_dispatches}, first customer qty: ${byCustomer[0]?.total_quantity ?? 'N/A'}`
-    );
-
     return {
       success: true,
       data: { summary, by_customer: byCustomer },
       message: t('reports.dispatchActivity.retrievedAll'),
     };
   } catch (error) {
-    console.error('[AllDispatchActivity] Unexpected error:', error);
+    logger.error('[AllDispatchActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,

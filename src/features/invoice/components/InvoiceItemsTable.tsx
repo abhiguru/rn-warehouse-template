@@ -14,9 +14,16 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
-import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
-import { getLanguage, localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { InlineValidation } from '@/components/fiori';
+import { RateInput } from '@/features/invoice/components/RateInput';
+import { parseRateInput, type RateField } from '@/features/invoice/utils/amountInput';
+
+type GroupRateTexts = Record<RateField, string>;
+const RATE_FIELDS: RateField[] = ['charge', 'labour_rate', 'tax'];
+const EMPTY_GROUP_RATES: GroupRateTexts = { charge: '', labour_rate: '', tax: '' };
 
 /** Table rows with editable cells keep the full 44 minimum (§13.7). */
 const ROW_MIN_HEIGHT = 44;
@@ -215,6 +222,10 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.field,
     paddingHorizontal: space.sm,
   },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
   affix: {
     ...typography.subhead,
     color: t.text.secondary,
@@ -313,6 +324,9 @@ const makeStyles = (t: ThemeTokens) => ({
     borderColor: t.border.fieldFocus,
     backgroundColor: t.surface.field,
   },
+  cellError: {
+    borderColor: t.status.negative.border,
+  },
   cellInput: {
     ...typography.subhead,
     ...tabular,
@@ -391,6 +405,8 @@ interface InvoiceItemsTableProps {
   onBulkEdit: (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => void;
   onEditPricing?: (params: EditPricingParams) => void;
   renderItem?: (item: InvoiceItemData) => React.ReactElement;
+  /** Told whether a rate field currently holds text that was not accepted, so the step can hold "Next". */
+  onInputErrorChange?: (hasError: boolean) => void;
 }
 
 export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
@@ -398,6 +414,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   onItemUpdate,
   onBulkEdit,
   onEditPricing,
+  onInputErrorChange,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
@@ -427,14 +444,30 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   const [editingCell, setEditingCell] = useState<{ tempId: string; field: string } | null>(null);
 
   // Track bulk pricing inputs for each item group
-  const [bulkPricingInputs, setBulkPricingInputs] = useState<
-    Record<string, { charge: string; labour_rate: string; tax: string }>
-  >({});
+  const [bulkPricingInputs, setBulkPricingInputs] = useState<Record<string, GroupRateTexts>>({});
 
-  // Initialize bulk pricing inputs - calculate WEIGHTED average of all items in group
-  // Weighted averages ensure that applying group values produces the same totals as individual items
+  // Text in a rate field that was not accepted, by field. A group field is
+  // keyed `group|<groupKey>|<field>`, a table cell `cell|<temp_id>|<field>`.
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
+  const setInputError = useCallback((key: string, error: string | null) => {
+    setInputErrors((prev) => {
+      if ((prev[key] ?? null) === error) return prev;
+      const next = { ...prev };
+      if (error) next[key] = error;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+  const hasInputError = Object.keys(inputErrors).length > 0;
   useEffect(() => {
-    const initialInputs: Record<string, { charge: string; labour_rate: string; tax: string }> = {};
+    onInputErrorChange?.(hasInputError);
+  }, [hasInputError, onInputErrorChange]);
+
+  // The group rates as the form holds them: the WEIGHTED average of the
+  // group's lines, or the group rates the user applied.
+  // Weighted averages ensure that applying group values produces the same totals as individual items
+  const groupRateDefaults = useMemo(() => {
+    const initialInputs: Record<string, GroupRateTexts> = {};
 
     // Group items by group key and calculate weighted averages
     const groupTotals: Record<string, {
@@ -493,7 +526,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
       initialInputs[groupKey] = {
         charge: weightedCharge > 0 ? weightedCharge.toFixed(2) : '',
         labour_rate: weightedLabour > 0 ? weightedLabour.toFixed(2) : '',
-        tax: weightedTax > 0 ? weightedTax.toFixed(0) : '',
+        // Two decimals at most, as stored: "2.5" must not start as "3", which the
+        // next change of the group's charge or labour rate would give to every line.
+        tax: weightedTax > 0 ? String(roundMoney(weightedTax)) : '',
       };
     });
 
@@ -507,8 +542,31 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
       };
     });
 
-    setBulkPricingInputs(initialInputs);
+    return initialInputs;
   }, [bulkPricingFromRedux, items]);
+
+  // Show them in the fields, but leave alone a field whose text already means
+  // the same number ("6." while 6 is applied) or is still being corrected:
+  // replacing it would take the decimal point away between two key presses.
+  useEffect(() => {
+    setBulkPricingInputs((prev) => {
+      const next: Record<string, GroupRateTexts> = {};
+      Object.keys(groupRateDefaults).forEach((groupKey) => {
+        const typed = prev[groupKey];
+        const texts = { ...groupRateDefaults[groupKey] };
+        if (typed) {
+          RATE_FIELDS.forEach((field) => {
+            const current = parseRateInput(field, typed[field]);
+            if (current.error || current.value === parseRateInput(field, texts[field]).value) {
+              texts[field] = typed[field];
+            }
+          });
+        }
+        next[groupKey] = texts;
+      });
+      return next;
+    });
+  }, [groupRateDefaults]);
 
   // #23 Fix: Extended type with pre-computed allItems to avoid flatMap in render
   type GroupedInvoiceItemsWithAllItems = GroupedInvoiceItems & { allItems: InvoiceItemData[] };
@@ -568,22 +626,36 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
 
   // Handle bulk pricing input changes
   const handleBulkPricingChange = useCallback(
-    (groupKey: string, field: 'charge' | 'labour_rate' | 'tax', text: string) => {
-      const newInputs = {
-        ...(bulkPricingInputs[groupKey] || { charge: '', labour_rate: '', tax: '' }),
-        // Digits typed as ૦-૯ are kept as 0-9.
-        [field]: normalizeDigits(text),
-      };
+    (groupKey: string, field: RateField, typed: string) => {
+      // Digits typed as ૦-૯ are kept as 0-9.
+      const parsed = parseRateInput(field, typed);
+      const newInputs = { ...(bulkPricingInputs[groupKey] || EMPTY_GROUP_RATES), [field]: parsed.text };
 
       setBulkPricingInputs((prev) => ({ ...prev, [groupKey]: newInputs }));
+      setInputError(`group|${groupKey}|${field}`, parsed.error);
 
-      const charge = parseFloat(newInputs.charge) || 0;
-      const labour_rate = parseFloat(newInputs.labour_rate) || 0;
-      const tax = parseFloat(newInputs.tax) || 0;
+      // Text that is not a rate inside the range is not applied to the lines.
+      if (parsed.value === null) return;
+      const applied = parsed.value;
+      const rate = (name: RateField) => (name === field ? applied : parseRateInput(name, newInputs[name]).value ?? 0);
 
-      onBulkEdit(groupKey, { charge, labour_rate, tax });
+      onBulkEdit(groupKey, { charge: rate('charge'), labour_rate: rate('labour_rate'), tax: rate('tax') });
     },
-    [bulkPricingInputs, onBulkEdit]
+    [bulkPricingInputs, onBulkEdit, setInputError]
+  );
+
+  // A group field that is left with text that was not accepted shows the applied rate again.
+  const handleBulkPricingBlur = useCallback(
+    (groupKey: string, field: RateField) => {
+      const key = `group|${groupKey}|${field}`;
+      if (!inputErrors[key]) return;
+      setInputError(key, null);
+      setBulkPricingInputs((prev) => ({
+        ...prev,
+        [groupKey]: { ...(prev[groupKey] || EMPTY_GROUP_RATES), [field]: groupRateDefaults[groupKey]?.[field] ?? '' },
+      }));
+    },
+    [inputErrors, groupRateDefaults, setInputError]
   );
 
   // Toggle group expansion
@@ -617,15 +689,6 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
     });
   }, [onEditPricing]);
 
-  // Handle cell edit
-  const handleCellValueChange = useCallback(
-    (tempId: string, field: string, text: string) => {
-      const value = parseFloat(normalizeDigits(text)) || 0;
-      onItemUpdate(tempId, field, value);
-    },
-    [onItemUpdate]
-  );
-
   // Empty state
   if (items.length === 0) {
     return (
@@ -643,22 +706,32 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
         const groupKey = `${itemGroup.item_id}:::${itemGroup.package_mark}`;
         const isExpanded = expandedItemGroups.has(groupKey);
         const groupTotal = calculateItemGroupTotal(itemGroup);
-        const currentInputs = bulkPricingInputs[groupKey] || { charge: '', labour_rate: '', tax: '' };
+        const currentInputs = bulkPricingInputs[groupKey] || EMPTY_GROUP_RATES;
+        const groupRateError = RATE_FIELDS.map((field) => inputErrors[`group|${groupKey}|${field}`]).find(Boolean);
+        const groupFieldStyle = (field: RateField) => [
+          styles.field,
+          !!inputErrors[`group|${groupKey}|${field}`] && styles.fieldError,
+        ];
 
         // #23 Fix: Use pre-computed allItems instead of flatMap in render
         const { allItems } = itemGroup;
         const dispatchCount = formatCount(allItems.length, 'dispatch', 'dispatches');
         const groupTotalText = formatInvoiceAmount(groupTotal);
 
+        // The message for a table cell of this group whose text was not accepted.
+        const cellError = allItems
+          .flatMap((line) => RATE_FIELDS.map((field) => inputErrors[`cell|${line.temp_id}|${field}`]))
+          .find(Boolean);
+
         const renderEditableCell = (
           item: InvoiceItemData,
-          field: 'charge' | 'labour_rate' | 'tax',
+          field: RateField,
           columnStyle: object,
           label: string,
           display: string
         ) => {
           const isEditing = editingCell?.tempId === item.temp_id && editingCell?.field === field;
-          const rawValue = item[field];
+          const cellKey = `cell|${item.temp_id}|${field}`;
           return (
             <Pressable
               style={({ pressed }) => [
@@ -667,6 +740,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 styles.editableCell,
                 pressed && !isEditing && styles.editableCellPressed,
                 isEditing && styles.editingCell,
+                !!inputErrors[cellKey] && styles.cellError,
               ]}
               onPress={() => setEditingCell({ tempId: item.temp_id, field })}
               accessibilityRole="button"
@@ -674,12 +748,13 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
               accessibilityHint={tr('invoice.table.editsValueHint')}
             >
               {isEditing ? (
-                <TextInput
+                <RateInput
                   style={styles.cellInput}
                   accessibilityLabel={tr('invoice.table.cellInputA11y', { label, number: formatIdentifier(item.dispatch_no) })}
-                  value={rawValue > 0 ? localizeDigits(rawValue.toString()) : ''}
-                  onChangeText={(text) => handleCellValueChange(item.temp_id, field, text)}
-                  keyboardType="decimal-pad"
+                  field={field}
+                  value={item[field]}
+                  onCommit={(value) => onItemUpdate(item.temp_id, field, value)}
+                  onErrorChange={(error) => setInputError(cellKey, error)}
                   autoFocus
                   selectTextOnFocus
                   onBlur={() => setEditingCell(null)}
@@ -760,13 +835,14 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 {/* Charge */}
                 <View style={styles.bulkInputWrapper}>
                   <Text style={styles.inputLabel}>{tr('invoice.label.charge')}</Text>
-                  <View style={styles.field}>
+                  <View style={groupFieldStyle('charge')}>
                     <Text style={styles.affix}>₹</Text>
                     <TextInput
                       style={styles.bulkInput}
                       accessibilityLabel={tr('invoice.table.chargeForA11y', { item: itemGroup.item_name })}
                       value={localizeDigits(currentInputs.charge ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'charge', text)}
+                      onBlur={() => handleBulkPricingBlur(groupKey, 'charge')}
                       placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
@@ -776,13 +852,14 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 {/* Labour */}
                 <View style={styles.bulkInputWrapper}>
                   <Text style={styles.inputLabel}>{tr('invoice.label.labour')}</Text>
-                  <View style={styles.field}>
+                  <View style={groupFieldStyle('labour_rate')}>
                     <Text style={styles.affix}>₹</Text>
                     <TextInput
                       style={styles.bulkInput}
                       accessibilityLabel={tr('invoice.table.labourRateForA11y', { item: itemGroup.item_name })}
                       value={localizeDigits(currentInputs.labour_rate ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'labour_rate', text)}
+                      onBlur={() => handleBulkPricingBlur(groupKey, 'labour_rate')}
                       placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
@@ -792,12 +869,13 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 {/* Tax */}
                 <View style={styles.bulkInputWrapper}>
                   <Text style={styles.inputLabel}>{tr('invoice.label.tax')}</Text>
-                  <View style={styles.field}>
+                  <View style={groupFieldStyle('tax')}>
                     <TextInput
                       style={styles.bulkInput}
                       accessibilityLabel={tr('invoice.table.taxPercentForA11y', { item: itemGroup.item_name })}
                       value={localizeDigits(currentInputs.tax ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'tax', text)}
+                      onBlur={() => handleBulkPricingBlur(groupKey, 'tax')}
                       placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
@@ -806,6 +884,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                   </View>
                 </View>
               </View>
+              <InlineValidation message={groupRateError || ''} variant="error" visible={!!groupRateError} />
             </View>
 
             {/* Expanded data table */}
@@ -894,6 +973,8 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     ))}
                   </View>
                 </ScrollView>
+
+                <InlineValidation message={cellError || ''} variant="error" visible={!!cellError} />
 
                 {/* Totals row */}
                 <View

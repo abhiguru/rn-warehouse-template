@@ -92,6 +92,30 @@ export function redactSensitiveString(str: string): string {
   return result;
 }
 
+// What an error text can carry beyond the patterns above: the row values that
+// PostgreSQL quotes in a constraint error, and the app's 64-character session
+// tokens (refresh and enrollment tokens are opaque hex, not JWTs).
+const ERROR_TEXT_PATTERNS = [
+  { pattern: /\b[a-f0-9]{64}\b/gi, replacement: '[REDACTED_TOKEN]' },
+  // Key (mobile)=(98xxxxxxxx) already exists.
+  { pattern: /(Key \([^)]*\)=)\((?:[^()]|\([^()]*\))*\)/g, replacement: '$1([REDACTED])' },
+  // Failing row contains (id, name, mobile, ...).
+  { pattern: /(Failing row contains) \((?:[^()]|\([^()]*\))*\)/g, replacement: '$1 ([REDACTED])' },
+];
+
+/**
+ * Redact the text of an error or a captured message: everything
+ * redactSensitiveString hides, plus server row values and session tokens.
+ */
+export function redactErrorText(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  let result = text;
+  for (const { pattern, replacement } of ERROR_TEXT_PATTERNS) {
+    result = result.replace(pattern, replacement);
+  }
+  return redactSensitiveString(result);
+}
+
 /**
  * Sanitize query parameters and sensitive URL fragments
  */
@@ -232,6 +256,42 @@ export function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
  */
 export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
   if (!event) return event;
+
+  // The text of the event itself: a captured message, and the message of
+  // every exception in the chain. This is where a server error text (a phone
+  // number in a duplicate-key detail, a token echoed by a proxy) would travel.
+  if (typeof event.message === 'string') {
+    event.message = redactErrorText(event.message);
+  }
+  if (event.logentry) {
+    if (typeof event.logentry.message === 'string') {
+      event.logentry.message = redactErrorText(event.logentry.message);
+    }
+    if (Array.isArray(event.logentry.params)) {
+      event.logentry.params = event.logentry.params.map(param =>
+        typeof param === 'string' ? redactErrorText(param) : sanitizeData(param)
+      );
+    }
+  }
+  if (Array.isArray(event.exception?.values)) {
+    for (const exception of event.exception.values) {
+      if (typeof exception.value === 'string') {
+        exception.value = redactErrorText(exception.value);
+      }
+    }
+  }
+
+  // Redact Contexts (device and app details stay; keyed secrets and strings
+  // that match a sensitive pattern do not)
+  // The trace context holds only generated ids, which the phone pattern
+  // could damage; it is passed through.
+  if (event.contexts && typeof event.contexts === 'object') {
+    const { trace, ...rest } = event.contexts;
+    event.contexts = {
+      ...(sanitizeData(rest) as ErrorEvent['contexts']),
+      ...(trace ? { trace } : {}),
+    };
+  }
 
   // Redact User details
   if (event.user) {
@@ -390,7 +450,9 @@ export function captureMessage(
   message: string,
   level: Sentry.SeverityLevel = 'info'
 ): void {
-  Sentry.captureMessage(message, level);
+  // Scrubbed here as well as in beforeSend: a message is often built from a
+  // raw rejection reason or server text.
+  Sentry.captureMessage(redactErrorText(message), level);
 }
 
 /**

@@ -25,6 +25,8 @@ export const grn = {
     forExample: 'For example {{example}}',
     checkNumberFailed: 'Failed to check GRN',
     checkNumberNetwork: 'Network error checking GRN',
+    numberTaken: 'GRN {{number}} already exists. Enter a different number.',
+    numberTakenFor: 'GRN {{number}} already exists ({{customer}}). Enter a different number.',
     nextNumberFailed: 'Failed to get next GRN number',
     requestFailed: 'RPC call failed',
     creationFailed: 'GRN creation failed',
@@ -212,6 +214,9 @@ export const grn = {
     metadataFailed: 'Failed to save image metadata',
     metadataFailedShort: 'Failed to save metadata',
     readFailed: 'Failed to read image file',
+    lineNotFound: 'The item this photo belongs to was not found on the saved GRN',
+    stillUploading: 'The upload was still running',
+    notPrepared: 'The photo was not ready to upload',
   },
 
   // Step 3: review
@@ -237,6 +242,27 @@ export const grn = {
       'GRN saved. Some quantities were not changed because those items are already dispatched:\n{{items}}',
     savedWithNumber: 'GRN {{number}} saved.',
     saved: 'GRN saved.',
+    photosNotUploadedTitle: 'Photos not uploaded',
+    photosPreparingTitle: 'Photos are still being prepared',
+    photosPreparingMessage: 'Wait a moment for the photos to finish, then save again.',
+    photoNotPreparedTitle: "A photo couldn't be prepared",
+    photoNotPreparedMessage: 'Remove the photo marked as failed, or add it again, then save.',
+    saveUnanswered:
+      'The server did not answer, so the GRN may or may not be saved. Nothing in the form was lost. Check your connection and save again: the app first checks what was saved.',
+    saveNotConfirmed:
+      "Couldn't check whether the last save reached the server. Check your connection and try again.",
+    photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
+    photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
+    failedGrnPhoto: 'GRN photo {{position}}',
+    failedItemPhoto: '{{item}}, photo {{position}}',
+    retryPhotos: 'Try again',
+    continueWithoutPhotos: 'Continue without them',
+    photosUploaded: 'Photos uploaded.',
+    uploadingPhotos: 'Uploading photos…',
+    photosNotRemoved: {
+      one: '{{count}} removed photo is still on the GRN. Open the GRN and remove it again.',
+      other: '{{count}} removed photos are still on the GRN. Open the GRN and remove them again.',
+    },
     pdfCreateFailed: "Couldn't create the PDF. Try again.",
     pdfShareFailed: "Couldn't share the PDF. Try again.",
     createGrn: 'Create GRN',
@@ -273,6 +299,8 @@ export const grn = {
 
   // Validation messages (src/features/grn/schemas/grnValidation.ts)
   validation: {
+    numberMax: 'GRN number must be at most 8 characters',
+    numberNoSpaces: 'GRN number cannot contain spaces',
     registrationMax: 'Registration must be at most 12 characters',
     dateRequired: 'Date is required',
     dateFuture: 'Cannot select a future date',
@@ -309,8 +337,6 @@ export const grn = {
     packagingMax: 'Packaging must be at most 20 characters',
     rackMax: 'Rack must be at most 30 characters',
     rackFormat: 'Rack must be in format: Floor/Chamber or Rack/Floor/Chamber',
-    rackFormatDetailed:
-      'Rack must be in format: Floor/Chamber or Rack/Floor/Chamber with valid Floor ({{floors}}) and Chamber ({{chambers}})',
     packageMarkMax: 'Package mark must be at most 60 characters',
     itemsMin: 'At least one item is required',
     itemsRequired: 'Items are required',

@@ -152,3 +152,46 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 });
+
+// M9-10: the answer to an earlier search must not replace the dropdown of the current one.
+describe('ReportCustomerSearch, answers out of order', () => {
+  const { searchService } = require('@/services/search-service') as { searchService: { searchCustomers: jest.Mock } };
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    searchService.searchCustomers.mockImplementation(() => Promise.resolve([]));
+  });
+
+  it('keeps the customers found for the text the field shows', async () => {
+    const pending: Record<string, (rows: { value: string; label: string }[]) => void> = {};
+    searchService.searchCustomers.mockImplementation((query: string) => new Promise(resolve => {
+      pending[query] = resolve;
+    }));
+    const element = (query: string) => (
+      <ReportCustomerSearch searchQuery={query} onSearchChange={jest.fn()} onCustomerSelect={jest.fn()} visibleCustomerIds={[]} />
+    );
+    const tree = render('orange' as Brand, 'light', element('pa'));
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+    act(() => tree.update(element('patel')));
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+    expect(Object.keys(pending)).toEqual(['pa', 'patel']);
+
+    // The name is drawn in pieces (the match is highlighted), so the pieces are read together.
+    const shown = () => texts(tree).join(' ');
+    await act(async () => {
+      pending.patel([{ value: 'c1', label: 'Patel Traders' }]);
+    });
+    expect(shown()).toContain('Traders');
+
+    await act(async () => {
+      pending.pa([{ value: 'c2', label: 'Parmar Stores' }, { value: 'c1', label: 'Patel Traders' }]);
+    });
+    expect(shown()).toContain('Traders');
+    expect(shown()).not.toContain('Stores');
+    act(() => tree.unmount());
+  });
+});

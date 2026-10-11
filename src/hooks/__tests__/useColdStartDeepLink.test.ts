@@ -36,6 +36,14 @@ describe('parseDeepLinkUrl', () => {
     );
   });
 
+  it.each([
+    'https://evil.example/settings',
+    'http://evil.example/grn-details/grn-123',
+    'HTTPS://facility.example/users',
+  ])('does not treat the web address %s as an app route', (url) => {
+    expect(parseDeepLinkUrl(url)).toBeNull();
+  });
+
   it('uses the configured application scheme for the bootstrap exclusion', () => {
     process.env.EXPO_PUBLIC_APP_SCHEME = 'warehouse-review';
 
@@ -100,4 +108,23 @@ describe('useColdStartDeepLink warm links', () => {
 
     expect(replace).toHaveBeenCalledWith('/customers');
   });
+
+  it.each(['/otp', '/login', '/operator-server', '/pending-enrollment'])(
+    'leaves the sign-in screen %s in place when a warm link arrives',
+    async (path) => {
+      (usePathname as jest.Mock).mockReturnValue(path);
+      (useAppSelector as jest.Mock).mockReturnValue({ userProfile: null, isLoading: false });
+      await act(async () => {
+        renderer = create(React.createElement(Harness));
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        urlListener?.({ url: 'warehousemanager://login' });
+        urlListener?.({ url: 'warehousemanager://settings' });
+      });
+
+      expect(replace).not.toHaveBeenCalled();
+    }
+  );
 });

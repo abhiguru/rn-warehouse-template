@@ -2,7 +2,7 @@
  * Autocomplete Helper Utilities
  *
  * J2 Fix: Common patterns for autocomplete components.
- * Reduces boilerplate in ItemAutocomplete, CustomerAutocomplete, etc.
+ * Reduces boilerplate in ItemAutocomplete and similar fields.
  */
 
 /**

@@ -18,7 +18,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount } from '@/utils/formatters';
+import { formatNumber } from '@/utils/formatters';
 import { localizeDigits } from '@/i18n';
 
 /** Default tab glyph size. */
@@ -130,8 +130,9 @@ export function GenericDetailTabNavigator<T extends string>({
               onPress={() => handleTabPress(tab.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
+              // The label names what the badge counts ("Images, 3"): no fixed noun.
               accessibilityLabel={`${tab.label}${
-                tab.badgeCount ? `, ${formatCount(tab.badgeCount, 'item')}` : ''
+                tab.badgeCount ? `, ${formatNumber(tab.badgeCount)}` : ''
               }`}
             >
               <View style={styles.iconContainer}>

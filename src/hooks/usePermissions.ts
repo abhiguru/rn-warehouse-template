@@ -50,8 +50,8 @@ export interface UsePermissionsResult {
   isAdmin: boolean;
   /** Whether user is supervisor */
   isSupervisor: boolean;
-  /** Whether user is staff */
-  isStaff: boolean;
+  /** Whether the role is exactly `staff` (not admin or supervisor; see `@/config/roles` for the groups) */
+  isStaffRole: boolean;
   /** Whether user is customer (read-only) */
   isCustomer: boolean;
 }
@@ -60,7 +60,7 @@ export interface UsePermissionsResult {
  * Hook to get current user's permissions
  */
 export const usePermissions = (): UsePermissionsResult => {
-  const { role, isAdmin, isSupervisor, isStaff, isCustomer } =
+  const { role, isAdmin, isSupervisor, isStaffRole, isCustomer } =
     useAppSelector(selectUserRole);
 
   return useMemo(() => {
@@ -75,10 +75,10 @@ export const usePermissions = (): UsePermissionsResult => {
         hasPermission(role, permission),
       isAdmin,
       isSupervisor: isSupervisor || role === 'supervisor',
-      isStaff,
+      isStaffRole,
       isCustomer,
     };
-  }, [role, isAdmin, isSupervisor, isStaff, isCustomer]);
+  }, [role, isAdmin, isSupervisor, isStaffRole, isCustomer]);
 };
 
 export default usePermissions;

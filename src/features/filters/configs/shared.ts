@@ -1,14 +1,25 @@
 /** Pieces every list configuration uses to turn filter values into request parameters. */
-import { parseLocalISODate } from '@/utils/formatters';
+import { endOfDayIST, startOfDayIST } from '@/utils/formatters';
+import { orderedDocumentRange } from '../parseQuickSearch';
 import type { FilterContext, PickedOption } from '../types';
 
-/** Start and end of a local calendar day as timestamps, so the last day is included in full. */
-export const startOfDay = (iso: string) => parseLocalISODate(iso).toISOString();
-export const endOfDay = (iso: string) => {
-  const date = parseLocalISODate(iso);
-  date.setHours(23, 59, 59, 999);
-  return date.toISOString();
-};
+/**
+ * Start and end of a calendar day as moments, so the last day is included in full.
+ * The list RPCs read these as timestamps; the day is the user's day in India.
+ */
+export const startOfDay = startOfDayIST;
+export const endOfDay = endOfDayIST;
+
+/**
+ * The two ends of a document-number range as they are sent: trimmed, in capitals
+ * (numbers are stored in capitals and the server compares the prefix as written),
+ * and in order when both ends are given. An end left empty stays open.
+ */
+export function documentRange(range: { from?: string; to?: string } | undefined): { from?: string; to?: string } {
+  const from = range?.from?.trim().toUpperCase() || undefined;
+  const to = range?.to?.trim().toUpperCase() || undefined;
+  return from && to ? orderedDocumentRange(from, to) : { from, to };
+}
 
 /** The ids of a picker field's value. */
 export const ids = (value: unknown) => (Array.isArray(value) ? (value as PickedOption[]).map(option => option.id) : []);

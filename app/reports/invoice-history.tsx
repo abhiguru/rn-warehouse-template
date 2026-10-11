@@ -25,10 +25,11 @@ import {
   FactLines,
   getDateRangeForPeriod,
   type KPIItem,
+  ReportCustomerScope,
+  type ReportScope,
 } from '@/components/reports';
 import { Button } from '@/components/ui/Button';
 import { getCustomerInvoiceHistory, getAllInvoiceHistory } from '@/services/reporting/invoice-history-service';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -360,15 +361,19 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
 // ============================================================================
 
 export default function InvoiceHistoryScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.invoiceHistory')}>
+      {(scope) => <InvoiceHistoryReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   // Route params for direct navigation from customer activity
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
@@ -383,6 +388,8 @@ export default function InvoiceHistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<TranslationKey | null>(null);
+  // The reason the server gave for refusing the report, already in the app's language.
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
   const [monthlyExpanded, setMonthlyExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
@@ -398,6 +405,7 @@ export default function InvoiceHistoryScreen() {
     if (showRefresh) setIsRefreshing(true);
     else setIsLoading(true);
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getAllInvoiceHistory({ fromDate: from, toDate: to });
@@ -405,6 +413,7 @@ export default function InvoiceHistoryScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -422,6 +431,7 @@ export default function InvoiceHistoryScreen() {
     if (showRefresh) setIsRefreshing(true);
     else setIsLoading(true);
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getCustomerInvoiceHistory({
@@ -432,6 +442,7 @@ export default function InvoiceHistoryScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -571,7 +582,7 @@ export default function InvoiceHistoryScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.invoiceHistory')} />
+        <ReportHeader title={tr('reports.titles.invoiceHistory')} onBack={scope.onChangeCustomer} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer}>
           <KPIGrid
@@ -591,9 +602,9 @@ export default function InvoiceHistoryScreen() {
   if (error && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.invoiceHistory')} />
+        <ReportHeader title={tr('reports.titles.invoiceHistory')} onBack={scope.onChangeCustomer} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState icon="alert-circle-outline" message={tr('reports.customerActivity.errorTitle')} description={tr(error)} />
+        <ReportEmptyState icon="alert-circle-outline" message={tr('reports.customerActivity.errorTitle')} description={errorReason ?? tr(error)} />
         {(shouldShowListView || singleAssignedCustomerId || selectedCustomer) && (
           <View style={styles.retry}>
             <Button type="secondary" onPress={() => handlePeriodChange(selectedPeriod)}>{tr('common.retry')}</Button>
@@ -611,7 +622,7 @@ export default function InvoiceHistoryScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.invoiceHistory')}
-          subtitle={tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
+          subtitle={tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
         />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
@@ -669,8 +680,8 @@ export default function InvoiceHistoryScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.invoiceHistory')}
-          subtitle={selectedCustomer?.customer_name}
-          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
+          subtitle={selectedCustomer?.customer_name || scope.customerName}
+          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
         />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
@@ -687,8 +698,8 @@ export default function InvoiceHistoryScreen() {
     <View style={styles.container}>
       <ReportHeader
         title={tr('reports.titles.invoiceHistory')}
-        subtitle={selectedCustomer?.customer_name}
-        onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
+        subtitle={selectedCustomer?.customer_name || scope.customerName}
+        onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
       />
       <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
       <Text style={styles.dateRangeText}>{dateRangeText}</Text>

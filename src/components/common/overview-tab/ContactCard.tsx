@@ -41,8 +41,8 @@ export function formatContactPhone(phone: string): string {
 export const ContactCard: React.FC<ContactCardProps> = ({
   type,
   name,
-  phone,
-  email,
+  phone: phoneProp,
+  email: emailProp,
   iconName,
   iconColor,
   iconBgColor,
@@ -58,6 +58,10 @@ export const ContactCard: React.FC<ContactCardProps> = ({
     Linking.openURL(`mailto:${emailAddress}`);
   };
 
+  // No number, no Call action: the server leaves the number out for some viewers (a
+  // customer account does not get a supervisor's mobile), and a blank is not a number.
+  const phone = phoneProp?.trim() || undefined;
+  const email = emailProp?.trim() || undefined;
   const displayPhone = phone ? formatContactPhone(phone) : undefined;
 
   return (

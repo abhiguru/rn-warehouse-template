@@ -24,7 +24,14 @@ export interface InvoiceLineItem {
   duration?: string;
   no_of_days?: number;
   charge: number;
+  /** Tax RATE in percent. */
   tax: number;
+  /** The line's tax amount as the server computed it. */
+  server_tax_amount?: number;
+  /** The line's total (base plus tax) as the server computed it. */
+  server_total_amount?: number;
+  /** The line's GRN is priced ONE_TIME: no duration, no labour. Used only when the server amounts are absent. */
+  one_time?: boolean;
   grn_id?: string;
   gr_no?: string;
   // GRN Item reference for grouping
@@ -65,8 +72,10 @@ export const groupItemsByGrnItem = (
   const groupMap = new Map<string, InvoiceLineItemGroupData>();
 
   items.forEach((item) => {
-    // Use grn_item_id if available, otherwise use item_name + grn_quantity as grouping key
-    const groupKey = item.grn_item_id || `${item.item_name}_${item.grn_quantity || 0}`;
+    // Lines of one GRN item form a group. Without the GRN item id there is no
+    // telling whether two lines belong together (two lots can share a name and
+    // a received quantity), so such a line stays a group of its own.
+    const groupKey = item.grn_item_id || `line:${item.id}`;
 
     if (!groupMap.has(groupKey)) {
       // Initialize new group
@@ -97,24 +106,22 @@ export const groupItemsByGrnItem = (
 
     const group = groupMap.get(groupKey)!;
 
-    // Calculate line item amount: (duration * charge_per_unit * dispatch_qty) + (dispatch_qty * labour_rate)
-    if (__DEV__) console.log('[InvoiceLineItemsTab] Raw item.duration:', item.duration, 'type:', typeof item.duration);
-    const duration = item.duration ? parseFloat(item.duration) || 1 : 1;
-    if (__DEV__) console.log('[InvoiceLineItemsTab] Parsed duration:', duration);
+    const parsedDuration = item.duration ? parseFloat(item.duration) : NaN;
+    const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 1;
     const dispatch_qty = item.dispatch_qty || 0;
     const charge_per_unit = item.charge_per_unit || item.charge || group.charge_per_unit || 0;
     const labour_rate = item.labour_rate || group.labour_rate || 0;
 
     const taxRate = item.tax || 0;
-    const amounts = calculateItemAmounts(
-      dispatch_qty,
-      charge_per_unit,
-      labour_rate,
-      taxRate,
-      duration
-    );
-    const baseAmount = amounts.taxable_amount;
-    const taxAmount = amounts.tax_amount;
+    // The amounts are the server's (get_invoice_items_detailed computes each
+    // line as it computes the invoice total). Only when they did not load are
+    // they worked out here, by the same rules, as a stand-in.
+    const hasServerAmounts =
+      typeof item.server_tax_amount === 'number' && typeof item.server_total_amount === 'number';
+    const computed = calculateItemAmounts(dispatch_qty, charge_per_unit, labour_rate, taxRate, duration, item.one_time);
+    const taxAmount = hasServerAmounts ? item.server_tax_amount! : computed.tax_amount;
+    const lineTotal = hasServerAmounts ? item.server_total_amount! : computed.item_total;
+    const baseAmount = hasServerAmounts ? roundMoney(lineTotal - taxAmount) : computed.taxable_amount;
     const lineItemAmount = baseAmount;
 
     // A group-level rate is only meaningful when every dispatch uses the same rate.
@@ -144,7 +151,7 @@ export const groupItemsByGrnItem = (
     group.total_dispatch_qty += dispatch_qty;
     group.total_base_amount = roundMoney(group.total_base_amount + baseAmount);
     group.total_tax_amount = roundMoney(group.total_tax_amount + taxAmount);
-    group.total_amount = roundMoney(group.total_amount + amounts.item_total);
+    group.total_amount = roundMoney(group.total_amount + lineTotal);
   });
 
   return Array.from(groupMap.values());

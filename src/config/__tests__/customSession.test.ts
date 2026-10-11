@@ -1,5 +1,5 @@
 import { operatorResumeGate } from '../operatorResume';
-import { advanceSessionGeneration } from '../sessionLifecycle';
+import { advanceSessionGeneration, getSessionGeneration, renewAheadMs } from '../sessionLifecycle';
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer, { logout, setUserProfile } from '@/store/slices/authSlice';
 jest.mock('@/services/recent-customers-service', () => ({
@@ -47,8 +47,14 @@ import {
   getSessionIdentity,
   storeTokens,
   verifyOTP,
+  isReadRequest,
+  deviceExpiry,
+  REQUEST_TIME_LIMIT_MS,
 } from '../supabaseConfig';
+import { getAppErrorCode } from '@/utils/appError';
+import { isOfflineFailure, categorizeError } from '@/utils/serviceErrorHandler';
 import { loadOperatorServer, saveOperatorServer } from '../operatorServer';
+import { setLanguage, t } from '@/i18n';
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/utils/secureSessionMarker', () => ({
@@ -337,7 +343,7 @@ it('waits for authenticated requests before allowing a server switch and blocks 
   expect(guardedFetch).toBeDefined();
   const slow = deferred<Response>();
   jest.mocked(global.fetch).mockImplementation(() => slow.promise);
-  const request = guardedFetch!('http://localhost:18000/rest/v1/items');
+  const request = guardedFetch!('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
   expect(beginOperatorSwitch()).toBe(false);
   slow.resolve(operatorResponse({ data: [] }) as Response);
   await request;
@@ -666,7 +672,7 @@ test('three concurrent refreshes rejected together force a single logout', async
   });
   const results = await Promise.all([refreshCustomJWT(), refreshCustomJWT(), refreshCustomJWT()]);
   expect(results).toEqual([null, null, null]);
-  expect(rpc).toHaveBeenCalledTimes(1);
+  expect(rpc.mock.calls.filter(([name]) => name === 'refresh_jwt_token')).toHaveLength(1);
   expect(appStore.dispatch).toHaveBeenCalledTimes(1);
   // The rejected generation is gone; a later refresh finds no credential and
   // must not end the (next) session again.
@@ -749,4 +755,623 @@ test('a refresh refused by the gateway is definitive, not a network failure', as
   await expect(getAuthenticatedClient()).rejects.toThrow('Sign in required');
   expect(secure.get('secure_refresh_token')).toBeUndefined();
   expect(appStore.dispatch).toHaveBeenCalledTimes(1);
+});
+
+// ---------------------------------------------------------------------------
+// Review 2026-10-10, M1-1: a refresh whose answer is lost
+// ---------------------------------------------------------------------------
+const refreshCalls = () => rpc.mock.calls.filter(([name]) => name === 'refresh_jwt_token');
+const serverJwt = (issuedAt: number, lifetime = 3600) =>
+  `${btoa(JSON.stringify({ alg: 'HS256' }))}.${btoa(JSON.stringify({ sub: 'test-user', session_id: 'test-session', iat: issuedAt, exp: issuedAt + lifetime, role: 'authenticated' }))}.test-signature`;
+
+describe('a refresh the app stops waiting for', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  test('is sent once more with the same token, and the successor is stored', async () => {
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+    const next = jwt();
+    rpc
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({ data: { success: true, access_token: next, refresh_token: 'b'.repeat(64) }, error: null });
+    const pending = refreshCustomJWT();
+    await jest.advanceTimersByTimeAsync(15000);
+    expect((await pending)?.refreshToken).toBe('b'.repeat(64));
+    expect(jest.getTimerCount()).toBe(0);
+    expect(refreshCalls()).toEqual([
+      ['refresh_jwt_token', { p_refresh_token: 'a'.repeat(64) }],
+      ['refresh_jwt_token', { p_refresh_token: 'a'.repeat(64) }],
+    ]);
+    expect(secure.get('secure_refresh_token')).toBe('b'.repeat(64));
+    expect(secure.get('secure_auth_token')).toBe(next);
+    expect(appStore.dispatch).not.toHaveBeenCalled();
+  });
+
+  test('keeps the stored session when the second attempt times out as well', async () => {
+    const old = jwt(1);
+    await storeTokens(old, 'a'.repeat(64), 1000);
+    rpc.mockImplementation(() => new Promise(() => {}));
+    const pending = refreshCustomJWT();
+    await jest.advanceTimersByTimeAsync(15000);
+    // RM-7: the repeat has a 5 second limit, so a start of the app waits 20 seconds, not 30.
+    await jest.advanceTimersByTimeAsync(4999);
+    expect(refreshCalls()).toHaveLength(2);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(await pending).toBeNull();
+    expect(refreshCalls()).toHaveLength(2);
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+    expect(secure.get('secure_auth_token')).toBe(old);
+    expect(appStore.dispatch).not.toHaveBeenCalled();
+  });
+});
+
+// RM-3: a refresh whose answer is lost to the network (supabase-js returns the
+// failed fetch as {error}, it does not throw) may have rotated the token on
+// the server, which answers a repeat only inside its 60 second grace period.
+describe('a refresh lost to a network error', () => {
+  const lost = { data: null, error: { code: '', message: 'TypeError: Network request failed' } };
+  const successor = () => ({ data: { success: true, access_token: jwt(), refresh_token: 'b'.repeat(64) }, error: null });
+  const sameTokenEachTime = () =>
+    expect(refreshCalls().every(([, args]) => args.p_refresh_token === 'a'.repeat(64))).toBe(true);
+  let old: string;
+  beforeEach(async () => {
+    old = jwt(1);
+    await storeTokens(old, 'a'.repeat(64), 1000);
+    jest.useFakeTimers();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  test('is sent again at once with the same token, and the successor is stored', async () => {
+    rpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(successor());
+    expect((await refreshCustomJWT())?.refreshToken).toBe('b'.repeat(64));
+    expect(refreshCalls()).toHaveLength(2);
+    sameTokenEachTime();
+    expect(secure.get('secure_refresh_token')).toBe('b'.repeat(64));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('that fails twice keeps the stored session and is tried again in the background', async () => {
+    rpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(lost).mockResolvedValueOnce(successor());
+    // The caller is answered at once: it does not wait for the background attempts.
+    expect(await refreshCustomJWT()).toBeNull();
+    expect(refreshCalls()).toHaveLength(2);
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+    expect(secure.get('secure_auth_token')).toBe(old);
+    expect(appStore.dispatch).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(1999);
+    expect(refreshCalls()).toHaveLength(2);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(refreshCalls()).toHaveLength(3);
+    sameTokenEachTime();
+    expect(secure.get('secure_refresh_token')).toBe('b'.repeat(64));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('stops after the grace window and never ends the session', async () => {
+    rpc.mockResolvedValue(lost);
+    expect(await refreshCustomJWT()).toBeNull();
+    // Two at once, then one each 2, 5, 10 and 20 seconds after the failure before: the last at 37 s.
+    const seen: number[] = [];
+    for (const elapsed of [2000, 7000, 17000, 37000, 120000]) {
+      await jest.advanceTimersByTimeAsync(elapsed - (seen.length ? [2000, 7000, 17000, 37000][seen.length - 1] : 0));
+      seen.push(refreshCalls().length);
+    }
+    expect(seen).toEqual([3, 4, 5, 6, 6]);
+    sameTokenEachTime();
+    expect(jest.getTimerCount()).toBe(0);
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+    expect(secure.get('secure_auth_token')).toBe(old);
+    expect(appStore.dispatch).not.toHaveBeenCalled();
+  });
+
+  test('a background attempt the server refuses ends the session (its decision, not the network\'s)', async () => {
+    rpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(lost)
+      .mockResolvedValue({ data: { success: false, message: 'Invalid refresh token' }, error: null });
+    expect(await refreshCustomJWT()).toBeNull();
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(secure.has('secure_refresh_token')).toBe(false);
+    expect(appStore.dispatch).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('a background attempt is dropped when the session was renewed or replaced meanwhile', async () => {
+    rpc.mockResolvedValue(lost);
+    expect(await refreshCustomJWT()).toBeNull();
+    await storeTokens(jwt(), 'c'.repeat(64), Date.now() + 3600000);
+    await jest.advanceTimersByTimeAsync(60000);
+    expect(refreshCalls()).toHaveLength(2);
+    expect(secure.get('secure_refresh_token')).toBe('c'.repeat(64));
+  });
+
+  test('a request stopped by the identity check is not connectivity and is not repeated', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '', message: 'Error: Warehouse identity verification required' } });
+    expect(await refreshCustomJWT()).toBeNull();
+    expect(refreshCalls()).toHaveLength(1);
+    expect(jest.getTimerCount()).toBe(0);
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+  });
+});
+
+// RM-8: the renew-ahead margin follows the token's lifetime.
+describe('a facility with a short access-token lifetime', () => {
+  const now = () => Math.floor(Date.now() / 1000);
+  test.each([
+    [3600, 5 * 60 * 1000],
+    [900, 90 * 1000],
+    [300, 30 * 1000],
+    [60, 6 * 1000],
+  ])('a %d second token is renewed %d ms ahead', (lifetime, margin) => {
+    expect(renewAheadMs(serverJwt(now(), lifetime))).toBe(margin);
+  });
+  test('a token that does not state its lifetime keeps the five minutes', () => {
+    expect(renewAheadMs(jwt())).toBe(5 * 60 * 1000);
+    expect(renewAheadMs('not-a-token')).toBe(5 * 60 * 1000);
+    expect(renewAheadMs(undefined)).toBe(5 * 60 * 1000);
+  });
+
+  test('a 300 second token is used, not renewed, until its last 30 seconds', async () => {
+    const issued = now();
+    await storeTokens(serverJwt(issued, 300), 'a'.repeat(64), Date.now() + 290 * 1000);
+    expect(await ensureValidTokens()).toBe(true);
+    await getAuthenticatedClient();
+    expect(refreshCalls()).toHaveLength(0);
+
+    await storeTokens(serverJwt(issued - 275, 300), 'a'.repeat(64), Date.now() + 25 * 1000);
+    rpc.mockResolvedValue({ data: { success: true, access_token: serverJwt(now(), 300), refresh_token: 'b'.repeat(64) }, error: null });
+    expect(await ensureValidTokens()).toBe(true);
+    expect(refreshCalls()).toHaveLength(1);
+    // The token just issued is used: the next check does not rotate the session again.
+    expect(await ensureValidTokens()).toBe(true);
+    expect(refreshCalls()).toHaveLength(1);
+  });
+
+  test('a token without a stated lifetime that was just issued is not renewed on every request', async () => {
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+    // No iat and a server lifetime of 120 seconds: inside the default margin from the start.
+    rpc.mockResolvedValue({ data: { success: true, access_token: jwt(now() + 120), refresh_token: 'b'.repeat(64) }, error: null });
+    expect(await ensureValidTokens()).toBe(true);
+    expect(await ensureValidTokens()).toBe(true);
+    await getAuthenticatedClient();
+    expect(refreshCalls()).toHaveLength(1);
+  });
+});
+
+test('a refused refresh does not end the session when storage already holds the successor', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  const successor = jwt();
+  const expires = Date.now() + 3600000;
+  rpc.mockImplementationOnce(async () => {
+    await storeTokens(successor, 'b'.repeat(64), expires, getSessionGeneration());
+    return { data: { success: false, message: 'Invalid refresh token' }, error: null };
+  });
+  expect(await refreshCustomJWT()).toEqual({ accessToken: successor, refreshToken: 'b'.repeat(64), expiresAt: expires });
+  expect(secure.get('secure_refresh_token')).toBe('b'.repeat(64));
+  expect(appStore.dispatch).not.toHaveBeenCalled();
+  expect(rpc).not.toHaveBeenCalledWith('logout_session', expect.anything());
+});
+
+test('a refused refresh is tried once with a successor whose access token has expired too', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  const next = jwt();
+  rpc
+    .mockImplementationOnce(async () => {
+      await storeTokens(jwt(1), 'b'.repeat(64), 1000, getSessionGeneration());
+      return { data: { success: false, message: 'Invalid refresh token' }, error: null };
+    })
+    .mockResolvedValueOnce({ data: { success: true, access_token: next, refresh_token: 'c'.repeat(64) }, error: null });
+  expect((await refreshCustomJWT())?.accessToken).toBe(next);
+  expect(refreshCalls()[1]).toEqual(['refresh_jwt_token', { p_refresh_token: 'b'.repeat(64) }]);
+  expect(secure.get('secure_refresh_token')).toBe('c'.repeat(64));
+  expect(appStore.dispatch).not.toHaveBeenCalled();
+});
+
+test('a session that really ends is also ended on the server with the refused token', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  rpc.mockImplementation(async name =>
+    name === 'refresh_jwt_token'
+      ? { data: { success: false, message: 'Invalid refresh token' }, error: null }
+      : { data: true, error: null }
+  );
+  expect(await refreshCustomJWT()).toBeNull();
+  expect(secure.size).toBe(0);
+  expect(appStore.dispatch).toHaveBeenCalledTimes(1);
+  expect(rpc).toHaveBeenCalledWith('logout_session', { p_refresh_token: 'a'.repeat(64) });
+});
+
+test('rotated keys end the session without sending the refresh token to logout_session', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  rpc.mockResolvedValue({ data: null, error: { message: 'Unauthorized' } });
+  expect(await refreshCustomJWT()).toBeNull();
+  expect(rpc).not.toHaveBeenCalledWith('logout_session', expect.anything());
+});
+
+test('a refresh answer without a new refresh token replaces nothing', async () => {
+  const old = jwt(1);
+  await storeTokens(old, 'a'.repeat(64), 1000);
+  rpc.mockResolvedValue({ data: { success: true, access_token: jwt() }, error: null });
+  expect(await refreshCustomJWT()).toBeNull();
+  expect(secure.get('secure_auth_token')).toBe(old);
+  expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+  expect(secure.get('secure_token_expires')).toBe('1000');
+  expect(appStore.dispatch).not.toHaveBeenCalled();
+});
+
+test('signing in over a stored session ends that session on the server', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: false, error: 'Invalid OTP' }, 400) as Response);
+  rpc.mockResolvedValue({ data: true, error: null });
+  expect((await verifyOTP('0000000002', '123456')).success).toBe(false);
+  expect(rpc).toHaveBeenCalledWith('logout_session', { p_refresh_token: 'a'.repeat(64) });
+  expect(await getStoredToken()).toEqual({ isValid: false });
+});
+
+// ---------------------------------------------------------------------------
+// M1-2 / M1-3: the server's clock decides, not the device's
+// ---------------------------------------------------------------------------
+describe('a device clock that differs from the server clock', () => {
+  const HOUR = 3600;
+  test.each([
+    ['two hours fast', -2 * HOUR],
+    ['thirty minutes slow', HOUR / 2],
+    ['exact', 0],
+  ])('%s: the expiry is one token lifetime from now on the device clock', (_, serverAhead) => {
+    const now = 1_800_000_000_000;
+    const iat = now / 1000 + serverAhead;
+    expect(deviceExpiry({ iat, exp: iat + HOUR }, {}, now)).toBe(now + HOUR * 1000);
+  });
+
+  test('without iat the lifetime the server states is used, then exp, then a short default', () => {
+    const now = 1_800_000_000_000;
+    expect(deviceExpiry({ exp: 5 }, { expires_in: 900 }, now)).toBe(now + 900000);
+    expect(deviceExpiry({ exp: now / 1000 + 60 }, {}, now)).toBe(now + 60000);
+    expect(deviceExpiry({ exp: 5 }, {}, now)).toBe(now + 600000);
+  });
+
+  test('sign-in stores a token the device clock calls expired (clock two hours fast)', async () => {
+    const access = serverJwt(Math.floor(Date.now() / 1000) - 2 * HOUR);
+    jest.mocked(global.fetch).mockResolvedValue(operatorResponse({
+      success: true,
+      data: { action: 'login', user: { role: 'customer' }, session: { access_token: access, refresh_token: 'e'.repeat(64) } },
+    }) as Response);
+    rpc.mockResolvedValue({ data: [], error: null });
+    expect((await verifyOTP('0000000002', '123456')).success).toBe(true);
+    const stored = await getStoredToken();
+    expect(stored.authToken).toBe(access);
+    expect(stored.isValid).toBe(true);
+    expect(Math.abs(stored.expiresAt! - (Date.now() + HOUR * 1000))).toBeLessThan(5000);
+  });
+
+  test('refresh stores the rotated pair when the device clock is two hours fast', async () => {
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+    const access = serverJwt(Math.floor(Date.now() / 1000) - 2 * HOUR);
+    rpc.mockResolvedValue({ data: { success: true, access_token: access, refresh_token: 'b'.repeat(64) }, error: null });
+    expect(await ensureValidTokens()).toBe(true);
+    expect(secure.get('secure_refresh_token')).toBe('b'.repeat(64));
+    expect((await getStoredToken()).isValid).toBe(true);
+  });
+
+  test('a slow device renews in time: the stored expiry is not the raw exp claim', async () => {
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+    const serverNow = Math.floor(Date.now() / 1000) + HOUR / 2;
+    rpc.mockResolvedValue({ data: { success: true, access_token: serverJwt(serverNow), refresh_token: 'b'.repeat(64) }, error: null });
+    const refreshed = await refreshCustomJWT();
+    expect(Math.abs(refreshed!.expiresAt - (Date.now() + HOUR * 1000))).toBeLessThan(5000);
+    expect(refreshed!.expiresAt).toBeLessThan((serverNow + HOUR) * 1000 - 20 * 60 * 1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M1-2: the server says the access token has expired
+// ---------------------------------------------------------------------------
+const refusedAs = (status: number, body: unknown) => {
+  const response = { ok: false, status, json: async () => body } as unknown as Response;
+  (response as { clone: () => Response }).clone = () => refusedAs(status, body);
+  return response;
+};
+const authenticatedClientFetch = async () => {
+  await getAuthenticatedClient();
+  return jest.mocked(createClient).mock.calls.at(-1)![2]!.global!.fetch!;
+};
+const sentBearer = (call: number) =>
+  (jest.mocked(global.fetch).mock.calls[call][1]!.headers as Record<string, string>).Authorization;
+
+describe('an access token the server refuses as expired', () => {
+  const old = jwt(Math.floor(Date.now() / 1000) + 7200);
+  const renewed = jwt(Math.floor(Date.now() / 1000) + 9000);
+  beforeEach(async () => {
+    await storeTokens(old, 'a'.repeat(64), Date.now() + 7200000);
+    rpc.mockResolvedValue({ data: { success: true, access_token: renewed, refresh_token: 'b'.repeat(64) }, error: null });
+  });
+
+  test.each([
+    ['PostgREST', 401, { code: 'PGRST301', message: 'JWT expired' }],
+    ['an edge function', 401, { success: false, error: 'Invalid or expired access token' }],
+    ['Storage', 400, { statusCode: '403', error: 'Unauthorized', message: 'jwt expired' }],
+  ])('a read refused by %s is sent again once with the renewed token', async (_, status, body) => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch)
+      .mockResolvedValueOnce(refusedAs(status, body))
+      .mockResolvedValueOnce(operatorResponse({ success: true, data: [] }) as Response);
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/get_orders_list', {
+      method: 'POST', headers: { apikey: 'local-test-anon', Authorization: `Bearer ${old}` }, body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect(refreshCalls()).toEqual([['refresh_jwt_token', { p_refresh_token: 'a'.repeat(64) }]]);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(sentBearer(1)).toBe(`Bearer ${renewed}`);
+    expect((jest.mocked(global.fetch).mock.calls[1][1]!.headers as Record<string, string>).apikey).toBe('local-test-anon');
+    expect(jest.mocked(global.fetch).mock.calls[1][1]!.body).toBe('{}');
+    expect(secure.get('secure_auth_token')).toBe(renewed);
+  });
+
+  test('a write is not sent again: the session is renewed and the refusal is returned', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockResolvedValue(refusedAs(401, { code: 'PGRST301', message: 'JWT expired' }));
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/save_invoice', {
+      method: 'POST', headers: { Authorization: `Bearer ${old}` }, body: '{}',
+    });
+    expect(response.status).toBe(401);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(refreshCalls()).toHaveLength(1);
+    expect(secure.get('secure_auth_token')).toBe(renewed);
+  });
+
+  test('a read that is refused again after the renewal is not repeated further', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockResolvedValue(refusedAs(401, { code: 'PGRST301', message: 'JWT expired' }));
+    const response = await clientFetch('http://localhost:18000/rest/v1/customers', { headers: { Authorization: `Bearer ${old}` } });
+    expect(response.status).toBe(401);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    // The renewed token is refused as well: it is not renewed a second time.
+    const again = await clientFetch('http://localhost:18000/rest/v1/customers', { headers: { Authorization: `Bearer ${renewed}` } });
+    expect(again.status).toBe(401);
+    expect(refreshCalls()).toHaveLength(1);
+  });
+
+  test('two reads refused together renew the session once', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockImplementation(async (_, init) =>
+      (init!.headers as Record<string, string> | Headers as any).Authorization === `Bearer ${renewed}`
+        ? (operatorResponse([]) as Response)
+        : refusedAs(401, { message: 'JWT expired' })
+    );
+    const read = () => clientFetch('http://localhost:18000/rest/v1/items', { headers: { Authorization: `Bearer ${old}` } });
+    const [first, second] = await Promise.all([read(), read()]);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(refreshCalls()).toHaveLength(1);
+  });
+
+  test('another 401 is left alone', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockResolvedValue(refusedAs(401, { code: 'PGRST302', message: 'Anonymous access is disabled' }));
+    const response = await clientFetch('http://localhost:18000/rest/v1/items', { headers: { Authorization: `Bearer ${old}` } });
+    expect(response.status).toBe(401);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  test('a document request made with the session fetch is renewed the same way', async () => {
+    jest.mocked(global.fetch)
+      .mockResolvedValueOnce(refusedAs(401, { success: false, error: 'Invalid or expired access token' }))
+      .mockResolvedValueOnce(operatorResponse({ success: true }) as Response);
+    const response = await createSessionReadFetch()('http://localhost:18000/functions/v1/get-config', {
+      headers: new Headers({ Authorization: `Bearer ${old}`, 'Content-Type': 'application/json' }),
+    });
+    expect(response.status).toBe(200);
+    expect(sentBearer(1)).toBe(`Bearer ${renewed}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M1-4: only a write holds a server switch back
+// ---------------------------------------------------------------------------
+test.each([
+  [true, 'GET', '/rest/v1/customers?select=*'],
+  [true, 'HEAD', '/rest/v1/customers'],
+  [true, 'POST', '/rest/v1/rpc/get_dispatch_list'],
+  [true, 'POST', '/rest/v1/rpc/search_customers'],
+  [true, 'POST', '/rest/v1/rpc/check_grn_exists'],
+  [true, 'POST', '/rest/v1/rpc/user_accessible_customers'],
+  [true, 'POST', '/rest/v1/rpc/generate_invoice_data_for_grn_with_pricing'],
+  [true, 'POST', '/storage/v1/object/sign/grn-images/a/b.jpg'],
+  [false, 'POST', '/rest/v1/rpc/get_or_create_cart'],
+  [false, 'POST', '/rest/v1/rpc/save_grn'],
+  [false, 'POST', '/rest/v1/rpc/update_invoice'],
+  [false, 'POST', '/rest/v1/rpc/set_my_language'],
+  [false, 'POST', '/rest/v1/rpc/user_accessible_customers_admin'],
+  [false, 'POST', '/storage/v1/object/grn-images/a/b.jpg'],
+  [false, 'POST', '/functions/v1/print-grn-preprinted'],
+  [false, 'PATCH', '/rest/v1/user_profiles?id=eq.1'],
+  [false, 'DELETE', '/storage/v1/object/grn-images'],
+])('isReadRequest is %s for %s %s', (expected, method, path) => {
+  expect(isReadRequest(`http://localhost:18000${path}`, { method })).toBe(expected);
+});
+
+test('a hung list request does not hold a server switch back and is aborted by it', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  const clientFetch = await authenticatedClientFetch();
+  const signals: AbortSignal[] = [];
+  jest.mocked(global.fetch).mockImplementation((_, init) => {
+    signals.push(init!.signal!);
+    return new Promise<Response>((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('Aborted'))));
+  });
+  const list = clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list', { method: 'POST' });
+  const select = clientFetch('http://localhost:18000/rest/v1/customers?select=*');
+  expect(beginOperatorSwitch()).toBe(true);
+  expect(signals.map(signal => signal.aborted)).toEqual([true, true]);
+  await expect(list).rejects.toThrow('Aborted');
+  await expect(select).rejects.toThrow('Aborted');
+  endOperatorSwitch();
+});
+
+test('a save in flight still holds a server switch back', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  const clientFetch = await authenticatedClientFetch();
+  const slow = deferred<Response>();
+  jest.mocked(global.fetch).mockImplementation(() => slow.promise);
+  const save = clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
+  expect(beginOperatorSwitch()).toBe(false);
+  slow.resolve(operatorResponse({ success: true }) as Response);
+  await save;
+  expect(beginOperatorSwitch()).toBe(true);
+  endOperatorSwitch();
+});
+
+// RM-2: the time limit lives where every request flows, not in a helper no
+// screen calls. A request the server never answers is aborted and reported.
+describe('a request the server never answers', () => {
+  const hang = () => {
+    const signals: AbortSignal[] = [];
+    jest.mocked(global.fetch).mockImplementation((_, init) => {
+      signals.push(init!.signal!);
+      return new Promise<Response>((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('Aborted'))));
+    });
+    return signals;
+  };
+  const outcome = (request: Promise<unknown>) => {
+    const result: { error?: unknown; settled: boolean } = { settled: false };
+    request.then(() => { result.settled = true; }, error => { result.error = error; result.settled = true; });
+    return result;
+  };
+  beforeEach(async () => {
+    await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+    jest.useFakeTimers();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  test('a list request is aborted after the read limit and reported as a timeout', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    const signals = hang();
+    const list = outcome(clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list', { method: 'POST' }));
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.read - 1);
+    expect(list.settled).toBe(false);
+    expect(signals[0].aborted).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(signals[0].aborted).toBe(true);
+    expect(getAppErrorCode(list.error)).toBe('TIMEOUT');
+    // postgrest-js sends a GET again unless the error says it was aborted.
+    expect((list.error as { code?: string }).code).toBe('ABORT_ERR');
+    // What the PostgREST client makes of it is still a timeout to the error tables.
+    const wrapped = { message: `${(list.error as Error).name}: ${(list.error as Error).message}`, code: '' };
+    expect(categorizeError(new Error(wrapped.message)).category).toBe('timeout');
+    expect(isOfflineFailure(wrapped)).toBe(true);
+  });
+
+  test('a save stops holding a server switch back once its limit has passed', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    hang();
+    const save = outcome(clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' }));
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.write - 1);
+    expect(save.settled).toBe(false);
+    expect(beginOperatorSwitch()).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(getAppErrorCode(save.error)).toBe('TIMEOUT');
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  test('a print or document request gets the longer limit and then fails in the app\'s words', async () => {
+    const writeFetch = createAuthenticatedFetch();
+    const signals = hang();
+    const print = outcome(writeFetch('https://warehouse.example.test/functions/v1/print-grn-preprinted', { method: 'POST' }));
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.write);
+    expect(print.settled).toBe(false);
+    expect(beginOperatorSwitch()).toBe(false);
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.transfer - REQUEST_TIME_LIMIT_MS.write);
+    expect(signals[0].aborted).toBe(true);
+    expect(getAppErrorCode(print.error)).toBe('TIMEOUT');
+    expect((print.error as Error).message).toBe(t('errors.network.requestTimedOut'));
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  test('the wait ends even when the platform fetch ignores the abort', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockImplementation(() => new Promise<Response>(() => {}));
+    const read = outcome(clientFetch('http://localhost:18000/rest/v1/customers?select=*'));
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.read);
+    expect(getAppErrorCode(read.error)).toBe('TIMEOUT');
+  });
+
+  test('a request that is answered in time leaves no timer behind', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: true }) as Response);
+    await clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+// Backend migration 44: the limits the server applies to sign-in codes.
+describe('sign-in code limits from the server (migration 44)', () => {
+  const refused = (body: Record<string, unknown>, status = 429, headers: Record<string, string> = {}) =>
+    ({ ...operatorResponse(body, status), headers: { get: (name: string) => headers[name] ?? headers[name.toLowerCase()] ?? null } }) as unknown as Response;
+
+  beforeEach(() => {
+    jest.mocked(checkOTPRateLimit).mockResolvedValue({ allowed: true });
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => setLanguage('en'));
+
+  it('a request refused with retry_after_seconds returns the wait as a number', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(
+      refused({ success: false, error: 'Please wait before requesting another OTP.', retry_after_seconds: 900 }, 429, { 'Retry-After': '900' })
+    );
+    const result = await signInWithPhone('+910000000001');
+    expect(result).toMatchObject({ success: false, rateLimited: true, retryAfterSeconds: 900, errorCode: 'otp_wait' });
+    // 15 minutes is said in minutes, not as "900 seconds".
+    expect(result.error).toBe(t('errors.auth.otpWaitMinutes', { minutes: '15' }));
+  });
+
+  it('a short wait is said in seconds', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(
+      refused({ success: false, error: 'Please wait before requesting another OTP.', retry_after_seconds: 42 })
+    );
+    const result = await signInWithPhone('+910000000001');
+    expect(result).toMatchObject({ success: false, rateLimited: true, retryAfterSeconds: 42 });
+    expect(result.error).toBe(t('errors.auth.otpWaitSeconds', { seconds: '42' }));
+  });
+
+  it('reads the Retry-After header when the body has no number', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(
+      refused({ success: false, error: 'Please wait before requesting another OTP.' }, 429, { 'Retry-After': '60' })
+    );
+    expect(await signInWithPhone('+910000000001')).toMatchObject({ success: false, rateLimited: true, retryAfterSeconds: 60 });
+  });
+
+  it('a request refused without a wait ("try again later") has no countdown', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Too many OTP requests. Try again later.' }));
+    const result = await signInWithPhone('+910000000001') as { error: string; retryAfterSeconds?: number; errorCode?: string };
+    expect(result.error).toBe(t('errors.auth.otpTooMany'));
+    expect(result.errorCode).toBe('otp_rate_limited');
+    expect(result.retryAfterSeconds).toBeUndefined();
+  });
+
+  it('a verification refused for too many requests says so, in the app language', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Too many OTP requests. Try again later.' }));
+    setLanguage('gu');
+    const result = await verifyOTP('0000000002', '123456');
+    expect(result).toMatchObject({ success: false, errorCode: 'otp_rate_limited', error: t('errors.auth.otpTooMany', undefined, 'gu') });
+    expect((result as { error: string }).error).toMatch(/[઀-૿]/);
+  });
+
+  it('a verification refused for too many new access requests says "tomorrow"', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Too many new access requests. Try again tomorrow.' }));
+    const result = await verifyOTP('0000000002', '123456');
+    expect(result).toMatchObject({ success: false, errorCode: 'enrollment_limited', error: t('errors.auth.enrollmentLimited') });
+    setLanguage('gu');
+    expect(await verifyOTP('0000000002', '123456')).toMatchObject({ error: t('errors.auth.enrollmentLimited', undefined, 'gu') });
+  });
+
+  it('a wrong code is still an ordinary failure', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Invalid or expired OTP' }, 400));
+    const result = await verifyOTP('0000000002', '123456') as { error: string; errorCode?: string };
+    expect(result.error).toBe('Invalid or expired OTP');
+    expect(result.errorCode).toBeUndefined();
+  });
 });

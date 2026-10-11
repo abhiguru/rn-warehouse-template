@@ -25,6 +25,65 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   clears stored tokens and dispatches `forceLogoutOnInvalidToken` exactly once per generation;
   transport errors keep credentials. `useSessionGenerationGuard` moves the UI to the login screen when
   a profile is present but no tokens remain.
+- A refresh that gets no answer (the 15 s limit, or a transport error) is sent once more with the same
+  token, the repeat with a 5 s limit; if that fails too it is tried again in the background 2, 5, 10 and
+  20 s later, inside 50 s of the first send. The backend (migration 44) answers a repeat within its
+  grace period (`refresh_grace_seconds`, 60 by default) with the same successor; a facility that sets a
+  shorter grace shortens what these attempts can save. A connectivity failure never clears the session.
+- An access token is renewed a tenth of its lifetime ahead of its expiry, five minutes at most
+  (`renewAheadMs` in `src/config/sessionLifecycle.ts`), and not again within a minute of being issued.
+- `gatedFetch` aborts a request that gets no answer: 30 s for a read, 60 s for a write, 120 s for a
+  Storage upload and the document and print functions (`REQUEST_TIME_LIMIT_MS`). The error is a
+  timeout to the error tables; a write that timed out may still have been applied. A refused refresh re-reads the
+  secure store before the session ends, and a session that ends is also reported to `logout_session`.
+- Expiry is judged on the device clock but set from the server's: the stored expiry is `exp` moved by
+  (time received - `iat`). When the server refuses a token as expired anyway (`JWT expired`,
+  `Invalid or expired access token`), the session is renewed once; a read is sent again, a write is not.
+- `isReadRequest` decides which requests of the authenticated client are reads (GET/HEAD, read RPCs by
+  name, Storage sign/list). Reads are aborted by a server switch; only writes hold it back. Name a new
+  read RPC `get_`/`search_`/`check_`/`list_`/`count_`, or it is treated as a write.
+
+## Dates and server answers
+
+- **A calendar day goes to the server as `'YYYY-MM-DD'`** built from the phone's calendar
+  (`toLocalISODate`, or `toCalendarDay` for a value that may be a timestamp). Never `toISOString()`:
+  local midnight in India is 18:30 UTC of the day before, and the server takes the day from the text.
+  `createGRN`/`updateGRN` and `createDispatch`/`updateDispatch` pass their date through `toCalendarDay`.
+- **A date range the server reads as moments** (the GRN, dispatch and invoice lists; `timestamptz`)
+  is sent as `startOfDayIST(day)` and `endOfDayIST(day)`: the zone (+05:30) is written out. The
+  report RPCs take plain `date` parameters and bucket with `::date` in the database's zone, which the
+  backend does not pin; see the changelog for what that leaves open.
+- `get_customer_grn_items` and `get_customer_dispatch_items` apply a range only when both ends are
+  given; `closeDateRange` fills an open end.
+- **An RPC can refuse in its answer** (HTTP 200 with `{success:false, error|message}` or, for the
+  older report functions, `{error, summary:null}`). Ask `rpcRefusal(data)` (`src/utils/rpcRefusal.ts`)
+  before reading rows; read as data, a refusal is an empty list. The reporting services use
+  `reportRefusal`/`refusedReport` from `src/services/reporting/reportEnvelope.ts`.
+- **Never put a number on the left of `&&` in JSX** (`{item.weight && <Text/>}`): 0 is rendered as
+  a bare number and React Native throws. Compare it (`Number(x) > 0 ? ... : null`).
+
+## Roles and routes
+
+- **Who is offered what is one table: `src/config/roles.ts`.** `isWarehouseUser` is admin,
+  supervisor or staff; `isManager` is admin or supervisor; `isCustomerAccount` is a customer's
+  own login. `canOpenScreen`, `settingsFeatureRows`, `reportScopeFor` and `userManagementActions`
+  are built on them and mirror the backend's role table (its `docs/STAFF_GRN_POLICY.md`, "Roles
+  after migration 45"). Do not add a flag called `isStaff`: it used to mean two opposite things.
+  `useRoleBasedAccess()` gives the same for the signed-in profile; `usePermissions()` gives
+  create/update/delete and `isStaffRole` (the `staff` role only).
+- **A report screen gets its scope from `ReportCustomerScope`** (`src/components/reports`): the
+  all-customers list for warehouse users, the one customer of a customer account, or a picker for a
+  customer account with several. A customer account is refused every all-customers RPC, so its
+  requests always name one assigned customer (`get_customer_*`, `get_stock_aging_report(p_customer_uuid)`,
+  `get_item_wise_stock_list(p_customer_id)`, `get_customer_grn_items`).
+- **Every route is protected unless `src/navigation/routeAccess.ts` lists it as public.** The root
+  layout applies it to the whole stack: `useRootRouteGuard` replaces the focused route (sign-in when
+  signed out, home tabs for a role the route is not offered to, or for a signed-in person on the
+  sign-in screen), and `GuardedScreen` (the stack's `screenLayout`) keeps a refused screen from
+  mounting. Both run after `initializeAuth` has settled. A new role-only screen gets a row in
+  `ROLE_GATED_ROUTES`; a new public screen a row in `PUBLIC_ROUTES`. The sign-in screen stays
+  mounted under the code step, so a public screen is never hidden and only the focused route is
+  navigated.
 
 ## Session-scoped state
 
@@ -36,7 +95,8 @@ keyed by session identity (origin, instance, subject) and are served only for of
 ## Commands
 
 ```bash
-npm ci                      # runs the three postinstall patches
+npm ci                      # runs the three postinstall patches (not with --ignore-scripts)
+node scripts/check-install.mjs   # all three patches are in place; also runs before start, android, ios, web, test
 npm run verify:backports    # re-checks scripts/security-backports.json against node_modules
 npm run typecheck && npm run lint && npm test && npm run test:setup
 npm run audit:dependencies -- --report-dir /tmp/dependency-security-report

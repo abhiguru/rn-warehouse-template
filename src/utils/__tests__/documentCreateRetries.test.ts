@@ -1,13 +1,13 @@
 import { createGRN } from '@/features/grn/services/grnFormService';
 import { createDispatch } from '@/features/dispatch/services/dispatchFormService';
-import { EMPTY_DISPATCH_HEADER } from '@/types/dispatch.types';
+import { createEmptyDispatchHeader } from '@/types/dispatch.types';
 
 const mockRpc = jest.fn();
 jest.mock('@/config/supabaseConfig', () => ({
   beginOperatorMutation: () => jest.fn(),
   getAuthenticatedClient: async () => ({ rpc: mockRpc }),
 }));
-jest.mock('@/features/grn/services/imageUploadService', () => ({ savePendingImageMetadata: jest.fn(), uploadDeferredImages: jest.fn() }));
+jest.mock('@/features/grn/services/imageUploadService', () => ({ collectDeferredGRNPhotos: () => [], uploadGRNPhotos: jest.fn() }));
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 jest.mock('expo-crypto', () => {
   const { createHash } = jest.requireActual('node:crypto');
@@ -33,7 +33,7 @@ describe('numbered document service retries after a lost response', () => {
     expect(mockRpc.mock.calls[0][1].p_idempotency_key).toMatch(/^warehouse-grn-[a-f0-9]{64}$/);
   });
   it('resubmits the same dispatch body/key so the backend can return its cached result', async () => {
-    const payload = { header: { ...EMPTY_DISPATCH_HEADER, disp_no: 'FXF02', disp_date: '2026-09-30', registration: 'TEST' }, items: [] };
+    const payload = { header: { ...createEmptyDispatchHeader(), disp_no: 'FXF02', disp_date: '2026-09-30', registration: 'TEST' }, items: [] };
     mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'Response lost' } })
       .mockResolvedValueOnce({ data: { success: true, dispatch_id: 'saved-fixture-dispatch' }, error: null });
     expect((await createDispatch(payload)).success).toBe(false);

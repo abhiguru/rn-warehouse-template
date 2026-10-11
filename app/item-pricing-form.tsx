@@ -1,3 +1,4 @@
+import { containsPattern } from '@/utils/postgrestFilter';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -57,7 +58,10 @@ import { showAlert } from '@/utils/alert';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { numericInput, t as tr } from '@/i18n';
 import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
+import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
 import { serverText } from '@/utils/serverText';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { canOpenScreen } from '@/config/roles';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -84,7 +88,23 @@ type FieldKey =
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 const ItemPricingFormScreen: React.FC = () => {
-  const params = useLocalSearchParams<{ id?: string; mode?: string }>();
+  // `id` and `mode` open an existing price. The other values fill a new price
+  // from an invoice line (item, customer and the line's rates); the row is
+  // created only when this form is saved.
+  const params = useLocalSearchParams<{
+    id?: string;
+    mode?: string;
+    item_id?: string;
+    item_name?: string;
+    customer_id?: string;
+    customer_name?: string;
+    price_type?: string;
+    unit_price?: string;
+    labour_rate?: string;
+    tax_percent?: string;
+    weight_min?: string;
+    weight_max?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -93,13 +113,27 @@ const ItemPricingFormScreen: React.FC = () => {
   const priceId = params.id;
   const mode = params.mode;
 
+  // Prices are added and changed by administrators, supervisors and staff (server
+  // migration 45), the same rule as on the price list. The route alone does not grant
+  // it: anyone else sees an existing price read-only and cannot open the form to add one.
+  const { role } = useRoleBasedAccess();
+  const canManagePrices = canOpenScreen(role, 'itemPricingWrite');
+
   // Determine mode
   const formMode: FormMode = priceId
-    ? mode === 'edit'
+    ? mode === 'edit' && canManagePrices
       ? 'edit'
       : 'view'
     : 'create';
   const isReadOnly = formMode === 'view';
+  const notAllowed = formMode === 'create' && !canManagePrices;
+
+  useEffect(() => {
+    if (notAllowed) {
+      showAlert(tr('pricing.form.noAccessTitle'), tr('errors.parsed.noPermission'));
+      router.back();
+    }
+  }, [notAllowed]);
 
   itemPricingFormLogger.debug('Render - priceId:', priceId, 'mode:', mode, 'formMode:', formMode);
 
@@ -149,7 +183,22 @@ const ItemPricingFormScreen: React.FC = () => {
     if (priceId) {
       loadPriceData();
     } else {
-      // No priceId means create mode - stop loading immediately
+      // No priceId means create mode. Values handed over from an invoice line
+      // fill the form; nothing is saved until Save is pressed.
+      if (params.item_id) {
+        setSelectedItem({ id: params.item_id, name: params.item_name || '' });
+      }
+      if (params.customer_id) {
+        setSelectedCustomer({ id: params.customer_id, name: params.customer_name || '' });
+      }
+      if (params.price_type === 'one_time' || params.price_type === 'monthly') {
+        setPriceType(params.price_type);
+      }
+      if (params.unit_price !== undefined) setUnitPrice(params.unit_price);
+      if (params.labour_rate !== undefined) setLabourRate(params.labour_rate);
+      if (params.tax_percent !== undefined) setTaxPercent(params.tax_percent);
+      if (params.weight_min !== undefined) setWeightMin(params.weight_min);
+      if (params.weight_max !== undefined) setWeightMax(params.weight_max);
       setLoading(false);
     }
   }, [priceId]);
@@ -229,7 +278,7 @@ const ItemPricingFormScreen: React.FC = () => {
         .from('items')
         .select('id, name, packaging')
         .eq('active', true)
-        .ilike('name', `%${query}%`)
+        .ilike('name', containsPattern(query))
         .order('name', { ascending: true })
         .limit(10);
 
@@ -318,21 +367,28 @@ const ItemPricingFormScreen: React.FC = () => {
     if (!selectedItem) {
       errors.item = tr('pricing.validation.itemRequired');
     }
-    if (!unitPrice || parseFloat(unitPrice) < 0) {
+    // Each number is read strictly: text that is not a plain number is an
+    // error, not a number cut off at the first comma or a NaN that passes.
+    const price = priceNumber(unitPrice);
+    const minimum = priceNumber(weightMin, 3);
+    const maximum = priceNumber(weightMax, 3);
+    const labour = priceNumber(labourRate);
+    const tax = priceNumber(taxPercent);
+    if (price === null) {
       errors.unitPrice = tr('pricing.validation.unitPrice');
     }
-    if (!weightMin || parseFloat(weightMin) < 0) {
+    if (minimum === null) {
       errors.weightMin = tr('pricing.validation.weightMin');
     }
-    if (!weightMax || parseFloat(weightMax) <= 0) {
+    if (maximum === null || maximum <= 0) {
       errors.weightMax = tr('pricing.validation.weightMax');
-    } else if (parseFloat(weightMax) < parseFloat(weightMin)) {
+    } else if (minimum !== null && maximum < minimum) {
       errors.weightMax = tr('pricing.validation.weightOrder');
     }
-    if (!labourRate || parseFloat(labourRate) < 0) {
+    if (labour === null) {
       errors.labourRate = tr('pricing.validation.labourRate');
     }
-    if (!taxPercent || parseFloat(taxPercent) < 0 || parseFloat(taxPercent) > 100) {
+    if (tax === null || tax > 100) {
       errors.taxPercent = tr('pricing.validation.taxPercent');
     }
     if (effectiveTo && effectiveTo < effectiveFrom) {
@@ -360,11 +416,11 @@ const ItemPricingFormScreen: React.FC = () => {
           item_id: selectedItem!.id,
           customer_id: selectedCustomer?.id || null,
           price_type: priceType,
-          unit_price: parseFloat(unitPrice),
-          weight_min: parseFloat(weightMin),
-          weight_max: parseFloat(weightMax),
-          labour_rate: parseFloat(labourRate),
-          tax_percent: parseFloat(taxPercent),
+          unit_price: priceNumber(unitPrice) ?? 0,
+          weight_min: priceNumber(weightMin, 3) ?? 0,
+          weight_max: priceNumber(weightMax, 3) ?? 0,
+          labour_rate: priceNumber(labourRate) ?? 0,
+          tax_percent: priceNumber(taxPercent) ?? 0,
           effective_from: toLocalISODate(effectiveFrom),
           effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
@@ -380,11 +436,11 @@ const ItemPricingFormScreen: React.FC = () => {
       } else if (formMode === 'edit' && priceId) {
         const payload: UpdateItemPricingPayload = {
           price_type: priceType,
-          unit_price: parseFloat(unitPrice),
-          weight_min: parseFloat(weightMin),
-          weight_max: parseFloat(weightMax),
-          labour_rate: parseFloat(labourRate),
-          tax_percent: parseFloat(taxPercent),
+          unit_price: priceNumber(unitPrice) ?? 0,
+          weight_min: priceNumber(weightMin, 3) ?? 0,
+          weight_max: priceNumber(weightMax, 3) ?? 0,
+          labour_rate: priceNumber(labourRate) ?? 0,
+          tax_percent: priceNumber(taxPercent) ?? 0,
           effective_from: toLocalISODate(effectiveFrom),
           effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
@@ -513,6 +569,10 @@ const ItemPricingFormScreen: React.FC = () => {
         return tr('pricing.form.viewTitle');
     }
   };
+
+  if (notAllowed) {
+    return <View style={styles.container} />;
+  }
 
   if (loading) {
     return (

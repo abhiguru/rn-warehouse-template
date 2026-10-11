@@ -19,6 +19,9 @@ import { getSupabaseClient } from '@/config/supabaseConfig';
 
 import { showAlert } from '@/utils/alert';
 import { localizeDigits, t as tr } from '@/i18n';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn-photos');
 interface ImagePreviewGridProps {
   // Legacy support for string URLs
   images?: string[];
@@ -35,6 +38,12 @@ interface ImagePreviewGridProps {
   columns?: number;
   showMetadata?: boolean;
   showProgress?: boolean;
+  /**
+   * Whether removing a saved photo deletes it on the server at once (default).
+   * A form that applies its changes on Save passes false: the photo is only
+   * taken out of the form, and the form's save deletes it.
+   */
+  removeFromServer?: boolean;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -57,6 +66,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   columns = 3,
   showMetadata = false,
   showProgress = true,
+  removeFromServer = true,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -78,26 +88,11 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   // Filter out images with empty/invalid URLs to prevent load errors
   const effectiveImages = rawImages.filter(img => {
     if (!img.imageUrl || img.imageUrl.trim() === '') {
-      console.warn('[ImagePreviewGrid] Skipping image with empty URL:', { id: img.id, storagePath: (img as GRNImageData).storagePath });
+      log.warn('Skipping image with empty URL', { id: img.id, storagePath: (img as GRNImageData).storagePath });
       return false;
     }
     return true;
   });
-
-  // Only log when there are actual images to prevent log spam
-  if (effectiveImages.length > 0 || rawImages.length !== effectiveImages.length) {
-    console.log('[ImagePreviewGrid] Rendering images:', {
-      imageDataLength: imageData.length,
-      rawImagesLength: rawImages.length,
-      effectiveImagesLength: effectiveImages.length,
-      skippedCount: rawImages.length - effectiveImages.length,
-      effectiveImages: effectiveImages.map(img => ({
-        id: img.id,
-        url: img.imageUrl?.substring(0, 50) + '...',
-        status: img.uploadStatus
-      }))
-    });
-  }
 
   const availableWidth = gridWidth ?? screenWidth - 2 * space.lg;
   const imageSize = Math.floor((availableWidth - (columns - 1) * GRID_GAP) / columns);
@@ -128,15 +123,6 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
 
     const imageId = imageData.id || imageData.imageUrl;
 
-    console.log('[ImagePreviewGrid] 🗑️ Delete requested for image:', {
-      imageId,
-      hasDbId: !!imageData.id,
-      dbId: imageData.id,
-      uploadStatus: imageData.uploadStatus,
-      storagePath: imageData.storagePath,
-      imageUrl: imageData.imageUrl?.substring(0, 80) + '...',
-    });
-
     showAlert(
       tr('grn.photos.removeTitle'),
       tr('grn.photos.removeMessage'),
@@ -152,37 +138,31 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
 
             try {
               // If image has a database ID, delete from backend
-              if (imageData.id && imageData.uploadStatus === 'completed') {
-                console.log('[ImagePreviewGrid] 🗑️ Calling deleteGRNImage RPC for:', imageData.id);
+              if (removeFromServer && imageData.id && imageData.uploadStatus === 'completed') {
                 const result = await deleteGRNImage(imageData.id, imageData.imageUrl);
-                console.log('[ImagePreviewGrid] 🗑️ deleteGRNImage result:', result);
                 if (!result.success) {
-                  // Log but continue - we'll still remove from UI
-                  console.warn('[ImagePreviewGrid] ⚠️ Backend delete failed, will remove from local state only:', result.error);
+                  // The photo is still on the document: keep it and say why.
+                  showAlert(tr('grn.photos.removeFailedTitle'), result.error || tr('common.checkConnection'));
+                  return;
                 }
-              } else {
-                console.log('[ImagePreviewGrid] 🗑️ Skipping backend delete (no DB ID or not completed)');
               }
 
               // Notify parent component to remove from Redux state
-              console.log('[ImagePreviewGrid] 🗑️ Notifying parent to remove image from state');
               if (onRemoveImage) {
-                console.log('[ImagePreviewGrid] 🗑️ Calling onRemoveImage with:', imageId);
                 onRemoveImage(imageId);
               } else if (onRemove) {
                 // Legacy support
                 const index = effectiveImages.findIndex(img =>
                   (img.id || img.imageUrl) === imageId
                 );
-                console.log('[ImagePreviewGrid] 🗑️ Calling legacy onRemove with index:', index);
                 if (index >= 0) {
                   onRemove(index);
                 }
               } else {
-                console.warn('[ImagePreviewGrid] ⚠️ No remove handler provided!');
+                log.warn('No remove handler provided!');
               }
             } catch (error) {
-              console.error('[ImagePreviewGrid] Delete error:', error);
+              log.error('Delete error', loggableError(error));
               showAlert(
                 tr('grn.photos.removeFailedTitle'),
                 tr('common.checkConnection')
@@ -263,14 +243,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                   contentFit="cover"
                   cachePolicy="memory-disk"
                   transition={200}
-                  onLoad={() => {
-                    console.log('[ImagePreviewGrid] Image loaded successfully:', imageData.imageUrl);
-                  }}
-                  onError={(error) => {
-                    console.error('[ImagePreviewGrid] Image failed to load:', {
-                      url: imageData.imageUrl,
-                      error
-                    });
+                  onError={() => {
+                    log.error('Image failed to load', { id: imageData.id });
                   }}
                 />
 

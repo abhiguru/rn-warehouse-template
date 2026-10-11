@@ -9,6 +9,9 @@
     "backgroundColor": "#11222c",
     "scheme": "warehousemanager",
     "runtimeVersion": "0.1.0",
+    "updates": {
+      "enabled": false
+    },
     "ios": {
       "bundleIdentifier": "com.example.warehousemanager",
       "buildNumber": "1",
@@ -47,6 +50,7 @@
       },
       "package": "com.example.warehousemanager",
       "versionCode": 1,
+      "allowBackup": false,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_SMS",

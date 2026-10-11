@@ -17,7 +17,9 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { customerHistory } from './customerHistoryCache';
 import { serverText } from '@/utils/serverText';
+import { rpcRefusal } from '@/utils/rpcRefusal';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -343,6 +345,16 @@ export const getAllDispatchItems = async (
         success: false,
         message: t('errors.general.noDataFromServer'),
         error: t('errors.general.emptyResponse')
+      };
+    }
+
+    // A denial comes back as the answer: {success:false, data:null, message}. It is not an empty list.
+    const refusal = rpcRefusal(data);
+    if (refusal) {
+      return {
+        success: false,
+        message: t('errors.dispatch.fetchItemsFailed'),
+        error: serverText(refusal.text, t('errors.dispatch.fetchItemsFailed')),
       };
     }
 
@@ -804,8 +816,12 @@ export const getCustomerDispatchList = async (
 
 /** Rows per request when collecting a customer account's dispatches. */
 const CUSTOMER_DISPATCH_PAGE = 100;
-/** Upper bound on dispatches collected per customer for one list view. */
-const CUSTOMER_DISPATCH_MAX = 1000;
+/**
+ * Upper bound on dispatches collected per customer. It only stops a runaway
+ * collection; when it is reached the list says so (history_limit_reached)
+ * instead of reporting "no match" for what it did not read.
+ */
+export const CUSTOMER_DISPATCH_MAX = 10000;
 
 export interface AssignedCustomerDispatchParams {
   p_sort_by?: 'disp_no' | 'dispatch_date';
@@ -814,6 +830,57 @@ export interface AssignedCustomerDispatchParams {
   offset?: number;
   /** Same keys the staff list sends (see selectCustomerDispatches). */
   p_filters?: Record<string, unknown>;
+  /** Read the server again instead of the history kept for paging (pull to refresh). */
+  p_fresh?: boolean;
+}
+
+/** True when a filter value filters nothing: unset, blank or an empty list. */
+const isBlankFilter = (value: unknown): boolean =>
+  value === undefined || value === null || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && value.length === 0);
+
+type CollectedDispatches = { dispatches: Dispatch[]; limitReached: boolean } | DispatchListResponseNew;
+
+/** Requests in flight at once while collecting one customer's dispatches. */
+export const CUSTOMER_DISPATCH_PARALLEL = 5;
+
+/**
+ * Every dispatch of one customer, newest first. The server gives at most 100
+ * rows per request, so a long history is many requests: the first one says
+ * how many rows there are, and the rest are sent a few at a time instead of
+ * one after another (6,000 dispatches: 12 rounds, not 60).
+ */
+async function collectCustomerDispatches(customerId: string): Promise<CollectedDispatches> {
+  const pageAt = (offset: number) =>
+    getCustomerDispatchList({
+      p_customer_id: customerId,
+      p_limit: CUSTOMER_DISPATCH_PAGE,
+      p_offset: offset,
+      p_include_items: true,
+    });
+  const first = await pageAt(0);
+  if (!first.success) return first;
+  const pages: Dispatch[][] = [first.data.dispatches];
+  const total = first.data.pagination.total_count;
+  if (first.data.pagination.has_more && first.data.dispatches.length > 0) {
+    const offsets: number[] = [];
+    for (let offset = CUSTOMER_DISPATCH_PAGE; offset < Math.min(total, CUSTOMER_DISPATCH_MAX); offset += CUSTOMER_DISPATCH_PAGE)
+      offsets.push(offset);
+    for (let start = 0; start < offsets.length; start += CUSTOMER_DISPATCH_PARALLEL) {
+      const round = await Promise.all(offsets.slice(start, start + CUSTOMER_DISPATCH_PARALLEL).map(pageAt));
+      const failed = round.find(page => !page.success);
+      if (failed) return failed;
+      pages.push(...round.map(page => page.data.dispatches));
+    }
+  }
+  // A dispatch created while the pages were read moves the rows after it by
+  // one, so a row can come twice: it is kept once.
+  const seen = new Set<string>();
+  const collected = pages.flat().filter(dispatch => {
+    if (seen.has(dispatch.id)) return false;
+    seen.add(dispatch.id);
+    return true;
+  });
+  return { dispatches: collected, limitReached: total > CUSTOMER_DISPATCH_MAX };
 }
 
 /**
@@ -911,29 +978,42 @@ export const getAssignedCustomerDispatchList = async (
     return empty(t('errors.customer.noAssignment'), false);
   }
 
-  const perCustomer = await Promise.all(
-    targetIds.map(async customerId => {
-      const collected: Dispatch[] = [];
-      let pageOffset = 0;
-      while (collected.length < CUSTOMER_DISPATCH_MAX) {
-        const page = await getCustomerDispatchList({
-          p_customer_id: customerId,
-          p_limit: CUSTOMER_DISPATCH_PAGE,
-          p_offset: pageOffset,
-          p_include_items: true,
-        });
-        if (!page.success) return page;
-        collected.push(...page.data.dispatches);
-        if (!page.data.pagination.has_more || page.data.dispatches.length === 0) break;
-        pageOffset += page.data.dispatches.length;
-      }
-      return collected;
-    })
-  );
-  const failed = perCustomer.find((result): result is DispatchListResponseNew => !Array.isArray(result));
-  if (failed) return failed;
+  // One customer, newest first, nothing filtered: the customer RPC pages and
+  // counts this on the server, so only the page asked for is downloaded.
+  const unfiltered = Object.entries(filters).every(([key, value]) => key === 'customer_ids' || isBlankFilter(value));
+  if (targetIds.length === 1 && unfiltered && sortBy === 'dispatch_date' && sortOrder === 'desc') {
+    const page = await getCustomerDispatchList({
+      p_customer_id: targetIds[0],
+      p_limit: limit,
+      p_offset: offset,
+      p_include_items: true,
+    });
+    if (page.success) {
+      // The server orders one day's dispatches by creation; within the page
+      // they are shown by number, as everywhere else in the list.
+      page.data.dispatches = selectCustomerDispatches(page.data.dispatches, {}, sortBy, sortOrder);
+      page.data.user_access.accessible_customers = assigned.length;
+    }
+    return page;
+  }
 
-  const matching = selectCustomerDispatches((perCustomer as Dispatch[][]).flat(), filters, sortBy, sortOrder);
+  // Anything else needs the customer's whole history, because the customer RPC
+  // has no search, filter or sort. It is collected once and kept for a short
+  // time (customerHistoryCache), not downloaded again for every page.
+  const perCustomer = await Promise.all(
+    targetIds.map(customerId =>
+      customerHistory<CollectedDispatches>(
+        `dispatches:${customerId}`,
+        () => collectCustomerDispatches(customerId),
+        { fresh: params.p_fresh, keep: result => 'dispatches' in result }
+      )
+    )
+  );
+  const failed = perCustomer.find((result): result is DispatchListResponseNew => !('dispatches' in result));
+  if (failed) return failed;
+  const histories = perCustomer as { dispatches: Dispatch[]; limitReached: boolean }[];
+
+  const matching = selectCustomerDispatches(histories.flatMap(history => history.dispatches), filters, sortBy, sortOrder);
 
   const dispatches = matching.slice(offset, offset + limit);
   const result = empty(t('errors.dispatch.customerRetrieved'), true);
@@ -943,6 +1023,7 @@ export const getAssignedCustomerDispatchList = async (
     limit,
     offset,
     has_more: offset + dispatches.length < matching.length,
+    ...(histories.some(history => history.limitReached) ? { history_limit_reached: true } : {}),
   };
   result.data.aggregations = {
     total_dispatches: matching.length,

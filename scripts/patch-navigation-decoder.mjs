@@ -16,7 +16,9 @@ export function adapt(source, version) {
   return original.replace(originalLine, adapter);
 }
 
-export function patch(root) {
+// verifyOnly changes nothing and fails when the adapter is not in place (an
+// install that skipped the postinstall script).
+export function patch(root, { verifyOnly = false } = {}) {
   const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
   const paths = Object.keys(lock.packages).filter(path => /(^|\/)node_modules\/query-string$/.test(path));
   if (!paths.length) throw new Error('Expected reviewed query-string consumer is missing.');
@@ -34,6 +36,10 @@ export function patch(root) {
     const source = readFileSync(target, 'utf8');
     return { target, source, result: adapt(source, pkg.version) };
   });
+  if (verifyOnly) {
+    if (changes.some(({ source, result }) => source !== result)) throw new Error('Required query-string decoder adapter absent');
+    return;
+  }
   for (const { target, source, result } of changes) if (source !== result) writeFileSync(target, result);
   console.log('Verified upstream decoder 0.5.0 and query-string CommonJS/default-export adapter.');
 }

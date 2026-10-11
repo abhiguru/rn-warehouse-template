@@ -43,6 +43,7 @@ import { showAlert } from '@/utils/alert';
 import { Avatar } from '@/components/ui';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { canOpenScreen } from '@/config/roles';
 import { serverText } from '@/utils/serverText';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
@@ -85,11 +86,12 @@ const ItemPricingScreen: React.FC = () => {
   const { request } = filters;
   const activeFilterCount = filters.activeCount;
 
-  // Check if user can manage prices (Supervisor/Admin only)
-  const canManagePrices = useCallback(() => {
-    const role = userProfile?.role?.toLowerCase();
-    return role === 'supervisor' || role === 'admin';
-  }, [userProfile]);
+  // Prices are added, changed and deleted by administrators, supervisors and staff
+  // (server migration 45); a customer account does not reach this screen.
+  const canManagePrices = useCallback(
+    () => canOpenScreen(userProfile?.role, 'itemPricingWrite'),
+    [userProfile]
+  );
 
   // Toggle section expansion (item group) - accordion style, only one open at a time
   const toggleSectionExpansion = useCallback((itemId: string) => {

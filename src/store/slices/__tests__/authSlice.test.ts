@@ -26,6 +26,8 @@ jest.mock('@/config/supabaseConfig', () => ({
   getSupabaseClient: jest.fn(),
   refreshCustomJWT: jest.fn(),
   initializeSupabase: jest.fn(),
+  reloadUserProfile: jest.fn(async () => null),
+  ensureValidTokens: jest.fn(async () => true),
 }));
 jest.mock('@/services/configService', () => ({
   __esModule: true,
@@ -42,7 +44,15 @@ jest.mock('@/store/sessionScopedState', () => ({
 }));
 
 import { configureStore } from '@reduxjs/toolkit';
-import { signOut, initializeSupabase } from '@/config/supabaseConfig';
+import {
+  signOut,
+  initializeSupabase,
+  ensureValidTokens,
+  getCachedUserProfile,
+  getStoredToken,
+  getSupabaseClient,
+  reloadUserProfile,
+} from '@/config/supabaseConfig';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
 import authReducer, {
   setPhoneNumber,
@@ -55,6 +65,8 @@ import authReducer, {
   deleteAccount,
   forceLogoutOnInvalidToken,
   logout,
+  checkTokenExpiry,
+  initializeAuth,
 } from '../authSlice';
 
 describe('authSlice', () => {
@@ -251,5 +263,72 @@ describe('session teardown thunks', () => {
     await store.dispatch(deleteAccount()).unwrap();
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(clearSessionScopedState).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Review 2026-10-10, M1-7 and M1-11
+describe('the stored custom session', () => {
+  const makeStore = () => configureStore({ reducer: { auth: authReducer } });
+  const stored = (expiresAt: number) =>
+    ({ type: 'jwt', isValid: expiresAt > Date.now(), authToken: 'access', refreshToken: 'r'.repeat(64), expiresAt }) as Awaited<ReturnType<typeof getStoredToken>>;
+  beforeEach(() => { jest.clearAllMocks(); });
+
+  it('renews an access token that expires within five minutes, and one that has expired', async () => {
+    const store = makeStore();
+    for (const expiresAt of [Date.now() + 2 * 60 * 1000, Date.now() - 60 * 1000]) {
+      jest.mocked(getStoredToken).mockResolvedValueOnce(stored(expiresAt));
+      const result = await store.dispatch(checkTokenExpiry()).unwrap();
+      expect(result).toEqual({ warning: false, expired: false, refreshAttempted: true });
+    }
+    expect(ensureValidTokens).toHaveBeenCalledTimes(2);
+    expect(store.getState().auth).toMatchObject({ tokenExpiryWarning: false, tokenExpired: false });
+  });
+
+  it('leaves a token with more than five minutes left, and a signed-out device, alone', async () => {
+    const store = makeStore();
+    jest.mocked(getStoredToken).mockResolvedValueOnce(stored(Date.now() + 30 * 60 * 1000));
+    expect((await store.dispatch(checkTokenExpiry()).unwrap()).refreshAttempted).toBe(false);
+    jest.mocked(getStoredToken).mockResolvedValueOnce({ isValid: false });
+    expect((await store.dispatch(checkTokenExpiry()).unwrap()).refreshAttempted).toBe(false);
+    expect(ensureValidTokens).not.toHaveBeenCalled();
+  });
+
+  // RM-8: with a fixed five minutes, a token of a facility whose access_seconds
+  // is 300 was renewed on every check, from the moment it was issued.
+  it('leaves a 300 second token alone until its last 30 seconds', async () => {
+    const store = makeStore();
+    const issued = Math.floor(Date.now() / 1000);
+    const shortLived = `${btoa('{}')}.${btoa(JSON.stringify({ iat: issued, exp: issued + 300 }))}.signature`;
+    jest.mocked(getStoredToken).mockResolvedValueOnce({ ...stored(Date.now() + 290 * 1000), authToken: shortLived });
+    expect((await store.dispatch(checkTokenExpiry()).unwrap()).refreshAttempted).toBe(false);
+    expect(ensureValidTokens).not.toHaveBeenCalled();
+    jest.mocked(getStoredToken).mockResolvedValueOnce({ ...stored(Date.now() + 20 * 1000), authToken: shortLived });
+    expect((await store.dispatch(checkTokenExpiry()).unwrap()).refreshAttempted).toBe(true);
+    expect(ensureValidTokens).toHaveBeenCalledTimes(1);
+  });
+
+  const cached = { id: 'user-1', auth_user_id: 'auth-1', name: 'Asha Example', role: 'supervisor', assignedCustomerIds: ['c1'] };
+  const start = async (fresh: unknown) => {
+    jest.mocked(getSupabaseClient).mockReturnValue({
+      auth: { getSession: async () => ({ data: { session: null }, error: null }) },
+    } as unknown as ReturnType<typeof getSupabaseClient>);
+    jest.mocked(getStoredToken).mockResolvedValue(stored(Date.now() + 30 * 60 * 1000));
+    jest.mocked(getCachedUserProfile).mockResolvedValue(cached);
+    jest.mocked(reloadUserProfile).mockResolvedValue(fresh as never);
+    const store = makeStore();
+    await store.dispatch(initializeAuth());
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    return store;
+  };
+
+  it('a start from the cached profile shows the role the server has now', async () => {
+    const store = await start({ ...cached, role: 'customer', assignedCustomerIds: ['c2'] });
+    expect(reloadUserProfile).toHaveBeenCalledTimes(1);
+    expect(store.getState().auth.userProfile).toMatchObject({ role: 'customer', assignedCustomerIds: ['c2'] });
+  });
+
+  it('a start offline keeps the cached profile', async () => {
+    const store = await start(null);
+    expect(store.getState().auth.userProfile).toMatchObject(cached);
   });
 });

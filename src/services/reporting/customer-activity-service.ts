@@ -6,10 +6,7 @@
  * - get_customer_activity_detail RPC (Level 2 - single customer dashboard)
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type {
   AllCustomerActivityResponse,
   AllCustomerActivityData,
@@ -25,26 +22,14 @@ import type {
   RecentInvoicePreview,
 } from '@/types/report.types';
 
-import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { getDateDaysAgo, getToday } from './reportDates';
+import { createLogger } from '@/utils/logger';
+import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 // Default 420-day period
 const DEFAULT_DAYS_BACK = 420;
-
-/**
- * Get ISO date string for N days ago
- */
-function getDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalISODate(date);
-}
-
-/**
- * Get today's ISO date string
- */
-function getToday(): string {
-  return toLocalISODate(new Date());
-}
 
 /**
  * Default empty response for Level 1 (all customers)
@@ -109,29 +94,12 @@ export async function getAllCustomerActivity(
   params: CustomerActivityListParams = {}
 ): Promise<AllCustomerActivityResponse> {
   try {
-    console.time('⏱️ [CustomerActivity] getAllCustomerActivity RPC duration');
-
-    // Debug: Check token status
-    const tokenData = await getStoredToken();
-    console.log('[CustomerActivity] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
 
     const client = await getAuthenticatedClient();
 
     const toDate = params.toDate ?? getToday();
     const fromDate =
       params.fromDate ?? getDateDaysAgo(params.daysBack ?? DEFAULT_DAYS_BACK);
-
-    console.log(
-      '[CustomerActivity] Calling get_all_customer_activity_summary with:',
-      {
-        p_from_date: fromDate,
-        p_to_date: toDate,
-      }
-    );
 
     const { data, error } = await client.rpc(
       'get_all_customer_activity_summary',
@@ -141,12 +109,8 @@ export async function getAllCustomerActivity(
       }
     );
 
-    console.timeEnd(
-      '⏱️ [CustomerActivity] getAllCustomerActivity RPC duration'
-    );
-
     if (error) {
-      console.error('[CustomerActivity] RPC error:', error.message);
+      logger.error('[CustomerActivity] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_LIST_RESPONSE,
@@ -156,7 +120,6 @@ export async function getAllCustomerActivity(
     }
 
     if (!data) {
-      console.log('[CustomerActivity] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_LIST_RESPONSE,
@@ -164,43 +127,19 @@ export async function getAllCustomerActivity(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [CustomerActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
-
-    // Debug: Log raw response structure
-    console.log('[CustomerActivity] Raw response type:', typeof data);
-    console.log('[CustomerActivity] Is array:', Array.isArray(data));
-    console.log(
-      '[CustomerActivity] Raw keys:',
-      data ? Object.keys(data) : 'null'
-    );
-    console.log(
-      '[CustomerActivity] First 500 chars:',
-      JSON.stringify(data).substring(0, 500)
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_LIST_RESPONSE, t('reports.customerActivity.errors.summaryFailed'));
+    }
 
     // Parse the RPC response - handle wrapped formats
     // Backend returns: {data: {summary, customers}, success, metadata}
-    let responseData = Array.isArray(data) ? data[0] : data;
+    let responseData = reportBody(data);
 
     // Unwrap if response has a data property containing the actual payload
     if (responseData?.data && responseData?.success !== undefined) {
-      console.log('[CustomerActivity] Unwrapping nested data property');
       responseData = responseData.data;
     }
-
-    console.log(
-      '[CustomerActivity] Final responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
-    console.log('[CustomerActivity] Summary:', responseData?.summary);
-    console.log(
-      '[CustomerActivity] Customers count:',
-      responseData?.customers?.length
-    );
 
     // Map summary KPIs
     const summary: CustomerActivityListKPIs = {
@@ -226,17 +165,13 @@ export async function getAllCustomerActivity(
       last_activity_type: customer.last_activity_type ?? null,
     }));
 
-    console.log(
-      `[CustomerActivity] Parsed ${customers.length} customers, total stock: ${summary.total_current_stock}`
-    );
-
     return {
       success: true,
       data: { summary, customers },
       message: t('reports.customerActivity.retrievedSummary'),
     };
   } catch (error) {
-    console.error('[CustomerActivity] Unexpected error:', error);
+    logger.error('[CustomerActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_LIST_RESPONSE,
@@ -256,7 +191,7 @@ export async function getCustomerActivityDetail(
   params: CustomerActivityDetailParams
 ): Promise<CustomerActivityDetailResponse> {
   if (!params.customerId) {
-    console.error('[CustomerActivityDetail] Customer ID is required');
+    logger.error('[CustomerActivityDetail] Customer ID is required');
     return {
       success: false,
       data: EMPTY_DETAIL_RESPONSE,
@@ -266,15 +201,6 @@ export async function getCustomerActivityDetail(
   }
 
   try {
-    console.time('⏱️ [CustomerActivityDetail] RPC duration');
-
-    // Debug: Check token status
-    const tokenData = await getStoredToken();
-    console.log('[CustomerActivityDetail] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
 
     const client = await getAuthenticatedClient();
 
@@ -282,25 +208,14 @@ export async function getCustomerActivityDetail(
     const fromDate =
       params.fromDate ?? getDateDaysAgo(params.daysBack ?? DEFAULT_DAYS_BACK);
 
-    console.log(
-      '[CustomerActivityDetail] Calling get_customer_activity_detail with:',
-      {
-        p_customer_uuid: params.customerId,
-        p_from_date: fromDate,
-        p_to_date: toDate,
-      }
-    );
-
     const { data, error } = await client.rpc('get_customer_activity_detail', {
       p_customer_uuid: params.customerId,
       p_from_date: fromDate,
       p_to_date: toDate,
     });
 
-    console.timeEnd('⏱️ [CustomerActivityDetail] RPC duration');
-
     if (error) {
-      console.error('[CustomerActivityDetail] RPC error:', error.message);
+      logger.error('[CustomerActivityDetail] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_DETAIL_RESPONSE,
@@ -310,7 +225,6 @@ export async function getCustomerActivityDetail(
     }
 
     if (!data) {
-      console.log('[CustomerActivityDetail] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_DETAIL_RESPONSE,
@@ -318,25 +232,18 @@ export async function getCustomerActivityDetail(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [CustomerActivityDetail] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_DETAIL_RESPONSE, t('reports.customerActivity.errors.detailFailed'));
+    }
 
     // Parse the RPC response - handle wrapped formats
-    let responseData = Array.isArray(data) ? data[0] : data;
+    let responseData = reportBody(data);
 
     // Unwrap if response has a data property containing the actual payload
     if (responseData?.data && responseData?.success !== undefined) {
-      console.log('[CustomerActivityDetail] Unwrapping nested data property');
       responseData = responseData.data;
     }
-
-    console.log(
-      '[CustomerActivityDetail] Final keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map summary KPIs
     const summary: CustomerActivityDetailKPIs = {
@@ -409,11 +316,6 @@ export async function getCustomerActivityDetail(
       status: invoice.status ?? 'pending',
     }));
 
-    console.log(
-      `[CustomerActivityDetail] Parsed for ${responseData?.customer_name}: ` +
-        `${monthlyTrends.length} months, ${recentGrns.length} GRNs, ${recentDispatches.length} dispatches`
-    );
-
     return {
       success: true,
       data: {
@@ -431,7 +333,7 @@ export async function getCustomerActivityDetail(
       message: t('reports.customerActivity.retrievedDetail'),
     };
   } catch (error) {
-    console.error('[CustomerActivityDetail] Unexpected error:', error);
+    logger.error('[CustomerActivityDetail] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_DETAIL_RESPONSE,

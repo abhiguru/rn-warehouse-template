@@ -122,6 +122,8 @@ export const filters = {
     searching: 'Searching',
     recent: 'Recent',
     searchAgain: 'Search again for {{text}}',
+    minLength: 'Type at least two letters to search.',
+    tooManyWords: 'Only the first eight words are searched.',
   },
   sheet: {
     sortBy: 'Sort by',

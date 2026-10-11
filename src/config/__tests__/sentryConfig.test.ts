@@ -6,6 +6,7 @@ import {
   sanitizeData,
   beforeSend,
   beforeBreadcrumb,
+  redactErrorText,
   setSentryUser,
   clearSentryUser,
   captureException,
@@ -252,6 +253,75 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       // Tags
       expect(sanitized?.tags?.['token']).toBe('[REDACTED]');
       expect(sanitized?.tags?.['component']).toBe('auth');
+    });
+  });
+
+  // Review 2026-10-10, X4-1 / M1-5: the text of the event itself.
+  describe('event message, exception text and contexts', () => {
+    const refresh = 'ab12'.repeat(16);
+
+    it('redacts a phone number, a token and row values in an exception message', () => {
+      const event = {
+        exception: {
+          values: [
+            { type: 'Error', value: 'duplicate key value violates unique constraint "customers_mobile_key" Key (mobile)=(9876543210) already exists.' },
+            { type: 'Error', value: `Refresh failed for ${refresh} with Authorization: Bearer ${syntheticJwt}` },
+            { type: 'Error', value: 'null value in column "name" violates not-null constraint. Failing row contains (7, Asha Example, Rajkot, null).' },
+          ],
+        },
+      } as unknown as Sentry.ErrorEvent;
+      const values = beforeSend(event)!.exception!.values!.map(exception => exception.value);
+      expect(values[0]).toBe('duplicate key value violates unique constraint "customers_mobile_key" Key (mobile)=([REDACTED]) already exists.');
+      expect(values[1]).not.toContain(refresh);
+      expect(values[1]).not.toContain(syntheticJwt);
+      expect(values[2]).toBe('null value in column "name" violates not-null constraint. Failing row contains ([REDACTED]).');
+      expect(JSON.stringify(values)).not.toMatch(/9876543210|Asha Example|Rajkot/);
+    });
+
+    it('an Error whose message contains a phone number arrives as [REDACTED_PHONE]', () => {
+      const event = { exception: { values: [{ type: 'Error', value: 'OTP could not be sent to 9876543210' }] } } as unknown as Sentry.ErrorEvent;
+      expect(beforeSend(event)!.exception!.values![0].value).toBe('OTP could not be sent to [REDACTED_PHONE]');
+    });
+
+    it('redacts a captured message and its log entry', () => {
+      const event = {
+        message: 'Unhandled rejection: customer 919876543210 not reachable',
+        logentry: { message: 'Sign-in for %s failed', params: ['+91 9876543210', { token: 'secret' }] },
+      } as unknown as Sentry.ErrorEvent;
+      const sanitized = beforeSend(event)!;
+      expect(sanitized.message).toBe('Unhandled rejection: customer [REDACTED_PHONE] not reachable');
+      expect(sanitized.logentry!.params).toEqual(['[REDACTED_PHONE]', { token: '[REDACTED]' }]);
+    });
+
+    it('redacts contexts, keeps device details and leaves the trace ids alone', () => {
+      const trace = { trace_id: 'abcdef0123456789abcdef9876543210', span_id: 'b0e6f15b45c36b12' };
+      const event = {
+        contexts: {
+          device: { model: 'Fictional Phone 1', memory_size: 8012345678 },
+          state: { profile: { name: 'Asha Example', phone: '9876543210' }, note: 'call 9876543210' },
+          response: { headers: { 'x-request': 'r1' }, body: `{"refresh_token":"${refresh}"}`, access_token: syntheticJwt },
+          trace,
+        },
+      } as unknown as Sentry.ErrorEvent;
+      const contexts = beforeSend(event)!.contexts as Record<string, any>;
+      expect(contexts.device).toEqual({ model: 'Fictional Phone 1', memory_size: 8012345678 });
+      expect(contexts.state.profile.phone).toBe('[REDACTED]');
+      expect(contexts.state.note).toBe('call [REDACTED_PHONE]');
+      expect(contexts.response.access_token).toBe('[REDACTED]');
+      expect(contexts.trace).toEqual(trace);
+    });
+
+    it('captureMessage scrubs the raw text of an unhandled rejection before it reaches the SDK', () => {
+      captureMessage(`Unhandled rejection: Key (mobile)=(9876543210) already exists, token ${refresh}`, 'error');
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        'Unhandled rejection: Key (mobile)=([REDACTED]) already exists, token [REDACTED_TOKEN]',
+        'error'
+      );
+    });
+
+    it('leaves ordinary error text as it is', () => {
+      const text = "Cannot read properties of undefined (reading 'items') at GRN A0010, 12 rows";
+      expect(redactErrorText(text)).toBe(text);
     });
   });
 

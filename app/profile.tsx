@@ -74,24 +74,9 @@ const UserProfileScreen: React.FC = () => {
 
   const handleEditProfile = () => {
     // Use userProfile.id (users table) not user.id (auth table)
-    console.log('[Profile] handleEditProfile called');
-    console.log('[Profile] userProfile:', {
-      id: userProfile?.id,
-      auth_user_id: userProfile?.auth_user_id,
-      name: userProfile?.name
-    });
-    console.log('[Profile] user:', {
-      id: user?.id,
-      email: user?.email
-    });
-
     const userId = userProfile?.id || userProfile?.auth_user_id || user?.id;
-    console.log('[Profile] Navigating to edit with userId:', userId);
-
     if (userId) {
       router.push(`/user/edit/${userId}`);
-    } else {
-      console.log('[Profile] No user ID available for edit');
     }
   };
 

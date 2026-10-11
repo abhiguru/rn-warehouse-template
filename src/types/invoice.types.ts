@@ -22,12 +22,17 @@ export interface InvoiceHeaderData {
   customer_name: string;
   gr_id: string;
   gr_no: string;
+  /** Whether the GRN is priced ONE_TIME. Shown, not chosen: the server decides from the GRN. */
   one_time_charge: boolean;
   discount: number;
   /** Why the discount was given; the server requires it from staff when the discount changes. */
   discount_reason?: string;
   /** Discount stored on the server when an existing invoice was loaded (client only, never sent). */
   saved_discount?: number;
+  /** Reason stored with that discount (client only, never sent). Set only while an existing invoice is edited. */
+  saved_discount_reason?: string;
+  /** The reason field was typed in during this edit (client only, never sent). Typed text is never cleared by the app. */
+  discount_reason_edited?: boolean;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total
@@ -62,6 +67,13 @@ export interface InvoiceItemData {
   grn_id: string;
   grn_no: string;
   grn_date: string;
+
+  /**
+   * The line's GRN is priced ONE_TIME: storage is charged once per unit, with
+   * no duration and no labour. Set from the GRN by the server's data; the
+   * amounts below follow it.
+   */
+  one_time?: boolean;
 
   // Pricing fields (editable)
   duration: number; // Months
@@ -117,7 +129,6 @@ export interface InvoiceFormState {
   // Bulk edit and override tracking
   itemOverrides: Record<string, string[]>; // temp_id -> array of overridden field names
   bulkPricing: Record<string, { charge: number; labour_rate: number; tax: number }>; // item_id -> bulk pricing
-  originalDurations: Record<string, number>; // temp_id -> original duration from RPC (for one_time_charge toggle)
 
   // UI state
   currentStep: number;
@@ -167,7 +178,10 @@ export interface SavedInvoiceData {
   invoice_no: number;
   fin_year: string;
   customer_name: string;
-  total: number;
+  /** The total the server stored. null when it could not be read back after the save. */
+  total: number | null;
+  /** The total the form showed before saving, to say so when the stored one differs. */
+  estimated_total?: number;
 }
 
 // Response types
@@ -194,6 +208,8 @@ export interface InvoiceFormDataResponse {
     items: InvoiceItemData[];
   };
   message?: string;
+  /** Set when the server refused the GRN itself: not fully dispatched, or already invoiced. */
+  code?: 'not_invoiceable';
 }
 
 export interface CreateInvoiceResponse {
@@ -201,6 +217,8 @@ export interface CreateInvoiceResponse {
   data: {
     invoice_id: string;
     invoice_no: number;
+    /** The total the server computed and stored; null when it could not be read back. */
+    total?: number | null;
   };
   message?: string;
 }

@@ -33,7 +33,10 @@ npm run android              # native debug build on a device or emulator
 `npm ci` applies three postinstall patches to installed packages
 (`scripts/patch-expo-metro.mjs`, `scripts/patch-navigation-decoder.mjs` and
 `scripts/patch-security-backports.mjs`); `npm run verify:backports` re-checks
-them against `scripts/security-backports.json`. `bash setup.sh` runs the same
+them against `scripts/security-backports.json`. An install with npm scripts
+turned off (`--ignore-scripts`) skips them silently, so `npm start`,
+`npm run android`, `npm run ios`, `npm run web` and `npm test` first run
+`scripts/check-install.mjs`, which stops when a patch is missing. `bash setup.sh` runs the same
 install and `.env` steps and never inspects Docker or service credentials.
 
 For `npm run doctor` (or the narrower `npm run check:backend`) set

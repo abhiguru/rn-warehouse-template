@@ -72,3 +72,18 @@ describe('useRateLimitCountdown', () => {
     expect(countdown.message).toBe('ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં ૧:૩૦ રાહ જુઓ.');
   });
 });
+
+// Backend migration 44: the server says how long to wait, or names a limit that has no wait.
+describe('limits the server applies to sign-in codes', () => {
+  it('counts down from the 15 minutes of the slow lane, not from a fixed 60 seconds', () => {
+    expect(handle({ success: false, error: 'Please wait 15 minutes before requesting another code.', errorCode: 'otp_wait', retryAfterSeconds: 900 })).toBe(true);
+    expect(countdown.secondsRemaining).toBe(900);
+    expect(countdown.countdownText).toBe('15:00');
+    expect(countdown.message).toBe('Please wait 15 minutes before requesting another code.');
+  });
+
+  it('starts no countdown for "try again later": there is no wait to count', () => {
+    expect(handle({ success: false, error: 'Too many codes have been requested. Try again later.', errorCode: 'otp_rate_limited' })).toBe(false);
+    expect(countdown.isRateLimited).toBe(false);
+  });
+});

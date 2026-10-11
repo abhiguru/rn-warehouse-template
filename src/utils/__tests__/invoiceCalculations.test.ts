@@ -4,7 +4,7 @@ import {
 } from '../invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import reducer, {
-  loadInvoiceFormData, updateDiscount, updateAllDurations, restoreOriginalDurations,
+  loadInvoiceFormData, updateDiscount,
   updateEditedItem, bulkUpdateItemPricing, bulkUpdateItemGroupPricing, recalculateTotals,
 } from '@/store/slices/invoiceFormSlice';
 
@@ -62,13 +62,55 @@ it.each([[1, 7, 147], [1.5, 10, 200], [2, 12, 252]])(
   }
 );
 
-it('restores fractional monthly durations and reconciles after a one-time toggle', () => {
-  let state = loaded();
-  state = reducer(state, updateAllDurations(1));
-  expect(state.header).toMatchObject({ tax_amount: 4, total: 74 });
-  state = reducer(state, restoreOriginalDurations());
-  expect(state.items.map(i => i.duration)).toEqual([1.5, 6.5, 6.5]);
-  expect(state.header).toMatchObject({ tax_amount: 9, total: 179 });
+// The server decides "one-time" from the GRN's pricing mode: storage is charged
+// once per unit whatever the duration, and labour is not charged
+// (docs/INVOICE_RULES.md in the backend). There is no client-side switch.
+describe('a one-time GRN', () => {
+  const oneTime = (id: string, qty: number, duration: number): InvoiceItemData => ({
+    ...line(id, qty, 5, 2, 5, duration),
+    one_time: true,
+    ...calculateItemAmounts(qty, 5, 2, 5, duration, true),
+  });
+
+  it('charges storage once per unit, without duration and without labour', () => {
+    expect(calculateItemAmounts(100, 5, 2, 5, 1.5, true)).toEqual({
+      amount: 500, labour_amount: 0, taxable_amount: 500, tax_amount: 25, item_total: 525,
+    });
+    // The same line on a monthly GRN: 750 storage + 200 labour.
+    expect(calculateItemAmounts(100, 5, 2, 5, 1.5)).toMatchObject({ amount: 750, labour_amount: 200, item_total: 997.5 });
+  });
+
+  it('gives the header the server stores: 525 for 100 bags at 5 with labour 2 and tax 5 %', () => {
+    const state = reducer(undefined, loadInvoiceFormData({
+      header: { one_time_charge: true }, items: [oneTime('20', 20, 1.5), oneTime('80', 80, 1.5)], grId: 'grn',
+    }));
+
+    expect(state.header).toMatchObject({ one_time_charge: true, labour: 0, tax_amount: 25, total: 525 });
+    // The durations the server worked out are kept; they are not replaced by 1.
+    expect(state.items.map(i => i.duration)).toEqual([1.5, 1.5]);
+  });
+
+  it('stays one-time through individual and group edits', () => {
+    const start = reducer(undefined, loadInvoiceFormData({ header: { one_time_charge: true }, items: [oneTime('a', 100, 1.5)], grId: 'grn' }));
+
+    const edited = reducer(start, updateEditedItem({ temp_id: 'a', values: { charge: 6 } }));
+    expect(edited.items[0]).toMatchObject({ amount: 600, labour_amount: 0, tax_amount: 30, item_total: 630 });
+    expect(edited.header).toMatchObject({ labour: 0, tax_amount: 30, total: 630 });
+
+    const grouped = reducer(start, bulkUpdateItemGroupPricing({ group_key: 'item:::FIX', pricing: { charge: 4, labour_rate: 9, tax: 5 } }));
+    expect(grouped.items[0]).toMatchObject({ amount: 400, labour_amount: 0, item_total: 420 });
+    expect(grouped.header).toMatchObject({ labour: 0, tax_amount: 20, total: 420 });
+  });
+
+  it('takes the amounts of a monthly GRN from the durations, whatever the header flag says', () => {
+    // A stored invoice can carry one_time_charge = true from the old switch; the GRN is monthly.
+    const state = reducer(undefined, loadInvoiceFormData({
+      header: { one_time_charge: true }, items: [line('20', 20, 5, 2, 5, 1.5), line('80', 80, 5, 2, 5, 1.5)], grId: 'grn',
+    }));
+
+    expect(state.items.map(i => i.duration)).toEqual([1.5, 1.5]);
+    expect(state.header).toMatchObject({ labour: 200, tax_amount: 48, total: 998 });
+  });
 });
 
 it('uses the same header contract after individual, bulk and group edits', () => {

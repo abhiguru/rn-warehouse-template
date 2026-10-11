@@ -47,9 +47,21 @@ export function localizeDigits(text: string, language: AppLanguage = current): s
   return text.replace(LATIN_DIGIT, digit => String.fromCharCode(GUJARATI_ZERO + Number(digit)));
 }
 
+/**
+ * Digits of the other scripts a keyboard in Gujarat may give: Devanagari (a Hindi
+ * keyboard), Arabic-Indic and its Persian form. Each block is ten code points from its zero.
+ */
+const OTHER_DIGIT = /[०-९٠-٩۰-۹]/g;
+const OTHER_ZEROS = [0x0966, 0x0660, 0x06f0];
+
 /** ૦-૯ as 0-9, whatever the language: for anything a person typed before it is parsed, searched or sent. */
 export function normalizeDigits(text: string): string {
-  return text.replace(GUJARATI_DIGIT, digit => String(digit.charCodeAt(0) - GUJARATI_ZERO));
+  return text
+    .replace(GUJARATI_DIGIT, digit => String(digit.charCodeAt(0) - GUJARATI_ZERO))
+    .replace(OTHER_DIGIT, digit => {
+      const code = digit.charCodeAt(0);
+      return String(code - (OTHER_ZEROS.find(zero => code >= zero && code <= zero + 9) ?? code));
+    });
 }
 
 /**

@@ -252,7 +252,7 @@ export default function OperationsDashboardScreen() {
   const t = useTokens();
 
   // Role-based access (J12 fix)
-  const { isStaff } = useRoleBasedAccess();
+  const { isManager } = useRoleBasedAccess();
 
   const [data, setData] = useState<OperationsDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -262,7 +262,7 @@ export default function OperationsDashboardScreen() {
   const [dateRange, setDateRange] = useState(() => getDateRangeForPeriod('last120days'));
 
   const fetchData = useCallback(async (showRefreshIndicator = false) => {
-    if (!isStaff) {
+    if (!isManager) {
       setError(tr('reports.operations.staffOnlyError'));
       setIsLoading(false);
       return;
@@ -285,7 +285,12 @@ export default function OperationsDashboardScreen() {
         setData(response.data);
       } else {
         logger.warn('Load failed', { error: response.error });
-        setError(loadError());
+        // The server refuses by role in the body of its answer; the service names that STAFF_ONLY.
+        setError(
+          response.error === 'STAFF_ONLY'
+            ? tr('reports.operations.staffOnlyError')
+            : response.message || loadError()
+        );
       }
     } catch (err) {
       logger.error('Error fetching data', err);
@@ -294,7 +299,7 @@ export default function OperationsDashboardScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [isStaff, dateRange]);
+  }, [isManager, dateRange]);
 
   useEffect(() => {
     fetchData();
@@ -350,7 +355,7 @@ export default function OperationsDashboardScreen() {
   );
 
   // Access denied state
-  if (!isStaff) {
+  if (!isManager) {
     return (
       <View style={styles.container}>
         <ReportHeader title={tr('reports.titles.operationsDashboard')} />

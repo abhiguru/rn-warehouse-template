@@ -85,7 +85,12 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.button,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    marginBottom: space.xxl,
+    marginBottom: space.lg,
+  },
+  totalNote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.lg,
   },
   detailRow: {
     flexDirection: 'row' as const,
@@ -136,6 +141,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   buttonContainer: {
     gap: space.sm,
+    marginTop: space.sm,
   },
   button: {
     minHeight: touchTarget,
@@ -194,7 +200,12 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   const message = isEditMode
     ? tr('invoice.success.updatedMessage', { number: formatIdentifier(invoiceData.invoice_no) })
     : tr('invoice.success.savedMessage', { number: formatIdentifier(invoiceData.invoice_no) });
-  const total = formatInvoiceAmount(invoiceData.total);
+  // The total is the one the server stored. When it could not be read back
+  // after the save, no amount is shown: the form's own figure is an estimate.
+  const totalKnown = typeof invoiceData.total === 'number';
+  const total = totalKnown ? formatInvoiceAmount(invoiceData.total) : '';
+  const totalDiffers =
+    totalKnown && typeof invoiceData.estimated_total === 'number' && invoiceData.estimated_total !== invoiceData.total;
 
   return (
     <Modal
@@ -224,7 +235,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
             <View
               style={styles.detailsCard}
               accessible
-              accessibilityLabel={tr('invoice.success.detailsA11y', {
+              accessibilityLabel={tr(totalKnown ? 'invoice.success.detailsWithTotalA11y' : 'invoice.success.detailsA11y', {
                 number: formatIdentifier(invoiceData.invoice_no),
                 year: formatFinancialYear(invoiceData.fin_year),
                 customer: invoiceData.customer_name,
@@ -248,11 +259,20 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                 </Text>
               </View>
 
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{tr('common.total')}</Text>
-                <Text style={styles.totalValue}>{total}</Text>
-              </View>
+              {totalKnown && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>{tr('common.total')}</Text>
+                  <Text style={styles.totalValue}>{total}</Text>
+                </View>
+              )}
             </View>
+
+            {!totalKnown && <Text style={styles.totalNote}>{tr('invoice.success.totalNotRead')}</Text>}
+            {totalDiffers && (
+              <Text style={styles.totalNote}>
+                {tr('invoice.success.totalDiffers', { estimate: formatInvoiceAmount(invoiceData.estimated_total) })}
+              </Text>
+            )}
 
             <View style={styles.buttonContainer}>
               <Pressable

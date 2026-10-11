@@ -68,6 +68,7 @@ export default function InvoiceEditStep3() {
   const handleDiscountChange = (value: number) => {
     dispatch(updateDiscount(value));
   };
+  const [discountError, setDiscountError] = useState<string | null>(null);
 
   const { role } = useRoleBasedAccess();
   const reasonRequired = discountNeedsReason(header, role);
@@ -100,6 +101,16 @@ export default function InvoiceEditStep3() {
 
     if (!invoiceId) {
       showAlert(tr('invoice.review.notFoundTitle'), tr('invoice.review.notFoundMessage'));
+      return;
+    }
+
+    // The discount field shows text that was not accepted, so the invoice
+    // still holds the previous discount: saving now would not save what is shown.
+    if (discountError) {
+      showAlert(
+        tr('invoice.review.discountCheckTitle'),
+        `${discountError}\n${tr('invoice.review.discountNotApplied', { amount: formatInvoiceAmount(header.discount) })}`
+      );
       return;
     }
 
@@ -141,7 +152,9 @@ export default function InvoiceEditStep3() {
           invoice_no: response.data.invoice_no,
           fin_year: header.inv_fin_year,
           customer_name: header.customer_name,
-          total: header.total,
+          // The server's stored total; the form's figure was only an estimate.
+          total: response.data.total ?? null,
+          estimated_total: header.total,
         });
 
         // Show success dialog
@@ -339,6 +352,7 @@ export default function InvoiceEditStep3() {
           header={header}
           items={items}
           onDiscountChange={handleDiscountChange}
+          onDiscountErrorChange={setDiscountError}
           onDiscountReasonChange={handleDiscountReasonChange}
           reasonRequired={reasonRequired}
         />

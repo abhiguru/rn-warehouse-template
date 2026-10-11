@@ -47,6 +47,7 @@ export const pricing: Translation<typeof source> = {
     addTitle: 'દર ઉમેરો',
     editTitle: 'દરમાં ફેરફાર કરો',
     viewTitle: 'દર',
+    noAccessTitle: 'દર બદલી શકાતા નથી',
     savePrice: 'દર સાચવો',
     loading: 'દર લોડ થઈ રહ્યો છે…',
     loadingLabel: 'દર લોડ થઈ રહ્યો છે',
