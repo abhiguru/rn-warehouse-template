@@ -45,6 +45,7 @@ import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount, formatWeight } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { useModalSheet } from '@/hooks/useModalSheet';
 
 interface LotBottomSheetProps {
   isVisible: boolean;
@@ -272,6 +273,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   addedLotIds = [],
 }) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const sheet = useModalSheet(bottomSheetRef);
   const router = useRouter();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -325,7 +327,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   const handleLotSelect = useCallback(
     (lot: GRNDetailItem) => {
       onSelect(lot);
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     },
     [onSelect]
   );
@@ -492,9 +494,9 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
     if (isVisible) {
       // Dismiss keyboard before showing bottom sheet
       Keyboard.dismiss();
-      bottomSheetRef.current?.present();
+      sheet.present();
     } else {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     }
   }, [isVisible]);
 
@@ -502,7 +504,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   useEffect(() => {
     if (!isVisible) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
       return true;
     });
     return () => sub.remove();
@@ -511,6 +513,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   return (
     <BottomSheetModal
       ref={bottomSheetRef}
+      onDismiss={sheet.onDismissed}
       index={0}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
@@ -525,7 +528,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
       <View style={styles.header}>
         <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.chooseLot')}</Text>
         <Pressable
-          onPress={() => bottomSheetRef.current?.dismiss()}
+          onPress={() => sheet.dismiss()}
           style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
           accessibilityRole="button"
           accessibilityLabel={tr('dispatch.lotSheet.close')}

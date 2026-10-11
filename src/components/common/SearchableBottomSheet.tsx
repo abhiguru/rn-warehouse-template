@@ -59,6 +59,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { normalizeDigits, t as tr } from '@/i18n';
+import { useModalSheet } from '@/hooks/useModalSheet';
 
 // ============================================================================
 // Types
@@ -192,6 +193,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   // ૧૨ and 12 find the same things (docs/I18N.md rule 6)
   const searchNormalized = useCallback((query: string) => searchFn(normalizeDigits(query)), [searchFn]);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const sheet = useModalSheet(bottomSheetRef);
   const inputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
 
   // Get user ID for scoping recent items storage
@@ -266,7 +268,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
         saveToRecent(item);
       }
       onSelect(item);
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     },
     [onSelect, recentItemsKey, saveToRecent]
   );
@@ -384,12 +386,12 @@ export function SearchableBottomSheet<T extends { id: string }>({
       if (recentItemsKey) {
         loadRecentItems();
       }
-      bottomSheetRef.current?.present();
+      sheet.present();
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     } else {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     }
   }, [isVisible, recentItemsKey, loadRecentItems]);
 
@@ -397,7 +399,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   useEffect(() => {
     if (!isVisible) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
       return true;
     });
     return () => sub.remove();
@@ -413,6 +415,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   return (
     <BottomSheetModal
       ref={bottomSheetRef}
+      onDismiss={sheet.onDismissed}
       index={1}
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
@@ -433,7 +436,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
           </Text>
           <Pressable
             style={({ pressed }) => [dynamicStyles.closeButton, pressed && dynamicStyles.closeButtonPressed]}
-            onPress={() => bottomSheetRef.current?.dismiss()}
+            onPress={() => sheet.dismiss()}
             accessibilityRole="button"
             accessibilityLabel={tr('common.close')}
           >

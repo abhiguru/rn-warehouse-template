@@ -47,6 +47,7 @@ import { createLogger } from '@/utils/logger';
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { useModalSheet } from '@/hooks/useModalSheet';
 const addItemBottomSheetLogger = createLogger('AddItemBottomSheet');
 
 interface AddItemBottomSheetProps {
@@ -284,6 +285,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
   existingItems,
 }) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const sheet = useModalSheet(bottomSheetRef);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -534,16 +536,16 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
     }
 
     onAddItem(currentItem as DispatchItemData);
-    bottomSheetRef.current?.dismiss();
+    sheet.dismiss();
   };
 
   // Handle visibility changes
   useEffect(() => {
     if (isVisible) {
       resetForm();
-      bottomSheetRef.current?.present();
+      sheet.present();
     } else {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     }
   }, [isVisible, resetForm]);
 
@@ -551,7 +553,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
   useEffect(() => {
     if (!isVisible) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
       return true;
     });
     return () => sub.remove();
@@ -571,6 +573,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
     <>
       <BottomSheetModal
         ref={bottomSheetRef}
+      onDismiss={sheet.onDismissed}
         index={0}
         snapPoints={snapPoints}
         onChange={handleSheetChanges}
@@ -586,7 +589,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
           <View style={styles.header}>
             <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.addItem')}</Text>
             <Pressable
-              onPress={() => bottomSheetRef.current?.dismiss()}
+              onPress={() => sheet.dismiss()}
               style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
               accessibilityRole="button"
               accessibilityLabel={tr('dispatch.items.closeAddItem')}

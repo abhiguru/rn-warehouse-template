@@ -37,6 +37,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { useModalSheet } from '@/hooks/useModalSheet';
 
 interface GRNItemBottomSheetProps {
   isVisible: boolean;
@@ -193,6 +194,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   currentValue,
 }) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const sheet = useModalSheet(bottomSheetRef);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -250,7 +252,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   const handleItemSelect = useCallback(
     (item: { item_id: string; item_name: string }) => {
       onSelect(item);
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     },
     [onSelect]
   );
@@ -317,9 +319,9 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   // Handle visibility changes
   useEffect(() => {
     if (isVisible) {
-      bottomSheetRef.current?.present();
+      sheet.present();
     } else {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
     }
   }, [isVisible]);
 
@@ -327,7 +329,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   useEffect(() => {
     if (!isVisible) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      bottomSheetRef.current?.dismiss();
+      sheet.dismiss();
       return true;
     });
     return () => sub.remove();
@@ -336,6 +338,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   return (
     <BottomSheetModal
       ref={bottomSheetRef}
+      onDismiss={sheet.onDismissed}
       index={0}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
@@ -350,7 +353,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.chooseItem')}</Text>
           <Pressable
-            onPress={() => bottomSheetRef.current?.dismiss()}
+            onPress={() => sheet.dismiss()}
             style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
             accessibilityRole="button"
             accessibilityLabel={tr('dispatch.itemSheet.close')}
