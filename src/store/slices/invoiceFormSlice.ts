@@ -306,6 +306,7 @@ const invoiceFormSlice = createSlice({
     ) => {
       // Preserve invoice number and financial year when loading GRN data
       const preservedInvNo = state.header.inv_no;
+      const preservedInvNoTyped = state.header.inv_no_typed;
       const preservedInvDate = state.header.inv_date;
       const preservedInvFinYear = state.header.inv_fin_year;
       const preservedDiscount = state.header.discount;
@@ -334,6 +335,7 @@ const invoiceFormSlice = createSlice({
         ...action.payload.header,
         // Preserve these fields that were already set by the user
         inv_no: preservedInvNo,
+        inv_no_typed: preservedInvNoTyped,
         inv_date: preservedInvDate,
         inv_fin_year: preservedInvFinYear,
         one_time_charge: oneTimeCharge,

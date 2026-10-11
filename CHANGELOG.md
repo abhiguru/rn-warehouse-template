@@ -2,6 +2,11 @@
 
 ## Unreleased — owner decisions of 2026-10-11
 
+Needs backend migration 48 (owner decisions of 2026-10-11) for the invoice
+number per financial year and for the zero charge with a reason; merge and
+deploy the backend first. On a backend without it the app still suggests a
+number (see below).
+
 Racks (decision 1) — no backend change
 - A rack is any text. The rule "Floor/Chamber or Rack/Floor/Chamber" is gone
   from the item form, from the Save button of a line and from the checks before
@@ -17,6 +22,26 @@ Racks (decision 1) — no backend change
   Opening another line no longer shows the chips of the line edited before.
 - A space can be typed at the end of the rack text ("ROW 3" could not be typed
   in one go); spaces at the two ends are dropped when the line is saved.
+
+Invoice number per financial year (decision 2) — backend migration 48
+- New invoice: the suggested number is the next one of the financial year of
+  the invoice date. The app sends that year to
+  `get_next_invoice_number(p_fin_year)` as the calendar year it starts in
+  (2026 for April 2026 to March 2027).
+- When the invoice date is moved into another financial year the next number of
+  that year is asked for and replaces the suggestion. A number the user typed
+  is never replaced; after the field is emptied the app suggests again.
+- When the server has no number for that year ("No invoice number is left in
+  financial year ...") or cannot be reached, the field is emptied and the hint
+  reads "Couldn't get the next number. Type the invoice number." A suggestion
+  made for the year before does not stay in the field.
+- An answer that arrives late is not used: not over a number typed meanwhile,
+  not for a year the form has left, not in a form that was discarded.
+- A server without migration 48 refuses the parameter (PostgREST `PGRST202`);
+  the app then asks once more without it and gets that server's number, which
+  is counted across all years as before.
+- An answer that is not a number is treated as "could not get the next
+  number"; it used to be shown as 1.
 
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 

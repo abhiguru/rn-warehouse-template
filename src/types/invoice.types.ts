@@ -18,6 +18,8 @@ export interface InvoiceHeaderData {
   inv_date: string; // ISO date string
   inv_fin_year: string; // e.g., '2025-26'
   inv_no: number;
+  /** The number was typed by the user (client only, never sent). A typed number is never replaced by the server's suggestion. */
+  inv_no_typed?: boolean;
   customer_id: string;
   customer_name: string;
   gr_id: string;

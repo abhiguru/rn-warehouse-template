@@ -61,6 +61,8 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { calculateFinancialYear } from '@/utils/invoiceCalculations';
+
 /** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
@@ -163,6 +165,37 @@ export function useInvoiceForm({
   const hasInitialized = useRef(false);
   const hasGeneratedInvNo = useRef(false);
   const isLoadingData = useRef(false);
+  // Counts the requests for the next invoice number; an answer is used only while its request is the latest.
+  const nextNumberRequest = useRef(0);
+
+  /**
+   * Ask the server for the next invoice number of a financial year and put it
+   * in the form. Numbers are counted per financial year, so this runs when a
+   * new invoice opens and again when its date moves to another financial year.
+   *
+   * The answer is dropped when it is no longer wanted: a later request has
+   * taken its place, the user typed a number meanwhile, or the form was reset.
+   * When no number comes back the field is emptied, so that a number suggested
+   * for another year does not stay, and the form asks for one to be typed.
+   */
+  const requestNextNumber = useCallback(async (finYear: string) => {
+    const request = ++nextNumberRequest.current;
+    try {
+      const result = await getNextInvoiceNumber(finYear);
+      if (request !== nextNumberRequest.current) return;
+      if (result.success && result.data) {
+        setNextNumberFailed(false);
+        dispatch(updateHeader({ inv_no: result.data.next_invoice_number, inv_no_typed: false }));
+      } else {
+        setNextNumberFailed(true);
+        dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
+      }
+    } catch (error) {
+      if (request !== nextNumberRequest.current) return;
+      console.error('[useInvoiceForm] Failed to generate invoice number:', error);
+      showAlert(t('invoice.form.numberFailedTitle'), t('common.checkConnection'));
+    }
+  }, [dispatch]);
 
   /**
    * Initialize form for create mode
@@ -174,22 +207,9 @@ export function useInvoiceForm({
     // Generate invoice number
     if (!header.inv_no && !hasGeneratedInvNo.current) {
       hasGeneratedInvNo.current = true;
-      try {
-        const result = await getNextInvoiceNumber(header.inv_fin_year);
-        if (result.success && result.data) {
-          dispatch(updateHeader({
-            inv_no: result.data.next_invoice_number,
-            inv_fin_year: result.data.financial_year,
-          }));
-        } else {
-          setNextNumberFailed(true);
-        }
-      } catch (error) {
-        console.error('[useInvoiceForm] Failed to generate invoice number:', error);
-        showAlert(t('invoice.form.numberFailedTitle'), t('common.checkConnection'));
-      }
+      await requestNextNumber(header.inv_fin_year);
     }
-  }, [isCreateMode, header.inv_no, header.inv_fin_year, dispatch]);
+  }, [isCreateMode, header.inv_no, header.inv_fin_year, requestNextNumber]);
 
   /**
    * Load existing invoice data for edit mode
@@ -263,19 +283,34 @@ export function useInvoiceForm({
   }, []);
 
   // Header actions
-  const updateHeaderField = useCallback((field: keyof InvoiceHeaderData, value: unknown) => {
-    dispatch(updateHeader({ [field]: value }));
-    dispatch(clearValidationError(field));
-    clearLocalErrors([field]);
-  }, [dispatch, clearLocalErrors]);
-
   const updateHeaderFields = useCallback((updates: Partial<InvoiceHeaderData>) => {
-    dispatch(updateHeader(updates));
+    const changes: Partial<InvoiceHeaderData> = { ...updates };
+    if ('inv_no' in changes) {
+      // A number typed into the field is the user's own and is never replaced
+      // by a suggestion. An emptied field holds no number to keep.
+      changes.inv_no_typed = Number(changes.inv_no) > 0;
+      nextNumberRequest.current += 1;
+    }
+    dispatch(updateHeader(changes));
     Object.keys(updates).forEach((field) => {
       dispatch(clearValidationError(field));
     });
     clearLocalErrors(Object.keys(updates));
-  }, [dispatch, clearLocalErrors]);
+
+    // A new invoice whose date moved to another financial year: the suggested
+    // number belonged to the year before, so the next one of this year is asked for.
+    if (isCreateMode && changes.inv_date) {
+      const finYear = calculateFinancialYear(changes.inv_date);
+      const typed = 'inv_no' in changes ? changes.inv_no_typed : header.inv_no_typed;
+      if (finYear !== header.inv_fin_year && !typed) {
+        void requestNextNumber(finYear);
+      }
+    }
+  }, [dispatch, clearLocalErrors, isCreateMode, header.inv_fin_year, header.inv_no_typed, requestNextNumber]);
+
+  const updateHeaderField = useCallback((field: keyof InvoiceHeaderData, value: unknown) => {
+    updateHeaderFields({ [field]: value });
+  }, [updateHeaderFields]);
 
   const updateDiscountAmount = useCallback((discount: number) => {
     dispatch(updateDiscount(discount));
@@ -474,6 +509,9 @@ export function useInvoiceForm({
     hasInitialized.current = false;
     hasGeneratedInvNo.current = false;
     isLoadingData.current = false;
+    // An answer still on its way belongs to the form that is being thrown away.
+    nextNumberRequest.current += 1;
+    setNextNumberFailed(false);
     setLocalValidationErrors({});
     dispatch(resetForm());
   }, [dispatch]);

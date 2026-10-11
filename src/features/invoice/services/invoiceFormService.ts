@@ -85,25 +85,54 @@ function invoiceSaveMessage(text: unknown, fallback: string): string {
   }
   return serverText(text, fallback);
 }
+/** PostgREST found no function that takes the parameters sent (PGRST202). */
+const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
+  error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
+
+/** The calendar year a financial year starts in ("2026-27" -> 2026), as `invoice.inv_fin_year` stores it. */
+const financialYearStart = (finYear: string): number | null => {
+  const match = /^(\d{4})(?:-\d{2,4})?$/.exec(String(finYear ?? '').trim());
+  return match ? Number(match[1]) : null;
+};
+
 /**
- * Get the next available invoice number
- * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
- * Parses the number part for backward compatibility with existing type system
+ * The next free invoice number of a financial year.
+ *
+ * Numbers are counted per financial year (backend migration 48):
+ * `get_next_invoice_number(p_fin_year)` answers with the highest number of that
+ * year plus 1 as plain digits ("55"), or refuses with "No invoice number is
+ * left in financial year <year>". `finYear` is the form's financial year
+ * ("2026-27"), which follows the invoice date.
+ *
+ * A server without migration 48 has the function without the parameter and
+ * refuses the call before running anything (PostgREST `PGRST202`). The
+ * question is then asked once more without the parameter; that server counts
+ * across all years and answers with a prefixed number ("I0000554").
+ *
+ * `success: false` when no number could be read: the form then asks for the
+ * number to be typed.
  */
 export const getNextInvoiceNumber = async (
   finYear: string
 ): Promise<NextInvoiceNumberResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
+    const startYear = financialYearStart(finYear);
 
-    const { data, error } = await authenticatedClient.rpc('get_next_invoice_number');
+    let { data, error } =
+      startYear === null
+        ? await authenticatedClient.rpc('get_next_invoice_number')
+        : await authenticatedClient.rpc('get_next_invoice_number', { p_fin_year: startYear });
+    if (error && startYear !== null && isUnknownFunctionSignature(error)) {
+      ({ data, error } = await authenticatedClient.rpc('get_next_invoice_number'));
+    }
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
-    if (!data) {
+    if (data === null || data === undefined || data === '') {
       return {
         success: true,
         data: {
@@ -113,10 +142,12 @@ export const getNextInvoiceNumber = async (
       };
     }
 
-    // RPC returns formatted string like "I0000554"
-    // Extract the numeric part for backward compatibility
-    const match = data.match(/^[A-Z]*(\d+)$/);
-    const invoiceNumber = match ? parseInt(match[1], 10) : 1;
+    // Plain digits, or a prefixed number from a server before migration 48.
+    const match = /^[A-Z]*(\d+)$/.exec(String(data).trim());
+    const invoiceNumber = match ? parseInt(match[1], 10) : NaN;
+    if (!Number.isSafeInteger(invoiceNumber) || invoiceNumber < 1) {
+      throw new Error(t('invoice.service.nextNumberFailed'));
+    }
 
     return {
       success: true,
@@ -128,7 +159,6 @@ export const getNextInvoiceNumber = async (
   } catch (error: any) {
     // Handled: the form then asks for the number to be typed.
     invoiceFormLogger.warn('Error in getNextInvoiceNumber:', errorForLog(error));
-    // Return 1 as default for first invoice of the year
     return {
       success: false,
       data: {
