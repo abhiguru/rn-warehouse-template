@@ -9,6 +9,8 @@ import { act, create } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import invoiceFormReducer, { loadInvoiceEditData, loadInvoiceFormData, updateHeader } from '@/store/slices/invoiceFormSlice';
 import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
+import { router } from 'expo-router';
+import { showAlert } from '@/utils/alert';
 import { useInvoiceForm, type InvoiceFormMode, type UseInvoiceFormReturn } from '../useInvoiceForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
@@ -65,6 +67,8 @@ async function mount(mode: InvoiceFormMode = 'create', prepare?: (store: ReturnT
     header: () => store.getState().invoiceForm.header,
     pickDate: (date: string) => act(async () => { form().updateHeaderField('inv_date', date); }),
     typeNumber: (number: number) => act(async () => { form().updateHeaderField('inv_no', number); }),
+    /** The invoice number field is left (it loses the focus). */
+    leaveNumberField: () => act(async () => { form().suggestNumberIfEmpty(); }),
     unmount: () => act(async () => { tree.unmount(); }),
   };
 }
@@ -80,6 +84,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
+  // An answer queued by one test and never asked for must not be the first answer of the next.
+  nextNumber.mockReset();
   nextNumber.mockImplementation(async (finYear: string) => answer(SERVER[finYear], finYear));
 });
 afterEach(() => jest.restoreAllMocks());
@@ -243,7 +249,230 @@ describe('the suggested number of a new invoice', () => {
   });
 });
 
+// While the number of another year is on its way, the number of the year
+// before must not sit in the field as if it were this year's: it is editable,
+// passes validation and could be saved.
+describe('while the next number is on its way', () => {
+  it('the form says so from the moment it opens until the answer is there', async () => {
+    const first = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(first.promise as never);
+    const { header, form, unmount } = await mount();
+
+    expect(form().isGettingNextNumber).toBe(true);
+    expect(header().inv_no).toBe(0);
+
+    await act(async () => { first.resolve(answer(55, '2026-27')); });
+    expect(form().isGettingNextNumber).toBe(false);
+    expect(header().inv_no).toBe(55);
+    await unmount();
+  });
+
+  it('the suggestion of the year before leaves the field at once when the date moves to another year', async () => {
+    const { header, form, pickDate, unmount } = await mount();
+    expect(header().inv_no).toBe(55);
+    const forLastYear = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(forLastYear.promise as never);
+
+    await pickDate('2026-03-31');
+
+    // 55 was the next number of 2026-27; the form is in 2025-26 now.
+    expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 0, inv_no_typed: false });
+    expect(form().isGettingNextNumber).toBe(true);
+    expect(form().nextNumberFailed).toBe(false);
+
+    await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
+    expect(header().inv_no).toBe(1210);
+    expect(form().isGettingNextNumber).toBe(false);
+    await unmount();
+  });
+
+  it('Next is held: the form does not go on, and shows no message, until the answer is there', async () => {
+    const { form, pickDate, unmount } = await mount();
+    const forLastYear = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(forLastYear.promise as never);
+    await pickDate('2026-03-31');
+
+    let went = true;
+    await act(async () => { went = await form().navigateToStep(2); });
+
+    expect(went).toBe(false);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+
+    // With the answer the form is checked as usual (here it still lacks a GRN, and says so).
+    await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
+    await act(async () => { went = await form().navigateToStep(2); });
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('a number typed meanwhile ends the wait: the typed number stays and Next is no longer held', async () => {
+    const { header, form, pickDate, typeNumber, unmount } = await mount();
+    const forLastYear = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(forLastYear.promise as never);
+    await pickDate('2026-03-31');
+
+    await typeNumber(7301);
+
+    expect(form().isGettingNextNumber).toBe(false);
+    await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
+    expect(header().inv_no).toBe(7301);
+    await unmount();
+  });
+
+  it('ends without a number when the server gives none, or cannot be reached', async () => {
+    const { header, form, pickDate, unmount } = await mount();
+    nextNumber.mockResolvedValueOnce(refusal('2025-26'));
+    await pickDate('2026-03-31');
+    expect(form().isGettingNextNumber).toBe(false);
+    expect(form().nextNumberFailed).toBe(true);
+    expect(header().inv_no).toBe(0);
+
+    nextNumber.mockRejectedValueOnce(new Error('Network request failed'));
+    await pickDate('2026-04-01');
+    expect(form().isGettingNextNumber).toBe(false);
+    expect(form().nextNumberFailed).toBe(true);
+    expect(header().inv_no).toBe(0);
+    await unmount();
+  });
+
+  it('is over when the form is reset', async () => {
+    const first = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(first.promise as never);
+    const { header, form, unmount } = await mount();
+    expect(form().isGettingNextNumber).toBe(true);
+
+    await act(async () => { form().resetFormState(); });
+    expect(form().isGettingNextNumber).toBe(false);
+
+    await act(async () => { first.resolve(answer(55, '2026-27')); });
+    expect(form().isGettingNextNumber).toBe(false);
+    expect(header().inv_no).toBe(0);
+    await unmount();
+  });
+
+  it('Next on an emptied field asks for the number first instead of complaining about it', async () => {
+    const { header, form, typeNumber, unmount } = await mount();
+    await typeNumber(7301);
+    await typeNumber(0);
+
+    let went = true;
+    await act(async () => { went = await form().navigateToStep(2); });
+
+    expect(went).toBe(false);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(nextNumber.mock.calls).toEqual([['2026-27'], ['2026-27']]);
+    expect(header().inv_no).toBe(55);
+    await unmount();
+  });
+});
+
+// An emptied field holds no number of the user's. Once the field is left
+// empty, the suggestion of the form's financial year is asked for again; while
+// the user is still in the field nothing is put into it under their fingers.
+describe('an emptied invoice number field', () => {
+  it('gets the suggestion of its financial year again when it is left empty', async () => {
+    const { header, typeNumber, leaveNumberField, unmount } = await mount();
+    await typeNumber(7301);
+    await typeNumber(0);
+    expect(nextNumber).toHaveBeenCalledTimes(1);
+    expect(header().inv_no).toBe(0);
+
+    await leaveNumberField();
+
+    expect(nextNumber.mock.calls).toEqual([['2026-27'], ['2026-27']]);
+    expect(header()).toMatchObject({ inv_no: 55, inv_no_typed: false });
+    await unmount();
+  });
+
+  it('asks for the year the form is in now', async () => {
+    const { header, pickDate, typeNumber, leaveNumberField, unmount } = await mount();
+    await typeNumber(7301);
+    await pickDate('2026-03-31');
+    await typeNumber(0);
+
+    await leaveNumberField();
+
+    expect(nextNumber.mock.calls).toEqual([['2026-27'], ['2025-26']]);
+    expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 1210 });
+    await unmount();
+  });
+
+  it('is not filled while the user is still in it: an answer on its way is dropped, and asked for again on leaving', async () => {
+    const { header, form, pickDate, typeNumber, leaveNumberField, unmount } = await mount();
+    const forLastYear = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(forLastYear.promise as never);
+    await pickDate('2026-03-31');
+
+    // The user types a number and deletes it again while the answer is on its way.
+    await typeNumber(7);
+    await typeNumber(0);
+    await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
+    expect(header().inv_no).toBe(0);
+    expect(form().isGettingNextNumber).toBe(false);
+
+    await leaveNumberField();
+    expect(header().inv_no).toBe(1210);
+    await unmount();
+  });
+
+  it('asks nothing when the field holds a number, typed or suggested', async () => {
+    const { typeNumber, leaveNumberField, unmount } = await mount();
+
+    await leaveNumberField();
+    await typeNumber(7301);
+    await leaveNumberField();
+
+    expect(nextNumber).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('asks once while an answer is on its way', async () => {
+    const first = deferred<ReturnType<typeof answer>>();
+    nextNumber.mockReturnValueOnce(first.promise as never);
+    const { leaveNumberField, unmount } = await mount();
+
+    await leaveNumberField();
+    await leaveNumberField();
+
+    expect(nextNumber).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('asks nothing after the server could not give a number: the form asks for a typed one', async () => {
+    nextNumber.mockResolvedValueOnce(refusal('2026-27'));
+    const { form, leaveNumberField, unmount } = await mount();
+    expect(form().nextNumberFailed).toBe(true);
+
+    await leaveNumberField();
+
+    expect(nextNumber).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+});
+
 describe('an invoice that is being edited', () => {
+  it('is never given a suggestion when its number field is left empty', async () => {
+    const { header, typeNumber, leaveNumberField, unmount } = await mount('edit', (store) => {
+      store.dispatch(loadInvoiceEditData({
+        invoiceId: INVOICE,
+        grId: 'gr1',
+        header: {
+          inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 42, customer_id: 'c1', customer_name: 'Example Traders',
+          gr_id: 'gr1', gr_no: 'A0010', one_time_charge: false, discount: 0, labour: 0, tax_amount: 0, total: 500,
+        },
+        items: [],
+      }));
+    });
+    await typeNumber(0);
+
+    await leaveNumberField();
+
+    expect(nextNumber).not.toHaveBeenCalled();
+    expect(header().inv_no).toBe(0);
+    await unmount();
+  });
+
   it('keeps its own number whatever the date becomes', async () => {
     const { header, pickDate, unmount } = await mount('edit', (store) => {
       store.dispatch(loadInvoiceEditData({

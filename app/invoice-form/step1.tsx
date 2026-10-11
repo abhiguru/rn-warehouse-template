@@ -46,9 +46,11 @@ export default function InvoiceFormStep1() {
     isLoading,
     isLoadingItems,
     nextNumberFailed,
+    isGettingNextNumber,
     validationErrors,
     updateHeaderField,
     updateHeaderFields,
+    suggestNumberIfEmpty,
     loadGRNData,
     clearFieldValidationError,
     navigateToStep,
@@ -105,6 +107,9 @@ export default function InvoiceFormStep1() {
     await loadGRNData(grn.id);
     clearFieldValidationError('gr_id');
   };
+
+  // The next invoice number is on its way (a new form, or the date moved to another financial year).
+  const isGettingNumber = isLoading || isGettingNextNumber;
 
   const handleInvoiceNumberChange = (text: string) => {
     const numValue = parseInt(normalizeDigits(text));
@@ -241,14 +246,17 @@ export default function InvoiceFormStep1() {
             <TextInput
               style={[styles.fieldValue, styles.numeric]}
               {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}
-              placeholder={isLoading ? tr('invoice.form.generating') : tr('common.invoiceNumber')}
+              placeholder={isGettingNumber ? tr('invoice.form.generating') : tr('common.invoiceNumber')}
               placeholderTextColor={t.text.placeholder}
               keyboardType="number-pad"
               returnKeyType="done"
+              // Stays editable while the number is asked for: a typed number is kept and ends the wait.
               editable={!isLoading}
+              // An emptied field that is left gets the suggestion again.
+              onBlur={() => { suggestNumberIfEmpty(); }}
               accessibilityLabel={tr('common.invoiceNumber')}
             />
-            {isLoading && (
+            {isGettingNumber && (
               <View style={styles.fieldSpinner}>
                 <ActivityIndicator size="small" color={t.brand.tint} />
               </View>
@@ -256,7 +264,7 @@ export default function InvoiceFormStep1() {
           </View>
           {renderError(invNoError)}
           <Text style={styles.helperText}>
-            {isLoading
+            {isGettingNumber
               ? tr('invoice.form.gettingNumber')
               : nextNumberFailed
                 ? tr('invoice.form.numberUnavailable')
@@ -342,11 +350,19 @@ export default function InvoiceFormStep1() {
 
       {/* Bottom action bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        {/* Waits for the invoice number: Next would otherwise find the field empty. */}
         <Pressable
-          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          style={({ pressed }) => [
+            styles.button,
+            styles.primaryButton,
+            pressed && styles.primaryButtonPressed,
+            isGettingNextNumber && styles.buttonBusy,
+          ]}
           onPress={handleNext}
+          disabled={isGettingNextNumber}
           accessibilityRole="button"
           accessibilityLabel={tr('invoice.form.nextItems')}
+          accessibilityState={{ disabled: isGettingNextNumber, busy: isGettingNextNumber }}
         >
           <Text style={styles.primaryButtonText}>{tr('invoice.form.nextItems')}</Text>
           <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />

@@ -89,6 +89,8 @@ export interface UseInvoiceFormReturn {
   selectedGrId: string | null;
   isLoading: boolean;
   nextNumberFailed: boolean;
+  /** The next invoice number is being asked for: the field is empty and the form does not go on. */
+  isGettingNextNumber: boolean;
   isSaving: boolean;
   isLoadingItems: boolean;
   validationErrors: Record<string, string>;
@@ -103,6 +105,8 @@ export interface UseInvoiceFormReturn {
   updateHeaderField: (field: keyof InvoiceHeaderData, value: unknown) => void;
   updateHeaderFields: (updates: Partial<InvoiceHeaderData>) => void;
   updateDiscountAmount: (discount: number) => void;
+  /** Asks for the suggested number again when the field of a new invoice is empty. True when it asked. */
+  suggestNumberIfEmpty: () => boolean;
 
   // Item actions
   setFormItems: (items: InvoiceItemData[]) => void;
@@ -162,6 +166,9 @@ export function useInvoiceForm({
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
   // True when the server could not suggest the next invoice number, so the form asks for it to be typed.
   const [nextNumberFailed, setNextNumberFailed] = useState(false);
+  // True while the next invoice number is being asked for. The field is empty for
+  // that time and the form does not go on to the next step.
+  const [isGettingNextNumber, setIsGettingNextNumber] = useState(false);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -182,18 +189,34 @@ export function useInvoiceForm({
    */
   const requestNextNumber = useCallback(async (finYear: string) => {
     const request = ++nextNumberRequest.current;
+    setIsGettingNextNumber(true);
+    setNextNumberFailed(false);
+    const noNumber = () => {
+      setNextNumberFailed(true);
+      dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
+    };
     try {
       const result = await getNextInvoiceNumber(finYear);
+      // Whatever took this request's place has also ended its wait.
       if (request !== nextNumberRequest.current) return;
+      setIsGettingNextNumber(false);
       if (result.success && result.data) {
-        setNextNumberFailed(false);
         dispatch(updateHeader({ inv_no: result.data.next_invoice_number, inv_no_typed: false }));
+        // A message about a missing number (Next pressed too early) no longer applies.
+        dispatch(clearValidationError('inv_no'));
+        setLocalValidationErrors((prev) => {
+          if (!('inv_no' in prev)) return prev;
+          const next = { ...prev };
+          delete next.inv_no;
+          return next;
+        });
       } else {
-        setNextNumberFailed(true);
-        dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
+        noNumber();
       }
     } catch (error) {
       if (request !== nextNumberRequest.current) return;
+      setIsGettingNextNumber(false);
+      noNumber();
       console.error('[useInvoiceForm] Failed to generate invoice number:', error);
       showAlert(t('invoice.form.numberFailedTitle'), t('common.checkConnection'));
     }
@@ -291,7 +314,9 @@ export function useInvoiceForm({
       // A number typed into the field is the user's own and is never replaced
       // by a suggestion. An emptied field holds no number to keep.
       changes.inv_no_typed = Number(changes.inv_no) > 0;
+      // An answer still on its way is not put into a field the user is typing in.
       nextNumberRequest.current += 1;
+      setIsGettingNextNumber(false);
     }
     dispatch(updateHeader(changes));
     Object.keys(updates).forEach((field) => {
@@ -305,10 +330,29 @@ export function useInvoiceForm({
       const finYear = calculateFinancialYear(changes.inv_date);
       const typed = 'inv_no' in changes ? changes.inv_no_typed : header.inv_no_typed;
       if (finYear !== header.inv_fin_year && !typed) {
+        // The number in the field was the next one of the year before. It leaves
+        // the field now, not when the answer arrives: until then it could be
+        // taken for this year's number, edited and saved.
+        dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
         void requestNextNumber(finYear);
       }
     }
   }, [dispatch, clearLocalErrors, isCreateMode, header.inv_fin_year, header.inv_no_typed, requestNextNumber]);
+
+  /**
+   * A new invoice whose number field is empty gets the suggestion of its
+   * financial year again. Called when the field is left, and before the form
+   * goes on to the next step; never while the user is in the field, where a
+   * number arriving between two key presses would be typed into ("55" + "7").
+   * Nothing is asked after a lookup that failed: the form then asks for a
+   * typed number. Returns true when a request was started.
+   */
+  const suggestNumberIfEmpty = useCallback((): boolean => {
+    if (!isCreateMode || isGettingNextNumber || nextNumberFailed) return false;
+    if (Number(header.inv_no) > 0) return false;
+    void requestNextNumber(header.inv_fin_year);
+    return true;
+  }, [isCreateMode, isGettingNextNumber, nextNumberFailed, header.inv_no, header.inv_fin_year, requestNextNumber]);
 
   const updateHeaderField = useCallback((field: keyof InvoiceHeaderData, value: unknown) => {
     updateHeaderFields({ [field]: value });
@@ -417,6 +461,9 @@ export function useInvoiceForm({
    */
   const navigateToStep = useCallback(async (step: number): Promise<boolean> => {
     const currentStep = invoiceFormState.currentStep;
+    // Going on waits for the invoice number: while it is being asked for, and
+    // when the field was emptied (it is then asked for first).
+    if (step > currentStep && (isGettingNextNumber || suggestNumberIfEmpty())) return false;
     const canNavigate = await canNavigateToStep(step, currentStep);
 
     if (!canNavigate) return false;
@@ -442,7 +489,7 @@ export function useInvoiceForm({
     }
 
     return true;
-  }, [invoiceFormState.currentStep, canNavigateToStep, isCreateMode, invoiceId, dispatch]);
+  }, [invoiceFormState.currentStep, canNavigateToStep, isCreateMode, invoiceId, dispatch, isGettingNextNumber, suggestNumberIfEmpty]);
 
   /**
    * Submit the form (create or update)
@@ -513,6 +560,7 @@ export function useInvoiceForm({
     isLoadingData.current = false;
     // An answer still on its way belongs to the form that is being thrown away.
     nextNumberRequest.current += 1;
+    setIsGettingNextNumber(false);
     setNextNumberFailed(false);
     setLocalValidationErrors({});
     dispatch(resetForm());
@@ -543,6 +591,7 @@ export function useInvoiceForm({
     selectedGrId,
     isLoading: invoiceFormState.is_loading,
     nextNumberFailed,
+    isGettingNextNumber,
     isSaving: invoiceFormState.is_saving,
     isLoadingItems: invoiceFormState.is_loading_items,
     validationErrors,
@@ -557,6 +606,7 @@ export function useInvoiceForm({
     updateHeaderField,
     updateHeaderFields,
     updateDiscountAmount,
+    suggestNumberIfEmpty,
 
     // Item actions
     setFormItems,

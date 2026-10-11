@@ -39,7 +39,19 @@ Invoice number per financial year (decision 2) — backend migration 48
   (2026 for April 2026 to March 2027).
 - When the invoice date is moved into another financial year the next number of
   that year is asked for and replaces the suggestion. A number the user typed
-  is never replaced; after the field is emptied the app suggests again.
+  is never replaced.
+- While the number is being asked for (a new form, or after the date moved to
+  another year) the field is empty with a spinner, the hint reads "Getting the
+  next invoice number…" and "Next" waits. The suggestion of the year before
+  leaves the field at once; it used to stay there, editable, until the answer
+  came, and could be saved as a number of the new year. The field can still be
+  typed in: a typed number is kept and ends the wait.
+- An emptied field gets the suggestion of the form's financial year again when
+  the field is left, or when "Next" is pressed with the field empty (the
+  number is asked for first, instead of a message about a missing number).
+  Nothing is put into the field while the user is in it: an answer arriving
+  between two key presses would be typed into. After a lookup that failed the
+  form does not ask again by itself; it asks for a typed number.
 - When the server has no number for that year ("No invoice number is left in
   financial year ...") or cannot be reached, the field is emptied and the hint
   reads "Couldn't get the next number. Type the invoice number." A suggestion
