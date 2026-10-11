@@ -232,6 +232,8 @@ export const invoice = {
     saveTitle: 'Save invoice {{number}}?',
     updateTitle: 'Update invoice {{number}}?',
     confirmMessage: '{{customer}}\nEstimated total {{total}}\nThe server works out the final total when the invoice is saved.',
+    // Added to the question before saving, for every role, when lines have a charge of 0.
+    zeroChargeCount: { one: '{{count}} item has a charge of 0.', other: '{{count}} items have a charge of 0.' },
     noItemsMessage: 'Go back to the details step and select a GRN that has dispatched items.',
     noItemsShortMessage: 'Go back and select a GRN that has dispatched items.',
     selectGrnTitle: 'Select a GRN',

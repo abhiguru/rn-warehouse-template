@@ -64,6 +64,13 @@ Zero charge with a reason (decision 3) — backend migration 48
   reads "Reason for zero charge (required)" with a red border, and Save answers
   "Enter a reason for the zero charge". Administrators and supervisors may
   leave it empty. Without such a line the field is not shown.
+- Before saving, every role is told when something is free. The question
+  "Save invoice N?" / "Update invoice N?" ends with one more line while lines
+  have a charge of 0: "1 item has a charge of 0." or "3 items have a charge of
+  0." ("૧ આઇટમનો ભાડાનો દર ૦ છે."). An item without a price in the price
+  list arrives with a charge of 0 too, and an administrator or supervisor, who
+  needs no reason, would otherwise save it as free without a word about it.
+  Nothing new is refused: the reason stays optional for them.
 - The reason goes to the server as `zero_charge_reason` in the header of
   `save_invoice` and `update_invoice`, only when a line has a charge of 0
   (trimmed; `null` when nothing was written). Without such a line the key is

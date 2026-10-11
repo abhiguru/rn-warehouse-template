@@ -255,6 +255,48 @@ describe.each(['admin', 'supervisor'])('%s updating an invoice that has a zero-c
   });
 });
 
+describe.each(['staff', 'admin', 'supervisor'])('the question before the update, for %s', (role) => {
+  const question = async (tree: ReactTestRenderer) => {
+    await pressUpdate(tree);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
+    expect(title).toBe('Update invoice 42?');
+    expect(buttons!.map((button) => button.text)).toEqual(['Cancel', 'Update invoice']);
+    return message as string;
+  };
+
+  it('says that 1 item has a charge of 0', async () => {
+    mockRole = role;
+    loadInvoice('Sample lot');
+    const tree = await render();
+
+    const message = await question(tree);
+
+    expect(message.split('\n').slice(-2)).toEqual(['', '1 item has a charge of 0.']);
+    expect(message.startsWith('Example Traders\nEstimated total ')).toBe(true);
+    expect(rpc).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('counts the lines, and says nothing once every line has a charge', async () => {
+    mockRole = role;
+    loadInvoice('Sample lot');
+    await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 0 } })); });
+    let tree = await render();
+    expect((await question(tree)).split('\n').at(-1)).toBe('2 items have a charge of 0.');
+    await act(async () => { tree.unmount(); });
+
+    jest.mocked(showAlert).mockClear();
+    await act(async () => {
+      mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 5 } }));
+      mockStore.dispatch(updateEditedItem({ temp_id: `edit_${FREE}_0`, values: { charge: 3 } }));
+    });
+    tree = await render();
+    expect(await question(tree)).not.toContain('charge of 0');
+    await act(async () => { tree.unmount(); });
+  });
+});
+
 // The items step before it: a group rate is one field. Changing the group tax
 // used to give the average charge of the group (2.5) to both lines, so no line
 // was free any more and the update went out without the reason.

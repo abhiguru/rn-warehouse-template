@@ -235,6 +235,8 @@ export const invoice: Translation<typeof source> = {
     saveTitle: 'ઇન્વૉઇસ {{number}} સાચવવું છે?',
     updateTitle: 'ઇન્વૉઇસ {{number}} અપડેટ કરવું છે?',
     confirmMessage: '{{customer}}\nઅંદાજિત કુલ {{total}}\nઇન્વૉઇસ સચવાય ત્યારે છેલ્લી રકમ સર્વર ગણે છે.',
+    // Added to the question before saving, for every role, when lines have a charge of 0.
+    zeroChargeCount: { one: '{{count}} આઇટમનો ભાડાનો દર ૦ છે.', other: '{{count}} આઇટમનો ભાડાનો દર ૦ છે.' },
     noItemsMessage: 'વિગતોના પગલા પર પાછા જાઓ અને જેમાંથી માલની જાવક થઈ હોય એવી આવક પાવતી પસંદ કરો.',
     noItemsShortMessage: 'પાછા જાઓ અને જેમાંથી માલની જાવક થઈ હોય એવી આવક પાવતી પસંદ કરો.',
     selectGrnTitle: 'આવક પાવતી પસંદ કરો',

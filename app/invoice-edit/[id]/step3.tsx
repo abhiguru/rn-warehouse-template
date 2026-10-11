@@ -35,7 +35,7 @@ import {
 } from '@/features/invoice/services/invoiceFormService';
 import { SavedInvoiceData } from '@/types/invoice.types';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { discountNeedsReason, formatInvoiceAmount, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
+import { discountNeedsReason, formatInvoiceAmount, invoiceConfirmMessage, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
   STEP_NUMBERS,
@@ -132,7 +132,7 @@ export default function InvoiceEditStep3() {
     // Confirm submission
     showAlert(
       tr('invoice.review.updateTitle', { number: formatIdentifier(header.inv_no) }),
-      tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) }),
+      invoiceConfirmMessage(header, items),
       [
         { text: tr('common.cancel'), style: 'cancel' },
         { text: tr('invoice.review.updateInvoice'), style: 'default', onPress: submitInvoiceUpdate },

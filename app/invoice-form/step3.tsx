@@ -22,7 +22,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { discountNeedsReason, formatInvoiceAmount, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
+import { discountNeedsReason, formatInvoiceAmount, invoiceConfirmMessage, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
@@ -469,7 +469,7 @@ export default function InvoiceFormStep3() {
       <ConfirmDialog
         visible={showConfirmSubmitDialog}
         title={tr('invoice.review.saveTitle', { number: formatIdentifier(header.inv_no) })}
-        message={tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) })}
+        message={invoiceConfirmMessage(header, items)}
         confirmText={tr('invoice.review.saveInvoice')}
         cancelText={tr('common.cancel')}
         onConfirm={() => {

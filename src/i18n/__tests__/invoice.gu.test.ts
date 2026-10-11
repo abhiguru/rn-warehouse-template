@@ -15,6 +15,13 @@ describe('invoice texts in Gujarati', () => {
     expect(t('invoice.table.showDispatches', { count: 3 }, 'gu')).toBe('૩ જાવક બતાવો');
   });
 
+  it('says before saving how many items have a charge of 0', () => {
+    expect(t('invoice.review.zeroChargeCount', { count: 1 })).toBe('1 item has a charge of 0.');
+    expect(t('invoice.review.zeroChargeCount', { count: 12 })).toBe('12 items have a charge of 0.');
+    expect(t('invoice.review.zeroChargeCount', { count: 1 }, 'gu')).toBe('૧ આઇટમનો ભાડાનો દર ૦ છે.');
+    expect(t('invoice.review.zeroChargeCount', { count: 12 }, 'gu')).toBe('૧૨ આઇટમનો ભાડાનો દર ૦ છે.');
+  });
+
   it('keeps the English plural forms as they were', () => {
     expect(t('invoice.items.zeroDuration', { count: 1 })).toBe(
       '1 item has a duration of 0. The duration must be greater than 0.'

@@ -54,6 +54,28 @@ export function zeroChargeNeedsReason(
   return !(header.zero_charge_reason || '').trim();
 }
 
+/**
+ * The text of the question before an invoice is saved or updated: the customer
+ * and the estimated total and, when lines have a charge of 0, how many do.
+ *
+ * The last line is for every role. A line can be free on purpose, or because
+ * its item has no price in the price list (it then arrives with a charge of
+ * 0). Staff are stopped for a reason either way; administrators and
+ * supervisors need none, and without this line would save a free invoice
+ * without having been told.
+ */
+export function invoiceConfirmMessage(
+  header: { customer_name: string; total: number },
+  items: { charge?: number | null }[]
+): string {
+  const message = t('invoice.review.confirmMessage', {
+    customer: header.customer_name,
+    total: formatInvoiceAmount(header.total),
+  });
+  const freeLines = items.filter(isZeroChargeLine).length;
+  return freeLines > 0 ? `${message}\n\n${t('invoice.review.zeroChargeCount', { count: freeLines })}` : message;
+}
+
 export function roundMoney(value: number): number {
   // Compensate only for binary representation noise at a decimal half-cent.
   // PostgreSQL NUMERIC rounds ties away from zero, including surcharges.

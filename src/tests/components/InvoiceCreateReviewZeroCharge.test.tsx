@@ -156,6 +156,54 @@ describe.each(['admin', 'supervisor'])('%s saving a new invoice with a zero-char
   });
 });
 
+// Every role is told before saving that something on the invoice is free. An
+// item without a price in the price list arrives with a charge of 0 as well,
+// and administrators and supervisors, who need no reason, would otherwise save
+// it without a word about it.
+describe.each(['staff', 'admin', 'supervisor'])('the question before a new invoice is saved, for %s', (role) => {
+  const confirm = async () => {
+    mockRole = role;
+    mockReason = { zero_charge_reason: role === 'staff' ? 'Sample lot' : '' };
+    const tree = await render();
+    await pressSave(tree);
+    expect(shown(tree)).toHaveLength(1);
+    expect(shown(tree)[0].props.confirmText).toBe('Save invoice');
+    return { tree, message: shown(tree)[0].props.message as string };
+  };
+
+  it('says that 1 item has a charge of 0, after the customer and the total', async () => {
+    const { tree, message } = await confirm();
+
+    expect(message).toBe(
+      'Example Traders\nEstimated total ₹945.00\nThe server works out the final total when the invoice is saved.\n\n1 item has a charge of 0.'
+    );
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('counts the lines: "3 items have a charge of 0."', async () => {
+    mockItems = [line('a', 0), line('b', 0), line('c', 5), line('d', 0)];
+    const { tree, message } = await confirm();
+
+    expect(message.split('\n').at(-1)).toBe('3 items have a charge of 0.');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('says nothing of it when every line has a charge', async () => {
+    mockItems = [line('a', 4), line('b', 5)];
+    const { tree, message } = await confirm();
+
+    expect(message).toBe('Example Traders\nEstimated total ₹945.00\nThe server works out the final total when the invoice is saved.');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('still offers the reason field, required for staff only', async () => {
+    const { tree } = await confirm();
+
+    expect(typeof summary(tree).props.onZeroChargeReasonChange).toBe('function');
+    await act(async () => { tree.unmount(); });
+  });
+});
+
 describe('an invoice without a zero-charge line', () => {
   it('asks staff for no reason', async () => {
     mockItems = [line('a', 4), line('b', 5)];
