@@ -168,6 +168,12 @@ Android Back on the first step of a create form (decision 7) — no backend chan
   their own question through it (`backOnFirstStep` on the step header), so the
   X and Back cannot drift apart.
 
+Found by the device check of these changes (2026-10-11)
+- A dialog that only informs ("Enter a discount reason", "Enter a reason for the
+  zero charge", "Check the discount" and the like) showed an empty outlined
+  button beside "Close". `ConfirmDialog` drew its cancel button even when the
+  screen passed an empty cancel text. It now shows one button.
+
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 
 No backend change.

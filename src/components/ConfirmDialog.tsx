@@ -184,14 +184,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <Text style={styles.message}>{message}</Text>
 
           <View style={styles.buttonContainer}>
-            <Pressable
-              style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed]}
-              onPress={onCancel}
-              accessibilityRole="button"
-              accessibilityLabel={cancelText}
-            >
-              <Text style={styles.cancelButtonText}>{cancelText}</Text>
-            </Pressable>
+            {/* cancelText="" asks for a one-button dialog; an unlabelled button is not drawn. */}
+            {cancelText ? (
+              <Pressable
+                style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed]}
+                onPress={onCancel}
+                accessibilityRole="button"
+                accessibilityLabel={cancelText}
+              >
+                <Text style={styles.cancelButtonText}>{cancelText}</Text>
+              </Pressable>
+            ) : null}
 
             <Pressable
               style={({ pressed }) => [
