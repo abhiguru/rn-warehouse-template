@@ -4,16 +4,9 @@
  */
 
 import { DispatchHeaderStep } from '@/features/dispatch/screens';
-import { useBackHandler } from '@/hooks/useBackHandler';
 
 export default function DispatchFormStep1() {
-  // I11: Handle Android back button - on step 1, go back to dispatch list
-  useBackHandler({
-    currentStep: 1,
-    totalSteps: 3,
-    stepBasePath: '/dispatch-form/step',
-    exitRoute: '/(tabs)/dispatch',
-  });
-
+  // The Android Back key is handled by the step itself: with something entered
+  // it asks before discarding (useFirstStepBack).
   return <DispatchHeaderStep mode="create" />;
 }

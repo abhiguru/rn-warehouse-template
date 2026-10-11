@@ -35,6 +35,7 @@ import {
 import type { StepConfig } from '@/components/StepIndicator';
 
 import { showAlert } from '@/utils/alert';
+import { useFirstStepBack } from '@/hooks/useFirstStepBack';
 import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 import type { AppEntity, EntityMode } from '@/i18n/entities';
 
@@ -91,6 +92,26 @@ export interface GenericStepIndicatorHeaderProps {
   cancelMessage?: string;
   /** Optional callback when step pill is tapped (for navigation) */
   onStepPress?: (stepNumber: number) => void;
+  /**
+   * The Android Back key on the first step of a create form. With `hasData` it
+   * asks the question of the close button, and "Discard" calls `onCancel` as
+   * the close button's does; without, it leaves for `exitRoute` at once.
+   * Omit on later steps and in edit forms: Back is then left to the screen.
+   */
+  backOnFirstStep?: FirstStepBack;
+}
+
+export interface FirstStepBack {
+  /** Whether the user has entered anything that would be lost. */
+  hasData: boolean;
+  /** Where Back goes when nothing was entered: the list the form was opened from. */
+  exitRoute: string;
+}
+
+/** Listens for the Back key while the header is given `backOnFirstStep`; draws nothing. */
+function FirstStepBackKey({ hasData, exitRoute, askToDiscard }: FirstStepBack & { askToDiscard: () => void }) {
+  useFirstStepBack({ hasData, exitRoute, askToDiscard });
+  return null;
 }
 
 // ============================================================================
@@ -124,6 +145,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   cancelTitle,
   cancelMessage: cancelMessageProp,
   onStepPress,
+  backOnFirstStep,
 }) => {
   const insets = useSafeAreaInsets();
   const t = useTokens();
@@ -293,6 +315,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   return (
     <>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      {backOnFirstStep && <FirstStepBackKey {...backOnFirstStep} askToDiscard={handleCancelPress} />}
       <View style={[styles.container, { paddingTop: insets.top + space.sm }]}>
         <View style={styles.headerRow}>
           {/* Cancel: icon button, then the document being created */}

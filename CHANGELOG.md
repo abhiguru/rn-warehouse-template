@@ -71,6 +71,25 @@ Zero charge with a reason (decision 3) — backend migration 48
   else charged on it). For every other invoice the total must still be more
   than 0.
 
+Android Back on the first step of a create form (decision 7) — no backend change
+- New GRN, new dispatch, new invoice: the Back key on step 1 left the form
+  without a word and kept what was typed out of sight. Once something was
+  entered it now asks before discarding, with the question the X in the header
+  ends in: "Discard this GRN?", "Discard this dispatch?", "Discard this
+  invoice?". "Discard" does what it does after the X (the form is emptied, the
+  list is shown); "Keep editing" stays. With nothing entered Back leaves for
+  the list at once, as before.
+- What counts as entered. GRN: a customer, a sender, a vehicle number, a note,
+  a photo or a line. Dispatch: a customer or a note (the rule its X already
+  used). Invoice: a chosen GRN or a typed invoice number. What the form fills
+  in itself (number, date, supervisor) does not count.
+- Steps 2 and 3 are unchanged: Back goes to the step before. The edit forms
+  are unchanged.
+- One mechanism for the three forms: `useFirstStepBack`
+  (`src/hooks/useFirstStepBack.ts`). The GRN and invoice headers ask their own
+  question through it (`backOnFirstStep` on the step header), so the X and Back
+  cannot drift apart; the dispatch step opens its own dialog.
+
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 
 No backend change.

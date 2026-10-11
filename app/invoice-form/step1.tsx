@@ -22,7 +22,6 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
-import { useBackHandler } from '@/hooks/useBackHandler';
 import { GRNAutocomplete } from '@/features/invoice/components/GRNAutocomplete';
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
@@ -62,13 +61,9 @@ export default function InvoiceFormStep1() {
 
   const [showNoItemsDialog, setShowNoItemsDialog] = useState(false);
 
-  // I11: Handle Android back button - on step 1, go back to invoice list
-  useBackHandler({
-    currentStep: 1,
-    totalSteps: 4,
-    stepBasePath: '/invoice-form/step',
-    exitRoute: '/invoices',
-  });
+  // What the user has put into a new invoice. The suggested number and
+  // today's date are filled in by the form itself and are not counted.
+  const hasEnteredData = !!header.gr_id || items.length > 0 || !!header.inv_no_typed;
 
   // Note: Form initialization (invoice number generation) is handled by useInvoiceForm hook
 
@@ -177,6 +172,8 @@ export default function InvoiceFormStep1() {
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
+        // The Android Back key asks the same question as the X once something was entered.
+        backOnFirstStep={{ hasData: hasEnteredData, exitRoute: '/invoices' }}
         onStepPress={handleStepPress}
         invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
       />

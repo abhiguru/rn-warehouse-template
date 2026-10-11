@@ -20,6 +20,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useFirstStepBack } from '@/hooks/useFirstStepBack';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
     byLanguage,
@@ -281,6 +282,15 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         resetFormState();
         router.replace('/dispatch');
     };
+
+    // New dispatch: the Android Back key asks before discarding once something
+    // was entered, with the dialog below; with nothing entered it leaves for the list.
+    useFirstStepBack({
+        enabled: isCreateMode,
+        hasData: hasUnsavedData(),
+        askToDiscard: () => setShowDiscardDialog(true),
+        exitRoute: '/(tabs)/dispatch',
+    });
 
     // Note: useEffect hooks for initialization, data loading, and dispatch number generation
     // are now handled internally by useDispatchForm hook

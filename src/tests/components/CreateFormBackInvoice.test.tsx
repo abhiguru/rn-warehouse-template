@@ -1,0 +1,193 @@
+/**
+ * New invoice, step 1: the Android Back key asks "Discard this invoice?", the
+ * question of the X in the header, once something was entered, and "Discard"
+ * does what the X's does (owner decision 7 of 2026-10-11). The header is the
+ * real one. Step 2 still goes back one step.
+ */
+import React from 'react';
+import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { router } from 'expo-router';
+import { showAlert } from '@/utils/alert';
+import { installHardwareBack } from '@/tests/helpers/hardwareBack';
+import InvoiceFormStep1 from '../../../app/invoice-form/step1';
+import InvoiceFormStep2 from '../../../app/invoice-form/step2';
+
+const emptyHeader = () => ({
+  // Filled in by the form itself when a new invoice opens: today's date and the suggested number.
+  inv_date: '2026-10-11', inv_fin_year: '2026-27', inv_no: 55, inv_no_typed: false,
+  customer_id: '', customer_name: '', gr_id: '', gr_no: '', one_time_charge: false,
+});
+const mockForm = {
+  header: emptyHeader(),
+  items: [] as unknown[],
+  itemOverrides: {},
+  isLoading: false,
+  isLoadingItems: false,
+  nextNumberFailed: false,
+  validationErrors: {},
+  updateHeaderField: jest.fn(),
+  updateHeaderFields: jest.fn(),
+  updateItemPricing: jest.fn(),
+  applyGroupPricing: jest.fn(),
+  loadGRNData: jest.fn(),
+  clearFieldValidationError: jest.fn(),
+  navigateToStep: jest.fn(),
+  resetFormState: jest.fn(),
+};
+jest.mock('@/hooks/useInvoiceForm', () => ({ useInvoiceForm: () => mockForm }));
+jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ role: 'staff' }) }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+}));
+jest.mock('expo-router', () => {
+  const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismiss: jest.fn(), canGoBack: jest.fn(() => true) };
+  return {
+    router: mockRouter,
+    useRouter: () => mockRouter,
+    useFocusEffect: (callback: () => void | (() => void)) => require('react').useEffect(callback, [callback]),
+  };
+});
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
+jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
+jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
+jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocomplete: () => null }));
+jest.mock('@/features/invoice/components/InvoiceItemsTable', () => ({ InvoiceItemsTable: () => null }));
+jest.mock('@/features/invoice/components/InvoiceItemCard', () => ({ InvoiceItemCard: () => null }));
+jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
+jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
+jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
+
+let back: ReturnType<typeof installHardwareBack>;
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockForm.header = emptyHeader();
+  mockForm.items = [];
+  back = installHardwareBack();
+});
+afterEach(() => back.restore());
+
+async function render(element: React.ReactElement = <InvoiceFormStep1 />) {
+  let tree!: ReactTestRenderer;
+  await act(async () => { tree = create(element); });
+  return tree;
+}
+const pressBack = async () => {
+  let taken = false;
+  await act(async () => { taken = back.press(); });
+  return taken;
+};
+const question = () => {
+  const [title, message, buttons, options] = jest.mocked(showAlert).mock.calls.at(-1)!;
+  return { title, message, buttons: buttons!.map((button) => ({ text: button.text, style: button.style })), options };
+};
+const answer = async (text: string) => {
+  const button = jest.mocked(showAlert).mock.calls.at(-1)![2]!.find((candidate) => candidate.text === text)!;
+  await act(async () => { button.onPress?.(); });
+};
+const chooseGrn = () => {
+  Object.assign(mockForm.header, { gr_id: 'g1', gr_no: 'A0010', customer_id: 'c1', customer_name: 'Example Traders' });
+  mockForm.items = [{ temp_id: 't1', item_id: 'i1', item_name: 'Example Potatoes', package_mark: 'M1', qty: 100, charge: 5, labour_rate: 2, tax: 5, duration: 1 }];
+};
+
+describe('Back on step 1 of a new invoice', () => {
+  it('leaves for the invoice list at once while only the suggested number and today\'s date are in the form', async () => {
+    const tree = await render();
+
+    expect(await pressBack()).toBe(true);
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith('/invoices');
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it.each([
+    ['a GRN was chosen', chooseGrn],
+    ['an invoice number was typed', () => { mockForm.header.inv_no = 7301; mockForm.header.inv_no_typed = true; }],
+  ])('asks "Discard this invoice?" and stays when %s', async (_what, enter) => {
+    enter();
+    const tree = await render();
+
+    expect(await pressBack()).toBe(true);
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(question()).toEqual({
+      title: 'Discard this invoice?',
+      message: 'The details you entered for this invoice will be lost.',
+      buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard', style: 'destructive' }],
+      options: { cancelable: true },
+    });
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('asks exactly what the X asks, and "Discard" does what the X\'s does', async () => {
+    chooseGrn();
+    const tree = await render();
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Cancel Invoice' && typeof node.props.onPress === 'function');
+
+    // The X: its question, then what its "Discard" does.
+    await act(async () => { close.props.onPress(); });
+    const fromX = question();
+    await answer('Discard');
+    const afterX = {
+      reset: mockForm.resetFormState.mock.calls.length,
+      back: jest.mocked(router.back).mock.calls.length,
+      replace: jest.mocked(router.replace).mock.calls,
+    };
+    expect(afterX).toEqual({ reset: 1, back: 1, replace: [] });
+    jest.clearAllMocks();
+
+    // Back: the same question, and the same on "Discard".
+    await pressBack();
+    expect(question()).toEqual(fromX);
+    await answer('Discard');
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    expect(router.back).toHaveBeenCalledTimes(1);
+    expect(router.replace).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('"Keep editing" stays on the form with everything in it', async () => {
+    chooseGrn();
+    const tree = await render();
+    await pressBack();
+
+    await answer('Keep editing');
+
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('listens for Back once', async () => {
+    const tree = await render();
+
+    expect(back.count()).toBe(1);
+    await act(async () => { tree.unmount(); });
+    expect(back.count()).toBe(0);
+  });
+});
+
+describe('Back on step 2 of a new invoice', () => {
+  it('goes to step 1 without a question, also with a GRN chosen', async () => {
+    chooseGrn();
+    const tree = await render(<InvoiceFormStep2 />);
+
+    expect(await pressBack()).toBe(true);
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith('/invoice-form/step1');
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+});

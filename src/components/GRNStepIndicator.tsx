@@ -18,6 +18,8 @@ export interface GRNStepIndicatorProps {
   onCancel: () => void;
   cancelMessage?: string;
   onStepPress?: (stepNumber: number) => void;
+  /** First step of a new GRN: what the Android Back key does (see GenericStepIndicatorHeader). */
+  backOnFirstStep?: GenericStepIndicatorHeaderProps['backOnFirstStep'];
   grnNo?: string;
   isEditMode?: boolean;
 }
@@ -29,6 +31,7 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
   onCancel,
   cancelMessage,
   onStepPress,
+  backOnFirstStep,
   grnNo,
   isEditMode = false,
 }) => {
@@ -50,6 +53,7 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
           : tr('grn.form.discardMessage'))
       }
       onStepPress={onStepPress}
+      backOnFirstStep={backOnFirstStep}
     />
   );
 };
