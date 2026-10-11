@@ -83,6 +83,18 @@ Android Back on the first step of a create form (decision 7) — no backend chan
   a photo or a line. Dispatch: a customer or a note (the rule its X already
   used). Invoice: a chosen GRN or a typed invoice number. What the form fills
   in itself (number, date, supervisor) does not count.
+- An open picker comes first. While a sheet is open on step 1 (sender,
+  customer, supervisor, the GRN picker of an invoice), Back closes the sheet
+  and nothing else: no question, and the form is not left. The form's Back
+  listener used to be taken off and put on again each time the screen drew
+  itself, which put it ahead of a sheet opened in between (React Native asks
+  the listener added last first); Back then left the form, or asked to
+  discard, with the sheet still open. `useBackHandler` now adds one listener
+  when the screen comes into focus and keeps that one until the screen is
+  left, on every step that uses it; what Back does is read when it is pressed.
+  The sheets add theirs when they open (checked for `SearchableBottomSheet`
+  and `CustomerSearchBottomSheet`); the date picker, the alerts and the
+  confirm dialogs are native modals, which take Back themselves.
 - Steps 2 and 3 are unchanged: Back goes to the step before. The edit forms
   are unchanged.
 - One mechanism for the three forms: `useFirstStepBack`

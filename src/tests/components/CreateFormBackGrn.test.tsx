@@ -8,6 +8,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
+import { resetSheetBack, sheetBackPresses } from '@/tests/helpers/backClosingSheet';
 import GRNFormStep1 from '../../../app/grn-form/step1';
 import GRNEditStep1 from '../../../app/grn-edit/[id]/step1';
 
@@ -49,10 +50,13 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'ScrollView' }));
+// The sheets draw nothing here, but an open one listens for Back as the real ones do.
 jest.mock('@/components/CustomerSearchBottomSheet', () => ({
-  CustomerSearchBottomSheet: require('react').forwardRef(() => null),
+  CustomerSearchBottomSheet: require('@/tests/helpers/backClosingSheet').refSheet('customer'),
 }));
-jest.mock('@/features/grn/components/SupervisorBottomSheet', () => ({ SupervisorBottomSheet: () => null }));
+jest.mock('@/features/grn/components/SupervisorBottomSheet', () => ({
+  SupervisorBottomSheet: require('@/tests/helpers/backClosingSheet').flagSheet('supervisor'),
+}));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/components/GhostTextInput', () => ({ GhostTextInput: require('react').forwardRef(() => null) }));
@@ -64,6 +68,7 @@ beforeEach(() => {
   mockForm.header = emptyHeader();
   mockForm.isCreateMode = true;
   mockItems = [];
+  resetSheetBack();
   back = installHardwareBack();
 });
 afterEach(() => back.restore());
@@ -173,6 +178,68 @@ describe('Back on step 1 of a new GRN', () => {
     await pressBack();
     expect(showAlert).toHaveBeenCalledTimes(2);
     await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('Back on step 1 of a new GRN while a picker is open', () => {
+  const open = async (tree: ReactTestRenderer, label: string) => {
+    const field = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
+    await act(async () => { field.props.onPress(); });
+  };
+  /** The screen draws itself again, as it does when a field loses focus or a photo finishes uploading. */
+  const drawAgain = async (tree: ReactTestRenderer) => {
+    await act(async () => { tree.update(<GRNFormStep1 />); });
+  };
+  const PICKERS: [string, string][] = [
+    ['supervisor', 'Supervisor, Fictional Supervisor'],
+    ['customer', 'Customer, not selected'],
+  ];
+
+  it.each(PICKERS)('the open %s picker takes Back: it closes, and the form asks nothing', async (name, label) => {
+    mockForm.header.note = 'Bags are wet';
+    const tree = await render();
+    await open(tree, label);
+    await drawAgain(tree);
+    await drawAgain(tree);
+
+    expect(await pressBack()).toBe(true);
+
+    expect(sheetBackPresses).toEqual([name]);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+
+    // The picker is closed now, so the next Back is the form's.
+    expect(await pressBack()).toBe(true);
+    expect(sheetBackPresses).toEqual([name]);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(question().title).toBe('Discard this GRN?');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it.each(PICKERS)('the open %s picker takes Back in an empty form too: the form is not left', async (name, label) => {
+    const tree = await render();
+    await open(tree, label);
+    await drawAgain(tree);
+
+    expect(await pressBack()).toBe(true);
+
+    expect(sheetBackPresses).toEqual([name]);
+    expect(router.replace).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('keeps one listener of its own however often the screen draws itself', async () => {
+    const tree = await render();
+    expect(back.count()).toBe(1);
+
+    mockForm.header.note = 'Bags are wet';
+    await drawAgain(tree);
+    await drawAgain(tree);
+
+    expect(back.count()).toBe(1);
+    await act(async () => { tree.unmount(); });
+    expect(back.count()).toBe(0);
   });
 });
 

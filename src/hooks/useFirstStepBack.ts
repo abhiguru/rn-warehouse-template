@@ -9,6 +9,11 @@
  *
  * Later steps do not use this: there Back goes to the step before
  * (useBackHandler with `currentStep`). Edit forms do not use it either.
+ *
+ * The listener is added once when the step comes into focus and stays the same
+ * one until the step is left (useBackHandler reads `hasData` and `askToDiscard`
+ * at the moment Back is pressed). A bottom sheet adds its own listener when it
+ * opens, which is later, so an open sheet is always asked first and closes.
  */
 import { useRouter, type Href } from 'expo-router';
 import { useBackHandler } from './useBackHandler';

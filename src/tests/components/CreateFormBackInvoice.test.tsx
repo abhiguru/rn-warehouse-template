@@ -9,6 +9,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
+import { resetSheetBack, sheetBackPresses } from '@/tests/helpers/backClosingSheet';
 import InvoiceFormStep1 from '../../../app/invoice-form/step1';
 import InvoiceFormStep2 from '../../../app/invoice-form/step2';
 
@@ -54,7 +55,10 @@ jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
-jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocomplete: () => null }));
+// Draws nothing here, but while open it listens for Back (on a phone it is a Modal, which takes Back itself).
+jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({
+  GRNAutocomplete: require('@/tests/helpers/backClosingSheet').flagSheet('grn'),
+}));
 jest.mock('@/features/invoice/components/InvoiceItemsTable', () => ({ InvoiceItemsTable: () => null }));
 jest.mock('@/features/invoice/components/InvoiceItemCard', () => ({ InvoiceItemCard: () => null }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
@@ -66,6 +70,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockForm.header = emptyHeader();
   mockForm.items = [];
+  resetSheetBack();
   back = installHardwareBack();
 });
 afterEach(() => back.restore());
@@ -174,6 +179,50 @@ describe('Back on step 1 of a new invoice', () => {
     expect(back.count()).toBe(1);
     await act(async () => { tree.unmount(); });
     expect(back.count()).toBe(0);
+  });
+});
+
+describe('Back on step 1 of a new invoice while the GRN picker is open', () => {
+  const openPicker = async (tree: ReactTestRenderer, label: string) => {
+    const field = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
+    await act(async () => { field.props.onPress(); });
+  };
+  const drawAgain = async (tree: ReactTestRenderer) => {
+    await act(async () => { tree.update(<InvoiceFormStep1 />); });
+  };
+
+  it('the picker takes Back: it closes, and the form asks nothing', async () => {
+    chooseGrn();
+    const tree = await render();
+    await openPicker(tree, 'GRN A0010. Change GRN');
+    await drawAgain(tree);
+    await drawAgain(tree);
+
+    expect(await pressBack()).toBe(true);
+
+    expect(sheetBackPresses).toEqual(['grn']);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+
+    // The picker is closed now, so the next Back is the form's.
+    expect(await pressBack()).toBe(true);
+    expect(sheetBackPresses).toEqual(['grn']);
+    expect(question().title).toBe('Discard this invoice?');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('the picker takes Back in an empty form too: the form is not left', async () => {
+    const tree = await render();
+    await openPicker(tree, 'Select GRN');
+    await drawAgain(tree);
+
+    expect(await pressBack()).toBe(true);
+
+    expect(sheetBackPresses).toEqual(['grn']);
+    expect(router.replace).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
   });
 });
 
