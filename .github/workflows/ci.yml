@@ -56,7 +56,13 @@ jobs:
 
   android-artifact:
     name: Android debug artifact audit
-    runs-on: ubuntu-latest
+    # Where this job runs is the repository variable ANDROID_ARTIFACT_RUNNER: a
+    # JSON value for runs-on, for example ["self-hosted","linux","x64","my-label"].
+    # Without the variable (a fork, for instance) it runs on a GitHub-hosted
+    # runner. A runner that keeps the Gradle caches between runs more than halves
+    # the time; it must provide ANDROID_HOME with the command-line tools. See
+    # docs/DEVELOPER_HANDOFF.md, "CI and releases". This job is not a required check.
+    runs-on: ${{ fromJSON(vars.ANDROID_ARTIFACT_RUNNER || '"ubuntu-latest"') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

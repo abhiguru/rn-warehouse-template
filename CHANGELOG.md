@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — the Android artifact CI job can run on a self-hosted runner (2026-10-11)
+
+CI only; the app does not change.
+
+- `Android debug artifact audit` takes `runs-on` from the repository variable
+  `ANDROID_ARTIFACT_RUNNER` and falls back to `ubuntu-latest` without it, so a
+  fork is unaffected. In this repository the variable names the owner's
+  runner machine, which keeps the Gradle caches: the job took 28.5 minutes on
+  a hosted runner and 11.5 minutes there (second run in a row). Every other
+  job, the two required checks among them, stays on hosted runners.
+- `docs/DEVELOPER_HANDOFF.md`, "CI and releases", says what such a runner must
+  provide and why it must be an isolated machine. `scripts/workflows.test.mjs`
+  refuses a self-hosted label written into a workflow.
+
 ## Unreleased — date picker library 0.24, ESLint 10 (2026-10-11)
 
 - `react-native-paper-dates` 0.22.57 to 0.24.0 (visual changes to the calendar
