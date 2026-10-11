@@ -27,7 +27,6 @@ export const dispatch = {
     discardDetailsMessage: 'The details you entered will be lost.',
     discardCreateMessage: 'Discard this dispatch? The details you entered will be lost.',
     discardEditMessage: 'Discard your changes to this dispatch? Unsaved changes will be lost.',
-    cancelCreateMessage: 'Cancel this dispatch? Everything you entered will be lost.',
     cancelEditMessage: 'Cancel editing? Your unsaved changes will be lost.',
     discardItemsMessage: {
       one: 'The {{count}} item you added will be lost.',

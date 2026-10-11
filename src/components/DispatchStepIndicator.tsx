@@ -29,9 +29,12 @@ export interface DispatchStepIndicatorProps {
   completedSteps: number[];
   onCancel: () => void;
   cancelMessage?: string;
+  /** The question the X asks. Default: "Discard this dispatch?" in a new dispatch, "Cancel dispatch" in an edit. */
   cancelTitle?: string;
   dispNo?: string;
   onStepPress?: (stepNumber: number) => void;
+  /** First step of a new dispatch: what the Android Back key does (see GenericStepIndicatorHeader). */
+  backOnFirstStep?: GenericStepIndicatorHeaderProps['backOnFirstStep'];
   isEditMode?: boolean;
 }
 
@@ -41,9 +44,10 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
   completedSteps,
   onCancel,
   cancelMessage,
-  cancelTitle = t('dispatch.wizard.cancelDispatch'),
+  cancelTitle,
   dispNo,
   onStepPress,
+  backOnFirstStep,
   isEditMode = false,
 }) => {
   return (
@@ -56,9 +60,10 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
       mode={isEditMode ? 'edit' : 'create'}
       entityName={isEditMode ? t('dispatch.wizard.editTitle') : t('dispatch.wizard.createTitle')}
       entityId={dispNo}
-      cancelTitle={cancelTitle}
+      cancelTitle={cancelTitle ?? (isEditMode ? t('dispatch.wizard.cancelDispatch') : t('dispatch.wizard.discardTitle'))}
       cancelMessage={cancelMessage}
       onStepPress={onStepPress}
+      backOnFirstStep={backOnFirstStep}
     />
   );
 };

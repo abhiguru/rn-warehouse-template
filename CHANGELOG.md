@@ -80,9 +80,18 @@ Android Back on the first step of a create form (decision 7) — no backend chan
   list is shown); "Keep editing" stays. With nothing entered Back leaves for
   the list at once, as before.
 - What counts as entered. GRN: a customer, a sender, a vehicle number, a note,
-  a photo or a line. Dispatch: a customer or a note (the rule its X already
-  used). Invoice: a chosen GRN or a typed invoice number. What the form fills
-  in itself (number, date, supervisor) does not count.
+  a photo or a line. Dispatch: a customer, a vehicle number or a note (a typed
+  vehicle number alone used to be dropped without a question). Invoice: a
+  chosen GRN or a typed invoice number. What the form fills in itself (number,
+  date, supervisor) does not count.
+- New dispatch: the X asks once. It used to ask twice on every step: the
+  header's "Cancel dispatch", then the step's own "Discard this dispatch?"
+  dialog (on steps 1 and 2 once something was entered, on step 3 always). As
+  in the GRN form since the fix above, the header asks the one question and
+  the step discards: "Discard this dispatch?" with "The details you entered
+  will be lost." on step 1, and with "The N items you added will be lost." on
+  steps 2 and 3 once a line was added. The buttons are "Keep editing" and
+  "Discard". Editing a dispatch already asked once and is unchanged.
 - An open picker comes first. While a sheet is open on step 1 (sender,
   customer, supervisor, the GRN picker of an invoice), Back closes the sheet
   and nothing else: no question, and the form is not left. The form's Back
@@ -98,9 +107,9 @@ Android Back on the first step of a create form (decision 7) — no backend chan
 - Steps 2 and 3 are unchanged: Back goes to the step before. The edit forms
   are unchanged.
 - One mechanism for the three forms: `useFirstStepBack`
-  (`src/hooks/useFirstStepBack.ts`). The GRN and invoice headers ask their own
-  question through it (`backOnFirstStep` on the step header), so the X and Back
-  cannot drift apart; the dispatch step opens its own dialog.
+  (`src/hooks/useFirstStepBack.ts`). The GRN, dispatch and invoice headers ask
+  their own question through it (`backOnFirstStep` on the step header), so the
+  X and Back cannot drift apart.
 
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 
