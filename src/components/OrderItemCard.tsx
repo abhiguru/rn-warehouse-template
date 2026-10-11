@@ -125,7 +125,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         return;
       }
       if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
-      let saved = false;
+      let saved: boolean;
       try {
         saved = (await onQuantityChange(newQuantity)) !== false;
       } catch {

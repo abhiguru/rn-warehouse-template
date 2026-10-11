@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — date picker library 0.24, ESLint 10 (2026-10-11)
+
+- `react-native-paper-dates` 0.22.57 to 0.24.0 (visual changes to the calendar
+  dialog; the three forms use it as before), `eslint` and `@eslint/js` 9 to 10.
+  Carries the Dependabot commit of pull request 25.
+- ESLint 10 reports two new kinds of error. An unused first assignment was
+  removed in `OrderItemCard.tsx` and in one test. The three "Failed to read
+  image file" errors keep no `cause` on purpose (the caught error can name a
+  local file path and is already logged); the rule is switched off on those
+  three lines with that reason. No behaviour change. No backend change.
+
 ## Unreleased — hint under a typed invoice number (2026-10-11)
 
 - New invoice, step 1: under a number the user typed over the suggestion the

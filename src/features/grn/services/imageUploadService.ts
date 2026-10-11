@@ -81,6 +81,8 @@ const imageToBase64 = async (uri: string): Promise<string> => {
     return base64;
   } catch (error) {
     log.error('Error converting image to base64', loggableError(error));
+    // No `cause`: the caught error can name a local file path, and it is logged above.
+    // eslint-disable-next-line preserve-caught-error
     throw new Error('Failed to read image file');
   }
 };
@@ -114,6 +116,8 @@ const imageToArrayBuffer = async (
     return { buffer: arrayBuffer, size: arrayBuffer.byteLength };
   } catch (error) {
     log.error('Error converting image to ArrayBuffer', loggableError(error));
+    // No `cause`: the caught error can name a local file path, and it is logged above.
+    // eslint-disable-next-line preserve-caught-error
     throw new Error('Failed to read image file');
   }
 };
