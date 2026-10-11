@@ -13,7 +13,7 @@ import { InvoiceItemsTable } from '../InvoiceItemsTable';
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 
 // Stable reference: the items table re-initialises its inputs whenever this changes.
-const mockInvoiceForm: { bulkPricing: Record<string, { charge: number; labour_rate: number; tax: number }> } = { bulkPricing: {} };
+const mockInvoiceForm: { bulkPricing: Record<string, Partial<{ charge: number; labour_rate: number; tax: number }>> } = { bulkPricing: {} };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
@@ -177,9 +177,10 @@ describe('the group rates in the items table', () => {
     });
 
     await type(tree, GROUP_CHARGE, '6.');
-    expect(onBulkEdit).toHaveBeenLastCalledWith(GROUP, { charge: 6, labour_rate: 2, tax: 5 });
-    // The form state now holds the applied group rates, and the lines follow them.
-    mockInvoiceForm.bulkPricing = { [GROUP]: { charge: 6, labour_rate: 2, tax: 5 } };
+    // The typed rate alone is passed on (the labour rate and the tax stay on each line as they are).
+    expect(onBulkEdit).toHaveBeenLastCalledWith(GROUP, { charge: 6 });
+    // The form state now holds the applied group rate, and the lines follow it.
+    mockInvoiceForm.bulkPricing = { [GROUP]: { charge: 6 } };
     await act(async () => {
       tree.update(<InvoiceItemsTable items={[{ ...item, charge: 6, amount: 600 }]} onItemUpdate={jest.fn()} onBulkEdit={onBulkEdit} />);
     });
@@ -198,7 +199,9 @@ describe('the group rates in the items table', () => {
     expect(groupTax).toBeDefined();
 
     await type(tree, GROUP_CHARGE, '6');
-    expect(onBulkEdit).toHaveBeenLastCalledWith(GROUP, { charge: 6, labour_rate: 2, tax: 2.5 });
+    // The tax is not passed on with the charge at all any more, so no rounding of it can reach the lines.
+    expect(onBulkEdit).toHaveBeenLastCalledWith(GROUP, { charge: 6 });
+    expect(tree.root.findAllByType(TextInput).some((node) => node.props.value === '2.5')).toBe(true);
   });
 
   it('show a whole-number tax without decimals, as before', async () => {

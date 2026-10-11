@@ -128,7 +128,6 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     const [isAddingItem, setIsAddingItem] = useState(false);
 
     // Dialog states for dark mode compliant confirmations
-    const [showDiscardDialog, setShowDiscardDialog] = useState(false);
     const [showClearItemDialog, setShowClearItemDialog] = useState(false);
     const [showUnsavedBackDialog, setShowUnsavedBackDialog] = useState(false);
     const [showUnsavedEditDialog, setShowUnsavedEditDialog] = useState(false);
@@ -169,28 +168,15 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         }, [isCreateMode, editingItemId, currentItem.unique_id, savedItems])
     );
 
-    // Check if user has added any items
-    const hasUnsavedData = () => savedItems.length > 0;
-
-    // Handle cancel with confirmation
+    // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {
-        if (isCreateMode && hasUnsavedData()) {
-            setShowDiscardDialog(true);
-        } else {
-            resetFormState();
-            if (isCreateMode) {
-                router.replace('/dispatch');
-            } else {
-                router.back();
-                router.back();
-            }
-        }
-    };
-
-    const handleDiscardConfirm = () => {
-        setShowDiscardDialog(false);
         resetFormState();
-        router.replace('/dispatch');
+        if (isCreateMode) {
+            router.replace('/dispatch');
+        } else {
+            router.back();
+            router.back();
+        }
     };
 
     // The GRN (or the item being typed) belongs to a customer other than the dispatch's.
@@ -799,7 +785,9 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? tr('dispatch.wizard.cancelCreateMessage')
+                        ? savedItems.length > 0
+                            ? tr('dispatch.wizard.discardItemsMessage', { count: savedItems.length })
+                            : tr('dispatch.wizard.discardDetailsMessage')
                         : tr('dispatch.wizard.cancelEditMessage')
                 }
                 dispNo={header.disp_no}
@@ -1247,18 +1235,6 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             />
 
             {/* Confirmation dialogs */}
-            <ConfirmDialog
-                visible={showDiscardDialog}
-                title={tr('dispatch.wizard.discardTitle')}
-                message={tr('dispatch.wizard.discardItemsMessage', { count: savedItems.length })}
-                confirmText={tr('dispatch.wizard.discardDispatch')}
-                cancelText={tr('common.keepEditing')}
-                onConfirm={handleDiscardConfirm}
-                onCancel={() => setShowDiscardDialog(false)}
-                variant="danger"
-                icon="trash-can-outline"
-            />
-
             <ConfirmDialog
                 visible={showClearItemDialog}
                 title={tr('dispatch.items.clearItemTitle')}

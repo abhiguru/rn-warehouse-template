@@ -12,7 +12,7 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
-import { calculateItemAmounts } from '@/utils/invoiceCalculations';
+import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -79,31 +79,72 @@ async function savedInvoiceTotal(client: RpcClient, answer: any, invoiceId: stri
   }
 }
 
+/**
+ * The header field for a zero charge (backend migration 48). It is sent only
+ * when a line of the invoice has a charge of 0: the reason, or null when none
+ * was written (the server then refuses staff with "Enter a reason for the zero
+ * charge" and lets administrators and supervisors through). Without such a
+ * line the key is left out, and the server stores no reason.
+ */
+function zeroChargeHeader(payload: CreateInvoicePayload): { zero_charge_reason?: string | null } {
+  if (!hasZeroChargeLine(payload.items)) return {};
+  return { zero_charge_reason: payload.header.zero_charge_reason?.trim() || null };
+}
+
 function invoiceSaveMessage(text: unknown, fallback: string): string {
   if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
     return serverReason(text) ?? serverText(text, fallback);
   }
   return serverText(text, fallback);
 }
+/** PostgREST found no function that takes the parameters sent (PGRST202). */
+const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
+  error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
+
+/** The calendar year a financial year starts in ("2026-27" -> 2026), as `invoice.inv_fin_year` stores it. */
+const financialYearStart = (finYear: string): number | null => {
+  const match = /^(\d{4})(?:-\d{2,4})?$/.exec(String(finYear ?? '').trim());
+  return match ? Number(match[1]) : null;
+};
+
 /**
- * Get the next available invoice number
- * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
- * Parses the number part for backward compatibility with existing type system
+ * The next free invoice number of a financial year.
+ *
+ * Numbers are counted per financial year (backend migration 48):
+ * `get_next_invoice_number(p_fin_year)` answers with the highest number of that
+ * year plus 1 as plain digits ("55"), or refuses with "No invoice number is
+ * left in financial year <year>". `finYear` is the form's financial year
+ * ("2026-27"), which follows the invoice date.
+ *
+ * A server without migration 48 has the function without the parameter and
+ * refuses the call before running anything (PostgREST `PGRST202`). The
+ * question is then asked once more without the parameter; that server counts
+ * across all years and answers with a prefixed number ("I0000554").
+ *
+ * `success: false` when no number could be read: the form then asks for the
+ * number to be typed.
  */
 export const getNextInvoiceNumber = async (
   finYear: string
 ): Promise<NextInvoiceNumberResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
+    const startYear = financialYearStart(finYear);
 
-    const { data, error } = await authenticatedClient.rpc('get_next_invoice_number');
+    let { data, error } =
+      startYear === null
+        ? await authenticatedClient.rpc('get_next_invoice_number')
+        : await authenticatedClient.rpc('get_next_invoice_number', { p_fin_year: startYear });
+    if (error && startYear !== null && isUnknownFunctionSignature(error)) {
+      ({ data, error } = await authenticatedClient.rpc('get_next_invoice_number'));
+    }
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
-    if (!data) {
+    if (data === null || data === undefined || data === '') {
       return {
         success: true,
         data: {
@@ -113,10 +154,12 @@ export const getNextInvoiceNumber = async (
       };
     }
 
-    // RPC returns formatted string like "I0000554"
-    // Extract the numeric part for backward compatibility
-    const match = data.match(/^[A-Z]*(\d+)$/);
-    const invoiceNumber = match ? parseInt(match[1], 10) : 1;
+    // Plain digits, or a prefixed number from a server before migration 48.
+    const match = /^[A-Z]*(\d+)$/.exec(String(data).trim());
+    const invoiceNumber = match ? parseInt(match[1], 10) : NaN;
+    if (!Number.isSafeInteger(invoiceNumber) || invoiceNumber < 1) {
+      throw new Error(t('invoice.service.nextNumberFailed'));
+    }
 
     return {
       success: true,
@@ -128,7 +171,6 @@ export const getNextInvoiceNumber = async (
   } catch (error: any) {
     // Handled: the form then asks for the number to be typed.
     invoiceFormLogger.warn('Error in getNextInvoiceNumber:', errorForLog(error));
-    // Return 1 as default for first invoice of the year
     return {
       success: false,
       data: {
@@ -504,6 +546,7 @@ export const createInvoice = async (
       total: payload.header.total || 0,
       one_time_charge: Boolean(payload.header.one_time_charge),
       is_auto_generated: false, // Manual creation
+      ...zeroChargeHeader(payload),
     };
 
     // Transform items to match RPC expected format
@@ -695,6 +738,7 @@ export const loadInvoiceData = async (
       one_time_charge: oneTime,
       discount: header.discount || 0,
       discount_reason: header.discount_reason || '',
+      zero_charge_reason: header.zero_charge_reason || '',
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,
@@ -827,6 +871,7 @@ export const updateInvoice = async (
       tax_amount: payload.header.tax_amount || 0,
       total: payload.header.total || 0,
       one_time_charge: payload.header.one_time_charge || false,
+      ...zeroChargeHeader(payload),
     };
 
     const invoiceItems = payload.items.map((item) => ({
@@ -902,6 +947,8 @@ export const transformFormDataToPayload = (
         : header.inv_date + 'T00:00:00Z',
       discount: header.discount || 0,
       discount_reason: header.discount_reason?.trim() || null,
+      // The save sends it only when a line has a zero charge.
+      zero_charge_reason: header.zero_charge_reason?.trim() || null,
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,

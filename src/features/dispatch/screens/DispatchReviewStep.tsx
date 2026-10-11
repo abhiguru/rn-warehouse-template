@@ -131,7 +131,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     // Confirm dialog state
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-    const [showDiscardDialog, setShowDiscardDialog] = useState(false);
     const [showEditSuccessDialog, setShowEditSuccessDialog] = useState(false);
 
     // Debug logging
@@ -175,20 +174,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         }
     };
 
-    // Handle cancel
+    // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {
+        resetFormState();
         if (isCreateMode) {
-            setShowDiscardDialog(true);
+            router.replace('/dispatch');
         } else {
-            resetFormState();
             router.back();
         }
-    };
-
-    const handleDiscardConfirm = () => {
-        setShowDiscardDialog(false);
-        resetFormState();
-        router.replace('/dispatch');
     };
 
     // Handle back navigation
@@ -843,7 +836,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? tr('dispatch.wizard.discardCreateMessage')
+                        ? items.length > 0
+                            ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
+                            : tr('dispatch.wizard.discardDetailsMessage')
                         : tr('dispatch.wizard.discardEditMessage')
                 }
                 dispNo={header.disp_no}
@@ -1015,19 +1010,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     onClose={() => setShowImageOverlay(false)}
                 />
             )}
-
-            {/* Discard Changes Dialog (create mode) */}
-            <ConfirmDialog
-                visible={showDiscardDialog}
-                title={tr('dispatch.wizard.discardTitle')}
-                message={tr('dispatch.wizard.discardItemsMessage', { count: items.length })}
-                confirmText={tr('dispatch.wizard.discardDispatch')}
-                cancelText={tr('common.keepEditing')}
-                onConfirm={handleDiscardConfirm}
-                onCancel={() => setShowDiscardDialog(false)}
-                variant="danger"
-                icon="trash-can-outline"
-            />
 
             {/* Edit Success Dialog (edit mode) */}
             <ConfirmDialog

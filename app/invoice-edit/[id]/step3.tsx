@@ -35,7 +35,7 @@ import {
 } from '@/features/invoice/services/invoiceFormService';
 import { SavedInvoiceData } from '@/types/invoice.types';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { discountNeedsReason, formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { discountNeedsReason, formatInvoiceAmount, invoiceConfirmMessage, zeroChargeNeedsReason } from '@/utils/invoiceCalculations';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
   STEP_NUMBERS,
@@ -74,6 +74,11 @@ export default function InvoiceEditStep3() {
   const reasonRequired = discountNeedsReason(header, role);
   const handleDiscountReasonChange = (reason: string) => {
     dispatch(updateHeader({ discount_reason: reason }));
+  };
+  // A line with a charge of 0 needs a reason from staff (server migration 48).
+  const zeroChargeReasonRequired = zeroChargeNeedsReason(header, items, role);
+  const handleZeroChargeReasonChange = (reason: string) => {
+    dispatch(updateHeader({ zero_charge_reason: reason }));
   };
 
   const handleBack = () => {
@@ -119,10 +124,15 @@ export default function InvoiceEditStep3() {
       return;
     }
 
+    if (zeroChargeReasonRequired) {
+      showAlert(tr('invoice.review.zeroChargeReasonTitle'), tr('invoice.review.zeroChargeReasonUpdateMessage'));
+      return;
+    }
+
     // Confirm submission
     showAlert(
       tr('invoice.review.updateTitle', { number: formatIdentifier(header.inv_no) }),
-      tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) }),
+      invoiceConfirmMessage(header, items),
       [
         { text: tr('common.cancel'), style: 'cancel' },
         { text: tr('invoice.review.updateInvoice'), style: 'default', onPress: submitInvoiceUpdate },
@@ -355,6 +365,8 @@ export default function InvoiceEditStep3() {
           onDiscountErrorChange={setDiscountError}
           onDiscountReasonChange={handleDiscountReasonChange}
           reasonRequired={reasonRequired}
+          onZeroChargeReasonChange={handleZeroChargeReasonChange}
+          zeroChargeReasonRequired={zeroChargeReasonRequired}
         />
       </KeyboardAwareScrollView>
 

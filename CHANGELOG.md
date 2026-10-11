@@ -1,5 +1,179 @@
 # Changelog
 
+## Unreleased — owner decisions of 2026-10-11
+
+Needs backend migration 48 (owner decisions of 2026-10-11) for the invoice
+number per financial year and for the zero charge with a reason; merge and
+deploy the backend first. On a backend without it the app still suggests a
+number (see below).
+
+Racks (decision 1) — no backend change
+- A rack is any text. The rule "Floor/Chamber or Rack/Floor/Chamber" is gone
+  from the item form, from the Save button of a line and from the checks before
+  the review and before saving, in a new GRN and in an edit. A GRN whose lines
+  were stored with racks such as "C3" or "20B" can be edited and saved again;
+  before, such a line held the whole edit back. Only the length is still
+  checked (30 characters, what the server column holds).
+- The Floor and Chamber chips are optional. Each chosen chip adds its own
+  "/Floor" or "/Chamber" after the typed text, and a second tap on a chosen
+  chip takes it off again. A chip that is shown as chosen is part of the rack:
+  a floor chosen alone gives "20B/F1" (it used to be highlighted without being
+  saved, once the format rule no longer forced the second chip). The value
+  next to the "Rack" label is what will be saved.
+- The text is kept exactly as it is typed. The chips never take characters out
+  of the text field: "R5/F2/C21" typed key by key used to be saved as
+  "R51/F2/C2", because "R5/F2/C2" ends in a floor and a chamber from the chip
+  lists and the form moved "/F2/C2" into the chips before the last key. The
+  rack is now split into text and chips only when a line is put into the form
+  (a stored rack that ends in a listed floor and chamber is shown as text plus
+  chips; every other rack is shown whole in the text field), never while it is
+  typed. Opening another line no longer shows the chips of the line edited
+  before.
+- A space can be typed at the end of the rack text ("ROW 3" could not be typed
+  in one go); spaces at the two ends are dropped when the line is saved.
+
+Invoice number per financial year (decision 2) — backend migration 48
+- New invoice: the suggested number is the next one of the financial year of
+  the invoice date. The app sends that year to
+  `get_next_invoice_number(p_fin_year)` as the calendar year it starts in
+  (2026 for April 2026 to March 2027).
+- When the invoice date is moved into another financial year the next number of
+  that year is asked for and replaces the suggestion. A number the user typed
+  is never replaced.
+- While the number is being asked for (a new form, or after the date moved to
+  another year) the field is empty with a spinner, the hint reads "Getting the
+  next invoice number…" and "Next" waits. The suggestion of the year before
+  leaves the field at once; it used to stay there, editable, until the answer
+  came, and could be saved as a number of the new year. The field can still be
+  typed in: a typed number is kept and ends the wait.
+- An emptied field gets the suggestion of the form's financial year again when
+  the field is left, or when "Next" is pressed with the field empty (the
+  number is asked for first, instead of a message about a missing number).
+  Nothing is put into the field while the user is in it: an answer arriving
+  between two key presses would be typed into. After a lookup that failed the
+  form does not ask again by itself; it asks for a typed number.
+- When the server has no number for that year ("No invoice number is left in
+  financial year ...") or cannot be reached, the field is emptied and the hint
+  reads "Couldn't get the next number. Type the invoice number." A suggestion
+  made for the year before does not stay in the field.
+- An answer that arrives late is not used: not over a number typed meanwhile,
+  not for a year the form has left, not in a form that was discarded.
+- A server without migration 48 refuses the parameter (PostgREST `PGRST202`);
+  the app then asks once more without it and gets that server's number, which
+  is counted across all years as before.
+- An answer that is not a number is treated as "could not get the next
+  number"; it used to be shown as 1.
+
+Zero charge with a reason (decision 3) — backend migration 48
+- An invoice line may have a storage charge of 0. The items step of a new
+  invoice and of an edit no longer refuses such a line. A duration of 0 is
+  still refused, in a new invoice and in an edit, with a message that speaks
+  of the duration only: "1 item has a duration of 0. The duration must be
+  greater than 0."
+- Edit, items step: every other failure of the items check is reported in its
+  own words ("Duration must be at least 0.5 months", "Days cannot be
+  negative", "Tax cannot exceed 100%", ...), each once, as the new-invoice
+  form does. The edit form used to answer all of them with one fixed sentence
+  about the duration, which named a rule the line already met. That sentence
+  (`invoice.items.checkPricesMessage`) is removed.
+- Review step (new invoice and edit): while a line has a charge of 0 the
+  summary shows "Reason for zero charge" under the discount reason, built the
+  same way (500 characters, several lines). Staff must fill it in: the label
+  reads "Reason for zero charge (required)" with a red border, and Save answers
+  "Enter a reason for the zero charge". Administrators and supervisors may
+  leave it empty. Without such a line the field is not shown.
+- Before saving, every role is told when something is free. The question
+  "Save invoice N?" / "Update invoice N?" ends with one more line while lines
+  have a charge of 0: "1 item has a charge of 0." or "3 items have a charge of
+  0." ("૧ આઇટમનો ભાડાનો દર ૦ છે."). An item without a price in the price
+  list arrives with a charge of 0 too, and an administrator or supervisor, who
+  needs no reason, would otherwise save it as free without a word about it.
+  Nothing new is refused: the reason stays optional for them.
+- The reason goes to the server as `zero_charge_reason` in the header of
+  `save_invoice` and `update_invoice`, only when a line has a charge of 0
+  (trimmed; `null` when nothing was written). Without such a line the key is
+  left out. Who gave the reason and when is recorded by the server.
+- Edit: the stored reason is read from `get_invoice_detail`, shown in the
+  field and sent back with the update as long as a line has a charge of 0,
+  unless the user changes it. The server asks staff for a reason on every save
+  of such an invoice, also when someone else made the line free, and takes an
+  empty reason from an administrator or supervisor as "remove it". The app
+  never clears the text itself; erasing it is the user's doing.
+- "A charge of 0" is decided after rounding the charge to two decimals, as the
+  server decides it: the reason field, the staff rule, the `zero_charge_reason`
+  key, the line in the save question and the total of 0 all use the one test
+  (`isZeroChargeLine`). A charge the money fields cannot produce, such as
+  0.004, counts as 0 on both sides; 0.005 is 0.01 on both sides.
+- New invoice: the reason belongs to the GRN it was written for. When another
+  GRN is chosen in the same form the reason field starts empty again (it used
+  to keep the text, which then met the staff rule for the new GRN's free lines
+  with a reason about other goods). Choosing the same GRN again keeps it; so
+  does an invoice that is being edited.
+- The server's refusal "Enter a reason for the zero charge" is shown in
+  Gujarati as its own sentence.
+- Group rates no longer undo a free line. On the items step a group field
+  ("Charge", "Labour", "Tax" above the lines of an item) sets that one rate on
+  the lines of the group; the two other rates stay on each line as they are.
+  Before, every group edit sent all three group fields, and for an invoice
+  opened for editing those started as the average of the stored lines: with a
+  free line beside a line at 5, changing the group tax made both lines 2.5,
+  the reason field disappeared and the update dropped the stored reason. A
+  group field now shows the rate its lines share, or stays empty with the
+  placeholder "Mixed" ("જુદા જુદા") when they differ; it never shows an
+  average. Typing a group charge still gives that charge to every line of the
+  group (a line whose charge was typed on the line itself keeps it, as before).
+- An invoice on which nothing is charged (every line has a charge of 0, no
+  labour, no discount) may be saved with a total of 0. For every other invoice
+  the total must still be more than 0: a discount that takes a charged invoice
+  down to 0 is refused with "Total must be positive", also when one of its
+  lines is free.
+
+Android Back on the first step of a create form (decision 7) — no backend change
+- New GRN, new dispatch, new invoice: the Back key on step 1 left the form
+  without a word and kept what was typed out of sight. Once something was
+  entered it now asks before discarding, with the question the X in the header
+  ends in: "Discard this GRN?", "Discard this dispatch?", "Discard this
+  invoice?". "Discard" does what it does after the X (the form is emptied, the
+  list is shown); "Keep editing" stays. With nothing entered Back leaves for
+  the list at once, as before.
+- What counts as entered. GRN: a customer, a sender, a vehicle number, a note,
+  a photo or a line. Dispatch: a customer, a vehicle number or a note (a typed
+  vehicle number alone used to be dropped without a question). Invoice: a
+  chosen GRN or a typed invoice number. What the form fills in itself (number,
+  date, supervisor) does not count.
+- New dispatch: the X asks once. It used to ask twice on every step: the
+  header's "Cancel dispatch", then the step's own "Discard this dispatch?"
+  dialog (on steps 1 and 2 once something was entered, on step 3 always). As
+  in the GRN form since the fix above, the header asks the one question and
+  the step discards: "Discard this dispatch?" with "The details you entered
+  will be lost." on step 1, and with "The N items you added will be lost." on
+  steps 2 and 3 once a line was added. The buttons are "Keep editing" and
+  "Discard". Editing a dispatch already asked once and is unchanged.
+- An open picker comes first. While a sheet is open on step 1 (sender,
+  customer, supervisor, the GRN picker of an invoice), Back closes the sheet
+  and nothing else: no question, and the form is not left. The form's Back
+  listener used to be taken off and put on again each time the screen drew
+  itself, which put it ahead of a sheet opened in between (React Native asks
+  the listener added last first); Back then left the form, or asked to
+  discard, with the sheet still open. `useBackHandler` now adds one listener
+  when the screen comes into focus and keeps that one until the screen is
+  left, on every step that uses it; what Back does is read when it is pressed.
+  The sheets add theirs when they open (checked for `SearchableBottomSheet`
+  and `CustomerSearchBottomSheet`); the date picker, the alerts and the
+  confirm dialogs are native modals, which take Back themselves.
+- Steps 2 and 3 are unchanged: Back goes to the step before. The edit forms
+  are unchanged.
+- One mechanism for the three forms: `useFirstStepBack`
+  (`src/hooks/useFirstStepBack.ts`). The GRN, dispatch and invoice headers ask
+  their own question through it (`backOnFirstStep` on the step header), so the
+  X and Back cannot drift apart.
+
+Found by the device check of these changes (2026-10-11)
+- A dialog that only informs ("Enter a discount reason", "Enter a reason for the
+  zero charge", "Check the discount" and the like) showed an empty outlined
+  button beside "Close". `ConfirmDialog` drew its cancel button even when the
+  screen passed an empty cancel text. It now shows one button.
+
 ## Unreleased — pickers that never opened (supervisor, dispatch item and lot, item catalogue, change log)
 
 No backend change.

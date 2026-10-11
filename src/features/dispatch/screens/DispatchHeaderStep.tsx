@@ -15,7 +15,6 @@ import {
     ActivityIndicator,
     LayoutAnimation,
 } from 'react-native';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -247,7 +246,6 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showSupervisorBottomSheet, setShowSupervisorBottomSheet] = useState(false);
     const [showOptionalFields, setShowOptionalFields] = useState(!isCreateMode);
-    const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
     const customerBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
 
@@ -257,29 +255,18 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         setShowOptionalFields(!showOptionalFields);
     };
 
-    // Check if user has entered any data
-    const hasUnsavedData = () => {
-        return !!(header.customer_id || header.note);
-    };
+    // What the user has put into a new dispatch. The number, the date and the
+    // supervisor are filled in by the form itself and are not counted.
+    const hasEnteredData = !!(header.customer_id || header.registration || header.note);
 
-    // Handle cancel with confirmation if data exists
+    // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {
-        if (isCreateMode && hasUnsavedData()) {
-            setShowDiscardDialog(true);
-        } else {
-            resetFormState();
-            if (isCreateMode) {
-                router.replace('/dispatch');
-            } else {
-                router.back();
-            }
-        }
-    };
-
-    const handleDiscardConfirm = () => {
-        setShowDiscardDialog(false);
         resetFormState();
-        router.replace('/dispatch');
+        if (isCreateMode) {
+            router.replace('/dispatch');
+        } else {
+            router.back();
+        }
     };
 
     // Note: useEffect hooks for initialization, data loading, and dispatch number generation
@@ -365,9 +352,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? tr('dispatch.wizard.discardCreateMessage')
+                        ? tr('dispatch.wizard.discardDetailsMessage')
                         : tr('dispatch.wizard.discardEditMessage')
                 }
+                // New dispatch: the Android Back key asks the same question as the X once something was entered.
+                backOnFirstStep={isCreateMode ? { hasData: hasEnteredData, exitRoute: '/(tabs)/dispatch' } : undefined}
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
                 isEditMode={!isCreateMode}
@@ -613,19 +602,6 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 onChange={handleDateConfirm}
                 validRange={{ endDate: new Date() }}
                 label={tr('dispatch.form.chooseDate')}
-            />
-
-            {/* Discard Changes Dialog */}
-            <ConfirmDialog
-                visible={showDiscardDialog}
-                title={tr('dispatch.wizard.discardTitle')}
-                message={tr('dispatch.wizard.discardDetailsMessage')}
-                confirmText={tr('dispatch.wizard.discardDispatch')}
-                cancelText={tr('common.keepEditing')}
-                onConfirm={handleDiscardConfirm}
-                onCancel={() => setShowDiscardDialog(false)}
-                variant="danger"
-                icon="trash-can-outline"
             />
         </View>
     );

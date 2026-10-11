@@ -1,6 +1,7 @@
 import * as yup from 'yup';
 import { createStepValidator, type ValidationResult } from '@/utils/validationHelpers';
 import { t, type TranslationKey, type TranslationParams } from '@/i18n';
+import { isZeroChargeLine } from '@/utils/invoiceCalculations';
 
 /**
  * A message that is read when validation fails, not when this file is loaded,
@@ -121,6 +122,12 @@ export const step2Schema = yup.object().shape({
 });
 
 // Step 3: Full Invoice Schema (for final validation)
+// The total must be more than 0, with one exception: an invoice on which
+// nothing is charged (every line has a charge of 0, allowed since the owner
+// decision of 2026-10-11, and there is no labour) comes to exactly 0 and may be
+// saved. That is a total of 0 before any discount. A charged invoice that a
+// discount takes down to 0 is refused as before, also when one of its lines is
+// free.
 export const fullInvoiceSchema = yup.object().shape({
   header: step1Schema.concat(
     yup.object().shape({
@@ -134,11 +141,19 @@ export const fullInvoiceSchema = yup.object().shape({
         .min(0, msg('invoice.validation.taxAmountNegative')),
       total: yup
         .number()
-        .required(msg('invoice.validation.totalRequired'))
-        .positive(msg('invoice.validation.totalPositive')),
+        .required(msg('invoice.validation.totalRequired')),
     })
   ),
   items: step2Schema.fields.items,
+}).test('total-positive', function (value) {
+  const total = Number(value?.header?.total);
+  // A missing or unreadable total is reported by the field itself.
+  if (Number.isNaN(total) || total > 0) return true;
+  const lines = Array.isArray(value?.items) ? (value.items as { charge?: number | null }[]) : [];
+  const discount = Number(value?.header?.discount) || 0;
+  const nothingCharged = lines.length > 0 && lines.every(isZeroChargeLine) && discount === 0;
+  if (total === 0 && nothingCharged) return true;
+  return this.createError({ path: 'header.total', message: t('invoice.validation.totalPositive') });
 });
 
 // ============================================================================

@@ -30,7 +30,6 @@ export const dispatch: Translation<typeof source> = {
     discardDetailsMessage: 'તમે ભરેલી વિગતો જતી રહેશે.',
     discardCreateMessage: 'આ જાવક છોડી દેવી છે? તમે ભરેલી વિગતો જતી રહેશે.',
     discardEditMessage: 'આ જાવકમાં કરેલા ફેરફાર છોડી દેવા છે? સાચવ્યા વગરના ફેરફાર જતા રહેશે.',
-    cancelCreateMessage: 'આ જાવક રદ કરવી છે? તમે ભરેલું બધું જતું રહેશે.',
     cancelEditMessage: 'ફેરફાર રદ કરવા છે? સાચવ્યા વગરના ફેરફાર જતા રહેશે.',
     discardItemsMessage: {
       one: 'તમે ઉમેરેલી {{count}} આઇટમ જતી રહેશે.',

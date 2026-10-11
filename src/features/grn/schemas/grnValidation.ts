@@ -167,18 +167,6 @@ export const isValidReceiptQuantity = (value: string): boolean =>
   parseReceiptQuantity(value) !== null;
 
 // Step 2: Items Schema
-/**
- * A rack is optional. When given it is `Floor/Chamber` or `Rack/Floor/Chamber`:
- * two or more parts separated by "/", none of them empty. The parts are not
- * checked against a list, because every facility has its own floors and
- * chambers and there is no server setting for them yet.
- */
-export const isValidRackFormat = (rack: string | null | undefined): boolean => {
-  if (!rack || rack.trim() === '') return true;
-  const parts = rack.split('/');
-  return parts.length >= 2 && parts.every((part) => part.trim() !== '');
-};
-
 export const itemSchema = yup.object().shape({
   item_table_id: yup
     .string()
@@ -200,14 +188,11 @@ export const itemSchema = yup.object().shape({
 
   weight: receiptWeightSchema,
 
+  // A rack is free text: every facility writes its racks its own way. Only the
+  // length is checked, because the server column holds 30 characters.
   rack: yup
     .string()
-    .max(30, msg('grn.validation.rackMax'))
-    .test(
-      'valid-rack-format',
-      msg('grn.validation.rackFormat'),
-      (value) => isValidRackFormat(value)
-    ),
+    .max(30, msg('grn.validation.rackMax')),
 
   package_mark: yup
     .string()

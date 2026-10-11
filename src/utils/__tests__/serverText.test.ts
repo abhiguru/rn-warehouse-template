@@ -126,6 +126,7 @@ describe('business-rule refusals in Gujarati', () => {
     ['Invoice customer and GRN must match', 'errors.parsed.invoiceCustomerMismatch'],
     ['Discount exceeds the invoice amount', 'errors.parsed.discountTooLarge'],
     ['A reason is required for an invoice discount', 'errors.parsed.discountReasonRequired'],
+    ['Enter a reason for the zero charge', 'errors.parsed.zeroChargeReasonRequired'],
     ['Expected a 10-digit Indian mobile number', 'errors.parsed.mobileInvalid'],
     ['At least one valid customer assignment is required', 'errors.parsed.customerAssignmentRequired'],
     ['Pending enrollment must be reviewed with a customer assignment', 'errors.parsed.customerAssignmentRequired'],
@@ -133,6 +134,12 @@ describe('business-rule refusals in Gujarati', () => {
   ] as const)('%s', (text, key) => {
     expect(serverText(text, 'સાચવી શકાયું નથી')).toBe(t(key));
     expect(t(key)).toMatch(/[઀-૿]/);
+  });
+
+  // Server migration 48: the one-argument save wraps the refusal.
+  it('a missing zero-charge reason is read inside the database-error wrapper too', () => {
+    const wrapped = 'Database error: Enter a reason for the zero charge (SQLState: 22023)';
+    expect(serverText(wrapped, 'સાચવી શકાયું નથી')).toBe(t('errors.parsed.zeroChargeReasonRequired'));
   });
 
   // M4-4: a Gujarati item or customer name inside an English sentence is not "already Gujarati".

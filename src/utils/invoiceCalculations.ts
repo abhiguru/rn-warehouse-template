@@ -5,7 +5,7 @@
  * Extracted from Redux reducers for better testability and reusability.
  */
 
-import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
+import type { GroupRates, InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 import { localizeDigits, t } from '@/i18n';
 
 /**
@@ -23,6 +23,67 @@ export function discountNeedsReason(
   if (role !== 'staff') return false;
   if (roundMoney(header.discount || 0) === roundMoney(header.saved_discount || 0)) return false;
   return !(header.discount_reason || '').trim();
+}
+
+/**
+ * A line whose storage charge is 0 (owner decision 3 of 2026-10-11: allowed, with a reason).
+ *
+ * Decided after rounding to two decimals, as the server decides it (migration
+ * 48 rounds the charge before it compares with 0). Everything that depends on
+ * a line being free goes through here: whether the reason field is shown,
+ * whether staff must fill it in, whether `zero_charge_reason` is sent, the
+ * line in the save question and the total of 0 that may be saved. So a charge
+ * the money fields cannot produce (0.004) cannot make the server ask for a
+ * reason while the app shows no field for it.
+ */
+export function isZeroChargeLine(item: { charge?: number | null }): boolean {
+  return roundMoney(Number(item.charge) || 0) === 0;
+}
+
+export function hasZeroChargeLine(items: { charge?: number | null }[]): boolean {
+  return items.some(isZeroChargeLine);
+}
+
+/**
+ * Staff must give a reason when a line of the invoice has a zero charge
+ * (server migration 48); administrators and supervisors may leave it empty.
+ *
+ * The reason is the text in the form. For an invoice being edited that is the
+ * stored reason until the person changes it: the server asks staff for a
+ * reason on every save of an invoice with a free line, also when someone else
+ * made the line free, and takes an empty one from an administrator or
+ * supervisor as "remove the reason". So the stored text is sent back as it is.
+ */
+export function zeroChargeNeedsReason(
+  header: { zero_charge_reason?: string | null },
+  items: { charge?: number | null }[],
+  role: string | null | undefined
+): boolean {
+  if (role !== 'staff') return false;
+  if (!hasZeroChargeLine(items)) return false;
+  return !(header.zero_charge_reason || '').trim();
+}
+
+/**
+ * The text of the question before an invoice is saved or updated: the customer
+ * and the estimated total and, when lines have a charge of 0, how many do.
+ *
+ * The last line is for every role. A line can be free on purpose, or because
+ * its item has no price in the price list (it then arrives with a charge of
+ * 0). Staff are stopped for a reason either way; administrators and
+ * supervisors need none, and without this line would save a free invoice
+ * without having been told.
+ */
+export function invoiceConfirmMessage(
+  header: { customer_name: string; total: number },
+  items: { charge?: number | null }[]
+): string {
+  const message = t('invoice.review.confirmMessage', {
+    customer: header.customer_name,
+    total: formatInvoiceAmount(header.total),
+  });
+  const freeLines = items.filter(isZeroChargeLine).length;
+  return freeLines > 0 ? `${message}\n\n${t('invoice.review.zeroChargeCount', { count: freeLines })}` : message;
 }
 
 export function roundMoney(value: number): number {
@@ -398,8 +459,11 @@ export function applyBulkPricingToAllItems(
 }
 
 /**
- * Apply bulk pricing to items in a specific group with override support
- * Used by bulkUpdateItemGroupPricing reducer
+ * Apply group rates to the lines of one group, with override support.
+ * Used by bulkUpdateItemGroupPricing reducer.
+ *
+ * Only the rates that are given are applied. A line keeps its own value for
+ * every rate left out, and for a rate that was typed on the line itself.
  */
 export interface BulkGroupPricingResult {
   updatedItems: InvoiceItemData[];
@@ -409,11 +473,7 @@ export interface BulkGroupPricingResult {
 export function applyBulkGroupPricing(
   items: InvoiceItemData[],
   groupKey: string,
-  pricing: {
-    charge: number;
-    labour_rate: number;
-    tax: number;
-  },
+  pricing: GroupRates,
   itemOverrides: Record<string, string[]>
 ): BulkGroupPricingResult {
   const { item_id, package_mark } = parseGroupKey(groupKey);
@@ -430,10 +490,14 @@ export function applyBulkGroupPricing(
     // Get override list for this item (if any)
     const overrides = itemOverrides[item.temp_id] || [];
 
-    // Apply bulk values only to non-overridden fields
-    const charge = overrides.includes('charge') ? item.charge : pricing.charge;
-    const labour_rate = overrides.includes('labour_rate') ? item.labour_rate : pricing.labour_rate;
-    const tax = overrides.includes('tax') ? item.tax : pricing.tax;
+    // Apply the group's values only to the fields that were given and are not overridden
+    const rate = (field: 'charge' | 'labour_rate' | 'tax'): number => {
+      const groupRate = pricing[field];
+      return groupRate === undefined || overrides.includes(field) ? item[field] : groupRate;
+    };
+    const charge = rate('charge');
+    const labour_rate = rate('labour_rate');
+    const tax = rate('tax');
 
     // Recalculate amounts
     const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time);

@@ -13,7 +13,7 @@
  * @module hooks/useBackHandler
  */
 
-import { useEffect, useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -117,27 +117,59 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
 
   const router = useRouter();
 
+  // What Back does is read from here when it is pressed, so the listener below
+  // never has to be taken off and put on again while the screen draws itself.
+  // React Native asks the listener added last first: a listener that is added
+  // again on every render ends up ahead of a bottom sheet opened in between,
+  // and Back would leave the screen with the sheet still open.
+  const latest = useRef({
+    enabled,
+    currentStep,
+    stepBasePath,
+    hasUnsavedChanges,
+    confirmationMessage,
+    confirmationTitle,
+    onBackPress,
+    onConfirmBack,
+    exitRoute,
+    router,
+  });
+  latest.current = {
+    enabled,
+    currentStep,
+    stepBasePath,
+    hasUnsavedChanges,
+    confirmationMessage,
+    confirmationTitle,
+    onBackPress,
+    onConfirmBack,
+    exitRoute,
+    router,
+  };
+
   const handleBackPress = useCallback(() => {
+    const now = latest.current;
+
     // Skip on iOS (iOS uses gestures, not hardware back button)
     if (Platform.OS !== 'android') {
       return false;
     }
 
     // If disabled, allow default behavior
-    if (!enabled) {
+    if (!now.enabled) {
       return false;
     }
 
     // If custom handler provided, use it
-    if (onBackPress) {
-      return onBackPress();
+    if (now.onBackPress) {
+      return now.onBackPress();
     }
 
     // Handle unsaved changes confirmation
-    if (hasUnsavedChanges) {
+    if (now.hasUnsavedChanges) {
       showAlert(
-        confirmationTitle,
-        confirmationMessage,
+        now.confirmationTitle,
+        now.confirmationMessage,
         [
           {
             text: t('common.cancel'),
@@ -147,7 +179,7 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
             text: t('common.discard'),
             style: 'destructive',
             onPress: () => {
-              onConfirmBack?.();
+              latest.current.onConfirmBack?.();
               navigateBack();
             },
           },
@@ -162,45 +194,36 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
     return true; // Prevent default behavior
 
     function navigateBack() {
+      const { currentStep: step, stepBasePath: basePath, exitRoute: exit, router: nav } = latest.current;
       // Multi-step form navigation
-      if (currentStep !== undefined && stepBasePath) {
-        if (currentStep > 1) {
+      if (step !== undefined && basePath) {
+        if (step > 1) {
           // Go to previous step
-          const previousStep = currentStep - 1;
-          router.replace(`${stepBasePath}${previousStep}` as Href);
+          const previousStep = step - 1;
+          nav.replace(`${basePath}${previousStep}` as Href);
         } else {
           // On first step, exit the form
-          if (exitRoute) {
-            router.replace(exitRoute as Href);
-          } else if (router.canGoBack()) {
-            router.back();
+          if (exit) {
+            nav.replace(exit as Href);
+          } else if (nav.canGoBack()) {
+            nav.back();
           } else {
-            router.replace('/' as Href);
+            nav.replace('/' as Href);
           }
         }
       } else {
         // Default back navigation
-        if (router.canGoBack()) {
-          router.back();
-        } else if (exitRoute) {
-          router.replace(exitRoute as Href);
+        if (nav.canGoBack()) {
+          nav.back();
+        } else if (exit) {
+          nav.replace(exit as Href);
         }
       }
     }
-  }, [
-    enabled,
-    onBackPress,
-    hasUnsavedChanges,
-    confirmationTitle,
-    confirmationMessage,
-    onConfirmBack,
-    currentStep,
-    stepBasePath,
-    exitRoute,
-    router,
-  ]);
+  }, []);
 
-  // Use useFocusEffect to only handle back when screen is focused
+  // Only while the screen is focused, and one listener for the whole of that
+  // time: added on focus, removed on blur and when the screen is unmounted.
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS !== 'android') {

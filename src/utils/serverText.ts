@@ -36,6 +36,8 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/invoice customer and grn must match/, 'errors.parsed.invoiceCustomerMismatch'],
   [/discount exceeds the invoice amount/, 'errors.parsed.discountTooLarge'],
   [/reason is required for an invoice discount/, 'errors.parsed.discountReasonRequired'],
+  // A line with a charge of 0 and no reason from staff (server migration 48).
+  [/reason for the zero charge/, 'errors.parsed.zeroChargeReasonRequired'],
   // Users and enrollment review.
   [/10-digit indian mobile number/, 'errors.parsed.mobileInvalid'],
   [/customer assignment/, 'errors.parsed.customerAssignmentRequired'],

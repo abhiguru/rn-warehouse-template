@@ -18,6 +18,8 @@ export interface InvoiceHeaderData {
   inv_date: string; // ISO date string
   inv_fin_year: string; // e.g., '2025-26'
   inv_no: number;
+  /** The number was typed by the user (client only, never sent). A typed number is never replaced by the server's suggestion. */
+  inv_no_typed?: boolean;
   customer_id: string;
   customer_name: string;
   gr_id: string;
@@ -33,6 +35,11 @@ export interface InvoiceHeaderData {
   saved_discount_reason?: string;
   /** The reason field was typed in during this edit (client only, never sent). Typed text is never cleared by the app. */
   discount_reason_edited?: boolean;
+  /**
+   * Why a line has a storage charge of 0; the server requires it from staff when a line has one.
+   * An invoice being edited starts with the stored reason. Only the person changes this text: the app never clears it.
+   */
+  zero_charge_reason?: string;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total
@@ -115,6 +122,12 @@ export interface EditedItemValues {
   tax?: number;
 }
 
+/**
+ * Rates typed in the group fields of the items step. A field that is not there
+ * was not typed for the group: its lines keep the rate each of them has.
+ */
+export type GroupRates = Partial<{ charge: number; labour_rate: number; tax: number }>;
+
 // Form state for Redux
 export interface InvoiceFormState {
   // IDs
@@ -128,7 +141,7 @@ export interface InvoiceFormState {
 
   // Bulk edit and override tracking
   itemOverrides: Record<string, string[]>; // temp_id -> array of overridden field names
-  bulkPricing: Record<string, { charge: number; labour_rate: number; tax: number }>; // item_id -> bulk pricing
+  bulkPricing: Record<string, GroupRates>; // group key (item_id:::package_mark) -> the rates applied to the group
 
   // UI state
   currentStep: number;
@@ -156,6 +169,8 @@ export interface CreateInvoicePayload {
     inv_date: string; // ISO date string
     discount: number;
     discount_reason?: string | null;
+    /** Sent to the server only when a line has a charge of 0. */
+    zero_charge_reason?: string | null;
     labour: number;
     tax_amount: number;
     total: number;

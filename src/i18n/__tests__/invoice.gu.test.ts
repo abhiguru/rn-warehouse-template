@@ -6,21 +6,28 @@ afterEach(() => setLanguage('en'));
 
 describe('invoice texts in Gujarati', () => {
   it('counts items in ૦-૯ and keeps the noun unchanged after a number', () => {
-    expect(t('invoice.items.missingPrice', { count: 1 }, 'gu')).toBe(
-      '૧ આઇટમમાં ભાડાનો દર કે મુદત નથી. ૦ થી વધુ દર અને મુદત લખો.'
+    expect(t('invoice.items.zeroDuration', { count: 1 }, 'gu')).toBe(
+      '૧ આઇટમની મુદત ૦ છે. મુદત ૦ થી વધુ હોવી જોઈએ.'
     );
-    expect(t('invoice.items.missingPrice', { count: 12 }, 'gu')).toBe(
-      '૧૨ આઇટમમાં ભાડાનો દર કે મુદત નથી. ૦ થી વધુ દર અને મુદત લખો.'
+    expect(t('invoice.items.zeroDuration', { count: 12 }, 'gu')).toBe(
+      '૧૨ આઇટમની મુદત ૦ છે. મુદત ૦ થી વધુ હોવી જોઈએ.'
     );
     expect(t('invoice.table.showDispatches', { count: 3 }, 'gu')).toBe('૩ જાવક બતાવો');
   });
 
+  it('says before saving how many items have a charge of 0', () => {
+    expect(t('invoice.review.zeroChargeCount', { count: 1 })).toBe('1 item has a charge of 0.');
+    expect(t('invoice.review.zeroChargeCount', { count: 12 })).toBe('12 items have a charge of 0.');
+    expect(t('invoice.review.zeroChargeCount', { count: 1 }, 'gu')).toBe('૧ આઇટમનો ભાડાનો દર ૦ છે.');
+    expect(t('invoice.review.zeroChargeCount', { count: 12 }, 'gu')).toBe('૧૨ આઇટમનો ભાડાનો દર ૦ છે.');
+  });
+
   it('keeps the English plural forms as they were', () => {
-    expect(t('invoice.items.missingPrice', { count: 1 })).toBe(
-      '1 item has no charge or duration. Enter a charge and duration greater than 0.'
+    expect(t('invoice.items.zeroDuration', { count: 1 })).toBe(
+      '1 item has a duration of 0. The duration must be greater than 0.'
     );
-    expect(t('invoice.items.missingPrice', { count: 4 })).toBe(
-      '4 items have no charge or duration. Enter a charge and duration greater than 0.'
+    expect(t('invoice.items.zeroDuration', { count: 4 })).toBe(
+      '4 items have a duration of 0. The duration must be greater than 0.'
     );
     expect(t('invoice.form.fixFields', { count: 1 })).toBe('Fix the highlighted field, then continue.');
     expect(t('invoice.form.fixFields', { count: 3 })).toBe('Fix the 3 highlighted fields, then continue.');

@@ -335,7 +335,6 @@ export const grn: Translation<typeof source> = {
     itemNameMax: 'આઇટમનું નામ વધુમાં વધુ ૩૦ અક્ષરનું હોઈ શકે',
     packagingMax: 'પેકિંગ વધુમાં વધુ ૨૦ અક્ષરનું હોઈ શકે',
     rackMax: 'રેક વધુમાં વધુ ૩૦ અક્ષરની હોઈ શકે',
-    rackFormat: 'રેક આ રીતે લખો: માળ/ચેમ્બર અથવા રેક/માળ/ચેમ્બર',
     packageMarkMax: 'માર્કો વધુમાં વધુ ૬૦ અક્ષરનો હોઈ શકે',
     itemsMin: 'ઓછામાં ઓછી એક આઇટમ જરૂરી છે',
     itemsRequired: 'આઇટમ જરૂરી છે',

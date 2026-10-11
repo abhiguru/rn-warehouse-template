@@ -75,6 +75,18 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
   const hasDispatchedItems = !isCreateMode && items.some((item) => item.qty !== item.stock);
 
+  // What the user has put into a new GRN. The number, the date and the
+  // supervisor are filled in by the form itself and are not counted.
+  const hasEnteredData = !!(
+    header.customer_id ||
+    header.sender_id ||
+    header.sender_name ||
+    header.registration ||
+    header.note ||
+    (header.gr_images?.length ?? 0) > 0 ||
+    items.length > 0
+  );
+
   const toggleOptionalFields = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setShowOptionalFields((prev) => !prev);
@@ -218,6 +230,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
+        // New GRN: the Android Back key asks the same question as the X once something was entered.
+        backOnFirstStep={isCreateMode ? { hasData: hasEnteredData, exitRoute: '/(tabs)/grn' } : undefined}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}

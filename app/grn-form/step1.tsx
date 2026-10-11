@@ -1,14 +1,7 @@
 import GrnHeaderStep from '@/features/grn/screens/GrnHeaderStep';
-import { useBackHandler } from '@/hooks/useBackHandler';
 
 export default function GRNFormStep1() {
-  // I11: Handle Android back button - on step 1, go back to GRN list
-  useBackHandler({
-    currentStep: 1,
-    totalSteps: 3,
-    stepBasePath: '/grn-form/step',
-    exitRoute: '/(tabs)/grn',
-  });
-
+  // The Android Back key is handled by the step itself: with something entered
+  // it asks before discarding, as the X in the header does (useFirstStepBack).
   return <GrnHeaderStep mode="create" />;
 }

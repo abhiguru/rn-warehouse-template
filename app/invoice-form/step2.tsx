@@ -23,6 +23,7 @@ import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTable';
+import type { GroupRates } from '@/types/invoice.types';
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
@@ -153,7 +154,7 @@ export default function InvoiceFormStep2() {
     updateItemPricing(tempId, { [field]: value });
   };
 
-  const handleBulkEdit = (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => {
+  const handleBulkEdit = (groupKey: string, pricing: GroupRates) => {
     applyGroupPricing(groupKey, pricing);
   };
 
@@ -228,15 +229,14 @@ export default function InvoiceFormStep2() {
       return;
     }
 
-    // Check if all items have valid pricing before navigating
-    const invalidItems = items.filter(
-      (item) => item.charge === 0 || item.duration === 0
-    );
+    // A charge of 0 is allowed; its reason is asked for on the review step.
+    // A line without a duration is not: it would be charged for no time at all.
+    const invalidItems = items.filter((item) => item.duration === 0);
 
     if (invalidItems.length > 0) {
       showError(
         tr('invoice.items.checkPricesTitle'),
-        tr('invoice.items.missingPrice', { count: invalidItems.length })
+        tr('invoice.items.zeroDuration', { count: invalidItems.length })
       );
       return;
     }

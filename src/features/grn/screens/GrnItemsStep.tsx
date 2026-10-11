@@ -39,7 +39,6 @@ import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/featu
 import {
   validateStep2,
   isValidReceiptQuantity,
-  isValidRackFormat,
   parseReceiptQuantity,
   parseReceiptWeight,
 } from '@/features/grn/schemas/grnValidation';
@@ -110,10 +109,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       currentItem.item_table_id &&
       currentItem.item_name &&
       currentItem.qty &&
-      isValidReceiptQuantity(currentItem.qty) &&
-      isValidRackFormat(currentItem.rack)
+      isValidReceiptQuantity(currentItem.qty)
     );
-  }, [currentItem.item_table_id, currentItem.item_name, currentItem.qty, currentItem.rack]);
+  }, [currentItem.item_table_id, currentItem.item_name, currentItem.qty]);
 
   const editingItemNumber = useMemo(() => {
     if (!editingItemId) return 0;
@@ -277,25 +275,27 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     const originalStock = itemsWithDispatchesOnLoad.get(currentItem.grn_trl_id);
     const preservedStock = hasDispatches && originalStock !== undefined ? originalStock : parsedQty;
 
+    // The rack is free text; only the spaces typed at its ends are dropped.
+    const savedItem: ItemFormData = { ...currentItem, rack: (currentItem.rack || '').trim() };
     const storeItem: GRNItemData = {
-      grn_trl_id: currentItem.grn_trl_id,
-      item_table_id: currentItem.item_table_id,
-      item_name: currentItem.item_name,
-      packaging: currentItem.packaging,
+      grn_trl_id: savedItem.grn_trl_id,
+      item_table_id: savedItem.item_table_id,
+      item_name: savedItem.item_name,
+      packaging: savedItem.packaging,
       qty: parsedQty,
       stock: preservedStock,
-      weight: parseReceiptWeight(currentItem.weight) ?? 0,
-      rack: currentItem.rack,
-      package_mark: currentItem.package_mark,
-      trl_images: currentItem.trl_images || [],
+      weight: parseReceiptWeight(savedItem.weight) ?? 0,
+      rack: savedItem.rack,
+      package_mark: savedItem.package_mark,
+      trl_images: savedItem.trl_images || [],
     };
 
     if (isEditing) {
       dispatch(updateItem({ grn_trl_id: editingItemId!, item: storeItem }));
-      setSavedItems((prev) => prev.map((item) => (item.grn_trl_id === editingItemId ? currentItem : item)));
+      setSavedItems((prev) => prev.map((item) => (item.grn_trl_id === editingItemId ? savedItem : item)));
     } else {
       dispatch(addItem(storeItem));
-      setSavedItems((prev) => [...prev, currentItem]);
+      setSavedItems((prev) => [...prev, savedItem]);
     }
 
     setEditingItemId(null);
@@ -496,8 +496,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedAdding'));
           return;
         }
-        allItemsToSave.push(currentItem);
-        setSavedItems((prev) => [...prev, currentItem]);
+        const typedItem: ItemFormData = { ...currentItem, rack: (currentItem.rack || '').trim() };
+        allItemsToSave.push(typedItem);
+        setSavedItems((prev) => [...prev, typedItem]);
       }
     }
 

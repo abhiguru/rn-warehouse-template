@@ -203,3 +203,328 @@ describe('editing a saved invoice', () => {
     expect(discountNeedsReason(state.header, 'staff')).toBe(true);
   });
 });
+
+// Owner decision 3 of 2026-10-11: a line may have a charge of 0, with a reason.
+describe('the reason for a zero charge', () => {
+  const slice: Slice = require('../invoiceFormSlice');
+  const reducer = slice.default;
+  const { zeroChargeNeedsReason } = require('@/utils/invoiceCalculations');
+
+  const line = (id: string, charge: number): InvoiceItemData => ({
+    temp_id: `edit_${id}_0`,
+    disp_trl_id: `${id}-2222-4333-8444-555555555555`,
+    grn_item_id: 'g1',
+    item_id: 'i1',
+    item_name: 'Example Potatoes',
+    qty: 100,
+    grn_original_qty: 100,
+    package_mark: 'M1',
+    rack: '',
+    weight: 50,
+    dispatch_id: 'd1',
+    dispatch_no: 'I0001',
+    dispatch_date: '2026-10-01',
+    grn_id: 'gr1',
+    grn_no: 'A0010',
+    grn_date: '2026-09-01',
+    duration: 1,
+    no_of_days: 30,
+    charge,
+    labour_rate: 2,
+    tax: 5,
+    amount: charge * 100,
+    labour_amount: 200,
+    tax_amount: 10,
+    item_total: charge * 100 + 210,
+  });
+  const FREE = 'aaaaaaaa';
+  const PAID = 'bbbbbbbb';
+
+  const header = {
+    inv_date: '2026-10-05',
+    inv_fin_year: '2026-27',
+    inv_no: 42,
+    customer_id: 'c1',
+    customer_name: 'Example Traders',
+    gr_id: 'gr1',
+    gr_no: 'A0010',
+    one_time_charge: false,
+    discount: 0,
+    zero_charge_reason: 'Sample lot',
+    labour: 400,
+    tax_amount: 20,
+    total: 970,
+  };
+  /** An invoice saved with one free line, one paid line and the reason "Sample lot". */
+  const saved = () =>
+    reducer(undefined, slice.loadInvoiceEditData({ invoiceId: 'inv-42', grId: 'gr1', header, items: [line(FREE, 0), line(PAID, 5.5)] }));
+  const setCharge = (state: ReturnType<typeof saved>, id: string, charge: number) =>
+    reducer(state, slice.updateEditedItem({ temp_id: `edit_${id}_0`, values: { charge } }));
+  const reason = (state: ReturnType<typeof saved>) => state.header.zero_charge_reason ?? '';
+  const needed = (state: ReturnType<typeof saved>, role = 'staff') => zeroChargeNeedsReason(state.header, state.items, role);
+
+  it('is loaded with the invoice and satisfies the rule', () => {
+    const state = saved();
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('is kept when something other than a charge of 0 changes', () => {
+    let state = setCharge(saved(), PAID, 7);
+    state = reducer(state, slice.updateDiscount(50));
+    state = reducer(state, slice.updateHeader({ inv_date: '2026-10-06' }));
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  // The server wants the reason back on every save of an invoice with a free
+  // line, and reads an empty one from an administrator as "remove it".
+  it('stays in the form when another line gets a zero charge', () => {
+    const state = setCharge(saved(), PAID, 0);
+
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('stays in the form while no line is free, and is there again when one is', () => {
+    let state = setCharge(saved(), FREE, 4);
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+
+    state = setCharge(state, PAID, 0);
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('is not touched by a group price', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: 'i1:::M1', pricing: { charge: 0, labour_rate: 2, tax: 5 } }));
+
+    expect(state.items.every((item) => item.charge === 0)).toBe(true);
+    expect(reason(state)).toBe('Sample lot');
+  });
+
+  it('never clears a reason written in this edit, whatever the charges become', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: 'Agreed with the owner' }));
+    state = setCharge(state, PAID, 0);
+    state = setCharge(state, PAID, 5.5);
+    state = setCharge(state, FREE, 3);
+    state = setCharge(state, FREE, 0);
+    state = reducer(state, slice.updateDiscount(25));
+
+    expect(reason(state)).toBe('Agreed with the owner');
+    expect(needed(state)).toBe(false);
+  });
+
+  it('a reason the person erased stays erased, and staff are asked for one', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: '' }));
+    state = setCharge(state, PAID, 0);
+    state = setCharge(state, PAID, 5.5);
+
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+    expect(needed(state, 'admin')).toBe(false);
+    expect(needed(state, 'supervisor')).toBe(false);
+  });
+
+  it('a freshly loaded invoice starts with the stored reason again', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: 'typed' }));
+    state = reducer(state, slice.loadInvoiceEditData({ invoiceId: 'inv-42', grId: 'gr1', header, items: [line(FREE, 0), line(PAID, 5.5)] }));
+
+    expect(reason(state)).toBe('Sample lot');
+  });
+
+  it('an invoice saved without a free line has no reason, and asks staff for one when a line becomes free', () => {
+    let state = reducer(undefined, slice.loadInvoiceEditData({ invoiceId: 'inv-43', grId: 'gr1', header: { ...header, zero_charge_reason: undefined }, items: [line(PAID, 5.5)] }));
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(false);
+
+    state = setCharge(state, PAID, 0);
+    expect(needed(state)).toBe(true);
+  });
+
+  it('keeps the reason of an invoice that is being edited, also when another GRN is loaded into it', () => {
+    let state = reducer(saved(), slice.updateHeader({ zero_charge_reason: 'Agreed with the owner' }));
+    state = reducer(state, slice.loadInvoiceFormData({
+      grId: 'gr2',
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'gr2', gr_no: 'A0011' },
+      items: [{ ...line('cccccccc', 0), temp_id: 'temp_1_0', one_time: false } as InvoiceItemData],
+    }));
+
+    expect(state.header.gr_id).toBe('gr2');
+    expect(reason(state)).toBe('Agreed with the owner');
+  });
+
+  it('a new invoice has no reason until one is written, and keeps it afterwards', () => {
+    let state = reducer(undefined, slice.loadInvoiceFormData({
+      grId: 'gr1',
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'gr1', gr_no: 'A0010' },
+      items: [{ ...line(FREE, 0), temp_id: 'edit_aaaaaaaa_0', one_time: false } as InvoiceItemData],
+    }));
+    expect(reason(state)).toBe('');
+    expect(needed(state)).toBe(true);
+
+    state = reducer(state, slice.updateHeader({ zero_charge_reason: 'Sample lot' }));
+    state = setCharge(state, FREE, 4);
+    state = setCharge(state, FREE, 0);
+    expect(reason(state)).toBe('Sample lot');
+    expect(needed(state)).toBe(false);
+  });
+
+  // A reason is about the goods of one GRN. In a new invoice it must not meet
+  // the staff rule for the lines of the GRN chosen after it.
+  describe('in a new invoice, when another GRN is chosen', () => {
+    const grn = (grId: string, grNo: string, id: string) => slice.loadInvoiceFormData({
+      grId,
+      header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: grId, gr_no: grNo },
+      items: [{ ...line(id, 0), temp_id: `temp_${id}_0`, one_time: false } as InvoiceItemData],
+    });
+    const withReasonForGrnA = () => {
+      const state = reducer(undefined, grn('gr1', 'A0010', 'aaaaaaaa'));
+      return reducer(state, slice.updateHeader({ zero_charge_reason: 'Sample lot' }));
+    };
+
+    it('the reason written for the GRN before is not carried over: staff are asked again', () => {
+      const state = reducer(withReasonForGrnA(), grn('gr2', 'A0011', 'cccccccc'));
+
+      expect(state.header.gr_id).toBe('gr2');
+      expect(reason(state)).toBe('');
+      expect(needed(state)).toBe(true);
+      expect(needed(state, 'admin')).toBe(false);
+    });
+
+    it('the reason stays when the same GRN is loaded again', () => {
+      const state = reducer(withReasonForGrnA(), grn('gr1', 'A0010', 'aaaaaaaa'));
+
+      expect(reason(state)).toBe('Sample lot');
+      expect(needed(state)).toBe(false);
+    });
+
+    it('the discount and its reason still stay with the form, as before', () => {
+      let state = reducer(withReasonForGrnA(), slice.updateDiscount(25));
+      state = reducer(state, slice.updateHeader({ discount_reason: 'Old customer' }));
+      state = reducer(state, grn('gr2', 'A0011', 'cccccccc'));
+
+      expect(state.header).toMatchObject({ discount: 25, discount_reason: 'Old customer' });
+      expect(reason(state)).toBe('');
+    });
+  });
+
+  it('is gone with the form when the form is reset', () => {
+    const state = reducer(reducer(saved(), slice.updateHeader({ zero_charge_reason: 'typed' })), slice.resetForm());
+
+    expect(state.header.zero_charge_reason ?? '').toBe('');
+  });
+});
+
+// A group rate is one field: typing it sets that field on the group's lines
+// and leaves the two others as they are. The form used to keep an average of
+// the stored rates for every group and gave all three to every line with the
+// first group edit, which made a free line of a stored invoice paid (and its
+// neighbours cheaper) when only the tax was changed.
+describe('a group rate on an invoice whose lines differ', () => {
+  const slice: Slice = require('../invoiceFormSlice');
+  const reducer = slice.default;
+  const { hasZeroChargeLine } = require('@/utils/invoiceCalculations');
+
+  const GROUP = 'i1:::M1';
+  const line = (id: string, rates: { charge: number; labour_rate: number; tax: number }, mark = 'M1'): InvoiceItemData => ({
+    temp_id: `edit_${id}_0`,
+    disp_trl_id: `${id}-2222-4333-8444-555555555555`,
+    grn_item_id: 'g1',
+    item_id: 'i1',
+    item_name: 'Example Potatoes',
+    qty: 100,
+    grn_original_qty: 100,
+    package_mark: mark,
+    rack: '',
+    weight: 50,
+    dispatch_id: 'd1',
+    dispatch_no: 'I0001',
+    dispatch_date: '2026-10-01',
+    grn_id: 'gr1',
+    grn_no: 'A0010',
+    grn_date: '2026-09-01',
+    duration: 1,
+    no_of_days: 30,
+    ...rates,
+    amount: rates.charge * 100,
+    labour_amount: rates.labour_rate * 100,
+    tax_amount: 0,
+    item_total: 0,
+  });
+  const header = {
+    inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 42, customer_id: 'c1', customer_name: 'Example Traders',
+    gr_id: 'gr1', gr_no: 'A0010', one_time_charge: false, discount: 0, zero_charge_reason: 'Sample lot',
+    labour: 500, tax_amount: 0, total: 1000,
+  };
+  /** Stored: a free line with labour 2 and tax 5, a paid line (5) with labour 3 and tax 5, and a line of another group. */
+  const saved = () =>
+    reducer(undefined, slice.loadInvoiceEditData({
+      invoiceId: 'inv-42',
+      grId: 'gr1',
+      header,
+      items: [
+        line('aaaaaaaa', { charge: 0, labour_rate: 2, tax: 5 }),
+        line('bbbbbbbb', { charge: 5, labour_rate: 3, tax: 5 }),
+        line('cccccccc', { charge: 7, labour_rate: 1, tax: 18 }, 'M2'),
+      ],
+    }));
+  const rates = (state: ReturnType<typeof saved>) => state.items.map((item) => [item.charge, item.labour_rate, item.tax]);
+
+  it('opening the invoice keeps no average as a group rate', () => {
+    const state = saved();
+
+    expect(state.bulkPricing).toEqual({});
+    expect(rates(state)).toEqual([[0, 2, 5], [5, 3, 5], [7, 1, 18]]);
+  });
+
+  it('changing the group tax changes the tax only: the free line stays free and the reason stays', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { tax: 12 } }));
+
+    expect(rates(state)).toEqual([[0, 2, 12], [5, 3, 12], [7, 1, 18]]);
+    expect(hasZeroChargeLine(state.items)).toBe(true);
+    expect(state.header.zero_charge_reason).toBe('Sample lot');
+    expect(state.bulkPricing).toEqual({ [GROUP]: { tax: 12 } });
+    // The amounts follow: 100 x 0 and 100 x 5 storage, 200 and 300 labour, 12% tax on each.
+    expect(state.items[0]).toMatchObject({ amount: 0, labour_amount: 200, tax_amount: 24, item_total: 224 });
+    expect(state.items[1]).toMatchObject({ amount: 500, labour_amount: 300, tax_amount: 96, item_total: 896 });
+  });
+
+  it('changing the group labour rate leaves the charges and the tax alone', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { labour_rate: 4 } }));
+
+    expect(rates(state)).toEqual([[0, 4, 5], [5, 4, 5], [7, 1, 18]]);
+  });
+
+  it('changing the group charge gives that charge to every line of the group, and nothing else', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { charge: 6 } }));
+
+    expect(rates(state)).toEqual([[6, 2, 5], [6, 3, 5], [7, 1, 18]]);
+    // No line is free any more; the text stays in the form and is back if one becomes free again.
+    expect(hasZeroChargeLine(state.items)).toBe(false);
+    expect(state.header.zero_charge_reason).toBe('Sample lot');
+  });
+
+  it('group rates typed one after the other add up', () => {
+    let state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { tax: 12 } }));
+    state = reducer(state, slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { labour_rate: 4 } }));
+
+    expect(state.bulkPricing).toEqual({ [GROUP]: { tax: 12, labour_rate: 4 } });
+    expect(rates(state)).toEqual([[0, 4, 12], [5, 4, 12], [7, 1, 18]]);
+  });
+
+  it('a rate typed on a line itself is still kept when the group rate of that field changes', () => {
+    let state = reducer(saved(), slice.updateEditedItem({ temp_id: 'edit_aaaaaaaa_0', values: { tax: 0 } }));
+    state = reducer(state, slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { tax: 12 } }));
+
+    expect(rates(state)).toEqual([[0, 2, 0], [5, 3, 12], [7, 1, 18]]);
+  });
+
+  it('all three at once still works (a price taken from the price list)', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { charge: 4, labour_rate: 1, tax: 0 } }));
+
+    expect(rates(state)).toEqual([[4, 1, 0], [4, 1, 0], [7, 1, 18]]);
+  });
+});

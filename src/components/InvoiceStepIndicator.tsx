@@ -5,7 +5,7 @@
 
 import React from 'react';
 import type { StepConfig } from '@/components/StepIndicator';
-import { GenericStepIndicatorHeader } from './GenericStepIndicatorHeader';
+import { GenericStepIndicatorHeader, type GenericStepIndicatorHeaderProps } from './GenericStepIndicatorHeader';
 import { t } from '@/i18n';
 
 /**
@@ -25,6 +25,8 @@ export interface InvoiceStepIndicatorProps {
   onCancel: () => void;
   cancelMessage?: string;
   onStepPress?: (stepNumber: number) => void;
+  /** First step of a new invoice: what the Android Back key does (see GenericStepIndicatorHeader). */
+  backOnFirstStep?: GenericStepIndicatorHeaderProps['backOnFirstStep'];
   invoiceNo?: string | number;
   isEditMode?: boolean;
 }
@@ -36,6 +38,7 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
   onCancel,
   cancelMessage,
   onStepPress,
+  backOnFirstStep,
   invoiceNo,
   isEditMode = false,
 }) => {
@@ -60,6 +63,7 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
           : t('invoice.steps.discardNewMessage'))
       }
       onStepPress={onStepPress}
+      backOnFirstStep={backOnFirstStep}
     />
   );
 };

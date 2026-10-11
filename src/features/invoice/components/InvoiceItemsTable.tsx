@@ -11,7 +11,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { byLanguage, fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
+import { InvoiceItemData, GroupedInvoiceItems, type GroupRates } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
@@ -24,6 +24,15 @@ import { parseRateInput, type RateField } from '@/features/invoice/utils/amountI
 type GroupRateTexts = Record<RateField, string>;
 const RATE_FIELDS: RateField[] = ['charge', 'labour_rate', 'tax'];
 const EMPTY_GROUP_RATES: GroupRateTexts = { charge: '', labour_rate: '', tax: '' };
+type GroupRateFlags = Record<RateField, boolean>;
+const NO_MIXED_RATES: GroupRateFlags = { charge: false, labour_rate: false, tax: false };
+
+/** A rate as a group field shows it: nothing for 0 (the placeholder shows the zero). */
+const groupRateText = (field: RateField, rate: number): string => {
+  if (!(rate > 0)) return '';
+  // Tax with two decimals at most, as stored: "2.5" must not be shown as "3".
+  return field === 'tax' ? String(roundMoney(rate)) : rate.toFixed(2);
+};
 
 /** Table rows with editable cells keep the full 44 minimum (§13.7). */
 const ROW_MIN_HEIGHT = 44;
@@ -402,7 +411,8 @@ interface EditPricingParams {
 interface InvoiceItemsTableProps {
   items: InvoiceItemData[];
   onItemUpdate: (tempId: string, field: string, value: number) => void;
-  onBulkEdit: (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => void;
+  /** A group field was typed: the one rate to set on the group's lines. The other rates are not passed on. */
+  onBulkEdit: (groupKey: string, pricing: GroupRates) => void;
   onEditPricing?: (params: EditPricingParams) => void;
   renderItem?: (item: InvoiceItemData) => React.ReactElement;
   /** Told whether a rate field currently holds text that was not accepted, so the step can hold "Next". */
@@ -463,86 +473,44 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
     onInputErrorChange?.(hasInputError);
   }, [hasInputError, onInputErrorChange]);
 
-  // The group rates as the form holds them: the WEIGHTED average of the
-  // group's lines, or the group rates the user applied.
-  // Weighted averages ensure that applying group values produces the same totals as individual items
-  const groupRateDefaults = useMemo(() => {
-    const initialInputs: Record<string, GroupRateTexts> = {};
-
-    // Group items by group key and calculate weighted averages
-    const groupTotals: Record<string, {
-      // For charge: weight by qty * duration (since amount = qty * charge * duration)
-      chargeWeightedSum: number;
-      chargeWeightTotal: number;
-      // For labour: weight by qty (since labour_amount = qty * labour_rate)
-      labourWeightedSum: number;
-      labourWeightTotal: number;
-      // For tax: weight by (amount + labour_amount) since tax applies to subtotal
-      taxWeightedSum: number;
-      taxWeightTotal: number;
-    }> = {};
+  // The group rates as the form holds them: a rate the user applied to the
+  // group, else the rate that all lines of the group share. Where the lines
+  // differ the field is empty and says "Mixed". It never shows an average: an
+  // average is the rate of no line, and a group edit would give it to all of
+  // them (a free line beside a paid one would become paid).
+  const { groupRateDefaults, mixedGroupRates } = useMemo(() => {
+    const texts: Record<string, GroupRateTexts> = {};
+    const mixed: Record<string, GroupRateFlags> = {};
+    const ratesByGroup: Record<string, Record<RateField, number[]>> = {};
 
     items.forEach((item) => {
       const groupKey = `${item.item_id}:::${item.package_mark}`;
-      if (!groupTotals[groupKey]) {
-        groupTotals[groupKey] = {
-          chargeWeightedSum: 0,
-          chargeWeightTotal: 0,
-          labourWeightedSum: 0,
-          labourWeightTotal: 0,
-          taxWeightedSum: 0,
-          taxWeightTotal: 0,
-        };
-      }
-
-      const chargeWeight = item.qty * item.duration;
-      const labourWeight = item.qty;
-      const taxWeight = item.amount + item.labour_amount; // subtotal before tax
-
-      groupTotals[groupKey].chargeWeightedSum += item.charge * chargeWeight;
-      groupTotals[groupKey].chargeWeightTotal += chargeWeight;
-
-      groupTotals[groupKey].labourWeightedSum += item.labour_rate * labourWeight;
-      groupTotals[groupKey].labourWeightTotal += labourWeight;
-
-      groupTotals[groupKey].taxWeightedSum += item.tax * taxWeight;
-      groupTotals[groupKey].taxWeightTotal += taxWeight;
+      const rates = (ratesByGroup[groupKey] ??= { charge: [], labour_rate: [], tax: [] });
+      RATE_FIELDS.forEach((field) => rates[field].push(roundMoney(Number(item[field]) || 0)));
     });
 
-    // Calculate weighted averages for each group
-    Object.keys(groupTotals).forEach((groupKey) => {
-      const totals = groupTotals[groupKey];
+    Object.keys(ratesByGroup).forEach((groupKey) => {
+      const applied = bulkPricingFromRedux[groupKey] ?? {};
+      texts[groupKey] = { ...EMPTY_GROUP_RATES };
+      mixed[groupKey] = { ...NO_MIXED_RATES };
 
-      const weightedCharge = totals.chargeWeightTotal > 0
-        ? totals.chargeWeightedSum / totals.chargeWeightTotal
-        : 0;
-      const weightedLabour = totals.labourWeightTotal > 0
-        ? totals.labourWeightedSum / totals.labourWeightTotal
-        : 0;
-      const weightedTax = totals.taxWeightTotal > 0
-        ? totals.taxWeightedSum / totals.taxWeightTotal
-        : 0;
-
-      initialInputs[groupKey] = {
-        charge: weightedCharge > 0 ? weightedCharge.toFixed(2) : '',
-        labour_rate: weightedLabour > 0 ? weightedLabour.toFixed(2) : '',
-        // Two decimals at most, as stored: "2.5" must not start as "3", which the
-        // next change of the group's charge or labour rate would give to every line.
-        tax: weightedTax > 0 ? String(roundMoney(weightedTax)) : '',
-      };
+      RATE_FIELDS.forEach((field) => {
+        // The user set this rate for the group.
+        const appliedRate = applied[field];
+        if (appliedRate !== undefined) {
+          texts[groupKey][field] = String(appliedRate);
+          return;
+        }
+        const rates = ratesByGroup[groupKey][field];
+        if (rates.some((rate) => rate !== rates[0])) {
+          mixed[groupKey][field] = true;
+          return;
+        }
+        texts[groupKey][field] = groupRateText(field, rates[0]);
+      });
     });
 
-    // Override with Redux bulk pricing values if they exist (user explicitly set group pricing)
-    Object.keys(bulkPricingFromRedux).forEach((groupKey) => {
-      const pricing = bulkPricingFromRedux[groupKey];
-      initialInputs[groupKey] = {
-        charge: String(pricing.charge),
-        labour_rate: String(pricing.labour_rate),
-        tax: String(pricing.tax),
-      };
-    });
-
-    return initialInputs;
+    return { groupRateDefaults: texts, mixedGroupRates: mixed };
   }, [bulkPricingFromRedux, items]);
 
   // Show them in the fields, but leave alone a field whose text already means
@@ -636,10 +604,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
 
       // Text that is not a rate inside the range is not applied to the lines.
       if (parsed.value === null) return;
-      const applied = parsed.value;
-      const rate = (name: RateField) => (name === field ? applied : parseRateInput(name, newInputs[name]).value ?? 0);
 
-      onBulkEdit(groupKey, { charge: rate('charge'), labour_rate: rate('labour_rate'), tax: rate('tax') });
+      // Only the rate that was typed: the two other rates stay on each line as they are.
+      onBulkEdit(groupKey, { [field]: parsed.value });
     },
     [bulkPricingInputs, onBulkEdit, setInputError]
   );
@@ -712,6 +679,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
           styles.field,
           !!inputErrors[`group|${groupKey}|${field}`] && styles.fieldError,
         ];
+        // An empty group field says why it is empty: the lines have 0, or they differ.
+        const groupPlaceholder = (field: RateField) =>
+          mixedGroupRates[groupKey]?.[field] ? tr('invoice.table.mixed') : localizeDigits('0');
 
         // #23 Fix: Use pre-computed allItems instead of flatMap in render
         const { allItems } = itemGroup;
@@ -843,7 +813,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                       value={localizeDigits(currentInputs.charge ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'charge', text)}
                       onBlur={() => handleBulkPricingBlur(groupKey, 'charge')}
-                      placeholder={localizeDigits('0')}
+                      placeholder={groupPlaceholder('charge')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
@@ -860,7 +830,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                       value={localizeDigits(currentInputs.labour_rate ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'labour_rate', text)}
                       onBlur={() => handleBulkPricingBlur(groupKey, 'labour_rate')}
-                      placeholder={localizeDigits('0')}
+                      placeholder={groupPlaceholder('labour_rate')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
@@ -876,7 +846,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                       value={localizeDigits(currentInputs.tax ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'tax', text)}
                       onBlur={() => handleBulkPricingBlur(groupKey, 'tax')}
-                      placeholder={localizeDigits('0')}
+                      placeholder={groupPlaceholder('tax')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
