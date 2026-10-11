@@ -67,9 +67,11 @@ Zero charge with a reason (decision 3) — backend migration 48
   never clears the text itself; erasing it is the user's doing.
 - The server's refusal "Enter a reason for the zero charge" is shown in
   Gujarati as its own sentence.
-- An invoice with a zero-charge line may be saved with a total of 0 (nothing
-  else charged on it). For every other invoice the total must still be more
-  than 0.
+- An invoice on which nothing is charged (every line has a charge of 0, no
+  labour, no discount) may be saved with a total of 0. For every other invoice
+  the total must still be more than 0: a discount that takes a charged invoice
+  down to 0 is refused with "Total must be positive", also when one of its
+  lines is free.
 
 Android Back on the first step of a create form (decision 7) — no backend change
 - New GRN, new dispatch, new invoice: the Back key on step 1 left the form

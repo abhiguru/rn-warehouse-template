@@ -94,6 +94,44 @@ describe('a line with a charge of 0', () => {
     expect(result).toEqual({ isValid: false, errors: { 'header.total': 'Total must be positive' } });
   });
 
+  // A total of 0 is for an invoice on which nothing is charged. A discount that
+  // takes a charged invoice down to 0 is refused, with or without a free line on it.
+  it('refuses a total of 0 that a discount produced, also when one of the lines is free', async () => {
+    const free = line({ labour_rate: 0, tax: 0 });
+    const charged = line({ temp_id: 't2', charge: 5, labour_rate: 0, tax: 0 });
+    const discounted = { ...totals(0), discount: 500 };
+
+    expect(await validateFullInvoice({ header: discounted, items: [free, charged] }))
+      .toEqual({ isValid: false, errors: { 'header.total': 'Total must be positive' } });
+    // The same invoice without the free line was refused all along.
+    expect(await validateFullInvoice({ header: discounted, items: [charged] }))
+      .toEqual({ isValid: false, errors: { 'header.total': 'Total must be positive' } });
+  });
+
+  it('refuses a total of 0 that a discount rounded up to (-0.5 is saved as 0)', async () => {
+    const result = await validateFullInvoice({
+      header: { ...totals(Math.ceil(-0.5)), discount: 500.5 },
+      items: [line({ labour_rate: 0, tax: 0 }), line({ temp_id: 't2', charge: 5, labour_rate: 0, tax: 0 })],
+    });
+
+    expect(result.errors['header.total']).toBe('Total must be positive');
+  });
+
+  it('refuses a total of 0 when a line is charged, whatever the discount says', async () => {
+    const result = await validateFullInvoice({
+      header: totals(0),
+      items: [line({ labour_rate: 0, tax: 0 }), line({ temp_id: 't2', charge: 5, labour_rate: 0, tax: 0 })],
+    });
+
+    expect(result.errors['header.total']).toBe('Total must be positive');
+  });
+
+  it('accepts a free line with a surcharge: the total is above 0', async () => {
+    const result = await validateFullInvoice({ header: { ...totals(50), discount: -50 }, items: [line({ labour_rate: 0, tax: 0 })] });
+
+    expect(result).toEqual({ isValid: true, errors: {} });
+  });
+
   it('never accepts a total below 0', async () => {
     const result = await validateFullInvoice({ header: totals(-10), items: [line()] });
 
