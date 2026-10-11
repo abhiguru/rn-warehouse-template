@@ -120,7 +120,7 @@ describe('t is never called while a file is loaded', () => {
 
 describe('visible English left in code', () => {
   it('scripts/i18n-report.mjs finds none', () => {
-    let output = '';
+    let output: string;
     let status = 0;
     try {
       output = execFileSync(process.execPath, ['scripts/i18n-report.mjs'], { cwd: ROOT, encoding: 'utf8' });

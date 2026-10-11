@@ -92,6 +92,8 @@ const imageToArrayBuffer = async (
       '[DispatchImageService] Error converting image to ArrayBuffer:',
       error
     );
+    // No `cause`: the caught error can name a local file path, and it is logged above.
+    // eslint-disable-next-line preserve-caught-error
     throw new Error('Failed to read image file');
   }
 };
