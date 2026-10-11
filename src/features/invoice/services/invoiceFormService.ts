@@ -12,7 +12,7 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
-import { calculateItemAmounts, hasZeroChargeLine, zeroChargeReason } from '@/utils/invoiceCalculations';
+import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -947,8 +947,8 @@ export const transformFormDataToPayload = (
         : header.inv_date + 'T00:00:00Z',
       discount: header.discount || 0,
       discount_reason: header.discount_reason?.trim() || null,
-      // The reason as the form holds it now; the save sends it only when a line has a zero charge.
-      zero_charge_reason: zeroChargeReason(header, items).trim() || null,
+      // The save sends it only when a line has a zero charge.
+      zero_charge_reason: header.zero_charge_reason?.trim() || null,
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,

@@ -140,8 +140,8 @@ describe('saving an existing invoice', () => {
 });
 
 // Owner decision 3 of 2026-10-11: the reason for a zero charge goes to the
-// service as the form holds it; the service sends it only with a free line
-// (invoiceZeroChargeReason.test.ts).
+// service as the form holds it; the service trims it and sends it only with a
+// free line (invoiceZeroChargeReason.test.ts).
 describe('the reason for a zero charge in the save', () => {
   /** A new invoice with the one line of the fixture, as the form holds it after a GRN is chosen. */
   async function mountNew() {
@@ -176,7 +176,7 @@ describe('the reason for a zero charge in the save', () => {
 
     await submit(form);
 
-    expect(sentHeader().zero_charge_reason).toBe('');
+    expect(sentHeader().zero_charge_reason ?? '').toBe('');
     await unmount();
   });
 });

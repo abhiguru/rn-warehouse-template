@@ -12,7 +12,6 @@ import {
   formatInvoiceDeduction,
   hasZeroChargeLine,
   roundMoney,
-  zeroChargeReason,
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
 import { localizeDigits, normalizeDigits, t as tr, numericInput } from '@/i18n';
@@ -507,7 +506,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
           <TextInput
             style={[styles.reasonInput, zeroChargeReasonRequired && styles.fieldError]}
             accessibilityLabel={tr('invoice.label.zeroChargeReason')}
-            value={zeroChargeReason(header, items)}
+            value={header.zero_charge_reason || ''}
             onChangeText={onZeroChargeReasonChange}
             placeholder={tr('invoice.summary.zeroChargeReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}

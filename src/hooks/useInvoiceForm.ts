@@ -61,7 +61,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
-import { calculateFinancialYear, zeroChargeReason } from '@/utils/invoiceCalculations';
+import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 
 /** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
 function describeValidationErrors(errors: Record<string, string>): string {
@@ -473,8 +473,6 @@ export function useInvoiceForm({
         header: {
           ...header,
           inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10),
-          // The reason as the form holds it now; the save sends it only when a line has a zero charge.
-          zero_charge_reason: zeroChargeReason(header, items),
         },
         items,
       };

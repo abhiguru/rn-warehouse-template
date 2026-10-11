@@ -59,12 +59,12 @@ Zero charge with a reason (decision 3) — backend migration 48
   `save_invoice` and `update_invoice`, only when a line has a charge of 0
   (trimmed; `null` when nothing was written). Without such a line the key is
   left out. Who gave the reason and when is recorded by the server.
-- Edit: the stored reason is read from `get_invoice_detail` and sent again
-  while the same lines have a zero charge. When another line becomes free, or
-  the free line gets a charge and another one becomes free, the stored reason
-  is taken out of the field and a new one has to be written; charges set back
-  to what was saved bring it back. A reason written in the form is never
-  cleared by the app, as with the discount reason.
+- Edit: the stored reason is read from `get_invoice_detail`, shown in the
+  field and sent back with the update as long as a line has a charge of 0,
+  unless the user changes it. The server asks staff for a reason on every save
+  of such an invoice, also when someone else made the line free, and takes an
+  empty reason from an administrator or supervisor as "remove it". The app
+  never clears the text itself; erasing it is the user's doing.
 - The server's refusal "Enter a reason for the zero charge" is shown in
   Gujarati as its own sentence.
 - An invoice with a zero-charge line may be saved with a total of 0 (nothing

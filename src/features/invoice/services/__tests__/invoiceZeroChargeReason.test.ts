@@ -8,7 +8,6 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
 import type { CreateInvoicePayload, InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
-import { zeroChargeLineSet } from '@/utils/invoiceCalculations';
 import { createInvoice, loadInvoiceData, transformFormDataToPayload, updateInvoice } from '../invoiceFormService';
 
 jest.mock('@/config/supabaseConfig', () => ({
@@ -171,33 +170,37 @@ describe('the invoice opened for editing', () => {
 
 describe('the update built from the edit form', () => {
   const formLine = (disp_trl_id: string, charge: number) => ({ ...line(disp_trl_id, charge), temp_id: `edit_${disp_trl_id}` }) as unknown as InvoiceItemData;
+  // The form as loaded: it holds the stored reason.
   const stored: InvoiceHeaderData = {
-    inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 12, customer_id: 'c1', customer_name: 'Example Traders',
+    inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 12, inv_no_typed: true, customer_id: 'c1', customer_name: 'Example Traders',
     gr_id: GRN, gr_no: 'A0010', one_time_charge: false, discount: 0, labour: 80, tax_amount: 4, total: 84,
     zero_charge_reason: 'Sample lot',
-    saved_zero_charge_reason: 'Sample lot',
-    saved_zero_charge_lines: zeroChargeLineSet([{ disp_trl_id: FREE, charge: 0 }]),
-    zero_charge_reason_edited: false,
   };
 
-  it('sends the stored reason again while the same lines are free', async () => {
+  it('sends the stored reason back: the server asks staff for it on every save', async () => {
     await updateInvoice(INVOICE, transformFormDataToPayload(stored, [formLine(FREE, 0), formLine(PAID, 5.5)]));
 
     expect(sentHeader('update_invoice')).toHaveProperty('zero_charge_reason', 'Sample lot');
   });
 
-  it('sends no stored reason for another set of free lines', async () => {
-    await updateInvoice(INVOICE, transformFormDataToPayload(stored, [formLine(FREE, 0), formLine(PAID, 0)]));
+  it('sends the stored reason back when other lines are free now', async () => {
+    await updateInvoice(INVOICE, transformFormDataToPayload(stored, [formLine(FREE, 4), formLine(PAID, 0)]));
 
-    expect(sentHeader('update_invoice')).toHaveProperty('zero_charge_reason', null);
+    expect(sentHeader('update_invoice')).toHaveProperty('zero_charge_reason', 'Sample lot');
   });
 
   it('sends what was written in this edit', async () => {
-    const typed = { ...stored, zero_charge_reason: ' Agreed with the owner ', zero_charge_reason_edited: true };
+    const typed = { ...stored, zero_charge_reason: ' Agreed with the owner ' };
 
     await updateInvoice(INVOICE, transformFormDataToPayload(typed, [formLine(FREE, 0), formLine(PAID, 0)]));
 
     expect(sentHeader('update_invoice')).toHaveProperty('zero_charge_reason', 'Agreed with the owner');
+  });
+
+  it('sends null when the reason was erased: an administrator or supervisor removes it that way', async () => {
+    await updateInvoice(INVOICE, transformFormDataToPayload({ ...stored, zero_charge_reason: '' }, [formLine(FREE, 0)]));
+
+    expect(sentHeader('update_invoice')).toHaveProperty('zero_charge_reason', null);
   });
 
   it('sends nothing about a zero charge once every line has a charge', async () => {
@@ -206,11 +209,20 @@ describe('the update built from the edit form', () => {
     expect(sentHeader('update_invoice')).not.toHaveProperty('zero_charge_reason');
   });
 
-  it('does not send the form\'s own bookkeeping', async () => {
-    await updateInvoice(INVOICE, transformFormDataToPayload(stored, [formLine(FREE, 0)]));
+  it('counts a line sent without a charge as a zero charge, as the server does', async () => {
+    const noCharge = { ...formLine(FREE, 0), charge: undefined } as unknown as InvoiceItemData;
+
+    await updateInvoice(INVOICE, transformFormDataToPayload(stored, [noCharge]));
+
+    expect(sentHeader('update_invoice')).toHaveProperty('zero_charge_reason', 'Sample lot');
+  });
+
+  it('puts the reason at the top level of the header, beside the discount reason, and nothing of the form\'s own', async () => {
+    await updateInvoice(INVOICE, transformFormDataToPayload({ ...stored, discount: 10, discount_reason: 'Damaged bags' }, [formLine(FREE, 0)]));
 
     const header = sentHeader('update_invoice');
-    for (const key of ['saved_zero_charge_reason', 'saved_zero_charge_lines', 'zero_charge_reason_edited', 'inv_no_typed']) {
+    expect(header).toMatchObject({ discount_reason: 'Damaged bags', zero_charge_reason: 'Sample lot' });
+    for (const key of ['inv_no_typed', 'saved_discount', 'saved_discount_reason', 'discount_reason_edited']) {
       expect(header).not.toHaveProperty(key);
     }
   });

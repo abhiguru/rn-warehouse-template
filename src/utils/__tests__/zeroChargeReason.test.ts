@@ -1,10 +1,4 @@
-import {
-  hasZeroChargeLine,
-  isZeroChargeLine,
-  zeroChargeLineSet,
-  zeroChargeNeedsReason,
-  zeroChargeReason,
-} from '../invoiceCalculations';
+import { hasZeroChargeLine, isZeroChargeLine, zeroChargeNeedsReason } from '../invoiceCalculations';
 
 // Owner decision 3 of 2026-10-11 (server migration 48): an invoice line may
 // have a storage charge of 0. Staff must say why; administrators and
@@ -28,11 +22,6 @@ describe('a line with a zero charge', () => {
     expect(hasZeroChargeLine([])).toBe(false);
   });
 
-  it('gives a set that does not depend on the order of the lines', () => {
-    expect(zeroChargeLineSet([A, B, C])).toBe(zeroChargeLineSet([C, B, A]));
-    expect(zeroChargeLineSet([A, B, C])).not.toBe(zeroChargeLineSet([A, B]));
-    expect(zeroChargeLineSet([B])).toBe('');
-  });
 });
 
 describe('zeroChargeNeedsReason', () => {
@@ -59,49 +48,18 @@ describe('zeroChargeNeedsReason', () => {
   });
 });
 
-describe('the reason of an invoice that is being edited', () => {
-  const stored = {
-    zero_charge_reason: 'Sample lot',
-    saved_zero_charge_reason: 'Sample lot',
-    saved_zero_charge_lines: zeroChargeLineSet([A, B]),
-    zero_charge_reason_edited: false,
-  };
+describe('an invoice that is being edited', () => {
+  // The form starts with the stored reason; the server wants it back on every save.
+  const stored = { zero_charge_reason: 'Sample lot' };
 
-  it('is the stored one while the same lines have a zero charge', () => {
-    expect(zeroChargeReason(stored, [A, B])).toBe('Sample lot');
-    expect(zeroChargeReason(stored, [B, A])).toBe('Sample lot');
+  it('is satisfied by the stored reason, whichever lines are free now', () => {
     expect(zeroChargeNeedsReason(stored, [A, B], 'staff')).toBe(false);
+    expect(zeroChargeNeedsReason(stored, [A, { ...B, charge: 0 }], 'staff')).toBe(false);
+    expect(zeroChargeNeedsReason(stored, [{ ...A, charge: 4 }, { ...B, charge: 0 }], 'staff')).toBe(false);
   });
 
-  it('is empty once another line gets a zero charge, so a new one has to be written', () => {
-    const lines = [A, { ...B, charge: 0 }];
-    expect(zeroChargeReason(stored, lines)).toBe('');
-    expect(zeroChargeNeedsReason(stored, lines, 'staff')).toBe(true);
-    expect(zeroChargeNeedsReason(stored, lines, 'admin')).toBe(false);
-  });
-
-  it('comes back when the lines are as they were stored', () => {
-    expect(zeroChargeReason(stored, [{ ...A, charge: 4 }, B])).toBe('');
-    expect(zeroChargeReason(stored, [{ ...A, charge: 0 }, B])).toBe('Sample lot');
-  });
-
-  it('is what was written in this edit, whatever the lines do afterwards', () => {
-    const typed = { ...stored, zero_charge_reason: 'Agreed with the owner', zero_charge_reason_edited: true };
-    expect(zeroChargeReason(typed, [A, B])).toBe('Agreed with the owner');
-    expect(zeroChargeReason(typed, [A, { ...B, charge: 0 }])).toBe('Agreed with the owner');
-    expect(zeroChargeReason(typed, [{ ...A, charge: 4 }, B])).toBe('Agreed with the owner');
-  });
-
-  it('stays erased when the person erased it', () => {
-    const erased = { ...stored, zero_charge_reason: '', zero_charge_reason_edited: true };
-    expect(zeroChargeReason(erased, [A, B])).toBe('');
-    expect(zeroChargeNeedsReason(erased, [A, B], 'staff')).toBe(true);
-  });
-});
-
-describe('the reason of a new invoice', () => {
-  it('is what was written, and nothing before that', () => {
-    expect(zeroChargeReason({}, [A])).toBe('');
-    expect(zeroChargeReason({ zero_charge_reason: 'Sample lot', zero_charge_reason_edited: true }, [A])).toBe('Sample lot');
+  it('asks staff again once the stored reason was erased', () => {
+    expect(zeroChargeNeedsReason({ zero_charge_reason: '' }, [A, B], 'staff')).toBe(true);
+    expect(zeroChargeNeedsReason({ zero_charge_reason: '' }, [A, B], 'supervisor')).toBe(false);
   });
 });

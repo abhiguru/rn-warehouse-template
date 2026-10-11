@@ -93,7 +93,7 @@ describe('staff saving a new invoice with a zero-charge line', () => {
   });
 
   it('are stopped when the reason is only spaces', async () => {
-    mockReason = { zero_charge_reason: '   ', zero_charge_reason_edited: true };
+    mockReason = { zero_charge_reason: '   ' };
     const tree = await render();
 
     await pressSave(tree);
@@ -104,7 +104,7 @@ describe('staff saving a new invoice with a zero-charge line', () => {
   });
 
   it('go on to the save question once a reason is written', async () => {
-    mockReason = { zero_charge_reason: 'Sample lot', zero_charge_reason_edited: true };
+    mockReason = { zero_charge_reason: 'Sample lot' };
     const tree = await render();
     expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
 

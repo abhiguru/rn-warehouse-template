@@ -9,7 +9,6 @@ import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 import { getTokens } from '@/theme/tokens';
 import { setLanguage } from '@/i18n/language';
-import { zeroChargeLineSet } from '@/utils/invoiceCalculations';
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
@@ -97,7 +96,7 @@ describe('the reason field for a zero charge', () => {
     await act(async () => {
       tree.update(
         <InvoiceCalculationSummary
-          header={header({ zero_charge_reason: 'Sample lot', zero_charge_reason_edited: true })}
+          header={header({ zero_charge_reason: 'Sample lot' })}
           items={[FREE, PAID]}
           onDiscountChange={jest.fn()}
           onZeroChargeReasonChange={onReason}
@@ -108,28 +107,23 @@ describe('the reason field for a zero charge', () => {
     await act(async () => { tree.unmount(); });
   });
 
-  it('shows the stored reason of an invoice being edited, and not for another set of free lines', async () => {
-    const stored = header({
-      zero_charge_reason: 'Sample lot',
-      saved_zero_charge_reason: 'Sample lot',
-      saved_zero_charge_lines: zeroChargeLineSet([FREE, PAID]),
-      zero_charge_reason_edited: false,
-    });
+  it('keeps showing the stored reason of an invoice being edited when other lines become free', async () => {
+    const stored = header({ zero_charge_reason: 'Sample lot' });
     const tree = await render({ header: stored });
     expect(reasonInput(tree)!.props.value).toBe('Sample lot');
 
     await act(async () => {
       tree.update(
-        <InvoiceCalculationSummary header={stored} items={[FREE, line('paid', 0)]} onDiscountChange={jest.fn()} onZeroChargeReasonChange={jest.fn()} />
+        <InvoiceCalculationSummary header={stored} items={[line('free', 3), line('paid', 0)]} onDiscountChange={jest.fn()} onZeroChargeReasonChange={jest.fn()} />
       );
     });
-    expect(reasonInput(tree)!.props.value).toBe('');
+    expect(reasonInput(tree)!.props.value).toBe('Sample lot');
     await act(async () => { tree.unmount(); });
   });
 
   it('stands beside the discount reason, each with its own text', async () => {
     const tree = await render({
-      header: header({ discount: 50, discount_reason: 'Damaged bags', zero_charge_reason: 'Sample lot', zero_charge_reason_edited: true }),
+      header: header({ discount: 50, discount_reason: 'Damaged bags', zero_charge_reason: 'Sample lot' }),
       onDiscountReasonChange: jest.fn(),
     });
 

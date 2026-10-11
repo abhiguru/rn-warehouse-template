@@ -136,6 +136,12 @@ describe('business-rule refusals in Gujarati', () => {
     expect(t(key)).toMatch(/[઀-૿]/);
   });
 
+  // Server migration 48: the one-argument save wraps the refusal.
+  it('a missing zero-charge reason is read inside the database-error wrapper too', () => {
+    const wrapped = 'Database error: Enter a reason for the zero charge (SQLState: 22023)';
+    expect(serverText(wrapped, 'સાચવી શકાયું નથી')).toBe(t('errors.parsed.zeroChargeReasonRequired'));
+  });
+
   // M4-4: a Gujarati item or customer name inside an English sentence is not "already Gujarati".
   it('an English sentence that names a Gujarati item is still read for its reason', () => {
     expect(serverText('Cannot delete item "લસણ" - has 3 existing dispatches', 'x')).toBe(t('errors.parsed.inUse'));

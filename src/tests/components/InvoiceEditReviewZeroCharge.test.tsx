@@ -1,7 +1,9 @@
 /**
  * Invoice edit, review step: the reason for a zero charge (owner decision 3 of
- * 2026-10-11). Staff need one whenever a line has a charge of 0; the stored
- * reason counts while the same lines are free.
+ * 2026-10-11). Staff need one whenever a line has a charge of 0. The stored
+ * reason is sent back with every update until the person changes it: the
+ * server asks staff for it each time, and reads an empty one from an
+ * administrator or supervisor as "remove the reason".
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
@@ -163,22 +165,16 @@ describe('staff updating an invoice that has a zero-charge line', () => {
     await act(async () => { tree.unmount(); });
   });
 
-  it('are stopped when another line became free: the stored reason was for the lines as saved', async () => {
+  it('send the stored reason again when another line became free, and can replace it', async () => {
     loadInvoice('Sample lot');
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 0 } })); });
     const tree = await render();
-    expect(summary(tree).props.zeroChargeReasonRequired).toBe(true);
-
-    await pressUpdate(tree);
-
-    expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Enter a reason for the zero charge');
-    expect(rpc).not.toHaveBeenCalled();
-
-    // The reason written now is the one that is saved.
-    jest.mocked(showAlert).mockClear();
-    await act(async () => { summary(tree).props.onZeroChargeReasonChange('Agreed with the owner'); });
     expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
+    expect(mockStore.getState().invoiceForm.header.zero_charge_reason).toBe('Sample lot');
+
+    await act(async () => { summary(tree).props.onZeroChargeReasonChange('Agreed with the owner'); });
     const sent = await update(tree);
+
     expect(sent.zero_charge_reason).toBe('Agreed with the owner');
     await act(async () => { tree.unmount(); });
   });
@@ -214,6 +210,29 @@ describe.each(['admin', 'supervisor'])('%s updating an invoice that has a zero-c
     loadInvoice(undefined);
     const tree = await render();
     expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
+
+    const sent = await update(tree);
+
+    expect(sent).toHaveProperty('zero_charge_reason', null);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('send the stored reason back when they change nothing, so it is not removed by accident', async () => {
+    mockRole = role;
+    loadInvoice('Sample lot');
+    const tree = await render();
+
+    const sent = await update(tree);
+
+    expect(sent.zero_charge_reason).toBe('Sample lot');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('remove the stored reason by erasing it', async () => {
+    mockRole = role;
+    loadInvoice('Sample lot');
+    const tree = await render();
+    await act(async () => { summary(tree).props.onZeroChargeReasonChange(''); });
 
     const sent = await update(tree);
 
