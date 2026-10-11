@@ -42,6 +42,7 @@ import type {
   InvoiceHeaderData,
   InvoiceItemData,
   EditedItemValues,
+  GroupRates,
 } from '@/types/invoice.types';
 import {
   validateStep1,
@@ -83,7 +84,7 @@ export interface UseInvoiceFormReturn {
   items: InvoiceItemData[];
   editedItems: Record<string, EditedItemValues>;
   itemOverrides: Record<string, string[]>;
-  bulkPricing: Record<string, { charge: number; labour_rate: number; tax: number }>;
+  bulkPricing: Record<string, GroupRates>;
   invoiceId: string | null;
   selectedGrId: string | null;
   isLoading: boolean;
@@ -110,7 +111,8 @@ export interface UseInvoiceFormReturn {
 
   // Bulk pricing actions
   applyBulkPricing: (values: Partial<EditedItemValues>) => void;
-  applyGroupPricing: (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => void;
+  /** Sets the given rates on the lines of a group; a rate left out is not touched. */
+  applyGroupPricing: (groupKey: string, pricing: GroupRates) => void;
 
   // Validation
   validateCurrentStep: (step: number) => Promise<{ isValid: boolean; errors: Record<string, string> }>;
@@ -334,7 +336,7 @@ export function useInvoiceForm({
     dispatch(bulkUpdateItemPricing(values));
   }, [dispatch]);
 
-  const applyGroupPricing = useCallback((groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => {
+  const applyGroupPricing = useCallback((groupKey: string, pricing: GroupRates) => {
     dispatch(bulkUpdateItemGroupPricing({ group_key: groupKey, pricing }));
   }, [dispatch]);
 

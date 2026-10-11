@@ -378,3 +378,114 @@ describe('the reason for a zero charge', () => {
     expect(state.header.zero_charge_reason ?? '').toBe('');
   });
 });
+
+// A group rate is one field: typing it sets that field on the group's lines
+// and leaves the two others as they are. The form used to keep an average of
+// the stored rates for every group and gave all three to every line with the
+// first group edit, which made a free line of a stored invoice paid (and its
+// neighbours cheaper) when only the tax was changed.
+describe('a group rate on an invoice whose lines differ', () => {
+  const slice: Slice = require('../invoiceFormSlice');
+  const reducer = slice.default;
+  const { hasZeroChargeLine } = require('@/utils/invoiceCalculations');
+
+  const GROUP = 'i1:::M1';
+  const line = (id: string, rates: { charge: number; labour_rate: number; tax: number }, mark = 'M1'): InvoiceItemData => ({
+    temp_id: `edit_${id}_0`,
+    disp_trl_id: `${id}-2222-4333-8444-555555555555`,
+    grn_item_id: 'g1',
+    item_id: 'i1',
+    item_name: 'Example Potatoes',
+    qty: 100,
+    grn_original_qty: 100,
+    package_mark: mark,
+    rack: '',
+    weight: 50,
+    dispatch_id: 'd1',
+    dispatch_no: 'I0001',
+    dispatch_date: '2026-10-01',
+    grn_id: 'gr1',
+    grn_no: 'A0010',
+    grn_date: '2026-09-01',
+    duration: 1,
+    no_of_days: 30,
+    ...rates,
+    amount: rates.charge * 100,
+    labour_amount: rates.labour_rate * 100,
+    tax_amount: 0,
+    item_total: 0,
+  });
+  const header = {
+    inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 42, customer_id: 'c1', customer_name: 'Example Traders',
+    gr_id: 'gr1', gr_no: 'A0010', one_time_charge: false, discount: 0, zero_charge_reason: 'Sample lot',
+    labour: 500, tax_amount: 0, total: 1000,
+  };
+  /** Stored: a free line with labour 2 and tax 5, a paid line (5) with labour 3 and tax 5, and a line of another group. */
+  const saved = () =>
+    reducer(undefined, slice.loadInvoiceEditData({
+      invoiceId: 'inv-42',
+      grId: 'gr1',
+      header,
+      items: [
+        line('aaaaaaaa', { charge: 0, labour_rate: 2, tax: 5 }),
+        line('bbbbbbbb', { charge: 5, labour_rate: 3, tax: 5 }),
+        line('cccccccc', { charge: 7, labour_rate: 1, tax: 18 }, 'M2'),
+      ],
+    }));
+  const rates = (state: ReturnType<typeof saved>) => state.items.map((item) => [item.charge, item.labour_rate, item.tax]);
+
+  it('opening the invoice keeps no average as a group rate', () => {
+    const state = saved();
+
+    expect(state.bulkPricing).toEqual({});
+    expect(rates(state)).toEqual([[0, 2, 5], [5, 3, 5], [7, 1, 18]]);
+  });
+
+  it('changing the group tax changes the tax only: the free line stays free and the reason stays', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { tax: 12 } }));
+
+    expect(rates(state)).toEqual([[0, 2, 12], [5, 3, 12], [7, 1, 18]]);
+    expect(hasZeroChargeLine(state.items)).toBe(true);
+    expect(state.header.zero_charge_reason).toBe('Sample lot');
+    expect(state.bulkPricing).toEqual({ [GROUP]: { tax: 12 } });
+    // The amounts follow: 100 x 0 and 100 x 5 storage, 200 and 300 labour, 12% tax on each.
+    expect(state.items[0]).toMatchObject({ amount: 0, labour_amount: 200, tax_amount: 24, item_total: 224 });
+    expect(state.items[1]).toMatchObject({ amount: 500, labour_amount: 300, tax_amount: 96, item_total: 896 });
+  });
+
+  it('changing the group labour rate leaves the charges and the tax alone', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { labour_rate: 4 } }));
+
+    expect(rates(state)).toEqual([[0, 4, 5], [5, 4, 5], [7, 1, 18]]);
+  });
+
+  it('changing the group charge gives that charge to every line of the group, and nothing else', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { charge: 6 } }));
+
+    expect(rates(state)).toEqual([[6, 2, 5], [6, 3, 5], [7, 1, 18]]);
+    // No line is free any more; the text stays in the form and is back if one becomes free again.
+    expect(hasZeroChargeLine(state.items)).toBe(false);
+    expect(state.header.zero_charge_reason).toBe('Sample lot');
+  });
+
+  it('group rates typed one after the other add up', () => {
+    let state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { tax: 12 } }));
+    state = reducer(state, slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { labour_rate: 4 } }));
+
+    expect(state.bulkPricing).toEqual({ [GROUP]: { tax: 12, labour_rate: 4 } });
+    expect(rates(state)).toEqual([[0, 4, 12], [5, 4, 12], [7, 1, 18]]);
+  });
+
+  it('a rate typed on a line itself is still kept when the group rate of that field changes', () => {
+    let state = reducer(saved(), slice.updateEditedItem({ temp_id: 'edit_aaaaaaaa_0', values: { tax: 0 } }));
+    state = reducer(state, slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { tax: 12 } }));
+
+    expect(rates(state)).toEqual([[0, 2, 0], [5, 3, 12], [7, 1, 18]]);
+  });
+
+  it('all three at once still works (a price taken from the price list)', () => {
+    const state = reducer(saved(), slice.bulkUpdateItemGroupPricing({ group_key: GROUP, pricing: { charge: 4, labour_rate: 1, tax: 0 } }));
+
+    expect(rates(state)).toEqual([[4, 1, 0], [4, 1, 0], [7, 1, 18]]);
+  });
+});

@@ -6,6 +6,7 @@
  * administrator or supervisor as "remove the reason".
  */
 import React from 'react';
+import { TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import invoiceFormReducer, { loadInvoiceEditData, resetForm, updateEditedItem } from '@/store/slices/invoiceFormSlice';
@@ -13,6 +14,7 @@ import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import InvoiceEditStep2 from '../../../app/invoice-edit/[id]/step2';
 import InvoiceEditStep3 from '../../../app/invoice-edit/[id]/step3';
 
 let mockRole = 'staff';
@@ -249,6 +251,56 @@ describe.each(['admin', 'supervisor'])('%s updating an invoice that has a zero-c
     const sent = await update(tree);
 
     expect(sent.zero_charge_reason).toBe('Sample lot');
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+// The items step before it: a group rate is one field. Changing the group tax
+// used to give the average charge of the group (2.5) to both lines, so no line
+// was free any more and the update went out without the reason.
+describe('changing a group rate on the items step of such an invoice', () => {
+  const groupField = (tree: ReactTestRenderer, label: string) =>
+    tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === label)!;
+  const lines = () => mockStore.getState().invoiceForm.items.map((item) => [item.charge, item.labour_rate, item.tax]);
+
+  it('the group tax leaves the free line free, and the update carries the charges and the reason as stored', async () => {
+    loadInvoice('Sample lot');
+    let itemsStep!: ReactTestRenderer;
+    await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
+    // A free and a paid line: no average is shown as the group's charge.
+    expect(groupField(itemsStep, 'Storage charge for Example Potatoes').props).toMatchObject({ value: '', placeholder: 'Mixed' });
+
+    await act(async () => { groupField(itemsStep, 'Tax percent for Example Potatoes').props.onChangeText('12'); });
+
+    expect(lines()).toEqual([[0, 2, 12], [5, 2, 12]]);
+    expect(groupField(itemsStep, 'Storage charge for Example Potatoes').props).toMatchObject({ value: '', placeholder: 'Mixed' });
+    await act(async () => { itemsStep.unmount(); });
+
+    const tree = await render();
+    const sent = await update(tree);
+    expect(sent.zero_charge_reason).toBe('Sample lot');
+    const sentLines = rpc.mock.calls.find(([name]) => name === 'update_invoice')![1].p_invoice_items;
+    expect(sentLines.map((sentLine: { charge: number; tax: number }) => [sentLine.charge, sentLine.tax])).toEqual([[0, 12], [5, 12]]);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('a group charge makes every line of the group paid, and no reason is sent with the update', async () => {
+    loadInvoice('Sample lot');
+    let itemsStep!: ReactTestRenderer;
+    await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
+
+    await act(async () => { groupField(itemsStep, 'Storage charge for Example Potatoes').props.onChangeText('4'); });
+
+    expect(lines()).toEqual([[4, 2, 5], [4, 2, 5]]);
+    await act(async () => { itemsStep.unmount(); });
+
+    // No line is free, so the summary shows no reason field (it shows it for a line with a charge of 0 only).
+    const tree = await render();
+    expect(summary(tree).props.items.map((item: InvoiceItemData) => item.charge)).toEqual([4, 4]);
+    const sent = await update(tree);
+    expect('zero_charge_reason' in sent).toBe(false);
+    // The text is still in the form, should a line be made free again before saving.
+    expect(mockStore.getState().invoiceForm.header.zero_charge_reason).toBe('Sample lot');
     await act(async () => { tree.unmount(); });
   });
 });

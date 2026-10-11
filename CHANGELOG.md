@@ -67,6 +67,17 @@ Zero charge with a reason (decision 3) — backend migration 48
   never clears the text itself; erasing it is the user's doing.
 - The server's refusal "Enter a reason for the zero charge" is shown in
   Gujarati as its own sentence.
+- Group rates no longer undo a free line. On the items step a group field
+  ("Charge", "Labour", "Tax" above the lines of an item) sets that one rate on
+  the lines of the group; the two other rates stay on each line as they are.
+  Before, every group edit sent all three group fields, and for an invoice
+  opened for editing those started as the average of the stored lines: with a
+  free line beside a line at 5, changing the group tax made both lines 2.5,
+  the reason field disappeared and the update dropped the stored reason. A
+  group field now shows the rate its lines share, or stays empty with the
+  placeholder "Mixed" ("જુદા જુદા") when they differ; it never shows an
+  average. Typing a group charge still gives that charge to every line of the
+  group (a line whose charge was typed on the line itself keeps it, as before).
 - An invoice on which nothing is charged (every line has a charge of 0, no
   labour, no discount) may be saved with a total of 0. For every other invoice
   the total must still be more than 0: a discount that takes a charged invoice

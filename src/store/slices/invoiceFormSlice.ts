@@ -4,6 +4,7 @@ import {
   InvoiceHeaderData,
   InvoiceItemData,
   EditedItemValues,
+  GroupRates,
   SavedInvoiceData,
 } from '@/types/invoice.types';
 import {
@@ -46,7 +47,7 @@ interface InvoiceFormSnapshot {
   items: InvoiceItemData[];
   editedItems: Record<string, Partial<EditedItemValues>>;
   itemOverrides: Record<string, Array<'charge' | 'labour_rate' | 'tax'>>;
-  bulkPricing: Record<string, { charge: number; labour_rate: number; tax: number }>;
+  bulkPricing: Record<string, GroupRates>;
 }
 
 // Initial state
@@ -207,22 +208,27 @@ const invoiceFormSlice = createSlice({
       state.header.total = headerTotals.total;
     },
 
-    // Bulk update pricing for all dispatches of an item group (item_id + package_mark)
+    // Set rates for all dispatches of an item group (item_id + package_mark).
+    // Only the rates in `pricing` are set: a group field that was not typed
+    // leaves that rate on every line as it is. So changing the group tax of a
+    // stored invoice does not touch a free line's charge of 0.
     bulkUpdateItemGroupPricing: (
       state,
       action: PayloadAction<{
         group_key: string; // Format: "item_id:::package_mark" (using ::: as delimiter to avoid UUID underscore issues)
-        pricing: {
-          charge: number;
-          labour_rate: number;
-          tax: number;
-        };
+        pricing: GroupRates;
       }>
     ) => {
-      const { group_key, pricing } = action.payload;
+      const { group_key } = action.payload;
+      // A rate given as undefined is a rate that was not given.
+      const pricing: GroupRates = {};
+      (['charge', 'labour_rate', 'tax'] as const).forEach((field) => {
+        const value = action.payload.pricing[field];
+        if (value !== undefined) pricing[field] = value;
+      });
 
-      // Store bulk pricing values for this item group
-      state.bulkPricing[group_key] = pricing;
+      // Remember the rates applied to this item group, next to those applied before
+      state.bulkPricing[group_key] = { ...state.bulkPricing[group_key], ...pricing };
 
       // Apply bulk group pricing using extracted function
       const { updatedItems } = applyBulkGroupPricing(
@@ -241,15 +247,11 @@ const invoiceFormSlice = createSlice({
           if (!state.editedItems[updatedItem.temp_id]) {
             state.editedItems[updatedItem.temp_id] = {};
           }
-          if (!overrides.includes('charge')) {
-            state.editedItems[updatedItem.temp_id].charge = updatedItem.charge;
-          }
-          if (!overrides.includes('labour_rate')) {
-            state.editedItems[updatedItem.temp_id].labour_rate = updatedItem.labour_rate;
-          }
-          if (!overrides.includes('tax')) {
-            state.editedItems[updatedItem.temp_id].tax = updatedItem.tax;
-          }
+          (['charge', 'labour_rate', 'tax'] as const).forEach((field) => {
+            if (pricing[field] !== undefined && !overrides.includes(field)) {
+              state.editedItems[updatedItem.temp_id][field] = updatedItem[field];
+            }
+          });
         }
       });
 
@@ -395,40 +397,12 @@ const invoiceFormSlice = createSlice({
       state.editedItems = {};
       state.itemOverrides = {};
 
-      // Initialize bulkPricing from loaded items by calculating average pricing per group (item_id + package_mark)
+      // No group rate has been applied yet. The group fields of the items step
+      // show the rate the lines of a group share, or "Mixed" when they differ.
+      // (An average of the stored rates used to be kept here, and the first
+      // group edit gave it to every line: a free line beside a paid one became
+      // paid, and its stored reason was dropped with the save.)
       state.bulkPricing = {};
-      const itemGroups = new Map<string, { charge: number[]; labour_rate: number[]; tax: number[] }>();
-
-      action.payload.items.forEach((item) => {
-        // Group by item_id + package_mark
-        // Use ::: as delimiter to avoid issues with underscores in UUIDs or package marks
-        const groupKey = `${item.item_id}:::${item.package_mark}`;
-        const existing = itemGroups.get(groupKey);
-        if (existing) {
-          existing.charge.push(item.charge);
-          existing.labour_rate.push(item.labour_rate);
-          existing.tax.push(item.tax);
-        } else {
-          itemGroups.set(groupKey, {
-            charge: [item.charge],
-            labour_rate: [item.labour_rate],
-            tax: [item.tax],
-          });
-        }
-      });
-
-      // Calculate average for each group
-      itemGroups.forEach((values, groupKey) => {
-        const avgCharge = values.charge.reduce((sum, val) => sum + val, 0) / values.charge.length;
-        const avgLabourRate = values.labour_rate.reduce((sum, val) => sum + val, 0) / values.labour_rate.length;
-        const avgTax = values.tax.reduce((sum, val) => sum + val, 0) / values.tax.length;
-
-        state.bulkPricing[groupKey] = {
-          charge: Math.round(avgCharge * 100) / 100,
-          labour_rate: Math.round(avgLabourRate * 100) / 100,
-          tax: Math.round(avgTax * 100) / 100,
-        };
-      });
 
       // Clear validation errors
       state.validationErrors = {};

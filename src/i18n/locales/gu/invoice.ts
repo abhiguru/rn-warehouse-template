@@ -144,6 +144,8 @@ export const invoice: Translation<typeof source> = {
     groupPricing: 'ગ્રુપના દર',
     editPricingA11y: '{{item}} ના દરમાં ફેરફાર કરો',
     appliesToAll: { one: 'બધી {{count}} લાઇનને લાગુ પડે છે', other: 'બધી {{count}} લાઇનને લાગુ પડે છે' },
+    // Placeholder of a group rate field whose lines do not all have the same rate.
+    mixed: 'જુદા જુદા',
     chargeForA11y: '{{item}} માટે ભાડાનો દર',
     labourRateForA11y: '{{item}} માટે મજૂરીનો દર',
     taxPercentForA11y: '{{item}} માટે ટેક્સના ટકા',

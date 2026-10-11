@@ -141,6 +141,8 @@ export const invoice = {
     groupPricing: 'Group pricing',
     editPricingA11y: 'Edit pricing for {{item}}',
     appliesToAll: { one: 'Applies to all {{count}} line', other: 'Applies to all {{count}} lines' },
+    // Placeholder of a group rate field whose lines do not all have the same rate.
+    mixed: 'Mixed',
     chargeForA11y: 'Storage charge for {{item}}',
     labourRateForA11y: 'Labour rate for {{item}}',
     taxPercentForA11y: 'Tax percent for {{item}}',

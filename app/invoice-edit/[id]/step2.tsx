@@ -22,6 +22,7 @@ import {
   selectInvoiceFormId,
 } from '@/store/slices/invoiceFormSlice';
 import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTable';
+import type { GroupRates } from '@/types/invoice.types';
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { validateStep2 } from '@/features/invoice/schemas/invoiceValidation';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
@@ -52,7 +53,7 @@ export default function InvoiceEditStep2() {
     dispatch(updateEditedItem({ temp_id: tempId, values: { [field]: value } }));
   };
 
-  const handleBulkEdit = (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => {
+  const handleBulkEdit = (groupKey: string, pricing: GroupRates) => {
     dispatch(bulkUpdateItemGroupPricing({ group_key: groupKey, pricing }));
   };
 

@@ -23,6 +23,7 @@ import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTable';
+import type { GroupRates } from '@/types/invoice.types';
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
@@ -153,7 +154,7 @@ export default function InvoiceFormStep2() {
     updateItemPricing(tempId, { [field]: value });
   };
 
-  const handleBulkEdit = (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => {
+  const handleBulkEdit = (groupKey: string, pricing: GroupRates) => {
     applyGroupPricing(groupKey, pricing);
   };
 

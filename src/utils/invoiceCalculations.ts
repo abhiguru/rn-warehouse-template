@@ -5,7 +5,7 @@
  * Extracted from Redux reducers for better testability and reusability.
  */
 
-import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
+import type { GroupRates, InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 import { localizeDigits, t } from '@/i18n';
 
 /**
@@ -427,8 +427,11 @@ export function applyBulkPricingToAllItems(
 }
 
 /**
- * Apply bulk pricing to items in a specific group with override support
- * Used by bulkUpdateItemGroupPricing reducer
+ * Apply group rates to the lines of one group, with override support.
+ * Used by bulkUpdateItemGroupPricing reducer.
+ *
+ * Only the rates that are given are applied. A line keeps its own value for
+ * every rate left out, and for a rate that was typed on the line itself.
  */
 export interface BulkGroupPricingResult {
   updatedItems: InvoiceItemData[];
@@ -438,11 +441,7 @@ export interface BulkGroupPricingResult {
 export function applyBulkGroupPricing(
   items: InvoiceItemData[],
   groupKey: string,
-  pricing: {
-    charge: number;
-    labour_rate: number;
-    tax: number;
-  },
+  pricing: GroupRates,
   itemOverrides: Record<string, string[]>
 ): BulkGroupPricingResult {
   const { item_id, package_mark } = parseGroupKey(groupKey);
@@ -459,10 +458,14 @@ export function applyBulkGroupPricing(
     // Get override list for this item (if any)
     const overrides = itemOverrides[item.temp_id] || [];
 
-    // Apply bulk values only to non-overridden fields
-    const charge = overrides.includes('charge') ? item.charge : pricing.charge;
-    const labour_rate = overrides.includes('labour_rate') ? item.labour_rate : pricing.labour_rate;
-    const tax = overrides.includes('tax') ? item.tax : pricing.tax;
+    // Apply the group's values only to the fields that were given and are not overridden
+    const rate = (field: 'charge' | 'labour_rate' | 'tax'): number => {
+      const groupRate = pricing[field];
+      return groupRate === undefined || overrides.includes(field) ? item[field] : groupRate;
+    };
+    const charge = rate('charge');
+    const labour_rate = rate('labour_rate');
+    const tax = rate('tax');
 
     // Recalculate amounts
     const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time);

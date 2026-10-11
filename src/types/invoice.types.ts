@@ -122,6 +122,12 @@ export interface EditedItemValues {
   tax?: number;
 }
 
+/**
+ * Rates typed in the group fields of the items step. A field that is not there
+ * was not typed for the group: its lines keep the rate each of them has.
+ */
+export type GroupRates = Partial<{ charge: number; labour_rate: number; tax: number }>;
+
 // Form state for Redux
 export interface InvoiceFormState {
   // IDs
@@ -135,7 +141,7 @@ export interface InvoiceFormState {
 
   // Bulk edit and override tracking
   itemOverrides: Record<string, string[]>; // temp_id -> array of overridden field names
-  bulkPricing: Record<string, { charge: number; labour_rate: number; tax: number }>; // item_id -> bulk pricing
+  bulkPricing: Record<string, GroupRates>; // group key (item_id:::package_mark) -> the rates applied to the group
 
   // UI state
   currentStep: number;
