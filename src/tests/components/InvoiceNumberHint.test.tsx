@@ -1,8 +1,9 @@
 /**
  * New invoice, step 1: the hint under "Invoice number". When the next number
  * could not be fetched the user types one, and the hint must not then claim
- * that "The next number is filled in". While the number is being asked for
- * the hint says so, and Next waits.
+ * that "The next number is filled in". Nor may it claim that under a number the
+ * user typed over a suggestion. While the number is being asked for the hint
+ * says so, and Next waits.
  */
 import React from 'react';
 import { ActivityIndicator, TextInput } from 'react-native';
@@ -11,6 +12,7 @@ import InvoiceFormStep1 from '../../../app/invoice-form/step1';
 
 const mockLoadGRNData = jest.fn(async () => ({ success: true, itemCount: 1 }));
 let mockInvNo: number | '' = '';
+let mockInvNoTyped = false;
 let mockNextNumberFailed = false;
 let mockGettingNextNumber = false;
 let mockItems: unknown[] = [];
@@ -19,7 +21,7 @@ const mockNavigateToStep = jest.fn();
 jest.mock('@/hooks/useInvoiceForm', () => ({
   useInvoiceForm: () => ({
     header: {
-      inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: mockInvNo,
+      inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: mockInvNo, inv_no_typed: mockInvNoTyped,
       customer_id: '', customer_name: '', gr_id: '', gr_no: '',
     },
     items: mockItems,
@@ -61,37 +63,48 @@ jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 
 const FILLED = 'The next number is filled in. You can change it.';
 const UNAVAILABLE = "Couldn't get the next number. Type the invoice number.";
+const TYPED = 'You typed this number. Clear the field to get the next number.';
 const GETTING = 'Getting the next invoice number…';
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockGettingNextNumber = false;
+  mockInvNoTyped = false;
   mockItems = [];
 });
 
-async function hints(invNo: number | '', failed: boolean) {
+async function hints(invNo: number | '', failed: boolean, typed = false) {
   mockInvNo = invNo;
   mockNextNumberFailed = failed;
+  mockInvNoTyped = typed;
   let tree!: ReactTestRenderer;
   await act(async () => {
     tree = create(<InvoiceFormStep1 />);
   });
   const text = JSON.stringify(tree.toJSON());
   await act(async () => { tree.unmount(); });
-  return { filled: text.includes(FILLED), unavailable: text.includes(UNAVAILABLE) };
+  return { filled: text.includes(FILLED), unavailable: text.includes(UNAVAILABLE), typed: text.includes(TYPED) };
 }
 
 describe('the hint under the invoice number', () => {
   it('says the number is filled in when the server gave one', async () => {
-    expect(await hints(43, false)).toEqual({ filled: true, unavailable: false });
+    expect(await hints(43, false)).toEqual({ filled: true, unavailable: false, typed: false });
   });
 
   it('asks for a number when the server gave none', async () => {
-    expect(await hints('', true)).toEqual({ filled: false, unavailable: true });
+    expect(await hints('', true)).toEqual({ filled: false, unavailable: true, typed: false });
   });
 
   it('does not claim the number was filled in once the user has typed one', async () => {
-    expect(await hints(7301, true)).toEqual({ filled: false, unavailable: true });
+    expect(await hints(7301, true, true)).toEqual({ filled: false, unavailable: true, typed: false });
+  });
+
+  it('claims nothing under a field the user has emptied', async () => {
+    expect(await hints(0, false)).toEqual({ filled: false, unavailable: false, typed: false });
+  });
+
+  it('says the number is the user\'s own when it was typed over a suggestion', async () => {
+    expect(await hints(7303, false, true)).toEqual({ filled: false, unavailable: false, typed: true });
   });
 });
 
