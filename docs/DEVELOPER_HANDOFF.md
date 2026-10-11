@@ -114,3 +114,22 @@ Android bundle), `Android debug artifact audit` (pinned JDK 17 / SDK 36 build an
 `dependencies` (backport verification and the dependency audit report) and `secrets` (history scan).
 `release.yml` validates any semantic `v*` tag (`scripts/check-release.sh`) with the same gates plus
 `expo export`; publishing a GitHub release stays a manual step after the validation run passes.
+
+`Android debug artifact audit` is the only job that can run outside GitHub's hosted runners. Its
+`runs-on` is the repository variable `ANDROID_ARTIFACT_RUNNER` (Settings, Secrets and variables,
+Actions, Variables), a JSON value such as `["self-hosted","linux","x64","warehouse-vm"]`. Without the
+variable the job runs on `ubuntu-latest`, so a fork needs nothing; to go back to hosted runners,
+delete the variable. The job is not a required check: when the runner is offline it waits (GitHub
+gives up on a job after 24 hours in the queue) and merging is not blocked. On a runner that keeps
+the Gradle caches the job took 11.5 minutes instead of 28.5 (measured 2026-10-11, second run in a
+row).
+
+Such a runner must provide the Android SDK with its command-line tools and `ANDROID_HOME` in the
+runner's environment (the job fails early without it; the pinned packages are listed in the job and
+checked by `scripts/check-android-sdk.mjs`). The job installs its own Node and JDK and uses no
+Docker and no `sudo`. This repository is public, so code from a pull request, or from the install
+script of a dependency, runs on that machine: use a dedicated one that holds nothing of value and
+cannot reach your other machines, require approval before workflows run for pull requests from all
+outside contributors (Settings, Actions, General; Dependabot's pull requests come from inside the
+repository and need no approval), keep the workflow token read-only, and never point a release job
+at it. `scripts/workflows.test.mjs` refuses a self-hosted label written into a workflow.
