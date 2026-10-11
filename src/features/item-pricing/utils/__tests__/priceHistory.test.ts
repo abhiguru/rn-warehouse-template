@@ -1,4 +1,4 @@
-import { priceHistoryChanges, truncatedPriceCount } from '../priceHistory';
+import { priceHistoryChanges, priceHistorySides, truncatedPriceCount } from '../priceHistory';
 import { priceHistoryAuthor, priceHistoryActionLabel, priceHistoryFieldLabel, priceHistoryValueText } from '../priceHistoryLabels';
 import { setLanguage } from '@/i18n';
 
@@ -51,12 +51,33 @@ describe('update', () => {
     ]);
   });
 
-  it('shows both prices when the kind itself changes', () => {
-    const after = monthly(0, { price_type: 'one_time', unit_price: 5, unit_price_one_time: 5 });
+  it('shows the old price under the old kind and the new price under the new kind when the kind itself changes', () => {
+    const after = monthly(0, { price_type: 'one_time', unit_price: 7, unit_price_one_time: 7 });
     expect(priceHistoryChanges('update', monthly(5), after)).toEqual([
       { field: 'priceType', before: 'monthly', after: 'one_time' },
-      { field: 'monthlyPrice', before: 5, after: 0 },
-      { field: 'oneTimePrice', before: 0, after: 5 },
+      { field: 'monthlyPrice', before: 5, after: null, only: 'before' },
+      { field: 'oneTimePrice', before: null, after: 7, only: 'after' },
+    ]);
+    // The old kind comes first, whichever it is, and an equal number is still shown under both labels.
+    expect(priceHistoryChanges('update', after, monthly(7))).toEqual([
+      { field: 'priceType', before: 'one_time', after: 'monthly' },
+      { field: 'oneTimePrice', before: 7, after: null, only: 'before' },
+      { field: 'monthlyPrice', before: null, after: 7, only: 'after' },
+    ]);
+  });
+
+  // Billing reads unit_price only. The column of the other kind is a compatibility copy that is
+  // not always 0: the default-pricing routine writes all three equal, and the next update of
+  // such a price sets the other kind's column to 0.
+  it('never shows the column of the other kind as a price', () => {
+    const allEqual = monthly(91.5, { unit_price_one_time: 91.5 });
+    expect(priceHistoryChanges('update', allEqual, monthly(91.5, { labour_rate: 3 }))).toEqual([
+      { field: 'labourRate', before: 2, after: 3 },
+    ]);
+    expect(priceHistoryChanges('update', allEqual, monthly(91.5))).toEqual([]);
+    const oneTime = monthly(40, { price_type: 'one_time', unit_price_one_time: 40, unit_price_monthly: 40 });
+    expect(priceHistoryChanges('update', oneTime, { ...oneTime, unit_price_monthly: 0, tax_percent: 12 })).toEqual([
+      { field: 'tax', before: 5, after: 12 },
     ]);
   });
 
@@ -88,9 +109,19 @@ describe('insert and delete', () => {
     expect(changes.find((change) => change.field === 'effectiveTo')?.before).toBe('2026-06-30');
   });
 
-  it('lists a price of the other kind that is not 0 (a price made with the older two-price form)', () => {
-    const changes = priceHistoryChanges('insert', null, monthly(6, { unit_price_one_time: 40 }));
-    expect(changes.map((change) => change.field)).toContain('oneTimePrice');
+  it('lists only the price of its own kind, also when the column of the other kind is not 0', () => {
+    const allEqual = monthly(91.5, { unit_price_one_time: 91.5 });
+    expect(priceHistoryChanges('insert', null, allEqual).map((change) => change.field)).toEqual(ALL_OF_A_MONTHLY_PRICE);
+    expect(priceHistoryChanges('delete', allEqual, null).map((change) => change.field)).toEqual(ALL_OF_A_MONTHLY_PRICE);
+    const oneTime = monthly(40, { price_type: 'one_time', unit_price_one_time: 40, unit_price_monthly: 40 });
+    const fields = priceHistoryChanges('insert', null, oneTime).map((change) => change.field);
+    expect(fields).toContain('oneTimePrice');
+    expect(fields).not.toContain('monthlyPrice');
+  });
+
+  it('reads the price from unit_price, not from the column of its kind', () => {
+    const changes = priceHistoryChanges('insert', null, monthly(6, { unit_price_monthly: 4 }));
+    expect(changes.find((change) => change.field === 'monthlyPrice')?.after).toBe(6);
   });
 
   it('ignores a side the action does not have', () => {
@@ -102,6 +133,29 @@ describe('insert and delete', () => {
     expect(priceHistoryChanges('insert', null, null)).toEqual([]);
     expect(priceHistoryChanges('delete', undefined, undefined)).toEqual([]);
     expect(priceHistoryChanges('update', null, null)).toEqual([]);
+  });
+});
+
+describe('which side an entry has', () => {
+  it('goes by the values that are present, within what the action allows', () => {
+    expect(priceHistorySides('update', monthly(5), monthly(6))).toBe('both');
+    expect(priceHistorySides('insert', null, monthly(6))).toBe('after');
+    expect(priceHistorySides('delete', monthly(6), null)).toBe('before');
+    // An update that arrives with one side only.
+    expect(priceHistorySides('update', monthly(5), null)).toBe('before');
+    expect(priceHistorySides('update', null, monthly(6))).toBe('after');
+    expect(priceHistorySides('insert', monthly(1), monthly(6))).toBe('after');
+    expect(priceHistorySides('delete', monthly(6), monthly(1))).toBe('before');
+    expect(priceHistorySides('update', null, null)).toBe('none');
+    expect(priceHistorySides('truncate', { rows: 3 }, null)).toBe('none');
+  });
+
+  it('an update with only its old values lists them as a delete does', () => {
+    const changes = priceHistoryChanges('update', monthly(5), null);
+    expect(changes.map((change) => change.field)).toEqual(
+      ['priceType', 'monthlyPrice', 'weightBand', 'labourRate', 'tax', 'effectiveFrom', 'effectiveTo']
+    );
+    expect(changes.find((change) => change.field === 'monthlyPrice')).toEqual({ field: 'monthlyPrice', before: 5, after: null });
   });
 });
 

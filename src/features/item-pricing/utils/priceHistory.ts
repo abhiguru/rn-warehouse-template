@@ -30,18 +30,27 @@ export interface PriceFieldChange {
   before: PriceHistoryValue;
   /** The value after the change; null for a price that was deleted. */
   after: PriceHistoryValue;
+  /**
+   * Set on the two price rows of an update that changed the price type: the old price exists
+   * only under the old type's label ('before') and the new price only under the new one ('after').
+   */
+  only?: 'before' | 'after';
 }
 
-const FIELDS: readonly PriceHistoryField[] = [
-  'priceType',
-  'monthlyPrice',
-  'oneTimePrice',
-  'weightBand',
-  'labourRate',
-  'tax',
-  'effectiveFrom',
-  'effectiveTo',
-];
+/** Which of an entry's two sides there are to show. */
+export type PriceHistorySides = 'both' | 'before' | 'after' | 'none';
+
+/** The fields after the price type and the price, in the order shown. */
+const OTHER_FIELDS = ['weightBand', 'labourRate', 'tax', 'effectiveFrom', 'effectiveTo'] as const;
+
+type PriceField = 'monthlyPrice' | 'oneTimePrice';
+
+interface PriceRead extends Record<(typeof OTHER_FIELDS)[number], PriceHistoryValue> {
+  priceType: string | null;
+  /** The label the price goes under: that of its own type. */
+  priceField: PriceField;
+  price: number | null;
+}
 
 /** A JSON number, or a number sent as text ("5.00"); anything else is null. */
 function numberOf(value: unknown): number | null {
@@ -53,21 +62,20 @@ function numberOf(value: unknown): number | null {
 const textOf = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
 
 /**
- * The price of one kind. The server keeps the price three times: `unit_price`, and a column
- * for each kind, of which the one that matches `price_type` repeats `unit_price` and the
- * other is 0. So `unit_price` is read as the price of the price's own kind and is never a
- * field of its own: a price that went from 5 to 6 is one change, not two.
+ * A price has one price: `unit_price`, the only column billing reads, shown under the label
+ * of the price's own type. `unit_price_monthly` and `unit_price_one_time` are compatibility
+ * copies. The copy of the other type is never shown: it is not always 0 (the server's
+ * default-pricing routine writes all three columns equal) and the server sets it to 0 on the
+ * next update, which is not a change anyone made. The copy of the price's own type is read
+ * only when a hand-made row has no `unit_price`. A row with no known type is read as monthly,
+ * as the server's price lookup does.
  */
-function priceOfKind(values: ItemPriceHistoryValues, kind: 'monthly' | 'one_time'): number | null {
-  const own = numberOf(kind === 'monthly' ? values.unit_price_monthly : values.unit_price_one_time);
-  return values.price_type === kind ? (numberOf(values.unit_price) ?? own) : own;
-}
-
-function read(values: ItemPriceHistoryValues): Record<PriceHistoryField, PriceHistoryValue> {
+function read(values: ItemPriceHistoryValues): PriceRead {
+  const oneTime = values.price_type === 'one_time';
   return {
     priceType: textOf(values.price_type),
-    monthlyPrice: priceOfKind(values, 'monthly'),
-    oneTimePrice: priceOfKind(values, 'one_time'),
+    priceField: oneTime ? 'oneTimePrice' : 'monthlyPrice',
+    price: numberOf(values.unit_price) ?? numberOf(oneTime ? values.unit_price_one_time : values.unit_price_monthly),
     weightBand: { min: numberOf(values.weight_min), max: numberOf(values.weight_max) },
     labourRate: numberOf(values.labour_rate),
     tax: numberOf(values.tax_percent),
@@ -83,50 +91,71 @@ function same(a: PriceHistoryValue, b: PriceHistoryValue): boolean {
   return a === b;
 }
 
-/** In the list of a whole price: the price of the other kind is left out while it is 0 or missing. */
-function listed(field: PriceHistoryField, value: PriceHistoryValue, priceType: PriceHistoryValue): boolean {
-  if (field === 'monthlyPrice') return priceType === 'monthly' || (typeof value === 'number' && value !== 0);
-  if (field === 'oneTimePrice') return priceType === 'one_time' || (typeof value === 'number' && value !== 0);
-  return true;
-}
-
 const isValues = (values: ItemPriceHistoryValues | null | undefined): values is ItemPriceHistoryValues =>
   typeof values === 'object' && values !== null && !Array.isArray(values);
 
 /**
+ * Which sides of an entry are shown. It goes by the values that are there, not by the action
+ * alone: an update that arrives with one side only is shown like a delete (old values) or an
+ * insert (new values). An insert never has a "before" and a delete never an "after"; a
+ * truncate has neither (its `old_values` is a count, see `truncatedPriceCount`).
+ */
+export function priceHistorySides(
+  action: ItemPriceHistoryAction | string,
+  oldValues: ItemPriceHistoryValues | null | undefined,
+  newValues: ItemPriceHistoryValues | null | undefined
+): PriceHistorySides {
+  if (action === 'truncate') return 'none';
+  const before = action !== 'insert' && isValues(oldValues);
+  const after = action !== 'delete' && isValues(newValues);
+  if (before && after) return 'both';
+  return before ? 'before' : after ? 'after' : 'none';
+}
+
+/**
  * The fields of an entry, for the screen to show.
  *
- *   update    only the fields whose value differs, each with its old and new value; an
- *             empty list when nothing a person sees differs
- *   insert    every field of the new price (`before` is null)
- *   delete    every field of the old price (`after` is null)
- *   truncate  an empty list: its `old_values` is a count, see `truncatedPriceCount`
- *
- * An update that arrives with only one side is listed like an insert or a delete.
+ *   both sides   only the fields whose value differs, each with its old and new value; an
+ *                empty list when nothing a person sees differs. When the price type changed,
+ *                the old price under the old type's label and the new price under the new
+ *                type's label (`only`), old first.
+ *   one side     every field of that price (see `priceHistorySides`); the other side is null
+ *   no side      an empty list
  */
 export function priceHistoryChanges(
   action: ItemPriceHistoryAction | string,
   oldValues: ItemPriceHistoryValues | null | undefined,
   newValues: ItemPriceHistoryValues | null | undefined
 ): PriceFieldChange[] {
-  if (action === 'truncate') return [];
-  const before = action !== 'insert' && isValues(oldValues) ? read(oldValues) : null;
-  const after = action !== 'delete' && isValues(newValues) ? read(newValues) : null;
+  const sides = priceHistorySides(action, oldValues, newValues);
+  const before = (sides === 'both' || sides === 'before') && isValues(oldValues) ? read(oldValues) : null;
+  const after = (sides === 'both' || sides === 'after') && isValues(newValues) ? read(newValues) : null;
 
   if (before && after) {
-    return FIELDS.filter((field) => !same(before[field], after[field])).map((field) => ({
-      field,
-      before: before[field],
-      after: after[field],
-    }));
+    const changes: PriceFieldChange[] = [];
+    if (before.priceType !== after.priceType) {
+      changes.push({ field: 'priceType', before: before.priceType, after: after.priceType });
+    }
+    if (before.priceField !== after.priceField) {
+      changes.push({ field: before.priceField, before: before.price, after: null, only: 'before' });
+      changes.push({ field: after.priceField, before: null, after: after.price, only: 'after' });
+    } else if (before.price !== after.price) {
+      changes.push({ field: before.priceField, before: before.price, after: after.price });
+    }
+    for (const field of OTHER_FIELDS) {
+      if (!same(before[field], after[field])) changes.push({ field, before: before[field], after: after[field] });
+    }
+    return changes;
   }
+
   const whole = before ?? after;
   if (!whole) return [];
-  return FIELDS.filter((field) => listed(field, whole[field], whole.priceType)).map((field) => ({
-    field,
-    before: before ? before[field] : null,
-    after: after ? after[field] : null,
-  }));
+  const value = (side: PriceRead | null, field: 'priceType' | 'price' | (typeof OTHER_FIELDS)[number]) => (side ? side[field] : null);
+  return [
+    { field: 'priceType' as const, before: value(before, 'priceType'), after: value(after, 'priceType') },
+    { field: whole.priceField, before: value(before, 'price'), after: value(after, 'price') },
+    ...OTHER_FIELDS.map((field) => ({ field, before: value(before, field), after: value(after, field) })),
+  ];
 }
 
 /** How many prices a truncate removed; null when the entry does not say. */

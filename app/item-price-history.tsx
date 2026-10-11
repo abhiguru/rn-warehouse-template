@@ -23,6 +23,8 @@ import { canOpenScreen } from '@/config/roles';
 type LoadKind = 'first' | 'refresh' | 'more';
 
 const SKELETONS = [1, 2, 3, 4, 5, 6];
+/** How many further pages in a row may hold nothing new before the next one waits for a tap. */
+const MAX_SKIPPED_PAGES = 3;
 
 const ItemPriceHistoryScreen: React.FC = () => {
   const role = useAppSelector((state) => state.auth.userProfile?.role);
@@ -42,39 +44,77 @@ const ItemPriceHistoryScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   /** A further page failed: shown under the entries already loaded. */
   const [moreError, setMoreError] = useState<string | null>(null);
+  /** A further page held only entries already shown, several times over: paging goes on with a button. */
+  const [stalled, setStalled] = useState(false);
+  /** The entries on screen, for the request in flight to tell which of a page are new. */
+  const entriesRef = useRef<ItemPriceHistoryEntry[]>([]);
+  /** The number of the newest request. An answer to an older one is for a list that is gone. */
+  const requestRef = useRef(0);
   const busyRef = useRef(false);
+  /** False once the screen was left, or the role may no longer open it (sign-out, role change). */
+  const liveRef = useRef(false);
+
+  useEffect(() => {
+    liveRef.current = allowed;
+    return () => {
+      liveRef.current = false;
+    };
+  }, [allowed]);
 
   const load = useCallback(async (kind: LoadKind, offset: number) => {
-    if (busyRef.current) return;
+    // A further page waits for whatever is loading. A first load or a refresh does not wait:
+    // it takes the place of the request in flight, whose answer is then ignored.
+    if (kind === 'more' && busyRef.current) return;
+    const request = (requestRef.current += 1);
+    const current = () => liveRef.current && request === requestRef.current;
     busyRef.current = true;
-    if (kind === 'first') setLoading(true);
-    if (kind === 'refresh') setRefreshing(true);
-    if (kind === 'more') setLoadingMore(true);
+    setLoading(kind === 'first');
+    setRefreshing(kind === 'refresh');
+    setLoadingMore(kind === 'more');
     setMoreError(null);
+    setStalled(false);
     try {
-      const result = await getItemPriceHistory({ limit: PRICE_HISTORY_PAGE_SIZE, offset });
-      if (result.success) {
+      let pageOffset = offset;
+      for (let skipped = 0; ; skipped += 1) {
+        const result = await getItemPriceHistory({ limit: PRICE_HISTORY_PAGE_SIZE, offset: pageOffset });
+        // Left, signed out, or overtaken by a refresh: nothing of this answer is shown.
+        if (!current()) return;
+        if (!result.success) {
+          const message = result.message || tr('pricing.list.tryAgainInAMoment');
+          if (kind === 'first') setError(message);
+          else if (kind === 'more') setMoreError(message);
+          // A failed refresh keeps the entries on screen.
+          else showAlert(tr('pricing.history.loadErrorTitle'), message);
+          return;
+        }
+        // A price changed while paging moves every later entry down: never show one twice.
+        const known = new Set(kind === 'more' ? entriesRef.current.map((entry) => entry.id) : []);
+        const fresh = result.data.filter((entry) => !known.has(entry.id));
+        const more = result.pagination.has_more;
+        pageOffset = result.pagination.offset + result.pagination.limit;
+        entriesRef.current = kind === 'more' ? [...entriesRef.current, ...fresh] : fresh;
         setError(null);
-        setEntries((current) => {
-          if (kind !== 'more') return result.data;
-          // A price changed while paging moves every later entry down: never show one twice.
-          const known = new Set(current.map((entry) => entry.id));
-          return [...current, ...result.data.filter((entry) => !known.has(entry.id))];
-        });
-        setHasMore(result.pagination.has_more);
-        setNextOffset(result.pagination.offset + result.pagination.limit);
-      } else {
-        const message = result.message || tr('pricing.list.tryAgainInAMoment');
-        if (kind === 'first') setError(message);
-        else if (kind === 'more') setMoreError(message);
-        // A failed refresh keeps the entries on screen.
-        else showAlert(tr('pricing.history.loadErrorTitle'), message);
+        setEntries(entriesRef.current);
+        setHasMore(more);
+        setNextOffset(pageOffset);
+        if (kind !== 'more' || fresh.length > 0 || !more) return;
+        // The whole page was shown already (50 or more changes were written since the page
+        // before it). The list did not grow, so reaching its end will not ask again: ask for
+        // the next page now, and after a few such pages leave it to a button.
+        if (skipped >= MAX_SKIPPED_PAGES) {
+          setStalled(true);
+          return;
+        }
       }
     } finally {
-      busyRef.current = false;
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
+      if (request === requestRef.current) {
+        busyRef.current = false;
+        if (liveRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+        }
+      }
     }
   }, []);
 
@@ -88,10 +128,10 @@ const ItemPriceHistoryScreen: React.FC = () => {
     if (hasMore && !loading && !refreshing && !loadingMore) void load('more', nextOffset);
   }, [hasMore, loading, refreshing, loadingMore, load, nextOffset]);
 
-  // A page that failed is asked for again with its button, not by scrolling.
+  // A page that failed, or paging that stalled, goes on with its button, not by scrolling.
   const onEndReached = useCallback(() => {
-    if (!moreError) loadMore();
-  }, [moreError, loadMore]);
+    if (!moreError && !stalled) loadMore();
+  }, [moreError, stalled, loadMore]);
 
   const renderEntry = useCallback(({ item }: { item: ItemPriceHistoryEntry }) => <ItemPriceHistoryCard entry={item} />, []);
 
@@ -116,6 +156,19 @@ const ItemPriceHistoryScreen: React.FC = () => {
           >
             <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
             <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    if (stalled && hasMore) {
+      return (
+        <View style={styles.footerError}>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={loadMore}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>{tr('components.changeLog.loadMore')}</Text>
           </Pressable>
         </View>
       );

@@ -112,6 +112,8 @@ export const pricing: Translation<typeof source> = {
     loadingMoreLabel: 'દરના વધુ ફેરફાર લોડ થઈ રહ્યા છે',
     loadErrorTitle: 'દરનો ઇતિહાસ લોડ કરી શકાયો નથી',
     loadMoreFailed: 'દરના વધુ ફેરફાર લોડ કરી શકાયા નથી.',
+    // The server has no price history: a backend older than migration 48. Trying again cannot help.
+    serverNeedsUpdate: 'દરનો ઇતિહાસ જોવા માટે આ કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ કરવું જરૂરી છે.',
     emptyTitle: 'હજુ દરમાં કોઈ ફેરફાર નથી',
     emptySubtitle: 'ઉમેરેલા, બદલેલા અને ડિલીટ કરેલા દર અહીં દેખાશે.',
     // What happened, by the stored action.

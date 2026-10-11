@@ -115,3 +115,38 @@ it('a request that throws is a failure too', async () => {
   expect(result.data).toEqual([]);
   expect(result.message).toBe('Network connection issue. Please check your internet and try again.');
 });
+
+// A backend without migration 48 does not have the function: PostgREST answers PGRST202.
+describe('a server without the price history', () => {
+  const NEEDS_UPDATE = "This facility's server needs an update before the price history is available.";
+
+  it.each([
+    ['the PostgREST code', { code: 'PGRST202', message: 'Not found' }],
+    [
+      'the PostgREST text',
+      { message: 'Could not find the function public.get_item_price_history(p_limit, p_offset) in the schema cache' },
+    ],
+    ['the database code', { code: '42883', message: 'function public.get_item_price_history(integer, integer) does not exist' }],
+  ])('says the server needs an update (%s)', async (_name, error) => {
+    rpc.mockResolvedValue({ data: null, error });
+    const result = await getItemPriceHistory();
+    expect(result).toMatchObject({ success: false, data: [], message: NEEDS_UPDATE });
+    expect(result.error).toBe(error.message);
+  });
+
+  it('says so when the request throws that answer', async () => {
+    rpc.mockRejectedValue(new Error('Could not find the function public.get_item_price_history(p_limit, p_offset) in the schema cache'));
+    expect((await getItemPriceHistory()).message).toBe(NEEDS_UPDATE);
+  });
+
+  it('says so in Gujarati', async () => {
+    setLanguage('gu');
+    rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+    expect((await getItemPriceHistory()).message).toBe('દરનો ઇતિહાસ જોવા માટે આ કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ કરવું જરૂરી છે.');
+  });
+
+  it('keeps "try again" for another missing thing', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'PGRST116', message: 'invalid input syntax for type integer' } });
+    expect((await getItemPriceHistory()).message).toBe('Try again in a moment.');
+  });
+});

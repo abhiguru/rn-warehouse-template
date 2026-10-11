@@ -11,7 +11,7 @@ import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } fro
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
 import { formatDateTime } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
-import { priceHistoryChanges, truncatedPriceCount } from '@/features/item-pricing/utils/priceHistory';
+import { priceHistoryChanges, priceHistorySides, truncatedPriceCount } from '@/features/item-pricing/utils/priceHistory';
 import {
   priceHistoryActionLabel,
   priceHistoryAuthor,
@@ -36,7 +36,9 @@ const ItemPriceHistoryCard = memo<ItemPriceHistoryCardProps>(({ entry }) => {
 
   const { action } = entry;
   const isTruncate = action === 'truncate';
-  const isUpdate = action === 'update' && !!entry.old_values && !!entry.new_values;
+  // Which values there are to show goes by what the entry holds, not by its action alone:
+  // an update with one side only is shown like a delete (old values) or an insert (new values).
+  const sides = priceHistorySides(action, entry.old_values, entry.new_values);
   const actionLabel = priceHistoryActionLabel(action);
   // The icon colour repeats what the words beside it say (style guide §3.5).
   const actionColor =
@@ -55,14 +57,16 @@ const ItemPriceHistoryCard = memo<ItemPriceHistoryCardProps>(({ entry }) => {
 
   const rows = priceHistoryChanges(action, entry.old_values, entry.new_values).map((change) => {
     const label = priceHistoryFieldLabel(change.field);
-    if (isUpdate) {
+    if (sides === 'both' && !change.only) {
       const before = priceHistoryValueText(change.field, change.before);
       const after = priceHistoryValueText(change.field, change.after);
-      return { field: change.field, label, before, after, spoken: tr('pricing.history.changeLabel', { label, old: before, new: after }) };
+      return { field: change.field, label, before, after, old: false, spoken: tr('pricing.history.changeLabel', { label, old: before, new: after }) };
     }
-    // A price that was added shows its new values; one that was deleted, its old ones.
-    const value = priceHistoryValueText(change.field, action === 'delete' ? change.before : change.after);
-    return { field: change.field, label, before: null, after: value, spoken: tr('pricing.form.labelValue', { label, value }) };
+    // One value: of a price that was added (new) or deleted (old), or, when the price type
+    // changed, the old price under the old type's label and the new one under the new.
+    const old = change.only ? change.only === 'before' : sides === 'before';
+    const value = priceHistoryValueText(change.field, old ? change.before : change.after);
+    return { field: change.field, label, before: null, after: value, old: !!change.only && old, spoken: tr('pricing.form.labelValue', { label, value }) };
   });
 
   const removed = isTruncate ? truncatedPriceCount(entry.old_values) : null;
@@ -96,7 +100,7 @@ const ItemPriceHistoryCard = memo<ItemPriceHistoryCardProps>(({ entry }) => {
             <View key={row.field} style={styles.valueRow}>
               <Text style={styles.valueLabel}>{row.label}</Text>
               {row.before === null ? (
-                <Text style={styles.valueNew}>{row.after}</Text>
+                <Text style={row.old ? styles.valueOld : styles.valueNew}>{row.after}</Text>
               ) : (
                 <View style={styles.changeRow}>
                   <Text style={styles.valueOld}>{row.before}</Text>

@@ -109,6 +109,8 @@ export const pricing = {
     loadingMoreLabel: 'Loading more price changes',
     loadErrorTitle: "Couldn't load the price history",
     loadMoreFailed: "Couldn't load more price changes.",
+    // The server has no price history: a backend older than migration 48. Trying again cannot help.
+    serverNeedsUpdate: "This facility's server needs an update before the price history is available.",
     emptyTitle: 'No price changes yet',
     emptySubtitle: 'Prices that are added, changed or deleted appear here.',
     // What happened, by the stored action.

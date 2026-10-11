@@ -4,7 +4,10 @@
 
 Needs backend migration 48 (`get_item_price_history`), which is in backend
 release v0.4.0. Against an older backend the screen shows "Couldn't load the
-price history".
+price history" with "This facility's server needs an update before the price
+history is available." (the server's answer that it has no such function,
+PGRST202, is recognised in `getItemPriceHistory`); trying again cannot help
+until the facility's backend is updated.
 
 - New read-only screen **Price history** (`app/item-price-history.tsx`) for
   administrators and supervisors, opened with the **History** action in the
@@ -20,9 +23,24 @@ price history".
 - A changed price lists only the values that differ, old then new; an added
   price lists its values and a deleted price the values it had; "All prices
   removed" says how many. Labels and formats are those of the price form and
-  card. The server keeps a price in `unit_price` and again in the column of
-  its kind: the screen shows that as one value, "Monthly price" or "One-time
-  price" (`src/features/item-pricing/utils/priceHistory.ts`).
+  card. A price is shown once, read from `unit_price` (the column billing
+  reads) under the label of its own type, "Monthly price" or "One-time price".
+  The server's `unit_price_monthly` and `unit_price_one_time` are compatibility
+  copies and the one of the other type is never shown as a price or as a
+  change. When the price type itself changes, the old price is listed under
+  the old type's label and the new price under the new one
+  (`src/features/item-pricing/utils/priceHistory.ts`). An entry is shown by
+  the values it holds: an update with only its old or only its new values
+  lists them as a deleted or an added price does.
+- Paging and refresh: a further page that holds only entries already shown
+  (50 or more changes written since the page before) is followed by the next
+  page at once, up to three in a row, then by a **Load more changes** button;
+  a pull to refresh takes the place of a page that is still loading; an
+  answer that arrives after the screen was left, or after the account stopped
+  being an administrator or supervisor, is dropped without an alert.
+- Tests: Jest now runs in the Asia/Kolkata time zone on every machine
+  (`jest.global-setup.js`), so a test can write out the date and time a screen
+  must show.
 - `getItemPriceHistory` in `src/services/item-pricing-service.ts`. English and
   Gujarati text under `pricing.history`; the Gujarati is a draft for the
   owner's wording review.

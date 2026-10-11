@@ -291,6 +291,18 @@ export const deleteItemStoragePrice = async (
   };
 };
 
+/**
+ * True when the server answered that it has no `get_item_price_history`: a backend without
+ * migration 48. PostgREST says PGRST202 "Could not find the function ... in the schema
+ * cache"; the database itself says 42883 "function ... does not exist". Trying again cannot
+ * help until the facility's server is updated.
+ */
+function priceHistoryMissing(error: { code?: unknown; message?: unknown } | null | undefined): boolean {
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  if (error?.code === 'PGRST202' || message.includes('could not find the function')) return true;
+  return message.includes('get_item_price_history') && (error?.code === '42883' || message.includes('does not exist'));
+}
+
 /** One page of the price history is 50 entries; the server allows 1 to 200. */
 export const PRICE_HISTORY_PAGE_SIZE = 50;
 
@@ -299,8 +311,9 @@ export const PRICE_HISTORY_PAGE_SIZE = 50;
  * administrators and supervisors only and refuses everyone else with an error.
  *
  * A failure carries `message` for the screen to show under its own "Couldn't load" title:
- * the reason in the app's words when the server names one the app knows (no permission,
- * connection), otherwise "Try again in a moment."
+ * that the server needs an update when it does not have the function (a backend older than
+ * migration 48), the reason in the app's words when the server names one the app knows (no
+ * permission, connection), otherwise "Try again in a moment."
  */
 export const getItemPriceHistory = async (
   params: { limit?: number; offset?: number } = {}
@@ -325,6 +338,7 @@ export const getItemPriceHistory = async (
     if (error) {
       itemPricingLogger.error('get_item_price_history RPC error:', error);
       handleGlobalAuthError(error);
+      if (priceHistoryMissing(error)) return failed(t('pricing.history.serverNeedsUpdate'), error.message);
       // The raw text is developer wording: only a reason the app knows is shown.
       return failed(failureText(error.message, null, t('pricing.list.tryAgainInAMoment')), error.message);
     }
@@ -359,6 +373,9 @@ export const getItemPriceHistory = async (
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in getItemPriceHistory:', { error: errorMessage });
     handleGlobalAuthError(err);
+    if (priceHistoryMissing({ code: (err as { code?: unknown } | null)?.code, message: errorMessage })) {
+      return failed(t('pricing.history.serverNeedsUpdate'), errorMessage);
+    }
     return failed(failureText(errorMessage, null, t('pricing.list.tryAgainInAMoment')), errorMessage);
   }
 };

@@ -69,6 +69,7 @@ export default [
       'jest.config.js',
       'metro.config.js',
       'jest.setup.js',
+      'jest.global-setup.js',
       'plugins/**/*.js',
       'src/utils/logger.ts', // Logger utility legitimately uses console
     ],
