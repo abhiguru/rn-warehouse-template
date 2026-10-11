@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo, useImperativeHandle, forwardRef, useState, useEffect } from 'react';
+import React, { useRef, useCallback, useImperativeHandle, forwardRef, useState } from 'react';
 import {
   View,
   Text,
@@ -30,11 +30,16 @@ const FIELD_WIDTH_MARK = 270; // 50% wider mark field
 const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
 const CHAMBER_OPTIONS = ['C4', 'C7', 'C2', 'Anti-Ch'];
 
-// A rack is free text. The floor and chamber chips are optional help: they only
-// add "/Floor/Chamber" to what is typed. A stored rack is split into text and
-// chips only when it ends in a floor and a chamber from the lists above; any
-// other rack ("C3", "20B/F1", "A/1/2") is shown whole in the text field, so it
-// is saved as it was unless the user changes it.
+// A rack is free text. The floor and chamber chips are optional help: each
+// chosen chip adds its own "/Floor" or "/Chamber" after the typed text, and a
+// second tap takes it off again. The chips never take characters out of the
+// text field.
+//
+// A rack is split into text and chips only when a line is put into the form
+// (never while it is typed), and only when it ends in a floor and a chamber
+// from the lists above; any other rack ("C3", "20B/F1", "A/1/2") is shown
+// whole in the text field. Text plus chips always give the stored rack back,
+// so a line that is opened and saved without a change keeps its rack.
 const parseRackValue = (rack: string): { userInput: string; floor: string; chamber: string } => {
     if (!rack || rack.trim() === '') {
         return { userInput: '', floor: '', chamber: '' };
@@ -50,19 +55,31 @@ const parseRackValue = (rack: string): { userInput: string; floor: string; chamb
     return { userInput: rack, floor: '', chamber: '' };
 };
 
-// Build the rack from the typed text and the chips. Floor and chamber are added
-// only when BOTH are chosen, so that a rack read back is split the same way.
-// The text is kept as typed (the items step trims it when the line is saved);
-// trimming here would swallow every space typed at the end.
+// Build the rack from the typed text and the chosen chips: the text exactly as
+// typed, then "/Floor" and "/Chamber" for the chips that are chosen. A chip
+// shown as chosen is always part of the rack. Without a chip the text is
+// passed on as typed (the items step drops the spaces at its ends when the
+// line is saved); before a chip the spaces at its ends are dropped here, as
+// they would otherwise be left in the middle of the rack ("ROW 3 /F1").
 const buildRackValue = (userInput: string, floor: string, chamber: string): string => {
-    const hasText = userInput.trim() !== '';
-    if (floor && chamber) {
-        return hasText ? `${userInput}/${floor}/${chamber}` : `${floor}/${chamber}`;
-    }
-    return hasText ? userInput : '';
+    const chips = [floor, chamber].filter(Boolean).join('/');
+    if (userInput.trim() === '') return chips;
+    return chips ? `${userInput.trim()}/${chips}` : userInput;
 };
 
-const NO_CHIPS = { floor: '', chamber: '' };
+/** The rack of the line in the form: the text field, the chips, and the rack they make. */
+interface RackEdit {
+    lineId: string;
+    rack: string;
+    text: string;
+    floor: string;
+    chamber: string;
+}
+
+const loadRackEdit = (lineId: string, rack: string): RackEdit => {
+    const parsed = parseRackValue(rack);
+    return { lineId, rack, text: parsed.userInput, floor: parsed.floor, chamber: parsed.chamber };
+};
 
 export interface ItemFormData {
     grn_trl_id: string;
@@ -165,40 +182,40 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         // Fiori: Track focused field for blue border
         const [focusedField, setFocusedField] = useState<string | null>(null);
 
-        // Floor and chamber come from the rack itself when it ends in both. A
-        // choice of only one of them is not part of the rack yet and is kept
-        // here until the other is chosen.
-        const [pendingChips, setPendingChips] = useState(NO_CHIPS);
-        const parsedRack = useMemo(() => parseRackValue(currentItem.rack), [currentItem.rack]);
-        const rackTextOnly = parsedRack.userInput;
-        const rackHasChips = !!parsedRack.floor && !!parsedRack.chamber;
-        const halfChosen = pendingChips.floor && pendingChips.chamber ? NO_CHIPS : pendingChips;
-        const selectedFloor = rackHasChips ? parsedRack.floor : halfChosen.floor;
-        const selectedChamber = rackHasChips ? parsedRack.chamber : halfChosen.chamber;
-
-        // Another line in the form starts without the half-made choice of the one before.
-        useEffect(() => {
-            setPendingChips(NO_CHIPS);
-        }, [currentItem.grn_trl_id]);
+        // The text field and the chips are kept here while the line is in the
+        // form. They are read from the rack only when a line is put into the
+        // form: another line, or the same line with a rack this form did not
+        // make (the items step put the saved line back). Reading them from the
+        // rack at every key would move a typed "/F2/C2" out of the text field
+        // and into the chips, and the next key would land in the wrong place.
+        const lineRack = currentItem.rack ?? '';
+        const [storedRackEdit, setRackEdit] = useState(() => loadRackEdit(currentItem.grn_trl_id, lineRack));
+        let rackEdit = storedRackEdit;
+        if (rackEdit.lineId !== currentItem.grn_trl_id || rackEdit.rack !== lineRack) {
+            rackEdit = loadRackEdit(currentItem.grn_trl_id, lineRack);
+            setRackEdit(rackEdit);
+        }
+        const { text: rackText, floor: selectedFloor, chamber: selectedChamber } = rackEdit;
 
         const changeRack = useCallback((text: string, floor: string, chamber: string) => {
-            setPendingChips({ floor, chamber });
-            onFieldChange('rack', buildRackValue(text, floor, chamber));
-        }, [onFieldChange]);
+            const rack = buildRackValue(text, floor, chamber);
+            setRackEdit({ lineId: currentItem.grn_trl_id, rack, text, floor, chamber });
+            onFieldChange('rack', rack);
+        }, [currentItem.grn_trl_id, onFieldChange]);
 
-        // Handle rack text input change (the part before floor and chamber)
+        // The text field: whatever is typed is the text, character for character.
         const handleRackTextChange = useCallback((text: string) => {
             changeRack(text, selectedFloor, selectedChamber);
         }, [changeRack, selectedFloor, selectedChamber]);
 
-        // A chip is chosen by a tap and taken off again by a second tap.
+        // A chip is chosen by a tap and taken off again by a second tap. The text is not touched.
         const handleFloorSelect = useCallback((floor: string) => {
-            changeRack(rackTextOnly, floor === selectedFloor ? '' : floor, selectedChamber);
-        }, [changeRack, rackTextOnly, selectedFloor, selectedChamber]);
+            changeRack(rackText, floor === selectedFloor ? '' : floor, selectedChamber);
+        }, [changeRack, rackText, selectedFloor, selectedChamber]);
 
         const handleChamberSelect = useCallback((chamber: string) => {
-            changeRack(rackTextOnly, selectedFloor, chamber === selectedChamber ? '' : chamber);
-        }, [changeRack, rackTextOnly, selectedFloor, selectedChamber]);
+            changeRack(rackText, selectedFloor, chamber === selectedChamber ? '' : chamber);
+        }, [changeRack, rackText, selectedFloor, selectedChamber]);
 
         const imageCount = currentItem.trl_images?.length || 0;
         const canViewAll = savedItemsCount > 0 && !!onViewAll;
@@ -445,7 +462,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 !!currentItem.errors.rack && styles.inputError,
                                 focusedField === 'rack' && styles.inputFocused,
                             ]}
-                            value={rackTextOnly}
+                            value={rackText}
                             onChangeText={handleRackTextChange}
                             placeholder={tr('grn.form.forExample', { example: '20B-20C' })}
                             placeholderTextColor={t.text.placeholder}

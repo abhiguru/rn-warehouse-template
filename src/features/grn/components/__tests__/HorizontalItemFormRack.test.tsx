@@ -1,7 +1,10 @@
 /**
  * The rack field of the GRN item form. A rack is free text (owner decision of
  * 2026-10-11); the floor and chamber chips are an optional way to add
- * "/Floor/Chamber" to it. What the field shows is what is saved.
+ * "/Floor" and "/Chamber" to it. The text is kept exactly as it is typed: the
+ * chips only add or take off their own part at the end and never take
+ * characters out of the text field. What the value next to the label shows
+ * is what is saved.
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
@@ -76,6 +79,10 @@ const preview = (tree: ReactTestRenderer) =>
     .map((node) => [].concat(node.props.children).join(''));
 const tap = (tree: ReactTestRenderer, label: string) => act(() => chip(tree, label).props.onPress());
 const type = (tree: ReactTestRenderer, text: string) => act(() => rackInput(tree).props.onChangeText(text));
+/** Types `text` one key at a time, each key added to what the field shows, as a keyboard does. */
+const typeKeys = (tree: ReactTestRenderer, text: string) => {
+  for (const key of Array.from(text)) type(tree, `${rackInput(tree).props.value}${key}`);
+};
 
 describe('GRN item form rack', () => {
   it.each(['C3', '20B', '20B-20C', 'A/1/2', '20B/F1', 'X/C4', 'ચેમ્બર ૩'])(
@@ -131,18 +138,25 @@ describe('GRN item form rack', () => {
     expect(onRack).toHaveBeenLastCalledWith('');
   });
 
-  it('leaves the rack as it is while only one of floor and chamber is chosen', () => {
-    const { tree, onRack } = render(item('C3'));
+  // A chip that is shown as chosen is part of the rack. (A floor chosen alone
+  // used to be highlighted without being saved.)
+  it('adds a floor chosen alone to the rack, and a chamber chosen alone', () => {
+    const { tree, onRack } = render(item('20B'));
 
     tap(tree, 'Floor F1');
-
     expect(selectedChips(tree)).toEqual(['Floor F1']);
-    expect(onRack).toHaveBeenLastCalledWith('C3');
-    expect(preview(tree)).toContain('C3');
-    expect(preview(tree)).not.toContain('C3/F1');
+    expect(onRack).toHaveBeenLastCalledWith('20B/F1');
+    expect(preview(tree)).toContain('20B/F1');
+    expect(rackInput(tree).props.value).toBe('20B');
+
+    tap(tree, 'Floor F1');
+    tap(tree, 'Chamber C4');
+    expect(selectedChips(tree)).toEqual(['Chamber C4']);
+    expect(onRack).toHaveBeenLastCalledWith('20B/C4');
+    expect(preview(tree)).toContain('20B/C4');
   });
 
-  it('adds floor and chamber once both are chosen, and takes them off again', () => {
+  it('adds floor and chamber, and takes them off again', () => {
     const { tree, onRack } = render(item('C3'));
 
     tap(tree, 'Floor F1');
@@ -153,11 +167,35 @@ describe('GRN item form rack', () => {
 
     // Tapping a chosen chip takes it off: the chips are optional.
     tap(tree, 'Chamber C4');
-    expect(onRack).toHaveBeenLastCalledWith('C3');
+    expect(onRack).toHaveBeenLastCalledWith('C3/F1');
     expect(selectedChips(tree)).toEqual(['Floor F1']);
     tap(tree, 'Floor F1');
     expect(selectedChips(tree)).toEqual([]);
     expect(onRack).toHaveBeenLastCalledWith('C3');
+  });
+
+  it('changes one chip for another of the same kind', () => {
+    const { tree, onRack } = render(item('C3'));
+
+    tap(tree, 'Floor F1');
+    tap(tree, 'Chamber C4');
+    tap(tree, 'Floor F3');
+    tap(tree, 'Chamber Anti-Ch');
+
+    expect(selectedChips(tree)).toEqual(['Floor F3', 'Chamber Anti-Ch']);
+    expect(onRack).toHaveBeenLastCalledWith('C3/F3/Anti-Ch');
+  });
+
+  it('with no text the chips alone are the rack', () => {
+    const { tree, onRack } = render(item(''));
+
+    tap(tree, 'Chamber C7');
+    expect(onRack).toHaveBeenLastCalledWith('C7');
+    tap(tree, 'Floor BASE');
+    expect(onRack).toHaveBeenLastCalledWith('BASE/C7');
+    tap(tree, 'Chamber C7');
+    tap(tree, 'Floor BASE');
+    expect(onRack).toHaveBeenLastCalledWith('');
   });
 
   it('keeps the chosen floor and chamber while the text is typed', () => {
@@ -191,5 +229,100 @@ describe('GRN item form rack', () => {
     show(item('C3', 'line-2'));
 
     expect(selectedChips(tree)).toEqual([]);
+  });
+
+  // "R5/F2/C2" ends in a floor and a chamber from the chip lists. While it was
+  // typed, the form took "/F2/C2" out of the field and into the chips, so the
+  // next key landed after "R5": "R5/F2/C21" was saved as "R51/F2/C2".
+  describe('typed key by key', () => {
+    const TYPED = ['R5/F2/C21', 'R5/F2/C2', 'A/1/2', 'C3', '20B/F1', 'X/C4', 'F1/C4', 'BASE/C7/9', 'ચેમ્બર ૩', 'રેક ૫/F2/C2૧'];
+
+    it.each(TYPED)('%p is kept exactly as typed, at every key, and chooses no chip', (text) => {
+      const { tree, onRack } = render(item(''));
+      const keys = Array.from(text);
+
+      keys.forEach((key, index) => {
+        type(tree, `${rackInput(tree).props.value}${key}`);
+        const soFar = keys.slice(0, index + 1).join('');
+        expect(rackInput(tree).props.value).toBe(soFar);
+        expect(onRack).toHaveBeenLastCalledWith(soFar.trim() === '' ? '' : soFar);
+        expect(selectedChips(tree)).toEqual([]);
+      });
+      expect(preview(tree)).toContain(text);
+    });
+
+    it.each(TYPED)('%p: the chips add their part after it and take it off again, and the text stays', (text) => {
+      const { tree, onRack } = render(item(''));
+      typeKeys(tree, text);
+
+      tap(tree, 'Floor F1');
+      expect(onRack).toHaveBeenLastCalledWith(`${text}/F1`);
+      tap(tree, 'Chamber C4');
+      expect(onRack).toHaveBeenLastCalledWith(`${text}/F1/C4`);
+      expect(preview(tree)).toContain(`${text}/F1/C4`);
+      expect(rackInput(tree).props.value).toBe(text);
+      expect(selectedChips(tree)).toEqual(['Floor F1', 'Chamber C4']);
+
+      tap(tree, 'Floor F1');
+      expect(onRack).toHaveBeenLastCalledWith(`${text}/C4`);
+      tap(tree, 'Chamber C4');
+      expect(onRack).toHaveBeenLastCalledWith(text);
+      expect(rackInput(tree).props.value).toBe(text);
+      expect(selectedChips(tree)).toEqual([]);
+    });
+
+    it('goes on after the chips were chosen: more keys go to the end of the text, the chips stay at the end of the rack', () => {
+      const { tree, onRack } = render(item(''));
+      typeKeys(tree, 'R5/F2/C2');
+      tap(tree, 'Floor F1');
+      tap(tree, 'Chamber C4');
+
+      typeKeys(tree, '1');
+
+      expect(rackInput(tree).props.value).toBe('R5/F2/C21');
+      expect(onRack).toHaveBeenLastCalledWith('R5/F2/C21/F1/C4');
+      expect(selectedChips(tree)).toEqual(['Floor F1', 'Chamber C4']);
+    });
+
+    it('a key deleted from the end takes that key only', () => {
+      const { tree, onRack } = render(item(''));
+      typeKeys(tree, 'R5/F2/C21');
+
+      type(tree, 'R5/F2/C2');
+      expect(rackInput(tree).props.value).toBe('R5/F2/C2');
+      expect(onRack).toHaveBeenLastCalledWith('R5/F2/C2');
+      expect(selectedChips(tree)).toEqual([]);
+      type(tree, 'R5/F2/C');
+      expect(rackInput(tree).props.value).toBe('R5/F2/C');
+      expect(onRack).toHaveBeenLastCalledWith('R5/F2/C');
+    });
+  });
+
+  it('drops the spaces at the ends of the text before a chip, and leaves them in the field', () => {
+    const { tree, onRack } = render(item(''));
+    typeKeys(tree, ' ROW 3 ');
+    expect(onRack).toHaveBeenLastCalledWith(' ROW 3 ');
+
+    tap(tree, 'Floor F1');
+
+    expect(onRack).toHaveBeenLastCalledWith('ROW 3/F1');
+    expect(rackInput(tree).props.value).toBe(' ROW 3 ');
+    typeKeys(tree, 'B');
+    expect(onRack).toHaveBeenLastCalledWith('ROW 3 B/F1');
+    expect(rackInput(tree).props.value).toBe(' ROW 3 B');
+  });
+
+  it('shows the stored rack again when the same line is opened again without saving', () => {
+    const { tree, onRack, show } = render(item('20B/F1/C4', 'line-1'));
+    typeKeys(tree, 'X');
+    tap(tree, 'Floor F1');
+    expect(onRack).toHaveBeenLastCalledWith('20BX/C4');
+
+    // The items step puts the saved line back into the form.
+    show(item('20B/F1/C4', 'line-1'));
+
+    expect(rackInput(tree).props.value).toBe('20B');
+    expect(selectedChips(tree)).toEqual(['Floor F1', 'Chamber C4']);
+    expect(preview(tree)).toContain('20B/F1/C4');
   });
 });

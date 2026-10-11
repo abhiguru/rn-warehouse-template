@@ -14,12 +14,21 @@ Racks (decision 1) — no backend change
   were stored with racks such as "C3" or "20B" can be edited and saved again;
   before, such a line held the whole edit back. Only the length is still
   checked (30 characters, what the server column holds).
-- The Floor and Chamber chips are optional. They add "/Floor/Chamber" to the
-  typed text once both are chosen, and a second tap on a chosen chip takes it
-  off again. A stored rack is shown as text plus chips only when it ends in a
-  floor and a chamber from the chip lists; every other rack is shown whole in
-  the text field. The value next to the "Rack" label is what will be saved.
-  Opening another line no longer shows the chips of the line edited before.
+- The Floor and Chamber chips are optional. Each chosen chip adds its own
+  "/Floor" or "/Chamber" after the typed text, and a second tap on a chosen
+  chip takes it off again. A chip that is shown as chosen is part of the rack:
+  a floor chosen alone gives "20B/F1" (it used to be highlighted without being
+  saved, once the format rule no longer forced the second chip). The value
+  next to the "Rack" label is what will be saved.
+- The text is kept exactly as it is typed. The chips never take characters out
+  of the text field: "R5/F2/C21" typed key by key used to be saved as
+  "R51/F2/C2", because "R5/F2/C2" ends in a floor and a chamber from the chip
+  lists and the form moved "/F2/C2" into the chips before the last key. The
+  rack is now split into text and chips only when a line is put into the form
+  (a stored rack that ends in a listed floor and chamber is shown as text plus
+  chips; every other rack is shown whole in the text field), never while it is
+  typed. Opening another line no longer shows the chips of the line edited
+  before.
 - A space can be typed at the end of the rack text ("ROW 3" could not be typed
   in one go); spaces at the two ends are dropped when the line is saved.
 
