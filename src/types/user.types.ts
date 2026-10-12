@@ -36,6 +36,11 @@ export interface UserServiceResponse<T> {
   message: string;
   data?: T;
   error?: string;
+  /**
+   * On a failed account deletion: `refused` when the server answered and kept
+   * the account, `unknown` when no answer arrived (the deletion may have run).
+   */
+  outcome?: 'refused' | 'unknown';
 }
 
 export interface SearchCustomerResult {

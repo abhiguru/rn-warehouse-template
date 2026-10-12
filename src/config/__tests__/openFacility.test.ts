@@ -169,7 +169,7 @@ describe('a facility that approves', () => {
     ['a sign-out', { logoutRequest: 'r1' }, {}],
     ['a forced sign-out', { forceLogoutRequest: 'r2' }, {}],
     ['an account deletion', { deleteRequest: 'r3' }, {}],
-    ['the sign-out helper holds the leaving flag (between the store flags and the list changes)', {}, { leaving: true }],
+    ['the sign-out helper holds the leaving count (between the store flags and the list changes)', {}, { leaving: 1 }],
   ])('refuses to start while %s, says so on the list, and files nothing for a session being ended', async (_name, auth, central) => {
     mockActive = server;
     mockAuth = auth;
@@ -182,6 +182,14 @@ describe('a facility that approves', () => {
     expect(getCentralState().opening).toBeNull();
     // Not silent: the list shows the busy message like any other refusal.
     expect(getCentralState().outcome).toMatchObject({ origin: ORIGIN, name: NAME, outcome: busy });
+  });
+
+  it('a busy refusal never overwrites an answer that is still waiting to be shown', async () => {
+    mockAuth = { logoutRequest: 'r1' };
+    const waiting = { id: 99, origin: 'https://other.example.test', name: 'Other', outcome: { kind: 'pending' as const } };
+    setCentralState({ outcome: waiting });
+    expect(await openFacility(ORIGIN, NAME)).toMatchObject({ kind: 'failed', reason: 'busy' });
+    expect(getCentralState().outcome).toBe(waiting);
   });
 });
 

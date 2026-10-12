@@ -21,7 +21,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { logout, deleteAccount } from '@/store/slices/authSlice';
+import { logout, deleteAccount, isDeleteAccountRejection } from '@/store/slices/authSlice';
 import { leaveFacility } from '@/store/operatorSwitch';
 import { deleteFacilityAccount } from '@/store/centralSignOut';
 import { isCentralLoginConfigured } from '@/config/envConfig';
@@ -184,6 +184,7 @@ const SettingsScreen: React.FC = () => {
         // The profile at this facility is deleted; the route guard returns to My facilities.
         const outcome = await deleteFacilityAccount(dispatch);
         setShowDeleteModal(false);
+        // 'reported': the failure was published on My facilities, where the person now is.
         if (outcome === 'busy') showAlert(t('auth.server.busyTitle'), t('central.switch.busyMessage'));
         else if (outcome === 'failed') showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
         return;
@@ -193,10 +194,11 @@ const SettingsScreen: React.FC = () => {
       router.replace('/login');
     } catch (error) {
       setDeleteError(
-        typeof error === 'string'
-          ? error
-          : t('settings.deleteAccount.failed')
-
+        isDeleteAccountRejection(error)
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : t('settings.deleteAccount.failed')
       );
     } finally {
       setDeletingAccount(false);

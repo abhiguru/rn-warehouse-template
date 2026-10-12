@@ -6,7 +6,7 @@ import {
   CustomerAssignment
 } from '@/types/user.types';
 // M3 Fix: Import executeRPC utilities (kept for future use - current methods have extensive debug logging)
-import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError, isOfflineFailure } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -236,7 +236,10 @@ export class UserService {
         return {
           success: false,
           message: t('errors.user.deleteAccountFailed'),
-          error: error.message
+          error: error.message,
+          // An answer from the server (an auth refusal included) kept the account;
+          // a lost connection says nothing about what the server did.
+          outcome: isOfflineFailure(error) ? 'unknown' : 'refused',
         };
       }
 
@@ -250,6 +253,7 @@ export class UserService {
           success: false,
           message: t('errors.user.lastAdminDelete'),
           error: t('errors.user.lastAdminDelete'),
+          outcome: 'refused',
         };
       }
 
@@ -258,7 +262,8 @@ export class UserService {
         return {
           success: false,
           message: serverText(rpcResponse?.error, t('errors.user.deleteAccountFailed')),
-          error: serverText(rpcResponse?.error, t('errors.general.unknown'))
+          error: serverText(rpcResponse?.error, t('errors.general.unknown')),
+          outcome: 'refused',
         };
       }
 
@@ -272,6 +277,7 @@ export class UserService {
       return {
         success: false,
         message: t('errors.user.deleteAccountUnexpected'),
+        outcome: 'unknown',
         error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }

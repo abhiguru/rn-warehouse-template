@@ -42,8 +42,12 @@ jest.mock('@/config/operatorServer', () => ({
 }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
 jest.mock('@/store', () => ({ store: { getState: () => ({ auth: { userProfile: null } }) } }));
+jest.mock('@/config/supabaseConfig', () => ({ isOperatorSwitchFree: () => true }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: () => 0 } }));
-jest.mock('@/store/slices/authSlice', () => ({ deleteAccount: jest.fn(() => ({ type: 'test/deleteAccount' })) }));
+jest.mock('@/store/slices/authSlice', () => ({
+  deleteAccount: jest.fn(() => ({ type: 'test/deleteAccount' })),
+  isDeleteAccountRejection: (value: unknown) => typeof value === 'object' && value !== null && 'serverDeleted' in value,
+}));
 
 const facility = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
 const USER = { id: 'asha', phoneNumber: '919000000001', name: 'Asha Fictional', createdAt: '' };

@@ -5,11 +5,12 @@
  * cleanup as a server change, so nothing of a facility session outlives the
  * identity that opened it.
  */
-import { getActiveOperatorServer } from '@/config/operatorServer';
+import { getActiveOperatorServer, type OperatorServer } from '@/config/operatorServer';
 import { deleteCentralAccount, signOutCentral, type CentralFailure } from '@/config/centralSession';
 import { deleteMyFacilities, loadMyFacilities, removeMyFacility, updateMyFacility } from '@/config/centralFacilities';
-import { getCentralState, setCentralState } from '@/config/centralState';
-import { deleteAccount } from '@/store/slices/authSlice';
+import { getCentralState, nextOutcomeId, setCentralState } from '@/config/centralState';
+import { isOperatorSwitchFree } from '@/config/supabaseConfig';
+import { deleteAccount, isDeleteAccountRejection } from '@/store/slices/authSlice';
 import { store } from '@/store';
 import { queryClient } from '@/lib/queryClient';
 import { t } from '@/i18n';
@@ -19,10 +20,10 @@ import { leaveFacility, type LeaveFacilityOutcome } from './operatorSwitch';
 export const LEAVE_RETRY_WAIT_MS = 5000;
 const LEAVE_RETRY_POLL_MS = 100;
 
-/** Resolves when no mutation is in flight, or after `limitMs`. */
+/** Resolves when no mutation is in flight and the switch gate is free, or after `limitMs`. */
 async function waitForWritesToSettle(limitMs: number): Promise<void> {
   const until = Date.now() + limitMs;
-  while (queryClient.isMutating() > 0 && Date.now() < until) {
+  while ((queryClient.isMutating() > 0 || !isOperatorSwitchFree()) && Date.now() < until) {
     await new Promise(resolve => setTimeout(resolve, LEAVE_RETRY_POLL_MS));
   }
 }
@@ -36,17 +37,37 @@ async function leaveWithRetry(dispatch: Dispatch, options: { localOnly?: boolean
 }
 
 /**
- * Holds the "leaving" flag (src/config/centralState.ts) for the whole of a
- * sign-out or deletion: openFacility refuses to start meanwhile, also in the
- * moments between the store's request flags and the list changes.
+ * Holds the "leaving" count (src/config/centralState.ts) for the whole of a
+ * sign-out or deletion: openFacility refuses to start while it is above zero,
+ * also in the moments between the store's request flags and the list changes.
+ * A count, so one finishing does not release another still running.
  */
 async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
-  setCentralState({ leaving: true });
+  setCentralState({ leaving: getCentralState().leaving + 1 });
   try {
     return await work();
   } finally {
-    setCentralState({ leaving: false });
+    setCentralState({ leaving: Math.max(0, getCentralState().leaving - 1) });
   }
+}
+
+/**
+ * Tells the person about a failed deletion at the facility. Settings shows a
+ * thrown message itself; once the facility session is gone from the store,
+ * Settings is unmounted and the person is on My facilities, so the message is
+ * published there as an answer instead.
+ */
+function reportDeletionFailure(server: OperatorServer, message: string): 'reported' {
+  if (store.getState().auth.userProfile !== null) throw message;
+  setCentralState({
+    outcome: {
+      id: nextOutcomeId(),
+      origin: server.origin,
+      name: server.companyName || server.displayName,
+      outcome: { kind: 'failed', reason: 'account_deletion', message },
+    },
+  });
+  return 'reported';
 }
 
 type Dispatch = (action: any) => any;
@@ -113,7 +134,10 @@ export function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndO
  * server (the profile is still in the store) keeps the entry, with its
  * status restored. The returned outcome is that of the final cleanup.
  */
-export function deleteFacilityAccount(dispatch: Dispatch): Promise<LeaveFacilityOutcome> {
+/** The final cleanup's outcome, or `reported`: the deletion failed and the person has been told on My facilities. */
+export type DeleteFacilityOutcome = LeaveFacilityOutcome | 'reported';
+
+export function deleteFacilityAccount(dispatch: Dispatch): Promise<DeleteFacilityOutcome> {
   return whileLeaving(async () => {
     const server = getActiveOperatorServer();
     const userId = getCentralState().user?.id;
@@ -122,22 +146,36 @@ export function deleteFacilityAccount(dispatch: Dispatch): Promise<LeaveFacility
       server && userId ? (await loadMyFacilities(userId)).find(entry => entry.origin === server.origin)?.status : undefined;
     if (server && userId) await updateMyFacility(userId, server.origin, { status: 'unavailable' }).catch(() => {});
 
-    let failure: unknown = undefined;
+    // What the server did, from the thunk's own account of it: `true` deleted
+    // (even if the thunk then rejected), `false` kept, `null` not known.
+    let serverDeleted: boolean | null = true;
+    let message: string | undefined;
     try {
       await dispatch(deleteAccount()).unwrap();
     } catch (error) {
-      failure = error;
-      const refused = store.getState().auth.userProfile !== null && error !== t('errors.auth.sessionChanged');
-      if (refused) {
-        // The server kept the account: the facility stays on the list as it was.
-        if (server && userId && previousStatus) await updateMyFacility(userId, server.origin, { status: previousStatus }).catch(() => {});
-        throw error;
+      if (isDeleteAccountRejection(error)) {
+        serverDeleted = error.serverDeleted;
+        message = error.message;
+      } else {
+        serverDeleted = null;
+        message = typeof error === 'string' ? error : t('settings.deleteAccount.failed');
       }
     }
-    if (server && userId) await removeMyFacility(userId, server.origin).catch(() => {});
-    // The profile is gone at the facility: there is no session left to revoke.
+
+    if (serverDeleted === false) {
+      // The server kept the account: the facility stays on the list as it was.
+      if (server && userId && previousStatus) await updateMyFacility(userId, server.origin, { status: previousStatus }).catch(() => {});
+      if (!server) throw message;
+      return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
+    }
+    if (serverDeleted === true) {
+      if (server && userId) await removeMyFacility(userId, server.origin).catch(() => {});
+    }
+    // Deleted, or not known: either way the facility is left without revoking
+    // anything through it, and an entry whose fate is not known stays
+    // `unavailable` so no start can open it on its own.
     const outcome = await leaveWithRetry(dispatch, { localOnly: true });
-    if (failure !== undefined) throw failure;
+    if (serverDeleted === null && server) return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
     return outcome;
   });
 }

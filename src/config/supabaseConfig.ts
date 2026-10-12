@@ -333,6 +333,10 @@ export function beginOperatorSwitch(): boolean {
 
 export function endOperatorSwitch(): void { operatorSwitching = false; }
 
+/** True when a server switch could begin now: no switch running and no write in flight. */
+export const isOperatorSwitchFree = (): boolean =>
+  !operatorSwitching && activeMutationOperations === 0 && ![...activeRequests].some(request => request.mutation);
+
 export const clearAuthenticatedClientCache = () => {
   __authenticatedClientInstance = undefined;
   __cachedAuthToken = undefined;

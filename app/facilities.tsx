@@ -99,7 +99,8 @@ export default function FacilitiesScreen() {
         },
       ]);
     } else if (result.kind === 'failed') {
-      showAlert(tr('central.open.failedTitle', { facility: name }), result.message);
+      const title = result.reason === 'account_deletion' ? tr('central.account.deleteFailedTitle') : tr('central.open.failedTitle', { facility: name });
+      showAlert(title, result.message);
     }
   }, [outcome]);
 

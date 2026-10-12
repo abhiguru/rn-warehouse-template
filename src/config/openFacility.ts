@@ -207,7 +207,7 @@ function publish(userId: string, origin: string, name: string, outcome: OpenOutc
  */
 function signOutInProgress(): boolean {
   const auth = store.getState().auth;
-  return getCentralState().leaving || Boolean(auth.logoutRequest || auth.forceLogoutRequest || auth.deleteRequest);
+  return getCentralState().leaving > 0 || Boolean(auth.logoutRequest || auth.forceLogoutRequest || auth.deleteRequest);
 }
 
 /**
@@ -224,7 +224,8 @@ function signOutInProgress(): boolean {
 export async function openFacility(origin: string, name: string): Promise<OpenOutcome> {
   if (getCentralState().opening || signOutInProgress()) {
     const outcome = failed('busy', t('central.switch.busyMessage'));
-    setCentralState({ outcome: { id: nextOutcomeId(), origin, name, outcome } });
+    // Said on the list, unless an answer is already waiting there to be shown.
+    if (getCentralState().outcome === null) setCentralState({ outcome: { id: nextOutcomeId(), origin, name, outcome } });
     return outcome;
   }
   const userId = getCentralState().user?.id ?? '';

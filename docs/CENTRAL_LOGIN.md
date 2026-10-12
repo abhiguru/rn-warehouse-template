@@ -141,13 +141,11 @@ tick was given.
 **The central session** (`src/config/centralSession.ts`). Its own SecureStore keys
 (`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
 the facility request gate. The access token is replaced a minute before it expires and once
-when the service answers 401; one refresh runs at a time. A refresh that failed on the
-connection is repeated once at once, and only while less than 8 seconds have passed since it
-was sent, because the service answers a repeat of the same token with a new session only
-within 10 seconds of its first use; a refresh the app gave up waiting for (15 seconds), or a
-connection reset late, is outside that window and is not repeated, since the repeat would
-count as reuse and revoke the whole session family. When the service refuses the refresh token
-the person is signed out centrally, told why, and returned to central sign-in. A secure store
+when the service answers 401; one refresh runs at a time, and a refresh token is sent exactly
+once. A refresh whose answer was lost is not repeated: the session is kept and the next need
+refreshes again, which the service treats as reuse of the token, revokes the session family,
+and the person signs in again. When the service refuses the refresh token the person is signed
+out centrally, told why, and returned to central sign-in. A secure store
 that does not answer is not "no session": nothing is cleared, the store is read again once
 2 seconds later and on each return to the foreground, and the next call reads again.
 
@@ -218,10 +216,12 @@ before), takes the facility off the person's list and leaves through the same cl
 facilities cannot open it again and file a new access request: before the deletion is
 dispatched (the facility session empties the store the moment it starts) the start-up skip is
 spent and the entry is marked Unavailable on the phone, the entry is removed after the
-deletion, and no facility is opened while a sign-out or deletion is still running. A deletion
-the server carried out but the app's thunk still reported as failed (a concurrent forced
-sign-out, a sign-out that could not reach the server) is treated the same way; only a refusal
-by the server keeps the entry, with its status restored. On My facilities, "Sign out" revokes the central session, forgets it on the
+deletion, and no facility is opened while a sign-out or deletion is still running. The
+deletion's own report says what the server did: deleted (also when the session then changed
+or the sign-out failed) removes the entry and leaves; kept (the server refused, an auth
+refusal included) restores the entry's status and shows the message, on My facilities when
+Settings is already gone; not known (no answer) leaves the entry Unavailable, leaves the
+facility and shows the message. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility; the account entry holds the name and "Delete my
 account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
 

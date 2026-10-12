@@ -30,8 +30,6 @@ export const CENTRAL_SECURE_KEYS = {
 export const CENTRAL_REQUEST_TIMEOUT_MS = 15000;
 /** The access token (15 minutes) is replaced this long before it expires. */
 const RENEW_AHEAD_MS = 60 * 1000;
-/** A failed refresh is repeated only this soon after it was sent (the service's grace is 10 s). */
-export const REFRESH_REPEAT_WINDOW_MS = 8000;
 /** A secure store that did not answer at start is read again this much later. */
 export const RESTORE_RETRY_MS = 2000;
 /** The catalogue may be reused for this long (the service says `max-age=600`). */
@@ -489,9 +487,8 @@ type RefreshOutcome = { kind: 'ok'; session: StoredSession } | { kind: 'refused'
 
 /**
  * One refresh at a time. The service revokes the whole session family when a
- * refresh token is presented again more than a short grace period (10 seconds)
- * after its first use, so two callers must never each send the stored token:
- * the second one waits for the first.
+ * refresh token is presented a second time, so two callers must never each
+ * send the stored token: the second one waits for the first.
  */
 type RefreshFailure = { kind: 'unavailable'; failure: CentralFailure };
 const unreadable = (): RefreshFailure => ({ kind: 'unavailable', failure: failure('unavailable') });
@@ -515,19 +512,14 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
     await endLocally(null);
     return { kind: 'refused' };
   }
-  const send = () =>
-    centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', { body: { refresh_token: stored.refreshToken } });
-  const sentAt = Date.now();
-  let answer = await send();
-  // A connection failure gets one immediate repeat of the same token: the
-  // service may have rotated it and lost the answer, and it answers a repeat
-  // with a new session only within 10 seconds of the first use. The repeat is
-  // sent only while the first send is clearly inside that window; a request
-  // the app gave up waiting for, or a connection that was reset late, is
-  // already outside it, and a repeat would count as reuse and revoke the
-  // family.
-  if (answer.kind === 'transport' && answer.code === 'network' && Date.now() - sentAt < REFRESH_REPEAT_WINDOW_MS && started === epoch)
-    answer = await send();
+  // The refresh token is sent exactly once. The service revokes the whole
+  // family when a token is presented a second time, whatever the reason, so a
+  // lost answer is never repeated: the session is kept and the next need
+  // refreshes again, which the service then treats as reuse and the person
+  // signs in again. That is the price of never sending a token twice.
+  const answer = await centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', {
+    body: { refresh_token: stored.refreshToken },
+  });
   if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
   if (answer.kind === 'transport') return { kind: 'unavailable', failure: failureOf(answer) };
   if (answer.kind === 'error') {

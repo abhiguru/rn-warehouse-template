@@ -9,7 +9,6 @@ import * as SecureStore from 'expo-secure-store';
 import {
   CENTRAL_REQUEST_TIMEOUT_MS,
   CENTRAL_SECURE_KEYS,
-  REFRESH_REPEAT_WINDOW_MS,
   RESTORE_RETRY_MS,
   retryCentralRestoreIfNeeded,
   deleteCentralAccount,
@@ -370,37 +369,20 @@ describe('refresh', () => {
     expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
   });
 
-  it('keeps the session when there is no connection, after one repeat of the same token', async () => {
+  it('keeps the session when there is no connection, and sends the token once only', async () => {
     await signedIn(-5);
     fetchMock.mockRejectedValue(new TypeError('Network request failed'));
     expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'network' });
     expect(getCentralState().status).toBe('signedIn');
     expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
-    expect(calls('POST /v1/session/refresh').map(bodyOf)).toEqual([{ refresh_token: refreshToken('1') }, { refresh_token: refreshToken('1') }]);
+    expect(calls('POST /v1/session/refresh').map(bodyOf)).toEqual([{ refresh_token: refreshToken('1') }]);
   });
 
-  it('a refresh whose answer was lost is repeated at once, inside the service\'s grace period', async () => {
-    await signedIn(-5);
-    let attempts = 0;
-    serve({
-      'POST /v1/session/refresh': async () => {
-        attempts += 1;
-        if (attempts === 1) throw new TypeError('Network request failed');
-        return reply({ body: { session: session('second', '2') } });
-      },
-      'GET /v1/me': { body: { user } },
-    });
-    expect(await fetchCentralProfile()).toMatchObject({ ok: true });
-    expect(attempts).toBe(2);
-    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('2'));
-  });
-
-  it('a refresh the app gave up waiting for is NOT repeated: outside the 10-second grace a repeat is reuse', async () => {
+  it('a refresh the app gave up waiting for is not repeated either, and the session is kept', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
     try {
       await signedIn(-5);
       let attempts = 0;
-      // A request that never answers.
       fetchMock.mockImplementation(() => { attempts += 1; return new Promise(() => undefined); });
       const result = fetchCentralProfile();
       await jest.advanceTimersByTimeAsync(CENTRAL_REQUEST_TIMEOUT_MS + 1);
@@ -413,28 +395,14 @@ describe('refresh', () => {
     }
   });
 
-  it.each([
-    ['at once', 0, 2],
-    ['after 5 seconds', 5000, 2],
-    ['after 12 seconds (a late reset on a connection with no read timeout)', 12000, 1],
-  ])('a connection failure %s: the token is sent %i time(s) in all', async (_name, afterMs, sends) => {
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
-    try {
-      await signedIn(-5);
-      let attempts = 0;
-      fetchMock.mockImplementation(
-        () => new Promise((_, reject) => { attempts += 1; setTimeout(() => reject(new TypeError('Network request failed')), afterMs); })
-      );
-      const result = fetchCentralProfile();
-      await jest.advanceTimersByTimeAsync(afterMs + 1);
-      await jest.advanceTimersByTimeAsync(afterMs + 1);
-      expect(await result).toMatchObject({ ok: false, code: 'network' });
-      expect(attempts).toBe(sends);
-      expect(afterMs < REFRESH_REPEAT_WINDOW_MS).toBe(sends === 2);
-      expect(getCentralState().status).toBe('signedIn');
-    } finally {
-      jest.useRealTimers();
-    }
+  it('the next need refreshes again with the same stored token; a reuse refusal then signs out', async () => {
+    await signedIn(-5);
+    fetchMock.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await fetchCentralProfile();
+    serve({ 'POST /v1/session/refresh': { status: 401, body: { error: { code: 'invalid_refresh_token', message: 'x' } } } });
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'session_ended' });
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', endedMessage: 'Your association sign-in has ended. Sign in again.' });
+    expect(secure.size).toBe(0);
   });
 
   it('an answer of the service is never repeated', async () => {

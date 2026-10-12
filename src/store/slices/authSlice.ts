@@ -468,16 +468,45 @@ export const logout = createAsyncThunk(
  * Apple App Store Requirement: Apps that allow account creation must provide
  * a way for users to delete their account and associated data from within the app.
  */
-export const deleteAccount = createAsyncThunk(
+/**
+ * Why `deleteAccount` was rejected, and above all whether the server deleted
+ * the account: `true` (it did; the session then changed or the sign-out
+ * failed), `false` (it answered and kept the account), `null` (no answer; it
+ * may have). `message` is what the screens showed before this payload existed.
+ */
+export interface DeleteAccountRejection {
+  code: 'REFUSED' | 'SESSION_CHANGED' | 'UNKNOWN';
+  serverDeleted: boolean | null;
+  message: string;
+}
+
+export const isDeleteAccountRejection = (value: unknown): value is DeleteAccountRejection =>
+  typeof value === 'object' && value !== null && typeof (value as DeleteAccountRejection).message === 'string' && 'serverDeleted' in value;
+
+export const deleteAccount = createAsyncThunk<void, void, { rejectValue: DeleteAccountRejection }>(
   'auth/deleteAccount',
   async (_, { rejectWithValue, dispatch }) => {
     const generation = getSessionGeneration();
     const result = await UserService.deleteAccount();
-    if (generation !== getSessionGeneration())
-      return rejectWithValue(t('errors.auth.sessionChanged'));
-    if (!result.success)
-      return rejectWithValue(serverText(result.error, t('errors.user.deleteAccountFailed')));
-    await dispatch(logout()).unwrap();
+    const sessionChanged = generation !== getSessionGeneration();
+    if (!result.success) {
+      // The server answered and kept the account, or no answer arrived. A
+      // session that changed meanwhile (an auth refusal forced a sign-out) is
+      // still a refusal: the account exists.
+      const unknown = result.outcome === 'unknown';
+      return rejectWithValue({
+        code: unknown ? 'UNKNOWN' : 'REFUSED',
+        serverDeleted: unknown ? null : false,
+        message: sessionChanged ? t('errors.auth.sessionChanged') : serverText(result.error, t('errors.user.deleteAccountFailed')),
+      });
+    }
+    if (sessionChanged)
+      return rejectWithValue({ code: 'SESSION_CHANGED', serverDeleted: true, message: t('errors.auth.sessionChanged') });
+    try {
+      await dispatch(logout()).unwrap();
+    } catch {
+      return rejectWithValue({ code: 'SESSION_CHANGED', serverDeleted: true, message: t('errors.auth.sessionChanged') });
+    }
   }
 );
 
@@ -764,7 +793,7 @@ const authSlice = createSlice({
         if (state.deleteRequest !== action.meta.requestId) return;
         state.deleteRequest = undefined;
         state.isLoading = false;
-        state.error = action.payload as string;
+        state.error = action.payload?.message ?? null;
       })
       // Force logout on invalid token (JWSInvalidSignature, etc.)
       .addCase(forceLogoutOnInvalidToken.pending, (state, action) => {

@@ -43,6 +43,8 @@ export type OpenFailureReason =
   | 'rate_limited'
   | 'enrollment_limited'
   | 'network'
+  /** Deleting the account at the facility failed, or its result is not known. */
+  | 'account_deletion'
   | 'failed';
 
 export type OpenOutcome =
@@ -78,8 +80,8 @@ export type CentralState = {
   facilitySmsOrigin: string | null;
   /** The origin of the facility being opened, or null. */
   opening: string | null;
-  /** A sign-out or account deletion is running (src/store/centralSignOut.ts): no facility may be opened. */
-  leaving: boolean;
+  /** How many sign-outs or account deletions are running (src/store/centralSignOut.ts): above 0, no facility may be opened. */
+  leaving: number;
   /** The answer of the last open that no screen has handled yet. */
   outcome: { id: number; origin: string; name: string; outcome: OpenOutcome } | null;
   /** The linking step in progress (app/facility-link.tsx). */
@@ -95,7 +97,7 @@ const initial: CentralState = {
   endedMessage: null,
   facilitySmsOrigin: null,
   opening: null,
-  leaving: false,
+  leaving: 0,
   outcome: null,
   pendingLink: null,
   autoOpenSpent: false,

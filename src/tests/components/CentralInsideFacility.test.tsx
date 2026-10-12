@@ -52,6 +52,8 @@ jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(asyn
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
   deleteAccount: jest.fn(),
+  isDeleteAccountRejection: (value: unknown) => typeof value === 'object' && value !== null && 'serverDeleted' in value,
+
   setAuthenticating: jest.fn(() => ({ type: 'x' })),
   setPhoneNumber: jest.fn(() => ({ type: 'x' })),
   setOtpSent: jest.fn(() => ({ type: 'x' })),
