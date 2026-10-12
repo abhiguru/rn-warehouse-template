@@ -24,6 +24,7 @@ import * as reporting from '@/services/reporting';
 import * as customerActivity from '@/services/reporting/customer-activity-service';
 import * as grnActivity from '@/services/reporting/grn-activity-service';
 import * as invoiceHistory from '@/services/reporting/invoice-history-service';
+import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 
 let mockState: Record<string, unknown> = {};
 jest.mock('@/store/hooks', () => ({
@@ -42,6 +43,11 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'dev-1' }),
 }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
+// GRN activity is drawn by ReportScaffold (a FlashList) and keeps its choices per facility.
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+jest.mock('@/config/operatorServer', () => ({
+  getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+}));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({
   useRoleBasedAccess: () => ({
     isWarehouseUser: true, isManager: true, role: 'admin', reportScope: 'all-customers',
@@ -290,17 +296,28 @@ jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn() }));
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
 
+// Reports on the shared layer read through the query client: answers are delivered at once,
+// and none is kept from one test to the next.
+let restoreQueries: () => void;
+beforeAll(() => {
+  restoreQueries = makeQueryUpdatesImmediate();
+});
+beforeEach(forgetQueries);
+afterAll(() => restoreQueries());
+
 async function render(brand: Brand, mode: Mode, element: React.ReactElement) {
   mockState = {
     theme: { preference: mode, brand },
     auth: { userProfile: { id: 'u1', name: 'Asha', role: 'admin' } },
+    listFilters: { lists: {} },
+    reportPrefs: { byScope: {} },
   };
   let tree!: ReactTestRenderer;
   await act(async () => {
     tree = create(element);
   });
   await act(async () => {
-    await Promise.resolve();
+    await settleQueries();
   });
   return tree;
 }
@@ -414,7 +431,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
   it('GRN activity list', async () => {
     const tree = await render(brand, mode, <GRNActivityScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['GRN activity', 'GRNs', 'Customers', 'Fictional Traders']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['GRN activity', 'All customers', 'GRNs', 'Fictional Traders']));
     act(() => tree.unmount());
   });
 
@@ -569,6 +586,7 @@ describe('a report that could not be loaded', () => {
     // A second refusal brings the error back.
     await act(async () => {
       second.answer(refused);
+      await settleQueries();
     });
     expect(tree.root.findAllByType(ReportEmptyState).map(state => state.props.tone)).toEqual(['error']);
     expect(loadingTiles(tree)).toEqual([]);
@@ -576,10 +594,11 @@ describe('a report that could not be loaded', () => {
   });
 });
 
+// GRN activity searches through the store, which is a fixed stand-in here: its search is
+// tested with a real store in GRNActivityFlow.test.tsx.
 describe('a customer search that matches nothing', () => {
   const SEARCHED: [string, React.ComponentType][] = [
     ['dispatch activity', DispatchActivityScreen],
-    ['GRN activity', GRNActivityScreen],
     ['invoice history', InvoiceHistoryScreen],
   ];
 

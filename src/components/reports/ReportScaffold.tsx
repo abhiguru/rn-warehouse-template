@@ -77,7 +77,6 @@ export interface ReportScaffoldProps<T> {
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
   listContent: { paddingBottom: space.xxl },
-  figures: { paddingHorizontal: layout.marginCompact, paddingTop: space.md },
   stale: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -164,14 +163,13 @@ function ReportScaffoldInner<T>({
     return (
       <View style={styles.container}>
         {head}
+        {/* The grid keeps its own side margin: wrapped in another, the tiles would sit twice as far in as the rows. */}
         {kpiPlaceholders > 0 ? (
-          <View style={styles.figures}>
-            <KPIGrid
-              items={Array.from({ length: kpiPlaceholders }, () => ({ icon: 'circle-outline', value: '—', label: '' }))}
-              isLoading
-              compact
-            />
-          </View>
+          <KPIGrid
+            items={Array.from({ length: kpiPlaceholders }, () => ({ icon: 'circle-outline', value: '—', label: '' }))}
+            isLoading
+            compact
+          />
         ) : null}
         <ListSkeleton count={4} metricsCount={2} showFooter={false} />
       </View>
@@ -214,11 +212,7 @@ function ReportScaffoldInner<T>({
           </Pressable>
         </View>
       ) : null}
-      {kpis && kpis.length > 0 ? (
-        <View style={styles.figures}>
-          <KPIGrid items={kpis} compact />
-        </View>
-      ) : null}
+      {kpis && kpis.length > 0 ? <KPIGrid items={kpis} compact /> : null}
       <ReportStatusLine {...status} updatedAt={updatedAt} />
       {children}
     </>
@@ -246,7 +240,8 @@ function ReportScaffoldInner<T>({
               : { activeFilterCount: 0 })}
             emptyIcon={empty.icon}
             emptyTitle={empty.title}
-            emptySubtitle={empty.description}
+            // Without a description the list's own default ("Items you create appear here.") would show.
+            emptySubtitle={empty.description ?? ''}
           />
         }
         ListFooterComponent={footer ? <>{footer}</> : null}

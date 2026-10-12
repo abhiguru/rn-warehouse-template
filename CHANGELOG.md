@@ -25,6 +25,17 @@ Fixes on the report screens:
   (`src/features/reports/reportRegistry.ts`) that the Reports tab and the
   route declarations both read; all eight routes are now declared.
 
+**GRN activity report** is the first report on the shared report layout
+(`ReportScaffold`). Its period is a chip in the filter bar next to a sort, and
+both are remembered after the app is closed; a search finds customers, or GRNs
+by number, sender, vehicle, invoice or item, with the match in bold, and one
+customer's GRNs can be narrowed to invoiced or not. A line under the figures
+gives the dates, how many rows are shown of how many and when they were read;
+a failed refresh keeps the rows and says they are not current. A customer
+opens on a page of its own, so the phone's back button returns to the list,
+and the customer opened last is offered above the list. Date headings appear
+only while GRNs are sorted by date.
+
 ## Unreleased — price history screen (2026-10-11)
 
 Needs backend migration 48 (`get_item_price_history`), which is in backend

@@ -31,6 +31,7 @@ export const reports: Translation<typeof source> = {
     myCustomers: 'મારા વેપારી',
     chooseCustomer: 'વેપારી પસંદ કરો',
     chooseCustomerHint: 'આ વેપારીનો અહેવાલ બતાવે છે',
+    changeCustomer: 'વેપારી બદલો',
     unnamedCustomer: 'વેપારી',
     customerNamesFailed: 'વેપારીઓનાં નામ લોડ થઈ શક્યાં નથી',
     customerNamesFailedDescription: 'કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
@@ -46,6 +47,8 @@ export const reports: Translation<typeof source> = {
     updated: 'છેલ્લે અપડેટ થયું: {{time}}',
     showing: '{{total}}માંથી {{shown}} બતાવ્યા છે',
     notUpdated: 'અપડેટ થઈ શક્યું નથી. આ આંકડા અગાઉ લોડ થયેલા છે.',
+    lastOpened: 'છેલ્લે ખોલેલ',
+    lastOpenedCustomer: 'છેલ્લે ખોલેલ: {{name}}',
   },
   sort: {
     grns: 'આવક પાવતી',
@@ -292,11 +295,9 @@ export const reports: Translation<typeof source> = {
     // Service results (not shown on a screen today)
     retrieved: 'આવકની કામગીરી મળી ગઈ',
     retrievedAll: 'બધા વેપારીની આવકની કામગીરી મળી ગઈ',
-    loading: 'આવકની કામગીરી લોડ થઈ રહી છે',
     noCustomerTitle: 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી',
     noCustomerDescription: 'તમારા કોલ્ડ સ્ટોરેજને તમારું ખાતું વેપારી સાથે જોડવા કહો.',
     errorTitle: 'આવકની કામગીરી લોડ કરી શકાઈ નથી',
-    dateRange: '{{from}}થી {{to}} સુધી',
     emptyTitle: 'આ સમયગાળામાં કોઈ આવક પાવતી નથી',
     emptyDescription: 'વધુ આવક પાવતી જોવા લાંબો સમયગાળો પસંદ કરો.',
     customerHint: 'આ વેપારીની આવક પાવતી બતાવે છે',

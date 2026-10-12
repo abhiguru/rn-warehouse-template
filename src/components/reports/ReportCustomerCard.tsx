@@ -23,6 +23,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
+import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { formatNumber as formatShared } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { FactLines, joinFacts } from './FactLines';
@@ -34,6 +35,8 @@ import { FactLines, joinFacts } from './FactLines';
 export interface ReportCustomerCardProps {
   /** Customer name (title) */
   title: string;
+  /** Lower-cased search words to show in bold in the name (docs/STYLE_GUIDE.md §14.6). */
+  highlightWords?: string[];
   /**
    * Subtitle (e.g., "3 dispatches"). Give several facts as a list: they share one
    * line in English and get a line each in Gujarati (see FactLines).
@@ -137,6 +140,7 @@ const makeStyles = (t: ThemeTokens) =>
 
 export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   title,
+  highlightWords,
   subtitle,
   value,
   valueLabel = tr('reports.shared.units'),
@@ -172,9 +176,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
 
       {/* B. Main Content */}
       <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
+        <HighlightedText style={styles.title} numberOfLines={2} text={title} words={highlightWords} />
         <FactLines facts={facts} style={styles.subtitle} numberOfLines={1} />
       </View>
 

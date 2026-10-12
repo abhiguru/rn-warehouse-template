@@ -914,7 +914,7 @@ More rules:
 |---|---|
 | `reports/KPICard.tsx`, `reports/KPIGrid.tsx` | `surface.card`, `radius.card`, `shadow[2]`. Icon 32 in a 44 circle of `brand.subtle` with `brand.tint` glyph (`primary` and `accent`), status background and text for `success` and `warning`, neutral for `neutral` and `secondary`. Value `title3` tabular, unit `subhead` `text.secondary`, label `footnote` `text.secondary`. Trend: `arrow-up`/`arrow-down` icon plus value in positive or negative text; whether up is good is set per KPI, never assumed. |
 | `sensors/SensorHistoryChart.tsx` and other charts | Series colours from `tokens.chart` in order. Thresholds as dashed lines in `status.critical.element` and `status.negative.element` with labels. Axes and grid `border.divider`, axis labels `caption1` `text.secondary`. A text summary and a values table are available. |
-| `reports/PeriodSelector.tsx` | Segmented control per [13.4](#134-selection-controls), 36 tall with the touch area padded to `touchTarget`; a custom period is a separate chip. |
+| `reports/PeriodSelector.tsx` | Segmented control per [13.4](#134-selection-controls), 36 tall with the touch area padded to `touchTarget`; a custom period is a separate chip. Reports built with `ReportScaffold` use the period chip of the filter bar instead ([14.5](#145-filter-and-sort), [14.10](#1410-reports)). |
 | `invoice/components/InvoiceCalculationSummary.tsx`, `invoice-details/InvoiceBreakdownTab.tsx` | Key-value rows, amounts right-aligned with tabular numbers; total in `headline`; discounts in `status.positive.text` with a minus sign; taxes listed separately. |
 
 More rules:
@@ -995,7 +995,7 @@ Every list with filters uses the parts in `src/features/filters` and one configu
 - **Sort and filter page** (`app/list-filters.tsx`): every filter of the list on one page, for the filters that have no chip and for setting several at once. Nothing applies until its button. Customers and items are chosen inside the page.
 - **Sort**: give each sort option its `kind` (`date`, `number` or `text`) so the direction reads "Newest first", "Highest number first" or "A to Z". Changing the field keeps the direction. A list sorted by anything but date shows no date headings.
 - **A filter that is shown must work.** `toRequest` in the list's configuration is the only place a value becomes a request parameter, and `configs.test.ts` fails if a visible field does not change the request.
-- **Session only**: filters, search and sort last until the app is closed, and are cleared on sign-out and a facility switch. "Clear all" clears the current list only and keeps its sort.
+- **Session only**: filters, search and sort last until the app is closed, and are cleared on sign-out and a facility switch. "Clear all" clears the current list only and keeps its sort. A report keeps two of them longer: its period and its sort are remembered per facility and account and survive closing the app (one period for every report, a sort per report). Its search and other filters stay session-only, and "Clear all" leaves the period and the sort alone. The customer last opened in a report is remembered until sign-out or a facility switch.
 - Lists assembled in the app for customer accounts (dispatches, invoices) apply the same filters with the same meaning as the backend; their tests share the backend's cases.
 
 ### 14.6 Search
@@ -1030,7 +1030,10 @@ The app has one central sign-in that only proves who the user is, then facility 
 
 ### 14.10 Reports
 
-- Period selector, then KPI grid, then charts, then detail tables.
+- Built with `ReportScaffold` (`src/components/reports`), which owns the layout and every state: first load, failed, failed with earlier rows still shown, nothing there, nothing matching. Top to bottom: header (title, whose data, at most one export action) → search → filter bar with sort, period and filters → figures → status line "dates · showing X of Y · last updated" → charts, if any → rows. The figures cover the whole period, not the rows a search leaves.
+- Whose data comes from `useReportScope`. A warehouse role starts on every customer and opens one as a route parameter (the same route pushed with `?customerId=`), so the phone's back button and the header's agree. A customer account with several customers chooses one first (`ReportCustomerPicker`) and can change it from the header. While no search is typed, the customers list offers the customer opened last as one row above it.
+- The period is the filter bar's period chip (§14.5). Reports that have not moved to `ReportScaffold` yet still use `PeriodSelector`.
+- Date headings between rows only while the rows are sorted by date.
 - Every number links to the list behind it where possible.
 - Export and print actions in the header.
 

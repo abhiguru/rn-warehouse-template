@@ -28,6 +28,7 @@ import * as invoiceHistory from '@/services/reporting/invoice-history-service';
 import { StockService } from '@/services/stock-service';
 import { t as translate } from '@/i18n';
 import { getAllGRNItems, getCustomerGRNItems } from '@/services/grn-service';
+import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 
 let mockState: Record<string, unknown> = {};
 let mockParams: Record<string, string> = {};
@@ -62,6 +63,11 @@ jest.mock('@/config/supabaseConfig', () => ({
   }),
 }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
+// GRN activity is drawn by ReportScaffold (a FlashList) and keeps its choices per facility.
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+jest.mock('@/config/operatorServer', () => ({
+  getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+}));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 jest.mock('@/services/pdf-service', () => ({ generateCustomerStockPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -120,10 +126,17 @@ const REPORTS: {
 ];
 
 let tree: ReactTestRenderer | undefined;
+const signedIn = (userProfile: unknown) => ({
+  theme: { preference: 'light', brand: 'orange' },
+  auth: { userProfile },
+  listFilters: { lists: {} },
+  reportPrefs: { byScope: {} },
+});
 async function open(Screen: React.ComponentType, account: Account) {
-  mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: ACCOUNTS[account] } };
+  mockState = signedIn(ACCOUNTS[account]);
   await act(async () => {
     tree = create(<Screen />);
+    await settleQueries();
   });
   return tree!;
 }
@@ -131,12 +144,22 @@ const pickerRows = () => tree!.root.findAll((node) => typeof node.props.testID =
 const pick = async (customerId: string) => {
   await act(async () => {
     tree!.root.findAll((node) => node.props.testID === `report-customer-${customerId}` && typeof node.props.onPress === 'function')[0].props.onPress();
+    await settleQueries();
   });
 };
 const texts = () => tree!.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
 
+// Reports on the shared layer read through the query client: answers are delivered at once,
+// and none is kept from one test to the next.
+let restoreQueries: () => void;
+beforeAll(() => {
+  restoreQueries = makeQueryUpdatesImmediate();
+});
+afterAll(() => restoreQueries());
+
 beforeEach(() => {
   jest.clearAllMocks();
+  forgetQueries();
   mockParams = {};
   jest.mocked(StockService.getItemWiseStockList).mockResolvedValue({
     success: true,
@@ -192,9 +215,9 @@ describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
 
 describe('the picker for a profile as sign-in stores it (assigned ids, no names)', () => {
   // verifyOTP and the profile reload store the user row plus assignedCustomerIds only.
-  const signedIn = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
+  const idsOnly = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
   const openSignedIn = async () => {
-    mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: signedIn } };
+    mockState = signedIn(idsOnly);
     await act(async () => {
       tree = create(<StockSummaryScreen />);
     });

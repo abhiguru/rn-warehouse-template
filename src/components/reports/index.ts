@@ -24,6 +24,7 @@ export { FioriDataTable, type DataTableColumn, type DataTableProps } from './Fio
 
 // List Items
 export { ReportCustomerCard, type ReportCustomerCardProps } from './ReportCustomerCard';
+export { ReportLastCustomer, type ReportLastCustomerProps } from './ReportLastCustomer';
 
 export { FactLines, joinFacts, stacksFacts } from './FactLines';
 
@@ -32,3 +33,4 @@ export { ReportCustomerSearch, type ReportCustomerSearchProps } from './ReportCu
 
 // Whose data a report shows (role and assigned customers)
 export { ReportCustomerScope, type ReportScope, type ReportCustomerScopeProps } from './ReportCustomerScope';
+export { ReportCustomerPicker, type ReportCustomerPickerProps } from './ReportCustomerPicker';

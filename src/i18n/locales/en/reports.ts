@@ -28,6 +28,7 @@ export const reports = {
     myCustomers: 'My customers',
     chooseCustomer: 'Choose a customer',
     chooseCustomerHint: 'Shows this report for the customer',
+    changeCustomer: 'Change customer',
     unnamedCustomer: 'Customer',
     customerNamesFailed: 'Customer names could not be loaded',
     customerNamesFailedDescription: 'Check the connection and try again.',
@@ -44,6 +45,9 @@ export const reports = {
     updated: 'Last updated {{time}}',
     showing: 'Showing {{shown}} of {{total}}',
     notUpdated: "Couldn't update. These figures were loaded earlier.",
+    // The one row above a customers list that opens the customer opened last
+    lastOpened: 'Last opened',
+    lastOpenedCustomer: 'Last opened: {{name}}',
   },
   // Sort options and filters of the report screens (src/features/filters/configs/reports)
   sort: {
@@ -291,11 +295,9 @@ export const reports = {
     // Service results (not shown on a screen today)
     retrieved: 'GRN activity retrieved successfully',
     retrievedAll: 'All-customers GRN activity retrieved successfully',
-    loading: 'Loading GRN activity',
     noCustomerTitle: 'No customer linked to your account',
     noCustomerDescription: 'Ask your facility to link your account to a customer.',
     errorTitle: "Couldn't load GRN activity",
-    dateRange: '{{from}} to {{to}}',
     emptyTitle: 'No GRNs in this period',
     emptyDescription: 'Choose a longer period to see more GRNs.',
     customerHint: "Shows this customer's GRNs",

@@ -1,116 +1,77 @@
 /**
- * GRN Activity Report Screen (C2)
+ * GRN activity report (C2): the GRNs received in a period, with their invoice
+ * status and what has been dispatched from them.
  *
- * Displays recent GRN activity with items, invoice status, and dispatch summary.
- * GRNs grouped by date with period selector (style guide 14.10).
+ * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportScope says
+ * whose GRNs, useReportFilters holds the period, search and sort,
+ * useReportQuery the data, and ReportScaffold draws every state. A warehouse
+ * role sees every customer and opens one by pushing this route with
+ * `?customerId=`, so the phone's back button and the header's agree.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  RefreshControl,
-  LayoutAnimation,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import React, { memo, useCallback, useMemo } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
-  ReportHeader,
-  KPIGrid,
-  PeriodSelector,
+  ReportCustomerCard,
+  ReportCustomerPicker,
   ReportEmptyState,
-  ReportCustomerSearch,
-  FactLines,
-  joinFacts,
-  getDateRangeForPeriod,
+  ReportHeader,
+  ReportLastCustomer,
+  ReportScaffold,
   type KPIItem,
-  ReportCustomerScope,
-  type ReportScope,
 } from '@/components/reports';
-import { getCustomerGRNActivity, getAllGRNActivity } from '@/services/reporting/grn-activity-service';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { StatusTag } from '@/components/ui';
+import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  typography,
-  type ThemeTokens,
-  trackedText,
-} from '@/theme/tokens';
-import type {
-  GRNActivityData,
-  GRNActivityRecord,
-  ReportPeriod,
-  AllGRNActivityData,
-  CustomerGRNSummary,
-} from '@/types/report.types';
-import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
-import { StatusTag, Avatar } from '@/components/ui';
+  GRN_ACTIVITY_CUSTOMER,
+  GRN_ACTIVITY_CUSTOMERS,
+  grnCustomersView,
+  grnRecordsView,
+  isLongestPeriod,
+  type ReportPeriod,
+} from '@/features/filters/configs/reports';
+import { useReportFilters } from '@/features/reports/useReportFilters';
+import { useReportQuery } from '@/features/reports/useReportQuery';
+import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/grn-activity-service';
+import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
+import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivityRecord } from '@/types/report.types';
+import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
 
-// A function, not a constant: the text follows the app language (docs/I18N.md rule 2).
-const noCustomerError = () => tr('reports.shared.noCustomer');
+const REPORT_ID = 'grn-activity';
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
-  loadingContainer: { flex: 1 },
-  scrollView: { flex: 1 },
-  scrollContent: { paddingBottom: space.xxxl },
 
-  dateRangeText: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    paddingVertical: space.xs,
-  },
-
-  section: { marginTop: space.sm, paddingHorizontal: layout.marginCompact },
-
-  sectionHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-  },
-  sectionHeaderText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-    color: t.text.secondary,
-  },
-
-  // Date section header
-  dateSectionHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-    paddingHorizontal: space.xs,
-  },
-  dateSectionText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-    color: t.text.secondary,
-  },
-
-  grnsList: { gap: space.sm },
-
-  // Object cell card
+  // A card per row, spaced by its own bottom margin.
   card: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
     ...t.shadow[2],
   },
+  cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
   cardPressed: { backgroundColor: t.surface.cardPressed },
+
+  dateHeading: {
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
+    paddingHorizontal: layout.marginCompact + space.xs,
+  },
+  dateHeadingText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: trackedText(0.5),
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+  },
+
   objectCell: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -132,79 +93,292 @@ const makeStyles = (t: ThemeTokens) => ({
   titleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, flexWrap: 'wrap' as const },
   title: { ...typography.headline, color: t.text.primary, flexShrink: 1 },
   subtitle: { ...typography.subhead, color: t.text.secondary },
-
+  footnote: { ...typography.footnote, color: t.text.secondary },
   stockInfo: { alignItems: 'flex-end' as const },
   stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
   stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
-
   statusRow: {
     flexDirection: 'row' as const,
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
     flexWrap: 'wrap' as const,
     gap: space.sm,
-    paddingHorizontal: space.lg,
     paddingBottom: space.md,
     paddingLeft: space.lg + layout.avatar.md + space.md,
-  },
-  dispatchCount: { ...typography.footnote, color: t.text.secondary },
-
-  // Customers list
-  customersCard: {
-    backgroundColor: t.surface.card,
-    borderRadius: radius.card,
-    overflow: 'hidden' as const,
-    ...t.shadow[2],
-  },
-  customerRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: layout.objectCellMinHeight,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-    gap: space.md,
-    backgroundColor: t.surface.card,
-  },
-  customerContent: { flex: 1, gap: space.xxs },
-  customerQty: { alignItems: 'flex-end' as const, flexShrink: 0 },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: t.border.divider,
-    marginLeft: space.lg + layout.avatar.md + space.md,
+    paddingRight: space.lg,
   },
 });
 
-type Styles = ReturnType<typeof makeStyles>;
-
 // ============================================================================
-// Components
+// Whose GRNs
 // ============================================================================
 
-const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, styles }) => (
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionHeaderText} accessibilityRole="header">
-      {title}
-    </Text>
-  </View>
-);
-
-// Date section header (groups GRNs by date)
-const DateSectionHeader: React.FC<{ date: string; styles: Styles }> = ({ date, styles }) => (
-  <View style={styles.dateSectionHeader}>
-    <Text style={styles.dateSectionText} accessibilityRole="header">
-      {formatSectionDate(date)}
-    </Text>
-  </View>
-);
-
-// GRN card - navigates to the details screen
-interface GRNCardProps {
-  grn: GRNActivityRecord;
-  styles: Styles;
+export default function GRNActivityScreen() {
+  const scope = useReportScope(REPORT_ID);
+  const { level } = scope;
+  switch (level.kind) {
+    case 'none':
+      return <NoCustomer />;
+    case 'choose':
+      return <ReportCustomerPicker title={tr('reports.titles.grnActivity')} onPick={scope.chooseCustomer} />;
+    case 'customers':
+      return <CustomersReport scope={scope} />;
+    case 'customer':
+      // Keyed by the customer, so nothing of one customer's view is carried into another's.
+      return (
+        <CustomerReport
+          key={level.customerId}
+          customerId={level.customerId}
+          customerName={level.customerName}
+          onChangeCustomer={scope.changeCustomer}
+        />
+      );
+  }
 }
 
-const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
+function NoCustomer() {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.container}>
+      <ReportHeader title={tr('reports.titles.grnActivity')} />
+      <ReportEmptyState
+        icon="alert-circle-outline"
+        message={tr('reports.grnActivity.noCustomerTitle')}
+        description={tr('reports.grnActivity.noCustomerDescription')}
+      />
+    </View>
+  );
+}
+
+/** "No GRNs in this period", and a longer period to try unless there is none. */
+const emptyState = (period: ReportPeriod) => ({
+  icon: 'package-down',
+  title: tr('reports.grnActivity.emptyTitle'),
+  description: isLongestPeriod(period) ? undefined : tr('reports.grnActivity.emptyDescription'),
+});
+
+// ============================================================================
+// Every customer
+// ============================================================================
+
+const customerKey = (customer: CustomerGRNSummary) => customer.customer_id;
+
+function CustomersReport({ scope }: { scope: ReportScope }) {
+  const filters = useReportFilters(GRN_ACTIVITY_CUSTOMERS);
+  const { period, view } = filters.request;
+  const query = useReportQuery<AllGRNActivityData>({
+    key: [REPORT_ID, 'customers', period.from, period.to],
+    fetch: () => getAllGRNActivity({ fromDate: period.from, toDate: period.to }),
+    fallbackError: tr('reports.grnActivity.errors.fetchFailed'),
+  });
+  const { data } = query;
+  const rows = useMemo(() => grnCustomersView(data?.by_customer ?? [], view), [data, view]);
+  const kpis = useMemo<KPIItem[] | undefined>(
+    () =>
+      data && [
+        { icon: 'package-down', value: data.summary.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
+        { icon: 'package-variant', value: data.summary.total_quantity, label: tr('common.bags'), variant: 'secondary' },
+      ],
+    [data]
+  );
+
+  const { openCustomer, lastCustomer } = scope;
+  const renderRow = useCallback(
+    (customer: CustomerGRNSummary) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
+    [view.words, openCustomer]
+  );
+
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.grnActivity')}
+      subtitle={tr('reports.shared.allCustomers')}
+      filters={{ config: GRN_ACTIVITY_CUSTOMERS, state: filters }}
+      query={query}
+      kpis={kpis}
+      status={{ range: period, shown: rows.length, total: data?.by_customer.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={customerKey}
+      extraData={view.words}
+      noun="customers"
+      empty={emptyState(period)}
+      errorTitle={tr('reports.grnActivity.errorTitle')}
+    >
+      {lastCustomer && !filters.search ? (
+        <ReportLastCustomer customer={lastCustomer} onPress={openCustomer} accessibilityHint={tr('reports.grnActivity.customerHint')} />
+      ) : null}
+    </ReportScaffold>
+  );
+}
+
+interface CustomerRowProps {
+  customer: CustomerGRNSummary;
+  words: string[];
+  onOpen: (customer: ReportCustomerRef) => void;
+}
+
+const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: CustomerRowProps) {
+  const styles = useThemedStyles(makeStyles);
+  const latest = customer.latest_grn_date ? formatDate(customer.latest_grn_date, 'short') : '';
+  const facts = [formatCount(customer.grn_count, 'GRN')];
+  if (latest && latest !== '—') facts.push(tr('reports.grnActivity.latestGrn', { date: latest }));
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardClip}>
+        <ReportCustomerCard
+          customerId={customer.customer_id}
+          title={customer.customer_name}
+          highlightWords={words}
+          subtitle={facts}
+          value={customer.total_quantity}
+          valueLabel={tr('reports.dispatchActivity.bagUnit', { count: customer.total_quantity })}
+          onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
+          accessibilityHint={tr('reports.grnActivity.customerHint')}
+        />
+      </View>
+    </View>
+  );
+});
+
+// ============================================================================
+// One customer's GRNs
+// ============================================================================
+
+/** A GRN card, or the date over the GRNs of that day (only while sorted by date). */
+type GRNRow = { kind: 'date'; date: string } | { kind: 'grn'; grn: GRNActivityRecord };
+
+function withDateHeadings(grns: GRNActivityRecord[]): GRNRow[] {
+  const rows: GRNRow[] = [];
+  grns.forEach((grn, index) => {
+    if (index === 0 || grns[index - 1].grn_date !== grn.grn_date) rows.push({ kind: 'date', date: grn.grn_date });
+    rows.push({ kind: 'grn', grn });
+  });
+  return rows;
+}
+
+const grnRowKey = (row: GRNRow) => (row.kind === 'date' ? `date-${row.date}` : row.grn.grn_id);
+const grnRowType = (row: GRNRow) => row.kind;
+const openGrn = (grnId: string) => {
+  if (grnId) router.push(`/grn-details/${grnId}`);
+};
+
+interface CustomerReportProps {
+  customerId: string;
+  customerName: string;
+  onChangeCustomer?: () => void;
+}
+
+function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
+  const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER);
+  const { period, view } = filters.request;
+  const query = useReportQuery<GRNActivityData>({
+    key: [REPORT_ID, 'customer', customerId, period.from, period.to],
+    fetch: () => getCustomerGRNActivity({ customerId, fromDate: period.from, toDate: period.to }),
+    fallbackError: tr('reports.grnActivity.errors.fetchFailed'),
+  });
+  const { data } = query;
+  const grns = useMemo(() => grnRecordsView(data?.grns ?? [], view), [data, view]);
+  // Headings by day only make sense while the GRNs are in date order (§14.5).
+  const byDate = view.sort?.field === 'date';
+  const rows = useMemo<GRNRow[]>(
+    () => (byDate ? withDateHeadings(grns) : grns.map(grn => ({ kind: 'grn', grn }))),
+    [grns, byDate]
+  );
+  // The figures are the whole period's, not what the search leaves.
+  const kpis = useMemo<KPIItem[] | undefined>(
+    () =>
+      data && [
+        { icon: 'package-down', value: data.summary.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
+        { icon: 'package-variant', value: data.summary.total_quantity, label: tr('common.bags'), variant: 'secondary' },
+        {
+          icon: 'file-document-outline',
+          value: tr('reports.grnActivity.invoicedOfTotal', {
+            invoiced: formatNumber(data.summary.total_invoiced_grns),
+            total: formatNumber(data.summary.total_grns),
+          }),
+          label: tr('reports.grnActivity.invoiced'),
+          variant: 'accent',
+        },
+      ],
+    [data]
+  );
+  const actions = useMemo(
+    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
+    [onChangeCustomer]
+  );
+
+  const renderRow = useCallback(
+    (row: GRNRow) =>
+      row.kind === 'date' ? (
+        <DateHeading date={row.date} />
+      ) : (
+        <GRNCard grn={row.grn} words={view.words} showDate={!byDate} onOpen={openGrn} />
+      ),
+    [view.words, byDate]
+  );
+
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.grnActivity')}
+      subtitle={customerName || undefined}
+      actions={actions}
+      filters={{ config: GRN_ACTIVITY_CUSTOMER, state: filters }}
+      query={query}
+      kpis={kpis}
+      kpiPlaceholders={3}
+      status={{ range: period, shown: grns.length, total: data?.grns.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={grnRowKey}
+      getRowType={grnRowType}
+      extraData={view.words}
+      noun="GRNs"
+      empty={emptyState(period)}
+      errorTitle={tr('reports.grnActivity.errorTitle')}
+    />
+  );
+}
+
+const DateHeading = memo(function DateHeading({ date }: { date: string }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.dateHeading}>
+      <Text style={styles.dateHeadingText} accessibilityRole="header">
+        {formatSectionDate(date)}
+      </Text>
+    </View>
+  );
+});
+
+/**
+ * What a search found on the GRN that the card does not show: items, their
+ * packaging and marks, the vehicle. Only for words the card's own text does
+ * not already show (§14.6).
+ */
+function hiddenMatches(grn: GRNActivityRecord, words: string[], shown: string[]): string[] {
+  const unseen = words.filter(word => !shown.some(text => text.toLowerCase().includes(word)));
+  if (unseen.length === 0) return [];
+  const found = new Set<string>();
+  const hidden = [grn.registration, ...(grn.items ?? []).flatMap(item => [item.item_name, item.packaging, item.package_mark])];
+  for (const text of hidden) {
+    if (text && matchesAnyWord(text, unseen)) found.add(text);
+  }
+  return [...found].slice(0, 3);
+}
+
+interface GRNCardProps {
+  grn: GRNActivityRecord;
+  /** Lower-cased search words, shown in bold. */
+  words: string[];
+  /** The date is on the card when no heading above it gives it. */
+  showDate: boolean;
+  onOpen: (grnId: string) => void;
+}
+
+const GRNCard = memo(function GRNCard({ grn, words, showDate, onOpen }: GRNCardProps) {
   const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const number = tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) });
   const invoiced = grn.invoice_status.is_invoiced;
   const invoiceLabel = invoiced
     ? grn.invoice_status.invoice_number
@@ -218,26 +392,18 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
     stock: formatNumber(grn.dispatch_summary.current_stock),
     bags: formatCount(grn.total_qty, 'bag'),
   });
-
-  const handlePress = () => {
-    if (grn.grn_id) {
-      router.push(`/grn-details/${grn.grn_id}`);
-    }
-  };
+  const photos = grn.image_count > 0 ? formatCount(grn.image_count, 'photo') : null;
+  const matched = hiddenMatches(grn, words, [number, people, invoiceLabel]);
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={handlePress}
+      onPress={() => onOpen(grn.grn_id)}
       accessibilityRole="button"
-      accessibilityLabel={[
-        tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) }),
-        people,
-        stockLabel,
-        invoiceLabel,
-        dispatchLabel,
-        grn.image_count > 0 ? formatCount(grn.image_count, 'photo') : null,
-      ].filter(Boolean).join(', ')}
+      // One element for a screen reader, the date included: a heading above the card is not read with it.
+      accessibilityLabel={[number, formatDate(grn.grn_date), people, stockLabel, invoiceLabel, dispatchLabel, photos, ...matched]
+        .filter(Boolean)
+        .join(', ')}
       accessibilityHint={tr('reports.grnActivity.openHint')}
     >
       <View style={styles.objectCell}>
@@ -247,16 +413,13 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
 
         <View style={styles.objectContent}>
           <View style={styles.titleRow}>
-            <Text style={styles.title} numberOfLines={2}>
-              {tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-            </Text>
-            {grn.image_count > 0 && (
-              <StatusTag status="neutral" label={formatNumber(grn.image_count)} icon="camera-outline" />
-            )}
+            {/* A document number is never cut short (§4). */}
+            <HighlightedText style={styles.title} text={number} words={words} />
+            {grn.image_count > 0 && <StatusTag status="neutral" label={formatNumber(grn.image_count)} icon="camera-outline" />}
           </View>
-          <Text style={styles.subtitle} numberOfLines={2}>
-            {people}
-          </Text>
+          <HighlightedText style={styles.subtitle} numberOfLines={2} text={people} words={words} />
+          {showDate ? <Text style={styles.footnote}>{formatDate(grn.grn_date, 'short')}</Text> : null}
+          {matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
         </View>
 
         <View style={styles.stockInfo}>
@@ -269,440 +432,8 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
 
       <View style={styles.statusRow}>
         <StatusTag status={invoiced ? 'positive' : 'critical'} label={invoiceLabel} />
-        {dispatchLabel && <Text style={styles.dispatchCount}>{dispatchLabel}</Text>}
+        {dispatchLabel && <Text style={styles.footnote}>{dispatchLabel}</Text>}
       </View>
     </Pressable>
   );
-};
-
-// Customer row for the all-customers view
-interface CustomerCardProps {
-  customer: CustomerGRNSummary;
-  onPress: () => void;
-  styles: Styles;
-}
-
-const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }) => {
-  const t = useTokens();
-  const latest = customer.latest_grn_date ? formatDate(customer.latest_grn_date, 'short') : '';
-  const grnCount = formatCount(customer.grn_count, 'GRN');
-  const facts = [grnCount, latest && latest !== '—' ? tr('reports.grnActivity.latestGrn', { date: latest }) : null];
-  const subtitle = joinFacts(facts);
-  const bags = formatCount(customer.total_quantity, 'bag');
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.customerRow, pressed && styles.cardPressed]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${customer.customer_name}, ${subtitle}, ${bags}`}
-      accessibilityHint={tr('reports.grnActivity.customerHint')}
-    >
-      <Avatar name={customer.customer_name} id={customer.customer_id} />
-      <View style={styles.customerContent}>
-        <Text style={styles.title} numberOfLines={2}>
-          {customer.customer_name}
-        </Text>
-        <FactLines facts={facts} style={styles.subtitle} />
-      </View>
-      <View style={styles.customerQty}>
-        <Text style={styles.stockValue}>{formatNumber(customer.total_quantity)}</Text>
-        <Text style={styles.stockLabel}>{tr('reports.dispatchActivity.bagUnit', { count: customer.total_quantity })}</Text>
-      </View>
-      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-    </Pressable>
-  );
-};
-
-// ============================================================================
-// Main Screen
-// ============================================================================
-
-export default function GRNActivityScreen() {
-  return (
-    <ReportCustomerScope title={tr('reports.titles.grnActivity')}>
-      {(scope) => <GRNActivityReport scope={scope} />}
-    </ReportCustomerScope>
-  );
-}
-
-function GRNActivityReport({ scope }: { scope: ReportScope }) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
-
-  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
-  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
-
-  const [data, setData] = useState<GRNActivityData | null>(null);
-  const [allCustomersData, setAllCustomersData] = useState<AllGRNActivityData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
-  const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerGRNSummary | null>(null);
-
-  // Customer search state
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-
-  // Check if navigated with a specific customer from Quick Access
-  const routeCustomerId = params.customerId;
-  const routeCustomerName = params.customerName;
-
-  // Fetch all customers data
-  const fetchAllCustomersData = useCallback(async (period: ReportPeriod, showRefresh = false) => {
-    const { from, to } = getDateRangeForPeriod(period);
-
-    if (showRefresh) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await getAllGRNActivity({ fromDate: from, toDate: to });
-      if (response.success && response.data) {
-        // Backend now filters by user permissions via auth.uid()
-        setAllCustomersData(response.data);
-      } else {
-        setError(response.message || tr('reports.grnActivity.errors.fetchFailed'));
-      }
-    } catch (err) {
-      setError(tr('reports.grnActivity.errors.fetchFailed'));
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Fetch single customer data
-  const fetchSingleCustomerData = useCallback(async (customerId: string, period: ReportPeriod, showRefresh = false) => {
-    const { from, to } = getDateRangeForPeriod(period);
-
-    if (showRefresh) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await getCustomerGRNActivity({
-        customerId,
-        fromDate: from,
-        toDate: to,
-      });
-      if (response.success && response.data) {
-        setData(response.data);
-      } else {
-        setError(response.message || tr('reports.grnActivity.errors.fetchFailed'));
-      }
-    } catch (err) {
-      setError(tr('reports.grnActivity.errors.fetchFailed'));
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Initial fetch - check for route params first
-  useEffect(() => {
-    // If navigated with a specific customer from Quick Access, show that customer directly
-    if (routeCustomerId) {
-      setViewMode('single');
-      setSelectedCustomer({
-        customer_id: routeCustomerId,
-        customer_name: routeCustomerName || '',
-        grn_count: 0,
-        total_quantity: 0,
-        total_weight: 0,
-        latest_grn_date: '',
-      });
-      fetchSingleCustomerData(routeCustomerId, selectedPeriod);
-    } else if (shouldShowListView) {
-      fetchAllCustomersData(selectedPeriod);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId, selectedPeriod);
-    } else {
-      setError(noCustomerError());
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Handle period change
-  const handlePeriodChange = useCallback((period: ReportPeriod) => {
-    setSelectedPeriod(period);
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData(period);
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id, period);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId, period);
-    }
-  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  const handleRefresh = useCallback(() => {
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData(selectedPeriod, true);
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id, selectedPeriod, true);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId, selectedPeriod, true);
-    }
-  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, selectedPeriod, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  // Filtered customers based on search query
-  const filteredCustomers = useMemo(() => {
-    if (!allCustomersData?.by_customer) return [];
-    if (!customerSearchQuery.trim()) return allCustomersData.by_customer;
-    const q = customerSearchQuery.toLowerCase();
-    return allCustomersData.by_customer.filter((c) =>
-      c.customer_name.toLowerCase().includes(q),
-    );
-  }, [allCustomersData?.by_customer, customerSearchQuery]);
-
-  // Handle search autocomplete selection
-  const handleSearchSelect = useCallback(
-    (customer: { id: string; name: string }) => {
-      setSelectedCustomer({
-        customer_id: customer.id,
-        customer_name: customer.name,
-        grn_count: 0,
-        total_quantity: 0,
-        total_weight: 0,
-        latest_grn_date: '',
-      } as CustomerGRNSummary);
-      setViewMode('single');
-      setData(null);
-      setCustomerSearchQuery('');
-      fetchSingleCustomerData(customer.id, selectedPeriod);
-    },
-    [selectedPeriod, fetchSingleCustomerData],
-  );
-
-  const handleCustomerSelect = useCallback((customer: CustomerGRNSummary) => {
-    setSelectedCustomer(customer);
-    setViewMode('single');
-    setData(null);
-    fetchSingleCustomerData(customer.customer_id, selectedPeriod);
-  }, [selectedPeriod, fetchSingleCustomerData]);
-
-  const handleBackToAll = useCallback(() => {
-    // If we came from route params (e.g., Quick Access), go back to previous screen
-    if (routeCustomerId) {
-      router.back();
-      return;
-    }
-    // Otherwise, go back to the all customers list within this screen
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setViewMode('all');
-    setSelectedCustomer(null);
-    setData(null);
-  }, [routeCustomerId]);
-
-  // Group GRNs by date
-  const grnsByDate = useMemo(() => {
-    if (!data?.grns) return [];
-    const grouped: Map<string, GRNActivityRecord[]> = new Map();
-    data.grns.forEach((grn) => {
-      const date = grn.grn_date;
-      if (!grouped.has(date)) grouped.set(date, []);
-      grouped.get(date)!.push(grn);
-    });
-    return Array.from(grouped.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [data?.grns]);
-
-  // KPIs for all customers
-  const allCustomersKpis: KPIItem[] = useMemo(() => {
-    if (!allCustomersData?.summary) return [];
-    const s = allCustomersData.summary;
-    return [
-      { icon: 'package-down', value: s.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
-      { icon: 'package-variant', value: s.total_quantity, label: tr('common.bags'), variant: 'secondary' },
-    ];
-  }, [allCustomersData?.summary]);
-
-  // KPIs for single customer
-  const singleCustomerKpis: KPIItem[] = useMemo(() => {
-    if (!data?.summary) return [];
-    const s = data.summary;
-    return [
-      { icon: 'package-down', value: s.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
-      { icon: 'package-variant', value: s.total_quantity, label: tr('common.bags'), variant: 'secondary' },
-      { icon: 'file-document-outline', value: tr('reports.grnActivity.invoicedOfTotal', { invoiced: formatNumber(s.total_invoiced_grns), total: formatNumber(s.total_grns) }), label: tr('reports.grnActivity.invoiced'), variant: 'accent' },
-    ];
-  }, [data?.summary]);
-
-
-  const { from, to } = getDateRangeForPeriod(selectedPeriod);
-  const dateRangeText = tr('reports.grnActivity.dateRange', { from: formatDate(from), to: formatDate(to) });
-
-  const isListView = shouldShowListView && viewMode === 'all';
-  const hasData = isListView ? allCustomersData : data;
-
-  const refreshControl = (
-    <RefreshControl
-      refreshing={isRefreshing}
-      onRefresh={handleRefresh}
-      colors={[t.brand.tint]}
-      tintColor={t.brand.tint}
-      progressBackgroundColor={t.surface.card}
-    />
-  );
-
-  // Loading
-  if (isLoading && !hasData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.grnActivity')} onBack={scope.onChangeCustomer} />
-        <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <View style={styles.loadingContainer} accessibilityLabel={tr('reports.grnActivity.loading')} accessibilityState={{ busy: true }}>
-          <KPIGrid
-            items={[
-              { icon: 'package-down', value: '-', label: tr('reports.customerActivity.grns'), variant: 'primary' },
-              { icon: 'package-variant', value: '-', label: tr('common.bags'), variant: 'secondary' },
-            ]}
-            isLoading={true}
-            compact
-          />
-        </View>
-      </View>
-    );
-  }
-
-  // Error
-  if (error && !hasData) {
-    const noCustomer = error === noCustomerError();
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.grnActivity')} onBack={scope.onChangeCustomer} />
-        <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState
-          icon="alert-circle-outline"
-          tone={noCustomer ? 'default' : 'error'}
-          message={tr(noCustomer ? 'reports.grnActivity.noCustomerTitle' : 'reports.grnActivity.errorTitle')}
-          description={
-            noCustomer
-              ? tr('reports.grnActivity.noCustomerDescription')
-              : tr('common.checkConnection')
-          }
-          actionLabel={noCustomer ? undefined : tr('common.retry')}
-          // The period's own fetch: it shows the loading state, where a refresh would show "No GRNs".
-          onAction={noCustomer ? undefined : () => handlePeriodChange(selectedPeriod)}
-        />
-      </View>
-    );
-  }
-
-  // All customers view
-  if (isListView && allCustomersData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader
-          title={tr('reports.titles.grnActivity')}
-          subtitle={tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
-        />
-        <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <Text style={styles.dateRangeText}>{dateRangeText}</Text>
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={refreshControl}
-        >
-          <KPIGrid items={allCustomersKpis} isLoading={isLoading} compact />
-
-          {/* Customer search */}
-          <View style={styles.section}>
-            <ReportCustomerSearch
-              searchQuery={customerSearchQuery}
-              onSearchChange={setCustomerSearchQuery}
-              onCustomerSelect={handleSearchSelect}
-              visibleCustomerIds={allCustomersData.by_customer.map((c) => c.customer_id)}
-            />
-          </View>
-
-          {filteredCustomers.length > 0 ? (
-            <View style={styles.section}>
-              <SectionHeader title={tr('common.customers')} styles={styles} />
-              <View style={styles.customersCard}>
-                {filteredCustomers.map((customer, index) => (
-                  <React.Fragment key={customer.customer_id}>
-                    <CustomerCard customer={customer} onPress={() => handleCustomerSelect(customer)} styles={styles} />
-                    {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
-                  </React.Fragment>
-                ))}
-              </View>
-            </View>
-          ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
-            <ReportEmptyState
-              icon="magnify-close"
-              message={tr('reports.dispatchActivity.noMatch', { search: customerSearchQuery.trim() })}
-              description={tr('reports.dispatchActivity.tryFewerLetters')}
-              actionLabel={tr('common.clearSearch')}
-              onAction={() => setCustomerSearchQuery('')}
-            />
-          ) : (
-            <ReportEmptyState
-              icon="package-down"
-              message={tr('reports.grnActivity.emptyTitle')}
-              description={tr('reports.grnActivity.emptyDescription')}
-            />
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // Single customer view
-  if (!data?.grns || data.grns.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader
-          title={tr('reports.titles.grnActivity')}
-          subtitle={selectedCustomer?.customer_name || scope.customerName}
-          onBack={shouldShowListView || routeCustomerId ? handleBackToAll : scope.onChangeCustomer}
-        />
-        <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <Text style={styles.dateRangeText}>{dateRangeText}</Text>
-        <ReportEmptyState
-          icon="package-down"
-          message={tr('reports.grnActivity.emptyTitle')}
-          description={tr('reports.grnActivity.emptyDescription')}
-        />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <ReportHeader
-        title={tr('reports.titles.grnActivity')}
-        subtitle={selectedCustomer?.customer_name || scope.customerName}
-        onBack={shouldShowListView || routeCustomerId ? handleBackToAll : scope.onChangeCustomer}
-      />
-      <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-      <Text style={styles.dateRangeText}>{dateRangeText}</Text>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={refreshControl}
-      >
-        <KPIGrid items={singleCustomerKpis} isLoading={isLoading} compact />
-
-        {/* GRNs grouped by date */}
-        <View style={styles.section}>
-          {grnsByDate.map(([date, grns]) => (
-            <View key={date}>
-              <DateSectionHeader date={date} styles={styles} />
-              <View style={styles.grnsList}>
-                {grns.map((grn) => (
-                  <GRNCard key={grn.grn_id} grn={grn} styles={styles} />
-                ))}
-              </View>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
+});

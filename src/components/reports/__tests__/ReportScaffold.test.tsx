@@ -13,6 +13,7 @@ import type { FilterContext, FilterListConfig, FilterValues } from '@/features/f
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { KPIGrid } from '../KPIGrid';
 import { ReportScaffold } from '../ReportScaffold';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
@@ -81,7 +82,7 @@ afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
 });
 
-function render(over: { query?: Partial<Query>; rows?: string[]; values?: FilterValues } = {}) {
+function render(over: { query?: Partial<Query>; rows?: string[]; values?: FilterValues; description?: string | null } = {}) {
   const filters = makeFilters({ period: { preset: 'last120' }, ...over.values });
   const state = query(over.query ?? {});
   let tree!: TestRenderer.ReactTestRenderer;
@@ -98,7 +99,7 @@ function render(over: { query?: Partial<Query>; rows?: string[]; values?: Filter
         renderRow={row => <Text>{row}</Text>}
         keyExtractor={row => row}
         noun="GRNs"
-        empty={{ icon: 'package-variant-closed', title: 'No GRNs in this period', description: 'Choose a longer period.' }}
+        empty={{ icon: 'package-variant-closed', title: 'No GRNs in this period', description: over.description === null ? undefined : 'Choose a longer period.' }}
         footer={<Text>Total 2 GRNs</Text>}
       />
     );
@@ -160,6 +161,27 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(text()).toEqual(expect.arrayContaining(['No GRNs in this period', 'Choose a longer period.', 'GRNs']));
     act(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh());
     expect(state.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no borrowed wording when there is nothing and the report gives no description', () => {
+    const { text } = render({ rows: [], description: null });
+    expect(text()).toContain('No GRNs in this period');
+    expect(text()).not.toContain('Items you create appear here.');
+  });
+
+  it('insets the figures as far as the rows, not twice as far', () => {
+    for (const state of [{ phase: 'loading' as const }, {}]) {
+      const { tree } = render({ query: state });
+      const grid = tree.root.findByType(KPIGrid);
+      let node = grid.parent;
+      while (node) {
+        if (typeof node.type === 'string') {
+          const style = StyleSheet.flatten(node.props.style) ?? {};
+          expect([style.padding, style.paddingHorizontal, style.paddingLeft, style.marginHorizontal, style.marginLeft].filter(Boolean)).toEqual([]);
+        }
+        node = node.parent;
+      }
+    }
   });
 
   it('names the search when nothing matches it, and clears it', () => {

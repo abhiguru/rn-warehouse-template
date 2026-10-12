@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
-import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
+import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { KPICard } from '../KPICard';
 import { KPIGrid } from '../KPIGrid';
 import { PeriodSelector } from '../PeriodSelector';
@@ -142,6 +142,17 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     expect(texts(tree)).toContain('1,200');
     const share = tree.root.findAll(n => n.props.accessibilityLabel === 'Share PDF for Patel Traders' && typeof n.props.onPress === 'function');
     expect(share.length).toBeGreaterThan(0);
+    // Without search words the name is plain text, as on every screen that does not pass them.
+    expect(tree.root.findAll(n => (n.type as unknown) === 'Text' && flat(n).fontWeight === fontWeight.bold)).toHaveLength(0);
+    act(() => tree.unmount());
+
+    tree = render(brand, mode, (
+      <ReportCustomerCard title="Green Valley Traders" highlightWords={['valley']} subtitle="2 GRNs" value={300} onPress={jest.fn()} />
+    ));
+    const boldText = tree.root.findAll(n => (n.type as unknown) === 'Text' && flat(n).fontWeight === fontWeight.bold);
+    expect(boldText.map(n => n.props.children)).toEqual(['Valley']);
+    // The row still reads the whole name.
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Green Valley Traders, 2 GRNs, 300 units' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
     act(() => tree.unmount());
 
     tree = render(brand, mode, (
