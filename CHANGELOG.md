@@ -3,7 +3,7 @@
 ## Unreleased — reports (2026-10-12)
 
 No backend change is needed for the entries below unless an entry says so
-(item stock summary, report PDFs, dispatch weights).
+(item stock summary, report PDFs and their payment filter, dispatch weights).
 
 - **Reports tab: pinned, recent and categories.** The tab now shows the reports
   you pinned (in the order you pinned them), up to three you opened last, then
@@ -34,19 +34,19 @@ No backend change is needed for the entries below unless an entry says so
 
 Fixes on the report screens:
 
-- **Invoice history** now shows its figures (invoices and net amount for all
+- **Invoice history** now shows its figures (invoices and amount for all
   customers; invoices, paid and pending for one customer). They were worked
   out but only ever drawn as a loading placeholder.
-- **Invoice history, one customer: the Monthly breakdown now adds up.** The
-  table took its Amount from the server's monthly total before labour, tax and
-  discount, next to a Paid and a Pending that are after them, so the columns did
-  not add up (for example Amount 699 against Pending 818 with Paid 0). The table
-  is now built in the app from the period's invoices, on the net basis (after
-  labour, tax and discount), with the columns Month, Invoices, Net amount, Paid
-  and Pending. Paid plus Pending is the Net amount when every invoice is paid or
-  pending; an invoice with any other status counts in Invoices and Net amount
-  only. The table covers every invoice of the period: the search and the Paid or
-  Pending choice do not narrow it. No backend change.
+- **Invoice history, one customer: the Monthly breakdown now adds up.** The old
+  table mixed the invoice totals (right) with paid and pending sums that
+  counted labour and tax twice, so the columns did not add up (for example
+  Amount 699 against Pending 818 with Paid 0). The table is now built in the
+  app from the period's invoices, using each invoice's total, with the columns
+  Month, Invoices, Amount, Paid and Pending. Paid plus Pending is the Amount
+  when every invoice is paid or pending; an invoice with any other status
+  counts in Invoices and Amount only. The table covers every invoice of the
+  period: the search and the Paid or Pending choice do not narrow it. No
+  backend change.
 - **Report days follow India's calendar (Invoice history, GRN activity).** The
   months in the Monthly breakdown, and the date headings in the invoice history
   and GRN activity reports, now use the calendar day in India. An invoice or a
@@ -141,9 +141,9 @@ The other report screens on the shared layer, and the work they build on:
   suggests a longer period when the longest is chosen. No backend change,
   except for weights (migration 58).
 - **Invoice history** is built on the shared report layer: each customer row
-  shows its net amount, and customers sort by net amount, invoices or name; a
+  shows its amount, and customers sort by amount, invoices or name; a
   customer's invoices search by invoice number, GRN and item names, sort by
-  date, number or net amount, and can be narrowed to paid or pending; the
+  date, number or amount, and can be narrowed to paid or pending; the
   figures (invoices, paid, pending) always cover the whole period; the monthly
   breakdown is a table with the month column fixed and a totals row, collapsed
   until opened; a payment status other than paid or pending shows as "Unknown"
@@ -292,8 +292,8 @@ After the device runs (2026-10-12):
   close as before and have no such control.
 - **Dispatch activity: weights.** When the facility's server sends dispatch
   weights, each dispatch card of one customer shows the dispatch's weight (kg)
-  under its bag count, a screen reader hears it with the card, and the sort
-  sheet offers Weight. This **needs backend migration 58**:
+  on its own line under the bags, a screen reader hears it with the card, and
+  the sort sheet offers Weight. This **needs backend migration 58**:
   `get_customer_dispatch_activity` then returns `total_weight` (kg) for each
   dispatch and `weight` for each item line. Deploy the backend first. Weight is
   offered while a dispatch of the period has a weight above zero. On an older
@@ -309,12 +309,79 @@ After the device runs (2026-10-12):
   `src/tests/storeRequireCycle.test.ts`, fails if anything imported by
   `sessionScopedState` imports `authSlice` again.
 
+After the seed-data check (2026-10-12):
+
+- **Invoice history shows the invoice total.** The report used the server's
+  "net" figure. On a server without backend migration 61 that figure counts
+  labour and tax a second time and takes the discount off a second time: one
+  customer showed 818 where the real amount is 699, and one discounted invoice
+  showed as a negative amount. The invoice cards, the Monthly breakdown, the
+  Paid and Pending tiles and their counts (now worked out in the app from the
+  period's invoices), the all-customers amount, the customer rows and the sorts
+  by amount now use the invoice total. It is the same figure as the invoice
+  list, the invoice screen and the invoice PDF. The label is "Amount", no longer
+  "Net amount". This is right on servers with or without backend migration 61.
+  The customer activity report's invoiced amounts and the report PDFs follow the
+  server and are right from backend migration 61. The Monthly breakdown is
+  described above.
+- **Invoice history, Monthly breakdown: paise.** When any amount in the table
+  has paise, every amount cell (rows and Total) shows two decimals, so Paid plus
+  Pending equals the Amount and the rows add up to the Total. A table of whole
+  rupees looks as before, and the figure tiles stay in whole rupees. The amount
+  columns are wider while paise are shown, so a large amount is not cut.
+- **Invoice history, one customer: Share PDF follows the Payment filter.** With
+  Paid or Pending chosen, the PDF holds only the paid, or only the pending,
+  invoices of the period. The search does not narrow it. **Needs the backend
+  release with migrations 59 to 61**, where `generate-report-pdf` accepts the
+  optional `status` field. On a server without it the app asks once more
+  without the filter and shares the PDF of all the period's invoices, with no
+  error.
+- **Every report date follows India's calendar.** This extends "Report days
+  follow India's calendar (Invoice history, GRN activity)" above to all the
+  reports, on a phone in any time zone: card dates, "Latest" dates, "Active
+  today", the GRN dates in stock aging and in an item's stock, older activity
+  on the operations dashboard, and "Today" and "Yesterday" in date headings.
+  The period sheet shows the same two days the request sends, and a report
+  asks again when the day turns over in India. The year that a short date
+  leaves out is India's current year on every screen. The GRN, dispatch,
+  invoice and pricing lists are unchanged and still use the phone's own today.
+  Nothing changes on a phone in India. The app needs no backend migration for
+  this; the stock reports' server-side days follow India's calendar from
+  backend migration 60.
+- **Dispatch activity: the weight has its own line.** A dispatch card's weight
+  now sits on its own line under the bags, at the same right edge on every
+  card, so a long weight no longer wraps the dispatch number. A card without a
+  weight is unchanged. See "Dispatch activity: weights" above.
+- **Data table: the totals row.** A screen reader now reads the totals row as
+  one element that names each column with its total, as it already read a data
+  row. Before, it read the bare figures one at a time. Invoice history's
+  Monthly breakdown is the one table that draws a totals row.
+- **Customer activity: the stock trend.** The trend draws the month in
+  progress at the Stock tile's figure, so its latest and highest figures no
+  longer fall below the tile. The same holds for any later month of a period
+  that runs past today. Finished months keep the server's month-end figures.
+  Why the server's two figures for the month in progress differed for one
+  customer has not been found.
+- **Gujarati.** The pin label on the Reports tab was corrected after a wording
+  review: "… સૌથી ઉપર પિન કરો". A model did the review, not a native speaker.
+  Five app texts and seven report PDF labels are marked as doubtful and left
+  as they are, for the owner's own check, which is still open.
+
 Backend migrations this release of the reports work relates to: 52 (server
 sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
 function (report PDFs), 54–56 (a period includes its last day; report days
-follow India's calendar), 57 (the dispatch id) and 58 (the dispatch weight).
-The app works against a backend without them, with the fallbacks described in
-the entries above, and nothing in the app needs migrations 54–56.
+follow India's calendar), 57 (the dispatch id), 58 (the dispatch weight), 59
+(GRN activity weight totals; the app shows neither figure), 60 (the stock
+reports cut their days on India's calendar) and 61 (invoice amounts in the
+reports are the invoice total; the customer activity report and the report PDFs
+are right from it), and the optional `status` field of `generate-report-pdf`
+(the Payment filter of one customer's invoice history PDF), which comes with the
+release of 59 to 61. The app works against a backend without them, with the
+fallbacks described in the entries above, and nothing in the app needs
+migrations 54–56. Without them these figures are wrong or missing: the customer
+activity report's invoiced amounts are overstated before 61, the stock
+summary's GRN days are cut in UTC before 60, and the PDF of one customer's
+invoice history is not filtered by payment without `status`.
 
 ## Unreleased — central login in the app (2026-10-12)
 

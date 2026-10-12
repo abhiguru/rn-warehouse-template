@@ -48,7 +48,7 @@ import {
 } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { FactLines, joinFacts } from './FactLines';
@@ -290,8 +290,8 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
   const isNavigable = !!grnId && !!onOpen;
 
   const title = tr('reports.shared.grnNumber', { number: formatIdentifier(grn.grNo) });
-  const received = grn.receivedDate ? tr('reports.shared.receivedOn', { date: formatDate(grn.receivedDate, 'short') }) : null;
-  const emptied = grn.emptiedDate ? tr('reports.stockSummary.emptiedOn', { date: formatDate(grn.emptiedDate, 'short') }) : null;
+  const received = grn.receivedDate ? tr('reports.shared.receivedOn', { date: formatIndiaDate(grn.receivedDate, 'short') }) : null;
+  const emptied = grn.emptiedDate ? tr('reports.stockSummary.emptiedOn', { date: formatIndiaDate(grn.emptiedDate, 'short') }) : null;
   // The mark is an identifier: a fact of the footnote line, which wraps rather than cuts it (§4).
   const facts = [
     grn.packageMark ? tr('reports.stockSummary.packageMark', { mark: grn.packageMark }) : null,

@@ -53,7 +53,7 @@ import { getAllCustomerActivity, getCustomerActivityDetail } from '@/services/re
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
-import { formatCount, formatCurrency, formatDate, formatNumber, toDate } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatIndiaDate, formatNumber, indiaDay } from '@/utils/formatters';
 
 const REPORT_ID = 'customer-activity';
 
@@ -108,12 +108,15 @@ const makeStyles = (t: ThemeTokens) => ({
   previewValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
 });
 
-/** "Active today" or "Last active 9 Oct" (row date, guide §12.3). */
+/**
+ * "Active today" or "Last active 9 Oct" (row date, guide §12.3). The time is an instant: its day,
+ * and today, are India's, as the period of the report is.
+ */
 function lastActivity(value: string): string {
-  const date = toDate(value);
-  if (!date) return '';
-  if (date.toDateString() === new Date().toDateString()) return tr('reports.customerActivity.activeToday');
-  return tr('reports.customerActivity.lastActive', { date: formatDate(date, 'short') });
+  const day = indiaDay(value);
+  if (!day) return '';
+  if (day === indiaDay(new Date())) return tr('reports.customerActivity.activeToday');
+  return tr('reports.customerActivity.lastActive', { date: formatIndiaDate(day, 'short') });
 }
 
 /** "No customer activity", and a longer period to try unless there is none. */
@@ -341,7 +344,8 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
           return (
             <View style={styles.card}>
               <View style={styles.cardClip}>
-                <StockTrendChart trends={data.monthly_trends} />
+                {/* The month in progress is drawn at the Stock tile's figure: one figure for the stock now. */}
+                <StockTrendChart trends={data.monthly_trends} currentStock={data.summary.current_stock} />
               </View>
             </View>
           );
@@ -469,7 +473,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
         <Preview
           key={grn.grn_id}
           label={tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-          sublabel={formatDate(grn.grn_date, 'short')}
+          sublabel={formatIndiaDate(grn.grn_date, 'short')}
           value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: formatNumber(grn.total_qty) })}
           onPress={grn.grn_id ? () => openDocument(`/grn-details/${grn.grn_id}`) : undefined}
           accessibilityHint={tr('reports.shared.opensGrnHint')}
@@ -480,7 +484,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
         <Preview
           key={dispatch.dispatch_id}
           label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.dispatch_no) })}
-          sublabel={formatDate(dispatch.dispatch_date, 'short')}
+          sublabel={formatIndiaDate(dispatch.dispatch_date, 'short')}
           value={formatCount(dispatch.total_qty, 'bag')}
           onPress={dispatch.dispatch_id ? () => openDocument(`/dispatch-details/${dispatch.dispatch_id}`) : undefined}
           accessibilityHint={tr('grn.dispatches.openHint')}
@@ -501,7 +505,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
         <Preview
           key={invoice.invoice_id}
           label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) })}
-          sublabel={formatDate(invoice.invoice_date, 'short')}
+          sublabel={formatIndiaDate(invoice.invoice_date, 'short')}
           value={formatCurrency(invoice.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           status={invoiceStatus(invoice.status)}
           onPress={invoice.invoice_id ? () => openDocument(`/invoice-details/${invoice.invoice_id}`) : undefined}

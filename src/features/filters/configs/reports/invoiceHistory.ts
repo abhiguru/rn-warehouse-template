@@ -19,7 +19,7 @@ export const INVOICE_HISTORY_CUSTOMERS: FilterListConfig<InvoiceCustomersRequest
   search: { get placeholder() { return t('reports.components.searchCustomers'); }, dates: false, range: null },
   sort: {
     options: [
-      { field: 'amount', get label() { return t('reports.invoiceHistory.netAmount'); }, kind: 'amount' },
+      { field: 'amount', get label() { return t('common.amount'); }, kind: 'amount' },
       { field: 'invoices', get label() { return t('reports.invoiceHistory.invoices'); }, kind: 'amount' },
       { field: 'name', get label() { return t('common.customer'); }, kind: 'text' },
     ],
@@ -33,13 +33,17 @@ export const INVOICE_HISTORY_CUSTOMERS: FilterListConfig<InvoiceCustomersRequest
   }),
 };
 
-/** The customers a search leaves, in the chosen order. */
+/**
+ * The customers a search leaves, in the chosen order. The amount is the customer's
+ * `total_amount`, the sum of the invoices' `total`: right on every server, unlike
+ * `net_amount`, which counts labour and tax twice before backend migration 61.
+ */
 export function invoiceCustomersView(rows: readonly CustomerInvoiceSummary[], view: ReportView): CustomerInvoiceSummary[] {
   return sortRows(
     rows.filter(row => matchesSearch(view.words, [row.customer_name])),
     view.sort,
     {
-      amount: row => row.net_amount,
+      amount: row => row.total_amount,
       invoices: row => row.invoice_count,
       name: row => row.customer_name,
     }
@@ -58,7 +62,7 @@ export const INVOICE_HISTORY_CUSTOMER: FilterListConfig<InvoiceRecordsRequest> =
     options: [
       { field: 'date', get label() { return t('common.date'); }, kind: 'date' },
       { field: 'number', get label() { return t('common.invoiceNumber'); }, get chipLabel() { return t('filters.sort.numberChip'); }, kind: 'number' },
-      { field: 'total', get label() { return t('reports.invoiceHistory.netAmount'); }, kind: 'amount' },
+      { field: 'total', get label() { return t('common.amount'); }, kind: 'amount' },
     ],
     default: { field: 'date', order: 'desc' },
   },
@@ -109,7 +113,7 @@ export function invoiceRecordsView(rows: readonly InvoiceHistoryRecord[], view: 
     {
       date: invoice => invoice.invoice_date,
       number: invoice => invoice.invoice_number,
-      total: invoice => invoice.net_total,
+      total: invoice => invoice.total,
     }
   );
 }

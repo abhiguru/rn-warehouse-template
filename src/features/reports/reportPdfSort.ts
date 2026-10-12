@@ -31,7 +31,8 @@ export const REPORT_PDF_SORT_COLUMNS: Readonly<Record<ReportPdfName, Readonly<Re
     customer: { date: 'date', number: 'disp_no', bags: 'quantity' },
   },
   'invoice-history': {
-    // The screen's amount is the net amount.
+    // The PDF column is still called net on the backend; the screen's amount is
+    // the invoice total.
     customers: { amount: 'net', invoices: 'invoices', name: 'customer' },
     customer: { date: 'date', number: 'invoice_no', total: 'net' },
   },

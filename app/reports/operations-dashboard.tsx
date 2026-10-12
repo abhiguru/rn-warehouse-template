@@ -24,7 +24,7 @@ import { t as tr, formatIdentifier, localizeDigits } from '@/i18n';
 import { getOperationsDashboard } from '@/services/reporting';
 import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
 import type { OperationsDashboardData, RecentActivityItem } from '@/types/report.types';
-import { formatNumber, formatRelativeTime } from '@/utils/formatters';
+import { formatIndiaDate, formatNumber, formatRelativeTime } from '@/utils/formatters';
 
 const REPORT_ID = 'operations-dashboard';
 
@@ -237,13 +237,16 @@ function SectionHeading({ title }: { title: string }) {
   );
 }
 
+/** The day an activity of a day or more ago fell on in India, as every date of a report is read. */
+const indiaShortDate = (time: Date) => formatIndiaDate(time, 'short');
+
 /**
  * The server sends the time of an activity as a timestamp. It is shown as "2 hr ago"
  * or a date; a value that is not a date (already worded by the server) is shown as it is.
  */
 const activityTime = (value: string | null | undefined): string => {
   if (!value) return '';
-  return Number.isNaN(new Date(value).getTime()) ? value : formatRelativeTime(value);
+  return Number.isNaN(new Date(value).getTime()) ? value : formatRelativeTime(value, indiaShortDate);
 };
 
 /**

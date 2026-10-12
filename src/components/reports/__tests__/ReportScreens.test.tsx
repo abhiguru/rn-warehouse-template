@@ -204,9 +204,10 @@ jest.mock('@/services/reporting/invoice-history-service', () => ({
     Promise.resolve({
       success: true,
       data: {
-        summary: { total_invoices: 2, total_customers: 1, total_amount: 5000, total_tax: 500, net_amount: 4500 },
+        // `net_amount` is what a server before backend migration 61 sends (labour and tax counted twice): not shown.
+        summary: { total_invoices: 2, total_customers: 1, total_amount: 4500, total_tax: 500, net_amount: 5000 },
         by_customer: [
-          { customer_id: 'c1', customer_name: 'Fictional Traders', invoice_count: 2, total_amount: 5000, net_amount: 4500, latest_invoice_date: '2026-10-01' },
+          { customer_id: 'c1', customer_name: 'Fictional Traders', invoice_count: 2, total_amount: 4500, net_amount: 5000, latest_invoice_date: '2026-10-01' },
         ],
         by_month: [],
       },
@@ -447,7 +448,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     const tree = await render(brand, mode, <InvoiceHistoryScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Invoice history', 'All customers', 'Invoices', 'Net amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 1 Oct'])
+      expect.arrayContaining(['Invoice history', 'All customers', 'Invoices', 'Amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 1 Oct'])
     );
     act(() => tree.unmount());
   });
@@ -490,10 +491,10 @@ describe('invoice history summary', () => {
   it('shows the totals above the customers, with the amount on each customer', async () => {
     const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
     const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Invoices', '2', 'Net amount', '₹4,500']));
+    expect(all).toEqual(expect.arrayContaining(['Invoices', '2', 'Amount', '₹4,500']));
     expect(loadingTiles(tree)).toEqual([]);
     // The summary comes before the customers (style guide 14.10).
-    expect(all.indexOf('Net amount')).toBeLessThan(all.indexOf('Fictional Traders'));
+    expect(all.indexOf('Amount')).toBeLessThan(all.indexOf('Fictional Traders'));
     expect(all.lastIndexOf('₹4,500')).toBeGreaterThan(all.indexOf('Fictional Traders'));
     act(() => tree.unmount());
   });

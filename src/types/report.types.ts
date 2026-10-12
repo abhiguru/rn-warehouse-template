@@ -494,7 +494,10 @@ export type AllGRNActivityResponse = ServiceResponse<AllGRNActivityData>;
 // ============================================================
 
 /**
- * Invoice history summary KPIs
+ * Invoice history summary KPIs. The screen shows only `total_invoices` from here:
+ * `net_amount` and the paid and pending sums are built from `net_total`, which counts
+ * labour and tax twice before backend migration 61, so the Paid and Pending tiles are
+ * worked out from the invoices' `total` instead.
  */
 export interface InvoiceHistoryKPIs {
   total_invoices: number;
@@ -558,10 +561,15 @@ export interface InvoiceHistoryRecord {
   financial_year: string;
   grn_ref: string;
   grn_id: string;
+  /** The invoice's amount: ceil(storage + labour + tax - discount), what the customer pays. */
   total: number;
   labour: number;
   discount: number;
   tax_amount: number;
+  /**
+   * Not used by the app. Before backend migration 61 it is total + labour + tax_amount - discount
+   * (labour and tax counted a second time, the discount taken off a second time); from 61 it is `total`.
+   */
   net_total: number;
   item_count: number;
   total_quantity: number;
@@ -596,8 +604,10 @@ export interface InvoiceHistoryData {
 export interface AllInvoiceHistoryKPIs {
   total_invoices: number;
   total_customers: number;
+  /** The sum of the invoices' `total`: the amount the screen shows. */
   total_amount: number;
   total_tax: number;
+  /** Not used by the app: counts labour and tax twice before backend migration 61. */
   net_amount: number;
 }
 
@@ -608,7 +618,9 @@ export interface CustomerInvoiceSummary {
   customer_id: string;
   customer_name: string;
   invoice_count: number;
+  /** The sum of the customer's invoice `total`: the amount the screen shows and sorts by. */
   total_amount: number;
+  /** Not used by the app: counts labour and tax twice before backend migration 61. */
   net_amount: number;
   latest_invoice_date: string;
 }

@@ -16,7 +16,7 @@ import { useCallback, useMemo } from 'react';
 import { countActiveFilters, currentSort, hasAnyFilter, isRequiredField } from '@/features/filters/filterModel';
 import type { DateRangeValue, FilterListConfig, FilterValue, FilterValues, SortState } from '@/features/filters/types';
 import { useListFilters } from '@/features/filters/useListFilters';
-import { toLocalISODate } from '@/utils/formatters';
+import { indiaDay } from '@/utils/formatters';
 import { useReportPrefs } from './useReportPrefs';
 
 /** The period of a report nobody has chosen a period for yet. */
@@ -37,7 +37,9 @@ export function useReportFilters<TRequest>(config: FilterListConfig<TRequest>): 
   const sort = useMemo(() => currentSort(config, storedSort), [config, storedSort]);
 
   // The day is part of the key, as in useListFilters: a period such as "This month" is turned into dates here.
-  const day = toLocalISODate(new Date());
+  // It is India's day, the one a report's `toRequest` counts from (`todayInIST`): the request is made
+  // again when the day turns over there, and not when it turns over in the zone of the phone.
+  const day = indiaDay(new Date());
   const request = useMemo(() => config.toRequest(values, sort, list.ctx), [config, values, sort, list.ctx, day]);
 
   const { setField: setListField, apply: applyList } = list;

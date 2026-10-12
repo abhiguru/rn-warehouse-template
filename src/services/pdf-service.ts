@@ -1,7 +1,10 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { getLanguage, t, type AppLanguage } from '@/i18n';
+import { createLogger } from '@/utils/logger';
 import { serverText } from '@/utils/serverText';
+
+const log = createLogger('reportPdf');
 
 /**
  * Fix private development origins returned by backend Edge Functions. Docker
@@ -368,10 +371,19 @@ export interface ReportPdfSort {
   order: 'asc' | 'desc';
 }
 
+/** The payment status an invoice history PDF is narrowed to. */
+export type ReportPdfStatus = 'paid' | 'pending';
+
 interface ReportPdfRequestBase {
   /** One customer's report; absent or null = the all-customers level. */
   customer_id?: string | null;
   sort?: ReportPdfSort;
+  /**
+   * Only the invoices with this payment status. The server accepts it with
+   * `report: 'invoice-history'` and a `customer_id` only; the body leaves it out
+   * for anything else. A server that predates it refuses the field (see generateReportPDF).
+   */
+  status?: ReportPdfStatus;
   /** Language of the PDF's labels; the app's current language when absent. */
   lang?: AppLanguage;
 }
@@ -426,6 +438,10 @@ export interface ReportPdfResult {
 export function reportPdfRequestBody(request: ReportPdfRequest): Record<string, unknown> {
   const body: Record<string, unknown> = { report: request.report };
   if (typeof request.customer_id === 'string' && request.customer_id) body.customer_id = request.customer_id;
+  // Accepted only for one customer's invoice history; the server refuses it anywhere else.
+  if (request.report === 'invoice-history' && body.customer_id && (request.status === 'paid' || request.status === 'pending')) {
+    body.status = request.status;
+  }
   if (isPeriodReport(request.report)) {
     body.from = request.from;
     body.to = request.to;
@@ -444,6 +460,37 @@ const isFunctionEnvelope = (data: unknown): data is { success: boolean; error?: 
 
 const reportFailure = (reason: ReportPdfFailure, error: string): ReportPdfResult => ({ success: false, error, reason });
 
+/** What a server that predates the `status` field answers (HTTP 400) to a request that carries it. */
+const UNKNOWN_FIELD_MESSAGE = 'Unknown field in report request';
+
+/** One POST to generate-report-pdf; null when no answer came. */
+async function postReportPdf(authToken: string, body: Record<string, unknown>): Promise<Response | null> {
+  try {
+    const authenticatedFetch = createAuthenticatedFetch();
+    return await authenticatedFetch(`${getCurrentConfig().url}/functions/v1/generate-report-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** The answer's JSON; null when it is not JSON (a router's or gateway's page is not read). */
+async function readReportPdfAnswer(response: Response): Promise<unknown> {
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) return null;
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Generate a PDF of one report screen with the backend's generate-report-pdf.
  *
@@ -459,37 +506,32 @@ const reportFailure = (reason: ReportPdfFailure, error: string): ReportPdfResult
  *   the facility's server predates generate-report-pdf and needs an update;
  * - no answer at all (offline, timed out): check the connection.
  *
- * Nothing is logged: not the request, the signed URL, the customer name nor the
- * server's text (src/services/__tests__/reportPdf.test.ts).
+ * A request with `status` (the Payment choice of one customer's invoice history)
+ * is asked again, once and without `status`, when the server answers HTTP 400
+ * "Unknown field in report request": a server older than the field then makes
+ * the PDF of all the period's invoices, as it did before, and is not taken as
+ * outdated. Any other 400, and a second 400, are failures as above.
+ *
+ * Nothing is logged but that one retry, in a line with no request, customer,
+ * link or server text in it (src/services/__tests__/reportPdf.test.ts).
  */
 export async function generateReportPDF(request: ReportPdfRequest): Promise<ReportPdfResult> {
   const authToken = await getAuthToken();
   if (!authToken) return reportFailure('session', t('errors.auth.loginAgain'));
 
-  let response: Response;
-  try {
-    const authenticatedFetch = createAuthenticatedFetch();
-    response = await authenticatedFetch(`${getCurrentConfig().url}/functions/v1/generate-report-pdf`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(reportPdfRequestBody(request)),
-    });
-  } catch {
-    // No answer: offline, timed out, or the session changed while waiting.
-    return reportFailure('network', t('common.checkConnection'));
-  }
+  const body = reportPdfRequestBody(request);
+  let response = await postReportPdf(authToken, body);
+  // No answer: offline, timed out, or the session changed while waiting.
+  if (!response) return reportFailure('network', t('common.checkConnection'));
+  let data = await readReportPdfAnswer(response);
 
-  let data: unknown = null;
-  const contentType = response.headers.get('content-type');
-  if (contentType && contentType.includes('application/json')) {
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
+  if ('status' in body && response.status === 400 && isFunctionEnvelope(data) && data.error === UNKNOWN_FIELD_MESSAGE) {
+    log.info('The server does not take a payment status for the PDF; asked again without it');
+    const withoutStatus = { ...body };
+    delete withoutStatus.status;
+    response = await postReportPdf(authToken, withoutStatus);
+    if (!response) return reportFailure('network', t('common.checkConnection'));
+    data = await readReportPdfAnswer(response);
   }
 
   if (!isFunctionEnvelope(data)) {

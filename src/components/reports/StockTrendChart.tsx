@@ -4,10 +4,14 @@
  * chart or as a table (docs/STYLE_GUIDE.md §11.3, "charts have a text summary
  * and a table alternative"; §13.11).
  *
+ * - A month that is over has the figure the server worked out for its end. The
+ *   month in progress has no end yet: its point is the stock now, the figure of
+ *   the screen's Stock tile (`currentStock`), so the line ends where the tile
+ *   is and "Latest" and "Highest" cannot contradict it (`trendStockLevels`).
  * - One series, in the first chart colour; axes and grid in `border.divider`,
  *   axis labels `caption1` `text.secondary`, the y axis in the language's
  *   number format with its unit (bags) over it. "Highest" is the highest
- *   month as it was, not the axis top (a period of 0 says 0).
+ *   of the points drawn, not the axis top (a period of 0 says 0).
  * - The card is one button that opens the full screen; its label is the text
  *   summary. With no months to draw, the card says so and is not a button.
  * - The chart / table switch is a segmented control whose segments are each a
@@ -16,7 +20,7 @@
  *
  * It draws no card of its own: the screen puts it in one.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -27,11 +31,37 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { MonthlyTrendPoint } from '@/types/report.types';
-import { formatCount, formatMonth, formatNumber, toDate } from '@/utils/formatters';
+import { formatCount, formatMonth, formatNumber, indiaDay, toDate } from '@/utils/formatters';
 
 export interface StockTrendChartProps {
   /** Months of the period, oldest first. */
   trends: MonthlyTrendPoint[];
+  /**
+   * The customer's stock now, as the screen's Stock tile shows it. It is the point of the month
+   * in progress. Left out, every month keeps the server's figure.
+   */
+  currentStock?: number;
+}
+
+/** The month it is in India, as a trend names its months ("2026-10"). */
+const monthNow = () => indiaDay(new Date()).slice(0, 7);
+
+/**
+ * The stock drawn for each month of a trend.
+ *
+ * The server sends, for every month, what was received less what was dispatched up to the month's
+ * last day. For a month that is over that is its month-end stock. For the month in progress it is
+ * a second reckoning of the stock now, and it need not equal the stock the server keeps on its
+ * GRNs, which is what the Stock tile shows: on a phone the tile said 4,460 while the trend ended
+ * at 4,360 and called 4,444 its highest. The stock now has one figure, so the month in progress
+ * (and any later month of a period that runs past today) takes `currentStock`.
+ */
+export function trendStockLevels(trends: readonly MonthlyTrendPoint[], currentStock?: number, thisMonth: string = monthNow()): number[] {
+  const stockNow = typeof currentStock === 'number' && Number.isFinite(currentStock) ? currentStock : null;
+  return trends.map(point => {
+    const inProgress = /^\d{4}-\d{2}$/.test(point.month) && point.month >= thisMonth;
+    return stockNow !== null && inProgress ? stockNow : point.stock_level_end || 0;
+  });
 }
 
 /** "Oct 2026" for a "2026-10" trend month (guide §12.3). */
@@ -146,7 +176,7 @@ const makeStyles = (t: ThemeTokens) => ({
   totalValue: { ...typography.title3, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
 });
 
-export function StockTrendChart({ trends }: StockTrendChartProps) {
+export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
@@ -155,6 +185,8 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
   // Reduce Motion: the full-screen chart fades in instead of sliding (§9).
   const reduceMotion = useReducedMotion();
+  // One list of values for the line, the table, the summary and the figures under the chart.
+  const values = useMemo(() => trendStockLevels(trends, currentStock), [trends, currentStock]);
 
   if (trends.length === 0) {
     return (
@@ -169,7 +201,6 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
 
   const seriesColour = t.chart[0];
   const shown = labelIndices(trends.length, 4);
-  const values = trends.map(point => point.stock_level_end || 0);
   const lineData = trends.map((point, index) => ({
     value: values[index],
     label: shown.has(index) ? shortMonth(point.month) : '',
@@ -177,7 +208,7 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
   }));
   const fullData = trends.map((point, index) => ({ value: values[index], label: shortMonth(point.month), dataPointText: formatNumber(values[index]) }));
 
-  // The highest month as it was: 0 when every month was 0. The axis has its own floor,
+  // The highest point drawn: 0 when every month was 0. The axis has its own floor,
   // so a flat line still has a scale, and that floor is never shown as a value.
   const highest = Math.max(...values, 0);
   const roundedMax = Math.ceil(highest / 100) * 100 || 100;
@@ -345,11 +376,13 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
                 </View>
                 <FlatList
                   data={trends}
+                  extraData={values}
                   keyExtractor={item => item.month}
-                  renderItem={({ item }) => (
-                    <View style={styles.tableRow} accessible accessibilityLabel={`${monthYear(item.month)}, ${formatNumber(item.stock_level_end || 0)}`}>
+                  renderItem={({ item, index }) => (
+                    // The values the chart draws, the month in progress included.
+                    <View style={styles.tableRow} accessible accessibilityLabel={`${monthYear(item.month)}, ${formatNumber(values[index])}`}>
                       <Text style={[styles.tableCell, styles.colLabel]}>{monthYear(item.month)}</Text>
-                      <Text style={[styles.tableCell, styles.colNumber]}>{formatNumber(item.stock_level_end || 0)}</Text>
+                      <Text style={[styles.tableCell, styles.colNumber]}>{formatNumber(values[index])}</Text>
                     </View>
                   )}
                 />

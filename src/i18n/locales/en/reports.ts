@@ -333,7 +333,6 @@ export const reports = {
     loadError: "Couldn't load the invoice history. Check your connection and try again.",
     errorTitle: "Couldn't load the invoice history",
     invoices: 'Invoices',
-    netAmount: 'Net amount',
     paidCount: 'Paid ({{count}})',
     pendingCount: 'Pending ({{count}})',
     monthlyBreakdown: 'Monthly breakdown',

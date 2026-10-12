@@ -8,14 +8,20 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { getDateDaysAgo } from '@/services/reporting/reportDates';
 import { applyListFilters, clearListFilters } from '@/store/slices/listFilterSlice';
-import { toLocalISODate, todayInIST } from '@/utils/formatters';
+import { watchPhoneZone } from '@/tests/helpers/phoneZone';
+import { formatDate, toLocalISODate, todayInIST } from '@/utils/formatters';
 import { ApplyFiltersButton } from '../components/ApplyFiltersButton';
 import { FilterBar } from '../components/FilterBar';
 import { SingleFilterSheet, type OpenFilter } from '../components/SingleFilterSheet';
-import { countable } from '../configs';
+import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS, countable, type CountableFilterList } from '../configs';
+import { REPORT_VIEW_CONFIGS } from '../configs/reports';
+import { CUSTOMER_ACTIVITY_CUSTOMER } from '../configs/reports/customerActivity';
+import { GRN_ACTIVITY_CUSTOMERS } from '../configs/reports/grnActivity';
+import { OPERATIONS_DASHBOARD } from '../configs/reports/operationsDashboard';
+import { PERIOD_FIELD, PERIOD_KEY } from '../configs/reports/shared';
 import { DATE_PRESETS, REPORT_DATE_PRESETS, presetLabel, presetRange } from '../datePresets';
 import { countActiveFilters, currentSort, describeValue, hasAnyFilter, visibleFields } from '../filterModel';
-import type { DateRangeField, FilterContext, FilterListConfig, FilterValues, SortState } from '../types';
+import type { DatePresetId, DateRangeField, FilterContext, FilterListConfig, FilterValues, SortState } from '../types';
 import { useFilterResultCount, type FilterResultCount } from '../useFilterResultCount';
 import { useListFilters } from '../useListFilters';
 
@@ -235,6 +241,150 @@ describe('the period sheet', () => {
     const complete = setup({ period: { from: '2026-01-01', to: '2026-01-31' } }).applyButton();
     expect(complete.disabled).toBe(false);
     expect(complete.result).toEqual({ count: null, loading: false });
+  });
+});
+
+// A minute to either side of midnight in India (18:30 UTC): the afternoon in New York, the next
+// morning in Kiritimati. Not on a quarter of an hour, so midnight in no zone (see watchPhoneZone).
+const at = (utc: string) => new Date(`${utc}:07Z`);
+const SUNDAY_NIGHT = at('2026-10-11T18:29'); // 11 October, 23:59 in India
+const MONDAY_MORNING = at('2026-10-11T18:31'); // 12 October, 00:01 in India
+const MONTH_END = at('2026-09-30T18:29'); // 30 September, 23:59 in India
+const MONTH_START = at('2026-09-30T18:31'); // 1 October, 00:01 in India
+const YEAR_END = at('2026-03-31T18:29'); // 31 March, 23:59 in India: the last minute of the financial year
+const YEAR_START = at('2026-03-31T18:31'); // 1 April, 00:01 in India
+
+/** The From and To days a sheet shows for a value of one field, as its two buttons say them. */
+function shownDays(list: CountableFilterList, key: string, values: FilterValues) {
+  const filters = {
+    ctx: staff,
+    fields: visibleFields(list, staff),
+    values,
+    sort: currentSort(list, undefined),
+    setField: jest.fn(),
+    setSort: jest.fn(),
+  } as unknown as Filters;
+  const element = (open: OpenFilter) => <SingleFilterSheet config={list} filters={filters} open={open} onClose={jest.fn()} />;
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(element(null));
+  });
+  act(() => renderer.update(element({ type: 'field', key })));
+  const day = (start: string) => {
+    const labels = renderer.root
+      .findAll(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith(start))
+      .map(node => node.props.accessibilityLabel as string);
+    return labels[0];
+  };
+  const shown = { from: day('From date, '), to: day('To date, ') };
+  act(() => renderer.unmount());
+  return shown;
+}
+
+describe('the period sheet of a report shows the days its request asks for', () => {
+  const report = countable(GRN_ACTIVITY_CUSTOMERS);
+  const requested = (preset: DatePresetId) => GRN_ACTIVITY_CUSTOMERS.toRequest({ [PERIOD_KEY]: { preset } }, undefined, staff).period;
+  const shown = (preset: DatePresetId) => shownDays(report, PERIOD_KEY, { [PERIOD_KEY]: { preset } });
+
+  it('every report has the one period field, which counts from India\'s today', () => {
+    const withPeriod = [...REPORT_VIEW_CONFIGS.map(entry => entry.config), OPERATIONS_DASHBOARD, CUSTOMER_ACTIVITY_CUSTOMER].filter(list =>
+      list.fields.some(field => field.kind === 'dateRange')
+    );
+    expect(withPeriod.length).toBeGreaterThanOrEqual(8);
+    for (const list of withPeriod) expect(list.fields.filter(field => field.kind === 'dateRange')).toEqual([PERIOD_FIELD]);
+    expect(PERIOD_FIELD.today).toBe(todayInIST);
+  });
+
+  it('counts the last 120 days from the day it is in India, a minute before midnight there and a minute after', () => {
+    jest.useFakeTimers({ now: SUNDAY_NIGHT });
+    expect(requested('last120')).toEqual({ from: '2026-06-14', to: '2026-10-11' });
+    expect(shown('last120')).toEqual({ from: 'From date, 14 Jun 2026', to: 'To date, 11 Oct 2026' });
+    jest.setSystemTime(MONDAY_MORNING);
+    expect(requested('last120')).toEqual({ from: '2026-06-15', to: '2026-10-12' });
+    expect(shown('last120')).toEqual({ from: 'From date, 15 Jun 2026', to: 'To date, 12 Oct 2026' });
+  });
+
+  it('turns the month and the financial year over at midnight in India', () => {
+    jest.useFakeTimers({ now: MONTH_END });
+    expect(shown('thisMonth')).toEqual({ from: 'From date, 1 Sep 2026', to: 'To date, 30 Sep 2026' });
+    expect(shown('lastMonth')).toEqual({ from: 'From date, 1 Aug 2026', to: 'To date, 31 Aug 2026' });
+    jest.setSystemTime(MONTH_START);
+    expect(shown('thisMonth')).toEqual({ from: 'From date, 1 Oct 2026', to: 'To date, 31 Oct 2026' });
+    expect(shown('lastMonth')).toEqual({ from: 'From date, 1 Sep 2026', to: 'To date, 30 Sep 2026' });
+    jest.setSystemTime(YEAR_END);
+    expect(shown('thisFinancialYear')).toEqual({ from: 'From date, 1 Apr 2025', to: 'To date, 31 Mar 2026' });
+    jest.setSystemTime(YEAR_START);
+    expect(shown('thisFinancialYear')).toEqual({ from: 'From date, 1 Apr 2026', to: 'To date, 31 Mar 2027' });
+  });
+
+  it('shows, for every quick range and at each of those moments, the two days the request sends', () => {
+    jest.useFakeTimers({ now: SUNDAY_NIGHT });
+    for (const now of [SUNDAY_NIGHT, MONDAY_MORNING, MONTH_END, MONTH_START, YEAR_END, YEAR_START]) {
+      jest.setSystemTime(now);
+      for (const preset of REPORT_DATE_PRESETS) {
+        const period = requested(preset.id);
+        expect({ now: now.toISOString(), preset: preset.id, ...shown(preset.id) }).toEqual({
+          now: now.toISOString(),
+          preset: preset.id,
+          from: `From date, ${formatDate(period.from)}`,
+          to: `To date, ${formatDate(period.to)}`,
+        });
+      }
+    }
+  });
+
+  it('does not read the clock in the zone of the phone', () => {
+    // The suite's zone is India's, so a sheet that counted from the phone's today would show the
+    // same days here. It would have to read the clock with the phone's calendar to do so.
+    jest.useFakeTimers({ now: SUNDAY_NIGHT });
+    const watch = watchPhoneZone([SUNDAY_NIGHT, MONDAY_MORNING]);
+    try {
+      expect(shown('last120')).toEqual({ from: 'From date, 14 Jun 2026', to: 'To date, 11 Oct 2026' });
+      jest.setSystemTime(MONDAY_MORNING);
+      expect(shown('thisMonth')).toEqual({ from: 'From date, 1 Oct 2026', to: 'To date, 31 Oct 2026' });
+      expect(watch.reads).toEqual([]);
+    } finally {
+      watch.restore();
+    }
+  });
+});
+
+describe('a list\'s date sheet shows the days its request asks for', () => {
+  // The lists count "Today" from the phone's own today, in the request and in the sheet alike. Their
+  // field gives no today of its own; if a list's request moves to India's today, its field must too.
+  const lists: [string, CountableFilterList, (values: FilterValues) => { from?: unknown; to?: unknown }][] = [
+    ['dispatch', FILTER_CONFIGS['dispatch-list'], values => {
+      const filters = DISPATCH_FILTERS.toRequest(values, undefined, staff).p_filters;
+      return { from: filters?.date_from, to: filters?.date_to };
+    }],
+    ['GRN', FILTER_CONFIGS['grn-list'], values => {
+      const request = GRN_FILTERS.toRequest(values, undefined, staff);
+      return { from: request.p_date_from, to: request.p_date_to };
+    }],
+    ['invoice', FILTER_CONFIGS['invoice-list'], values => {
+      const request = INVOICE_FILTERS.toRequest(values, undefined, staff);
+      return { from: request.p_date_from, to: request.p_date_to };
+    }],
+  ];
+
+  it.each(lists)('the %s list', (_name, list, requested) => {
+    const field = list.fields.find(candidate => candidate.key === 'date') as DateRangeField;
+    expect(field.today).toBeUndefined();
+    jest.useFakeTimers({ now: SUNDAY_NIGHT });
+    for (const now of [SUNDAY_NIGHT, MONDAY_MORNING, MONTH_END, MONTH_START]) {
+      jest.setSystemTime(now);
+      for (const preset of DATE_PRESETS) {
+        const values = { date: { preset: preset.id } };
+        const sent = requested(values);
+        // The request names each day with India's offset: the day is the text before the time.
+        expect({ now: now.toISOString(), preset: preset.id, ...shownDays(list, 'date', values) }).toEqual({
+          now: now.toISOString(),
+          preset: preset.id,
+          from: `From date, ${formatDate(String(sent.from).slice(0, 10))}`,
+          to: `To date, ${formatDate(String(sent.to).slice(0, 10))}`,
+        });
+      }
+    }
   });
 });
 

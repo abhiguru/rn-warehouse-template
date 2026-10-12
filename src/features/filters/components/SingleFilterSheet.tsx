@@ -81,8 +81,11 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
   }
 
   const required = isRequiredField(field);
-  // A required range needs both of its days before it can replace the one in effect.
-  const draftRange = required ? resolveDateRange(draft as DateRangeValue | undefined) : undefined;
+  // A required range needs both of its days before it can replace the one in effect. They are
+  // counted from the field's own today, as the editor counts the days it shows (a report's period:
+  // India's today). Only whether both are there is asked, so the answer is the same on any day.
+  const today = field.kind === 'dateRange' ? field.today?.() : undefined;
+  const draftRange = required ? resolveDateRange(draft as DateRangeValue | undefined, today) : undefined;
   const incomplete = required && !(draftRange?.from && draftRange.to);
   const change = (value: FilterValue | undefined) => {
     // A quick range of a field that asks for it applies on the tap, like a choice; typed days stay a draft.

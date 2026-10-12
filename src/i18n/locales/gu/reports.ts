@@ -56,7 +56,7 @@ export const reports: Translation<typeof source> = {
     movement: 'આવક-જાવક',
     financial: 'નાણાકીય',
     operations: 'કામગીરી',
-    pin: '{{title}} ઉપર પિન કરો',
+    pin: '{{title}} સૌથી ઉપર પિન કરો',
     unpin: '{{title}} અનપિન કરો',
   },
   sort: {
@@ -321,7 +321,6 @@ export const reports: Translation<typeof source> = {
     loadError: 'ઇન્વૉઇસનો ઇતિહાસ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     errorTitle: 'ઇન્વૉઇસનો ઇતિહાસ લોડ કરી શકાયો નથી',
     invoices: 'ઇન્વૉઇસ',
-    netAmount: 'ચોખ્ખી રકમ',
     paidCount: 'ચૂકવેલ ({{count}})',
     pendingCount: 'બાકી ({{count}})',
     monthlyBreakdown: 'મહિના મુજબ વિગત',

@@ -17,7 +17,7 @@ import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service'
 import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/reporting';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
-import { BRANDS, fontWeight, getTokens, type Mode } from '@/theme/tokens';
+import { BRANDS, fontWeight, getTokens, touchTarget, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -611,6 +611,134 @@ describe('dispatch activity, one customer', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The card's layout
+// ---------------------------------------------------------------------------
+
+/** The host elements directly under a node, through the components between. */
+const hostChildren = (node: ReactTestInstance): ReactTestInstance[] =>
+  node.children.flatMap(child => (typeof child === 'string' ? [] : typeof child.type === 'string' ? [child] : hostChildren(child)));
+const hostParent = (node: ReactTestInstance): ReactTestInstance => {
+  let parent = node.parent!;
+  while (typeof parent.type !== 'string') parent = parent.parent!;
+  return parent;
+};
+type Outline = string | Outline[];
+/** A card as it is built: a text is its words, an icon its name, a box the list of what is in it. */
+const outline = (node: ReactTestInstance): Outline =>
+  (node.type as unknown) === 'Text' ? textOf(node) : (node.type as unknown) === 'Icon' ? `icon ${node.props.name}` : hostChildren(node).map(outline);
+const styleOf = (node: ReactTestInstance) =>
+  (StyleSheet.flatten(typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style) ?? {}) as Record<string, unknown>;
+
+describe('dispatch activity, the layout of a dispatch card', () => {
+  /** The pressable head of the card of a dispatch (the part that shows its items), as the phone draws it. */
+  const head = (screen: Awaited<ReturnType<typeof open>>, number: string) =>
+    hostChildren(screen.controls(label => label.startsWith(`Dispatch ${number},`))[0])[0];
+  const text = (within: ReactTestInstance, words: string) => within.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === words)[0];
+  const AVATAR = ['icon truck-delivery-outline'];
+
+  it('a card without a weight is built as it always was: the texts in one column, the bags in theirs, nothing more', async () => {
+    mockParams = GREEN;
+    const screen = await open(makeStore());
+    // Sorted by date the heading above gives the day; any other sort puts it on the card.
+    expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, ['Dispatch DD0010', 'Asha Example'], ['50', 'bags'], 'icon chevron-down']);
+    await screen.press('Sorted by Date, newest first. Change sort');
+    await screen.press('Bags');
+    await screen.press('Done');
+    const card = head(screen, 'DD0009');
+    expect(outline(card)).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct'], ['200', 'bags'], 'icon chevron-down']);
+
+    // The row and its two columns: the texts take the room the bags leave, the bags end at the right.
+    const [, texts, bags] = hostChildren(card);
+    expect(styleOf(card)).toMatchObject({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 16, paddingRight: 4, minHeight: 72 });
+    expect(styleOf(texts)).toEqual({ flex: 1, gap: 2 });
+    expect(styleOf(bags)).toEqual({ alignItems: 'flex-end' });
+    // No line of the card wraps as a row, and nothing is pushed to an edge by a margin.
+    for (const box of card.findAll(node => (node.type as unknown) === 'View' || (node.type as unknown) === 'Text')) {
+      expect(styleOf(box).flexWrap).toBeUndefined();
+      expect(styleOf(box).marginLeft).toBeUndefined();
+    }
+    // A found item is named under the date, in the texts' column.
+    await screen.search('chilli');
+    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct', 'Red chilli'], ['200', 'bags'], 'icon chevron-down']);
+  });
+
+  it('a card with a weight: the title and the bags stay where they are, and the weight has the line under them', async () => {
+    mockParams = GREEN;
+    customerActivity.mockResolvedValue(answerWeighted as never);
+    const screen = await open(makeStore());
+    // Sorted by date: no date on the card, the weight alone on its line.
+    expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, [[['Dispatch DD0010', 'Asha Example'], ['50', 'bags']], ['2,600 kg']], 'icon chevron-down']);
+
+    await screen.press('Sorted by Date, newest first. Change sort');
+    await screen.press('Weight');
+    await screen.press('Done');
+    // Sorted by weight: the date shares the weight's line, the date first.
+    const card = head(screen, 'DD0100');
+    expect(outline(card)).toEqual([AVATAR, [[['Dispatch DD0100', 'Asha Example'], ['120', 'bags']], ['11 Oct', '6,100.5 kg']], 'icon chevron-down']);
+    // Every card of the list has that shape, whatever the digits of its weight (900 kg to 6,100.5 kg).
+    const shape = (value: Outline): Outline => (typeof value === 'string' ? (value.startsWith('icon ') ? value : 'text') : value.map(shape));
+    const shapes = ['DD0100', 'DD0010', 'DD0050', 'DD0009'].map(number => JSON.stringify(shape(outline(head(screen, number)))));
+    expect(new Set(shapes).size).toBe(1);
+
+    // The text block takes the room between the avatar and the expand arrow. In it, the title's
+    // column takes what the bags leave, exactly as on a card without a weight...
+    const [, block] = hostChildren(card);
+    const [top, weightLine] = hostChildren(block);
+    const [texts, bags] = hostChildren(top);
+    expect(styleOf(block)).toEqual({ flex: 1, gap: 2 });
+    expect(styleOf(top)).toEqual({ flexDirection: 'row', alignItems: 'flex-start', gap: 12 });
+    expect(styleOf(texts)).toEqual({ flex: 1, gap: 2 });
+    expect(styleOf(bags)).toEqual({ alignItems: 'flex-end' });
+    // ...so the weight is not in the bags' column, whose width is that of its widest line.
+    expect(hostParent(text(card, '6,100.5 kg'))).toBe(weightLine);
+    expect(hostParent(text(card, 'bags'))).toBe(bags);
+    expect(bags.findAll(node => (node.type as unknown) === 'Text').map(textOf)).toEqual(['120', 'bags']);
+
+    // The weight's line: the weight at the right edge (the edge the bags end at) in tabular
+    // figures, and a line that wraps instead of squeezing or cutting when both do not fit.
+    expect(styleOf(weightLine)).toEqual({ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12, rowGap: 2 });
+    const weight = text(card, '6,100.5 kg');
+    expect(styleOf(weight)).toMatchObject({ marginLeft: 'auto', textAlign: 'right', fontVariant: ['tabular-nums'], fontSize: 12, lineHeight: 16 });
+    // No number is cut: neither the weight, the bags nor the dispatch number has a line limit.
+    for (const words of ['6,100.5 kg', '120', 'Dispatch DD0100']) {
+      expect(text(card, words).props.numberOfLines).toBeUndefined();
+      expect(text(card, words).props.ellipsizeMode).toBeUndefined();
+    }
+
+    // A found item is named under the weight's line, across the text block.
+    await screen.search('chilli');
+    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, [[['Dispatch DD0009', 'Ravi Example'], ['200', 'bags']], ['11 Oct', '900 kg'], 'Red chilli'], 'icon chevron-down']);
+  });
+
+  it('the two controls at the right keep their targets, and the card reads the same, with a weight and without', async () => {
+    mockParams = GREEN;
+    // One dispatch the server has no weight for, among dispatches with weights.
+    const mixed = DISPATCHES_WITH_WEIGHTS.map(row => (row.disp_id === 'd2' ? { ...row, total_weight: 0 } : row));
+    customerActivity.mockResolvedValue({ ...answerWeighted, data: { ...answerWeighted.data, dispatches: mixed } } as never);
+    const screen = await open(makeStore());
+    expect(screen.cardLabels()).toEqual([
+      'Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags, 2,600 kg',
+      'Dispatch DD0009, 11 Oct 2026, Ravi Example, 200 bags',
+      'Dispatch DD0100, 11 Oct 2026, Asha Example, 120 bags, 6,100.5 kg',
+      'Dispatch DD0050, 20 Sep 2026, Meera Example, 20 bags, 2,000 kg',
+    ]);
+    // In one list, the card without a weight is the card it always was.
+    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example'], ['200', 'bags'], 'icon chevron-down']);
+    expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, [[['Dispatch DD0010', 'Asha Example'], ['50', 'bags']], ['2,600 kg']], 'icon chevron-down']);
+
+    for (const number of ['DD0009', 'DD0010']) {
+      // Showing the items is the whole head (at least an object cell high); opening the dispatch is its own target.
+      const toggle = head(screen, number);
+      expect(styleOf(toggle)).toMatchObject({ flex: 1, minHeight: 72 });
+      expect(hostChildren(toggle).map(outline).slice(-1)).toEqual(['icon chevron-down']);
+      const openTarget = hostChildren(screen.control(`Open dispatch ${number}`))[0];
+      expect(styleOf(openTarget)).toMatchObject({ width: touchTarget, minHeight: touchTarget });
+      expect(hostParent(openTarget)).toBe(hostParent(toggle));
+    }
+  });
+});
+
 const MODES: Mode[] = ['light', 'dark'];
 // ---------------------------------------------------------------------------
 // The report PDF
@@ -733,5 +861,29 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(itemRow).backgroundColor).toBe(t.background.base);
     const mark = one.tree.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === 'GV')[0];
     expect(flat(mark).color).toBe(t.status.neutral.text);
+  });
+
+  it('draws a card with a weight on theme tokens: the title and the bags in the primary text colour, the unit, the date and the weight in the secondary', async () => {
+    mockParams = GREEN;
+    customerActivity.mockResolvedValue(answerWeighted as never);
+    const one = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    await one.press('Sorted by Date, newest first. Change sort');
+    await one.press('Weight');
+    await one.press('Done');
+    const text = (words: string) => one.tree.root.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === words)[0];
+    expect(flat(text('Dispatch DD0100'))).toMatchObject({ color: t.text.primary, fontWeight: fontWeight.semibold });
+    expect(flat(text('Asha Example')).color).toBe(t.text.secondary);
+    expect(flat(text('120'))).toMatchObject({ color: t.text.primary, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] });
+    expect(flat(text('bags')).color).toBe(t.text.secondary);
+    expect(flat(text('11 Oct')).color).toBe(t.text.secondary);
+    expect(flat(text('6,100.5 kg'))).toMatchObject({ color: t.text.secondary, fontVariant: ['tabular-nums'] });
+    // The card itself, and no colour of its own on the boxes the weight's layout adds.
+    const card = one.tree.root.findAll(node => (node.type as unknown) === 'View' && flat(node).borderRadius !== undefined && flat(node).backgroundColor === t.surface.card);
+    expect(card.length).toBeGreaterThan(0);
+    let box = text('6,100.5 kg').parent!;
+    while (typeof box.props.onPress !== 'function') {
+      if (typeof box.type === 'string') expect(flat(box).backgroundColor).toBeUndefined();
+      box = box.parent!;
+    }
   });
 });

@@ -15,9 +15,12 @@
  * `available` turns false once the facility's server has answered that it has
  * no generate-report-pdf (a backend older than the release with migrations
  * 52-53), so the screen can hide its export action instead of failing on every
- * tap. That answer is remembered per facility server in memory only: it lasts
- * until the app is restarted (or until an export to that server succeeds), so
- * a facility that updates its server is offered the export again after a restart.
+ * tap. That answer is remembered per facility server in a module-level Set, in
+ * memory only. A later successful export does not clear it within a run: once it
+ * is set the action is hidden, and an export with a fallback goes straight to the
+ * fallback (see `makePdf`), so no report PDF request reaches that server again.
+ * Only a relaunch of the app empties the Set, and a facility that updates its
+ * server is offered the export again then.
  *
  * A screen whose report the facility could already share before
  * generate-report-pdf (one customer's stock summary, generate-customer-stock-pdf)

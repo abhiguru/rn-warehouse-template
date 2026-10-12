@@ -59,7 +59,7 @@ import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/st
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AgingBucketData, AllStockAgingData, CustomerAgingSummary, StockAgingData } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'stock-aging';
 
@@ -458,7 +458,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const title = grnTitle(line);
-  const received = formatDate(line.grn_date, 'short');
+  const received = formatIndiaDate(line.grn_date, 'short');
   const dispatch = line.dispatch_info;
 
   return (
@@ -496,7 +496,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
                 })}
               />
               {dispatch.last_dispatch_date ? (
-                <KeyValueCell keyLabel={tr('reports.stockAging.lastDispatch')} value={formatDate(dispatch.last_dispatch_date)} />
+                <KeyValueCell keyLabel={tr('reports.stockAging.lastDispatch')} value={formatIndiaDate(dispatch.last_dispatch_date)} />
               ) : null}
               {dispatch.avg_days_between_dispatches ? (
                 <KeyValueCell keyLabel={tr('reports.stockAging.averageBetweenDispatches')} value={days(Math.round(dispatch.avg_days_between_dispatches))} />

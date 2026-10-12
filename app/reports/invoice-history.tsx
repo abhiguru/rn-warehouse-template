@@ -35,7 +35,7 @@ import {
   invoiceCustomersView,
   invoiceRecordsView,
 } from '@/features/filters/configs/reports/invoiceHistory';
-import { invoiceMonths, invoiceMonthTotals, type InvoiceMonth } from '@/features/filters/configs/reports/invoiceMonths';
+import { invoiceMonths, invoiceMonthsHavePaise, invoiceMonthTotals, type InvoiceMonth, type InvoiceMonthTotals } from '@/features/filters/configs/reports/invoiceMonths';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
@@ -54,7 +54,7 @@ import type {
   InvoiceHistoryData,
   InvoiceHistoryRecord,
 } from '@/types/report.types';
-import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatIndiaDate, formatMonth, formatNumber, indiaDay } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 const REPORT_ID = 'invoice-history';
@@ -174,7 +174,9 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     () =>
       data && [
         { icon: 'file-document-outline', value: data.summary.total_invoices, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
-        { icon: 'currency-inr', value: formatSummaryAmount(data.summary.net_amount), label: tr('reports.invoiceHistory.netAmount'), variant: 'secondary' },
+        // `total_amount` is the sum of the invoices' totals, right on every server: `net_amount` counts
+        // labour and tax twice before backend migration 61.
+        { icon: 'currency-inr', value: formatSummaryAmount(data.summary.total_amount), label: tr('common.amount'), variant: 'secondary' },
       ],
     [data]
   );
@@ -223,11 +225,11 @@ interface CustomerRowProps {
 
 const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: CustomerRowProps) {
   const styles = useThemedStyles(makeStyles);
-  const latest = customer.latest_invoice_date ? formatDate(customer.latest_invoice_date, 'short') : '';
+  const latest = customer.latest_invoice_date ? formatIndiaDate(customer.latest_invoice_date, 'short') : '';
   const facts = [formatCount(customer.invoice_count, 'invoice')];
   if (latest && latest !== '—') facts.push(tr('reports.invoiceHistory.latestInvoice', { date: latest }));
-  const amount = formatSummaryAmount(customer.net_amount);
-  const amountLabel = tr('reports.invoiceHistory.netAmount');
+  const amount = formatSummaryAmount(customer.total_amount);
+  const amountLabel = tr('common.amount');
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
@@ -294,27 +296,34 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     () => (byDate ? withDateHeadings(invoices) : invoices.map(invoice => ({ kind: 'invoice', invoice }))),
     [invoices, byDate]
   );
-  // The figures are the whole period's (the server's summary), not what the search or the choice leaves.
+  // The table is built from every invoice of the period, not the ones the search or the choice leaves.
+  const months = useMemo(() => invoiceMonths(data?.invoices ?? []), [data]);
+  // The Paid and Pending tiles are the table's Total row: one calculation over the period's invoices (each
+  // invoice's `total`), never the server's paid_amount / pending_amount, which are overstated before backend
+  // migration 61. Not what the search or the choice leaves.
+  const totals = useMemo(() => invoiceMonthTotals(months), [months]);
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
       data && [
         { icon: 'file-document-outline', value: data.summary.total_invoices, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
         {
           icon: 'check-circle',
-          value: formatSummaryAmount(data.summary.paid_amount),
-          label: tr('reports.invoiceHistory.paidCount', { count: data.summary.paid_count }),
+          value: formatSummaryAmount(totals.paidAmount),
+          label: tr('reports.invoiceHistory.paidCount', { count: totals.paidCount }),
           variant: 'success',
         },
         {
           icon: 'alert',
-          value: formatSummaryAmount(data.summary.pending_amount),
-          label: tr('reports.invoiceHistory.pendingCount', { count: data.summary.pending_count }),
+          value: formatSummaryAmount(totals.pendingAmount),
+          label: tr('reports.invoiceHistory.pendingCount', { count: totals.pendingCount }),
           variant: 'warning',
         },
       ],
-    [data]
+    [data, totals]
   );
-  // The PDF has every invoice of the period: the paid/pending choice, like the search, is the screen's own.
+  // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period) but not
+  // the search, which is the screen's own. "All" sends no status. A server that predates the field makes
+  // the PDF of all the period's invoices (generateReportPDF asks again without it).
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({
       report: REPORT_ID,
@@ -322,6 +331,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       from: period.from,
       to: period.to,
       sort: reportPdfSort(REPORT_ID, 'customer', view.sort),
+      ...(view.payment !== 'all' && { status: view.payment }),
     }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
   });
@@ -343,8 +353,6 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     [view.words, byDate]
   );
 
-  // The table is built from every invoice of the period, not the ones the search or the choice leaves.
-  const months = useMemo(() => invoiceMonths(data?.invoices ?? []), [data]);
   return (
     <ReportScaffold
       title={tr('reports.titles.invoiceHistory')}
@@ -365,7 +373,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.invoiceHistory.errorTitle')}
     >
-      {months.length > 0 ? <MonthlyBreakdown months={months} /> : null}
+      {months.length > 0 ? <MonthlyBreakdown months={months} totals={totals} /> : null}
     </ReportScaffold>
   );
 }
@@ -379,13 +387,19 @@ type MonthRow = {
   id: string;
   month: string;
   invoices: string;
-  netAmount: string;
+  amount: string;
   paid: string;
   pending: string;
 };
 
 /** Wide enough for "₹12,34,567" on one line: a cell is one line, and an amount is never cut short (§4). */
 const AMOUNT_COLUMN_WIDTH = 120;
+
+/**
+ * With paise every amount has two more digits and a point: wide enough for
+ * "₹1,23,45,678.90" (about 105 at the default text size, 24 of padding).
+ */
+const AMOUNT_COLUMN_WIDTH_WITH_PAISE = 144;
 
 /**
  * Wide enough for the header "Invoices" on one line at 1.3 times text size (about
@@ -395,47 +409,58 @@ const AMOUNT_COLUMN_WIDTH = 120;
 const COUNT_COLUMN_WIDTH = 104;
 
 /** Five columns: the month is pinned while the figures scroll (§13.7). */
-const monthColumns = (): DataTableColumn[] => [
-  { key: 'month', label: tr('reports.customerActivity.trend.month') },
-  { key: 'invoices', label: tr('reports.invoiceHistory.invoices'), dataType: 'number', width: COUNT_COLUMN_WIDTH },
-  { key: 'netAmount', label: tr('reports.invoiceHistory.netAmount'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
-  { key: 'paid', label: tr('reports.customerActivity.paid'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
-  { key: 'pending', label: tr('common.pending'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
-];
+const monthColumns = (withPaise: boolean): DataTableColumn[] => {
+  const width = withPaise ? AMOUNT_COLUMN_WIDTH_WITH_PAISE : AMOUNT_COLUMN_WIDTH;
+  return [
+    { key: 'month', label: tr('reports.customerActivity.trend.month') },
+    { key: 'invoices', label: tr('reports.invoiceHistory.invoices'), dataType: 'number', width: COUNT_COLUMN_WIDTH },
+    { key: 'amount', label: tr('common.amount'), dataType: 'number', width },
+    { key: 'paid', label: tr('reports.customerActivity.paid'), dataType: 'number', width },
+    { key: 'pending', label: tr('common.pending'), dataType: 'number', width },
+  ];
+};
 
 const monthKey = (row: Record<string, unknown>) => String(row.id);
 
 /**
  * The period month by month, with a totals row: shut until asked for, as it always was.
- * Every figure is on the net basis (after labour, tax and discount), like the figures above it.
+ * Every figure is the invoices' `total`, the amount the customer pays (it already includes
+ * labour and tax), like the cards and the tiles above it. The server's `net_total` is not
+ * used: before backend migration 61 it counts labour and tax twice. `totals` is the Total
+ * row and also what the Paid and Pending tiles show.
+ *
+ * Amounts are in whole rupees like the tiles above, unless some amount of the table
+ * has paise: then every amount cell, rows and totals, has two decimals (as the invoice
+ * cards show them). Cells rounded one by one would not add up: Paid ₹101 and Pending
+ * ₹101 beside an Amount of ₹201 for 100.50 and 2 times 50.25.
  */
-function MonthlyBreakdown({ months }: { months: InvoiceMonth[] }) {
+function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: InvoiceMonthTotals }) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [open, setOpen] = useState(false);
-  const rows = useMemo<MonthRow[]>(
-    () =>
-      months.map(month => ({
-        id: month.month || 'undated',
-        // An invoice with no readable date shows "—" for its month.
-        month: formatMonth(month.month ? `${month.month}-01` : null, 'short'),
-        invoices: formatNumber(month.invoiceCount),
-        netAmount: formatSummaryAmount(month.netAmount),
-        paid: formatSummaryAmount(month.paidAmount),
-        pending: formatSummaryAmount(month.pendingAmount),
-      })),
-    [months]
-  );
-  const totals = useMemo(() => {
-    const sums = invoiceMonthTotals(months);
+  const withPaise = useMemo(() => invoiceMonthsHavePaise(months), [months]);
+  const rows = useMemo<MonthRow[]>(() => {
+    const money = withPaise ? formatAmount : formatSummaryAmount;
+    return months.map(month => ({
+      id: month.month || 'undated',
+      // An invoice with no readable date shows "—" for its month.
+      month: formatMonth(month.month ? `${month.month}-01` : null, 'short'),
+      invoices: formatNumber(month.invoiceCount),
+      amount: money(month.amount),
+      paid: money(month.paidAmount),
+      pending: money(month.pendingAmount),
+    }));
+  }, [months, withPaise]);
+  const totalsRow = useMemo(() => {
+    const money = withPaise ? formatAmount : formatSummaryAmount;
     return {
       month: tr('common.total'),
-      invoices: formatNumber(sums.invoiceCount),
-      netAmount: formatSummaryAmount(sums.netAmount),
-      paid: formatSummaryAmount(sums.paidAmount),
-      pending: formatSummaryAmount(sums.pendingAmount),
+      invoices: formatNumber(totals.invoiceCount),
+      amount: money(totals.amount),
+      paid: money(totals.paidAmount),
+      pending: money(totals.pendingAmount),
     };
-  }, [months]);
+  }, [totals, withPaise]);
   const title = tr('reports.invoiceHistory.monthlyBreakdown');
 
   return (
@@ -455,10 +480,10 @@ function MonthlyBreakdown({ months }: { months: InvoiceMonth[] }) {
       </Pressable>
       {open ? (
         <FioriDataTable
-          columns={monthColumns()}
+          columns={monthColumns(withPaise)}
           data={rows}
           keyExtractor={monthKey}
-          totals={totals}
+          totals={totalsRow}
           compact
           accessibilityLabel={title}
         />
@@ -501,13 +526,13 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
   const grn = invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: formatIdentifier(invoice.grn_ref) }) : '';
   const status = invoicePaymentStatus(invoice.payment_status?.status);
   const items = formatCount(invoice.item_count, 'item');
-  const amount = formatAmount(invoice.net_total);
+  const amount = formatAmount(invoice.total);
   const matched = hiddenMatches(invoice, words, [number, grn]);
   const label = [
     tr('reports.invoiceHistory.cardLabel', {
       number: formatIdentifier(invoice.invoice_number),
       // The date is read with the card: a heading above it is not.
-      subtitle: [formatDate(invoice.invoice_date), grn].filter(Boolean).join(' · '),
+      subtitle: [formatIndiaDate(invoice.invoice_date), grn].filter(Boolean).join(' · '),
       amount,
       items,
       status: status.label,
@@ -532,7 +557,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
           {/* A document number is never cut short (§4). */}
           <HighlightedText style={styles.title} text={number} words={words} />
           {grn ? <HighlightedText style={styles.subtitle} text={grn} words={words} /> : null}
-          {showDate ? <Text style={styles.footnote}>{formatDate(invoice.invoice_date, 'short')}</Text> : null}
+          {showDate ? <Text style={styles.footnote}>{formatIndiaDate(invoice.invoice_date, 'short')}</Text> : null}
           {matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
         </View>
 

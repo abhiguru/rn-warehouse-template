@@ -10,7 +10,8 @@
  * - Body: subhead in text.primary, rows at least 44 high (36 for read-only
  *   compact tables), divider between rows, no alternate shading.
  * - Numbers are right-aligned with tabular figures; text is left-aligned.
- * - Optional totals row in weight 600 with a separator above.
+ * - Optional totals row in weight 600 with a separator above. Like a data row it
+ *   is one element for a screen reader, which names each column with its total.
  * - Pinned (sticky) columns stay put while the rest scrolls horizontally;
  *   a fade shows at the scroll edge while more columns are hidden.
  * - Editable cells use GhostTextInput.
@@ -559,10 +560,19 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
     );
   };
 
-  const renderTotalsPart = (cols: Column[], pinned: boolean) => {
+  const renderTotalsPart = (cols: Column[], pinned: boolean, carriesLabel: boolean) => {
     if (!totals) return null;
+    // One element for a screen reader, as a data row is: the half that carries the label names
+    // every column with its total, and the other half is hidden, so no figure is read bare.
+    // Totals that are all custom content have nothing to name and stay as they are drawn.
+    const summary = rowSummary(totals);
+    const a11y = !summary
+      ? undefined
+      : carriesLabel
+        ? { accessible: true, accessibilityLabel: summary }
+        : { accessible: false, importantForAccessibility: 'no-hide-descendants' as const };
     return (
-      <View style={[styles.totalsRow, { height: rowHeight }]}>
+      <View style={[styles.totalsRow, { height: rowHeight }]} {...a11y}>
         {pinned && selectable && <View style={styles.controlCell} />}
         {cols.map(column => {
           const key = String(column.key);
@@ -685,7 +695,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
               <View style={styles.stickyBodyClip}>
                 <Animated.View style={{ transform: [{ translateY: pinnedTranslate }] }}>
                   {data.map((row, i) => renderRowPart(row, i, pinnedColumns, true, true))}
-                  {renderTotalsPart(pinnedColumns, true)}
+                  {renderTotalsPart(pinnedColumns, true, true)}
                   {footerSpacerHeight > 0 && <View style={{ height: footerSpacerHeight }} />}
                 </Animated.View>
               </View>
@@ -722,7 +732,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
                   showsVerticalScrollIndicator
                   ListFooterComponent={
                     <>
-                      {renderTotalsPart(scrollColumns, false)}
+                      {renderTotalsPart(scrollColumns, false, !hasPinned)}
                       {renderLoadingMore()}
                     </>
                   }
@@ -761,7 +771,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
           <View style={[styles.stickyColumn, { width: pinnedWidth }]}>
             {stickyHeader && renderHeaderRow(pinnedColumns, true)}
             {data.map((row, i) => renderRowPart(row, i, pinnedColumns, true, true))}
-            {renderTotalsPart(pinnedColumns, true)}
+            {renderTotalsPart(pinnedColumns, true, true)}
             {footerSpacerHeight > 0 && <View style={{ height: footerSpacerHeight }} />}
           </View>
         )}
@@ -779,7 +789,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
             <View style={styles.scrollableInner}>
               {stickyHeader && renderHeaderRow(scrollColumns, false)}
               {data.map((row, i) => renderRowPart(row, i, scrollColumns, false, !hasPinned))}
-              {renderTotalsPart(scrollColumns, false)}
+              {renderTotalsPart(scrollColumns, false, !hasPinned)}
               {renderLoadingMore()}
             </View>
           </ScrollView>

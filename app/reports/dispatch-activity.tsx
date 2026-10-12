@@ -90,8 +90,29 @@ const makeStyles = (t: ThemeTokens) => ({
   figures: { alignItems: 'flex-end' as const },
   figureValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   figureLabel: { ...typography.caption1, color: t.text.secondary },
-  // The dispatch's weight, under its bags, only when it has one.
-  figureWeight: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
+  // A card with a weight. The weight is not in the figures column: a column is as wide as its
+  // widest line, so "1,280 kg" took from the title the width that "960 kg" left it, and cards in one
+  // list had different shapes. The title, the supervisor and the bags keep the places they have on a
+  // card without a weight; the weight has the line under them, across the whole text block, ending
+  // at the right edge the bags end at, on every card (tabular: the digits line up down the list).
+  weighed: { flex: 1, gap: space.xxs },
+  weighedTop: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.md },
+  // The date (when no heading gives it) shares the weight's line. At a large font a long date and a
+  // long weight do not fit side by side: the weight then drops to a line of its own, whole.
+  weightLine: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    alignItems: 'baseline' as const,
+    columnGap: space.md,
+    rowGap: space.xxs,
+  },
+  figureWeight: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'right' as const,
+    marginLeft: 'auto' as const,
+  },
   openButton: {
     width: touchTarget,
     minHeight: touchTarget,
@@ -444,6 +465,19 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
     .filter(Boolean)
     .join(', ');
 
+  // A document number is never cut short (§4).
+  const titleText = <HighlightedText style={styles.title} text={title} words={words} />;
+  const supervisorText = <HighlightedText style={styles.subtitle} numberOfLines={2} text={supervisor} words={words} />;
+  const dateText = showDate ? <Text style={styles.footnote}>{formatDate(dispatch.disp_date, 'short')}</Text> : null;
+  const matchedText =
+    matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null;
+  const bags = (
+    <View style={styles.figures}>
+      <Text style={styles.figureValue}>{formatNumber(dispatch.total_qty)}</Text>
+      <Text style={styles.figureLabel}>{tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
@@ -461,22 +495,35 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
             <View style={styles.objectIcon}>
               <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
             </View>
-            <View style={styles.objectContent}>
-              {/* A document number is never cut short (§4). */}
-              <HighlightedText style={styles.title} text={title} words={words} />
-              <HighlightedText style={styles.subtitle} numberOfLines={2} text={supervisor} words={words} />
-              {showDate ? <Text style={styles.footnote}>{formatDate(dispatch.disp_date, 'short')}</Text> : null}
-              {matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
-            </View>
-            <View style={styles.figures}>
-              <Text style={styles.figureValue}>{formatNumber(dispatch.total_qty)}</Text>
-              <Text style={styles.figureLabel}>{tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}</Text>
-              {weight ? (
-                <Text style={styles.figureWeight} {...singleLineText()}>
-                  {weight}
-                </Text>
-              ) : null}
-            </View>
+            {weight ? (
+              <View style={styles.weighed}>
+                <View style={styles.weighedTop}>
+                  <View style={styles.objectContent}>
+                    {titleText}
+                    {supervisorText}
+                  </View>
+                  {bags}
+                </View>
+                <View style={styles.weightLine}>
+                  {dateText}
+                  <Text style={styles.figureWeight} {...singleLineText()}>
+                    {weight}
+                  </Text>
+                </View>
+                {matchedText}
+              </View>
+            ) : (
+              // No weight (an older server, or a dispatch it has none for): the card as it always was.
+              <>
+                <View style={styles.objectContent}>
+                  {titleText}
+                  {supervisorText}
+                  {dateText}
+                  {matchedText}
+                </View>
+                {bags}
+              </>
+            )}
             <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
           {dispatch.disp_id ? (

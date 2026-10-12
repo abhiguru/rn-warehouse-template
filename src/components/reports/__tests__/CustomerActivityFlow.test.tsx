@@ -428,6 +428,26 @@ describe('customer activity, one customer', () => {
     expect(after.map(node => node.props.accessibilityState.selected)).toEqual([false, true]);
   });
 
+  it('ends the stock trend at the Stock tile\'s figure, so its Latest and Highest never fall short of the tile', async () => {
+    openGreenValley();
+    // As a phone showed it: the stock the server keeps (the tile) above its own figure for the
+    // month in progress (300 for October here) and above every month end of the period (1,200 at most).
+    detail.mockResolvedValue(answerDetail({ summary: { ...DETAIL.summary, current_stock: 1300 } }) as never);
+    const screen = await open(makeStore());
+    expect(screen.labels()).toContain('Stock: 1,300');
+    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,300 in Oct 2026. Highest 1,300.');
+    expect(screen.texts()).not.toContain('Stock went from 200 in Aug 2026 to 300 in Oct 2026. Highest 1,200.');
+    const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
+    expect((chart.props.data as { value: number }[]).map(dot => dot.value)).toEqual([200, 1200, 1300]);
+
+    await screen.pressStarting('Stock level trend. ');
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Latest 1,300', 'Highest 1,300']));
+    await screen.press('Table of values');
+    // The months that are over keep the server's month-end figures.
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, 1,300']));
+    expect(screen.labels()).not.toContain('Oct 2026, 300');
+  });
+
   it('says so when the period has no stock trend, instead of leaving the section out', async () => {
     openGreenValley();
     detail.mockResolvedValue(answerDetail({ monthly_trends: [] }) as never);

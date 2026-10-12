@@ -27,6 +27,8 @@ export const PERIOD_FIELD: DateRangeField = {
   presets: REPORT_DATE_PRESETS,
   required: true,
   applyPresetOnTap: true,
+  // The sheet counts the quick ranges from the day every report's `toRequest` counts them from.
+  today: todayInIST,
 };
 
 export interface ReportPeriod {

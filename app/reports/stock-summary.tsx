@@ -51,7 +51,7 @@ import { getAllStockSummary, getCustomerStockSummary } from '@/services/reportin
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllStockSummaryData, CustomerStockRow, StockItemSummary, StockSummaryData } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'stock-summary';
 
@@ -388,7 +388,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     [onChangeCustomer, exportPdf, busy, available]
   );
   const oldest = data?.summary.oldest_stock_date;
-  const subtitle = customerName || (oldest ? tr('reports.stockSummary.oldestStock', { date: formatDate(oldest) }) : undefined);
+  const subtitle = customerName || (oldest ? tr('reports.stockSummary.oldestStock', { date: formatIndiaDate(oldest) }) : undefined);
 
   const renderRow = useCallback(
     (row: CustomerListRow) => {

@@ -7,10 +7,13 @@ import React, { memo } from 'react';
 import { Text, View } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
-import { formatSectionDate } from '@/utils/formatters';
+import { formatIndiaSectionDate } from '@/utils/formatters';
 
 export interface ReportDateHeadingProps {
-  /** The day, as the server sends it ("2026-10-09"). */
+  /**
+   * The day, as the server sends it ("2026-10-09"), or the instant of a row: either is read on
+   * India's calendar, and "Today" and "Yesterday" are India's, as the report's period is.
+   */
   date: string;
 }
 
@@ -34,7 +37,7 @@ export const ReportDateHeading = memo(function ReportDateHeading({ date }: Repor
   return (
     <View style={styles.heading}>
       <Text style={styles.text} accessibilityRole="header">
-        {formatSectionDate(date)}
+        {formatIndiaSectionDate(date)}
       </Text>
     </View>
   );

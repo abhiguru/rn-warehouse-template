@@ -180,7 +180,7 @@ describe('sections', () => {
     const tree = render();
     expect(sections(tree).map(([title]) => title)).toEqual(['પિન કરેલા', 'સ્ટોક', 'આવક-જાવક', 'નાણાકીય', 'કામગીરી']);
     expect(target(section(tree, 'movement'), 'આવકની કામગીરી અનપિન કરો')).toBeDefined();
-    expect(target(section(tree, 'stock'), 'સ્ટોકનો સારાંશ ઉપર પિન કરો')).toBeDefined();
+    expect(target(section(tree, 'stock'), 'સ્ટોકનો સારાંશ સૌથી ઉપર પિન કરો')).toBeDefined();
   });
 });
 

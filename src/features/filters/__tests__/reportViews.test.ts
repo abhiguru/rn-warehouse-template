@@ -6,6 +6,12 @@
  */
 import { REPORT_VIEW_CONFIGS, isLongestPeriod, reportPeriod, sortRows, type ReportRequest } from '../configs/reports';
 import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT, dispatchRecordsView, hasDispatchWeights } from '../configs/reports/dispatchActivity';
+import {
+  INVOICE_HISTORY_CUSTOMER,
+  INVOICE_HISTORY_CUSTOMERS,
+  invoiceCustomersView,
+  invoiceRecordsView,
+} from '../configs/reports/invoiceHistory';
 import { groupStockAgingLines } from '../configs/reports/stockAging';
 import { isFieldActive, isRequiredField, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterValue, SortState } from '../types';
@@ -218,23 +224,28 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     found: ['d2'],
     id: (row: { disp_id: string }) => row.disp_id,
   },
+  // The amount is `total_amount`. `net_amount` is what a server without backend migration 61 sends
+  // (labour and tax counted twice, the discount taken off twice) and is made to put the customers in
+  // another order than `total_amount` does, so a sort on the wrong field fails here.
   'report-invoice-history': {
     rows: [
-      { customer_id: 'c1', customer_name: 'Riverbank Produce', invoice_count: 9, total_amount: 9000, net_amount: 8000, latest_invoice_date: '2026-08-11' },
-      { customer_id: 'c2', customer_name: 'Green Valley Traders', invoice_count: 2, total_amount: 33000, net_amount: 30000, latest_invoice_date: '2026-09-20' },
-      { customer_id: 'c3', customer_name: 'Sunrise Agro Foods', invoice_count: 4, total_amount: 13000, net_amount: 12000, latest_invoice_date: '2026-07-01' },
-      { customer_id: 'c4', customer_name: 'Hillside Growers', invoice_count: 12, total_amount: 5500, net_amount: 5000, latest_invoice_date: '2026-10-02' },
+      { customer_id: 'c1', customer_name: 'Riverbank Produce', invoice_count: 9, total_amount: 9000, net_amount: 9700, latest_invoice_date: '2026-08-11' },
+      { customer_id: 'c2', customer_name: 'Green Valley Traders', invoice_count: 2, total_amount: 33000, net_amount: 21000, latest_invoice_date: '2026-09-20' },
+      { customer_id: 'c3', customer_name: 'Sunrise Agro Foods', invoice_count: 4, total_amount: 13000, net_amount: 14100, latest_invoice_date: '2026-07-01' },
+      { customer_id: 'c4', customer_name: 'Hillside Growers', invoice_count: 12, total_amount: 5500, net_amount: 9800, latest_invoice_date: '2026-10-02' },
     ],
     search: 'riverbank',
     found: ['c1'],
     id: (row: { customer_id: string }) => row.customer_id,
   },
+  // The amount is `total`. `net_total` is what a server without migration 61 sends (it is not the same
+  // order: i1 before i3 by net_total, after it by total, and i4 is a discounted invoice).
   'report-invoice-history-customer': {
     rows: [
-      invoice({ invoice_id: 'i1', invoice_number: '2026/0010', invoice_date: '2026-09-05', grn_ref: 'A0010', net_total: 5000, payment_status: paid, line_items: [{ item_name: 'Garlic' }] }),
-      invoice({ invoice_id: 'i2', invoice_number: '2026/0009', invoice_date: '2026-10-01', grn_ref: 'A0009', net_total: 20000, line_items: [{ item_name: 'Red chilli' }] }),
-      invoice({ invoice_id: 'i3', invoice_number: '2026/0100', invoice_date: '2026-08-15', grn_ref: 'A0100', net_total: 12000, payment_status: paid, line_items: [{ item_name: 'Cumin' }] }),
-      invoice({ invoice_id: 'i4', invoice_number: '2026/0050', invoice_date: '2026-09-20', grn_ref: 'A0050', net_total: 2000, line_items: [{ item_name: 'Turmeric' }] }),
+      invoice({ invoice_id: 'i1', invoice_number: '2026/0010', invoice_date: '2026-09-05', grn_ref: 'A0010', total: 5000, net_total: 14000, payment_status: paid, line_items: [{ item_name: 'Garlic' }] }),
+      invoice({ invoice_id: 'i2', invoice_number: '2026/0009', invoice_date: '2026-10-01', grn_ref: 'A0009', total: 20000, net_total: 26000, line_items: [{ item_name: 'Red chilli' }] }),
+      invoice({ invoice_id: 'i3', invoice_number: '2026/0100', invoice_date: '2026-08-15', grn_ref: 'A0100', total: 12000, net_total: 12500, payment_status: paid, line_items: [{ item_name: 'Cumin' }] }),
+      invoice({ invoice_id: 'i4', invoice_number: '2026/0050', invoice_date: '2026-09-20', grn_ref: 'A0050', total: 2000, net_total: -800, line_items: [{ item_name: 'Turmeric' }] }),
     ],
     search: 'red chilli',
     found: ['i2'],
@@ -388,6 +399,35 @@ describe('one customer\'s dispatches, with and without weights', () => {
       dispatchRecordsView(rows, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT.toRequest({}, { field: 'weight', order }, staff, today).view).map(row => row.disp_id);
     expect(ids('desc')).toEqual(['d3', 'd1', 'd4', 'd2']);
     expect(ids('asc')).toEqual(['d2', 'd4', 'd1', 'd3']);
+  });
+});
+
+describe('invoice history sorts by the invoice amount, not by the server\'s net figure', () => {
+  const customers = FIXTURES['report-invoice-history'].rows as Parameters<typeof invoiceCustomersView>[0];
+  const invoices = FIXTURES['report-invoice-history-customer'].rows as Parameters<typeof invoiceRecordsView>[0];
+
+  it('orders the customers by total_amount, highest first, and the other way round', () => {
+    const ids = (order: 'asc' | 'desc') =>
+      invoiceCustomersView(customers, INVOICE_HISTORY_CUSTOMERS.toRequest({}, { field: 'amount', order }, staff, today).view).map(row => row.customer_id);
+    expect(ids('desc')).toEqual(['c2', 'c3', 'c1', 'c4']);
+    expect(ids('asc')).toEqual(['c4', 'c1', 'c3', 'c2']);
+    // net_amount would give c2, c3, c4, c1.
+    expect(ids('desc')).not.toEqual([...customers].sort((a, b) => b.net_amount - a.net_amount).map(row => row.customer_id));
+  });
+
+  it('orders one customer\'s invoices by total, highest first, and the other way round', () => {
+    const ids = (order: 'asc' | 'desc') =>
+      invoiceRecordsView(invoices, INVOICE_HISTORY_CUSTOMER.toRequest({}, { field: 'total', order }, staff, today).view).map(row => row.invoice_id);
+    expect(ids('desc')).toEqual(['i2', 'i3', 'i1', 'i4']);
+    expect(ids('asc')).toEqual(['i4', 'i1', 'i3', 'i2']);
+    // net_total would give i2, i1, i3, i4.
+    expect(ids('desc')).not.toEqual([...invoices].sort((a, b) => b.net_total - a.net_total).map(row => row.invoice_id));
+  });
+
+  it('labels both amount sorts "Amount" and keeps their field ids (the PDF sort maps them)', () => {
+    const amount = INVOICE_HISTORY_CUSTOMERS.sort!.options.find(option => option.field === 'amount');
+    const total = INVOICE_HISTORY_CUSTOMER.sort!.options.find(option => option.field === 'total');
+    expect([amount?.label, amount?.kind, total?.label, total?.kind]).toEqual(['Amount', 'amount', 'Amount', 'amount']);
   });
 });
 

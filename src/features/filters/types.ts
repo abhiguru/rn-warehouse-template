@@ -109,6 +109,13 @@ export interface DateRangeField extends FieldBase {
   required?: boolean;
   /** A quick range applies on the tap and closes the sheet; typed days stay a draft. */
   applyPresetOnTap?: boolean;
+  /**
+   * Today for this range, as a Date whose local year, month and day are that day: the day the
+   * list's own `toRequest` counts its quick ranges from, so the days the sheet shows are the days
+   * the request sends. A report's period gives India's (`todayInIST`). Without it the phone's
+   * own today is used, as the lists' requests use it.
+   */
+  today?: () => Date;
 }
 export interface NumberRangeField extends FieldBase {
   kind: 'numberRange';

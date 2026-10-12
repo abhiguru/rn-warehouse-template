@@ -341,6 +341,8 @@ describe('available', () => {
     expect(setup().current().available).toBe(true);
   });
 
+  // Only for an export started by calling exportPdf: the screen hides the action while the flag is set,
+  // so within a run of the app nothing sends this request (see the comment at the top of the hook).
   it('comes back when an export to that server succeeds', async () => {
     jest.mocked(fetch).mockResolvedValue(oldServer());
     const probe = setup();
@@ -349,6 +351,96 @@ describe('available', () => {
     jest.mocked(fetch).mockResolvedValue(success());
     await probe.run();
     expect(probe.current().available).toBe(true);
+  });
+});
+
+describe("a payment status on one customer's invoice history", () => {
+  const invoiceRequest: ReportPdfRequest = {
+    report: 'invoice-history',
+    customer_id: CUSTOMER_ID,
+    from: '2026-09-01',
+    to: '2026-09-30',
+    sort: { field: 'date', order: 'desc' },
+    status: 'pending',
+  };
+  const parts: ReportExportNameParts = { title: 'Invoice history', customerName: CUSTOMER_NAME };
+  const FILE = 'Invoice_history_Fictional_Traders_2026_09_01_to_2026_09_30.pdf';
+  const unknownField = () => answer(400, { success: false, error: 'Unknown field in report request' });
+  const bodyOf = (call: number) => JSON.parse(jest.mocked(fetch).mock.calls[call][1]!.body as string);
+
+  it('sends the status the screen asked for, and shares the PDF', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(invoiceRequest, parts);
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).toMatchObject({ report: 'invoice-history', customer_id: CUSTOMER_ID, status: 'pending' });
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, FILE);
+  });
+
+  it('shares the PDF of all the invoices from an older server, which refused the field once, and the export stays offered', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
+    const probe = setup(invoiceRequest, parts);
+    await probe.run();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(bodyOf(0)).toHaveProperty('status', 'pending');
+    expect(bodyOf(1)).not.toHaveProperty('status');
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, FILE);
+    expect(showAlert).not.toHaveBeenCalled();
+    // Not taken as a server without report PDFs: the action stays, on this screen and on another.
+    expect(probe.current().available).toBe(true);
+    expect(setup({ report: 'stock-aging' }).current().available).toBe(true);
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('asks the older server again at the next tap (the status is sent first each time)', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success()).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
+    const probe = setup(invoiceRequest, parts);
+    await probe.run();
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(bodyOf(2)).toHaveProperty('status', 'pending');
+    expect(bodyOf(3)).not.toHaveProperty('status');
+  });
+
+  it('shows the normal failure, once, when the second answer is a refusal too', async () => {
+    jest.mocked(fetch).mockResolvedValue(unknownField());
+    const probe = setup(invoiceRequest, parts);
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", "The server didn't accept this request. Update the app and try again.");
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
+    expect(probe.current().available).toBe(true);
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('does not ask again for another 400, and shows its normal failure', async () => {
+    jest.mocked(fetch).mockResolvedValue(answer(400, { success: false, error: 'The period must not be longer than 450 days' }));
+    const probe = setup(invoiceRequest, parts);
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", 'A PDF can cover at most 450 days. Choose a shorter period.');
+    expect(probe.current().available).toBe(true);
+  });
+
+  it('does not ask again when the request had no status', async () => {
+    jest.mocked(fetch).mockResolvedValue(unknownField());
+    const { status: _status, ...withoutStatus } = invoiceRequest;
+    const probe = setup(withoutStatus as ReportPdfRequest, parts);
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).not.toHaveProperty('status');
+    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", "The server didn't accept this request. Update the app and try again.");
+  });
+
+  it('is still taken as outdated when the server has no report PDFs at all', async () => {
+    jest.mocked(fetch).mockResolvedValue(oldServer());
+    const probe = setup(invoiceRequest, parts);
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(probe.current().available).toBe(false);
   });
 });
 
