@@ -302,9 +302,12 @@ After the device runs (2026-10-12):
   date, newest first (the remembered choice is kept and comes back once weights
   are sent). The report PDF has no weight column, so a PDF shared while sorted
   by Weight is in its own order.
-- **Start-up.** `reportPrefsSlice` no longer imports `authSlice`, which
-  removes one require-cycle warning at start-up (the same cycle through
-  `listFilterSlice` remains).
+- **Start-up.** Neither `reportPrefsSlice` nor `listFilterSlice` imports
+  `authSlice` any more. Both react to sign-out by the action's type string,
+  `'auth/logout/fulfilled'`, so the "Require cycle" warning at start-up
+  (`authSlice` to `sessionScopedState` to the slice and back) is gone. A test,
+  `src/tests/storeRequireCycle.test.ts`, fails if anything imported by
+  `sessionScopedState` imports `authSlice` again.
 
 Backend migrations this release of the reports work relates to: 52 (server
 sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
