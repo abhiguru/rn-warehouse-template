@@ -71,6 +71,8 @@ export default [
       'jest.setup.js',
       'jest.global-setup.js',
       'plugins/**/*.js',
+      // Git worktrees that agents work in (git ignores them through .git/info/exclude).
+      '.claude/**',
       'src/utils/logger.ts', // Logger utility legitimately uses console
     ],
   },

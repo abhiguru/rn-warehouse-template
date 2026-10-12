@@ -101,7 +101,7 @@ describe('sanitizeDocumentFilename', () => {
     ['   ', 'document.pdf'],
     ['con\u0000trol\u001fchars.pdf', 'con_trol_chars.pdf'],
     ['notes.txt', 'notes.txt.pdf'],
-    ['Ünïcode Näme.pdf', 'n_code_N_me.pdf'],
+    ['Ünïcode Näme.pdf', 'Ünïcode_Näme.pdf'],
   ])('maps %p to %p', (input, expected) => {
     expect(sanitizeDocumentFilename(input)).toBe(expected);
   });
@@ -119,6 +119,67 @@ describe('sanitizeDocumentFilename', () => {
       expect(name).not.toMatch(/^\./);
       expect(name.endsWith('.pdf')).toBe(true);
     }
+  });
+
+  describe('names in any script', () => {
+    // UTF-8 length; encodeURIComponent also throws on a lone surrogate.
+    const utf8Bytes = (text: string) => encodeURIComponent(text).replace(/%[0-9A-F]{2}/g, 'x').length;
+
+    it.each([
+      // Letters, the virama (U+0ACD) and the vowel signs ૉ ી ે are kept; the space becomes '_'.
+      ['સ્ટૉક_ગ્રીન વેલી.pdf', 'સ્ટૉક_ગ્રીન_વેલી.pdf'],
+      ['રમેશ ટ્રેડર્સ', 'રમેશ_ટ્રેડર્સ.pdf'],
+      ['ગ્રીન.PDF', 'ગ્રીન.pdf'],
+      // Mixed scripts, ASCII and Gujarati digits; each run of anything else is one '_'.
+      ['GRN_ગ્રીન વેલી (Oct) #12 — ૧૨.pdf', 'GRN_ગ્રીન_વેલી_Oct_12_૧૨.pdf'],
+      ['Stock summary: Patel & Sons / રમેશ.pdf', 'રમેશ.pdf'],
+      ['Ünïcode Näme', 'Ünïcode_Näme.pdf'],
+    ])('keeps %p as %p', (input, expected) => {
+      expect(sanitizeDocumentFilename(input)).toBe(expected);
+    });
+
+    it.each([
+      ['../../ગ્રીન/વેલી.pdf', 'વેલી.pdf'],
+      ['..\\ગ્રીન\\..\\વેલી', 'વેલી.pdf'],
+      ['.ગ્રીન.pdf', 'ગ્રીન.pdf'],
+      ['..ગ્રીન', 'ગ્રીન.pdf'],
+      ['ગ્રીન\u0000વેલી\u001f\u007f.pdf', 'ગ્રીન_વેલી.pdf'],
+      // A bidi override cannot make the name read as another extension.
+      ['invoice‮fdp.exe', 'invoice_fdp.exe.pdf'],
+      // A lone surrogate is not a letter.
+      ['ગ્રીન\uD800વેલી', 'ગ્રીન_વેલી.pdf'],
+      // Look-alike slashes are not letters either.
+      ['ગ્રીન∕વેલી／x', 'ગ્રીન_વેલી_x.pdf'],
+    ])('neutralises %p as %p', (input, expected) => {
+      expect(sanitizeDocumentFilename(input)).toBe(expected);
+    });
+
+    it.each(['!!! ### ***.pdf', ' . _ - ', '\u0000\u001f', '‮‍', '…—“”.pdf', '🙂🙂'])(
+      'falls back when %p has no letter or digit',
+      input => {
+        expect(sanitizeDocumentFilename(input)).toBe('document.pdf');
+        expect(sanitizeDocumentFilename(input, 'Stock.pdf')).toBe('Stock.pdf');
+      }
+    );
+
+    it('caps an overlong Gujarati stem in bytes and keeps the extension', () => {
+      const name = sanitizeDocumentFilename(`${'ગ્રીન વેલી '.repeat(40)}.pdf`);
+      const stem = name.slice(0, -'.pdf'.length);
+      expect(name.endsWith('.pdf')).toBe(true);
+      expect(utf8Bytes(stem)).toBeLessThanOrEqual(200);
+      expect(utf8Bytes(stem)).toBeGreaterThan(195);
+      expect(utf8Bytes(name)).toBeLessThan(255);
+      expect(stem.startsWith('ગ્રીન_વેલી_ગ્રીન')).toBe(true);
+      expect(name).not.toMatch(/[\\/]|^\./);
+    });
+
+    it('never cuts a letter outside the BMP in half', () => {
+      // U+20000 is a letter (Lo) written as a surrogate pair.
+      const name = sanitizeDocumentFilename(`x${'\u{20000}'.repeat(80)}`);
+      expect(() => encodeURIComponent(name)).not.toThrow();
+      expect(utf8Bytes(name.slice(0, -'.pdf'.length))).toBe(1 + 4 * 49);
+      expect(name.endsWith('\u{20000}.pdf')).toBe(true);
+    });
   });
 });
 

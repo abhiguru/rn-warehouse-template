@@ -75,10 +75,11 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   administrators.
   `useRoleBasedAccess()` gives the same for the signed-in profile; `usePermissions()` gives
   create/update/delete and `isStaffRole` (the `staff` role only).
-- **A report screen gets its scope from `ReportCustomerScope`** (`src/components/reports`): the
-  all-customers list for warehouse users, the one customer of a customer account, or a picker for a
-  customer account with several. A customer account is refused every all-customers RPC, so its
-  requests always name one assigned customer (`get_customer_*`, `get_stock_aging_report(p_customer_uuid)`,
+- **A report screen gets its scope from `useReportScope`** (`src/features/reports`): the
+  all-customers list for warehouse users, the one customer of a customer account, or
+  `ReportCustomerPicker` first for a customer account with several. A customer account is refused
+  every all-customers RPC, so its requests always name one assigned customer (`get_customer_*`,
+  `get_stock_aging_report(p_customer_uuid)`,
   `get_item_wise_stock_list(p_customer_id)`, `get_customer_grn_items`).
 - **Every route is protected unless `src/navigation/routeAccess.ts` lists it as public.** The root
   layout applies it to the whole stack: `useRootRouteGuard` replaces the focused route (sign-in when

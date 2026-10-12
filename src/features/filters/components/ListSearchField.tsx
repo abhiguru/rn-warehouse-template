@@ -57,12 +57,13 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
+  // No top padding: the space above each 32 high pill inside its touch target sets it off the field.
   recentRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.sm,
-    paddingTop: space.sm,
   },
+  recentTarget: { minHeight: touchTarget, justifyContent: 'center' as const },
   recentLabel: { ...typography.footnote, color: t.text.secondary },
   hint: { ...typography.footnote, color: t.text.secondary, paddingTop: space.xs },
   recentChip: {
@@ -172,7 +173,8 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
             {recent.map(entry => (
               <Pressable
                 key={entry}
-                style={({ pressed }) => [styles.recentChip, pressed && styles.recentChipPressed]}
+                // The whole touch target is pressable; the pill is drawn inside it (§11.2).
+                style={styles.recentTarget}
                 onPress={() => {
                   setText(entry);
                   commit(entry);
@@ -180,7 +182,11 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
                 accessibilityRole="button"
                 accessibilityLabel={translate('filters.search.searchAgain', { text: entry })}
               >
-                <Text style={styles.recentText} numberOfLines={1} maxFontSizeMultiplier={1.6}>{entry}</Text>
+                {({ pressed }) => (
+                  <View style={[styles.recentChip, pressed && styles.recentChipPressed]}>
+                    <Text style={styles.recentText} numberOfLines={1} maxFontSizeMultiplier={1.6}>{entry}</Text>
+                  </View>
+                )}
               </Pressable>
             ))}
           </View>

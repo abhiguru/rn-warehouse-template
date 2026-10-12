@@ -11,6 +11,8 @@ import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearSessionScopedState } from '../sessionScopedState';
 import { recentSearches, rememberSearch } from '@/features/filters/recentSearches';
 import { Image } from 'expo-image';
+import { getSessionIdentity } from '@/config/supabaseConfig';
+import { readReportCache, writeReportCache } from '@/features/reports/reportCache';
 
 jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
@@ -70,7 +72,7 @@ it('clears queries, autocomplete, every form draft, every list cache and shared 
 
   expect(store.getState()).toEqual(empty);
   const remaining = await AsyncStorage.getAllKeys();
-  expect(remaining.sort()).toEqual(['operator_server_v1', 'persist:root']);
+  expect([...remaining].sort()).toEqual(['operator_server_v1', 'persist:root']);
   expect(queryClient.cancelQueries).toHaveBeenCalledTimes(1);
   expect(queryClient.clear).toHaveBeenCalledTimes(1);
   expect(jest.mocked(queryClient.cancelQueries).mock.invocationCallOrder[0])
@@ -104,7 +106,7 @@ it('removes the recent-customer, recent-sender and recent-item lists of the ende
     ['app_language', 'gu'],
   ]);
   await clearSessionScopedState(store.dispatch);
-  expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['app_language', 'operator_server_v1']);
+  expect([...(await AsyncStorage.getAllKeys())].sort()).toEqual(['app_language', 'operator_server_v1']);
 });
 
 // M4-1: the "Recent" list under a search field is module state beside the filter slice.
@@ -117,6 +119,22 @@ it('forgets the recent searches of every list', async () => {
 
   expect(recentSearches('grn')).toEqual([]);
   expect(recentSearches('dispatch')).toEqual([]);
+});
+
+// The last answer of each report is kept on the phone: customer names and documents of the facility just left.
+it('removes the reports kept on the phone, with their index', async () => {
+  jest.mocked(getSessionIdentity).mockResolvedValue({ origin: 'https://warehouse.example.test', instanceId: 'instance-a', subject: 'user-a' });
+  const key = ['dispatch-activity', 'customer', 'customer-1', '2026-01-01', '2026-10-10'];
+  await writeReportCache(key, { data: { dispatches: [{ disp_no: 'DD0003', customer_name: 'Fictional Traders' }] }, updatedAt: Date.now() });
+  await AsyncStorage.setItem('operator_server_v1', '{"origin":"https://warehouse.example.test"}');
+  expect(await readReportCache(key)).not.toBeNull();
+  expect((await AsyncStorage.getAllKeys()).filter(stored => stored.startsWith(CACHE_PREFIXES.REPORT))).toHaveLength(2);
+
+  await clearSessionScopedState(makeStore().dispatch);
+
+  expect(await AsyncStorage.getAllKeys()).toEqual(['operator_server_v1']);
+  expect(await readReportCache(key)).toBeNull();
+  jest.mocked(getSessionIdentity).mockReset();
 });
 
 // Photos are cached by address, not by account: a photo seen under one account
@@ -136,4 +154,24 @@ describe('the image cache', () => {
     expect(sweepSharedDocuments).toHaveBeenCalledTimes(1);
     expect(await AsyncStorage.getAllKeys()).toEqual([]);
   });
+});
+
+// The report screens remember the customer last opened; that names a customer of the facility just left.
+it('forgets the customer last opened in a report, for every account, and keeps the other report choices', async () => {
+  const { default: reportPrefsReducer, setReportCustomer, setReportPeriod, toggleReportPin } =
+    jest.requireActual<typeof import('../slices/reportPrefsSlice')>('../slices/reportPrefsSlice');
+  const store = configureStore({ reducer: { reportPrefs: reportPrefsReducer } });
+  for (const scope of ['scope-a', 'scope-b']) {
+    store.dispatch(setReportCustomer({ scope, reportId: 'grn-activity', customer: { id: 'c1', name: 'Fictional Traders' } }));
+  }
+  store.dispatch(setReportPeriod({ scope: 'scope-a', period: { preset: 'last240' } }));
+  store.dispatch(toggleReportPin({ scope: 'scope-a', reportId: 'stock-summary' }));
+
+  await clearSessionScopedState(store.dispatch);
+
+  const { byScope } = store.getState().reportPrefs;
+  expect(byScope['scope-a'].lastCustomer).toEqual({});
+  expect(byScope['scope-b'].lastCustomer).toEqual({});
+  expect(byScope['scope-a'].period).toEqual({ preset: 'last240' });
+  expect(byScope['scope-a'].pinned).toEqual(['stock-summary']);
 });

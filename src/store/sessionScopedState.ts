@@ -11,6 +11,7 @@ import { resetForm as resetDispatch } from './slices/dispatchFormSlice';
 import { resetForm as resetInvoice } from './slices/invoiceFormSlice';
 import { resetForm as resetCustomer } from './slices/customerFormSlice';
 import { resetAllListFilters } from './slices/listFilterSlice';
+import { forgetReportCustomers } from './slices/reportPrefsSlice';
 import { clearAllCaches } from '@/utils/cacheManager';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearImageCaches } from '@/utils/imageCache';
@@ -28,6 +29,8 @@ export async function clearSessionScopedState(
   dispatch(resetCustomer());
   // Filters and searches name customers and items of this session's facility.
   dispatch(resetAllListFilters());
+  // The customer last opened in a report is kept on the phone; the period, sorts and pinned reports name no facility data and stay.
+  dispatch(forgetReportCustomers());
   // So do the "Recent" searches offered under a search field; they are kept outside the store.
   forgetRecentSearches();
   await clearAllCaches();

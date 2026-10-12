@@ -1,799 +1,452 @@
 /**
- * Item Stock Summary Report Screen
+ * Item stock summary: every item in stock, across the customers the account
+ * may see, with the GRNs that hold it read when its card is opened.
  *
- * Displays all items aggregated across customers (or user's accessible customers).
- * Expandable cards show GRN details when tapped. Styling follows
- * docs/STYLE_GUIDE.md: object cells (§13.6), status tags (§3.5) and the search
- * field (§13.2, §14.6).
+ * Built on the report layer (docs/STYLE_GUIDE.md §14.10). useReportScope says
+ * whose stock: a warehouse role sees every customer (one list, no customers
+ * level), a customer account its customer, after choosing one if it has
+ * several. useReportFilters holds the search and the sort, useReportQuery the
+ * data, and ReportScaffold draws every state.
+ *
+ * The one paged report: the server searches, sorts and pages it
+ * (get_item_wise_stock_list, backend migration 52). Each page is asked for
+ * under its own key (customer, search, sort, offset), so an answer to an
+ * earlier search or sort is filed under that key and never added to the list
+ * on screen; the pages after the first are kept here, for the list they belong
+ * to. Only the first page without a search is kept on the phone. A next page is
+ * asked for only against a first page the facility gave in this run and is not
+ * asking again for; a pull to refresh keeps the later pages until the new first
+ * page has come, and keeps them when it fails.
+ *
+ * The figures cover every item of the customer (§14.10): with a search typed
+ * they are those of the first page without the search, when it is in memory.
+ *
+ * A backend without migration 52 cannot sort: the items loaded so far are then
+ * sorted here and a note says so while more remain, the Stock figure is shown
+ * once every item is loaded, and the PDF is not offered (that backend has no
+ * generate-report-pdf either).
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TextInput,
-  StyleSheet,
-  RefreshControl,
-  ActivityIndicator,
-  Pressable,
-  LayoutAnimation,
-  Platform,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Text } from 'react-native';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerScope, type KPIItem, type ReportScope } from '@/components/reports';
-import { StockService } from '@/services/stock-service';
-import { getAllGRNItems, getCustomerGRNItems, type GRNItem } from '@/services/grn-service';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  touchTarget,
-  typography,
-  type ThemeTokens,
-} from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui';
-import { createLogger } from '@/utils/logger';
-import { t as tr, formatIdentifier } from '@/i18n';
+  ReportCustomerPicker,
+  ReportNoCustomer,
+  ReportScaffold,
+  StockItemCard,
+  isLowStock,
+  type KPIItem,
+  type ReportHeaderAction,
+  type StockGRNRowData,
+  type StockGRNState,
+} from '@/components/reports';
+import { ReportLoadMoreFooter, type ReportLoadMoreState } from '@/components/reports/ReportLoadMoreFooter';
+import { ITEM_STOCK, itemStockFallbackView } from '@/features/filters/configs/reports/itemStock';
+import { reportById } from '@/features/reports/reportRegistry';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
+import { exportHeaderActions } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
+import { useReportFilters } from '@/features/reports/useReportFilters';
+import { peekReportAnswer, useReportQuery } from '@/features/reports/useReportQuery';
+import { useReportScope } from '@/features/reports/useReportScope';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { t as tr } from '@/i18n';
+import { getAllGRNItems, getCustomerGRNItems, type GRNItem } from '@/services/grn-service';
+import { StockService } from '@/services/stock-service';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemWiseStockItem } from '@/types/stock.types';
+import { formatNumber } from '@/utils/formatters';
 
-const logger = createLogger('ItemStockSummary');
+const REPORT_ID = 'item-stock-summary';
+/** Items per page; the server allows more, the style guide asks for 25 to 50 (§13.6). */
+const ITEM_STOCK_PAGE_SIZE = 50;
 
-// A function, not a constant: the text follows the app language (docs/I18N.md rule 2).
-const loadError = () => tr('reports.itemStockSummary.loadError');
+type ItemPage = NonNullable<Awaited<ReturnType<typeof StockService.getItemWiseStockList>>['data']>;
 
-/** Below this share of the received quantity still in stock, an item is low on stock. */
-const LOW_STOCK_PERCENT = 20;
-
-// ============================================================================
-// Styles
-// ============================================================================
-const makeStyles = (t: ThemeTokens) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: t.background.base },
-    loadingContainer: { flex: 1 },
-    spinner: { marginTop: space.huge },
-    listContent: { paddingBottom: space.xxxl },
-    separator: { height: space.sm },
-
-    // Search
-    searchContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginHorizontal: layout.marginCompact,
-      marginVertical: space.md,
-      paddingLeft: space.md,
-      minHeight: layout.rowMinHeight,
-      borderRadius: radius.field,
-      borderWidth: 1,
-      borderColor: t.border.field,
-      backgroundColor: t.surface.field,
-    },
-    searchIcon: { marginRight: space.sm },
-    searchInput: {
-      ...typography.body,
-      flex: 1,
-      color: t.text.primary,
-      paddingVertical: 0,
-      ...Platform.select({ android: { paddingVertical: space.sm } }),
-    },
-    clearButton: {
-      width: touchTarget,
-      height: layout.rowMinHeight,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-
-    // Item card
-    itemCard: {
-      marginHorizontal: layout.marginCompact,
-      backgroundColor: t.surface.card,
-      borderRadius: radius.card,
-      ...t.shadow[2],
-    },
-    itemCardClip: { borderRadius: radius.card, overflow: 'hidden' },
-    objectCell: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      paddingVertical: space.md,
-      paddingHorizontal: space.lg,
-      gap: space.md,
-    },
-    objectCellPressed: { backgroundColor: t.surface.cardPressed },
-    objectCellImage: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.button,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: t.brand.subtle,
-    },
-    objectCellContent: { flex: 1, gap: space.xxs },
-    objectCellTitle: { ...typography.headline, color: t.text.primary },
-    objectCellSubtitle: { ...typography.subhead, color: t.text.secondary },
-    tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s6, marginTop: space.xxs },
-    stockInfo: { alignItems: 'flex-end' },
-    stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-
-    // Expanded body
-    cardBody: {
-      backgroundColor: t.background.base,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-    },
-    grnLoadingContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: space.xl,
-      gap: space.sm,
-    },
-    grnLoadingText: { ...typography.footnote, color: t.text.secondary },
-    grnEmptyText: {
-      ...typography.footnote,
-      color: t.text.secondary,
-      textAlign: 'center',
-      paddingVertical: space.xl,
-      paddingHorizontal: space.lg,
-    },
-
-    // GRN row
-    grnRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: space.lg,
-      paddingVertical: space.md,
-      minHeight: layout.rowMinHeight + space.md,
-      gap: space.md,
-    },
-    grnRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
-    grnRowPressed: { backgroundColor: t.surface.cardPressed },
-    grnRowContent: { flex: 1, gap: space.xxs },
-    grnRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-    grnRowTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
-    grnRowLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
-    grnRowFootnote: { ...typography.footnote, color: t.text.secondary, flexShrink: 1 },
-    grnRowDetail: { ...typography.caption1, color: t.text.secondary },
-    grnRowAttributes: { alignItems: 'flex-end' },
-    grnRowStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    grnRowOrigQty: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-
-    // Loading more
-    loadingMore: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: space.lg,
-      gap: space.sm,
-    },
-    loadingMoreText: { ...typography.footnote, color: t.text.secondary },
-  });
-
-type Styles = ReturnType<typeof makeStyles>;
+const makeStyles = (t: ThemeTokens) => ({
+  // A card per row, spaced by its own bottom margin; the list has no side padding of its own.
+  card: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
+  // Under the status line, in its words' size and colour.
+  note: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: layout.marginCompact, paddingBottom: space.sm },
+});
 
 // ============================================================================
-// GRN Row Component (nested row within expanded Item Card)
+// Whose stock
 // ============================================================================
-interface GRNRowProps {
-  grn: GRNItem;
-  isLast?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
-}
 
-const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
-  const handlePress = () => {
-    const grnId = grn.grn_id || grn.id;
-    if (grnId) {
-      router.push(`/grn-details/${grnId}`);
-    }
-  };
-
-  const isNavigable = !!(grn.grn_id || grn.id);
-  const details = [
-    grn.date ? { icon: 'calendar-outline', text: formatDate(grn.date, 'short') } : null,
-    grn.rack ? { icon: 'view-grid-outline', text: tr('reports.shared.rack', { rack: String(grn.rack) }) } : null,
-    grn.weight && grn.weight > 0 ? { icon: 'weight-kilogram', text: formatWeight(grn.weight) } : null,
-  ].filter((d): d is { icon: string; text: string } => d !== null);
-
-  const a11yLabel = [
-    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
-    grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
-    grn.customer_name,
-    ...details.map(d => d.text),
-    tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(grn.stock), total: formatNumber(grn.qty) }),
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  const content = (
-    <>
-      <View style={styles.grnRowContent}>
-        {/* Line 1: GRN number + package mark */}
-        <View style={styles.grnRowTitleRow}>
-          <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-          </Text>
-          {grn.package_mark && (
-            <StatusTag status="neutral" label={grn.package_mark} icon={null} />
-          )}
-        </View>
-
-        {/* Line 2: Customer */}
-        <View style={styles.grnRowLine}>
-          <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.grnRowFootnote} numberOfLines={1}>
-            {grn.customer_name}
-          </Text>
-        </View>
-
-        {/* Line 3: Date, rack, weight */}
-        {details.length > 0 && (
-          <View style={styles.grnRowLine}>
-            {details.map((d, i) => (
-              <React.Fragment key={d.icon}>
-                {i > 0 && <Text style={styles.grnRowDetail}>·</Text>}
-                <Icon name={d.icon} size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.grnRowDetail}>{d.text}</Text>
-              </React.Fragment>
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* Stock of received quantity */}
-      <View style={styles.grnRowAttributes}>
-        <Text style={styles.grnRowStock}>{formatNumber(grn.stock)}</Text>
-        <Text style={styles.grnRowOrigQty}>{tr('reports.itemStockSummary.ofTotal', { total: formatNumber(grn.qty) })}</Text>
-      </View>
-
-      {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
-    </>
-  );
-
-  if (isNavigable) {
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.grnRow, !isLast && styles.grnRowDivider, pressed && styles.grnRowPressed]}
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={tr('reports.shared.opensGrnHint')}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-
-  return (
-    <View style={[styles.grnRow, !isLast && styles.grnRowDivider]} accessible accessibilityLabel={a11yLabel}>
-      {content}
-    </View>
-  );
-};
-
-// ============================================================================
-// Item Card Component (Expandable)
-// ============================================================================
-interface ItemCardProps {
-  item: ItemWiseStockItem;
-  isExpanded: boolean;
-  onToggle: () => void;
-  grnDetails: GRNItem[] | null;
-  isLoadingGRNs: boolean;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const ItemCard: React.FC<ItemCardProps> = ({
-  item,
-  isExpanded,
-  onToggle,
-  grnDetails,
-  isLoadingGRNs,
-  styles,
-  t,
-}) => {
-  const stockPercentage = item.total_qty > 0
-    ? Math.round((item.total_stock / item.total_qty) * 100)
-    : 0;
-  const isLowStock = stockPercentage < LOW_STOCK_PERCENT;
-  const grnCount = formatCount(item.grn_count, 'GRN');
-
-  return (
-    <View style={styles.itemCard}>
-      <View style={styles.itemCardClip}>
-        {/* Main Object Cell - Tappable Header */}
-        <Pressable
-          style={({ pressed }) => [styles.objectCell, pressed && styles.objectCellPressed]}
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel={[
-            item.item_name,
-            item.packaging,
-            tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(item.total_stock), total: formatNumber(item.total_qty) }),
-            grnCount,
-            isLowStock ? tr('common.lowStock') : null,
-          ]
-            .filter(Boolean)
-            .join(', ')}
-          accessibilityState={{ expanded: isExpanded }}
-          accessibilityHint={isExpanded ? tr('reports.shared.hidesGrnsHint') : tr('reports.itemStockSummary.showsGrnsHint')}
-        >
-          <View style={styles.objectCellImage}>
-            <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
-          </View>
-
-          <View style={styles.objectCellContent}>
-            <Text style={styles.objectCellTitle} numberOfLines={2}>
-              {item.item_name}
-            </Text>
-            {item.packaging ? (
-              <Text style={styles.objectCellSubtitle} numberOfLines={1}>
-                {item.packaging}
-              </Text>
-            ) : null}
-            <View style={styles.tagRow}>
-              <StatusTag status="neutral" label={grnCount} icon={null} />
-              {isLowStock && <StatusTag status="critical" label={tr('common.lowStock')} />}
-            </View>
-          </View>
-
-          <View style={styles.stockInfo}>
-            <Text style={styles.stockValue}>{formatNumber(item.total_stock)}</Text>
-            <Text style={styles.stockLabel}>{tr('reports.itemStockSummary.ofTotal', { total: formatNumber(item.total_qty) })}</Text>
-          </View>
-
-          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
-        </Pressable>
-
-        {/* Expandable GRN List */}
-        {isExpanded && (
-          <View style={styles.cardBody}>
-            {isLoadingGRNs ? (
-              <View style={styles.grnLoadingContainer} accessibilityLiveRegion="polite">
-                <ActivityIndicator size="small" color={t.brand.tint} />
-                <Text style={styles.grnLoadingText}>{tr('reports.itemStockSummary.loadingGrns')}</Text>
-              </View>
-            ) : grnDetails && grnDetails.length > 0 ? (
-              grnDetails.map((grn, index) => (
-                <GRNRow
-                  key={`${grn.grn_id || grn.id}-${index}`}
-                  grn={grn}
-                  isLast={index === grnDetails.length - 1}
-                  styles={styles}
-                  t={t}
-                />
-              ))
-            ) : (
-              <Text style={styles.grnEmptyText}>{tr('reports.itemStockSummary.noGrnsInStock')}</Text>
-            )}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-};
-
-// ============================================================================
-// Search Input Component
-// ============================================================================
-interface SearchInputProps {
-  value: string;
-  onChangeText: (text: string) => void;
-  onClear: () => void;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const SearchInput: React.FC<SearchInputProps> = ({ value, onChangeText, onClear, styles, t }) => (
-  <View style={styles.searchContainer}>
-    <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.searchIcon} />
-    <TextInput
-      style={styles.searchInput}
-      placeholder={tr('reports.itemStockSummary.searchItems')}
-      placeholderTextColor={t.text.placeholder}
-      value={value}
-      onChangeText={onChangeText}
-      autoCapitalize="none"
-      autoCorrect={false}
-      returnKeyType="search"
-      accessibilityLabel={tr('reports.itemStockSummary.searchItems')}
-    />
-    {value.length > 0 && (
-      <Pressable onPress={onClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel={tr('common.clearSearch')}>
-        <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
-      </Pressable>
-    )}
-  </View>
-);
-
-// Built when drawn, so the labels follow the app language (docs/I18N.md rule 2).
-const placeholderKpis = (): KPIItem[] => [
-  { icon: 'cube-outline', value: '-', label: tr('common.items'), variant: 'primary' },
-  { icon: 'warehouse', value: '-', label: tr('common.stock'), variant: 'primary' },
-];
-
-// ============================================================================
-// Main Screen
-// ============================================================================
 export default function ItemStockSummaryScreen() {
+  const scope = useReportScope(REPORT_ID);
+  const { level } = scope;
+  switch (level.kind) {
+    case 'none':
+      return <ReportNoCustomer title={tr('reports.titles.itemStockSummary')} />;
+    case 'choose':
+      return <ReportCustomerPicker title={tr('reports.titles.itemStockSummary')} onPick={scope.chooseCustomer} />;
+    case 'customers':
+      // Every customer: the request names none.
+      return <ItemStockReport key="all-customers" subtitle={tr('reports.shared.allCustomers')} />;
+    case 'customer':
+      // Keyed by the customer, so nothing of one customer's list is carried into another's.
+      return (
+        <ItemStockReport
+          key={level.customerId}
+          customerId={level.customerId}
+          customerName={level.customerName}
+          subtitle={level.customerName || undefined}
+          onChangeCustomer={scope.changeCustomer}
+        />
+      );
+  }
+}
+
+// ============================================================================
+// The items
+// ============================================================================
+
+/** The pages after the first, for the list (customer, search, sort) they were asked for. */
+interface LaterPages {
+  listId: string;
+  pages: ItemPage[];
+  /** The offset being asked for, or null when no further page is out. */
+  next: number | null;
+}
+const noLaterPages = (listId: string): LaterPages => ({ listId, pages: [], next: null });
+
+/** Each item once: a stock that changed between two pages can move an item onto the next page too. */
+function uniqueItems(pages: ItemPage[]): ItemWiseStockItem[] {
+  const seen = new Set<string>();
+  const items: ItemWiseStockItem[] = [];
+  for (const page of pages) {
+    for (const item of page.items) {
+      if (seen.has(item.item_id)) continue;
+      seen.add(item.item_id);
+      items.push(item);
+    }
+  }
+  return items;
+}
+
+const itemKey = (item: ItemWiseStockItem) => item.item_id;
+
+interface ItemStockReportProps {
+  /** Left out for every customer. */
+  customerId?: string;
+  /** The customer's name for the PDF's file name; left out for every customer. */
+  customerName?: string;
+  subtitle?: string;
+  onChangeCustomer?: () => void;
+}
+
+function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer }: ItemStockReportProps) {
+  const styles = useThemedStyles(makeStyles);
+  const filters = useReportFilters(ITEM_STOCK);
+  const { view, server } = filters.request;
+  const { searchQuery, sortBy, sortOrder } = server;
+  // Whose items, named as every report names it: a refusal of one customer drops all its keys.
+  const scopeKey = useMemo(() => (customerId ? [REPORT_ID, 'customer', customerId] : [REPORT_ID, 'customers']), [customerId]);
+  // Everything the rows depend on: a page of one list is never added to another.
+  const listKey = useMemo(() => [...scopeKey, searchQuery ?? '', sortBy, sortOrder], [scopeKey, searchQuery, sortBy, sortOrder]);
+  const listId = JSON.stringify(listKey);
+
+  const askPage = (offset: number) =>
+    StockService.getItemWiseStockList({ customerId, searchQuery, limit: ITEM_STOCK_PAGE_SIZE, offset, sortBy, sortOrder });
+
+  const first = useReportQuery<ItemPage>({
+    key: [...listKey, 0],
+    fetch: () => askPage(0),
+    fallbackError: tr('reports.itemStockSummary.loadError'),
+    // A searched list is never shown from the phone, and would push other reports' answers out.
+    persist: !searchQuery,
+  });
+
+  // The later pages of the list on screen. Kept with the list they belong to, so a new search
+  // or sort starts again from its first page, and a page still loading for the old one (and
+  // its "Loading more" footer) is gone with it.
+  const [later, setLater] = useState<LaterPages>(() => noLaterPages(listId));
+  const current = useMemo(() => (later.listId === listId ? later : noLaterPages(listId)), [later, listId]);
+  const nextOffset = current.next;
+
+  const more = useReportQuery<ItemPage>({
+    key: [...listKey, nextOffset ?? 'none'],
+    fetch: () => askPage(nextOffset ?? 0),
+    // The footer already says "Couldn't load more items."; this is what to do.
+    fallbackError: tr('common.checkConnection'),
+    enabled: nextOffset !== null,
+    // A later page is shown only after its own request has answered: never from the phone.
+    persist: false,
+  });
+  // A page is added once its own request has answered: not a copy kept from earlier.
+  const arrived = nextOffset !== null && !more.isFetching && !more.error ? more.data : undefined;
+  useEffect(() => {
+    if (!arrived) return;
+    setLater(prev => (prev.listId === listId && prev.next === nextOffset ? { listId, pages: [...prev.pages, arrived], next: null } : prev));
+  }, [arrived, listId, nextOffset]);
+
+  const pages = useMemo(() => (first.data ? [first.data, ...current.pages] : []), [first.data, current.pages]);
+  const loaded = useMemo(() => uniqueItems(pages), [pages]);
+  // Rows received, duplicates included: where the next page starts.
+  const received = pages.reduce((sum, page) => sum + page.items.length, 0);
+  const total = first.data?.pagination.totalCount;
+  const lastPageEmpty = current.pages.length > 0 && current.pages[current.pages.length - 1].items.length === 0;
+  const hasMore = total !== undefined && received < total && !lastPageEmpty;
+
+  // A backend without migration 52 sends the items in name order: what is loaded is sorted here.
+  const serverSorted = first.data?.sortApplied !== false;
+  const rows = useMemo(() => (serverSorted ? loaded : itemStockFallbackView(loaded, view)), [serverSorted, loaded, view]);
+
+  // With a search typed, the figures are those of every item: the first page of the same list
+  // without the search, already asked for when the report opened. Not asked for when not in memory.
+  const whole = searchQuery ? peekReportAnswer<ItemPage>([...scopeKey, '', sortBy, sortOrder, 0]) : undefined;
+
+  const kpis = useMemo<KPIItem[] | undefined>(() => {
+    const data = first.data;
+    if (!data) return undefined;
+    const sum = (items: ItemWiseStockItem[]) => items.reduce((total, item) => total + item.total_stock, 0);
+    // The whole list's stock: from the server, or added up here once nothing is left to load.
+    const stock = whole
+      ? (whole.summary?.total_stock ?? (whole.items.length >= whole.pagination.totalCount ? sum(whole.items) : '—'))
+      : data.summary
+        ? data.summary.total_stock
+        : hasMore
+          ? '—'
+          : sum(loaded);
+    return [
+      { icon: 'cube-outline', value: (whole ?? data).pagination.totalCount, label: tr('common.items'), variant: 'primary' },
+      { icon: 'warehouse', value: stock, label: tr('common.stock'), variant: 'primary' },
+    ];
+  }, [first.data, whole, hasMore, loaded]);
+
+  // The next page continues the first page the facility gave now: not the phone's copy, and
+  // not while that page is being asked for again (it may come back different).
+  const canLoadMore = first.phase === 'ready' && !first.isFetching && !first.isKeptCopy && hasMore && nextOffset === null;
+  const loadMore = useCallback(() => {
+    if (!canLoadMore) return;
+    // The list may report its end twice before this is drawn: the page is asked for once.
+    setLater(prev => {
+      const base = prev.listId === listId ? prev : noLaterPages(listId);
+      return base.next !== null ? base : { ...base, next: received };
+    });
+  }, [canLoadMore, listId, received]);
+
+  const footerState: ReportLoadMoreState =
+    nextOffset !== null ? (more.error ? 'failed' : 'loading') : canLoadMore ? 'more' : 'none';
+
+  // The GRNs of an opened item. A new search or a refresh closes the cards and reads them again.
+  const [drillGeneration, setDrillGeneration] = useState(0);
+  const drill = useItemGRNs(customerId, `${searchQuery ?? ''}|${drillGeneration}`);
+
+  // A pull to refresh reads the first page again and starts the list over from it once it has
+  // come; until then, and when it fails, the pages after it stay where they are.
+  const { refresh: refreshFirst } = first;
+  const refresh = useCallback(() => {
+    setDrillGeneration(generation => generation + 1);
+    return refreshFirst().then(fresh => {
+      if (fresh) setLater(prev => (prev.listId === listId ? noLaterPages(listId) : prev));
+      return fresh;
+    });
+  }, [listId, refreshFirst]);
+  const query = { ...first, refresh };
+  const extraData = useMemo(() => ({ drill, words: view.words }), [drill, view.words]);
+
+  const renderRow = useCallback(
+    (item: ItemWiseStockItem) => {
+      const grns = drill.state(item.item_id);
+      // The drill-down reads at most GRN_LIMIT rows: say so when the item has more.
+      const inAll = drill.total(item.item_id) ?? item.grn_count;
+      const grnsFooter =
+        grns.status === 'loaded' && inAll > grns.rows.length
+          ? tr('reports.scaffold.showing', { shown: formatNumber(grns.rows.length), total: formatNumber(inAll) })
+          : undefined;
+      return (
+        <StockItemCard
+          name={item.item_name}
+          packaging={item.packaging}
+          grnCount={item.grn_count}
+          stock={item.total_stock}
+          total={item.total_qty}
+          lowStock={isLowStock(item.total_stock, item.total_qty)}
+          isExpanded={drill.isOpen(item.item_id)}
+          onToggle={() => drill.toggle(item.item_id)}
+          grns={grns}
+          emptyGRNsText={tr('reports.itemStockSummary.noGrnsInStock')}
+          grnsFooter={grnsFooter}
+          onOpenGRN={openGRN}
+          highlightWords={view.words}
+          style={styles.card}
+        />
+      );
+    },
+    [drill, styles, view.words]
+  );
+
+  // Sorted here among the items loaded, while more remain: say so. The name order A to Z is the
+  // order the server pages in, so it is true of the whole list.
+  const sortedHere = !serverSorted && hasMore && !!view.sort && !(view.sort.field === 'item_name' && view.sort.order === 'asc');
+
+  // The PDF is of the whole list in the chosen order (the server does not search it).
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, ...(customerId ? { customer_id: customerId } : {}), sort: reportPdfSort(REPORT_ID, customerId ? 'customer' : 'customers', view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      // Left out once the facility's server has said it cannot make report PDFs, and for a server
+      // that cannot sort the list (older than migration 52, so without generate-report-pdf too).
+      ...(serverSorted ? exportHeaderActions({ exportPdf, busy, available }) : []),
+    ],
+    [onChangeCustomer, available, serverSorted, busy, exportPdf]
+  );
+
   return (
-    <ReportCustomerScope title={tr('reports.titles.itemStockSummary')}>
-      {(scope) => <ItemStockSummaryReport scope={scope} />}
-    </ReportCustomerScope>
+    <ReportScaffold
+      title={tr('reports.titles.itemStockSummary')}
+      subtitle={subtitle}
+      actions={actions}
+      filters={{ config: ITEM_STOCK, state: filters }}
+      // The search is sent to the server: the field shows a spinner while it is answered.
+      searchIsServerSide
+      query={query}
+      kpis={kpis}
+      status={{ shown: rows.length, total }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={itemKey}
+      extraData={extraData}
+      onEndReached={loadMore}
+      footer={
+        <ReportLoadMoreFooter
+          state={footerState}
+          loadingText={tr('reports.itemStockSummary.loadingMore')}
+          failedText={tr('reports.itemStockSummary.loadMoreError')}
+          reason={more.error}
+          moreLabel={tr('reports.itemStockSummary.loadMore')}
+          onLoadMore={loadMore}
+          onRetry={more.retry}
+        />
+      }
+      noun="items"
+      empty={{ icon: 'cube-outline', title: tr('reports.shared.noStockYet'), description: tr('reports.itemStockSummary.itemsAppear') }}
+      errorTitle={tr('reports.itemStockSummary.errorTitle')}
+    >
+      {sortedHere ? (
+        <Text style={styles.note}>{tr('reports.itemStockSummary.sortedAmongLoaded', { count: formatNumber(loaded.length) })}</Text>
+      ) : null}
+    </ReportScaffold>
   );
 }
 
-function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  // Warehouse users see every customer's stock. A customer account names one of its
-  // customers on every request: the server refuses it the all-customers form.
-  const customerId = scope.shouldShowListView ? undefined : scope.singleAssignedCustomerId ?? undefined;
-  const noCustomer = !scope.shouldShowListView && !customerId;
+// ============================================================================
+// The GRNs of an item, read when its card opens
+// ============================================================================
 
-  const [items, setItems] = useState<ItemWiseStockItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [pagination, setPagination] = useState({
-    totalCount: 0,
-    hasMore: false,
-    offset: 0,
-  });
+/** The GRNs of an item as the shared card draws them. */
+const grnRows = (grns: GRNItem[]): StockGRNRowData[] =>
+  grns.map((grn, index) => ({
+    key: `${grn.grn_id || grn.id}-${index}`,
+    grnId: grn.grn_id || grn.id || null,
+    grNo: grn.gr_no,
+    packageMark: grn.package_mark,
+    customerName: grn.customer_name,
+    receivedDate: grn.date,
+    rack: grn.rack,
+    weight: grn.weight,
+    stock: grn.stock,
+    total: grn.qty,
+  }));
 
-  // Expanded items state
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [grnDetailsCache, setGrnDetailsCache] = useState<Record<string, GRNItem[]>>({});
-  const [loadingGRNs, setLoadingGRNs] = useState<Set<string>>(new Set());
+const openGRN = (grnId: string) => router.push(`/grn-details/${grnId}`);
 
-  // Refs for preventing duplicate fetches
-  const fetchInProgressRef = useRef(false);
-  const isMountedRef = useRef(true);
+/** GRN rows read for one item; the card says when the item has more. */
+const GRN_LIMIT = 100;
 
-  // Cleanup on unmount
+/** `total`: the rows the drill-down has in all, when the server said. */
+type GRNLoad = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; rows: StockGRNRowData[]; total?: number };
+interface DrillState {
+  /** The search and refresh the opened cards belong to: a new one closes them and reads again. */
+  key: string;
+  open: ReadonlySet<string>;
+  grns: Readonly<Record<string, GRNLoad>>;
+}
+const closedDrill = (key: string): DrillState => ({ key, open: new Set(), grns: {} });
+
+/**
+ * Which cards are open and the GRNs of each. A failed load is kept as a
+ * failure, never as "no GRNs": "Try again" or opening the card again reads
+ * once more. A load that answered, even with no GRNs, is kept.
+ */
+function useItemGRNs(customerId: string | undefined, key: string) {
+  const [stored, setStored] = useState<DrillState>(() => closedDrill(key));
+  const drill = useMemo(() => (stored.key === key ? stored : closedDrill(key)), [stored, key]);
+  // The search and refresh on screen now, for a load that answers after they have changed.
+  const currentKey = useRef(key);
+  currentKey.current = key;
+  const live = useRef(true);
   useEffect(() => {
-    isMountedRef.current = true;
+    live.current = true;
     return () => {
-      isMountedRef.current = false;
+      live.current = false;
     };
   }, []);
 
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // A change made for `key`. Once the search or a refresh has moved on, a change for the old key
+  // (a GRN load answering late) changes nothing: the cards opened since stay as they are.
+  const update = useCallback(
+    (change: (state: DrillState) => DrillState) =>
+      setStored(prev => {
+        if (prev.key === key) return change(prev);
+        return key === currentKey.current ? change(closedDrill(key)) : prev;
+      }),
+    [key]
+  );
 
-  // Fetch items
-  const fetchItems = useCallback(async (
-    query: string,
-    offset: number,
-    isLoadMore = false,
-    isRefresh = false
-  ) => {
-    if (noCustomer) {
-      setError(tr('reports.shared.noCustomer'));
-      setIsLoading(false);
-      return;
-    }
-    if (fetchInProgressRef.current && !isRefresh) return;
-    fetchInProgressRef.current = true;
-
-    try {
-      if (isRefresh) {
-        setIsRefreshing(true);
-      } else if (isLoadMore) {
-        setIsLoadingMore(true);
-      } else {
-        setIsLoading(true);
+  const read = useCallback(
+    async (itemId: string) => {
+      update(state => ({ ...state, grns: { ...state.grns, [itemId]: { status: 'loading' } } }));
+      const drillDown = { p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const }, p_limit: GRN_LIMIT };
+      let answer: GRNLoad;
+      try {
+        const response = customerId ? await getCustomerGRNItems(customerId, drillDown) : await getAllGRNItems(drillDown);
+        const total = response.data?.pagination?.total_count;
+        answer =
+          response.success && response.data?.items
+            ? { status: 'loaded', rows: grnRows(response.data.items), total: typeof total === 'number' && total > 0 ? total : undefined }
+            : { status: 'failed' };
+      } catch {
+        answer = { status: 'failed' };
       }
-      setError(null);
+      if (live.current) update(state => ({ ...state, grns: { ...state.grns, [itemId]: answer } }));
+    },
+    [customerId, update]
+  );
 
-      logger.debug('Fetching items', { query, offset, isLoadMore });
-
-      const response = await StockService.getItemWiseStockList({
-        customerId,
-        searchQuery: query || undefined,
-        limit: 50,
-        offset,
-      });
-
-      if (!isMountedRef.current) return;
-
-      if (response.success && response.data) {
-        const newItems = response.data.items;
-
-        if (isLoadMore) {
-          setItems(prev => [...prev, ...newItems]);
-        } else {
-          setItems(newItems);
-          // Clear expanded state and cache on new search/refresh
-          setExpandedItems(new Set());
-          setGrnDetailsCache({});
-        }
-
-        setPagination({
-          totalCount: response.data.pagination.totalCount,
-          hasMore: response.data.pagination.hasMore,
-          offset: offset + newItems.length,
+  return useMemo(
+    () => ({
+      isOpen: (itemId: string) => drill.open.has(itemId),
+      toggle: (itemId: string) => {
+        const opening = !drill.open.has(itemId);
+        update(state => {
+          const open = new Set(state.open);
+          if (open.has(itemId)) open.delete(itemId);
+          else open.add(itemId);
+          return { ...state, open };
         });
-
-        logger.debug('Fetch success', {
-          itemsCount: newItems.length,
-          totalCount: response.data.pagination.totalCount,
-          hasMore: response.data.pagination.hasMore,
-        });
-      } else {
-        logger.warn('Fetch error', { message: response.message });
-        setError(loadError());
-      }
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      logger.error('Exception', err);
-      setError(loadError());
-    } finally {
-      fetchInProgressRef.current = false;
-      if (isMountedRef.current) {
-        setIsLoading(false);
-        setIsRefreshing(false);
-        setIsLoadingMore(false);
-      }
-    }
-  }, [customerId, noCustomer]);
-
-  // Fetch GRN details for an item
-  const fetchGRNDetails = useCallback(async (itemId: string) => {
-    // Already cached
-    if (grnDetailsCache[itemId]) return;
-
-    // Already loading
-    if (loadingGRNs.has(itemId)) return;
-
-    setLoadingGRNs(prev => new Set(prev).add(itemId));
-
-    try {
-      logger.debug('Fetching GRN details for item', { itemId });
-
-      const drillDown = { p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const }, p_limit: 100 };
-      const response = customerId
-        ? await getCustomerGRNItems(customerId, drillDown)
-        : await getAllGRNItems(drillDown);
-
-      if (!isMountedRef.current) return;
-
-      if (response.success && response.data?.items) {
-        setGrnDetailsCache(prev => ({
-          ...prev,
-          [itemId]: response.data.items,
-        }));
-        logger.debug('GRN details loaded', { count: response.data.items.length });
-      } else {
-        logger.warn('Failed to load GRN details', { message: response.message });
-        // Cache empty array to prevent re-fetching
-        setGrnDetailsCache(prev => ({
-          ...prev,
-          [itemId]: [],
-        }));
-      }
-    } catch (err) {
-      logger.error('Exception fetching GRN details', err);
-      setGrnDetailsCache(prev => ({
-        ...prev,
-        [itemId]: [],
-      }));
-    } finally {
-      if (isMountedRef.current) {
-        setLoadingGRNs(prev => {
-          const next = new Set(prev);
-          next.delete(itemId);
-          return next;
-        });
-      }
-    }
-  }, [grnDetailsCache, loadingGRNs, customerId]);
-
-  // Toggle item expansion
-  const toggleItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
-    setExpandedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-        // Fetch GRN details when expanding
-        fetchGRNDetails(itemId);
-      }
-      return next;
-    });
-  }, [fetchGRNDetails]);
-
-  // Initial fetch and refetch when search changes
-  useEffect(() => {
-    fetchItems(debouncedQuery, 0);
-  }, [debouncedQuery, fetchItems]);
-
-  // Handle refresh
-  const handleRefresh = useCallback(() => {
-    fetchItems(debouncedQuery, 0, false, true);
-  }, [debouncedQuery, fetchItems]);
-
-  // Handle load more
-  const handleLoadMore = useCallback(() => {
-    if (pagination.hasMore && !isLoadingMore && !isLoading) {
-      fetchItems(debouncedQuery, pagination.offset, true);
-    }
-  }, [pagination, isLoadingMore, isLoading, debouncedQuery, fetchItems]);
-
-  // Handle clear search
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
-  }, []);
-
-  // Build KPI items
-  const kpiItems: KPIItem[] = useMemo(() => {
-    const totalStock = items.reduce((sum, item) => sum + item.total_stock, 0);
-    return [
-      {
-        icon: 'cube-outline',
-        value: pagination.totalCount,
-        label: tr('common.items'),
-        variant: 'primary',
+        const known = drill.grns[itemId];
+        if (opening && (!known || known.status === 'failed')) void read(itemId);
       },
-      {
-        icon: 'warehouse',
-        value: totalStock,
-        label: tr('common.stock'),
-        variant: 'primary',
+      state: (itemId: string): StockGRNState => {
+        const known = drill.grns[itemId];
+        if (!known || known.status === 'loading') return { status: 'loading' };
+        if (known.status === 'failed') return { status: 'failed', onRetry: () => void read(itemId) };
+        return { status: 'loaded', rows: known.rows };
       },
-    ];
-  }, [items, pagination.totalCount]);
-
-  // Render item
-  const renderItem = useCallback(({ item }: { item: ItemWiseStockItem }) => (
-    <ItemCard
-      item={item}
-      isExpanded={expandedItems.has(item.item_id)}
-      onToggle={() => toggleItem(item.item_id)}
-      grnDetails={grnDetailsCache[item.item_id] || null}
-      isLoadingGRNs={loadingGRNs.has(item.item_id)}
-      styles={styles}
-      t={t}
-    />
-  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs, styles, t]);
-
-  // Key extractor
-  const keyExtractor = useCallback((item: ItemWiseStockItem) => item.item_id, []);
-
-  // Footer component
-  const ListFooterComponent = useMemo(() => {
-    if (isLoadingMore) {
-      return (
-        <View style={styles.loadingMore}>
-          <ActivityIndicator size="small" color={t.brand.tint} />
-          <Text style={styles.loadingMoreText}>{tr('reports.itemStockSummary.loadingMore')}</Text>
-        </View>
-      );
-    }
-    return null;
-  }, [isLoadingMore, styles, t]);
-
-  // Loading state
-  if (isLoading && items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
-        <View style={styles.loadingContainer}>
-          <KPIGrid
-            items={placeholderKpis()}
-            isLoading={true}
-            compact
-          />
-          <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
-          <ActivityIndicator size="large" color={t.brand.tint} style={styles.spinner} accessibilityLabel={tr('reports.itemStockSummary.loadingItems')} />
-        </View>
-      </View>
-    );
-  }
-
-  // Error state
-  if (error && items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
-        <KPIGrid
-          items={placeholderKpis()}
-          isLoading={false}
-          compact
-        />
-        <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
-        {noCustomer ? (
-          <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
-        ) : (
-          <ReportEmptyState
-            icon="alert-circle-outline"
-            tone="error"
-            message={tr('reports.shared.errorTitle')}
-            description={error}
-            actionLabel={tr('common.retry')}
-            onAction={() => fetchItems(debouncedQuery, 0)}
-          />
-        )}
-      </View>
-    );
-  }
-
-  // Empty state
-  if (items.length === 0 && !isLoading) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
-        <KPIGrid
-          items={placeholderKpis()}
-          isLoading={false}
-          compact
-        />
-        <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
-        <ReportEmptyState
-          icon={debouncedQuery ? 'magnify-close' : 'cube-outline'}
-          message={debouncedQuery ? tr('reports.itemStockSummary.noMatchingItems') : tr('reports.shared.noStockYet')}
-          description={
-            debouncedQuery
-              ? tr('reports.itemStockSummary.noItemsMatch', { search: debouncedQuery })
-              : tr('reports.itemStockSummary.itemsAppear')
-          }
-          actionLabel={debouncedQuery ? tr('common.clearSearch') : undefined}
-          onAction={debouncedQuery ? handleClearSearch : undefined}
-        />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.itemStockSummary')} subtitle={scope.customerName} onBack={scope.onChangeCustomer} />
-
-      <FlatList
-        data={items}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        extraData={expandedItems}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[t.brand.tint]}
-            tintColor={t.brand.tint}
-          />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.3}
-        ListHeaderComponent={
-          <>
-            <KPIGrid items={kpiItems} isLoading={isLoading} compact />
-            <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
-          </>
-        }
-        ListFooterComponent={ListFooterComponent}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-      />
-    </View>
+      /** The GRN rows the item has in all, when the drill-down's answer said. */
+      total: (itemId: string): number | undefined => {
+        const known = drill.grns[itemId];
+        return known?.status === 'loaded' ? known.total : undefined;
+      },
+    }),
+    [drill, update, read]
   );
 }

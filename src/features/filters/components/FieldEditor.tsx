@@ -44,7 +44,7 @@ export function FieldEditor({ field, value, onChange, ctx, onInvalid }: FieldEdi
         />
       );
     case 'dateRange':
-      return <DateRangeEditor value={value as DateRangeValue | undefined} onChange={onChange} />;
+      return <DateRangeEditor value={value as DateRangeValue | undefined} onChange={onChange} presets={field.presets} required={field.required} />;
     case 'numberRange':
       return (
         <NumberRangeEditor

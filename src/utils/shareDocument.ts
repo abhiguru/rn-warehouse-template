@@ -19,25 +19,58 @@ export const SHARED_DOCUMENTS_DIRECTORY = 'shared-documents';
 export const MAX_SHARED_DOCUMENT_BYTES = 25 * 1024 * 1024;
 
 const MAX_FILENAME_STEM_LENGTH = 100;
+// File systems allow 255 bytes per name; a Gujarati letter is 3 bytes in UTF-8,
+// so the stem is also capped in bytes, leaving room for '.pdf' and a ' (1)'
+// that a share target may add.
+const MAX_FILENAME_STEM_BYTES = 200;
 const CLEANUP_DELAY_MS = 60_000;
 const tooLargeError = () => t('errors.pdf.tooLarge');
+
+// Anything that is not a letter, a combining mark (Gujarati vowel signs and the
+// virama are marks) or a digit of any script, nor '.', '_' or '-'. Control and
+// format characters (including bidi overrides), white space, symbols, lone
+// surrogates and every separator fall in here.
+const NOT_FILENAME_CHARACTER = /[^\p{L}\p{M}\p{N}._-]+/gu;
+
+function utf8Length(codePoint: number): number {
+  if (codePoint < 0x80) return 1;
+  if (codePoint < 0x800) return 2;
+  if (codePoint < 0x10000) return 3;
+  return 4;
+}
+
+/** Cut the stem to the length and byte caps, never inside a surrogate pair. */
+function capStem(stem: string): string {
+  let units = 0;
+  let bytes = 0;
+  let capped = '';
+  for (const character of stem) {
+    const size = utf8Length(character.codePointAt(0) ?? 0);
+    if (units + character.length > MAX_FILENAME_STEM_LENGTH || bytes + size > MAX_FILENAME_STEM_BYTES) break;
+    units += character.length;
+    bytes += size;
+    capped += character;
+  }
+  return capped;
+}
 
 /**
  * Reduce a server- or caller-supplied document name to a safe file name inside
  * the shared-documents directory: path separators and traversal are dropped,
- * every character outside [A-Za-z0-9._-] becomes '_', leading dots go (no
- * hidden files), the stem is capped and the name always ends in '.pdf'.
+ * letters, combining marks and digits of any script are kept with '.', '_' and
+ * '-' (names people type are never translated or stripped), every other run
+ * becomes one '_', leading dots go (no hidden files), the stem is capped (100
+ * UTF-16 units and 200 UTF-8 bytes) and the name always ends in '.pdf'.
  */
 export function sanitizeDocumentFilename(filename: string, fallback = 'document.pdf'): string {
   const base = (typeof filename === 'string' ? filename : '').split(/[\\/]+/).pop() ?? '';
-  let stem = base
+  const stem = base
     .replace(/\.pdf$/i, '')
-    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(NOT_FILENAME_CHARACTER, '_')
     .replace(/_{2,}/g, '_')
     .replace(/^[._-]+|[._-]+$/g, '');
   if (!stem) return fallback;
-  if (stem.length > MAX_FILENAME_STEM_LENGTH) stem = stem.slice(0, MAX_FILENAME_STEM_LENGTH);
-  return `${stem}.pdf`;
+  return `${capStem(stem)}.pdf`;
 }
 
 function sharedDocumentsDirectory(): Directory {

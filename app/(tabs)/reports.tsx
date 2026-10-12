@@ -1,112 +1,36 @@
 /**
- * Reports Tab - Report Hub Screen
+ * Reports tab: the hub every report is opened from.
  *
- * Main entry point for the reporting system.
- * Displays available reports based on user role.
+ * Sections, in order (src/components/reports/reportHubSections.ts): the reports this
+ * account pinned, up to three it opened last, then every report it may open by category
+ * (Stock, Movement, Financial, Operations). Each row has a star that pins the report;
+ * pins and recent reports are kept per facility and account (useReportPrefs).
  */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector } from '@/store/hooks';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { triggerLightTap } from '@/hooks/useHaptics';
 import {
-  fontWeight,
-  iconSize,
   layout,
   radius,
   space,
   touchTarget,
   typography,
   type ThemeTokens,
-  trackedText,
 } from '@/theme/tokens';
-import type { ReportDefinition } from '@/types/report.types';
-import { Avatar } from '@/components/ui';
+import type { ReportDefinition } from '@/features/reports/reportRegistry';
+import { useReportPrefs } from '@/features/reports/useReportPrefs';
+import { ReportHubRow } from '@/components/reports/ReportHubRow';
+import { reportHubSections, type ReportHubSectionId } from '@/components/reports/reportHubSections';
+import { Avatar, SectionHeader } from '@/components/ui';
 import { t as translate } from '@/i18n';
-import { canOpenScreen, isWarehouseUser } from '@/config/roles';
+import { isWarehouseUser } from '@/config/roles';
 
-// Define all available reports. Titles and descriptions are getters, so they
-// follow the app's language (docs/I18N.md rule 2). The titles are the report
-// screens' own titles (`reports.titles`), so the hub and the screen say the same.
-const CUSTOMER_REPORTS: ReportDefinition[] = [
-  {
-    id: 'customer-activity',
-    get title() { return translate('reports.titles.customerActivity'); },
-    get description() { return translate('nav.reports.descriptions.customerActivity'); },
-    icon: 'account-group-outline',
-    route: '/reports/customer-activity',
-    staffOnly: false,
-    category: 'operations',
-  },
-  {
-    id: 'stock-summary',
-    get title() { return translate('reports.titles.stockSummary'); },
-    get description() { return translate('nav.reports.descriptions.stockSummary'); },
-    icon: 'warehouse',
-    route: '/reports/stock-summary',
-    staffOnly: false,
-    category: 'stock',
-  },
-  {
-    id: 'item-stock-summary',
-    get title() { return translate('reports.titles.itemStockSummary'); },
-    get description() { return translate('nav.reports.descriptions.itemStockSummary'); },
-    icon: 'cube-outline',
-    route: '/reports/item-stock-summary',
-    staffOnly: false,
-    category: 'stock',
-  },
-  {
-    id: 'dispatch-activity',
-    get title() { return translate('reports.titles.dispatchActivity'); },
-    get description() { return translate('nav.reports.descriptions.dispatchActivity'); },
-    icon: 'truck-delivery-outline',
-    route: '/reports/dispatch-activity',
-    staffOnly: false,
-    category: 'movement',
-  },
-  {
-    id: 'grn-activity',
-    get title() { return translate('reports.titles.grnActivity'); },
-    get description() { return translate('nav.reports.descriptions.grnActivity'); },
-    icon: 'package-down',
-    route: '/reports/grn-activity',
-    staffOnly: false,
-    category: 'movement',
-  },
-  {
-    id: 'invoice-history',
-    get title() { return translate('reports.titles.invoiceHistory'); },
-    get description() { return translate('nav.reports.descriptions.invoiceHistory'); },
-    icon: 'file-document-outline',
-    route: '/reports/invoice-history',
-    staffOnly: false,
-    category: 'financial',
-  },
-  {
-    id: 'stock-aging',
-    get title() { return translate('reports.titles.stockAging'); },
-    get description() { return translate('nav.reports.descriptions.stockAging'); },
-    icon: 'calendar-clock',
-    route: '/reports/stock-aging',
-    staffOnly: false,
-    category: 'stock',
-  },
-];
-
-const STAFF_REPORTS: ReportDefinition[] = [
-  {
-    id: 'operations-dashboard',
-    get title() { return translate('reports.titles.operationsDashboard'); },
-    get description() { return translate('nav.reports.descriptions.operationsDashboard'); },
-    icon: 'view-dashboard-outline',
-    route: '/reports/operations-dashboard',
-    staffOnly: true,
-    category: 'operations',
-  },
-];
+/** A second tap on a report within this long of the first is a double tap, and is ignored. */
+const REPORT_PUSH_GUARD_MS = 600;
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -155,141 +79,58 @@ const makeStyles = (t: ThemeTokens) =>
       flex: 1,
     },
     scrollContent: {
-      padding: layout.marginCompact,
       paddingBottom: space.huge,
     },
-    section: {
-      marginBottom: space.xxl,
-    },
-    sectionTitle: {
-      ...typography.footnote,
-      fontWeight: fontWeight.semibold,
-      textTransform: 'uppercase',
-      letterSpacing: trackedText(0.5),
-      color: t.text.secondary,
-      marginBottom: space.sm,
-      marginLeft: space.xs,
-    },
+    // SectionHeader brings its own 16 side padding, 24 above and 8 below.
     sectionContent: {
       gap: space.sm,
-    },
-    reportCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      borderRadius: radius.card,
-      padding: space.lg,
-      gap: space.lg,
-      backgroundColor: t.surface.card,
-      ...t.shadow[2],
-    },
-    reportCardPressed: {
-      backgroundColor: t.surface.cardPressed,
-    },
-    reportIconContainer: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.card,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: t.brand.subtle,
-    },
-    reportContent: {
-      flex: 1,
-    },
-    reportTitle: {
-      ...typography.headline,
-      color: t.text.primary,
-      marginBottom: space.xxs,
-    },
-    reportDescription: {
-      ...typography.subhead,
-      color: t.text.secondary,
+      paddingHorizontal: layout.marginCompact,
     },
   });
 
-type Styles = ReturnType<typeof makeStyles>;
-
-interface ReportCardProps {
-  report: ReportDefinition;
-  onPress: () => void;
-  styles: Styles;
-  t: ThemeTokens;
+/** A section's title, in the app's language at the time it is drawn. */
+function sectionTitle(id: ReportHubSectionId): string {
+  switch (id) {
+    case 'pinned':
+      return translate('reports.hub.pinned');
+    case 'recent':
+      return translate('reports.hub.recent');
+    case 'stock':
+      return translate('common.stock');
+    case 'movement':
+      return translate('reports.hub.movement');
+    case 'financial':
+      return translate('reports.hub.financial');
+    case 'operations':
+      return translate('reports.hub.operations');
+  }
 }
-
-const ReportCard: React.FC<ReportCardProps> = ({ report, onPress, styles, t }) => (
-  <Pressable
-    style={({ pressed }) => [styles.reportCard, pressed && styles.reportCardPressed]}
-    onPress={onPress}
-    accessibilityLabel={translate('nav.reports.cardLabel', { title: report.title, description: report.description })}
-    accessibilityRole="button"
-  >
-    <View style={styles.reportIconContainer}>
-      <Icon name={report.icon} size={iconSize.lg} color={t.brand.tint} />
-    </View>
-    <View style={styles.reportContent}>
-      <Text style={styles.reportTitle} numberOfLines={2}>
-        {report.title}
-      </Text>
-      <Text style={styles.reportDescription} numberOfLines={2}>
-        {report.description}
-      </Text>
-    </View>
-    <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-  </Pressable>
-);
-
-interface ReportSectionProps {
-  title: string;
-  reports: ReportDefinition[];
-  onReportPress: (report: ReportDefinition) => void;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const ReportSection: React.FC<ReportSectionProps> = ({ title, reports, onReportPress, styles, t }) => {
-  if (reports.length === 0) return null;
-
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle} accessibilityRole="header">
-        {title}
-      </Text>
-      <View style={styles.sectionContent}>
-        {reports.map((report) => (
-          <ReportCard
-            key={report.id}
-            report={report}
-            onPress={() => onReportPress(report)}
-            styles={styles}
-            t={t}
-          />
-        ))}
-      </View>
-    </View>
-  );
-};
 
 export default function ReportsScreen() {
   const router = useRouter();
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
+  const { prefs, togglePin, noteOpened } = useReportPrefs();
 
-  // The operations dashboard is for administrators and supervisors (the server refuses it
-  // to staff); every other report is offered to all roles.
   const role = userProfile?.role;
-  const showOperations = canOpenScreen(role, 'operationsDashboard');
   // Staff see every customer's reports, like the managers.
   const seesAllCustomers = isWarehouseUser(role);
+  // Every id, from the registry and from what was stored, passes the role's gate here.
+  const sections = reportHubSections(role, prefs.pinned, prefs.recent);
 
-  const handleReportPress = (report: ReportDefinition) => {
+  // A double tap on a row would push the report twice, and back would then show it again.
+  const lastPushAt = useRef(0);
+  const openReport = (report: ReportDefinition) => {
+    const now = Date.now();
+    if (now - lastPushAt.current < REPORT_PUSH_GUARD_MS) return;
+    lastPushAt.current = now;
+    noteOpened(report.id);
     router.push(report.route as any);
   };
-
-  // Group reports by category
-  const customerReports = CUSTOMER_REPORTS;
-  const staffReports = showOperations ? STAFF_REPORTS : [];
+  const toggleReportPin = (report: ReportDefinition) => {
+    triggerLightTap();
+    togglePin(report.id);
+  };
 
   return (
     <View style={styles.container}>
@@ -321,23 +162,22 @@ export default function ReportsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <ReportSection
-          title={translate('nav.reports.inventorySection')}
-          reports={customerReports}
-          onReportPress={handleReportPress}
-          styles={styles}
-          t={t}
-        />
-
-        {showOperations && (
-          <ReportSection
-            title={translate('nav.reports.operationsSection')}
-            reports={staffReports}
-            onReportPress={handleReportPress}
-            styles={styles}
-            t={t}
-          />
-        )}
+        {sections.map((section) => (
+          <View key={section.id} testID={`reports-hub-section-${section.id}`}>
+            <SectionHeader title={sectionTitle(section.id)} />
+            <View style={styles.sectionContent}>
+              {section.reports.map((report) => (
+                <ReportHubRow
+                  key={report.id}
+                  report={report}
+                  pinned={prefs.pinned.includes(report.id)}
+                  onOpen={() => openReport(report)}
+                  onTogglePin={() => toggleReportPin(report)}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
       </ScrollView>
     </View>
   );

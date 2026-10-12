@@ -11,12 +11,16 @@ import { t as translate } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { DATE_PRESETS, resolveDateRange } from '../../datePresets';
-import type { DatePresetId, DateRangeValue } from '../../types';
+import type { DatePreset, DatePresetId, DateRangeValue } from '../../types';
 import { ChoiceChips } from '../ChoiceChips';
 
 export interface DateRangeEditorProps {
   value: DateRangeValue | undefined;
   onChange: (value: DateRangeValue | undefined) => void;
+  /** The quick ranges offered. Defaults to the lists' own. */
+  presets?: DatePreset[];
+  /** The range cannot be empty: tapping the chosen quick range again keeps it. */
+  required?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -42,7 +46,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
 type End = 'from' | 'to';
 
-export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
+export function DateRangeEditor({ value, onChange, presets = DATE_PRESETS, required = false }: DateRangeEditorProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [iosEnd, setIosEnd] = useState<End | null>(null);
@@ -99,9 +103,9 @@ export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
     <View style={styles.wrap}>
       <ChoiceChips<DatePresetId>
         accessibilityLabel={translate('filters.date.quickRanges')}
-        options={DATE_PRESETS.map(preset => ({ value: preset.id, label: preset.label }))}
+        options={presets.map(preset => ({ value: preset.id, label: preset.label }))}
         value={value?.preset}
-        onChange={preset => onChange(value?.preset === preset ? undefined : { preset })}
+        onChange={preset => onChange(value?.preset === preset && !required ? undefined : { preset })}
       />
       <View style={styles.row}>
         {dayButton('from')}

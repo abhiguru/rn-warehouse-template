@@ -40,8 +40,6 @@ export const nav: Translation<typeof source> = {
     subtitleStaff: 'કામગીરી અને વેપારીના અહેવાલ જુઓ',
     subtitleCustomer: 'તમારા સ્ટોકના અહેવાલ જુઓ',
     profileAndSettings: 'પ્રોફાઇલ અને સેટિંગ',
-    inventorySection: 'સ્ટોકના અહેવાલ',
-    operationsSection: 'કામગીરીના અહેવાલ',
     cardLabel: '{{title}}. {{description}}',
     descriptions: {
       customerActivity: 'વેપારીની બધી કામગીરી એક જગ્યાએ જુઓ',

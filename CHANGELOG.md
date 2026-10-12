@@ -1,5 +1,241 @@
 # Changelog
 
+## Unreleased — reports (2026-10-12)
+
+No backend change is needed for the entries below unless an entry says so
+(item stock summary, report PDFs).
+
+- **Reports tab: pinned, recent and categories.** The tab now shows the reports
+  you pinned (in the order you pinned them), up to three you opened last, then
+  every report you may open under Stock, Movement, Financial and Operations. A
+  star at the end of each row pins or unpins the report (filled when pinned;
+  the screen reader says "Pin … to the top" / "Unpin …" and whether it is
+  selected). Pins and recent reports are kept per facility and account. A
+  pinned or recent report that the account's role may not open, such as the
+  operations dashboard for staff and customer accounts, is never shown.
+- **Stock age bars (stock aging, customer activity).** Both reports draw the
+  stock-age buckets with one shared component, `AgingBucketBar`. Each bar shows
+  its bucket's share of all stock, so the four bars add up to 100%, instead of
+  its share of the largest bucket. The share is worked out from quantities on
+  both screens: the stock aging report used to show the backend's share of
+  stock entries, so its percentages change. Every quantity shows its unit, a
+  screen reader reads the group as one summary with a sentence per bucket, and
+  a customer with no stock sees "No stock yet". The "Over 1 year" KPI is
+  unchanged for now: its backend count uses more than 365 days while the last
+  bucket is over 364 days; the stock aging rebuild aligns it.
+- **Stock reports share one item card.** The stock summary and the item stock
+  summary draw their items with `StockItemCard` instead of two copies. GRN
+  numbers are shown in full and wrap instead of being cut off. Opening an item
+  animates for 200 ms instead of 300 ms, and not at all with Reduce Motion on.
+  The item header tells screen readers whether it is open; a GRN row that opens
+  the GRN reads as one button with the hint "Opens the GRN", and a row that
+  cannot open has no chevron. In the item stock summary the item's packaging
+  and GRN count share one line, and "Low stock" is the only tag.
+
+Fixes on the report screens:
+
+- **Invoice history** now shows its figures (invoices and net amount for all
+  customers; invoices, paid and pending for one customer). They were worked
+  out but only ever drawn as a loading placeholder.
+- **Stock summary**: a customer with nothing in stock can see their
+  out-of-stock items. The "no stock" message used to replace the whole screen.
+- **Item stock summary**: a search typed while a load was in flight is no
+  longer dropped, and an older answer can no longer replace a newer one. A
+  GRN list that failed to load says so and offers "Try again"; it used to read
+  "No GRNs with this item in stock".
+- **Dispatch activity** asks the server once on opening, not twice, and no
+  longer asks for every customer when it was opened for one.
+- Dispatch activity, GRN activity and Invoice history show a failure the same
+  way (error tone, one "Try again" that shows the loading state), and their
+  "no customers match" state offers "Clear search".
+- Three texts that were always English follow the app's language.
+- The eight reports are listed in one table
+  (`src/features/reports/reportRegistry.ts`) that the Reports tab and the
+  route declarations both read; all eight routes are now declared.
+
+**GRN activity report** is the first report on the shared report layout
+(`ReportScaffold`). Its period is a chip in the filter bar next to a sort, and
+both are remembered after the app is closed; a search finds customers, or GRNs
+by number, sender, vehicle, invoice or item, with the match in bold, and one
+customer's GRNs can be narrowed to invoiced or not. A line under the figures
+gives the dates, how many rows are shown of how many and when they were read;
+a failed refresh keeps the rows and says they are not current. A customer
+opens on a page of its own, so the phone's back button returns to the list,
+and the customer opened last is offered above the list. Date headings appear
+only while GRNs are sorted by date.
+
+The other report screens on the shared layer, and the work they build on:
+
+- **Stock summary on the shared report layout.** The stock summary now has the
+  same layout as GRN activity: search and sort (stock, items, GRNs, name for
+  customers; stock, name for items), "Clear all" that keeps the sort, the sort
+  remembered per facility and account, the last-opened customer shown above
+  the list, and pull to refresh that keeps the old figures with a "Couldn't
+  update" note. A customer's items can be searched by item name or GRN number;
+  a closed item names the GRN it matched. The out-of-stock section (last 360
+  days) still shows when nothing is in stock. Sharing a stock PDF keeps each
+  customer's button busy on its own, says so in an alert when the PDF can't be
+  made or shared, and keeps letters of any script in the file name. The
+  per-row share button is its own target for screen readers. No backend
+  change.
+- **Stock aging.** Rebuilt on the shared report layer. Customers can be
+  searched by name and sorted by average age, stock or name; the sort is
+  remembered, and the last opened customer is offered. One customer's items
+  can be searched by item or GRN number, sorted by age, stock or item, and
+  filtered by age bucket. Each GRN line now opens on its own (two lines of one
+  GRN used to open together). The item tag reads "Oldest N days" and the
+  customer tag "Average: \<bucket\>". Details stack at large text. **KPI
+  change:** the oldest-stock figure is now `by_bucket['364+'].item_count`,
+  labelled "Over 364 days", so it matches the bar; it used to be the RPC's
+  `items_over_365_days`, which counts from 365 days. No backend change.
+- **Customer activity.** Rebuilt on the shared report layer, with the period
+  chip, a customer search, and sorts by last active, stock, invoiced amount or
+  name. The customer dashboard keeps the stock trend: full-screen chart or
+  table, chart/table switch now full touch targets, y-axis numbers formatted
+  with a unit, and an empty state. Quick-access cards open their report for
+  the customer and are counted from the period totals. GRN, dispatch and
+  invoice preview rows open the document. No backend change.
+- **Item stock summary.** Now on the shared report layer. The server searches,
+  sorts (item name, stock, received quantity, GRN count) and pages it, and the
+  Stock figure is the server's total for the whole filtered list. **Needs
+  backend migration 52** (`get_item_wise_stock_list` with
+  `p_sort_by`/`p_sort_order` and `data.summary`); deploy the backend first.
+  Against an older backend the app asks once more without the sort and stops
+  asking for that facility; it then sorts only the items already loaded and
+  shows "—" for Stock until every item is loaded. "Showing N of M", a
+  load-more footer with "Try again", and the GRNs read when a card opens all
+  work as before.
+- **Operations dashboard.** Now on the shared report layer, with the period
+  chip the other rebuilt reports use instead of its own period selector. Recent
+  activity rows no longer look tappable (they carry no document id), and their
+  reference reads the same on screen and to a screen reader. Still for
+  administrators and supervisors only; a refusal from the server shows its
+  reason. No backend change.
+- **Dispatch activity** is built on the shared report layer: the period, search
+  and sort are in the filter bar, and the period and sort are remembered; a
+  warehouse role opens a customer as its own page, and the customer opened last
+  is one tap away; customers sort by bags, dispatches or name; a customer's
+  dispatches search by number, supervisor and item names (a closed card names
+  the item it matched) and sort by date, number, bags or weight, with date
+  headings only under the date sort; opening a dispatch is its own target
+  beside the card, not a button inside it; an item row is read with its weight,
+  the "of N" quantity, rack and mark; an empty report no longer suggests a
+  longer period when the longest is chosen. No backend change.
+- **Invoice history** is built on the shared report layer: each customer row
+  shows its net amount, and customers sort by net amount, invoices or name; a
+  customer's invoices search by invoice number, GRN and item names, sort by
+  date, number or net amount, and can be narrowed to paid or pending; the
+  figures (invoices, paid, pending) always cover the whole period; the monthly
+  breakdown is a table with the month column fixed and a totals row, collapsed
+  until opened; a payment status other than paid or pending shows as "Unknown"
+  instead of "Pending"; opening a customer from a link no longer shows two
+  placeholder tiles before the three real ones. No backend change.
+- **Report PDFs.** Every report except the operations dashboard can be shared
+  as a PDF with "Share PDF" in its header, for all customers and for one
+  customer; the PDF follows the period and the sort on screen (a sort the PDF
+  has no column for, such as a dispatch's weight, leaves the PDF in its own
+  order). `generateReportPDF` in `src/services/pdf-service.ts` calls the
+  backend's `generate-report-pdf`; `useReportExport` runs the export and
+  `reportPdfSort` (`src/features/reports/reportPdfSort.ts`) holds the one table
+  of sort names. Failures are shown in a dialog in the app's language; a share
+  that fails gives the share sheet's own reason (for example "Sharing is not
+  available on this device"). File names keep letters of any script (shared PDF
+  file names now keep letters, vowel signs and digits of any script, capped at
+  100 characters and 200 bytes), and a name with none falls back to the start
+  of the customer id. **Needs the backend release with migrations 52–53 and the
+  `generate-report-pdf` function.** With an older backend the first export
+  shows "This facility's server needs an update before reports can be shared
+  as PDF." and the export action is hidden for that facility until the app is
+  restarted; the stock summary instead falls back to the facility's existing
+  stock PDF (`generate-customer-stock-pdf`) for a customer's row and for one
+  customer's header, with no message, and hides only the all-customers PDF,
+  which has no older version.
+- **Refusals in any language.** Every report refusal carries a machine code
+  (the server's 42501, else `ACCESS_REFUSED`), and the operations dashboard's
+  `STAFF_ONLY` is recognised as a refusal too, so a refusal shown in Gujarati
+  without a server code is still treated as one.
+- **Last figures kept on the phone.** Reports opened after the app was closed
+  show their last figures at once, with the time they were given, and refresh
+  behind them; if the refresh fails the figures stay with the "not updated"
+  message. The copy is kept on the phone per facility and account for at most
+  three days, skips very large answers, and is removed with the other caches
+  at sign-out and facility switch. A refusal from the facility (the account
+  lost its role or the customer) removes the kept answer and drops the figures
+  on screen, so the report shows only the refusal.
+- **Cleanup.** Removed the report components no screen used after the rebuild
+  (`PeriodSelector` with `getDateRangeForPeriod`, `ReportCustomerSearch`,
+  `ReportCustomerScope`), the old `ReportPeriod`/`CustomerActivityPeriod`/
+  `ReportDefinition`/`ReportCategory` types in `src/types/report.types.ts`, and
+  the English and Gujarati texts only they used. The report registry test now
+  renders the root stack instead of matching its source text.
+
+Review fixes (2026-10-12):
+
+- **Stock screens.**
+  - Stock aging: the oldest-stock figure now reads "Items over 364 days" and
+    matches the red bar; customer rows no longer show a separate "over 1 year"
+    count, and their average age wraps instead of being cut.
+  - Stock summary: the items that ran out are rows of the list under an "Out of
+    stock" header that opens and closes them, so long lists scroll smoothly; a
+    search that finds only items that ran out says so and opens them; the
+    header action reads "Share PDF" and the quantity figure "Stock", as on the
+    other reports; an item with no GRNs says so when opened.
+  - Stock reports: a GRN's package mark is shown in full in the row's details
+    instead of in a tag that could cut it.
+- **The shared report layer and filter kit.**
+  - "Last updated" gives the date as well as the time for figures kept from an
+    earlier day, and is never cut off; screen readers announce the "Showing X
+    of Y" count after a search.
+  - Every filter chip, choice chip and recent-search chip can be tapped across
+    the full 48 dp (Android) / 44 pt (iOS) target, not only the 36 dp pill; the
+    filter bar keeps one height.
+  - While a report first loads, screen readers hear "Loading figures" once.
+  - The sort chip's spoken label uses the full field name.
+  - Filter sheets and the full-screen stock trend chart fade instead of
+    sliding when Reduce Motion is on.
+  - With large text (above 1.2×) the figure tiles show two across.
+  - The last row of a report and of the customer picker is no longer hidden
+    under the system navigation bar; empty states can offer a button, and
+    period reports offer "Show last 420 days" until the longest period is
+    chosen.
+  - The search field keeps its clear button during a background refresh; the
+    spinner shows only for a server search (item stock), also while a new
+    search is first answered.
+  - A double tap on a report or a customer row opens it once.
+- **Item stock summary, report queries, kept figures and PDFs.**
+  - Item stock summary: opening an item no longer closes when an earlier
+    item's GRNs answer late, after a search or a pull to refresh.
+  - Item stock summary: an opened item says "Showing 100 of N" under its GRNs
+    when it has more than the 100 shown.
+  - Item stock summary: the Items and Stock figures stay those of every item
+    while a search is typed.
+  - Item stock summary: a pull to refresh keeps the items loaded below the
+    first page until the new first page arrives, and keeps them if the refresh
+    fails; no next page is loaded against a page still being refreshed or
+    shown from the phone.
+  - Item stock summary on a facility server without migration 52: a note says
+    the order covers only the items loaded, and Share PDF is not offered.
+  - Reports keep only first pages without a search on the phone, so other
+    reports' saved figures are no longer pushed out.
+  - Reports show their own wording, not the server's or the system's, when a
+    report cannot be loaded; access refusals still show the facility's reason.
+  - When the facility refuses a customer's report, that customer's saved
+    figures for every period are removed, not only the period asked for.
+  - Share PDF says how many rows a shortened PDF holds before sharing it, and
+    shows plain wording instead of system error text when sharing fails.
+  - PDF file names for all customers say "All customers" in the app's
+    language.
+- **Shared report parts and wording.** Every report says "No customer linked"
+  in the same words when a customer account has none (it was worded four
+  ways); GRN activity's failure reads "Couldn't load GRN activity. Check your
+  connection and try again." instead of "Failed to fetch GRN activity";
+  customer activity's quick-access cards and stock trend axis count bags, as
+  every other report does, instead of "units"; and a stock trend whose months
+  are all 0 says "Highest 0" instead of "Highest 1". The no-customer state,
+  the date heading over a day's rows and the header's "Share PDF" are one
+  shared part each (`ReportNoCustomer`, `ReportDateHeading`,
+  `exportHeaderActions`) instead of a copy in each screen.
+
 ## Unreleased — central login in the app (2026-10-12)
 
 **Off unless the build sets the central origin** (`EXPO_PUBLIC_CENTRAL_ORIGIN`). Without it

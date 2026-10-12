@@ -7,8 +7,9 @@
 import React, { useEffect, useState } from 'react';
 import { t } from '@/i18n';
 import type { CountableFilterList } from '../configs';
-import { isFieldActive } from '../filterModel';
-import type { FilterValue, SortState } from '../types';
+import { resolveDateRange } from '../datePresets';
+import { isFieldActive, isRequiredField } from '../filterModel';
+import type { DateRangeValue, FilterValue, SortState } from '../types';
 import { useFilterResultCount } from '../useFilterResultCount';
 import type { useListFilters } from '../useListFilters';
 import { ApplyFiltersButton } from './ApplyFiltersButton';
@@ -79,18 +80,33 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
     );
   }
 
+  const required = isRequiredField(field);
+  // A required range needs both of its days before it can replace the one in effect.
+  const draftRange = required ? resolveDateRange(draft as DateRangeValue | undefined) : undefined;
+  const incomplete = required && !(draftRange?.from && draftRange.to);
+  const change = (value: FilterValue | undefined) => {
+    // A quick range of a field that asks for it applies on the tap, like a choice; typed days stay a draft.
+    if (field.kind === 'dateRange' && field.applyPresetOnTap && (value as DateRangeValue | undefined)?.preset) {
+      filters.setField(field.key, value);
+      onClose();
+      return;
+    }
+    setDraft(value);
+  };
+
   return (
     <SheetFrame
       visible
       title={field.label}
       onClose={onClose}
       tall={field.kind === 'picker'}
-      action={{ label: t('common.reset'), onPress: () => { setDraft(undefined); setInvalid(false); setResets(count => count + 1); }, disabled: !isFieldActive(field, draft) }}
+      // A required range has nothing to reset to.
+      action={required ? undefined : { label: t('common.reset'), onPress: () => { setDraft(undefined); setInvalid(false); setResets(count => count + 1); }, disabled: !isFieldActive(field, draft) }}
       footer={
         <ApplyFiltersButton
           result={result}
           noun={config.noun}
-          disabled={invalid}
+          disabled={invalid || incomplete}
           onPress={() => {
             filters.setField(field.key, draft);
             onClose();
@@ -99,7 +115,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
       }
     >
       {/* Remount on Reset so editors that keep typed text start empty; never while typing, which would drop the focus. */}
-      <FieldEditor key={resets} field={field} value={draft} onChange={setDraft} ctx={filters.ctx} onInvalid={setInvalid} />
+      <FieldEditor key={resets} field={field} value={draft} onChange={change} ctx={filters.ctx} onInvalid={setInvalid} />
     </SheetFrame>
   );
 }

@@ -10,7 +10,22 @@ export { KPIGrid, type KPIItem } from './KPIGrid';
 
 // Layout & Navigation
 export { ReportHeader, type ReportHeaderAction } from './ReportHeader';
-export { PeriodSelector, getDateRangeForPeriod } from './PeriodSelector';
+
+// The one layout every report uses
+export { ReportScaffold, type ReportScaffoldProps, type ReportEmptyAction } from './ReportScaffold';
+export { ReportNoCustomer, type ReportNoCustomerProps } from './ReportNoCustomer';
+export { ReportDateHeading, type ReportDateHeadingProps } from './ReportDateHeading';
+export { ReportStatusLine, type ReportStatusLineProps } from './ReportStatusLine';
+
+// The Reports tab
+export { ReportHubRow, type ReportHubRowProps } from './ReportHubRow';
+export {
+  reportHubSections,
+  mayOpenReport,
+  HUB_RECENT_LIMIT,
+  type ReportHubSection,
+  type ReportHubSectionId,
+} from './reportHubSections';
 
 // States
 export { ReportEmptyState } from './ReportEmptyState';
@@ -20,11 +35,23 @@ export { FioriDataTable, type DataTableColumn, type DataTableProps } from './Fio
 
 // List Items
 export { ReportCustomerCard, type ReportCustomerCardProps } from './ReportCustomerCard';
+export { ReportLastCustomer, type ReportLastCustomerProps } from './ReportLastCustomer';
 
 export { FactLines, joinFacts, stacksFacts } from './FactLines';
 
-// Search
-export { ReportCustomerSearch, type ReportCustomerSearchProps } from './ReportCustomerSearch';
+// The customer a customer account with several customers picks first
+export { ReportCustomerPicker, type ReportCustomerPickerProps } from './ReportCustomerPicker';
 
-// Whose data a report shows (role and assigned customers)
-export { ReportCustomerScope, type ReportScope, type ReportCustomerScopeProps } from './ReportCustomerScope';
+// Shared rows of the stock reports
+export { AgingBucketBar, agingBucketsFrom, agingBucketIdFromKey, agingBucketLabel, AGING_BUCKET_IDS, AGING_BUCKET_STATUS, type AgingBucket, type AgingBucketId, type AgingBucketBarProps } from './AgingBucketBar';
+export { StockItemCard, StockGRNRow, isLowStock, LOW_STOCK_PERCENT, EXPAND_ANIMATION, animateExpand } from './StockItemCard';
+export type { StockItemCardProps, StockGRNRowData, StockGRNRowProps, StockGRNState } from './StockItemCard';
+
+// The status tag of an invoice's payment (invoice history)
+export { invoicePaymentStatus, type InvoicePaymentStatusInfo } from './invoicePaymentStatus';
+
+// Customer activity's stock trend (chart or table)
+export { StockTrendChart, type StockTrendChartProps } from './StockTrendChart';
+
+// The footer of a paged report (item stock summary)
+export { ReportLoadMoreFooter, type ReportLoadMoreFooterProps, type ReportLoadMoreState } from './ReportLoadMoreFooter';

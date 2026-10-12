@@ -28,6 +28,7 @@ import * as invoiceHistory from '@/services/reporting/invoice-history-service';
 import { StockService } from '@/services/stock-service';
 import { t as translate } from '@/i18n';
 import { getAllGRNItems, getCustomerGRNItems } from '@/services/grn-service';
+import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 
 let mockState: Record<string, unknown> = {};
 let mockParams: Record<string, string> = {};
@@ -62,6 +63,11 @@ jest.mock('@/config/supabaseConfig', () => ({
   }),
 }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
+// GRN activity is drawn by ReportScaffold (a FlashList) and keeps its choices per facility.
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+jest.mock('@/config/operatorServer', () => ({
+  getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+}));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 jest.mock('@/services/pdf-service', () => ({ generateCustomerStockPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -120,10 +126,17 @@ const REPORTS: {
 ];
 
 let tree: ReactTestRenderer | undefined;
+const signedIn = (userProfile: unknown) => ({
+  theme: { preference: 'light', brand: 'orange' },
+  auth: { userProfile },
+  listFilters: { lists: {} },
+  reportPrefs: { byScope: {} },
+});
 async function open(Screen: React.ComponentType, account: Account) {
-  mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: ACCOUNTS[account] } };
+  mockState = signedIn(ACCOUNTS[account]);
   await act(async () => {
     tree = create(<Screen />);
+    await settleQueries();
   });
   return tree!;
 }
@@ -131,12 +144,22 @@ const pickerRows = () => tree!.root.findAll((node) => typeof node.props.testID =
 const pick = async (customerId: string) => {
   await act(async () => {
     tree!.root.findAll((node) => node.props.testID === `report-customer-${customerId}` && typeof node.props.onPress === 'function')[0].props.onPress();
+    await settleQueries();
   });
 };
 const texts = () => tree!.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
 
+// Reports on the shared layer read through the query client: answers are delivered at once,
+// and none is kept from one test to the next.
+let restoreQueries: () => void;
+beforeAll(() => {
+  restoreQueries = makeQueryUpdatesImmediate();
+});
+afterAll(() => restoreQueries());
+
 beforeEach(() => {
   jest.clearAllMocks();
+  forgetQueries();
   mockParams = {};
   jest.mocked(StockService.getItemWiseStockList).mockResolvedValue({
     success: true,
@@ -158,7 +181,7 @@ afterEach(async () => {
 describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
   it.each(WAREHOUSE)('%s gets the all-customers request', async (account) => {
     await open(Screen, account);
-    // (Dispatch activity asks twice on opening; how often is not this test's subject.)
+    // (How often is not this test's subject: see ReportRequests.test.tsx.)
     expect(all).toHaveBeenCalled();
     expect(one).not.toHaveBeenCalled();
     expect(pickerRows()).toHaveLength(0);
@@ -192,9 +215,9 @@ describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
 
 describe('the picker for a profile as sign-in stores it (assigned ids, no names)', () => {
   // verifyOTP and the profile reload store the user row plus assignedCustomerIds only.
-  const signedIn = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
+  const idsOnly = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
   const openSignedIn = async () => {
-    mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: signedIn } };
+    mockState = signedIn(idsOnly);
     await act(async () => {
       tree = create(<StockSummaryScreen />);
     });
@@ -283,6 +306,32 @@ describe('a report opened for a named customer (from Customer activity)', () => 
   });
 });
 
+describe('the arguments of stock aging and customer activity', () => {
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+  it('stock aging asks for today\'s stock: no argument for every customer, the id alone for one', async () => {
+    await open(StockAgingScreen, 'staff');
+    expect(jest.mocked(stockAging.getAllStockAging).mock.calls).toEqual([[]]);
+    act(() => tree!.unmount());
+    tree = undefined;
+    await open(StockAgingScreen, 'customer with one customer');
+    expect(jest.mocked(stockAging.getCustomerStockAging).mock.calls).toEqual([[{ customerId: 'c1' }]]);
+  });
+
+  it('customer activity asks for the two days of its period, and the customer for one', async () => {
+    await open(CustomerActivityScreen, 'staff');
+    const [all] = jest.mocked(customerActivity.getAllCustomerActivity).mock.calls[0];
+    expect(Object.keys(all ?? {}).sort()).toEqual(['fromDate', 'toDate']);
+    expect(all?.fromDate).toMatch(DAY);
+    act(() => tree!.unmount());
+    tree = undefined;
+    await open(CustomerActivityScreen, 'customer with one customer');
+    const [one] = jest.mocked(customerActivity.getCustomerActivityDetail).mock.calls[0];
+    expect(Object.keys(one).sort()).toEqual(['customerId', 'fromDate', 'toDate']);
+    expect(one).toEqual({ customerId: 'c1', fromDate: all?.fromDate, toDate: all?.toDate });
+  });
+});
+
 describe('operations dashboard', () => {
   it.each([
     ['admin', true],
@@ -293,6 +342,9 @@ describe('operations dashboard', () => {
   ] as [Account, boolean][])('%s: request sent %s', async (account, sent) => {
     await open(OperationsDashboardScreen, account);
     expect(jest.mocked(reporting.getOperationsDashboard).mock.calls.length > 0).toBe(sent);
+    // Who is not offered it sees why, not a failed report; who is sees the refusal as an error.
+    expect(texts().includes('Staff only')).toBe(!sent);
+    expect(texts().includes("Couldn't load the operations dashboard")).toBe(sent);
   });
 });
 

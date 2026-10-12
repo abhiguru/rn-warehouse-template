@@ -55,6 +55,7 @@ export const filters = {
     last7: 'Last 7 days',
     thisMonth: 'This month',
     lastMonth: 'Last month',
+    thisFinancialYear: 'This financial year',
   },
   // The apply button, per thing counted
   results: {
@@ -189,12 +190,16 @@ export const filters = {
       dispatch: 'No dispatches match "{{search}}"',
       invoice: 'No invoices match "{{search}}"',
       order: 'No orders match "{{search}}"',
+      customer: 'No customers match "{{search}}"',
+      item: 'No items match "{{search}}"',
     },
     noMatchFilters: {
       grn: 'No GRNs match your filters',
       dispatch: 'No dispatches match your filters',
       invoice: 'No invoices match your filters',
       order: 'No orders match your filters',
+      customer: 'No customers match your filters',
+      item: 'No items match your filters',
     },
     searchHint: 'Check the spelling, try fewer words, or remove a filter.',
     filterHint: 'Try removing a filter or clearing them all.',

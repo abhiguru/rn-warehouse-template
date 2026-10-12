@@ -28,6 +28,7 @@ export const reports = {
     myCustomers: 'My customers',
     chooseCustomer: 'Choose a customer',
     chooseCustomerHint: 'Shows this report for the customer',
+    changeCustomer: 'Change customer',
     unnamedCustomer: 'Customer',
     customerNamesFailed: 'Customer names could not be loaded',
     customerNamesFailedDescription: 'Check the connection and try again.',
@@ -39,16 +40,48 @@ export const reports = {
     noStockForCustomerDescription: 'Stock appears here once goods are received for this customer.',
     customerIdRequired: 'Customer ID is required',
   },
+  // The shared report layout (ReportScaffold)
+  scaffold: {
+    updated: 'Last updated {{time}}',
+    showing: 'Showing {{shown}} of {{total}}',
+    notUpdated: "Couldn't update. These figures were loaded earlier.",
+    // The one row above a customers list that opens the customer opened last
+    lastOpened: 'Last opened',
+    lastOpenedCustomer: 'Last opened: {{name}}',
+  },
+  // The Reports tab (app/(tabs)/reports.tsx). The Stock section is `common.stock`.
+  hub: {
+    pinned: 'Pinned',
+    recent: 'Recent',
+    movement: 'Movement',
+    financial: 'Financial',
+    operations: 'Operations',
+    pin: 'Pin {{title}} to the top',
+    unpin: 'Unpin {{title}}',
+  },
+  // Sort options and filters of the report screens (src/features/filters/configs/reports)
+  sort: {
+    grns: 'GRNs',
+    latestGrn: 'Latest GRN',
+    stockLeft: 'Stock left',
+    age: 'Age',
+    lastActive: 'Last active',
+    invoicedAmount: 'Invoiced amount',
+  },
+  filters: {
+    invoicing: 'Invoicing',
+    payment: 'Payment',
+  },
   period: {
-    groupLabel: 'Report period',
-    days: '{{count}} days',
+    label: 'Period',
     lastDays: 'Last {{count}} days',
-    customRange: 'Custom date range',
-    custom: 'Custom',
-    dateRange: '{{from}} – {{to}}',
+    /** The button of a period report's empty state, until the longest period is chosen. */
+    showLastDays: 'Show last {{count}} days',
   },
   components: {
     kpiLoading: '{{label}}, loading',
+    // The figure tiles of a report while its first answer is read: one element, not one per tile
+    kpisLoading: 'Loading figures',
     kpiValue: '{{label}}: {{value}}',
     kpiValueUnit: '{{label}}: {{value}} {{unit}}',
     trendUp: 'up {{value}}',
@@ -57,29 +90,31 @@ export const reports = {
     sharePdfFor: 'Share PDF for {{name}}',
     valueWithLabel: '{{value}} {{label}}',
     searchCustomers: 'Search customers',
-    searching: 'Searching',
-    otherCustomers: 'Other customers',
     summary: 'Summary',
   },
   stockSummary: {
     loadError: "Couldn't load the stock summary. Check your connection and try again.",
-    itemA11y: '{{name}}, {{units}} units, {{grns}}',
-    itemA11yOutOfStock: '{{name}}, out of stock, {{grns}}',
     showsGrnsHint: 'Shows the GRNs for this item',
     grnsDispatched: '{{grns}} dispatched',
     emptiedOn: 'Emptied {{date}}',
-    stockOf: '{{stock}} of {{total}}',
     weightEach: '{{weight}} each',
-    pdfErrorTitle: "Couldn't create the stock PDF",
-    unitsInStock: 'Units in stock',
+    errorTitle: "Couldn't load the stock summary",
+    searchItems: 'Search items or GRNs',
     grnsWithStock: 'GRNs with stock',
     oldestStock: 'Oldest stock {{date}}',
-    customersWithStock: 'Customers with stock',
     opensCustomerHint: "Opens this customer's stock",
-    sharePdf: 'Share stock PDF',
-    itemsInStorage: 'Items in storage',
     outOfStockA11y: 'Out of stock, {{items}}, last 360 days',
     last360Days: 'Last 360 days',
+    // A search that finds no item in stock but finds some that ran out: the section opens under it.
+    noStockMatch: 'No items in stock match "{{search}}"',
+    emptiedMatchBelow: {
+      one: '{{count}} emptied item matches below.',
+      other: '{{count}} emptied items match below.',
+    },
+    // The lot's package mark, as a fact of its GRN row.
+    packageMark: 'Mark {{mark}}',
+    // An opened item whose GRNs list is empty (in stock: itemStockSummary.noGrnsInStock).
+    noGrnsToShow: 'No GRNs to show for this item.',
     service: {
       fetchFailed: 'Failed to fetch stock summary',
       noData: 'No stock data available',
@@ -92,15 +127,17 @@ export const reports = {
     loadError: "Couldn't load items. Check your connection and try again.",
     stockOfInStock: '{{stock}} of {{total}} in stock',
     ofTotal: 'of {{total}}',
-    showsGrnsHint: 'Shows the GRNs holding this item',
     loadingGrns: 'Loading GRNs',
     noGrnsInStock: 'No GRNs with this item in stock.',
+    grnsLoadError: "Couldn't load the GRNs for this item.",
     searchItems: 'Search items',
     loadingMore: 'Loading more items',
-    loadingItems: 'Loading items',
-    noMatchingItems: 'No matching items',
-    noItemsMatch: 'No items match "{{search}}". Try fewer letters.',
     itemsAppear: 'Items appear here once goods are received.',
+    errorTitle: "Couldn't load the item stock summary",
+    loadMore: 'Show more items',
+    loadMoreError: "Couldn't load more items.",
+    // A backend that cannot sort: the order on screen covers only the items loaded so far.
+    sortedAmongLoaded: 'Sorted among the {{count}} items loaded',
   },
   stockAging: {
     loadError: "Couldn't load stock aging. Check your connection and try again.",
@@ -108,8 +145,10 @@ export const reports = {
     bucket121to240: '121–240 days',
     bucket241to364: '241–364 days',
     bucketOver364: 'Over 364 days',
+    // The KPI of the over-364 bucket: a count of items, in the bucket's words.
+    itemsOver364: 'Items over 364 days',
     ageOld: '{{age}} old',
-    bucketA11y: '{{label}}: {{percent}}%, {{units}} units',
+    bucketShareA11y: '{{label}}: {{share}} of all stock, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}} units, oldest {{age}}',
     entryA11y: '{{title}}, received {{date}}, {{age}} in storage, {{units}} units',
     receivedQuantity: 'Received quantity',
@@ -120,13 +159,17 @@ export const reports = {
     viewGrn: 'View GRN {{number}}',
     averageAge: 'Average age',
     daysUnit: 'days',
-    overOneYear: 'Over 1 year',
     stockAge: 'Stock age',
     customersByStockAge: 'Customers by stock age',
     averageAgeOf: 'Average age {{age}}',
-    overOneYearCount: '{{over}} over 1 year',
     opensCustomerHint: "Opens this customer's stock aging",
     itemsHighestFirst: 'Items, highest stock first',
+    errorTitle: "Couldn't load stock aging",
+    // The age on an item's tag is that of its oldest GRN line.
+    oldestAge: 'Oldest {{age}}',
+    // A customer's tag names the bucket of the customer's average stock age.
+    averageBucket: 'Average: {{bucket}}',
+    searchItems: 'Search items or GRN numbers',
     service: {
       fetchFailed: 'Failed to fetch stock aging report',
       noData: 'No stock aging data found',
@@ -154,6 +197,7 @@ export const reports = {
     dispatchesPerDay: 'Dispatches per day',
     recentActivity: 'Recent activity',
     noActivity: 'No GRNs or dispatches in this period. New activity appears here.',
+    errorTitle: "Couldn't load the operations dashboard",
     service: {
       accessDenied: 'Access denied. This report is for staff only.',
       fetchFailed: 'Failed to fetch operations dashboard',
@@ -167,13 +211,14 @@ export const reports = {
     retrievedDetail: 'Customer activity detail retrieved successfully',
     listError: "Couldn't load customer activity. Check your connection and try again.",
     detailError: "Couldn't load this customer's activity. Check your connection and try again.",
-    noCustomer: 'No customer is linked to your account. Ask your facility to link one.',
-    noCustomerTitle: 'No customer linked',
     errorTitle: 'Something went wrong',
     allCustomers: 'All customers',
     myCustomers: 'My customers',
     emptyTitle: 'No customer activity',
     emptyDescription: 'No GRNs, dispatches or invoices in this period. Try a longer period.',
+    // The same at the longest period, which has no longer period to try.
+    emptyDescriptionLongest: 'No GRNs, dispatches or invoices in this period.',
+    loadFailedTitle: "Couldn't load customer activity",
     // Customer rows
     activeToday: 'Active today',
     lastActive: 'Last active {{date}}',
@@ -187,16 +232,6 @@ export const reports = {
     charts: 'Charts',
     stockAge: 'Stock age',
     quickAccess: 'Quick access',
-    // Stock age buckets
-    aging: {
-      days0to120: '0–120 days',
-      days121to240: '121–240 days',
-      days241to364: '241–364 days',
-      over364: 'Over 364 days',
-      other: '{{bucket}} days',
-      percent: '{{percent}}%',
-      label: '{{label}}: {{percent}}%, {{quantity}} units',
-    },
     // Stock level trend chart
     trend: {
       title: 'Stock level trend',
@@ -219,6 +254,7 @@ export const reports = {
       periodLabel: 'Period {{value}}',
       summaryOne: 'Stock at the end of {{month}}: {{stock}}.',
       summaryRange: 'Stock went from {{first}} in {{firstMonth}} to {{latest}} in {{lastMonth}}. Highest {{highest}}.',
+      empty: 'No stock levels to show for this period.',
     },
     // Quick access cards
     viewAll: 'View all',
@@ -244,15 +280,9 @@ export const reports = {
     retrieved: 'Dispatch activity retrieved successfully',
     retrievedAll: 'All-customers dispatch activity retrieved successfully',
     loadError: "Couldn't load dispatch activity. Check your connection and try again.",
-    noCustomer: 'No customer is linked to your account. Ask your facility to add one.',
     errorTitle: "Couldn't load dispatch activity",
-    retryLabel: 'Try loading dispatch activity again',
-    dateRange: '{{from}} – {{to}}',
     bagsDispatched: 'Bags dispatched',
-    customersWithDispatches: 'Customers with dispatches',
     customerHint: "Shows this customer's dispatches",
-    noMatch: 'No customers match "{{search}}"',
-    tryFewerLetters: 'Try fewer letters.',
     emptyTitle: 'No dispatches in this period',
     emptyDescription: 'Choose a longer period to see more dispatch activity.',
     emptyCustomerDescription: 'This customer has no dispatches in the selected period. Choose a longer period to see more.',
@@ -263,7 +293,8 @@ export const reports = {
     bagUnit: { one: 'bag', other: 'bags' },
     openDispatch: 'Open dispatch {{number}}',
     ofQuantity: 'of {{quantity}}',
-    itemLabel: '{{item}}, {{bags}}, GRN {{grn}}',
+    // An item row read aloud: "20 bags of 60"
+    bagsOf: '{{bags}} of {{quantity}}',
     sourceGrnHint: 'Opens the source GRN',
     errors: {
       fetchFailed: 'Failed to fetch dispatch activity',
@@ -275,11 +306,8 @@ export const reports = {
     // Service results (not shown on a screen today)
     retrieved: 'GRN activity retrieved successfully',
     retrievedAll: 'All-customers GRN activity retrieved successfully',
-    loading: 'Loading GRN activity',
-    noCustomerTitle: 'No customer linked to your account',
-    noCustomerDescription: 'Ask your facility to link your account to a customer.',
+    loadError: "Couldn't load GRN activity. Check your connection and try again.",
     errorTitle: "Couldn't load GRN activity",
-    dateRange: '{{from}} to {{to}}',
     emptyTitle: 'No GRNs in this period',
     emptyDescription: 'Choose a longer period to see more GRNs.',
     customerHint: "Shows this customer's GRNs",
@@ -303,15 +331,12 @@ export const reports = {
     retrieved: 'Invoice history retrieved successfully',
     retrievedAll: 'All-customers invoice history retrieved successfully',
     loadError: "Couldn't load the invoice history. Check your connection and try again.",
-    noCustomer: 'Your account has no customer assigned yet. Ask your facility to assign one.',
-    dateRange: '{{from}} – {{to}}',
+    errorTitle: "Couldn't load the invoice history",
     invoices: 'Invoices',
     netAmount: 'Net amount',
     paidCount: 'Paid ({{count}})',
     pendingCount: 'Pending ({{count}})',
     monthlyBreakdown: 'Monthly breakdown',
-    noMatch: 'No customers match',
-    noMatchDescription: 'Try fewer letters or another name.',
     emptyTitle: 'No invoices in this period',
     emptyDescription: 'Choose a longer period to see older invoices.',
     // Invoice and customer rows
@@ -319,11 +344,26 @@ export const reports = {
     openHint: 'Opens the invoice',
     customerHint: "Shows this customer's invoices",
     latestInvoice: 'Latest {{date}}',
-    latestDate: 'latest {{date}}',
     errors: {
       fetchFailed: 'Failed to fetch invoice history',
       fetchAllFailed: 'Failed to fetch all-customers invoice history',
       noData: 'No invoice history found',
     },
+  },
+  // Report PDFs (generateReportPDF in src/services/pdf-service.ts, useReportExport).
+  // Connection: common.checkConnection; session ended: errors.code.sessionExpired.
+  export: {
+    /** The header action of a report screen that shares what it shows as a PDF. */
+    sharePdf: 'Share PDF',
+    failedTitle: "Couldn't create the PDF",
+    shareFailedTitle: "Couldn't share the PDF",
+    notAvailable: 'This report is not available to your account as a PDF.',
+    customerUnavailable: 'This customer is not available. Choose another customer and try again.',
+    serverBusy: "The server couldn't make the PDF right now. Try again in a moment.",
+    serverNeedsUpdate: "This facility's server needs an update before reports can be shared as PDF.",
+    periodTooLong: 'A PDF can cover at most {{days}} days. Choose a shorter period.',
+    notAccepted: "The server didn't accept this request. Update the app and try again.",
+    // Shown before the share sheet when the server cut the PDF short.
+    truncated: 'This PDF shows the first {{shown}} of {{total}} rows.',
   },
 };
