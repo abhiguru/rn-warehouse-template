@@ -7,10 +7,47 @@
  */
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { deleteCentralAccount, signOutCentral, type CentralFailure } from '@/config/centralSession';
-import { deleteMyFacilities, removeMyFacility } from '@/config/centralFacilities';
+import { deleteMyFacilities, loadMyFacilities, removeMyFacility, updateMyFacility } from '@/config/centralFacilities';
 import { getCentralState, setCentralState } from '@/config/centralState';
 import { deleteAccount } from '@/store/slices/authSlice';
+import { store } from '@/store';
+import { queryClient } from '@/lib/queryClient';
+import { t } from '@/i18n';
 import { leaveFacility, type LeaveFacilityOutcome } from './operatorSwitch';
+
+/** How long a write in flight is given to settle before the final cleanup is tried again. */
+export const LEAVE_RETRY_WAIT_MS = 5000;
+const LEAVE_RETRY_POLL_MS = 100;
+
+/** Resolves when no mutation is in flight, or after `limitMs`. */
+async function waitForWritesToSettle(limitMs: number): Promise<void> {
+  const until = Date.now() + limitMs;
+  while (queryClient.isMutating() > 0 && Date.now() < until) {
+    await new Promise(resolve => setTimeout(resolve, LEAVE_RETRY_POLL_MS));
+  }
+}
+
+/** The final cleanup, with one more try after a write in flight has had time to settle. */
+async function leaveWithRetry(dispatch: Dispatch, options: { localOnly?: boolean }): Promise<LeaveFacilityOutcome> {
+  const first = await leaveFacility(dispatch, options);
+  if (first === 'left') return first;
+  if (first === 'busy') await waitForWritesToSettle(LEAVE_RETRY_WAIT_MS);
+  return leaveFacility(dispatch, options);
+}
+
+/**
+ * Holds the "leaving" flag (src/config/centralState.ts) for the whole of a
+ * sign-out or deletion: openFacility refuses to start meanwhile, also in the
+ * moments between the store's request flags and the list changes.
+ */
+async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
+  setCentralState({ leaving: true });
+  try {
+    return await work();
+  } finally {
+    setCentralState({ leaving: false });
+  }
+}
 
 type Dispatch = (action: any) => any;
 
@@ -28,10 +65,12 @@ async function leaveSelectedFacility(dispatch: Dispatch): Promise<boolean> {
  * and the current facility is signed out too. The list of facilities stays on
  * the device for the next sign-in of the same person; it holds no secret.
  */
-export async function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
-  if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
-  await signOutCentral();
-  return { ok: true };
+export function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
+  return whileLeaving(async () => {
+    if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
+    await signOutCentral();
+    return { ok: true };
+  });
 }
 
 /**
@@ -40,12 +79,14 @@ export async function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndO
  * service (`DELETE /v1/me`) and the device forgets the central session and the
  * person's list of facilities. Records at a facility are kept by that facility.
  */
-export async function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
-  if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
-  const deleted = await deleteCentralAccount();
-  if (!deleted.ok) return { ok: false, reason: 'central', failure: deleted };
-  if (deleted.userId) await deleteMyFacilities(deleted.userId).catch(() => {});
-  return { ok: true };
+export function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
+  return whileLeaving(async () => {
+    if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
+    const deleted = await deleteCentralAccount();
+    if (!deleted.ok) return { ok: false, reason: 'central', failure: deleted };
+    if (deleted.userId) await deleteMyFacilities(deleted.userId).catch(() => {});
+    return { ok: true };
+  });
 }
 
 /**
@@ -57,22 +98,46 @@ export async function deleteAccountEverywhere(dispatch: Dispatch): Promise<Centr
  *
  * The thunk's own `logout` empties the profile in the store the moment it
  * starts, long before it resolves (the server revocation can take 15 s). The
- * route guard then shows My facilities at once, so the start-up skip is spent
- * BEFORE the thunk is dispatched; otherwise the list could open the facility
- * again and file a new access request for the account just deleted. Spending
- * it on a failed deletion is harmless. `openFacility` also refuses to start
- * while that logout is pending. Throws what the thunk throws; the returned
- * outcome is that of the final cleanup.
+ * route guard then shows My facilities at once. So, BEFORE the thunk is
+ * dispatched: the start-up skip is spent, the entry is marked `unavailable`
+ * on disk (an attempted deletion must never be auto-opened again, also on the
+ * next cold start, also if the removal below never runs), and the "leaving"
+ * flag refuses every open until this function returns.
+ *
+ * The thunk can reject AFTER the server has deleted the account: the session
+ * generation moved during the call (a concurrent forced sign-out), or its own
+ * logout rejected after emptying the store. Such a rejection, recognised by
+ * the profile being gone from the store or by the thunk's "session changed"
+ * payload, is treated like a success for the cleanup: the entry is removed
+ * and the facility left; the error is then rethrown. Only a refusal by the
+ * server (the profile is still in the store) keeps the entry, with its
+ * status restored. The returned outcome is that of the final cleanup.
  */
-export async function deleteFacilityAccount(dispatch: Dispatch): Promise<LeaveFacilityOutcome> {
-  const server = getActiveOperatorServer();
-  const userId = getCentralState().user?.id;
-  setCentralState({ autoOpenSpent: true });
-  await dispatch(deleteAccount()).unwrap();
-  if (server && userId) await removeMyFacility(userId, server.origin).catch(() => {});
-  // The profile is gone at the facility: there is no session left to revoke.
-  // A write that was still in flight gets one more chance to settle.
-  let outcome = await leaveFacility(dispatch, { localOnly: true });
-  if (outcome !== 'left') outcome = await leaveFacility(dispatch, { localOnly: true });
-  return outcome;
+export function deleteFacilityAccount(dispatch: Dispatch): Promise<LeaveFacilityOutcome> {
+  return whileLeaving(async () => {
+    const server = getActiveOperatorServer();
+    const userId = getCentralState().user?.id;
+    setCentralState({ autoOpenSpent: true });
+    const previousStatus =
+      server && userId ? (await loadMyFacilities(userId)).find(entry => entry.origin === server.origin)?.status : undefined;
+    if (server && userId) await updateMyFacility(userId, server.origin, { status: 'unavailable' }).catch(() => {});
+
+    let failure: unknown = undefined;
+    try {
+      await dispatch(deleteAccount()).unwrap();
+    } catch (error) {
+      failure = error;
+      const refused = store.getState().auth.userProfile !== null && error !== t('errors.auth.sessionChanged');
+      if (refused) {
+        // The server kept the account: the facility stays on the list as it was.
+        if (server && userId && previousStatus) await updateMyFacility(userId, server.origin, { status: previousStatus }).catch(() => {});
+        throw error;
+      }
+    }
+    if (server && userId) await removeMyFacility(userId, server.origin).catch(() => {});
+    // The profile is gone at the facility: there is no session left to revoke.
+    const outcome = await leaveWithRetry(dispatch, { localOnly: true });
+    if (failure !== undefined) throw failure;
+    return outcome;
+  });
 }

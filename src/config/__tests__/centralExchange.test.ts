@@ -186,12 +186,19 @@ it('never writes the identity token or a session token to the log', async () => 
   expect(logged).not.toMatch(/identity\.token|482913|test-signature|eeeeeeee/);
   spies.forEach(spy => spy.mockRestore());
 });
-/** Everything the spies were given, an Error by its message and stack, so a token inside one is seen. */
-const loggedText = (spies: jest.SpyInstance[]): string =>
-  spies
+/** Everything the spies were given: an Error by its message and stack, one level into objects as well. */
+const loggedText = (spies: jest.SpyInstance[]): string => {
+  const text = (value: unknown): string =>
+    value instanceof Error ? `${String(value)} ${value.stack ?? ''}` : typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
+  return spies
     .flatMap(spy => spy.mock.calls.flat())
-    .map(arg => (arg instanceof Error ? `${String(arg)} ${arg.stack ?? ''}` : typeof arg === 'string' ? arg : JSON.stringify(arg)))
+    .map(arg =>
+      arg && typeof arg === 'object' && !(arg instanceof Error)
+        ? Object.values(arg as Record<string, unknown>).map(text).join(' ')
+        : text(arg)
+    )
     .join(' ');
+};
 
 
 it('after a central sign-in and a facility login, each secure key holds what it should and nothing else', async () => {

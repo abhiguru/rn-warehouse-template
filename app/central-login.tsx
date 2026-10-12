@@ -39,17 +39,16 @@ export default function CentralLoginScreen() {
 
   const [busy, setBusy] = useState(false);
   // The first sign-in of a NUMBER on this phone: the terms are accepted with a tick.
-  // The box is shown until the typed number is one that has accepted them before.
-  const [termsNeeded, setTermsNeeded] = useState(true);
+  // The box is shown unless the number on screen is the one the store was asked
+  // about and it has accepted before; a number just typed therefore shows the box
+  // in the very frame it appears, never a stale answer for the previous number.
+  const [checked, setChecked] = useState<{ number: string; accepted: boolean } | null>(null);
+  const termsNeeded = !(checked?.number === phoneNumber && checked.accepted);
   const [termsAccepted, setTermsAccepted] = useState(false);
   useEffect(() => {
-    // Until the number just typed is known to have accepted, the box is shown:
-    // a change from an accepted number to a new one must not leave "Send code"
-    // enabled while the store is being read.
-    setTermsNeeded(true);
     let active = true;
     void hasAcceptedTerms(phoneNumber).then(accepted => {
-      if (active) setTermsNeeded(!accepted);
+      if (active) setChecked({ number: phoneNumber, accepted });
     });
     return () => { active = false; };
   }, [phoneNumber]);

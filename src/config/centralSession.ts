@@ -368,6 +368,8 @@ function readStoredUser(text: string | null): CentralUser | null {
  */
 let restoreRetry: ReturnType<typeof setTimeout> | undefined;
 let restorePending = false;
+/** The one timed retry has been used; after it only the foreground retries remain. */
+let restoreRetried = false;
 
 /**
  * A start whose secure-store read failed is tried again once shortly after,
@@ -404,16 +406,20 @@ export async function restoreCentralSession(): Promise<void> {
     if (getCentralState().status === 'unknown') setCentralState({ status: 'signedOut', user: null });
     if (getCentralState().status !== 'signedIn') {
       restorePending = true;
-      restoreRetry = setTimeout(() => {
-        restoreRetry = undefined;
-        void restoreCentralSession();
-      }, RESTORE_RETRY_MS);
-      // Under Node (tests) a waiting retry must not keep the process alive.
-      (restoreRetry as { unref?: () => void }).unref?.();
+      if (!restoreRetried) {
+        restoreRetried = true;
+        restoreRetry = setTimeout(() => {
+          restoreRetry = undefined;
+          void restoreCentralSession();
+        }, RESTORE_RETRY_MS);
+        // Under Node (tests) a waiting retry must not keep the process alive.
+        (restoreRetry as { unref?: () => void }).unref?.();
+      }
     }
     return;
   }
   restorePending = false;
+  restoreRetried = false;
   const user = readStoredUser(userText);
   if (session && user) setCentralState({ status: 'signedIn', user });
   else {
@@ -749,6 +755,7 @@ export function resetCentralSessionForTests(): void {
   catalogueCache = null;
   writes = Promise.resolve();
   restorePending = false;
+  restoreRetried = false;
   if (restoreRetry) clearTimeout(restoreRetry);
   restoreRetry = undefined;
 }

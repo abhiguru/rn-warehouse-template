@@ -78,6 +78,8 @@ export type CentralState = {
   facilitySmsOrigin: string | null;
   /** The origin of the facility being opened, or null. */
   opening: string | null;
+  /** A sign-out or account deletion is running (src/store/centralSignOut.ts): no facility may be opened. */
+  leaving: boolean;
   /** The answer of the last open that no screen has handled yet. */
   outcome: { id: number; origin: string; name: string; outcome: OpenOutcome } | null;
   /** The linking step in progress (app/facility-link.tsx). */
@@ -93,6 +95,7 @@ const initial: CentralState = {
   endedMessage: null,
   facilitySmsOrigin: null,
   opening: null,
+  leaving: false,
   outcome: null,
   pendingLink: null,
   autoOpenSpent: false,

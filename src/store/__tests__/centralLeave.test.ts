@@ -5,7 +5,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { leaveFacility } from '../operatorSwitch';
-import { deleteAccountEverywhere, deleteFacilityAccount, signOutEverywhere } from '../centralSignOut';
+import { deleteAccountEverywhere, deleteFacilityAccount, LEAVE_RETRY_WAIT_MS, signOutEverywhere } from '../centralSignOut';
 import { addMyFacility, loadMyFacilities, soleApprovedFacility } from '@/config/centralFacilities';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '@/config/centralState';
 import { deleteCentralAccount, signOutCentral } from '@/config/centralSession';
@@ -45,19 +45,29 @@ jest.mock('@/services/configService', () => ({
   default: { clearCache: jest.fn(async () => { mockEvents.push('clear config'); }) },
 }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: jest.fn(() => 0) } }));
+let mockAuth: { userProfile: unknown } = { userProfile: null };
+jest.mock('@/store', () => ({ store: { getState: () => ({ auth: mockAuth }) } }));
 
 /** What My facilities would see the moment the real `deleteAccount` thunk empties the store. */
-let mockSeenAtDeletion: { autoOpenSpent: boolean; soleApproved: string | null } | undefined;
+let mockSeenAtDeletion: { autoOpenSpent: boolean; soleApproved: string | null; leaving: boolean; statusOnDisk: string | undefined } | undefined;
+/** How the mocked thunk ends: resolved, refused by the server, or rejected after the server deleted the account. */
+let mockDeletion: 'ok' | 'refused' | 'sessionChanged' | 'logoutRejected' = 'ok';
 const dispatch = jest.fn((action: { type: string }) => ({
   unwrap: async () => {
     if (action.type === 'test/deleteAccount') {
       // The real thunk's `logout.pending` nulls the profile FIRST; the route guard then
       // shows My facilities while the cleanup and the revocation (up to 15 s) still run.
+      if (mockDeletion !== 'refused') mockAuth = { userProfile: null };
       mockSeenAtDeletion = {
         autoOpenSpent: getCentralState().autoOpenSpent,
+        leaving: getCentralState().leaving,
         soleApproved: soleApprovedFacility(await loadMyFacilities('asha'))?.origin ?? null,
+        statusOnDisk: (await loadMyFacilities('asha')).find(entry => entry.origin === facility.origin)?.status,
       };
-      if (mockDeleteFails) throw 'Couldn\'t delete your account.';
+      if (mockDeletion === 'refused') throw 'Couldn\'t delete your account.';
+      // The server has deleted the account; the thunk then rejects anyway.
+      if (mockDeletion === 'sessionChanged') { mockAuth = { userProfile: { id: 'stale' } }; throw 'Session changed'; }
+      if (mockDeletion === 'logoutRejected') throw 'Network request failed';
       mockEvents.push('delete facility account');
       return;
     }
@@ -78,6 +88,8 @@ beforeEach(async () => {
   jest.mocked(queryClient.isMutating).mockReturnValue(0);
   jest.mocked(getPendingEnrollmentToken).mockResolvedValue(null);
   mockDeleteFails = false;
+  mockDeletion = 'ok';
+  mockAuth = { userProfile: { id: 'profile-1' } };
   mockSeenAtDeletion = undefined;
 });
 
@@ -140,6 +152,14 @@ describe('Sign out on My facilities', () => {
     mockActive = null;
     expect(await signOutEverywhere(dispatch)).toEqual({ ok: true });
     expect(mockEvents).toEqual(['central sign-out']);
+  });
+
+  it('holds the leaving flag for the whole sign-out, so no facility can be opened meanwhile', async () => {
+    let leavingDuring: boolean | undefined;
+    jest.mocked(signOutCentral).mockImplementation(async () => { leavingDuring = getCentralState().leaving; mockEvents.push('central sign-out'); });
+    await signOutEverywhere(dispatch);
+    expect(leavingDuring).toBe(true);
+    expect(getCentralState().leaving).toBe(false);
   });
 
   it('waits for a write in flight instead of signing out half-way', async () => {
@@ -211,27 +231,74 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
       mockEvents.push('clear server');
     });
     await deleteFacilityAccount(dispatch);
-    // At the moment the thunk's logout showed My facilities, the entry was still the sole
-    // approved one, so only the spent skip stands between the person and a new request.
-    expect(mockSeenAtDeletion).toEqual({ autoOpenSpent: true, soleApproved: facility.origin });
+    // At the moment the thunk's logout showed My facilities: the skip is spent, the
+    // leaving flag is held, and the entry is already marked on disk, so neither a tap
+    // nor a cold start can open it.
+    expect(mockSeenAtDeletion).toEqual({ autoOpenSpent: true, leaving: true, soleApproved: null, statusOnDisk: 'unavailable' });
     expect(listWhenServerCleared).toEqual([]);
     expect(soleApprovedFacility(await loadMyFacilities('asha'))).toBeNull();
+    expect(getCentralState().leaving).toBe(false);
   });
 
-  it('tries the final cleanup once more when a write is in flight, and reports what happened', async () => {
-    jest.mocked(queryClient.isMutating).mockReturnValueOnce(1);
-    expect(await deleteFacilityAccount(dispatch)).toBe('left');
-    expect(mockEvents.filter(event => event === 'begin switch')).toHaveLength(1);
-
-    jest.mocked(queryClient.isMutating).mockReturnValue(1);
-    expect(await deleteFacilityAccount(dispatch)).toBe('busy');
+  it.each([
+    ['the session generation moved during the call (a concurrent forced sign-out)', 'sessionChanged', 'Session changed'],
+    ['its own logout rejected after emptying the store', 'logoutRejected', 'Network request failed'],
+  ])('a rejection after the server deleted the account (%s) still removes the entry and leaves', async (_name, kind, message) => {
+    mockDeletion = kind as typeof mockDeletion;
+    await expect(deleteFacilityAccount(dispatch)).rejects.toBe(message);
+    expect((await loadMyFacilities('asha')).map(entry => entry.origin)).toEqual(['https://south-cold.example.test']);
+    expect(mockActive).toBeNull();
+    expect(mockEvents).toEqual(['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch']);
+    expect(getCentralState()).toMatchObject({ autoOpenSpent: true, leaving: false, status: 'signedIn' });
   });
 
-  it('leaves everything in place when the facility refused the deletion', async () => {
-    mockDeleteFails = true;
+  it('waits for a write in flight to settle before the second try of the final cleanup', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      // The write settles 1.2 s after the first try found it; the second try comes after that.
+      let busyUntil = 0;
+      jest.mocked(queryClient.isMutating).mockImplementation(() => {
+        if (busyUntil === 0) busyUntil = Date.now() + 1200;
+        const busy = Date.now() < busyUntil;
+        if (!busy && !mockEvents.includes('write settled')) mockEvents.push('write settled');
+        return busy ? 1 : 0;
+      });
+      const result = deleteFacilityAccount(dispatch);
+      await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS);
+      expect(await result).toBe('left');
+      const settled = mockEvents.indexOf('write settled');
+      const began = mockEvents.indexOf('begin switch');
+      expect(settled).toBeGreaterThan(-1);
+      expect(began).toBeGreaterThan(settled);
+      expect(mockEvents.filter(event => event === 'begin switch')).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('gives up the wait after 5 seconds and reports busy', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      jest.mocked(queryClient.isMutating).mockReturnValue(1);
+      const result = deleteFacilityAccount(dispatch);
+      await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 200);
+      expect(await result).toBe('busy');
+      expect(mockEvents).not.toContain('begin switch');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('leaves everything in place when the facility refused the deletion, and restores the entry\'s status', async () => {
+    const { updateMyFacility } = jest.requireActual('@/config/centralFacilities');
+    await updateMyFacility('asha', facility.origin, { status: 'approved' });
+    mockDeletion = 'refused';
     await expect(deleteFacilityAccount(dispatch)).rejects.toBe("Couldn't delete your account.");
+    expect(mockSeenAtDeletion?.statusOnDisk).toBe('unavailable');
+    expect((await loadMyFacilities('asha')).find(entry => entry.origin === facility.origin)?.status).toBe('approved');
     expect((await loadMyFacilities('asha'))).toHaveLength(2);
     expect(mockActive).toBe(facility);
     expect(mockEvents).toEqual([]);
+    expect(getCentralState().leaving).toBe(false);
   });
 });

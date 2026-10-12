@@ -147,8 +147,10 @@ describe('a facility that approves', () => {
   it('publishes the answer for whichever screen is mounted, until that screen has handled it', async () => {
     const opening = openFacility(ORIGIN, NAME);
     expect(getCentralState().opening).toBe(ORIGIN);
-    // A second open while one is running is refused and changes nothing.
+    // A second open while one is running is refused (and said so) without touching the first.
     expect(await openFacility('https://other.example.test', 'Other')).toMatchObject({ kind: 'failed', reason: 'busy' });
+    expect(getCentralState().opening).toBe(ORIGIN);
+    expect(getCentralState().outcome).toMatchObject({ origin: 'https://other.example.test', outcome: { reason: 'busy' } });
     await opening;
     const published = getCentralState().outcome;
     expect(getCentralState().opening).toBeNull();
@@ -164,17 +166,22 @@ describe('a facility that approves', () => {
   });
 
   it.each([
-    ['a sign-out', { logoutRequest: 'r1' }],
-    ['a forced sign-out', { forceLogoutRequest: 'r2' }],
-    ['an account deletion', { deleteRequest: 'r3' }],
-  ])('refuses to start while %s is still running, so nothing is filed for a session being ended', async (_name, auth) => {
+    ['a sign-out', { logoutRequest: 'r1' }, {}],
+    ['a forced sign-out', { forceLogoutRequest: 'r2' }, {}],
+    ['an account deletion', { deleteRequest: 'r3' }, {}],
+    ['the sign-out helper holds the leaving flag (between the store flags and the list changes)', {}, { leaving: true }],
+  ])('refuses to start while %s, says so on the list, and files nothing for a session being ended', async (_name, auth, central) => {
     mockActive = server;
     mockAuth = auth;
-    expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'failed', reason: 'busy', message: 'Finish the current operation before switching facilities.' });
+    setCentralState(central);
+    const busy = { kind: 'failed', reason: 'busy', message: 'Finish the current operation before switching facilities.' };
+    expect(await openFacility(ORIGIN, NAME)).toEqual(busy);
     expect(mockEvents).toEqual([]);
     expect(tokenMock).not.toHaveBeenCalled();
     expect(exchangeMock).not.toHaveBeenCalled();
     expect(getCentralState().opening).toBeNull();
+    // Not silent: the list shows the busy message like any other refusal.
+    expect(getCentralState().outcome).toMatchObject({ origin: ORIGIN, name: NAME, outcome: busy });
   });
 });
 
@@ -429,12 +436,19 @@ it('writes neither the identity token nor the phone number to the log while open
   expect(logged).not.toMatch(/identity-token|9000000001|482913/);
   spies.forEach(spy => spy.mockRestore());
 });
-/** Everything the spies were given, an Error by its message and stack, so a token inside one is seen. */
-const loggedText = (spies: jest.SpyInstance[]): string =>
-  spies
+/** Everything the spies were given: an Error by its message and stack, one level into objects as well. */
+const loggedText = (spies: jest.SpyInstance[]): string => {
+  const text = (value: unknown): string =>
+    value instanceof Error ? `${String(value)} ${value.stack ?? ''}` : typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
+  return spies
     .flatMap(spy => spy.mock.calls.flat())
-    .map(arg => (arg instanceof Error ? `${String(arg)} ${arg.stack ?? ''}` : typeof arg === 'string' ? arg : JSON.stringify(arg)))
+    .map(arg =>
+      arg && typeof arg === 'object' && !(arg instanceof Error)
+        ? Object.values(arg as Record<string, unknown>).map(text).join(' ')
+        : text(arg)
+    )
     .join(' ');
+};
 
 
 it('never throws: an unexpected error is a plain message too', async () => {

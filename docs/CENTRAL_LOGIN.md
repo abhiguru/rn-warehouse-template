@@ -148,8 +148,8 @@ within 10 seconds of its first use; a refresh the app gave up waiting for (15 se
 connection reset late, is outside that window and is not repeated, since the repeat would
 count as reuse and revoke the whole session family. When the service refuses the refresh token
 the person is signed out centrally, told why, and returned to central sign-in. A secure store
-that does not answer is not "no session": nothing is cleared, the store is read again 2 seconds
-later and when the app next comes to the foreground, and the next call reads again.
+that does not answer is not "no session": nothing is cleared, the store is read again once
+2 seconds later and on each return to the foreground, and the next call reads again.
 
 **My facilities** (`app/facilities.tsx`, `src/config/centralFacilities.ts`). The person's own
 list, stored on the phone under `central_facilities_v1:<central user id>`: address, instance
@@ -215,10 +215,13 @@ Every refusal is a message on My facilities; the person is never left on a raw e
 with no selected server. "Sign out" in Settings signs out of that facility only and returns
 to My facilities. "Delete account" in Settings deletes the profile at that facility (as
 before), takes the facility off the person's list and leaves through the same cleanup, so My
-facilities cannot open it again and file a new access request: the start-up skip is spent
-before the deletion is dispatched (the facility session empties the store the moment it
-starts), the list entry is removed after it, and no facility is opened while a sign-out or
-deletion is still running. On My facilities, "Sign out" revokes the central session, forgets it on the
+facilities cannot open it again and file a new access request: before the deletion is
+dispatched (the facility session empties the store the moment it starts) the start-up skip is
+spent and the entry is marked Unavailable on the phone, the entry is removed after the
+deletion, and no facility is opened while a sign-out or deletion is still running. A deletion
+the server carried out but the app's thunk still reported as failed (a concurrent forced
+sign-out, a sign-out that could not reach the server) is treated the same way; only a refusal
+by the server keeps the entry, with its status restored. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility; the account entry holds the name and "Delete my
 account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
 

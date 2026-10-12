@@ -41,6 +41,8 @@ jest.mock('@/config/operatorServer', () => ({
   clearOperatorServer: jest.fn(async () => { mockActive = null; }),
 }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
+jest.mock('@/store', () => ({ store: { getState: () => ({ auth: { userProfile: null } }) } }));
+jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: () => 0 } }));
 jest.mock('@/store/slices/authSlice', () => ({ deleteAccount: jest.fn(() => ({ type: 'test/deleteAccount' })) }));
 
 const facility = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
@@ -84,10 +86,11 @@ it('My facilities, shown while the deletion is still running, opens nothing', as
   await emptied;
   await act(async () => { tree = create(<FacilitiesScreen />); });
   await flush();
-  // The list on screen still names the facility, approved, and nothing was opened.
+  // The list on screen still names the facility, already marked as not to be opened, and nothing was opened.
   const texts = tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
   expect(texts).toContain('North Cold Store');
-  expect(texts).toContain('Approved');
+  expect(texts).toContain('Unavailable');
+  expect(texts).not.toContain('Approved');
   expect(openFacility).not.toHaveBeenCalled();
   expect(getCentralState().autoOpenSpent).toBe(true);
 

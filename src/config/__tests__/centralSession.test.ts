@@ -545,9 +545,15 @@ describe('a secure store that does not answer', () => {
       await restoreCentralSession();
       expect(getCentralState().status).toBe('signedOut');
       // Still failing at the timed retry: nothing is cleared, still signed out.
+      const readsBefore = jest.mocked(SecureStore.getItemAsync).mock.calls.length;
       await jest.advanceTimersByTimeAsync(RESTORE_RETRY_MS + 1);
       expect(getCentralState().status).toBe('signedOut');
       expect(secure.size).toBe(4);
+      const readsAfterRetry = jest.mocked(SecureStore.getItemAsync).mock.calls.length;
+      expect(readsAfterRetry).toBeGreaterThan(readsBefore);
+      // Exactly one timed retry: more time brings no further reads.
+      await jest.advanceTimersByTimeAsync(RESTORE_RETRY_MS * 3);
+      expect(jest.mocked(SecureStore.getItemAsync).mock.calls.length).toBe(readsAfterRetry);
       // The app comes to the foreground and the store answers now.
       restoreReads();
       await retryCentralRestoreIfNeeded();
@@ -636,15 +642,25 @@ describe('separation from the facility session', () => {
     // Written through a variable: the lint rule against console output is for the app, not for this probe.
     const output = console;
     output.error(new Error('refresh failed for facility-token-1'));
+    output.error('[Auth]', { cause: new Error('refresh token ' + 'z'.repeat(64)) });
     expect(JSON.stringify(spy.mock.calls)).not.toContain('facility-token-1');
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('z'.repeat(64));
     expect(loggedText([spy])).toContain('facility-token-1');
+    expect(loggedText([spy])).toContain('z'.repeat(64));
     spy.mockRestore();
   });
 });
-/** Everything the spies were given, an Error by its message and stack, so a token inside one is seen. */
-const loggedText = (spies: jest.SpyInstance[]): string =>
-  spies
+/** Everything the spies were given: an Error by its message and stack, one level into objects as well. */
+const loggedText = (spies: jest.SpyInstance[]): string => {
+  const text = (value: unknown): string =>
+    value instanceof Error ? `${String(value)} ${value.stack ?? ''}` : typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
+  return spies
     .flatMap(spy => spy.mock.calls.flat())
-    .map(arg => (arg instanceof Error ? `${String(arg)} ${arg.stack ?? ''}` : typeof arg === 'string' ? arg : JSON.stringify(arg)))
+    .map(arg =>
+      arg && typeof arg === 'object' && !(arg instanceof Error)
+        ? Object.values(arg as Record<string, unknown>).map(text).join(' ')
+        : text(arg)
+    )
     .join(' ');
+};
 

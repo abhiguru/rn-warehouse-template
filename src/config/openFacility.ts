@@ -200,21 +200,33 @@ function publish(userId: string, origin: string, name: string, outcome: OpenOutc
 }
 
 /**
- * Open a facility from "My facilities". `name` is what the list calls it, for
- * messages about a facility that could not even be reached. Never throws.
+ * A sign-out, forced sign-out or account deletion that has not finished yet:
+ * the store's request flags, and the "leaving" flag that
+ * src/store/centralSignOut.ts holds across the whole of its work (also the
+ * moments between those flags and the list changes).
  */
-/** A sign-out, forced sign-out or account deletion that has not finished yet. */
 function signOutInProgress(): boolean {
   const auth = store.getState().auth;
-  return Boolean(auth.logoutRequest || auth.forceLogoutRequest || auth.deleteRequest);
+  return getCentralState().leaving || Boolean(auth.logoutRequest || auth.forceLogoutRequest || auth.deleteRequest);
 }
 
+/**
+ * Open a facility from "My facilities". `name` is what the list calls it, for
+ * messages about a facility that could not even be reached. Never throws.
+ *
+ * While a facility session is being ended its profile is already gone from the
+ * store and My facilities is shown, but the cleanup is still running: an open
+ * now would race it (and, after an account deletion, file a new access request
+ * for the deleted account). Such an open is refused as busy, and the refusal is
+ * published like any other answer so the list says so; `opening` is left alone,
+ * since another open may really be in flight.
+ */
 export async function openFacility(origin: string, name: string): Promise<OpenOutcome> {
-  // While a facility session is being ended its profile is already gone from
-  // the store and My facilities is shown, but the cleanup is still running:
-  // an open now would race it (and, after an account deletion, file a new
-  // access request for the deleted account).
-  if (getCentralState().opening || signOutInProgress()) return failed('busy', t('central.switch.busyMessage'));
+  if (getCentralState().opening || signOutInProgress()) {
+    const outcome = failed('busy', t('central.switch.busyMessage'));
+    setCentralState({ outcome: { id: nextOutcomeId(), origin, name, outcome } });
+    return outcome;
+  }
   const userId = getCentralState().user?.id ?? '';
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {
