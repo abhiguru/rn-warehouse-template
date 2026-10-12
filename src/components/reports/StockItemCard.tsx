@@ -9,8 +9,10 @@
  * - object cell (§13.6): 44 icon, title `headline` in two lines, facts `subhead`,
  *   value on the right (`headline`, tabular, right-aligned), chevron, pressed
  *   `surface.cardPressed`; at most one status tag (§3.5)
- * - GRN rows: the GRN number is never cut short (§4); a row that opens the GRN is a
- *   button with a chevron, a row that does not is read as one element with neither
+ * - GRN rows: the GRN number and the package mark are never cut short (§4): the
+ *   mark is the first fact of the row's footnote line, which has no line limit; a
+ *   row that opens the GRN is a button with a chevron, a row that does not is read
+ *   as one element with neither
  * - expanding uses `motion.standard` and does not animate with Reduce Motion (§9)
  * - loading, error with "Try again" and empty states for GRNs read on demand (§14)
  * - search (§14.6): the item name and each GRN number show the searched words in
@@ -287,7 +289,9 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
   const title = tr('reports.shared.grnNumber', { number: formatIdentifier(grn.grNo) });
   const received = grn.receivedDate ? tr('reports.shared.receivedOn', { date: formatDate(grn.receivedDate, 'short') }) : null;
   const emptied = grn.emptiedDate ? tr('reports.stockSummary.emptiedOn', { date: formatDate(grn.emptiedDate, 'short') }) : null;
+  // The mark is an identifier: a fact of the footnote line, which wraps rather than cuts it (§4).
   const facts = [
+    grn.packageMark ? tr('reports.stockSummary.packageMark', { mark: grn.packageMark }) : null,
     grn.packaging || null,
     grn.rack ? tr('reports.shared.rack', { rack: formatIdentifier(grn.rack) }) : null,
     grn.weight && grn.weight > 0 ? formatWeight(grn.weight) : null,
@@ -296,13 +300,14 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
   const weightEach =
     grn.weightEach && grn.weightEach > 0 ? tr('reports.stockSummary.weightEach', { weight: formatWeight(grn.weightEach) }) : null;
 
+  // The mark is read once, after the title, in its own words; the other facts after the dates.
   const a11yLabel = [
     title,
     grn.packageMark ? tr('reports.shared.markA11y', { mark: grn.packageMark }) : null,
     grn.customerName || null,
     received,
     emptied,
-    joinFacts(facts) || null,
+    joinFacts(facts.slice(1)) || null,
     stockPhrase(grn.stock, grn.total),
     weightEach,
   ]
@@ -314,7 +319,6 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
       <View style={styles.rowContent}>
         <View style={styles.rowTitleLine}>
           <HighlightedText style={styles.rowTitle} text={title} words={highlightWords} />
-          {grn.packageMark ? <StatusTag status="neutral" label={grn.packageMark} icon={null} /> : null}
         </View>
         {grn.customerName ? (
           <View style={styles.rowLine}>

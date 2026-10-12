@@ -96,13 +96,21 @@ export const reports = {
     weightEach: '{{weight}} each',
     errorTitle: "Couldn't load the stock summary",
     searchItems: 'Search items or GRNs',
-    unitsInStock: 'Units in stock',
     grnsWithStock: 'GRNs with stock',
     oldestStock: 'Oldest stock {{date}}',
     opensCustomerHint: "Opens this customer's stock",
-    sharePdf: 'Share stock PDF',
     outOfStockA11y: 'Out of stock, {{items}}, last 360 days',
     last360Days: 'Last 360 days',
+    // A search that finds no item in stock but finds some that ran out: the section opens under it.
+    noStockMatch: 'No items in stock match "{{search}}"',
+    emptiedMatchBelow: {
+      one: '{{count}} emptied item matches below.',
+      other: '{{count}} emptied items match below.',
+    },
+    // The lot's package mark, as a fact of its GRN row.
+    packageMark: 'Mark {{mark}}',
+    // An opened item whose GRNs list is empty (in stock: itemStockSummary.noGrnsInStock).
+    noGrnsToShow: 'No GRNs to show for this item.',
     service: {
       fetchFailed: 'Failed to fetch stock summary',
       noData: 'No stock data available',
@@ -131,6 +139,8 @@ export const reports = {
     bucket121to240: '121–240 days',
     bucket241to364: '241–364 days',
     bucketOver364: 'Over 364 days',
+    // The KPI of the over-364 bucket: a count of items, in the bucket's words.
+    itemsOver364: 'Items over 364 days',
     ageOld: '{{age}} old',
     bucketShareA11y: '{{label}}: {{share}} of all stock, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}} units, oldest {{age}}',
@@ -143,11 +153,9 @@ export const reports = {
     viewGrn: 'View GRN {{number}}',
     averageAge: 'Average age',
     daysUnit: 'days',
-    overOneYear: 'Over 1 year',
     stockAge: 'Stock age',
     customersByStockAge: 'Customers by stock age',
     averageAgeOf: 'Average age {{age}}',
-    overOneYearCount: '{{over}} over 1 year',
     opensCustomerHint: "Opens this customer's stock aging",
     itemsHighestFirst: 'Items, highest stock first',
     errorTitle: "Couldn't load stock aging",

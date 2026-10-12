@@ -231,6 +231,7 @@ async function open(store: Store) {
     control,
     press: (label: string) => run(() => control(label).props.onPress()),
     has: (label: string) => controls(label).length > 0,
+    labels: () => tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string),
     /** Customer names in the order the rows show them. */
     customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
     /** Item cards, in stock and out of stock, in the order they are drawn. */
@@ -246,6 +247,12 @@ async function open(store: Store) {
     },
     searchValue: () => tree.root.findAll(node => typeof node.props.onChangeText === 'function')[0].props.value as string,
     refresh: () => run(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
+    /** The list's own rows, as FlashList is given them: each row's type (getItemType) and key. */
+    listRows: () => {
+      const list = tree.root.findByType('FlashList' as never).props;
+      return (list.data as unknown[]).map((row, index) => `${list.getItemType(row)} ${list.keyExtractor(row, index)}`);
+    },
+    footer: () => tree.root.findByType('FlashList' as never).props.ListFooterComponent,
     bold: () =>
       tree.root
         .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
@@ -271,7 +278,9 @@ describe('stock summary, every customer', () => {
     // No dates: the status line says only when the figures were read.
     expect(screen.status()).toBe('Last updated 10:00 am');
     expect(screen.has('Sorted by Stock, highest first. Change sort')).toBe(true);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Items', '17', 'Units in stock', '550']));
+    // The figure is "Stock", as on the item stock summary.
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 17', 'Stock: 550']));
+    expect(screen.texts()).not.toContain('Units in stock');
   });
 
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
@@ -420,7 +429,7 @@ describe('stock summary, the stock PDF', () => {
   it('on a server without report PDFs, a row still shares the older stock PDF with no alert, and the all-customers header goes', async () => {
     const screen = await open(makeStore());
     const needsUpdate = "This facility's server needs an update before reports can be shared as PDF.";
-    expect(screen.has('Share stock PDF')).toBe(true);
+    expect(screen.has('Share PDF')).toBe(true);
     makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: needsUpdate });
     await screen.press('Share PDF for Sunrise Agro Foods');
     expect(makePdf.mock.calls).toEqual([[{ report: 'stock-summary', customer_id: 'c3' }]]);
@@ -431,7 +440,7 @@ describe('stock summary, the stock PDF', () => {
     // The rows keep their share buttons; the all-customers PDF has no older one.
     expect(screen.has('Share PDF for Sunrise Agro Foods')).toBe(true);
     expect(screen.has('Share PDF for Riverbank Produce')).toBe(true);
-    expect(screen.has('Share stock PDF')).toBe(false);
+    expect(screen.has('Share PDF')).toBe(false);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
 
     // The next row goes straight to the older PDF.
@@ -446,12 +455,12 @@ describe('stock summary, the stock PDF', () => {
     openCustomerC2();
     const screen = await open(makeStore());
     makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: 'needs an update' });
-    await screen.press('Share stock PDF');
+    await screen.press('Share PDF');
     expect(olderStockPdf.mock.calls).toEqual([['c2']]);
     expect(sharePdf.mock.calls).toEqual([['https://warehouse.example.test/older-c2.pdf', 'Stock_summary_Green_Valley_Traders.pdf']]);
     expect(alert).not.toHaveBeenCalled();
-    expect(screen.has('Share stock PDF')).toBe(true);
-    expect(screen.control('Share stock PDF').props.accessibilityState).toMatchObject({ busy: false });
+    expect(screen.has('Share PDF')).toBe(true);
+    expect(screen.control('Share PDF').props.accessibilityState).toMatchObject({ busy: false });
   });
 
   it('says so with the connection words when the older stock PDF cannot be made either', async () => {
@@ -489,7 +498,7 @@ describe('stock summary, the stock PDF', () => {
     await screen.press('Items');
     await screen.press('Done');
     expect(screen.has('Sorted by Items, highest first. Change sort')).toBe(true);
-    await sharesThePdf(screen, { report: 'stock-summary', sort: { field: 'items', order: 'desc' } }, 'Stock_summary_All.pdf', 'Share stock PDF');
+    await sharesThePdf(screen, { report: 'stock-summary', sort: { field: 'items', order: 'desc' } }, 'Stock_summary_All.pdf');
   });
 
   it('one customer: the header shares that customer and the sort on screen, with no dates', async () => {
@@ -503,7 +512,7 @@ describe('stock summary, the stock PDF', () => {
       screen,
       { report: 'stock-summary', customer_id: 'c2', sort: { field: 'item', order: 'desc' } },
       'Stock_summary_Green_Valley_Traders.pdf',
-      'Share stock PDF',
+      'Share PDF',
       'c2'
     );
   });
@@ -517,7 +526,11 @@ describe('stock summary, one customer', () => {
     expect(allStock).not.toHaveBeenCalled();
     expect(screen.items()).toEqual(ITEMS_BY_STOCK);
     expect(screen.status()).toBe('Last updated 10:00 am');
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Green Valley Traders', 'Units in stock', 'GRNs with stock', 'Out of stock']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Green Valley Traders', 'GRNs with stock', 'Out of stock']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Stock: 195', 'GRNs with stock: 5']));
+    // The header's action has the words of every other report.
+    expect(screen.has('Share PDF')).toBe(true);
+    expect(screen.labels()).not.toContain('Share stock PDF');
 
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Item');
@@ -578,7 +591,7 @@ describe('stock summary, one customer', () => {
     const screen = await open(makeStore());
     expect(screen.texts()).toEqual(expect.arrayContaining(['No stock for this customer', 'Out of stock', 'Last 360 days']));
     // No figures for an empty stock, as before.
-    expect(screen.texts()).not.toContain('Units in stock');
+    expect(screen.labels().filter(label => label.startsWith('Stock:'))).toEqual([]);
     expect(screen.items()).toEqual([]);
     const section = 'Out of stock, 2 items, last 360 days';
     expect(screen.control(section).props.accessibilityState).toEqual({ expanded: false });
@@ -595,6 +608,100 @@ describe('stock summary, one customer', () => {
 
     await screen.press(section);
     expect(screen.items()).toEqual([]);
+  });
+
+  it('draws the items that ran out as rows of the list, under a header row that opens and closes them', async () => {
+    openCustomerC2();
+    const screen = await open(makeStore());
+    const section = 'Out of stock, 2 items, last 360 days';
+    // Closed by default: the header is a row after the items in stock, and nothing is in the footer.
+    expect(screen.listRows()).toEqual(['item item:i3', 'item item:i1', 'item item:i4', 'item item:i2', 'emptiedHeader emptiedHeader']);
+    expect(screen.footer()).toBeNull();
+    expect(screen.control(section).props.accessibilityState).toEqual({ expanded: false });
+    expect(screen.items()).toEqual(ITEMS_BY_STOCK);
+
+    // Opened: each item that ran out is a row of its own, of its own type, so the list draws
+    // (and recycles) them as they scroll into view instead of all at once.
+    await screen.press(section);
+    expect(screen.control(section).props.accessibilityState).toEqual({ expanded: true });
+    expect(screen.listRows()).toEqual([
+      'item item:i3', 'item item:i1', 'item item:i4', 'item item:i2', 'emptiedHeader emptiedHeader', 'emptied emptied:o1', 'emptied emptied:o2',
+    ]);
+    expect(screen.items()).toEqual([...ITEMS_BY_STOCK, 'Fictional Onions', 'Example Mustard']);
+    expect(screen.footer()).toBeNull();
+
+    // An item that ran out opens on its own, and says it was dispatched.
+    await screen.press('Fictional Onions, 1 GRN dispatched, Out of stock');
+    expect(screen.has('Fictional Onions, 1 GRN dispatched, Out of stock')).toBe(true);
+    expect(screen.texts()).toContain('GRN A0003');
+
+    // The header closes them again: they are no longer rows at all.
+    await screen.press(section);
+    expect(screen.listRows()).toEqual(['item item:i3', 'item item:i1', 'item item:i4', 'item item:i2', 'emptiedHeader emptiedHeader']);
+    expect(screen.items()).toEqual(ITEMS_BY_STOCK);
+    expect(screen.texts()).not.toContain('GRN A0003');
+  });
+
+  it('a search that finds only items that ran out says so, and opens them under the message', async () => {
+    openCustomerC2();
+    const screen = await open(makeStore());
+    const section = 'Out of stock, 1 item, last 360 days';
+    await screen.search('onions');
+    // Not "No items match": the matches are there, below, and already open.
+    expect(screen.texts()).toEqual(expect.arrayContaining(['No items in stock match "onions"', '1 emptied item matches below.']));
+    expect(screen.texts()).not.toContain('No items match "onions"');
+    expect(screen.listRows()).toEqual(['nothingInStock nothingInStock', 'emptiedHeader emptiedHeader', 'emptied emptied:o1']);
+    expect(screen.control(section).props.accessibilityState).toEqual({ expanded: true });
+    expect(screen.items()).toEqual(['Fictional Onions']);
+    expect(screen.bold()).toEqual(['Onions']);
+    expect(screen.status()).toBe('Showing 0 of 4 · Last updated 10:00 am');
+
+    // The header still closes them, under the same message.
+    await screen.press(section);
+    expect(screen.items()).toEqual([]);
+    expect(screen.texts()).toContain('No items in stock match "onions"');
+
+    // A search that finds items in stock: no message, and the section is as the person left it.
+    await screen.search('garlic');
+    expect(screen.texts()).not.toContain('No items in stock match "garlic"');
+    expect(screen.items()).toEqual(['Garlic']);
+    expect(screen.listRows()).toEqual(['item item:i1']);
+
+    // Matching nothing anywhere: the list's own "No items match".
+    await screen.search('saffron');
+    expect(screen.listRows()).toEqual([]);
+    expect(screen.texts()).toContain('No items match "saffron"');
+
+    // Clear search and filters, offered by the message, brings everything back.
+    await screen.search('onions');
+    expect(screen.items()).toEqual(['Fictional Onions']);
+    await screen.press('Clear search and filters');
+    expect(screen.searchValue()).toBe('');
+    expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Turmeric', 'Red chilli', 'Fictional Onions', 'Example Mustard']);
+  });
+
+  it('with nothing in stock, a search that finds items that ran out counts them in the message', async () => {
+    openCustomerC2();
+    customerStock.mockResolvedValue(answerItems([]) as never);
+    const screen = await open(makeStore());
+    await screen.search('a000');
+    expect(screen.texts()).toEqual(expect.arrayContaining(['No items in stock match "a000"', '2 emptied items match below.']));
+    expect(screen.control('Out of stock, 2 items, last 360 days').props.accessibilityState).toEqual({ expanded: true });
+    expect(screen.items()).toEqual(['Fictional Onions', 'Example Mustard']);
+  });
+
+  it('an item with no GRN to list says so when opened, in stock and out of stock', async () => {
+    openCustomerC2();
+    customerStock.mockResolvedValue(answerItems([item('i9', 'Fictional Peas', 10, [])], [item('o9', 'Example Beans', 0, [])]) as never);
+    const screen = await open(makeStore());
+    expect(screen.texts()).not.toContain('No GRNs with this item in stock.');
+    await screen.press('Fictional Peas, 10 units, 0 GRNs');
+    expect(screen.texts()).toContain('No GRNs with this item in stock.');
+
+    await screen.press('Out of stock, 1 item, last 360 days');
+    expect(screen.texts()).not.toContain('No GRNs to show for this item.');
+    await screen.press('Example Beans, 0 GRNs dispatched, Out of stock');
+    expect(screen.texts()).toContain('No GRNs to show for this item.');
   });
 
   it('asks nothing for a customer account whose route names a customer it is not assigned', async () => {

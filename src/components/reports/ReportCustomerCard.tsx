@@ -44,6 +44,12 @@ export interface ReportCustomerCardProps {
    * line in English and get a line each in Gujarati (see FactLines).
    */
   subtitle: string | string[];
+  /**
+   * Line limit of the subtitle in English (default 1, so rows keep one height).
+   * A report whose subtitle is one longer fact gives 2, so it wraps rather than
+   * being cut (§4). Gujarati stacks the facts, two lines each, whatever this says.
+   */
+  subtitleLines?: number;
   /** Main numeric value to display */
   value: number | string;
   /** Label for the value (default: "units", in the app's language) */
@@ -159,6 +165,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   title,
   highlightWords,
   subtitle,
+  subtitleLines = 1,
   value,
   valueLabel = tr('reports.shared.units'),
   onPress,
@@ -194,7 +201,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       {/* B. Main Content */}
       <View style={styles.content}>
         <HighlightedText style={styles.title} numberOfLines={2} text={title} words={highlightWords} />
-        <FactLines facts={facts} style={styles.subtitle} numberOfLines={1} />
+        <FactLines facts={facts} style={styles.subtitle} numberOfLines={subtitleLines} />
       </View>
 
       {/* C. Value */}

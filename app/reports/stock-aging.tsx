@@ -132,12 +132,16 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const days = (count: number) => formatCount(count, 'day');
 
-/** The figures over the rows: the KPI for the oldest stock is the bar's own "Over 364 days" bucket. */
+/**
+ * The figures over the rows. The KPI for the oldest stock counts the items of the
+ * bar's own over-364 bucket and says so ("Items over 364 days"), so it and the
+ * red bar always agree. The RPC's items_over_365_days counts from 365 and is not shown.
+ */
 function agingKpis(summary: { total_items: number; average_age_days: number }, byBucket: Record<string, Pick<AgingBucketData, 'item_count'>>): KPIItem[] {
   return [
     { icon: 'cube-outline', value: summary.total_items, label: tr('common.items'), variant: 'primary' },
     { icon: 'calendar-clock', value: summary.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
-    { icon: 'alert', value: byBucket['364+']?.item_count ?? 0, label: agingBucketLabel('over-364'), variant: 'warning' },
+    { icon: 'alert', value: byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
   ];
 }
 
@@ -258,10 +262,10 @@ const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: Custo
           customerId={customer.customer_id}
           title={customer.customer_name}
           highlightWords={words}
-          subtitle={[
-            tr('reports.stockAging.averageAgeOf', { age: days(customer.average_age_days) }),
-            tr('reports.stockAging.overOneYearCount', { over: formatNumber(customer.items_over_365_days) }),
-          ]}
+          // The average age only: the tag already gives its bucket. A long age ("Average age 245 days")
+          // wraps to a second line rather than being cut (§4).
+          subtitle={tr('reports.stockAging.averageAgeOf', { age: days(customer.average_age_days) })}
+          subtitleLines={2}
           value={customer.total_stock}
           valueLabel={tr('reports.shared.units')}
           // The tag is the bucket of the customer's average age, and says so.

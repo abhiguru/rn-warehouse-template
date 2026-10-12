@@ -29,6 +29,8 @@ import {
   type ReportHeaderAction,
   type StockGRNRowData,
 } from '@/components/reports';
+import { ListEmptyState, type ListEmptyStateProps } from '@/components/list/ListEmptyState';
+import { filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
 import { matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import {
   STOCK_SUMMARY_CUSTOMER,
@@ -68,7 +70,7 @@ const makeStyles = (t: ThemeTokens) => ({
   // The item card draws its own surface, shadow and match line; the list only spaces it.
   itemCard: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
 
-  // The out-of-stock section under the items
+  // The header row over the out-of-stock rows
   section: { marginTop: space.lg },
   sectionHeader: {
     flexDirection: 'row' as const,
@@ -153,9 +155,9 @@ function NoCustomer() {
  */
 const olderStockPdf = (customerId: string) => () => generateCustomerStockPDF(customerId);
 
-/** The header's stock PDF action, left out once the facility's server has said it cannot make report PDFs. */
+/** The header's "Share PDF" (§14.10), left out once the facility's server has said it cannot make report PDFs. */
 const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
-  available ? [{ icon: 'file-pdf-box', label: tr('reports.stockSummary.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
+  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 // ============================================================================
 // Every customer
@@ -177,7 +179,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     () =>
       data && [
         { icon: 'cube-outline', value: data.summary.total_items, label: tr('common.items'), variant: 'primary' },
-        { icon: 'warehouse', value: data.summary.total_quantity, label: tr('reports.stockSummary.unitsInStock'), variant: 'primary' },
+        { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary' },
       ],
     [data]
   );
@@ -270,7 +272,35 @@ function CustomerStockRowCard({ customer, words, onOpen }: CustomerRowProps) {
 // One customer's items
 // ============================================================================
 
-const itemKey = (item: StockItemSummary) => item.item_id;
+/**
+ * The rows of one customer's list, all in the one FlashList so that a long list
+ * of items that ran out is drawn only as it scrolls into view:
+ *
+ *   the items in stock (or, when none is shown, a message row in their place)
+ *   a header row "Out of stock", which opens and closes the rows under it
+ *   the items that ran out in the last 360 days, while the header is open
+ *
+ * The message row is needed because the list's own empty state shows only for a
+ * list with no rows at all.
+ */
+type CustomerListRow =
+  | { kind: 'item'; item: StockItemSummary }
+  | { kind: 'nothingInStock' }
+  | { kind: 'emptiedHeader'; count: number }
+  | { kind: 'emptied'; item: StockItemSummary };
+
+const rowKey = (row: CustomerListRow): string => {
+  switch (row.kind) {
+    case 'item':
+      return `item:${row.item.item_id}`;
+    case 'emptied':
+      return `emptied:${row.item.item_id}`;
+    default:
+      return row.kind;
+  }
+};
+const rowType = (row: CustomerListRow): string => row.kind;
+
 const openGRN = (grnId: string) => {
   if (grnId) router.push(`/grn-details/${grnId}`);
 };
@@ -306,7 +336,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     () =>
       data && data.items.length > 0
         ? [
-            { icon: 'warehouse', value: data.summary.total_quantity, label: tr('reports.stockSummary.unitsInStock'), variant: 'primary' },
+            // "Stock", as the item stock summary names the same figure.
+            { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary' },
             { icon: 'package-down', value: data.summary.grn_count, label: tr('reports.stockSummary.grnsWithStock'), variant: 'primary' },
           ]
         : undefined,
@@ -315,6 +346,54 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggleItem = useCallback((itemId: string) => setOpen(ids => toggled(ids, itemId)), []);
+  const [openEmptied, setOpenEmptied] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleEmptied = useCallback((itemId: string) => setOpenEmptied(ids => toggled(ids, itemId)), []);
+
+  // The out-of-stock rows are folded away until the header opens them. A search that finds
+  // nothing in stock but finds items that ran out opens them, so the matches are in view (§14.6);
+  // the header still closes them.
+  const onlyEmptiedMatch = view.words.length > 0 && items.length === 0 && emptied.length > 0;
+  const [sectionOpen, setSectionOpen] = useState(false);
+  const [openedForMatch, setOpenedForMatch] = useState(false);
+  if (onlyEmptiedMatch !== openedForMatch) {
+    setOpenedForMatch(onlyEmptiedMatch);
+    if (onlyEmptiedMatch) setSectionOpen(true);
+  }
+  const reduceMotion = useReducedMotion();
+  const toggleSection = useCallback(() => {
+    animateExpand(reduceMotion);
+    setSectionOpen(value => !value);
+  }, [reduceMotion]);
+
+  const rows = useMemo<CustomerListRow[]>(() => {
+    const inStock = items.map(item => ({ kind: 'item' as const, item }));
+    if (emptied.length === 0) return inStock;
+    return [
+      ...(inStock.length > 0 ? inStock : [{ kind: 'nothingInStock' as const }]),
+      { kind: 'emptiedHeader' as const, count: emptied.length },
+      ...(sectionOpen ? emptied.map(item => ({ kind: 'emptied' as const, item })) : []),
+    ];
+  }, [items, emptied, sectionOpen]);
+
+  // The message in place of the in-stock rows when items ran out but none in stock is shown:
+  // nothing in stock at all, or a search that finds only items that ran out.
+  const search = filters.search.trim();
+  const nothingInStock = useMemo<ListEmptyStateProps>(
+    () =>
+      onlyEmptiedMatch
+        ? {
+            ...filteredEmptyProps(filters, 'items'),
+            filteredTitle: tr('reports.stockSummary.noStockMatch', { search }),
+            filteredSubtitle: tr('reports.stockSummary.emptiedMatchBelow', { count: emptied.length }),
+          }
+        : {
+            activeFilterCount: 0,
+            emptyIcon: 'package-variant-closed',
+            emptyTitle: tr('reports.shared.noStockForCustomer'),
+            emptySubtitle: tr('reports.shared.noStockForCustomerDescription'),
+          },
+    [onlyEmptiedMatch, filters, search, emptied.length]
+  );
 
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
@@ -332,10 +411,26 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const subtitle = customerName || (oldest ? tr('reports.stockSummary.oldestStock', { date: formatDate(oldest) }) : undefined);
 
   const renderRow = useCallback(
-    (item: StockItemSummary) => <ItemRow item={item} words={view.words} isExpanded={open.has(item.item_id)} onToggle={toggleItem} />,
-    [view.words, open, toggleItem]
+    (row: CustomerListRow) => {
+      switch (row.kind) {
+        case 'item':
+          return <ItemRow item={row.item} words={view.words} isExpanded={open.has(row.item.item_id)} onToggle={toggleItem} />;
+        case 'emptied':
+          return (
+            <ItemRow item={row.item} words={view.words} isExpanded={openEmptied.has(row.item.item_id)} onToggle={toggleEmptied} outOfStock />
+          );
+        case 'emptiedHeader':
+          return <OutOfStockHeader count={row.count} isOpen={sectionOpen} onToggle={toggleSection} />;
+        case 'nothingInStock':
+          return <ListEmptyState {...nothingInStock} />;
+      }
+    },
+    [view.words, open, openEmptied, sectionOpen, nothingInStock, toggleItem, toggleEmptied, toggleSection]
   );
-  const extraData = useMemo(() => ({ words: view.words, open }), [view.words, open]);
+  const extraData = useMemo(
+    () => ({ words: view.words, open, openEmptied, sectionOpen, nothingInStock }),
+    [view.words, open, openEmptied, sectionOpen, nothingInStock]
+  );
 
   return (
     <ReportScaffold
@@ -346,12 +441,11 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       query={query}
       kpis={kpis}
       status={{ shown: items.length, total: data?.items.length }}
-      rows={items}
+      rows={rows}
       renderRow={renderRow}
-      keyExtractor={itemKey}
+      keyExtractor={rowKey}
+      getRowType={rowType}
       extraData={extraData}
-      // Reachable also when nothing is in stock: under the empty message.
-      footer={emptied.length > 0 ? <OutOfStockSection items={emptied} words={view.words} /> : null}
       noun="items"
       empty={{
         icon: 'package-variant-closed',
@@ -426,47 +520,41 @@ const ItemRow = memo(function ItemRow({ item, words, isExpanded, onToggle, outOf
       onOpenGRN={openGRN}
       highlightWords={words}
       matchLine={matchLine}
+      // An item with no GRN to list says so rather than opening onto nothing.
+      emptyGRNsText={outOfStock ? tr('reports.stockSummary.noGrnsToShow') : tr('reports.itemStockSummary.noGrnsInStock')}
       style={styles.itemCard}
     />
   );
 });
 
-interface OutOfStockSectionProps {
-  /** Items that ran out in the last 360 days, after the search, in the chosen order. */
-  items: StockItemSummary[];
-  words: string[];
+interface OutOfStockHeaderProps {
+  /** How many items ran out in the last 360 days, after the search. */
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
-/** The items that ran out, folded away under one header. */
-function OutOfStockSection({ items, words }: OutOfStockSectionProps) {
+/** The header row over the items that ran out: one tap opens or closes them. */
+const OutOfStockHeader = memo(function OutOfStockHeader({ count, isOpen, onToggle }: OutOfStockHeaderProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const reduceMotion = useReducedMotion();
-  const [shown, setShown] = useState(false);
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
-  const toggleSection = () => {
-    animateExpand(reduceMotion);
-    setShown(value => !value);
-  };
-  const toggleItem = useCallback((itemId: string) => setOpen(ids => toggled(ids, itemId)), []);
-
   return (
     <View style={styles.section}>
       <View style={styles.card}>
         <View style={styles.cardClip}>
           <Pressable
             style={({ pressed }) => [styles.sectionHeader, pressed && styles.sectionHeaderPressed]}
-            onPress={toggleSection}
+            onPress={onToggle}
             accessibilityRole="button"
-            accessibilityLabel={tr('reports.stockSummary.outOfStockA11y', { items: formatCount(items.length, 'item') })}
-            accessibilityState={{ expanded: shown }}
+            accessibilityLabel={tr('reports.stockSummary.outOfStockA11y', { items: formatCount(count, 'item') })}
+            accessibilityState={{ expanded: isOpen }}
           >
             <View style={styles.sectionHeaderLeft}>
-              <Icon name={shown ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+              <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
               <Text style={styles.sectionTitle}>{tr('common.outOfStock')}</Text>
               <View style={styles.countBadge}>
                 <Text style={styles.countBadgeText} maxFontSizeMultiplier={1.6}>
-                  {formatNumber(items.length)}
+                  {formatNumber(count)}
                 </Text>
               </View>
             </View>
@@ -474,12 +562,6 @@ function OutOfStockSection({ items, words }: OutOfStockSectionProps) {
           </Pressable>
         </View>
       </View>
-
-      {shown
-        ? items.map(item => (
-            <ItemRow key={item.item_id} item={item} words={words} isExpanded={open.has(item.item_id)} onToggle={toggleItem} outOfStock />
-          ))
-        : null}
     </View>
   );
-}
+});

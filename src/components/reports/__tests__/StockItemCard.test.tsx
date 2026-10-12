@@ -13,6 +13,7 @@ import { BRANDS, fontWeight, getTokens, motion, touchTarget, typography, type Mo
 import { setLanguage } from '@/i18n';
 import { formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
+import { StatusTag } from '@/components/ui';
 import {
   EXPAND_ANIMATION,
   LOW_STOCK_PERCENT,
@@ -323,6 +324,31 @@ describe('GRN rows', () => {
     expect(title).toBeDefined();
     expect(title.props.numberOfLines).toBeUndefined();
     expect(title.props.ellipsizeMode).toBeUndefined();
+  });
+
+  it('a long package mark is drawn in full as the first fact of the footnote line, not in a tag', () => {
+    const LONG_MARK = 'RS/KHEDA-LOT-2026-0099-COLD-ROOM-B-NORTH-WALL';
+    const rows: StockGRNRowData[] = [{ ...ROWS[0], packageMark: LONG_MARK }];
+    mockState = { theme: { preference: 'light', brand: 'orange' } };
+    const t = getTokens('orange', 'light');
+    const { tree, textNodes, grnButtons }= render(baseProps({ isExpanded: true, grns: { status: 'loaded', rows } }));
+    // No status tag in the row: a tag is one line and shrinks, so it would cut the mark.
+    expect(tree.root.findAllByType(StatusTag)).toHaveLength(0);
+    const line = textNodes().find(node => [].concat(node.props.children).join('').includes(LONG_MARK)) as ReactTestInstance;
+    expect([].concat(line.props.children).join('')).toBe(`Mark ${LONG_MARK} · Rack B-14 · 1,250.5 kg`);
+    expect(line.props.numberOfLines).toBeUndefined();
+    expect(line.props.ellipsizeMode).toBeUndefined();
+    expect(flat(line.props.style)).toMatchObject({ fontSize: typography.footnote.fontSize, color: t.text.secondary });
+    // The row's label names the mark once, after the GRN number.
+    expect(grnButtons()[0].props.accessibilityLabel).toBe(
+      `GRN 311, mark ${LONG_MARK}, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg, 60 of 100 in stock`
+    );
+  });
+
+  it('a row without a mark has no mark fact', () => {
+    const { texts } = render(baseProps({ isExpanded: true, grns: { status: 'loaded', rows: [{ ...ROWS[0], packageMark: null }] } }));
+    expect(texts()).toContain('Rack B-14 · 1,250.5 kg');
+    expect(texts().filter(text => text.startsWith('Mark '))).toEqual([]);
   });
 
   it('figures are right-aligned with tabular numerals; "of total" only when something was received', () => {

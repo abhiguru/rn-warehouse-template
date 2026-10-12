@@ -283,10 +283,11 @@ describe('stock aging, every customer', () => {
     expect(screen.has('Sorted by Average age, highest first. Change sort')).toBe(true);
     expect(screen.labels().filter(label => label.startsWith('Period'))).toEqual([]);
 
-    // The KPI is by_bucket['364+'].item_count (4), in the bucket's own words; not the RPC's
-    // items_over_365_days (9), which counts from 365.
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 14', 'Average age: 160 days', 'Over 364 days: 4']));
-    expect(screen.labels()).not.toContain('Over 364 days: 9');
+    // The KPI is by_bucket['364+'].item_count (4), named as a count of items in the bucket's own
+    // words; not the RPC's items_over_365_days (9), which counts from 365.
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 14', 'Average age: 160 days', 'Items over 364 days: 4']));
+    expect(screen.labels()).not.toContain('Items over 364 days: 9');
+    expect(screen.labels()).not.toContain('Over 364 days: 4');
     expect(screen.labels().filter(label => label.startsWith('Over 1 year'))).toEqual([]);
     expect(screen.texts()).toEqual(expect.arrayContaining(['Stock age', '0–120 days', '121–240 days', '241–364 days', 'Over 364 days']));
   });
@@ -318,7 +319,7 @@ describe('stock aging, every customer', () => {
     expect(screen.bold()).toEqual(['Produce', 'Produce']);
     expect(screen.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
     // The figures are the whole stock's, not what the search leaves.
-    expect(screen.labels()).toContain('Over 364 days: 4');
+    expect(screen.labels()).toContain('Items over 364 days: 4');
 
     await screen.press('Clear all filters and the search');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
@@ -326,6 +327,21 @@ describe('stock aging, every customer', () => {
     expect(screen.bold()).toEqual([]);
     expect(screen.has('Sorted by Stock, highest first. Change sort')).toBe(true);
     expect(allAging).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives each customer its average age alone, on up to two lines: no "over 1 year" count', async () => {
+    const screen = await open(makeStore());
+    const cards = screen.tree.root.findAllByType(ReportCustomerCard);
+    // Average ages 400, 200, 130 and 50 days; Riverbank has 2 lines over 365 days and Sunrise 1.
+    expect(cards.map(card => card.props.subtitle)).toEqual(['Average age 400 days', 'Average age 200 days', 'Average age 130 days', 'Average age 50 days']);
+    expect(cards.map(card => card.props.subtitleLines)).toEqual([2, 2, 2, 2]);
+    expect(screen.texts().filter(text => /over 1 year/i.test(text))).toEqual([]);
+    expect(screen.labels().filter(label => /over 1 year/i.test(label))).toEqual([]);
+    // The drawn subtitle may wrap to a second line rather than be cut.
+    const subtitle = cards[0].findAll(node => (node.type as unknown) === 'Text' && [node.props.children].flat().join('') === 'Average age 400 days');
+    expect(subtitle).toHaveLength(1);
+    expect(subtitle[0].props.numberOfLines).toBe(2);
+    expect(screen.has('Riverbank Produce, Average age 400 days, 80 units, Average: Over 364 days')).toBe(true);
   });
 
   it('tags each customer with the bucket of its average age, saying it is the average', async () => {
@@ -396,7 +412,7 @@ describe('stock aging, one customer', () => {
     expect(screen.items()).toEqual(ITEMS_BY_AGE);
     expect(screen.status()).toBe('Last updated 10:00 am');
     // by_bucket['364+'].item_count is 1; items_over_365_days says 7.
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 6', 'Over 364 days: 1']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 6', 'Items over 364 days: 1']));
     // The tag on an item gives its oldest line's age, and says so.
     expect(screen.texts()).toEqual(expect.arrayContaining(['Oldest 400 days', 'Oldest 300 days', 'Oldest 150 days', 'Oldest 30 days']));
   });
