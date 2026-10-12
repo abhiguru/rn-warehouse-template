@@ -6,8 +6,13 @@ on only in a build that names the central origin (see [Build settings](#build-se
 without it the app behaves exactly as before: one facility, that facility's own SMS login.
 It needs a facility backend with migration 49 (`central-exchange`) and a running central
 identity service ([central-identity-template](https://github.com/abhiguru/central-identity-template),
-contract in its `docs/API.md`). **None of it has been run on a phone against a real central
-service yet**; see [Not tested](#not-tested). What is still open is listed under
+contract in its `docs/API.md`). On a phone against the development central service
+(2026-10-12): with central login on, the walkthrough of plan D17 by hand (44 of 45 steps, on an
+earlier commit) and the same walkthrough as 18 Maestro flows on the code of 21:24, all passed
+(sign-in, access request, approval, switching, linking with a wrong and a right code, an
+unreachable facility, revocation, sign-out); with it off, plans D18 to D20 and the Maestro
+smoke flow (three passes after one failure of a selector in the flow itself). What has not
+been run is under [Not tested](#not-tested); what is still open under
 [Still open](#still-open).
 
 ## Goal
@@ -160,6 +165,27 @@ reuse refusal there changes nothing. A secure store
 that does not answer is not "no session": nothing is cleared, the store is read again once
 2 seconds later and on each return to the foreground, and the next call reads again.
 
+Whose session is stored is checked, not assumed (external review of 2026-10-12, R1, R3, R7):
+
+- A refresh writes its new pair only over the pair it read: a session revision moves at every
+  write or removal of the pair, and the pair is written only if the revision has not moved and
+  the stored refresh token is the one the refresh sent (a failed read of that token with the
+  revision unchanged counts as unchanged). A code check that began and failed meanwhile costs
+  nothing; a check for another person that stored its session meanwhile keeps it.
+- A refusal of the refresh token ends the session only if that token is still the stored one,
+  checked and ended in one step: a late refusal for the previous person does not sign out the
+  next one.
+- A stored pair is a person's only when the access token's `sub` names the stored user. A call
+  made for one person (the account deletion, a facility token) is sent only with that
+  person's pair, and a start removes a whole set whose `sub` names someone else.
+- Sign-out reports whether the phone removed the session. Each key's deletion is tried twice.
+  Before the deletion a sign-out marker (`secure_central_signed_out`, a short digest of the
+  refresh token being removed, or `*` when it cannot be read) is written and it is removed
+  once all four keys are gone. If they are not, My facilities says "Couldn't sign out" and
+  asks the person to restart the app; the session is not refreshed meanwhile, and the next
+  start finds the marker next to that session, removes it again and stays signed out. A new
+  sign-in removes an old marker.
+
 **My facilities** (`app/facilities.tsx`, `src/config/centralFacilities.ts`). The person's own
 list, stored on the phone under `central_facilities_v1:<central user id>`: address, instance
 id, name, city, a status and when it was last opened. No token. It is kept on central
@@ -201,6 +227,14 @@ list and is opened.
 5. The answer is handled by the code that handles an SMS sign-in
    (`completeOperatorSignIn` in `src/config/supabaseConfig.ts`): a session and profile, or an
    enrollment token and the waiting screen.
+
+An open belongs to the person it began for (external review R5): before the switch, the token
+request (asked for that person only), the exchange, each write to the list, the profile and
+the linking code it checks that the central person has not changed (an identity generation in
+`src/config/centralState.ts` that moves at every sign-in, sign-out or change of person). If it
+has, the open stops with "sign in again" and shows nothing; a facility session the exchange
+had already started is left at once. The linking code goes to the number the open began with,
+and a code step begun for another number is not completed.
 
 | Facility answers | The person sees | Status |
 |---|---|---|
@@ -281,7 +315,8 @@ removes the entry and leaves; kept restores the entry's status and shows the mes
 facilities when Settings is already gone; not known leaves the entry Unavailable, leaves the
 facility and shows the message, or the cleanup's own message when that cleanup did not
 finish. On My facilities, "Sign out" revokes the central session, forgets it on the
-phone and also leaves the current facility; the account entry holds the name and "Delete my
+phone and also leaves the current facility (if the phone could not remove the session from its
+secure storage it says so, see the central session above); the account entry holds the name and "Delete my
 account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
 
 ## Still open
@@ -306,9 +341,21 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
 
 ## Not tested
 
-- Nothing here has run on a phone or against a real central service: the central session,
-  the open sequence and the screens are covered by Jest tests with the service and the
-  facility mocked from their documented answers.
+- On a phone, only the walkthroughs named at the top have run (against the development
+  central service, in English, on Android). Not run on a phone: Back pressed while a code is
+  being checked; revocation while inside a facility; two people overlapping on one phone; a
+  failing secure store (the sign-out marker included); the central screens in Gujarati; iOS;
+  real SMS delivery. These rest on the Jest tests (the service and the facility mocked from
+  their documented answers) and on the fuzz test of the session store, which also injects
+  secure-store faults.
+- Accepted risks of the sign-out marker and the open's identity check (review of 2026-10-12):
+  - if the deletions fail AND the marker cannot be written, the next start signs the person
+    back in (sign-out still says it could not remove the sign-in);
+  - a deletion that the secure store reports as done without deleting makes sign-out report
+    success, and the next start signs the person in;
+  - after an exchange that finished for a person who has since changed, the facility session
+    is left with `leaveFacility`; if that answers `busy` or `failed` the answer is ignored and
+    the previous person's facility session stays until the next switch or sign-out.
 - Opening a facility changes the selected server, which rebuilds the app's navigation tree
   (as a server change always has). The result of the open is therefore kept outside the
   screens and handled by whichever screen is mounted afterwards, and entering the facility is

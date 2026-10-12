@@ -498,8 +498,11 @@ and route decisions. With it the app needs a **central identity service**
 ([central-identity-template](https://github.com/abhiguru/central-identity-template)) and, at
 every facility that takes part, **facility backend migration 49** (`central-exchange`, with
 the operator's `CENTRAL_ISSUER` set to the same issuer). The design, the flow as built and
-what is still open are in [docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). Not yet run on a
-phone against a real central service.
+what is still open are in [docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). Run on an Android
+phone against the development central service on 2026-10-12 (the walkthrough of plan D17 by
+hand, 44 of 45 steps on an earlier commit, and as 18 Maestro flows on the code of 21:24, all
+passed; with central login off, plans D18 to D20 and the smoke flow); what has not been run is
+listed under "Not tested" there.
 
 - **Build settings** (`src/config/envConfig.ts`, `.env.example`):
   `EXPO_PUBLIC_CENTRAL_ORIGIN`, an `https://` origin (a development build also accepts
@@ -613,6 +616,59 @@ phone against a real central service.
   by one, a failed read of the refresh token, the start-up cases, the deletion mismatch, and
   the central code step's release of its guard after a wrong code.
   Test only: the type errors in the operator-server and central-leave tests are fixed.
+- **Whose session a refresh writes, ends and uses (external review of 2026-10-12, R1 and R7,
+  central login only).** A refresh of one person could still write that person's new token
+  pair over another person's session: when a code check for the second person began before
+  the refresh and stored its session while the refresh was out, one failed read of the stored
+  refresh token let the pair through (the "nothing has begun" rule of the entry above went by
+  the moment a check began, not by what it stored), and an account deletion asked as the
+  second person then carried the first person's token. A refresh now notes a session revision
+  (moved by every write or removal of the token pair) with its one read and writes its pair
+  only if the revision has not moved and the stored refresh token is the one it sent; a failed
+  read with the revision unchanged counts as unchanged, so a check that began and failed no
+  longer costs the new pair (R35 now keeps it). A refusal of the refresh token ends the
+  session only if that token is still the stored one, checked and ended in one queued step: a
+  late refusal for the first person no longer signs out the second.
+- **A token pair is tied to its person (R1, central login only).** A stored pair belongs to a
+  person only when its access token's `sub` names the stored user; the account deletion and
+  the facility token (`requestFacilityToken(audience, onlyFor)`, now always for one person)
+  are sent only with that person's pair, and a start removes a whole set whose `sub` names
+  someone else (a phone already in the state above starts signed out).
+- **Sign-out says when the phone kept the session (R3, central login only).** Every failed
+  deletion of a secure-store key was ignored, so "Sign out" reported success while the whole
+  session stayed stored, and the next start signed the person back in. Each key's deletion is
+  now tried twice; `signOutCentral` answers whether all four keys are gone, and My facilities
+  shows "Couldn't sign out" with "This phone couldn't remove your association sign-in from its
+  secure storage. Restart the app and check that you're signed out before anyone else uses
+  this phone." A sign-out marker (`secure_central_signed_out`, a short digest of the refresh
+  token being removed, outside the four session keys) is written before the deletion and
+  removed once it succeeded; the next start that finds it beside that session removes the
+  session again and stays signed out, and the session is not refreshed meanwhile (that last
+  rule was found by the fault sweep below: a refresh after the failed deletion replaced the
+  pair the marker named). A new sign-in removes an old marker.
+- **Opening a facility belongs to the person it began for (R5, central login only).** An open
+  begun for one person went on after the central person changed: it switched, asked for a
+  token with whoever was stored by then, wrote the first person's list and put the facility
+  profile in the store, and the linking step used the number in memory at that moment. The
+  open now takes a ticket (the person and an identity generation that moves at every sign-in,
+  sign-out or change of person, `src/config/centralState.ts`) and checks it before the switch,
+  the token request (asked for that person), the exchange, each list write, the profile and
+  the linking code; if the person changed it stops with "sign in again", shows nothing, and
+  leaves a facility session the exchange had already started. The profile is now put in the
+  store before the list is written; the linking code goes to the number the open began with,
+  and a code step begun for another number is not completed. The facility's own SMS sign-in
+  checks the same before it switches.
+- Tests: the cases R36 to R40 (and R37b, R38b, R38c) in `centralSessionRace.test.ts`, the
+  facility-token owner check in `centralSession.test.ts`, O1 to O5 in `openFacility.test.ts`,
+  the sign-out message in `centralLeave.test.ts` and `CentralLoginScreens.test.tsx`. The
+  sweep of `centralSessionFuzz.test.ts` gained 1,000 seeds with secure-store faults (one read
+  that throws, one deletion that throws, or a burst of eight deletions that throw, chosen by a
+  generator of their own so the other seeds replay as before) and a check that a sign-out
+  that reported success is not followed by a start that signs the person back in. Against the
+  code before these fixes it counted REFRESH_TOKEN_PRESENTED_TWICE 1,
+  NEXT_START_DISAGREES 1, SIGNED_OUT_WITH_TOKENS_STORED 1 and
+  SIGN_OUT_REPORTED_OK_BUT_NEXT_START_SIGNED_IN 1; after them, none. (Its random schedules did
+  not reach the narrow R1 interleaving; R36 pins that one.)
 - Shared code, no change in behaviour without central login: the server-switch sequence
   moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
   `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used

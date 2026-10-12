@@ -21,6 +21,13 @@
  * a code check while somebody is already signed in. A second list of seeds starts from a
  * random, often broken, set of stored keys: after the start the store must hold either a whole
  * good session or nothing at all.
+ *
+ * A third list adds secure-store faults after the start: one read that throws, one deletion
+ * that throws, or a burst of eight deletions that throw (more than one retry per key can
+ * absorb). Its fault choices come from a generator of their own, so the other two lists replay
+ * exactly as before. Under faults a signed-out state may keep keys for a while, if the next
+ * start removes them; and a sign-out that said it succeeded must never be followed by a start
+ * that signs the person back in (unless a right code was checked after that sign-out began).
  */
 import * as SecureStore from 'expo-secure-store';
 import {
@@ -47,6 +54,8 @@ jest.mock('../envConfig', () => ({
 const SEEDS: readonly number[] = Array.from({ length: 5000 }, (_, index) => index + 1);
 /** Seeds that start from a random, often broken, set of stored keys. */
 const BROKEN_START_SEEDS: readonly number[] = Array.from({ length: 2500 }, (_, index) => index + 1);
+/** Seeds that start signed in as usual and then meet secure-store faults. */
+const FAULT_SEEDS: readonly number[] = Array.from({ length: 1000 }, (_, index) => index + 1);
 const STEPS = 40;
 /** The chance that a step starts a new operation when something is waiting to be let go. */
 const START_PROBABILITY = 0.3;
@@ -99,8 +108,36 @@ let deleteComplaints: { nobody: boolean; text: string }[] = [];
  */
 let lastStep: { label: string; user: string; clean: boolean } | null = null;
 let endersRunning = 0;
-/** How often the two checks had something to look at, over a sweep (so they cannot pass by looking at nothing). */
-const looked = { deleteRequests: 0, lastRightCode: 0 };
+/** How often the checks had something to look at, over a sweep (so they cannot pass by looking at nothing). */
+const looked = { deleteRequests: 0, lastRightCode: 0, faultsFired: 0, signOutsReportedOk: 0 };
+
+/**
+ * Secure-store faults (the third list of seeds only). `target` is the call, counted from the
+ * moment the faults are armed (after the start), that throws: for `get` the `target`-th read of
+ * the key `key` (one of the four, so a read that decides something is hit often enough), for
+ * `delete` the `target`-th deletion of any key, and for `deleteBurst` that deletion and the
+ * seven after it. Never armed during a start.
+ */
+type FaultMode = 'none' | 'get' | 'delete' | 'deleteBurst';
+const BURST = 8;
+const GET_WINDOW = 12;
+const DELETE_WINDOW = 20;
+type Faults = { mode: FaultMode; key: string; armed: boolean; target: number; gets: number; deletes: number; fired: number };
+const NO_FAULTS: Faults = { mode: 'none', key: '', armed: false, target: 0, gets: 0, deletes: 0, fired: 0 };
+let faults: Faults = { ...NO_FAULTS };
+function faultNow(kind: 'get' | 'delete', key: string): boolean {
+  if (!faults.armed || auto || faults.mode === 'none') return false;
+  let fire = false;
+  if (kind === 'get' && faults.mode === 'get' && key === faults.key) fire = (faults.gets += 1) === faults.target;
+  if (kind === 'delete' && faults.mode !== 'get') {
+    faults.deletes += 1;
+    fire = faults.mode === 'delete' ? faults.deletes === faults.target : faults.deletes >= faults.target && faults.deletes < faults.target + BURST;
+  }
+  if (fire) faults.fired += 1;
+  return fire;
+}
+/** The four session keys that are stored (a key of any other name is not counted). */
+const sessionKeys = () => Object.values(CENTRAL_SECURE_KEYS).filter(key => secure.has(key));
 
 type StandInReply = { ok: boolean; status: number; url: string; headers: { get: () => null }; json: () => Promise<unknown> };
 const reply = (status: number, body: unknown): StandInReply => ({ ok: status >= 200 && status < 300, status, url: '', headers: { get: () => null }, json: async () => body });
@@ -115,7 +152,7 @@ function newSession(family: Family) {
   family.current = refresh;
   tokenFamily.set(refresh, family.id);
   return {
-    access_token: `${b64url({ alg: 'ES256' })}.${b64url({ fam: family.id, n: issued, iat, exp: iat + life })}.sig`,
+    access_token: `${b64url({ alg: 'ES256' })}.${b64url({ sub: family.userId, fam: family.id, n: issued, iat, exp: iat + life })}.sig`,
     refresh_token: refresh,
   };
 }
@@ -192,14 +229,26 @@ const flush = async () => {
 };
 
 function install() {
-  jest.mocked(SecureStore.getItemAsync).mockImplementation(key => gate(`get ${short(key)}`, () => secure.get(key) ?? null));
+  jest.mocked(SecureStore.getItemAsync).mockImplementation(key => {
+    const fault = faultNow('get', key);
+    return gate(`get ${short(key)}${fault ? ' (FAULT: throws)' : ''}`, () => {
+      if (fault) throw new Error('keystore');
+      return secure.get(key) ?? null;
+    });
+  });
   jest.mocked(SecureStore.setItemAsync).mockImplementation((key, value) =>
     gate(`set ${short(key)}`, () => {
       secure.set(key, value);
       if (key === CENTRAL_SECURE_KEYS.REFRESH_TOKEN) everStored.add(value);
     })
   );
-  jest.mocked(SecureStore.deleteItemAsync).mockImplementation(key => gate(`delete ${short(key)}`, () => void secure.delete(key)));
+  jest.mocked(SecureStore.deleteItemAsync).mockImplementation(key => {
+    const fault = faultNow('delete', key);
+    return gate(`delete ${short(key)}${fault ? ' (FAULT: throws)' : ''}`, () => {
+      if (fault) throw new Error('keystore');
+      secure.delete(key);
+    });
+  });
   global.fetch = ((url: string, init: RequestInit) => {
     const path = url.replace(ORIGIN, '');
     const method = String(init.method);
@@ -231,7 +280,20 @@ function install() {
 // ----- one run -------------------------------------------------------------------------
 type Violation = { kind: string; seed: number; detail: string; trace: string[] };
 
-type StartMode = 'usually-signed-in' | 'broken-keys';
+/** 'faults': starts as 'usually-signed-in' does, then meets secure-store faults. */
+type StartMode = 'usually-signed-in' | 'broken-keys' | 'faults';
+
+/** The fault of a seed of the third list, from a generator of its own. */
+function chooseFaults(seed: number): Faults {
+  const pick = mulberry32(seed ^ 0x5bd1e995);
+  const roll = pick();
+  const mode: FaultMode = roll < 0.55 ? 'none' : roll < 0.7 ? 'get' : roll < 0.85 ? 'delete' : 'deleteBurst';
+  if (mode === 'none') return { ...NO_FAULTS };
+  const keys = Object.values(CENTRAL_SECURE_KEYS);
+  const key = mode === 'get' ? keys[Math.floor(pick() * keys.length)] : '';
+  const target = 1 + Math.floor(pick() * (mode === 'get' ? GET_WINDOW : DELETE_WINDOW));
+  return { ...NO_FAULTS, mode, key, target };
+}
 
 /**
  * The start of the app. 'usually-signed-in': person 1 with an access token that is fresh or
@@ -241,7 +303,7 @@ type StartMode = 'usually-signed-in' | 'broken-keys';
  * 'broken-keys': each of the four keys is present or missing at random, and the expiry and the
  * user may be unreadable. `intact` is true when what is stored is a whole good session.
  */
-function preload(mode: StartMode): { text: string; intact: boolean; anything: boolean } {
+function preload(mode: Exclude<StartMode, 'faults'>): { text: string; intact: boolean; anything: boolean } {
   if (mode === 'usually-signed-in' && rng() >= 0.75) return { text: 'nothing stored', intact: false, anything: false };
   const family = newFamily(`user-${PHONES[0]}`);
   const session = newSession(family);
@@ -294,22 +356,39 @@ async function runSeed(seed: number, mode: StartMode): Promise<Violation[]> {
   trace = [];
   auto = false;
   secure.clear();
+  faults = mode === 'faults' ? chooseFaults(seed) : { ...NO_FAULTS };
   install();
   resetCentralSessionForTests();
   resetCentralStateForTests();
-  const loaded = preload(mode);
+  const loaded = preload(mode === 'faults' ? 'usually-signed-in' : mode);
   trace.push(`PRELOAD ${loaded.text}`);
+  if (mode === 'faults') trace.push(`FAULTS ${faults.mode}${faults.mode === 'none' ? '' : ` from call ${faults.target}${faults.key ? ` (reads of ${short(faults.key)})` : ''}`}`);
 
   const running: { label: string; done: boolean }[] = [];
+  /** Sign-outs and right code checks in the order they were started, with what they answered. */
+  let order = 0;
+  const signOuts: { order: number; done: boolean; answer: unknown }[] = [];
+  const rightCodes: { order: number; ok: boolean }[] = [];
   const start = (label: string, make: () => Promise<unknown>) => {
     const entry = { label, done: false };
     running.push(entry);
+    order += 1;
+    const begun = order;
     trace.push(`START ${label}`);
+    const signOut = label === 'signOut' ? { order: begun, done: false, answer: undefined as unknown } : null;
+    if (signOut) signOuts.push(signOut);
+    const rightCode = label.startsWith('verify#') && label.includes(' OK ') ? { order: begun, ok: false } : null;
+    if (rightCode) rightCodes.push(rightCode);
     make().then(
       value => {
         entry.done = true;
+        if (signOut) {
+          signOut.done = true;
+          signOut.answer = value;
+        }
+        if (rightCode) rightCode.ok = Boolean(value && typeof value === 'object' && (value as { ok?: unknown }).ok === true);
         const answer = value && typeof value === 'object' ? (value as { ok?: unknown; kind?: unknown; code?: unknown }) : null;
-        trace.push(`  END ${label}: ${answer ? JSON.stringify({ ok: answer.ok, kind: answer.kind, code: answer.code }) : 'done'}`);
+        trace.push(`  END ${label}: ${answer ? JSON.stringify({ ok: answer.ok, kind: answer.kind, code: answer.code }) : value === undefined ? 'done' : String(value)}`);
       },
       error => {
         entry.done = true;
@@ -367,14 +446,16 @@ async function runSeed(seed: number, mode: StartMode): Promise<Violation[]> {
     await flush();
   }
   trace.push(`  (after start: ${getCentralState().status}, keys left: ${[...secure.keys()].map(short).join(',') || 'none'})`);
+  // The faults begin after the start.
+  faults.armed = true;
   const violations: Violation[] = [];
   const add = (kind: string, detail: string) => violations.push({ kind, seed, detail, trace: [...trace] });
   if (mode === 'broken-keys') {
     // After the start the store holds a whole good session or nothing, and the status says which.
     const want = loaded.intact ? 'signedIn' : 'signedOut';
     if (getCentralState().status !== want) add('START_WRONG_STATUS', `want ${want} got ${getCentralState().status}; ${loaded.text}`);
-    if (loaded.intact && secure.size !== 4) add('START_REMOVED_A_GOOD_SESSION', loaded.text);
-    if (!loaded.intact && secure.size > 0) add('START_LEFT_KEYS_BEHIND', `${loaded.text} -> left ${[...secure.keys()].map(short).join(',')}`);
+    if (loaded.intact && sessionKeys().length !== 4) add('START_REMOVED_A_GOOD_SESSION', loaded.text);
+    if (!loaded.intact && sessionKeys().length > 0) add('START_LEFT_KEYS_BEHIND', `${loaded.text} -> left ${sessionKeys().map(short).join(',')}`);
   }
 
   for (let step = 0; step < STEPS; step += 1) {
@@ -404,11 +485,14 @@ async function runSeed(seed: number, mode: StartMode): Promise<Violation[]> {
   })();
   const picture = `state=${state.status}/${state.user?.id ?? '-'} store=${complete ? 'session' : access || refresh || expires ? 'partial' : 'none'}/${storedUser ?? '-'}`;
 
-  // The in-memory state and the store must say the same.
+  // The in-memory state and the store must say the same. Under faults a signed-out state may
+  // keep keys it could not delete, as long as the next start removes them (checked below).
+  const untilNextStart: { kind: string; detail: string }[] = [];
+  const signedOutWithKeys = (kind: string, detail: string) => (mode === 'faults' ? untilNextStart.push({ kind, detail }) : add(kind, detail));
   if (state.status === 'signedIn' && !(complete && storedUser)) add('SIGNED_IN_WITHOUT_STORED_SESSION', picture);
   if (state.status === 'signedIn' && complete && storedUser && storedUser !== state.user?.id) add('SIGNED_IN_USER_DIFFERS_FROM_STORE', picture);
-  if (state.status === 'signedOut' && complete) add('SIGNED_OUT_WITH_TOKENS_STORED', picture);
-  if (state.status === 'signedOut' && !complete && secure.size > 0) add('SIGNED_OUT_WITH_LEFTOVER_KEYS', picture);
+  if (state.status === 'signedOut' && complete) signedOutWithKeys('SIGNED_OUT_WITH_TOKENS_STORED', picture);
+  if (state.status === 'signedOut' && !complete && sessionKeys().length > 0) signedOutWithKeys('SIGNED_OUT_WITH_LEFTOVER_KEYS', picture);
   if (state.status === 'signedOut' && state.user) add('SIGNED_OUT_WITH_USER_IN_STATE', picture);
   if (state.status === 'unknown') add('STATUS_UNKNOWN', picture);
   // The stored tokens must be the ones of the person the state names, and must still be usable.
@@ -426,8 +510,10 @@ async function runSeed(seed: number, mode: StartMode): Promise<Violation[]> {
   if (deleteComplaints.some(item => item.nobody)) add('DELETE_SENT_WHILE_MEMORY_SAID_SIGNED_OUT', deleteComplaints.map(item => item.text).join('; '));
   // The last step that checked a code or signed out was a right code, so that person is signed in.
   const last = lastStep as { label: string; user: string; clean: boolean } | null;
-  const lastIsRightCode = Boolean(last && last.clean && last.label.includes(' OK '));
+  // (A store fault can make a right code fail on its own: such a run is not asked this.)
+  const lastIsRightCode = Boolean(last && last.clean && last.label.includes(' OK ')) && faults.fired === 0;
   if (lastIsRightCode) looked.lastRightCode += 1;
+  if (faults.fired) looked.faultsFired += 1;
   if (last && lastIsRightCode && !(state.status === 'signedIn' && state.user?.id === last.user))
     add('LAST_RIGHT_CODE_NOT_SIGNED_IN', `${last.label}; ${picture}`);
 
@@ -435,12 +521,23 @@ async function runSeed(seed: number, mode: StartMode): Promise<Violation[]> {
   const before = `${state.status}/${state.user?.id ?? '-'}`;
   if (state.status !== 'unknown') {
     auto = true;
+    faults.armed = false;
     resetCentralSessionForTests();
     resetCentralStateForTests();
     await restoreCentralSession();
     await flush();
     const after = `${getCentralState().status}/${getCentralState().user?.id ?? '-'}`;
     if (after !== before) add('NEXT_START_DISAGREES', `before=${before} after=${after} ${picture}`);
+    const left = sessionKeys();
+    if (getCentralState().status !== 'signedOut' || left.length > 0)
+      for (const item of untilNextStart) add(item.kind, `${item.detail}; the next start left ${left.map(short).join(',') || 'no keys'} and is ${after}`);
+    // A sign-out that said it succeeded: the next start must not sign the person back in,
+    // unless a right code checked after that sign-out began signed somebody in.
+    const reportedOk = signOuts.filter(item => item.done && item.answer !== false);
+    looked.signOutsReportedOk += reportedOk.length;
+    const unexplained = reportedOk.find(item => !rightCodes.some(code => code.order > item.order && code.ok));
+    if (unexplained && getCentralState().status === 'signedIn')
+      add('SIGN_OUT_REPORTED_OK_BUT_NEXT_START_SIGNED_IN', `sign-out #${unexplained.order} answered ${String(unexplained.answer)}; the next start is ${after}; ${picture}`);
     auto = false;
   }
   resetCentralSessionForTests();
@@ -462,6 +559,8 @@ async function sweep(seeds: readonly number[], mode: StartMode) {
   const examples: Record<string, Violation> = {};
   looked.deleteRequests = 0;
   looked.lastRightCode = 0;
+  looked.faultsFired = 0;
+  looked.signOutsReportedOk = 0;
   for (const seed of seeds) {
     for (const violation of await runSeed(seed, mode)) {
       counts[violation.kind] = (counts[violation.kind] ?? 0) + 1;
@@ -478,6 +577,9 @@ async function sweep(seeds: readonly number[], mode: StartMode) {
   // The two checks above had something to look at: DELETE requests were sent, and runs ended on a right code.
   expect(looked.deleteRequests).toBeGreaterThan(0);
   expect(looked.lastRightCode).toBeGreaterThan(0);
+  expect(looked.signOutsReportedOk).toBeGreaterThan(0);
+  // The fault list met its faults.
+  if (mode === 'faults') expect(looked.faultsFired).toBeGreaterThan(0);
 }
 
 it(`${SEEDS.length} fixed seeds: state and store agree, the next start agrees, and no refresh token is presented after a newer one was stored`, () =>
@@ -485,3 +587,6 @@ it(`${SEEDS.length} fixed seeds: state and store agree, the next start agrees, a
 
 it(`${BROKEN_START_SEEDS.length} fixed seeds that start from a random, often broken, set of stored keys: the start leaves a whole good session or nothing, and the rest agrees too`, () =>
   sweep(BROKEN_START_SEEDS, 'broken-keys'), 600000);
+
+it(`${FAULT_SEEDS.length} fixed seeds with secure-store faults (a read that throws, a deletion that throws, a burst of deletions that throw): no token of another person, no deletion as another person, and no sign-out that said it succeeded is followed by a start that signs the person back in`, () =>
+  sweep(FAULT_SEEDS, 'faults'), 600000);

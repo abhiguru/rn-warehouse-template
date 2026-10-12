@@ -78,7 +78,12 @@ function reportDeletionFailure(server: OperatorServer, message: string): 'report
 
 type Dispatch = (action: any) => any;
 
-export type CentralEndOutcome = { ok: true } | { ok: false; reason: 'busy' } | { ok: false; reason: 'central'; failure: CentralFailure };
+export type CentralEndOutcome =
+  | { ok: true }
+  | { ok: false; reason: 'busy' }
+  | { ok: false; reason: 'central'; failure: CentralFailure }
+  /** Signed out in memory, but the phone's secure storage kept the session; the next start removes it. */
+  | { ok: false; reason: 'local_clear_failed' };
 
 /** Leave the selected facility, if there is one. False while a write is in flight. */
 async function leaveSelectedFacility(dispatch: Dispatch): Promise<boolean> {
@@ -91,11 +96,13 @@ async function leaveSelectedFacility(dispatch: Dispatch): Promise<boolean> {
  * "Sign out" on My facilities: the central session is revoked and forgotten,
  * and the current facility is signed out too. The list of facilities stays on
  * the device for the next sign-in of the same person; it holds no secret.
+ * Success is answered only when the phone removed the stored session: a
+ * person who trusts "Sign out" on a shared phone must be told otherwise.
  */
 export function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
   return whileLeaving(async () => {
     if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
-    await signOutCentral();
+    if (!(await signOutCentral())) return { ok: false, reason: 'local_clear_failed' };
     return { ok: true };
   });
 }

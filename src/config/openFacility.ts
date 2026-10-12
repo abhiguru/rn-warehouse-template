@@ -14,9 +14,25 @@
  * The result is also published in centralState, because step 2 rebuilds the
  * navigation tree: the screen that started the open may not be the one that
  * shows its answer.
+ *
+ * An open belongs to the person it began for (a `Ticket`: that person and the
+ * identity generation of centralState.ts). Before each step that acts (the
+ * switch, the token request, the exchange, every list write, the profile, the
+ * linking code) it checks that the central person has not changed since; if it
+ * has, it stops with "sign in again", and a facility session it got for the
+ * previous person is left at once.
  */
 import { getCentralLoginConfig } from './envConfig';
-import { getCentralState, nextOutcomeId, setCentralState, type FacilityStatus, type OpenFailureReason, type OpenOutcome } from './centralState';
+import {
+  getCentralIdentityGeneration,
+  getCentralState,
+  nextOutcomeId,
+  setCentralState,
+  type CentralUser,
+  type FacilityStatus,
+  type OpenFailureReason,
+  type OpenOutcome,
+} from './centralState';
 import { requestFacilityToken, type CentralFailure } from './centralSession';
 import { updateMyFacility } from './centralFacilities';
 import { discoverOperator, getActiveOperatorServer, type OperatorServer } from './operatorServer';
@@ -27,7 +43,7 @@ import {
   type CentralExchangeCode,
   type CentralExchangeResult,
 } from './supabaseConfig';
-import { switchOperatorServer } from '@/store/operatorSwitch';
+import { leaveFacility, switchOperatorServer } from '@/store/operatorSwitch';
 import { store } from '@/store';
 import { setUserProfile } from '@/store/slices/authSlice';
 import { localizeDigits, t, type TranslationKey } from '@/i18n';
@@ -43,6 +59,29 @@ const failed = (reason: OpenFailureReason, message: string, retryAfterSeconds?: 
   message,
   ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
 });
+
+/** The person an open began for, and the identity generation at that moment. */
+type Ticket = { user: CentralUser; generation: number };
+
+/** A ticket for the person signed in now, or null when nobody is. */
+function takeTicket(): Ticket | null {
+  const current = getCentralState();
+  return current.status === 'signedIn' && current.user ? { user: current.user, generation: getCentralIdentityGeneration() } : null;
+}
+
+/** True while the central person is still the one the ticket was taken for. */
+function isCurrent(ticket: Ticket): boolean {
+  const current = getCentralState();
+  return getCentralIdentityGeneration() === ticket.generation && current.status === 'signedIn' && current.user?.id === ticket.user.id;
+}
+
+/** The answer of an open whose person has changed or signed out meanwhile. */
+const ended = (): OpenOutcome => failed('not_signed_in', t('central.errors.sessionEnded'));
+
+/** Writes to the ticket's person's list, only while that person is still the one signed in. */
+async function record(ticket: Ticket, origin: string, change: Parameters<typeof updateMyFacility>[2]): Promise<void> {
+  if (isCurrent(ticket)) await updateMyFacility(ticket.user.id, origin, change);
+}
 
 const fromCentral = (failure: CentralFailure): OpenOutcome =>
   failed(failure.code === 'unknown_facility' ? 'unknown_facility' : 'central', failure.message, failure.retryAfterSeconds);
@@ -76,14 +115,22 @@ function rateLimitMessage(name: string, seconds: number | undefined): string {
 }
 
 type ExchangeStep =
+  /** The central person changed before the token or the exchange: nothing more was asked. */
+  | { stale: true; central?: undefined; answer?: undefined }
   /** The central service gave no token. */
-  | { central: CentralFailure; answer?: undefined }
-  | { central?: undefined; answer: CentralExchangeResult };
+  | { stale?: undefined; central: CentralFailure; answer?: undefined }
+  | { stale?: undefined; central?: undefined; answer: CentralExchangeResult };
 
-/** A fresh token for every call: the facility spends each one, whatever it answers. */
-async function exchangeOnce(origin: string, otpCode?: string): Promise<ExchangeStep> {
-  const token = await requestFacilityToken(origin);
+/**
+ * A fresh token for every call: the facility spends each one, whatever it answers. The token
+ * is asked for the ticket's person only (never with whoever is stored by then), and neither it
+ * nor the exchange is begun once that person has changed.
+ */
+async function exchangeOnce(ticket: Ticket, origin: string, otpCode?: string): Promise<ExchangeStep> {
+  if (!isCurrent(ticket)) return { stale: true };
+  const token = await requestFacilityToken(origin, ticket.user.id);
   if (!token.ok) return { central: token };
+  if (!isCurrent(ticket)) return { stale: true };
   return { answer: await exchangeCentralIdentity(token.identityToken, otpCode ? { otpCode } : undefined) };
 }
 
@@ -91,41 +138,52 @@ async function exchangeOnce(origin: string, otpCode?: string): Promise<ExchangeS
  * Token, exchange, and the one retry for a token the facility says it has
  * already seen (a repeat of a request whose answer was lost).
  */
-async function exchange(origin: string, otpCode?: string): Promise<ExchangeStep> {
-  const first = await exchangeOnce(origin, otpCode);
-  if (first.central || first.answer.success || first.answer.code !== 'identity_token_used') return first;
-  return exchangeOnce(origin, otpCode);
+async function exchange(ticket: Ticket, origin: string, otpCode?: string): Promise<ExchangeStep> {
+  const first = await exchangeOnce(ticket, origin, otpCode);
+  if (first.stale || first.central || first.answer.success || first.answer.code !== 'identity_token_used') return first;
+  return exchangeOnce(ticket, origin, otpCode);
 }
 
 /** Turns the facility's answer into the outcome and writes the list status. */
 async function settle(
-  userId: string,
+  ticket: Ticket,
   server: OperatorServer,
   result: ExchangeStep,
   linking: boolean
 ): Promise<OpenOutcome> {
   const name = facilityNameOf(server);
   const origin = server.origin;
+  if (result.stale) return ended();
   if (result.central) return fromCentral(result.central);
   const answer = result.answer;
+  if (!isCurrent(ticket)) {
+    // The person changed during the exchange. A facility session it started is this
+    // exchange's and belongs to the previous person: it is left at once.
+    if (answer.success) await leaveFacility(store.dispatch);
+    return ended();
+  }
   if (answer.success) {
     setCentralState({ pendingLink: null, facilitySmsOrigin: null });
     if (answer.data.action === 'pending') {
-      await updateMyFacility(userId, origin, { status: 'requested', opened: true });
+      await record(ticket, origin, { status: 'requested', opened: true });
       return { kind: 'pending' };
     }
-    await updateMyFacility(userId, origin, { status: 'approved', opened: true });
     // The same step as the code screen after an SMS sign-in: with the profile
-    // in the store the route guard lets the person into the facility.
+    // in the store the route guard lets the person into the facility. Dispatched
+    // right after the check above, before the list write waits for the storage.
     store.dispatch(setUserProfile(answer.data.userProfile));
+    await record(ticket, origin, { status: 'approved', opened: true });
     return { kind: 'login' };
   }
   if (answer.code === 'link_required') {
-    await updateMyFacility(userId, origin, { status: 'link_needed' });
+    await record(ticket, origin, { status: 'link_needed' });
     // With a code already sent the facility should not ask again; say it plainly.
     if (linking) return failed('failed', t('central.open.failed', { facility: name }));
-    const phoneNumber = getCentralState().user?.phoneNumber ?? '';
+    // The number of the person the open began for, not whatever memory holds by now.
+    const phoneNumber = ticket.user.phoneNumber;
+    if (!isCurrent(ticket)) return ended();
     const sent = await signInWithPhone(phoneNumber);
+    if (!isCurrent(ticket)) return ended();
     setCentralState({ pendingLink: { origin, name, phoneNumber } });
     if (sent.success) return { kind: 'link_required', codeSent: true };
     return {
@@ -139,14 +197,15 @@ async function settle(
     return failed('rate_limited', rateLimitMessage(name, answer.retryAfterSeconds), answer.retryAfterSeconds);
   // "Already used" a second time: the facility cannot verify this sign-in.
   const known = EXCHANGE_FAILURES[answer.code === 'identity_token_used' ? 'invalid_identity_token' : answer.code];
-  if (known.status) await updateMyFacility(userId, origin, { status: known.status });
+  if (known.status) await record(ticket, origin, { status: known.status });
   return failed(known.reason, t(known.message, { facility: name }));
 }
 
-async function discover(userId: string, origin: string, fallbackName: string): Promise<Discovery | OpenOutcome> {
+async function discover(ticket: Ticket, origin: string, fallbackName: string): Promise<Discovery | OpenOutcome> {
   try {
     const discovery = await discoverOperator(origin);
-    await updateMyFacility(userId, origin, { instanceId: discovery.server.instanceId });
+    if (!isCurrent(ticket)) return ended();
+    await record(ticket, origin, { instanceId: discovery.server.instanceId });
     return discovery;
   } catch {
     // Not reachable right now; nothing was learned about the person's access there.
@@ -155,9 +214,10 @@ async function discover(userId: string, origin: string, fallbackName: string): P
 }
 
 /** Steps 2 to 5 for a facility that accepts association sign-in. */
-async function switchAndExchange(userId: string, discovery: Discovery): Promise<OpenOutcome> {
+async function switchAndExchange(ticket: Ticket, discovery: Discovery): Promise<OpenOutcome> {
   const { server, config } = discovery;
   const name = facilityNameOf(server);
+  if (!isCurrent(ticket)) return ended();
   const switched = await switchOperatorServer(server, store.dispatch);
   if (switched.kind === 'busy') return failed('busy', t('central.switch.busyMessage'));
   if (switched.kind === 'failed') return failed('switch_failed', t('central.open.switchFailed', { facility: name }));
@@ -170,32 +230,30 @@ async function switchAndExchange(userId: string, discovery: Discovery): Promise<
   // server; the exchange must not wait for it, and the second call changes
   // nothing.
   initializeSupabase(config.supabaseUrl, config.anonKey);
-  return settle(userId, server, await exchange(server.origin), false);
+  return settle(ticket, server, await exchange(ticket, server.origin), false);
 }
 
-async function open(origin: string, fallbackName: string): Promise<OpenOutcome> {
+async function open(ticket: Ticket | null, origin: string, fallbackName: string): Promise<OpenOutcome> {
   const central = getCentralLoginConfig();
-  const user = getCentralState().user;
-  if (!central || getCentralState().status !== 'signedIn' || !user)
-    return failed('not_signed_in', t('central.errors.sessionEnded'));
-  const discovery = await discover(user.id, origin, fallbackName);
+  if (!central || !ticket || !isCurrent(ticket)) return ended();
+  const discovery = await discover(ticket, origin, fallbackName);
   if ('kind' in discovery) return discovery;
   // A facility that does not name this build's issuer does not accept
   // association sign-in (a non-member, or one that trusts another issuer).
   // Nothing was learned about the person's access there, so the status stays.
   if (discovery.config.centralLogin?.issuer !== central.issuer) return { kind: 'sms_offer' };
-  return switchAndExchange(user.id, discovery);
+  return switchAndExchange(ticket, discovery);
 }
 
 /**
  * Hands the answer to whichever screen is mounted. An answer for a central
- * session that has ended meanwhile (signed out, refused, deleted) is dropped:
- * the next person to sign in must not be told about the previous one's facility.
+ * session that has ended meanwhile (signed out, refused, deleted, another
+ * person signed in) is dropped: the next person to sign in must not be told
+ * about the previous one's facility.
  */
-function publish(userId: string, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
-  const current = getCentralState();
-  const sameSession = current.status === 'signedIn' && current.user?.id === userId;
-  setCentralState({ opening: null, outcome: sameSession ? { id: nextOutcomeId(), origin, name, outcome } : null });
+function publish(ticket: Ticket | null, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
+  const current = ticket !== null && isCurrent(ticket);
+  setCentralState({ opening: null, outcome: current ? { id: nextOutcomeId(), origin, name, outcome } : null });
   return outcome;
 }
 
@@ -228,28 +286,29 @@ export async function openFacility(origin: string, name: string): Promise<OpenOu
     if (getCentralState().outcome === null) setCentralState({ outcome: { id: nextOutcomeId(), origin, name, outcome } });
     return outcome;
   }
-  const userId = getCentralState().user?.id ?? '';
+  const ticket = takeTicket();
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {
-    return publish(userId, origin, name, await open(origin, name));
+    return publish(ticket, origin, name, await open(ticket, origin, name));
   } catch {
-    return publish(userId, origin, name, failed('failed', t('central.open.failed', { facility: name })));
+    return publish(ticket, origin, name, failed('failed', t('central.open.failed', { facility: name })));
   }
 }
 
 /**
  * The second step of linking: the person typed the code the facility sent.
  * A fresh identity token goes to the facility together with the code.
- * The result is returned to the code screen and not published.
+ * The result is returned to the code screen and not published. A code step
+ * begun for another number than the signed-in person's is not completed.
  */
 export async function completeFacilityLink(code: string): Promise<OpenOutcome> {
   const link = getCentralState().pendingLink;
-  const user = getCentralState().user;
+  const ticket = takeTicket();
   const server = getActiveOperatorServer();
-  if (!link || !user || !server || server.origin !== link.origin)
+  if (!link || !ticket || !server || server.origin !== link.origin || link.phoneNumber !== ticket.user.phoneNumber)
     return failed('failed', t('central.open.failed', { facility: link?.name ?? '' }));
   try {
-    return await settle(user.id, server, await exchange(link.origin, code), true);
+    return await settle(ticket, server, await exchange(ticket, link.origin, code), true);
   } catch {
     return failed('failed', t('central.open.failed', { facility: link.name }));
   }
@@ -273,15 +332,17 @@ export function cancelFacilityLink(): void {
  * the server address screen would, and let the existing sign-in screen take over.
  */
 export async function beginFacilitySmsSignIn(origin: string, name: string): Promise<OpenOutcome> {
-  const user = getCentralState().user;
-  if (!user) return failed('not_signed_in', t('central.errors.sessionEnded'));
-  const discovery = await discover(user.id, origin, name);
+  const ticket = takeTicket();
+  if (!ticket) return ended();
+  const discovery = await discover(ticket, origin, name);
   if ('kind' in discovery) return discovery;
+  if (!isCurrent(ticket)) return ended();
   const switched = await switchOperatorServer(discovery.server, store.dispatch);
   if (switched.kind === 'busy') return failed('busy', t('central.switch.busyMessage'));
   if (switched.kind === 'failed')
     return failed('switch_failed', t('central.open.switchFailed', { facility: facilityNameOf(discovery.server) }));
   initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
+  if (!isCurrent(ticket)) return ended();
   setCentralState({ facilitySmsOrigin: discovery.server.origin, autoOpenSpent: true });
   return { kind: 'sms_offer' };
 }

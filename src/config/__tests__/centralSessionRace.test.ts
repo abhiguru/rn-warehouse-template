@@ -10,13 +10,21 @@
  * was asked for, a refresh that waits behind another and begins during the next sign-in does
  * not end that sign-in, and one failed read of the stored refresh token costs nobody the
  * session.
+ *
+ * And from the external review of 2026-10-12: a refresh of person X answered after Y was
+ * stored neither writes X's pair under Y (also when that read fails) nor ends Y's session on a
+ * refusal; a token set whose access token names another person than the stored user is never
+ * used for that user; a sign-out whose deletions fail says so and the next start does not
+ * sign the person back in.
  */
 import * as SecureStore from 'expo-secure-store';
 import {
   CENTRAL_SECURE_KEYS,
+  CENTRAL_SIGNED_OUT_KEY,
   deleteCentralAccount,
   fetchCentralProfile,
   refreshCentralSession,
+  requestFacilityToken,
   resetCentralSessionForTests,
   restoreCentralSession,
   signOutCentral,
@@ -38,7 +46,7 @@ const fetchMock = jest.fn();
 const b64url = (value: unknown) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
 const ISSUED_AT = Math.floor(Date.now() / 1000);
 const accessToken = (label: string) =>
-  `${b64url({ alg: 'ES256', typ: 'central-access+jwt' })}.${b64url({ iss: ORIGIN, sub: label, iat: ISSUED_AT, exp: ISSUED_AT + 900, label })}.signature`;
+  `${b64url({ alg: 'ES256', typ: 'central-access+jwt' })}.${b64url({ iss: ORIGIN, sub: label.startsWith('y') ? 'user-y' : 'user-x', iat: ISSUED_AT, exp: ISSUED_AT + 900, label })}.signature`;
 const refreshToken = (digit: string) => digit.repeat(64);
 const sessionOf = (label: string, digit: string) => ({
   access_token: accessToken(label),
@@ -565,12 +573,12 @@ describe('the start-up read and what it finds', () => {
   });
 });
 
-/** The label (`sub`) of the person whose access token each request carried. */
+/** The label of the access token each request carried (its `sub` names the person). */
 const bearerOf = (call: unknown[]) =>
-  JSON.parse(Buffer.from(String(((call[1] as RequestInit).headers as Record<string, string>).Authorization).split('.')[1], 'base64url').toString()).sub as string;
+  JSON.parse(Buffer.from(String(((call[1] as RequestInit).headers as Record<string, string>).Authorization).split('.')[1], 'base64url').toString()).label as string;
 const deleteBearers = () => callsOf('DELETE /v1/me').map(bearerOf);
 
-/** The next read of `key` fails once; every other read is the ordinary one. */
+/** The next read of `key` fails once; every other read is the ordinary one. The returned function disarms a failure not used yet. */
 function failNextRead(key: string) {
   const ordinary = jest.mocked(SecureStore.getItemAsync).getMockImplementation() as (key: string) => Promise<string | null>;
   let armed = true;
@@ -581,6 +589,9 @@ function failNextRead(key: string) {
     }
     return ordinary(k);
   });
+  return () => {
+    armed = false;
+  };
 }
 
 describe('an account deletion while a check for another person is answered (person X deletes, person Y signs in)', () => {
@@ -784,7 +795,11 @@ describe('one failed read of the stored refresh token when the refresh answer ar
     expect(sent).toEqual([refreshToken('1'), refreshToken('2')]);
   });
 
-  it('R35. the read throws once and a check began meanwhile (the epoch moved): the answer is dropped, nothing is written', async () => {
+  it('R35. the read throws once and a check began meanwhile but wrote nothing: the new pair is kept', async () => {
+    // The epoch cannot tell "a check began and failed" from "a check stored another person";
+    // what is stored can: nothing was written or cleared since this refresh read the store.
+    // Dropping the pair would keep a token the service has already replaced, and the next
+    // refresh would be a reuse that signs the person out (R9, R34).
     await signedInAsX(30);
     const answerRefresh = expectCall('POST /v1/session/refresh');
     const refreshing = refreshCentralSession();
@@ -795,10 +810,250 @@ describe('one failed read of the stored refresh token when the refresh answer ar
     await checkB;
     failNextRead(CENTRAL_SECURE_KEYS.REFRESH_TOKEN);
     answerRefresh.resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    expect(await refreshing).toMatchObject({ kind: 'ok', session: { refreshToken: refreshToken('2') } });
+    await settle();
+    expect(stored()).toEqual({ access: accessToken('x-new'), refresh: refreshToken('2'), expires: true, userId: 'user-x' });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x' } });
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-newer', '3') }));
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'ok' });
+    const sent = callsOf('POST /v1/session/refresh').map(([, init]) => JSON.parse(String((init as RequestInit).body)).refresh_token);
+    expect(sent).toEqual([refreshToken('1'), refreshToken('2')]);
+  });
+});
+
+/** Every deletion of `keys` (of every key when none are named) throws until the returned function is called. */
+function failDeletes(keys?: string[]) {
+  const ordinary = jest.mocked(SecureStore.deleteItemAsync).getMockImplementation() as (key: string) => Promise<void>;
+  let armed = true;
+  jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async k => {
+    if (armed && (!keys || keys.includes(k))) throw new Error('keystore');
+    return ordinary(k);
+  });
+  return () => {
+    armed = false;
+  };
+}
+
+/** The review's schedule: X's refresh has sent its token, then a check for Y stores Y's session. */
+async function refreshOfXOvertakenByY() {
+  await signedInAsX(30);
+  const answerRefresh = expectCall('POST /v1/session/refresh');
+  const answerY = expectCall('POST /v1/otp/verify');
+  const checkY = verifyCentralCode(PHONE_Y, '111111', '2025-12'); // begins before the refresh
+  const refreshing = refreshCentralSession();
+  await settle(); // the refresh has read person X's token and sent it
+  expect(callsOf('POST /v1/session/refresh')).toHaveLength(1);
+  answerY.resolve(reply(200, { user: USER_Y, session: sessionOf('y-b', 'b') }));
+  expect(await checkY).toMatchObject({ ok: true, user: { id: 'user-y' } });
+  return { answerRefresh, refreshing };
+}
+
+describe('a refresh of X answered after Y was stored, under the same epoch (external review R1, R7)', () => {
+  it('R36. the read of the stored refresh token throws once: X\'s new pair is not written over Y\'s, and a deletion as Y carries Y\'s token', async () => {
+    const { answerRefresh, refreshing } = await refreshOfXOvertakenByY();
+    const disarm = failNextRead(CENTRAL_SECURE_KEYS.REFRESH_TOKEN);
+    answerRefresh.resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    expect(await refreshing).toMatchObject({ kind: 'unavailable', failure: { code: 'session_ended' } });
+    // (The refresh may decide without that read; a failure it did not use is not left for the deletion.)
+    disarm();
+    await settle();
+    expect(stored()).toEqual({ access: accessToken('y-b'), refresh: refreshToken('b'), expires: true, userId: 'user-y' });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' } });
+    expectCall('DELETE /v1/me').resolve(reply(200, { ok: true }));
+    expect(await deleteCentralAccount()).toEqual({ ok: true, userId: 'user-y' });
+    expect(deleteBearers()).toEqual(['y-b']);
+  });
+
+  it('R36b. X\'s token pair stored under Y\'s user: no deletion and no facility token is asked with X\'s token for Y', async () => {
+    // The state the R1 fault left behind, put in place directly (a start would now clear it, R40).
+    secure.set(CENTRAL_SECURE_KEYS.ACCESS_TOKEN, accessToken('x-new'));
+    secure.set(CENTRAL_SECURE_KEYS.REFRESH_TOKEN, refreshToken('2'));
+    secure.set(CENTRAL_SECURE_KEYS.ACCESS_EXPIRES, String(Date.now() + 600000));
+    secure.set(CENTRAL_SECURE_KEYS.USER, JSON.stringify({ id: 'user-y', phoneNumber: '919000000002', name: null, createdAt: '' }));
+    setCentralState({ status: 'signedIn', user: { id: 'user-y', phoneNumber: '919000000002', name: null, createdAt: '' } });
+    expectCall('DELETE /v1/me').resolve(reply(200, { ok: true })); // would answer a request, if one were sent
+    expectCall('POST /v1/facility-token').resolve(reply(200, { identity_token: 'facility-token-1' }));
+    expect(await deleteCentralAccount()).toMatchObject({ ok: false, code: 'failed' });
+    expect(callsOf('DELETE /v1/me')).toHaveLength(0);
+    expect(await requestFacilityToken('https://north-cold.example.test', 'user-y')).toMatchObject({ ok: false, code: 'failed' });
+    expect(callsOf('POST /v1/facility-token')).toHaveLength(0);
+  });
+
+  it('R37. X\'s refresh is refused (401): Y\'s session is not ended, Y\'s phone number stays, and the next start is Y', async () => {
+    setCentralState({ signInPhone: PHONE_Y });
+    const { answerRefresh, refreshing } = await refreshOfXOvertakenByY();
+    answerRefresh.resolve(reply(401, { error: { code: 'invalid_refresh_token', message: 'x' } }));
     expect(await refreshing).toMatchObject({ kind: 'unavailable', failure: { code: 'session_ended' } });
     await settle();
-    // Not knowing what is stored, with something else begun: the store is left as it was.
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' }, signInPhone: PHONE_Y, endedMessage: null });
+    expect(stored()).toEqual({ access: accessToken('y-b'), refresh: refreshToken('b'), expires: true, userId: 'user-y' });
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' } });
+  });
+
+  it('R37b. nothing changes for one person: a refusal of the stored token itself still ends the session', async () => {
+    await signedInAsX(30);
+    expectCall('POST /v1/session/refresh').resolve(reply(401, { error: { code: 'invalid_refresh_token', message: 'x' } }));
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'refused' });
+    await settle();
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect(getCentralState().endedMessage).toBeTruthy();
+    expect([...secure.keys()]).toEqual([]);
+  });
+});
+
+describe('a sign-out whose deletions fail (external review R3)', () => {
+  it('R38. every deletion fails and the service cannot be reached: sign-out says so, and the next start does not sign the person back in', async () => {
+    await signedInAsX(600);
+    const disarm = failDeletes();
+    // No answer is queued for POST /v1/session/signout: the request fails as without a connection.
+    expect(await signOutCentral()).toBe(false);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
     expect(stored()).toEqual({ access: accessToken('x-old'), refresh: refreshToken('1'), expires: true, userId: 'user-x' });
+    expect(secure.has(CENTRAL_SIGNED_OUT_KEY)).toBe(true);
+    disarm();
+    resetCentralSessionForTests();
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect([...secure.keys()]).toEqual([]);
+  });
+
+  it('R38b. one deletion fails once: it is tried again, and sign-out succeeds with an empty store', async () => {
+    await signedInAsX(600);
+    const ordinary = jest.mocked(SecureStore.deleteItemAsync).getMockImplementation() as (key: string) => Promise<void>;
+    let failures = 1;
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async k => {
+      if (k === CENTRAL_SECURE_KEYS.REFRESH_TOKEN && failures > 0) {
+        failures -= 1;
+        throw new Error('keystore');
+      }
+      return ordinary(k);
+    });
+    expectCall('POST /v1/session/signout').resolve(reply(200, { ok: true }));
+    expect(await signOutCentral()).toBe(true);
+    expect([...secure.keys()]).toEqual([]);
+  });
+
+  it('R38c. after a sign-out whose deletions failed, a refresh does not send the ended session\'s token or replace its pair: the next start is signed out', async () => {
+    // Found by the fault seeds of the fuzz: a pair replaced after the failed clear no longer
+    // matches the marker, and the next start would sign the person back in.
+    await signedInAsX(30);
+    const disarm = failDeletes();
+    expect(await signOutCentral()).toBe(false);
+    disarm();
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-new', '2') })); // would answer, if asked
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'refused' });
+    expect(callsOf('POST /v1/session/refresh')).toHaveLength(0);
+    expect(stored().refresh).toBe(refreshToken('1'));
+    resetCentralSessionForTests();
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect([...secure.keys()]).toEqual([]);
+  });
+
+  it('R39. deletions failed at sign-out, then Y signs in: the next start is Y', async () => {
+    await signedInAsX(600);
+    const disarm = failDeletes();
+    await signOutCentral();
+    disarm();
+    expectCall('POST /v1/otp/verify').resolve(reply(200, { user: USER_Y, session: sessionOf('y-b', 'b') }));
+    expect(await verifyCentralCode(PHONE_Y, '111111', '2025-12')).toMatchObject({ ok: true, user: { id: 'user-y' } });
+    await settle();
+    resetCentralSessionForTests();
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' } });
+    expect(stored()).toEqual({ access: accessToken('y-b'), refresh: refreshToken('b'), expires: true, userId: 'user-y' });
+  });
+
+  it('R40. a whole token set of X stored under Y\'s user at start is a leftover: removed, and the person is signed out', async () => {
+    secure.set(CENTRAL_SECURE_KEYS.ACCESS_TOKEN, accessToken('x-new'));
+    secure.set(CENTRAL_SECURE_KEYS.REFRESH_TOKEN, refreshToken('2'));
+    secure.set(CENTRAL_SECURE_KEYS.ACCESS_EXPIRES, String(Date.now() + 600000));
+    secure.set(CENTRAL_SECURE_KEYS.USER, JSON.stringify({ id: 'user-y', phoneNumber: '919000000002', name: null, createdAt: '' }));
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect([...secure.keys()]).toEqual([]);
+  });
+});
+
+/** The second read of the refresh-token key from now throws (signOutCentral's own read is the first; clearEnded's is the second). */
+function failSecondRefreshTokenRead() {
+  const ordinary = jest.mocked(SecureStore.getItemAsync).getMockImplementation() as (key: string) => Promise<string | null>;
+  let reads = 0;
+  jest.mocked(SecureStore.getItemAsync).mockImplementation(async k => {
+    if (k === CENTRAL_SECURE_KEYS.REFRESH_TOKEN && (reads += 1) === 2) throw new Error('keystore');
+    return ordinary(k);
+  });
+}
+
+describe('the sign-out marker after the review of central-b4', () => {
+  it('M1. a refresh in flight, then a sign-out whose deletions all fail, then the refresh answers: the pair is not written and the next start is signed out', async () => {
+    await signedInAsX(30);
+    const answerRefresh = expectCall('POST /v1/session/refresh');
+    const refreshing = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    const disarm = failDeletes();
+    expect(await signOutCentral()).toBe(false);
+    disarm();
+    answerRefresh.resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    await refreshing;
+    await settle();
+    expect(stored().refresh).toBe(refreshToken('1'));
+    resetCentralSessionForTests();
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+  });
+
+  it('M3. a `*` marker left by a failed sign-out, then a sign-in: the first refresh keeps that person', async () => {
+    await signedInAsX(600);
+    const disarm = failDeletes();
+    failSecondRefreshTokenRead();
+    expect(await signOutCentral()).toBe(false);
+    expect(secure.get(CENTRAL_SIGNED_OUT_KEY)).toBe('*');
+    disarm();
+    expectCall('POST /v1/otp/verify').resolve(reply(200, { user: USER_Y, session: sessionOf('y-b', 'b') }));
+    expect(await verifyCentralCode(PHONE_Y, '111111', '2025-12')).toMatchObject({ ok: true });
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('y-c', 'c') }));
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'ok' });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' } });
+  });
+
+  it('B3. the same, and the sign-in cannot remove the `*` marker either: it is made one that matches nothing, and the first refresh keeps that person', async () => {
+    await signedInAsX(600);
+    const disarm = failDeletes();
+    failSecondRefreshTokenRead();
+    expect(await signOutCentral()).toBe(false);
+    expect(secure.get(CENTRAL_SIGNED_OUT_KEY)).toBe('*');
+    disarm();
+    const disarmMarker = failDeletes([CENTRAL_SIGNED_OUT_KEY]);
+    expectCall('POST /v1/otp/verify').resolve(reply(200, { user: USER_Y, session: sessionOf('y-b', 'b') }));
+    expect(await verifyCentralCode(PHONE_Y, '111111', '2025-12')).toMatchObject({ ok: true });
+    disarmMarker();
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('y-c', 'c') }));
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'ok' });
+    await settle();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' } });
+    expect(stored()).toEqual({ access: accessToken('y-c'), refresh: refreshToken('c'), expires: true, userId: 'user-y' });
+    expect(secure.get(CENTRAL_SIGNED_OUT_KEY)).not.toBe('*');
+    resetCentralSessionForTests();
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-y' } });
+  });
+
+  it('L3. a read of the marker that fails decides nothing: the refresh answers unavailable, sends nothing and keeps the session', async () => {
+    await signedInAsX(30);
+    failNextRead(CENTRAL_SIGNED_OUT_KEY);
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-new', '2') })); // would answer, if asked
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'unavailable', failure: { code: 'unavailable' } });
+    expect(callsOf('POST /v1/session/refresh')).toHaveLength(0);
+    await settle();
     expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x' } });
+    expect(stored().refresh).toBe(refreshToken('1'));
   });
 });

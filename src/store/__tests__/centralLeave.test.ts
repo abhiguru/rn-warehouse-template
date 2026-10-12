@@ -32,7 +32,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   signOutPendingEnrollment: jest.fn(async () => { mockEvents.push('sign out enrollment'); }),
 }));
 jest.mock('@/config/centralSession', () => ({
-  signOutCentral: jest.fn(async () => { mockEvents.push('central sign-out'); }),
+  signOutCentral: jest.fn(async () => { mockEvents.push('central sign-out'); return true; }),
   deleteCentralAccount: jest.fn(),
 }));
 jest.mock('@/store/slices/authSlice', () => ({
@@ -178,7 +178,7 @@ describe('Sign out on My facilities', () => {
 
   it('holds the leaving count for the whole sign-out, so no facility can be opened meanwhile', async () => {
     let leavingDuring: number | undefined;
-    jest.mocked(signOutCentral).mockImplementation(async () => { leavingDuring = getCentralState().leaving; mockEvents.push('central sign-out'); });
+    jest.mocked(signOutCentral).mockImplementation(async () => { leavingDuring = getCentralState().leaving; mockEvents.push('central sign-out'); return true; });
     await signOutEverywhere(dispatch);
     expect(leavingDuring).toBe(1);
     expect(getCentralState().leaving).toBe(0);
@@ -186,7 +186,7 @@ describe('Sign out on My facilities', () => {
 
   it('one leave finishing does not release another still running', async () => {
     let releaseSignOut!: () => void;
-    jest.mocked(signOutCentral).mockImplementation(() => new Promise<void>(resolve => { releaseSignOut = resolve; }));
+    jest.mocked(signOutCentral).mockImplementation(() => new Promise<boolean>(resolve => { releaseSignOut = () => resolve(true); }));
     mockActive = null;
     const signingOut = signOutEverywhere(dispatch);
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -197,6 +197,14 @@ describe('Sign out on My facilities', () => {
     expect(getCentralState().leaving).toBe(1);
     releaseSignOut();
     await signingOut;
+    expect(getCentralState().leaving).toBe(0);
+  });
+
+  it('says so when this phone could not remove the association sign-in from its secure storage', async () => {
+    jest.mocked(signOutCentral).mockImplementationOnce(async () => { mockEvents.push('central sign-out'); return false; });
+    expect(await signOutEverywhere(dispatch)).toEqual({ ok: false, reason: 'local_clear_failed' });
+    // The facility was left and the association sign-out was still carried out.
+    expect(mockEvents).toEqual(['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch', 'central sign-out']);
     expect(getCentralState().leaving).toBe(0);
   });
 

@@ -529,6 +529,22 @@ describe('My facilities', () => {
     expect(signOutEverywhere).toHaveBeenCalledWith(mockDispatch);
   });
 
+  it.each([
+    ['busy', 'Finish the current operation before switching facilities.'],
+    [
+      'local_clear_failed',
+      "This phone couldn't remove your association sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone.",
+    ],
+  ])('"Couldn\'t sign out" names the reason (%s)', async (reason, message) => {
+    jest.mocked(signOutEverywhere).mockResolvedValueOnce({ ok: false, reason } as never);
+    await render(<FacilitiesScreen />);
+    await press(button('Sign out'));
+    await act(async () => { lastAlertButton('Sign out').onPress?.(); });
+    const shown = alerts()[alerts().length - 1];
+    expect(shown[0]).toBe("Couldn't sign out");
+    expect(shown[1]).toBe(message);
+  });
+
   it('the account entry opens the account screen', async () => {
     await render(<FacilitiesScreen />);
     await press(byTestID('central-account-row'));

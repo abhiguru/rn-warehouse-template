@@ -235,16 +235,24 @@ describe('signed-in calls', () => {
   it('POST /v1/facility-token names the one facility as the audience', async () => {
     await signedIn();
     serve({ 'POST /v1/facility-token': { body: { identity_token: 'facility-token-1', expires_at: '2026-10-12T06:07:30.000Z' } } });
-    expect(await requestFacilityToken('https://north-cold.example.test')).toEqual({ ok: true, identityToken: 'facility-token-1' });
+    expect(await requestFacilityToken('https://north-cold.example.test', 'user-1')).toEqual({ ok: true, identityToken: 'facility-token-1' });
     const [call] = calls('POST /v1/facility-token');
     expect(bodyOf(call)).toEqual({ audience: 'https://north-cold.example.test' });
     expect(headersOf(call).Authorization).toBe(`Bearer ${accessToken('first')}`);
   });
 
+  it('a facility token is asked only for the person whose session is stored: for anybody else nothing is sent', async () => {
+    await signedIn();
+    serve({ 'POST /v1/facility-token': { body: { identity_token: 'facility-token-1' } } });
+    expect(await requestFacilityToken('https://north-cold.example.test', 'user-2')).toMatchObject({ ok: false, code: 'failed' });
+    expect(calls('POST /v1/facility-token')).toHaveLength(0);
+    expect(getCentralState().status).toBe('signedIn');
+  });
+
   it('a facility that is not in the catalogue is named as such', async () => {
     await signedIn();
     serve({ 'POST /v1/facility-token': { status: 400, body: { error: { code: 'unknown_facility', message: 'x' } } } });
-    expect(await requestFacilityToken('https://unlisted.example.test')).toMatchObject({ ok: false, code: 'unknown_facility' });
+    expect(await requestFacilityToken('https://unlisted.example.test', 'user-1')).toMatchObject({ ok: false, code: 'unknown_facility' });
     // Not a reason to end the session.
     expect(getCentralState().status).toBe('signedIn');
   });
@@ -330,7 +338,7 @@ describe('refresh', () => {
       'POST /v1/facility-token': { body: { identity_token: 'facility-token-1' } },
     });
     const first = fetchCentralProfile();
-    const second = requestFacilityToken('https://north-cold.example.test');
+    const second = requestFacilityToken('https://north-cold.example.test', 'user-1');
     const third = refreshCentralSession();
     await new Promise(resolve => setTimeout(resolve, 20));
     release();
@@ -621,8 +629,8 @@ describe('separation from the facility session', () => {
     });
     await requestCentralCode('+919000000001');
     await verifyCentralCode('+919000000001', '482913', '2025-12');
-    await requestFacilityToken('https://north-cold.example.test');
-    await requestFacilityToken('https://north-cold.example.test');
+    await requestFacilityToken('https://north-cold.example.test', 'user-1');
+    await requestFacilityToken('https://north-cold.example.test', 'user-1');
     await signOutCentral();
     const logged = loggedText(spies);
     expect(logged).not.toMatch(new RegExp(`9000000001|482913|facility-token|${refreshToken('1')}|${refreshToken('2')}|signature`));

@@ -26,6 +26,15 @@ export const CENTRAL_SECURE_KEYS = {
   USER: 'secure_central_user',
 } as const;
 
+/**
+ * Written when the session is ended on this device and removed once all four keys are gone:
+ * a short digest of the refresh token that was being removed, or `*` when it could not be read.
+ * A start that finds it next to a session with that refresh token (or `*`) removes the session
+ * again and stays signed out, so a sign-out whose deletions failed cannot sign the person back
+ * in at the next start. Not one of the four session keys on purpose.
+ */
+export const CENTRAL_SIGNED_OUT_KEY = 'secure_central_signed_out';
+
 /** How long a central call may wait for its answer. */
 export const CENTRAL_REQUEST_TIMEOUT_MS = 15000;
 /** The access token (15 minutes) is replaced this long before it expires. */
@@ -271,6 +280,12 @@ function decodeSegment(segment: string): Record<string, unknown> | null {
   }
 }
 
+/** The person an access token was issued for (`sub`, the central user id), or null when it cannot be read. */
+function subjectOf(accessToken: string): string | null {
+  const sub = decodeSegment(accessToken.split('.')[1] ?? '')?.sub;
+  return typeof sub === 'string' && sub ? sub : null;
+}
+
 /**
  * When an access token received just now expires, on the device's clock.
  * `iat` and `exp` are on the service's clock; the token was issued at `iat`
@@ -318,7 +333,15 @@ async function readSession(): Promise<ReadSession> {
   }
 }
 
+/**
+ * Moves on at every write or removal of the stored token pair (NOT at a write of the user
+ * alone: that never changes whose pair is stored). A refresh notes it when it reads the
+ * stored pair and writes its answer only if it has not moved since (`stillStored`).
+ */
+let sessionRevision = 0;
+
 async function writeSession(session: StoredSession): Promise<void> {
+  sessionRevision += 1;
   await SecureStore.deleteItemAsync(CENTRAL_SECURE_KEYS.ACCESS_EXPIRES);
   await SecureStore.setItemAsync(CENTRAL_SECURE_KEYS.ACCESS_TOKEN, session.accessToken);
   await SecureStore.setItemAsync(CENTRAL_SECURE_KEYS.REFRESH_TOKEN, session.refreshToken);
@@ -329,12 +352,69 @@ async function writeUser(user: CentralUser): Promise<void> {
   await SecureStore.setItemAsync(CENTRAL_SECURE_KEYS.USER, JSON.stringify(user));
 }
 
-async function clearStored(): Promise<void> {
-  for (const key of Object.values(CENTRAL_SECURE_KEYS)) await SecureStore.deleteItemAsync(key).catch(() => {});
+/** Deletes one key, and tries once more if that fails. True when the deletion succeeded. */
+async function removeKey(key: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await SecureStore.deleteItemAsync(key);
+      return true;
+    } catch {
+      // tried once more, then reported
+    }
+  }
+  return false;
 }
 
-/** Forget the session on this device. `message` is shown once on central sign-in. */
-async function endLocally(message: string | null): Promise<void> {
+/** Removes the four keys. True only when every one of them was removed. */
+async function clearStored(): Promise<boolean> {
+  sessionRevision += 1;
+  let all = true;
+  for (const key of Object.values(CENTRAL_SECURE_KEYS)) if (!(await removeKey(key))) all = false;
+  return all;
+}
+
+/**
+ * Two 32-bit FNV-1a lanes (the second over the text backwards) as 16 hex digits: enough to
+ * recognise one refresh token again, and nothing a reader of the marker could use.
+ */
+function digestOf(text: string): string {
+  let forward = 0x811c9dc5;
+  let backward = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    forward = Math.imul(forward ^ text.charCodeAt(i), 0x01000193);
+    backward = Math.imul(backward ^ text.charCodeAt(text.length - 1 - i), 0x01000193);
+  }
+  return (forward >>> 0).toString(16).padStart(8, '0') + (backward >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * Ends the stored session (run inside the queue): the sign-out marker first, then the four
+ * keys; the marker is removed again once all four are gone. True when all four are gone. If
+ * they are not, the marker stays and the next start removes them (restoreCentralSession).
+ */
+async function clearEnded(): Promise<boolean> {
+  let refreshToken: string | null | typeof UNREADABLE;
+  try {
+    refreshToken = await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.REFRESH_TOKEN);
+  } catch {
+    refreshToken = UNREADABLE;
+  }
+  let marked = false;
+  if (refreshToken !== null) {
+    try {
+      await SecureStore.setItemAsync(CENTRAL_SIGNED_OUT_KEY, refreshToken === UNREADABLE ? '*' : digestOf(refreshToken));
+      marked = true;
+    } catch {
+      // Without the marker the clear below is still tried; its result is what is reported.
+    }
+  }
+  const cleared = await clearStored();
+  if (cleared && marked) await removeKey(CENTRAL_SIGNED_OUT_KEY);
+  return cleared;
+}
+
+/** Forget the person in memory. `message` is shown once on central sign-in. */
+function forgetInMemory(message: string | null): void {
   epoch += 1;
   catalogueCache = null;
   setCentralState({
@@ -347,7 +427,12 @@ async function endLocally(message: string | null): Promise<void> {
     outcome: null,
     pendingLink: null,
   });
-  await serialize(clearStored);
+}
+
+/** Forget the session on this device. True when the four keys were removed. */
+async function endLocally(message: string | null): Promise<boolean> {
+  forgetInMemory(message);
+  return serialize(clearEnded);
 }
 
 function readStoredUser(text: string | null): CentralUser | null {
@@ -358,6 +443,15 @@ function readStoredUser(text: string | null): CentralUser | null {
     return null;
   }
 }
+
+/**
+ * A token pair is another person's when its access token names (`sub`) someone other than the
+ * stored user: a pair written under the wrong user, which no call may use for that user.
+ */
+const pairOfAnother = (session: StoredSession, user: CentralUser): boolean => {
+  const subject = subjectOf(session.accessToken);
+  return subject !== null && subject !== user.id;
+};
 
 /** True when any of the three token keys holds a value: with no whole session, that is a leftover. */
 async function anyTokenKeyStored(): Promise<boolean> {
@@ -406,19 +500,32 @@ export async function restoreCentralSession(): Promise<void> {
     const foundUserText: string | null | typeof UNREADABLE = await SecureStore.getItemAsync(
       CENTRAL_SECURE_KEYS.USER
     ).catch((): typeof UNREADABLE => UNREADABLE);
+    if (started !== epoch || found === UNREADABLE || foundUserText === UNREADABLE) return [found, foundUserText];
+    // The sign-out marker (CENTRAL_SIGNED_OUT_KEY): a session that an earlier sign-out could not
+    // remove is removed now, and the person stays signed out. A marker for another session, or
+    // with no session at all, is old: it is removed and the rules below apply.
+    const marker: string | null | typeof UNREADABLE = await SecureStore.getItemAsync(CENTRAL_SIGNED_OUT_KEY).catch(
+      (): typeof UNREADABLE => UNREADABLE
+    );
+    if (marker === UNREADABLE) return [UNREADABLE, foundUserText];
+    if (marker !== null) {
+      if (found && (marker === '*' || marker === digestOf(found.refreshToken))) {
+        await clearEnded();
+        return [null, null];
+      }
+      await removeKey(CENTRAL_SIGNED_OUT_KEY);
+    }
     // A leftover (a session without a user, a user without a session, a user that cannot be
-    // read, or some token keys but not a whole session) is removed, all four keys, in the same
-    // queued operation as the read that found it: no sign-in can store a session between the
-    // read and the removal. Not when a sign-in or a sign-out has begun since this start, nor
-    // when the store did not answer.
-    if (
-      started === epoch &&
-      found !== UNREADABLE &&
-      foundUserText !== UNREADABLE &&
-      !(found && readStoredUser(foundUserText)) &&
-      (found || foundUserText || (await anyTokenKeyStored()))
-    )
+    // read, a token pair whose access token names another person than the stored user, or some
+    // token keys but not a whole session) is removed, all four keys, in the same queued
+    // operation as the read that found it: no sign-in can store a session between the read and
+    // the removal. Not when a sign-in or a sign-out has begun since this start, nor when the
+    // store did not answer.
+    const foundUser = readStoredUser(foundUserText);
+    if (!(found && foundUser && !pairOfAnother(found, foundUser)) && (found || foundUserText || (await anyTokenKeyStored()))) {
       await clearStored();
+      return [null, null];
+    }
     return [found, foundUserText];
   });
   if (started !== epoch) return;
@@ -499,6 +606,13 @@ export async function verifyCentralCode(
       // Never keep a session that could not be stored securely.
       written = false;
     }
+    // A sign-out marker of an earlier session is not this one's (and would not match it at
+    // the next start anyway). Removed after the first write, never before it. If it cannot be
+    // removed it is overwritten with an empty value, which matches no session: a `*` marker
+    // (an earlier sign-out that could not read its token) would otherwise end this new
+    // session at its first refresh.
+    if (written && !(await removeKey(CENTRAL_SIGNED_OUT_KEY)))
+      await SecureStore.setItemAsync(CENTRAL_SIGNED_OUT_KEY, '').catch(() => {});
     if (written && started === epoch) {
       setCentralState({ status: 'signedIn', user, endedMessage: null });
       return true;
@@ -506,7 +620,7 @@ export async function verifyCentralCode(
     // The write failed, or a newer check or a sign-out began during it. This check
     // wrote (or began to write) all four keys, and no later writer has run yet:
     // removing them here cannot remove anyone else's.
-    await clearStored();
+    await clearEnded();
     // Its write replaced whatever was stored before: memory must not go on claiming that session.
     if (getCentralState().status === 'signedIn') setCentralState({ status: 'signedOut', user: null });
     return false;
@@ -545,8 +659,43 @@ export function refreshCentralSession(): Promise<RefreshOutcome> {
   return promise;
 }
 
+/**
+ * Whether the stored pair is still the one a refresh read (run inside the queue): nothing has
+ * written or removed the pair since (`seen` is the revision of that read), and the stored
+ * refresh token is the one it sent. A read that fails with the revision unchanged counts as
+ * yes: nothing has written or removed anything since.
+ */
+async function stillStored(seen: number, sent: string): Promise<boolean> {
+  if (sessionRevision !== seen) return false;
+  try {
+    return (await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)) === sent;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * True when the sign-out marker names this session (run inside the queue): it was ended on this
+ * device and only its deletion failed. `UNREADABLE` when the marker cannot be read: whether the
+ * session was ended is then not known, and nothing is sent on it.
+ */
+async function endedHere(session: StoredSession): Promise<boolean | typeof UNREADABLE> {
+  try {
+    const marker = await SecureStore.getItemAsync(CENTRAL_SIGNED_OUT_KEY);
+    return marker === '*' || marker === digestOf(session.refreshToken);
+  } catch {
+    return UNREADABLE;
+  }
+}
+
 async function runRefresh(started: number): Promise<RefreshOutcome> {
-  const stored = await serialize(readSession);
+  // A session ended on this device whose deletion failed is no session: its refresh token is
+  // not sent, and no new pair can replace the one the marker names (the next start removes it).
+  const [stored, seen] = await serialize(async (): Promise<readonly [ReadSession, number]> => {
+    const found = await readSession();
+    const ended = found && found !== UNREADABLE ? await endedHere(found) : false;
+    return [ended === UNREADABLE ? UNREADABLE : ended ? null : found, sessionRevision] as const;
+  });
   if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
   if (stored === UNREADABLE) return unreadable();
   if (!stored) {
@@ -575,34 +724,38 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
     // The service's definitive word: the refresh token is unknown, expired,
     // revoked or was used before (401), or is not a refresh token at all (400).
     // Everything else (429, 5xx) keeps the session for a later attempt.
+    // It ends the session only if that is still the stored one: a check for another person
+    // that began before this refresh (same epoch) may have stored its session meanwhile. The
+    // comparison and the ending are ONE queued operation.
     if (answer.status === 401 || answer.status === 400) {
-      await endLocally(centralErrorMessage('session_ended'));
-      return { kind: 'refused' };
+      const ended = await serialize(async () => {
+        if (!(await stillStored(seen, stored.refreshToken))) return false;
+        forgetInMemory(centralErrorMessage('session_ended'));
+        await clearEnded();
+        return true;
+      });
+      return ended ? { kind: 'refused' } : { kind: 'unavailable', failure: failure('session_ended') };
     }
     return { kind: 'unavailable', failure: failureOf(answer) };
   }
   // A success without both tokens is not stored: nothing stored is replaced by half an answer.
   const session = parseSession(answer.body.session, Date.now());
   if (!session) return { kind: 'unavailable', failure: failure('unavailable') };
-  // The new pair is written in ONE queued operation, and only if the refresh token stored at
-  // that moment is the very one this refresh sent. If it is not (a sign-in stored another
-  // session, or a sign-out or an undone check emptied the store) the answer belongs to a
-  // session that is gone: nothing is written and state and store stay as they are. The epoch
-  // plays no part: a code check that failed, or an unrelated sign-in step, must not cost the
-  // person the new pair (the next refresh would present the spent token and sign them out).
-  // One failed read of that token does not decide it either: when the store cannot say what it
-  // holds, the pair is written if nothing has begun since this refresh did (the epoch has not
-  // moved), and dropped only if something has.
+  // The new pair is written in ONE queued operation, and only if the stored pair is still the
+  // one this refresh read: nothing has written or removed it since (the session revision has
+  // not moved) and the stored refresh token is the very one this refresh sent. If not (a
+  // sign-in stored another session, or a sign-out or an undone check emptied the store, also
+  // a sign-out whose deletions failed) the answer belongs to a session that is gone: nothing is
+  // written and state and store stay as they are. The epoch plays no part: a code check that
+  // began and failed, or an unrelated sign-in step, must not cost the person the new pair (the
+  // next refresh would present the spent token and sign them out), and a check that began
+  // before this refresh and stored another person must not get this person's pair. One failed
+  // read of the stored token does not decide it either: with the revision unchanged nothing
+  // has written or removed anything since, so the pair is written.
   let replaced: boolean;
   try {
     replaced = await serialize(async () => {
-      let current: string | null | typeof UNREADABLE;
-      try {
-        current = await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.REFRESH_TOKEN);
-      } catch {
-        current = UNREADABLE;
-      }
-      if (current === UNREADABLE ? started !== epoch : current !== stored.refreshToken) return false;
+      if (!(await stillStored(seen, stored.refreshToken))) return false;
       await writeSession(session);
       return true;
     });
@@ -623,8 +776,10 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
 }
 
 /**
- * The stored session, and whether the stored user is the person asked for, read in ONE queued
- * operation: no sign-in can store another person's session between the two answers.
+ * The stored session, and whether it is the person asked for, read in ONE queued operation:
+ * no sign-in can store another person's session between the two answers. It is that person's
+ * only when the stored user is that person AND the access token was issued for that person
+ * (`sub`); an access token whose person cannot be read is nobody's.
  * `onlyFor` is the id of that person; `null` means nobody (no stored session is anybody's);
  * `undefined` means no particular person (the second answer is then always true).
  */
@@ -635,7 +790,7 @@ const readSessionFor = (onlyFor?: string | null) =>
     if (!session || session === UNREADABLE) return [session, false];
     try {
       const user = readStoredUser(await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER));
-      return [session, onlyFor !== null && user?.id === onlyFor];
+      return [session, onlyFor !== null && user?.id === onlyFor && subjectOf(session.accessToken) === onlyFor];
     } catch {
       return [UNREADABLE, false];
     }
@@ -767,9 +922,13 @@ export async function deleteCentralAccount(): Promise<CentralResult<{ userId: st
   return { ok: true, userId };
 }
 
-/** `POST /v1/facility-token`: a token for one facility, valid for a few minutes and usable once. */
-export async function requestFacilityToken(audience: string): Promise<CentralResult<{ identityToken: string }>> {
-  const answer = await signedCall('POST', '/v1/facility-token', { audience });
+/**
+ * `POST /v1/facility-token`: a token for one facility, valid for a few minutes and usable once.
+ * `onlyFor` is the person the facility is being opened for: the token is asked only with that
+ * person's stored session (see `accessToken`), never with whoever is stored by then.
+ */
+export async function requestFacilityToken(audience: string, onlyFor: string): Promise<CentralResult<{ identityToken: string }>> {
+  const answer = await signedCall('POST', '/v1/facility-token', { audience }, onlyFor);
   if ('ok' in answer) return answer;
   const token = answer.body.identity_token;
   if (typeof token !== 'string' || !token) return failure('unavailable');
@@ -780,12 +939,16 @@ export async function requestFacilityToken(audience: string): Promise<CentralRes
  * `POST /v1/session/signout`, then forget the session on this device. The
  * device is signed out whatever the service answers: without a connection the
  * family lives on at the service until its refresh token expires.
+ *
+ * Answers whether the device removed its stored session. False: memory is signed out, but
+ * the secure store kept (some of) the keys; the sign-out marker makes the next start remove
+ * them instead of signing the person back in, and the caller tells the person.
  */
-export async function signOutCentral(): Promise<void> {
+export async function signOutCentral(): Promise<boolean> {
   const config = getCentralLoginConfig();
   const stored = await serialize(readSession);
-  await endLocally(null);
-  if (!stored || stored === UNREADABLE || !config) return;
+  const cleared = await endLocally(null);
+  if (!stored || stored === UNREADABLE || !config) return cleared;
   let token = stored.accessToken;
   if (stored.expiresAt <= Date.now()) {
     // The revocation needs an access token; an expired one is replaced first.
@@ -794,10 +957,11 @@ export async function signOutCentral(): Promise<void> {
       body: { refresh_token: stored.refreshToken },
     });
     const session = refreshed.kind === 'ok' ? parseSession(refreshed.body.session, Date.now()) : null;
-    if (!session) return;
+    if (!session) return cleared;
     token = session.accessToken;
   }
   await centralFetch(config, 'POST', '/v1/session/signout', { accessToken: token });
+  return cleared;
 }
 
 // ---------------------------------------------------------------------------
@@ -874,6 +1038,7 @@ export async function fetchFacilityCatalogue(
 /** Tests only. */
 export function resetCentralSessionForTests(): void {
   epoch += 1;
+  sessionRevision += 1;
   refreshInFlight = null;
   catalogueCache = null;
   writes = Promise.resolve();

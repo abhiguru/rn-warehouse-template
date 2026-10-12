@@ -125,7 +125,11 @@ export default function FacilitiesScreen() {
           setSigningOut(true);
           void signOutEverywhere(dispatch)
             .then(result => {
-              if (!result.ok) showAlert(tr('auth.signOut.couldNotTitle'), tr('central.switch.busyMessage'));
+              if (!result.ok)
+                showAlert(
+                  tr('auth.signOut.couldNotTitle'),
+                  result.reason === 'local_clear_failed' ? tr('central.signOut.notCleared') : tr('central.switch.busyMessage')
+                );
             })
             .finally(() => setSigningOut(false));
         },
