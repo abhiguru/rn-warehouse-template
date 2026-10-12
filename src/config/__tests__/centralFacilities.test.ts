@@ -173,10 +173,10 @@ describe("a facility's own SMS sign-in while central login is on", () => {
     expect(getCentralState().facilitySmsOrigin).toBeNull();
   });
 
-  it('records a request that waits', async () => {
+  it('records a request that waits and ends the SMS sign-in too: the way on is My facilities', async () => {
     await noteFacilitySmsSignIn('requested');
     expect(await loadMyFacilities('asha')).toMatchObject([{ status: 'requested' }]);
-    expect(getCentralState().facilitySmsOrigin).toBe(NORTH.origin);
+    expect(getCentralState().facilitySmsOrigin).toBeNull();
   });
 
   it('does nothing without central login', async () => {

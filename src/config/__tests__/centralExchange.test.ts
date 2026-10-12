@@ -27,7 +27,15 @@ import {
   storeTokens,
   verifyOTP,
 } from '../supabaseConfig';
-import { CENTRAL_SECURE_KEYS } from '../centralSession';
+import { CENTRAL_SECURE_KEYS, resetCentralSessionForTests, verifyCentralCode } from '../centralSession';
+import { resetCentralStateForTests } from '../centralState';
+
+const CENTRAL = 'https://identity.example.test';
+jest.mock('../envConfig', () => ({
+  getCentralLoginConfig: () => ({ origin: 'https://identity.example.test', issuer: 'https://identity.example.test' }),
+  isCentralLoginConfigured: () => true,
+  TERMS_VERSION: '2025-12',
+}));
 
 const secure = new Map<string, string>();
 const rpc = jest.fn();
@@ -177,6 +185,55 @@ it('never writes the identity token or a session token to the log', async () => 
   const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
   expect(logged).not.toMatch(/identity\.token|482913|test-signature|eeeeeeee/);
   spies.forEach(spy => spy.mockRestore());
+});
+
+it('after a central sign-in and a facility login, each secure key holds what it should and nothing else', async () => {
+  resetCentralSessionForTests();
+  resetCentralStateForTests();
+  const b64url = (value: unknown) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const centralAccess = `${b64url({ alg: 'ES256', typ: 'central-access+jwt' })}.${b64url({ iss: CENTRAL, sub: 'central-user-1', iat: now, exp: now + 900 })}.central-sig`;
+  const centralRefresh = 'c'.repeat(64);
+  const facilityRefresh = 'e'.repeat(64);
+  jest.mocked(global.fetch).mockImplementation(async (url: RequestInfo | URL) => {
+    if (String(url) === `${CENTRAL}/v1/otp/verify`)
+      return answer({
+        user: { id: 'central-user-1', phone_number: '919000000001', name: null, created_at: '' },
+        session: { access_token: centralAccess, refresh_token: centralRefresh, access_expires_at: '', refresh_expires_at: '' },
+      });
+    if (String(url) === 'http://localhost:18000/functions/v1/central-exchange') return answer({ success: true, data: loginData() });
+    throw new Error(`unexpected request ${String(url)}`);
+  });
+
+  expect(await verifyCentralCode('+919000000001', '482913', '2025-12')).toMatchObject({ ok: true });
+  expect(await exchangeCentralIdentity(IDENTITY_TOKEN)).toMatchObject({ success: true });
+
+  const facilityAccess = loginData().session.access_token;
+  expect(Object.fromEntries(secure)).toEqual({
+    secure_central_access_token: centralAccess,
+    secure_central_refresh_token: centralRefresh,
+    secure_central_access_expires: expect.stringMatching(/^\d+$/),
+    secure_central_user: expect.stringContaining('"id":"central-user-1"'),
+    secure_auth_token: expect.stringMatching(/^eyJ/),
+    secure_refresh_token: facilityRefresh,
+    secure_token_expires: expect.stringMatching(/^\d+$/),
+    // No operator server is selected in this test, so no operator identity is written.
+    cached_user_profile: expect.stringContaining('"id":"profile-1"'),
+  });
+  // The facility's access token is a facility token, not the central one.
+  expect(JSON.parse(Buffer.from(secure.get('secure_auth_token')!.split('.')[1], 'base64').toString()).sub).toBe('profile-user-1');
+  expect(secure.get('secure_auth_token')).not.toBe(centralAccess);
+  expect(facilityAccess.split('.')[1]).toBe(secure.get('secure_auth_token')!.split('.')[1]);
+  // Nothing central is in a facility key and the reverse.
+  for (const [key, value] of secure) {
+    if (key.startsWith('secure_central_')) expect(value).not.toMatch(/eeeeeeee|profile-user-1|profile-1/);
+    else expect(value).not.toMatch(/cccccccc|central-user-1|central-sig/);
+  }
+
+  // Signing out of the facility removes the facility keys only.
+  await signOut({ localOnly: true });
+  expect([...secure.keys()].sort()).toEqual(Object.values(CENTRAL_SECURE_KEYS).sort());
+  expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(centralRefresh);
 });
 
 it('ending or replacing a facility session leaves the central session keys alone', async () => {

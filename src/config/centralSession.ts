@@ -296,7 +296,14 @@ function parseSession(value: unknown, receivedAt: number): StoredSession | null 
   };
 }
 
-async function readSession(): Promise<StoredSession | null> {
+/**
+ * The stored session, or null when there is none. `UNREADABLE` when the secure
+ * store did not answer: that is not "no session", and nothing is decided on it.
+ */
+const UNREADABLE = Symbol('unreadable');
+type ReadSession = StoredSession | null | typeof UNREADABLE;
+
+async function readSession(): Promise<ReadSession> {
   try {
     const accessToken = await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.ACCESS_TOKEN);
     const refreshToken = await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.REFRESH_TOKEN);
@@ -305,7 +312,7 @@ async function readSession(): Promise<StoredSession | null> {
     if (!accessToken || !refreshToken || !Number.isFinite(expires) || expires <= 0) return null;
     return { accessToken, refreshToken, expiresAt: expires };
   } catch {
-    return null;
+    return UNREADABLE;
   }
 }
 
@@ -361,11 +368,20 @@ export async function restoreCentralSession(): Promise<void> {
     return;
   }
   const started = epoch;
-  const [session, userText] = await serialize(async () => [
-    await readSession(),
-    await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER).catch(() => null),
-  ] as const);
+  const [session, userText] = await serialize(
+    async (): Promise<[ReadSession, string | null | typeof UNREADABLE]> => [
+      await readSession(),
+      await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER).catch(() => UNREADABLE),
+    ]
+  );
   if (started !== epoch) return;
+  if (session === UNREADABLE || userText === UNREADABLE) {
+    // The store did not answer: nothing stored is touched, and a session already
+    // in memory is kept. Until something is known the guard treats the person
+    // as signed out; the next call reads again.
+    if (getCentralState().status === 'unknown') setCentralState({ status: 'signedOut', user: null });
+    return;
+  }
   const user = readStoredUser(userText);
   if (session && user) setCentralState({ status: 'signedIn', user });
   else {
@@ -439,6 +455,8 @@ type RefreshOutcome = { kind: 'ok'; session: StoredSession } | { kind: 'refused'
  * after its first use, so two callers must never each send the stored token:
  * the second one waits for the first.
  */
+type RefreshFailure = { kind: 'unavailable'; failure: CentralFailure };
+const unreadable = (): RefreshFailure => ({ kind: 'unavailable', failure: failure('unavailable') });
 let refreshInFlight: { epoch: number; promise: Promise<RefreshOutcome> } | null = null;
 
 export function refreshCentralSession(): Promise<RefreshOutcome> {
@@ -454,6 +472,7 @@ export function refreshCentralSession(): Promise<RefreshOutcome> {
 async function runRefresh(started: number): Promise<RefreshOutcome> {
   const stored = await serialize(readSession);
   if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
+  if (stored === UNREADABLE) return unreadable();
   if (!stored) {
     await endLocally(null);
     return { kind: 'refused' };
@@ -461,10 +480,12 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
   const send = () =>
     centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', { body: { refresh_token: stored.refreshToken } });
   let answer = await send();
-  // No answer: the service may have rotated the token and the answer was lost.
-  // It answers a repeat of the same token with a new session only for a short
-  // while (10 seconds), so the one repeat is sent at once and never later.
-  if (answer.kind === 'transport' && answer.code !== 'not_configured' && started === epoch) answer = await send();
+  // A connection failure gets one immediate repeat of the same token: the
+  // service may have rotated it and lost the answer, and it answers a repeat
+  // with a new session only within 10 seconds of the first use. A request the
+  // app gave up waiting for (15 seconds) is already outside that window, so a
+  // repeat would count as reuse and revoke the family: it is not repeated.
+  if (answer.kind === 'transport' && answer.code === 'network' && started === epoch) answer = await send();
   if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
   if (answer.kind === 'transport') return { kind: 'unavailable', failure: failureOf(answer) };
   if (answer.kind === 'error') {
@@ -495,6 +516,7 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
 async function accessToken(): Promise<{ token: string } | CentralFailure> {
   if (!getCentralLoginConfig()) return failure('not_configured');
   const stored = await serialize(readSession);
+  if (stored === UNREADABLE) return failure('unavailable');
   if (stored && stored.expiresAt - Date.now() > RENEW_AHEAD_MS) return { token: stored.accessToken };
   if (!stored && getCentralState().status !== 'signedIn') return failure('session_ended');
   const refreshed = await refreshCentralSession();
@@ -516,7 +538,7 @@ async function signedCall(
   if (answer.kind === 'error' && answer.status === 401) {
     // Another call may have replaced the token while this one was in flight.
     const current = await serialize(readSession);
-    let next: string | null = current && current.accessToken !== first.token ? current.accessToken : null;
+    let next: string | null = current && current !== UNREADABLE && current.accessToken !== first.token ? current.accessToken : null;
     if (!next) {
       const refreshed = await refreshCentralSession();
       if (refreshed.kind === 'refused') return failure('session_ended');
@@ -598,7 +620,7 @@ export async function signOutCentral(): Promise<void> {
   const config = getCentralLoginConfig();
   const stored = await serialize(readSession);
   await endLocally(null);
-  if (!stored || !config) return;
+  if (!stored || stored === UNREADABLE || !config) return;
   let token = stored.accessToken;
   if (stored.expiresAt <= Date.now()) {
     // The revocation needs an access token; an expired one is replaced first.

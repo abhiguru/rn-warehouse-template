@@ -61,7 +61,8 @@ const EXCHANGE_FAILURES: Record<
   enrollment_limited: { reason: 'enrollment_limited', message: 'errors.auth.enrollmentLimited' },
   invalid_request: { reason: 'failed', message: 'central.open.failed' },
   unavailable: { reason: 'failed', message: 'central.open.failed', status: 'unavailable' },
-  network: { reason: 'network', message: 'central.open.network', status: 'unavailable' },
+  // No answer says nothing about the person's access: the status stays.
+  network: { reason: 'network', message: 'central.open.network' },
   session_changed: { reason: 'failed', message: 'central.open.failed' },
   failed: { reason: 'failed', message: 'central.open.failed' },
 };
@@ -147,7 +148,7 @@ async function discover(userId: string, origin: string, fallbackName: string): P
     await updateMyFacility(userId, origin, { instanceId: discovery.server.instanceId });
     return discovery;
   } catch {
-    await updateMyFacility(userId, origin, { status: 'unavailable' });
+    // Not reachable right now; nothing was learned about the person's access there.
     return failed('facility_unreachable', t('central.open.unreachable', { facility: fallbackName }));
   }
 }
@@ -179,8 +180,15 @@ async function open(origin: string, fallbackName: string): Promise<OpenOutcome> 
   return switchAndExchange(user.id, discovery);
 }
 
-function publish(origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
-  setCentralState({ opening: null, outcome: { id: nextOutcomeId(), origin, name, outcome } });
+/**
+ * Hands the answer to whichever screen is mounted. An answer for a central
+ * session that has ended meanwhile (signed out, refused, deleted) is dropped:
+ * the next person to sign in must not be told about the previous one's facility.
+ */
+function publish(userId: string, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
+  const current = getCentralState();
+  const sameSession = current.status === 'signedIn' && current.user?.id === userId;
+  setCentralState({ opening: null, outcome: sameSession ? { id: nextOutcomeId(), origin, name, outcome } : null });
   return outcome;
 }
 
@@ -190,11 +198,12 @@ function publish(origin: string, name: string, outcome: OpenOutcome): OpenOutcom
  */
 export async function openFacility(origin: string, name: string): Promise<OpenOutcome> {
   if (getCentralState().opening) return failed('busy', t('central.switch.busyMessage'));
+  const userId = getCentralState().user?.id ?? '';
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {
-    return publish(origin, name, await open(origin, name));
+    return publish(userId, origin, name, await open(origin, name));
   } catch {
-    return publish(origin, name, failed('failed', t('central.open.failed', { facility: name })));
+    return publish(userId, origin, name, failed('failed', t('central.open.failed', { facility: name })));
   }
 }
 

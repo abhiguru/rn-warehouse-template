@@ -133,16 +133,21 @@ sign-in the first time they leave the facility.
 **Central sign-in** (`app/central-login.tsx`, `app/central-otp.tsx`). The layout and components
 of the facility sign-in (`src/components/auth/PhoneSignInForm.tsx`, `CodeEntryForm.tsx`), with
 the association line in place of a facility. The first sign-in on a phone shows a terms tick
-box; "Send code" is disabled until it is ticked. The phone remembers the terms version it
-signed in under (`central_terms_accepted_v1`) and asks again only when the version changes.
+box; "Send code" is disabled until it is ticked. The tick is asked of every mobile **number**
+once per terms version (`central_terms_accepted_v1:<number>`), so two people who share a phone
+each see it on their own first sign-in; `terms_version` is only ever sent for a number whose
+tick was given.
 
 **The central session** (`src/config/centralSession.ts`). Its own SecureStore keys
 (`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
 the facility request gate. The access token is replaced a minute before it expires and once
-when the service answers 401; one refresh runs at a time, and a refresh that got no answer is
-repeated once at once (the service answers a repeat within 10 seconds). When the service
-refuses the refresh token the person is signed out centrally, told why, and returned to
-central sign-in.
+when the service answers 401; one refresh runs at a time. A refresh that failed on the
+connection is repeated once at once, because the service answers a repeat of the same token
+with a new session only within 10 seconds of its first use; a refresh the app gave up waiting
+for (15 seconds) is already outside that window and is not repeated, since the repeat would
+count as reuse and revoke the whole session family. When the service refuses the refresh token
+the person is signed out centrally, told why, and returned to central sign-in. A secure store
+that does not answer is not "no session": nothing is cleared and the next call reads again.
 
 **My facilities** (`app/facilities.tsx`, `src/config/centralFacilities.ts`). The person's own
 list, stored on the phone under `central_facilities_v1:<central user id>`: address, instance
@@ -155,12 +160,13 @@ sign-out and removed by "Delete my account".
 | `requested` | Requested (critical) | The facility answered that the request waits |
 | `revoked` | Revoked (negative) | The facility answered `account_unavailable` |
 | `link_needed` | Confirm number (neutral) | The facility answered `link_required`, or a wrong code was entered |
-| `unavailable` | Unavailable (neutral) | Just added and never opened; the facility could not be reached; it refused the identity, a conflict, or it does not take association sign-in right now |
+| `unavailable` | Unavailable (neutral) | Just added and never opened; the facility refused the identity, a conflict, or it does not take association sign-in right now |
 
 A status is checked only when its facility is opened; no facility is contacted in the
 background, and pull to refresh reads the list and asks the central service who is signed in.
-A rate limit, a failure of the central service, and `central_keys_unavailable` leave the
-status as it was: they say nothing about the person's access. With exactly one approved
+A facility that cannot be reached, a lost connection, a rate limit, a failure of the central
+service, and `central_keys_unavailable` leave the status as it was: they say nothing about the
+person's access, and a single network blip must not stop the start-up skip. With exactly one approved
 facility and nothing waiting, the list is skipped once at start (and after a new central
 sign-in) and that facility is opened; "Switch facility" always shows the list.
 
@@ -198,14 +204,16 @@ list and is opened.
 | `invalid_identity_token` | "<facility> couldn't verify your sign-in…" | unavailable |
 | `identity_token_used` | Nothing: a fresh token is tried once; a second time counts as the row above | |
 | `rate_limited`, `enrollment_limited` | "Too many attempts at <facility>…" with the wait, or "Too many new access requests today…" | unchanged |
-| no answer | "The connection to <facility> was lost…" | unavailable |
+| no answer | "The connection to <facility> was lost…" | unchanged |
 
 Every refusal is a message on My facilities; the person is never left on a raw error.
 
 **Inside a facility.** Settings shows "Switch facility" with the facility's name in place of
 "Change warehouse server"; it asks first and then leaves through the same cleanup, ending
 with no selected server. "Sign out" in Settings signs out of that facility only and returns
-to My facilities. On My facilities, "Sign out" revokes the central session, forgets it on the
+to My facilities. "Delete account" in Settings deletes the profile at that facility (as
+before), takes the facility off the person's list and leaves through the same cleanup, so My
+facilities cannot open it again and file a new access request. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility; the account entry holds the name and "Delete my
 account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
 
@@ -220,9 +228,9 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
 - **SMS auto-read** on Android (SMS Retriever); the code fields already use one-time-code
   autofill.
 - **Passkeys**, to depend less on SMS.
-- **Shared devices.** One central session per phone. The list of facilities is kept per
-  central person, so a second person on the same phone gets their own list after signing in,
-  but there is no account chooser.
+- **Shared devices.** One central session per phone. The list of facilities and the terms
+  tick are kept per central person, so a second person on the same phone gets their own list
+  and is asked for the tick after signing in, but there is no account chooser.
 - Removing a facility from My facilities (the store can; no screen offers it).
 - A header inside the facility that always shows its name with the switcher. Today the name
   and "Switch facility" are in Settings.

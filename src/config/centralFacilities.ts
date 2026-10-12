@@ -198,5 +198,7 @@ export async function noteFacilitySmsSignIn(status: 'approved' | 'requested'): P
   const server = getActiveOperatorServer();
   if (!user || !server) return;
   await updateMyFacility(user.id, server.origin, { status, opened: true }).catch(() => {});
-  if (status === 'approved') setCentralState({ facilitySmsOrigin: null });
+  // Either way the facility's sign-in screens are done with: a session has been
+  // stored, or the waiting screen takes over and the way on is My facilities.
+  setCentralState({ facilitySmsOrigin: null });
 }

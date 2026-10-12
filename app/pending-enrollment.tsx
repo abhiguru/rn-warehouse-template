@@ -16,6 +16,7 @@ import {
 } from '@/config/supabaseConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isCentralLoginConfigured } from '@/config/envConfig';
+import { setCentralState } from '@/config/centralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -71,20 +72,25 @@ export default function PendingEnrollmentScreen() {
     return () => { active = false; };
   }, [refresh]);
 
+  // Central login: there is no code to ask for again. The way on is My facilities,
+  // where opening this facility asks it once more.
+  const centralLogin = isCentralLoginConfigured();
+
   const leave = async () => {
     setLoading(true);
     try {
       await signOutPendingEnrollment();
-      router.replace('/login');
+      if (centralLogin) {
+        // Back to My facilities, not to this facility's own sign-in.
+        setCentralState({ facilitySmsOrigin: null });
+        router.replace('/facilities');
+      } else router.replace('/login');
     } catch {
       setLoading(false);
       showAlert(tr('auth.signOut.couldNotTitle'), tr('common.checkConnection'));
     }
   };
 
-  // Central login: there is no code to ask for again. The way on is My facilities,
-  // where opening this facility asks it once more (the route guard leads there).
-  const centralLogin = isCentralLoginConfigured();
   const message = status === 'approved'
     ? tr(centralLogin ? 'central.pending.approvedMessage' : 'auth.enrollment.approvedMessage', { facility: facilityName })
     : status === 'rejected' || status === 'disabled'

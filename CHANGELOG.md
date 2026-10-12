@@ -17,15 +17,17 @@ phone against a real central service.
   issuer name facilities trust (defaults to the origin).
 - **Central sign-in** (`app/central-login.tsx`, `app/central-otp.tsx`): mobile number and
   one-time code at the association's service, in the layout of the facility sign-in. The
-  first sign-in on a phone has a terms tick box; "Send code" is disabled until it is ticked.
+  first sign-in of a number on a phone has a terms tick box; "Send code" is disabled until it
+  is ticked, and `terms_version` is sent only for a number whose tick was given.
 - **The central session** (`src/config/centralSession.ts`) keeps its tokens under its own
   SecureStore keys (`secure_central_*`), apart from a facility session. One refresh at a time,
   ahead of expiry and once on a 401; a refusal signs the person out centrally and says why.
 - **My facilities** (`app/facilities.tsx`): the person's own list, kept on the phone per
   central person (`central_facilities_v1:<id>`, no token in it), newest-opened first, with a
   status tag: Approved, Requested, Revoked, Confirm number, Unavailable. A status is checked
-  when the facility is opened; no facility is contacted in the background. With exactly one
-  approved facility and nothing waiting, the list is skipped at start.
+  when the facility is opened; no facility is contacted in the background, and a facility
+  that cannot be reached keeps its status. With exactly one approved facility and nothing
+  waiting, the list is skipped at start.
 - **Add facility** (`app/facility-catalogue.tsx`): the association's catalogue, searched by
   name or city, or "Enter address" (typed or scanned) for a facility that is not listed.
 - **Opening a facility** (`src/config/openFacility.ts`): discover it, switch to it with the
@@ -36,7 +38,9 @@ phone against a real central service.
   is a plain message on My facilities. A facility that does not accept association sign-in
   is offered its own SMS sign-in.
 - **Inside a facility**: Settings has "Switch facility" (with the facility's name) in place
-  of "Change warehouse server", and "Sign out" there signs out of that facility only. "Sign
+  of "Change warehouse server", "Sign out" there signs out of that facility only, and
+  "Delete account" there deletes the profile at that facility, takes it off the list and
+  returns to My facilities. "Sign
   out" on My facilities ends the central sign-in and leaves the current facility; the
   account entry has the name and "Delete my account" (the association's account only; each
   facility keeps its own records).

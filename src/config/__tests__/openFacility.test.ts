@@ -252,7 +252,7 @@ describe('refusals leave a plain message and a status', () => {
     ['central_keys_unavailable', 'central_keys_unavailable', "North Cold Store couldn't check your sign-in just now. Try again in a few minutes.", 'approved'],
     ['invalid_identity_token', 'invalid_identity_token', "North Cold Store couldn't verify your sign-in. Try again. If this keeps happening, tell the facility administrator.", 'unavailable'],
     ['enrollment_limited', 'enrollment_limited', 'Too many new access requests today. Try again tomorrow.', 'approved'],
-    ['network', 'network', 'The connection to North Cold Store was lost. Check your connection and try again.', 'unavailable'],
+    ['network', 'network', 'The connection to North Cold Store was lost. Check your connection and try again.', 'approved'],
     ['unavailable', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'unavailable'],
     ['invalid_request', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'approved'],
     ['failed', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'approved'],
@@ -326,7 +326,7 @@ describe('a facility that does not accept association sign-in', () => {
 });
 
 describe('before the facility is asked', () => {
-  it('a facility that cannot be reached is marked unavailable and nothing is switched', async () => {
+  it('a facility that cannot be reached keeps its status (a blip must not stop the start-up skip) and nothing is switched', async () => {
     await updateMyFacility('asha', ORIGIN, { status: 'approved' });
     jest.mocked(discoverOperator).mockRejectedValue(new Error('Server discovery timed out'));
     expect(await openFacility(ORIGIN, NAME)).toEqual({
@@ -334,7 +334,7 @@ describe('before the facility is asked', () => {
       reason: 'facility_unreachable',
       message: "North Cold Store can't be reached right now. Check your connection and try again.",
     });
-    expect(await status()).toBe('unavailable');
+    expect(await status()).toBe('approved');
     expect(mockEvents).toEqual([]);
     expect(getActiveOperatorServer()).toBe(previous);
   });
@@ -377,6 +377,40 @@ describe('when the association gives no token', () => {
     expect(exchangeMock).not.toHaveBeenCalled();
     expect(await status()).toBe('approved');
   });
+});
+
+describe('an answer for a central session that has ended meanwhile', () => {
+  it.each([
+    ['signed out centrally', () => setCentralState({ status: 'signedOut', user: null })],
+    ['another person signed in', () => setCentralState({ status: 'signedIn', user: { ...USER, id: 'bhavin' } })],
+  ])('is not shown to the next person: %s', async (_name, change) => {
+    await updateMyFacility('asha', ORIGIN, { status: 'approved' });
+    tokenMock.mockImplementation(async () => {
+      // The service refuses the token and the app signs out while the open is in flight.
+      change();
+      return { ok: false, code: 'session_ended', message: 'Your association sign-in has ended. Sign in again.' };
+    });
+    const result = await openFacility(ORIGIN, NAME);
+    expect(result).toMatchObject({ kind: 'failed', reason: 'central' });
+    expect(getCentralState().outcome).toBeNull();
+    expect(getCentralState().opening).toBeNull();
+  });
+
+  it('is shown when the same person is still signed in', async () => {
+    tokenMock.mockResolvedValue({ ok: false, code: 'session_ended', message: 'x' } as never);
+    await openFacility(ORIGIN, NAME);
+    expect(getCentralState().outcome).toMatchObject({ origin: ORIGIN, outcome: { kind: 'failed' } });
+  });
+});
+
+it('writes neither the identity token nor the phone number to the log while opening and linking', async () => {
+  const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map(level => jest.spyOn(console, level).mockImplementation(() => {}));
+  exchangeMock.mockResolvedValueOnce(refusal('link_required') as never).mockResolvedValueOnce(LOGIN as never);
+  await openFacility(ORIGIN, NAME);
+  await completeFacilityLink('482913');
+  const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+  expect(logged).not.toMatch(/identity-token|9000000001|482913/);
+  spies.forEach(spy => spy.mockRestore());
 });
 
 it('never throws: an unexpected error is a plain message too', async () => {

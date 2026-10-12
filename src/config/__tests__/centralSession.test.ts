@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import * as SecureStore from 'expo-secure-store';
 import {
+  CENTRAL_REQUEST_TIMEOUT_MS,
   CENTRAL_SECURE_KEYS,
   deleteCentralAccount,
   fetchCentralProfile,
@@ -391,6 +392,24 @@ describe('refresh', () => {
     expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('2'));
   });
 
+  it('a refresh the app gave up waiting for is NOT repeated: outside the 10-second grace a repeat is reuse', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      await signedIn(-5);
+      let attempts = 0;
+      // A request that never answers.
+      fetchMock.mockImplementation(() => { attempts += 1; return new Promise(() => undefined); });
+      const result = fetchCentralProfile();
+      await jest.advanceTimersByTimeAsync(CENTRAL_REQUEST_TIMEOUT_MS + 1);
+      expect(await result).toMatchObject({ ok: false, code: 'timeout' });
+      expect(attempts).toBe(1);
+      expect(getCentralState().status).toBe('signedIn');
+      expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('an answer of the service is never repeated', async () => {
     await signedIn(-5);
     serve({ 'POST /v1/session/refresh': { status: 503, body: { error: { code: 'unavailable', message: 'x' } } } });
@@ -475,6 +494,37 @@ describe('catalogue', () => {
   });
 });
 
+describe('a secure store that does not answer', () => {
+  const failReads = () => jest.mocked(SecureStore.getItemAsync).mockRejectedValue(new Error('Keystore unavailable'));
+  const restoreReads = () => jest.mocked(SecureStore.getItemAsync).mockImplementation(async key => secure.get(key) ?? null);
+
+  it('at start: nothing stored is cleared, and the next start finds the session', async () => {
+    storeSession('first', '1', 600);
+    failReads();
+    await restoreCentralSession();
+    expect(getCentralState().status).toBe('signedOut');
+    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+    expect(secure.size).toBe(4);
+    restoreReads();
+    await restoreCentralSession();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-1' } });
+  });
+
+  it('while signed in: the session in memory is kept and no call signs the person out', async () => {
+    await signedIn(600);
+    failReads();
+    await restoreCentralSession();
+    expect(getCentralState().status).toBe('signedIn');
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getCentralState().status).toBe('signedIn');
+    expect(secure.size).toBe(4);
+    restoreReads();
+    serve({ 'GET /v1/me': { body: { user } } });
+    expect(await fetchCentralProfile()).toMatchObject({ ok: true });
+  });
+});
+
 describe('separation from the facility session', () => {
   const source = (file: string) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
 
@@ -494,5 +544,24 @@ describe('separation from the facility session', () => {
 
   it('logs nothing', () => {
     expect(source('centralSession.ts')).not.toMatch(/console\./);
+  });
+
+  it('a whole sign-in, refresh and sign-out writes no token, code or number to the log', async () => {
+    const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map(level => jest.spyOn(console, level).mockImplementation(() => {}));
+    serve({
+      'POST /v1/otp/request': { body: { request_id: 'r1', resend_after_seconds: 60 } },
+      'POST /v1/otp/verify': { body: { user, session: session('first', '1', nowSeconds() - 1000) } },
+      'POST /v1/session/refresh': [{ status: 429, body: { error: { code: 'rate_limited', message: 'x' } } }, { body: { session: session('second', '2') } }],
+      'POST /v1/facility-token': { body: { identity_token: 'facility-token-1' } },
+      'POST /v1/session/signout': { body: { ok: true } },
+    });
+    await requestCentralCode('+919000000001');
+    await verifyCentralCode('+919000000001', '482913', '2025-12');
+    await requestFacilityToken('https://north-cold.example.test');
+    await requestFacilityToken('https://north-cold.example.test');
+    await signOutCentral();
+    const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+    expect(logged).not.toMatch(new RegExp(`9000000001|482913|facility-token|${refreshToken('1')}|${refreshToken('2')}|signature`));
+    spies.forEach(spy => spy.mockRestore());
   });
 });
