@@ -7,7 +7,14 @@ import { getSessionIdentity } from '@/config/supabaseConfig';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { CACHE_DURATION_REPORT_MS, CACHE_PREFIXES } from '@/config/cacheConfig';
 import { clearAllCaches } from '@/utils/cacheManager';
-import { MAX_ENTRIES, MAX_ENTRY_CHARS, MAX_TOTAL_CHARS, readReportCache, writeReportCache } from '../reportCache';
+import {
+  MAX_ENTRIES,
+  MAX_ENTRY_CHARS,
+  MAX_TOTAL_CHARS,
+  readReportCache,
+  removeReportCache,
+  writeReportCache,
+} from '../reportCache';
 
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn() }));
 
@@ -125,6 +132,40 @@ it('neither keeps nor gives back an answer across a change of session', async ()
   advanceSessionGeneration();
   release();
   expect(await reading).toBeNull();
+});
+
+it('forgets one answer, and only that one, when asked to', async () => {
+  const other = ['dispatch-activity', 'customer', 'customer-2', '2026-01-01', '2026-10-12'];
+  await writeReportCache(key, { data: answer, updatedAt: Date.now() });
+  await writeReportCache(other, { data: answer, updatedAt: Date.now() });
+  expect(await reportKeys()).toHaveLength(3);
+  await removeReportCache(key);
+  expect(await readReportCache(key)).toBeNull();
+  expect(await readReportCache(other)).not.toBeNull();
+  expect(await reportKeys()).toHaveLength(2);
+  const index = JSON.parse((await AsyncStorage.getItem(`${CACHE_PREFIXES.REPORT}_index`)) ?? '[]') as [string][];
+  expect(index.map(([stored]) => stored)).toEqual([expect.stringContaining('customer-2')]);
+  // Forgetting what is not kept changes nothing.
+  await removeReportCache(key);
+  expect(await reportKeys()).toHaveLength(2);
+});
+
+it('forgets after a write sent before it, and not across a change of session', async () => {
+  // Sent together, the write first: the removal still wins.
+  await Promise.all([writeReportCache(key, { data: answer, updatedAt: Date.now() }), removeReportCache(key)]);
+  expect(await readReportCache(key)).toBeNull();
+
+  await writeReportCache(key, { data: answer, updatedAt: Date.now() });
+  const before = advanceSessionGeneration();
+  advanceSessionGeneration();
+  await removeReportCache(key, before);
+  expect(await readReportCache(key)).not.toBeNull();
+  signIn(null);
+  await removeReportCache(key);
+  signIn(accountA);
+  expect(await readReportCache(key)).not.toBeNull();
+  jest.mocked(AsyncStorage.removeItem).mockRejectedValueOnce(new Error('fictional storage failure'));
+  await expect(removeReportCache(key)).resolves.toBeUndefined();
 });
 
 it('is removed by the session teardown', async () => {

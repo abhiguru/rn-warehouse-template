@@ -20,6 +20,10 @@
  *
  * Storage errors are swallowed: the cache only ever saves a wait. Values are
  * never logged.
+ *
+ * An answer is written only when the facility gave it. A refusal (the account
+ * lost the role or the customer) removes the key's entry (`removeReportCache`);
+ * any other failure leaves it.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hashKey } from '@tanstack/react-query';
@@ -139,5 +143,35 @@ async function write<T>(key: readonly unknown[], entry: ReportCacheEntry<T>, gen
     ]);
   } catch {
     // Keeping a copy is never worth failing or delaying the report for.
+  }
+}
+
+/**
+ * Forget the last answer for `key`: the facility refused it, so this account
+ * may no longer read those figures. Queued with the writes, so a write that was
+ * sent earlier cannot put the entry back. `generation` is the session generation
+ * when the request was sent: after a change of session the teardown has already
+ * removed every entry. Never rejects; the returned promise is for tests.
+ */
+export function removeReportCache(key: readonly unknown[], generation: number = getSessionGeneration()): Promise<void> {
+  writes = writes.then(() => remove(key, generation));
+  return writes;
+}
+
+async function remove(key: readonly unknown[], generation: number): Promise<void> {
+  try {
+    if (generation !== getSessionGeneration()) return;
+    const scope = await getSessionCacheScope();
+    if (!scope || generation !== getSessionGeneration()) return;
+    const own = entryKey(scope, key);
+    const rows = readIndex(await AsyncStorage.getItem(INDEX_KEY));
+    const kept = rows.filter(([other]) => other !== own);
+    if (generation !== getSessionGeneration()) return;
+    await Promise.all([
+      AsyncStorage.removeItem(own),
+      kept.length !== rows.length ? AsyncStorage.setItem(INDEX_KEY, JSON.stringify(kept)) : undefined,
+    ]);
+  } catch {
+    // The read side refuses to show a refused key's entry anyway (useReportQuery).
   }
 }
