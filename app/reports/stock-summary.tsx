@@ -20,6 +20,7 @@ import {
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem, ReportCustomerScope, type ReportScope } from '@/components/reports';
+import { StockItemCard, type StockGRNRowData } from '@/components/reports/StockItemCard';
 import { getCustomerStockSummary, getAllStockSummary } from '@/services/reporting';
 import { generateCustomerStockPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -38,16 +39,14 @@ import {
 import type {
   StockSummaryData,
   StockItemSummary,
-  StockGRNDetail,
   AllStockSummaryData,
   CustomerStockRow,
 } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui';
+import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { t as tr, formatIdentifier } from '@/i18n';
+import { t as tr } from '@/i18n';
 const logger = createLogger('StockSummary');
 
 // Functions, not constants: the text follows the app language (docs/I18N.md rule 2).
@@ -98,57 +97,7 @@ const makeStyles = (t: ThemeTokens) =>
       backgroundColor: t.border.divider,
     },
 
-    // Object cell
-    objectCell: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      paddingVertical: space.md,
-      paddingHorizontal: space.lg,
-      gap: space.md,
-    },
     rowPressed: { backgroundColor: t.surface.cardPressed },
-    cellImage: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.button,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: t.brand.subtle,
-    },
-    cellImageMuted: { backgroundColor: t.status.neutral.background },
-    cellContent: { flex: 1, justifyContent: 'center', gap: space.xxs },
-    cellTitle: { ...typography.headline, color: t.text.primary },
-    cellSubtitle: { ...typography.subhead, color: t.text.secondary },
-    cellValue: { alignItems: 'flex-end' },
-    cellValueText: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    cellValueLabel: { ...typography.caption1, color: t.text.secondary },
-
-    // Expanded GRN rows
-    cardBody: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-      backgroundColor: t.background.base,
-    },
-    grnRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: space.lg,
-      paddingVertical: space.md,
-      minHeight: layout.rowMinHeight + space.md,
-      gap: space.md,
-    },
-    grnRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
-    grnRowContent: { flex: 1, gap: space.xxs },
-    grnRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-    grnRowTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
-    grnRowLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
-    grnRowFootnote: { ...typography.footnote, color: t.text.secondary },
-    grnRowAttributes: { alignItems: 'flex-end' },
-    grnRowStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    grnRowStockMuted: { color: t.text.secondary },
-    grnRowSecondary: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-
 
     // Collapsible out-of-stock header
     collapsibleHeader: {
@@ -193,179 +142,47 @@ const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, sty
 );
 
 // ============================================================================
-// Object Cell - Item Card (Expandable)
+// Item cards (src/components/reports/StockItemCard.tsx)
 // ============================================================================
-interface ItemCardProps {
+/** The GRNs of an item as the shared card draws them. */
+const grnRows = (item: StockItemSummary, isOutOfStock: boolean): StockGRNRowData[] =>
+  item.grns.map((grn, index) => {
+    const emptied = isOutOfStock && grn.emptied_date ? grn.emptied_date : null;
+    return {
+      key: `${grn.gr_no}-${index}`,
+      grnId: grn.grn_id || null,
+      grNo: grn.gr_no,
+      packageMark: grn.package_mark || null,
+      receivedDate: grn.date,
+      emptiedDate: emptied,
+      // An emptied GRN no longer holds a rack: its packaging and rack are not shown.
+      packaging: emptied ? null : grn.packaging,
+      rack: emptied ? null : grn.rack,
+      weightEach: grn.item_weight,
+      stock: grn.stock,
+      total: grn.orig_qty,
+    };
+  });
+
+const openGRN = (grnId: string) => router.push(`/grn-details/${grnId}`);
+
+const StockSummaryItemCard: React.FC<{
   item: StockItemSummary;
   isExpanded: boolean;
   onToggle: () => void;
   isOutOfStock?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOfStock = false, styles, t }) => {
-  const grns = formatCount(item.grn_count, 'GRN');
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardClip}>
-        {/* Object Cell Header - Main touchable area */}
-        <Pressable
-          style={({ pressed }) => [styles.objectCell, pressed && styles.rowPressed]}
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isOutOfStock
-              ? tr('reports.stockSummary.itemA11yOutOfStock', { name: item.item_name, grns })
-              : tr('reports.stockSummary.itemA11y', { name: item.item_name, units: formatNumber(item.total_stock), grns })
-          }
-          accessibilityState={{ expanded: isExpanded }}
-          accessibilityHint={isExpanded ? tr('reports.shared.hidesGrnsHint') : tr('reports.stockSummary.showsGrnsHint')}
-        >
-          <View style={[styles.cellImage, isOutOfStock && styles.cellImageMuted]}>
-            <Icon
-              name={isOutOfStock ? 'cube-off-outline' : 'cube-outline'}
-              size={iconSize.lg}
-              color={isOutOfStock ? t.status.neutral.text : t.brand.tint}
-            />
-          </View>
-
-          <View style={styles.cellContent}>
-            <Text style={styles.cellTitle} numberOfLines={2}>
-              {item.item_name}
-            </Text>
-            <Text style={styles.cellSubtitle} numberOfLines={1}>
-              {isOutOfStock ? tr('reports.stockSummary.grnsDispatched', { grns }) : grns}
-            </Text>
-            {isOutOfStock && (
-              <StatusTag status="negative" label={tr('common.outOfStock')} />
-            )}
-          </View>
-
-          {!isOutOfStock && (
-            <View style={styles.cellValue}>
-              <Text style={styles.cellValueText}>{formatNumber(item.total_stock)}</Text>
-              <Text style={styles.cellValueLabel}>{tr('reports.shared.units')}</Text>
-            </View>
-          )}
-
-          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
-        </Pressable>
-
-        {/* Expandable GRN List */}
-        {isExpanded && item.grns.length > 0 && (
-          <View style={styles.cardBody}>
-            {item.grns.map((grn, index) => (
-              <GRNRow
-                key={`${grn.gr_no}-${index}`}
-                grn={grn}
-                isLast={index === item.grns.length - 1}
-                onPress={grn.grn_id ? () => router.push(`/grn-details/${grn.grn_id}`) : undefined}
-                isOutOfStock={isOutOfStock}
-                styles={styles}
-                t={t}
-              />
-            ))}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-};
-
-// ============================================================================
-// GRN Row (nested within Item Card)
-// ============================================================================
-interface GRNRowProps {
-  grn: StockGRNDetail;
-  isLast?: boolean;
-  onPress?: () => void;
-  isOutOfStock?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfStock = false, styles, t }) => {
-  const handlePress = () => {
-    if (grn.grn_id && onPress) {
-      onPress();
-    }
-  };
-
-  const isNavigable = !!grn.grn_id;
-  const received = tr('reports.shared.receivedOn', { date: formatDate(grn.date, 'short') });
-  const emptied = isOutOfStock && grn.emptied_date ? tr('reports.stockSummary.emptiedOn', { date: formatDate(grn.emptied_date, 'short') }) : null;
-  const extra = !emptied ? [grn.packaging, grn.rack ? tr('reports.shared.rack', { rack: String(grn.rack) }) : null].filter(Boolean).join(' · ') : '';
-  const stockText = grn.orig_qty > 0
-    ? tr('reports.stockSummary.stockOf', { stock: formatNumber(grn.stock), total: formatNumber(grn.orig_qty) })
-    : formatNumber(grn.stock);
-  const weight = tr('reports.stockSummary.weightEach', { weight: formatWeight(grn.item_weight || 0) });
-
-  const a11yLabel = [
-    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
-    grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
-    received,
-    emptied,
-    extra || null,
-    tr('reports.shared.unitsValue', { value: stockText }),
-    weight,
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  const content = (
-    <>
-      <View style={styles.grnRowContent}>
-        <View style={styles.grnRowTitleRow}>
-          <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-          </Text>
-          {grn.package_mark && (
-            <StatusTag status="neutral" label={grn.package_mark} icon={null} />
-          )}
-        </View>
-        <View style={styles.grnRowLine}>
-          <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.grnRowFootnote}>{received}</Text>
-        </View>
-        {emptied && (
-          <View style={styles.grnRowLine}>
-            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.grnRowFootnote}>{emptied}</Text>
-          </View>
-        )}
-        {extra ? <Text style={styles.grnRowFootnote}>{extra}</Text> : null}
-      </View>
-
-      <View style={styles.grnRowAttributes}>
-        <Text style={[styles.grnRowStock, isOutOfStock && styles.grnRowStockMuted]}>{stockText}</Text>
-        <Text style={styles.grnRowSecondary}>{weight}</Text>
-      </View>
-
-      {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
-    </>
-  );
-
-  if (isNavigable) {
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.grnRow, !isLast && styles.grnRowBorder, pressed && styles.rowPressed]}
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={tr('reports.shared.opensGrnHint')}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-
-  return (
-    <View style={[styles.grnRow, !isLast && styles.grnRowBorder]} accessible accessibilityLabel={a11yLabel}>
-      {content}
-    </View>
-  );
-};
+}> = ({ item, isExpanded, onToggle, isOutOfStock = false }) => (
+  <StockItemCard
+    name={item.item_name}
+    grnCount={item.grn_count}
+    stock={item.total_stock}
+    outOfStock={isOutOfStock}
+    isExpanded={isExpanded}
+    onToggle={onToggle}
+    grns={{ status: 'loaded', rows: grnRows(item, isOutOfStock) }}
+    onOpenGRN={openGRN}
+  />
+);
 
 export default function StockSummaryScreen() {
   return (
@@ -560,8 +377,8 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
     }
   }, []);
 
+  // The card animates its own opening (motion token, Reduce Motion respected).
   const toggleItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedItems((prev) => {
       const next = new Set(prev);
       if (next.has(itemId)) {
@@ -579,7 +396,6 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
   }, []);
 
   const toggleOutOfStockItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedOutOfStockItems((prev) => {
       const next = new Set(prev);
       if (next.has(itemId)) {
@@ -840,13 +656,11 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
               <SectionHeader title={tr('reports.stockSummary.itemsInStorage')} styles={styles} />
               <View style={styles.itemsList}>
                 {data.items.map((item) => (
-                  <ItemCard
+                  <StockSummaryItemCard
                     key={item.item_id}
                     item={item}
                     isExpanded={expandedItems.has(item.item_id)}
                     onToggle={() => toggleItem(item.item_id)}
-                    styles={styles}
-                    t={t}
                   />
                 ))}
               </View>
@@ -898,14 +712,12 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
             {outOfStockExpanded && (
               <View style={[styles.itemsList, styles.oosList]}>
                 {data.out_of_stock_items.map((item) => (
-                  <ItemCard
+                  <StockSummaryItemCard
                     key={`oos-${item.item_id}`}
                     item={item}
                     isExpanded={expandedOutOfStockItems.has(item.item_id)}
                     onToggle={() => toggleOutOfStockItem(item.item_id)}
                     isOutOfStock
-                    styles={styles}
-                    t={t}
                   />
                 ))}
               </View>

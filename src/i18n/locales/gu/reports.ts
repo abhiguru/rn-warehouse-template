@@ -92,8 +92,6 @@ export const reports: Translation<typeof source> = {
   },
   stockSummary: {
     loadError: 'સ્ટોકનો સારાંશ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    itemA11y: '{{name}}, {{units}} નંગ, {{grns}}',
-    itemA11yOutOfStock: '{{name}}, સ્ટોક નથી, {{grns}}',
     showsGrnsHint: 'આ આઇટમની આવક પાવતીઓ બતાવે છે',
     grnsDispatched: '{{grns}}નો માલ જાવક થઈ ગયો',
     emptiedOn: 'ખાલી થયું તા. {{date}}',
@@ -121,7 +119,6 @@ export const reports: Translation<typeof source> = {
     loadError: 'આઇટમ લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     stockOfInStock: '{{total}}માંથી {{stock}} સ્ટોકમાં છે',
     ofTotal: '{{total}}માંથી',
-    showsGrnsHint: 'આ આઇટમ ધરાવતી આવક પાવતીઓ બતાવે છે',
     loadingGrns: 'આવક પાવતી લોડ થઈ રહી છે',
     noGrnsInStock: 'આ આઇટમનો સ્ટોક ધરાવતી કોઈ આવક પાવતી નથી.',
     grnsLoadError: 'આ આઇટમની આવક પાવતી લોડ કરી શકાઈ નથી.',

@@ -17,17 +17,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   Pressable,
-  LayoutAnimation,
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerScope, type KPIItem, type ReportScope } from '@/components/reports';
+import { StockItemCard, isLowStock, type StockGRNRowData, type StockGRNState } from '@/components/reports/StockItemCard';
 import { StockService } from '@/services/stock-service';
 import { getAllGRNItems, getCustomerGRNItems, type GRNItem } from '@/services/grn-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -36,20 +35,14 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui';
-import { Button } from '@/components/ui/Button';
 import { createLogger } from '@/utils/logger';
-import { t as tr, formatIdentifier } from '@/i18n';
+import { t as tr } from '@/i18n';
 import type { ItemWiseStockItem } from '@/types/stock.types';
 
 const logger = createLogger('ItemStockSummary');
 
 // A function, not a constant: the text follows the app language (docs/I18N.md rule 2).
 const loadError = () => tr('reports.itemStockSummary.loadError');
-
-/** Below this share of the received quantity still in stock, an item is low on stock. */
-const LOW_STOCK_PERCENT = 20;
 
 // ============================================================================
 // Styles
@@ -90,88 +83,8 @@ const makeStyles = (t: ThemeTokens) =>
       justifyContent: 'center',
     },
 
-    // Item card
-    itemCard: {
-      marginHorizontal: layout.marginCompact,
-      backgroundColor: t.surface.card,
-      borderRadius: radius.card,
-      ...t.shadow[2],
-    },
-    itemCardClip: { borderRadius: radius.card, overflow: 'hidden' },
-    objectCell: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      paddingVertical: space.md,
-      paddingHorizontal: space.lg,
-      gap: space.md,
-    },
-    objectCellPressed: { backgroundColor: t.surface.cardPressed },
-    objectCellImage: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.button,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: t.brand.subtle,
-    },
-    objectCellContent: { flex: 1, gap: space.xxs },
-    objectCellTitle: { ...typography.headline, color: t.text.primary },
-    objectCellSubtitle: { ...typography.subhead, color: t.text.secondary },
-    tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s6, marginTop: space.xxs },
-    stockInfo: { alignItems: 'flex-end' },
-    stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-
-    // Expanded body
-    cardBody: {
-      backgroundColor: t.background.base,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-    },
-    grnLoadingContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: space.xl,
-      gap: space.sm,
-    },
-    grnLoadingText: { ...typography.footnote, color: t.text.secondary },
-    grnEmptyText: {
-      ...typography.footnote,
-      color: t.text.secondary,
-      textAlign: 'center',
-      paddingVertical: space.xl,
-      paddingHorizontal: space.lg,
-    },
-    grnErrorContainer: {
-      alignItems: 'center',
-      paddingVertical: space.lg,
-      paddingHorizontal: space.lg,
-      gap: space.sm,
-    },
-    grnErrorText: { ...typography.footnote, color: t.status.negative.text, textAlign: 'center' },
-
-    // GRN row
-    grnRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: space.lg,
-      paddingVertical: space.md,
-      minHeight: layout.rowMinHeight + space.md,
-      gap: space.md,
-    },
-    grnRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
-    grnRowPressed: { backgroundColor: t.surface.cardPressed },
-    grnRowContent: { flex: 1, gap: space.xxs },
-    grnRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-    grnRowTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
-    grnRowLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
-    grnRowFootnote: { ...typography.footnote, color: t.text.secondary, flexShrink: 1 },
-    grnRowDetail: { ...typography.caption1, color: t.text.secondary },
-    grnRowAttributes: { alignItems: 'flex-end' },
-    grnRowStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    grnRowOrigQty: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
+    // Item card: the list has no side padding of its own
+    itemCard: { marginHorizontal: layout.marginCompact },
 
     // Loading more
     loadingMore: {
@@ -187,220 +100,37 @@ const makeStyles = (t: ThemeTokens) =>
 type Styles = ReturnType<typeof makeStyles>;
 
 // ============================================================================
-// GRN Row Component (nested row within expanded Item Card)
+// Item cards (src/components/reports/StockItemCard.tsx)
 // ============================================================================
-interface GRNRowProps {
-  grn: GRNItem;
-  isLast?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
-}
+/** The GRNs of an item as the shared card draws them. */
+const grnRows = (grns: GRNItem[]): StockGRNRowData[] =>
+  grns.map((grn, index) => ({
+    key: `${grn.grn_id || grn.id}-${index}`,
+    grnId: grn.grn_id || grn.id || null,
+    grNo: grn.gr_no,
+    packageMark: grn.package_mark,
+    customerName: grn.customer_name,
+    receivedDate: grn.date,
+    rack: grn.rack,
+    weight: grn.weight,
+    stock: grn.stock,
+    total: grn.qty,
+  }));
 
-const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
-  const handlePress = () => {
-    const grnId = grn.grn_id || grn.id;
-    if (grnId) {
-      router.push(`/grn-details/${grnId}`);
-    }
-  };
+const openGRN = (grnId: string) => router.push(`/grn-details/${grnId}`);
 
-  const isNavigable = !!(grn.grn_id || grn.id);
-  const details = [
-    grn.date ? { icon: 'calendar-outline', text: formatDate(grn.date, 'short') } : null,
-    grn.rack ? { icon: 'view-grid-outline', text: tr('reports.shared.rack', { rack: String(grn.rack) }) } : null,
-    grn.weight && grn.weight > 0 ? { icon: 'weight-kilogram', text: formatWeight(grn.weight) } : null,
-  ].filter((d): d is { icon: string; text: string } => d !== null);
-
-  const a11yLabel = [
-    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
-    grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
-    grn.customer_name,
-    ...details.map(d => d.text),
-    tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(grn.stock), total: formatNumber(grn.qty) }),
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  const content = (
-    <>
-      <View style={styles.grnRowContent}>
-        {/* Line 1: GRN number + package mark */}
-        <View style={styles.grnRowTitleRow}>
-          <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-          </Text>
-          {grn.package_mark && (
-            <StatusTag status="neutral" label={grn.package_mark} icon={null} />
-          )}
-        </View>
-
-        {/* Line 2: Customer */}
-        <View style={styles.grnRowLine}>
-          <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.grnRowFootnote} numberOfLines={1}>
-            {grn.customer_name}
-          </Text>
-        </View>
-
-        {/* Line 3: Date, rack, weight */}
-        {details.length > 0 && (
-          <View style={styles.grnRowLine}>
-            {details.map((d, i) => (
-              <React.Fragment key={d.icon}>
-                {i > 0 && <Text style={styles.grnRowDetail}>·</Text>}
-                <Icon name={d.icon} size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.grnRowDetail}>{d.text}</Text>
-              </React.Fragment>
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* Stock of received quantity */}
-      <View style={styles.grnRowAttributes}>
-        <Text style={styles.grnRowStock}>{formatNumber(grn.stock)}</Text>
-        <Text style={styles.grnRowOrigQty}>{tr('reports.itemStockSummary.ofTotal', { total: formatNumber(grn.qty) })}</Text>
-      </View>
-
-      {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
-    </>
-  );
-
-  if (isNavigable) {
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.grnRow, !isLast && styles.grnRowDivider, pressed && styles.grnRowPressed]}
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={tr('reports.shared.opensGrnHint')}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-
-  return (
-    <View style={[styles.grnRow, !isLast && styles.grnRowDivider]} accessible accessibilityLabel={a11yLabel}>
-      {content}
-    </View>
-  );
-};
-
-// ============================================================================
-// Item Card Component (Expandable)
-// ============================================================================
-interface ItemCardProps {
-  item: ItemWiseStockItem;
-  isExpanded: boolean;
-  onToggle: () => void;
-  grnDetails: GRNItem[] | null;
-  isLoadingGRNs: boolean;
-  /** The GRNs could not be loaded: an error with "Try again", not "no GRNs". */
-  grnLoadFailed: boolean;
-  onRetryGRNs: () => void;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const ItemCard: React.FC<ItemCardProps> = ({
-  item,
-  isExpanded,
-  onToggle,
-  grnDetails,
-  isLoadingGRNs,
-  grnLoadFailed,
-  onRetryGRNs,
-  styles,
-  t,
-}) => {
-  const stockPercentage = item.total_qty > 0
-    ? Math.round((item.total_stock / item.total_qty) * 100)
-    : 0;
-  const isLowStock = stockPercentage < LOW_STOCK_PERCENT;
-  const grnCount = formatCount(item.grn_count, 'GRN');
-
-  return (
-    <View style={styles.itemCard}>
-      <View style={styles.itemCardClip}>
-        {/* Main Object Cell - Tappable Header */}
-        <Pressable
-          style={({ pressed }) => [styles.objectCell, pressed && styles.objectCellPressed]}
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel={[
-            item.item_name,
-            item.packaging,
-            tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(item.total_stock), total: formatNumber(item.total_qty) }),
-            grnCount,
-            isLowStock ? tr('common.lowStock') : null,
-          ]
-            .filter(Boolean)
-            .join(', ')}
-          accessibilityState={{ expanded: isExpanded }}
-          accessibilityHint={isExpanded ? tr('reports.shared.hidesGrnsHint') : tr('reports.itemStockSummary.showsGrnsHint')}
-        >
-          <View style={styles.objectCellImage}>
-            <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
-          </View>
-
-          <View style={styles.objectCellContent}>
-            <Text style={styles.objectCellTitle} numberOfLines={2}>
-              {item.item_name}
-            </Text>
-            {item.packaging ? (
-              <Text style={styles.objectCellSubtitle} numberOfLines={1}>
-                {item.packaging}
-              </Text>
-            ) : null}
-            <View style={styles.tagRow}>
-              <StatusTag status="neutral" label={grnCount} icon={null} />
-              {isLowStock && <StatusTag status="critical" label={tr('common.lowStock')} />}
-            </View>
-          </View>
-
-          <View style={styles.stockInfo}>
-            <Text style={styles.stockValue}>{formatNumber(item.total_stock)}</Text>
-            <Text style={styles.stockLabel}>{tr('reports.itemStockSummary.ofTotal', { total: formatNumber(item.total_qty) })}</Text>
-          </View>
-
-          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
-        </Pressable>
-
-        {/* Expandable GRN List */}
-        {isExpanded && (
-          <View style={styles.cardBody}>
-            {isLoadingGRNs ? (
-              <View style={styles.grnLoadingContainer} accessibilityLiveRegion="polite">
-                <ActivityIndicator size="small" color={t.brand.tint} />
-                <Text style={styles.grnLoadingText}>{tr('reports.itemStockSummary.loadingGrns')}</Text>
-              </View>
-            ) : grnLoadFailed ? (
-              <View style={styles.grnErrorContainer} accessibilityLiveRegion="polite">
-                <Text style={styles.grnErrorText}>{tr('reports.itemStockSummary.grnsLoadError')}</Text>
-                <Button type="tertiary" size="compact" onPress={onRetryGRNs}>
-                  {tr('common.retry')}
-                </Button>
-              </View>
-            ) : grnDetails && grnDetails.length > 0 ? (
-              grnDetails.map((grn, index) => (
-                <GRNRow
-                  key={`${grn.grn_id || grn.id}-${index}`}
-                  grn={grn}
-                  isLast={index === grnDetails.length - 1}
-                  styles={styles}
-                  t={t}
-                />
-              ))
-            ) : (
-              <Text style={styles.grnEmptyText}>{tr('reports.itemStockSummary.noGrnsInStock')}</Text>
-            )}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-};
+/** Loading, failed (with "Try again") or loaded: a failure is never shown as "no GRNs". */
+const grnState = (
+  grns: GRNItem[] | null,
+  isLoading: boolean,
+  failed: boolean,
+  onRetry: () => void,
+): StockGRNState =>
+  isLoading
+    ? { status: 'loading' }
+    : failed
+      ? { status: 'failed', onRetry }
+      : { status: 'loaded', rows: grnRows(grns ?? []) };
 
 // ============================================================================
 // Search Input Component
@@ -636,10 +366,8 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
     }
   }, [grnDetailsCache, loadingGRNs, customerId]);
 
-  // Toggle item expansion
+  // Toggle item expansion. The card animates its own opening (motion token, Reduce Motion respected).
   const toggleItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
     setExpandedItems(prev => {
       const next = new Set(prev);
       if (next.has(itemId)) {
@@ -696,18 +424,26 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
 
   // Render item
   const renderItem = useCallback(({ item }: { item: ItemWiseStockItem }) => (
-    <ItemCard
-      item={item}
+    <StockItemCard
+      name={item.item_name}
+      packaging={item.packaging}
+      grnCount={item.grn_count}
+      stock={item.total_stock}
+      total={item.total_qty}
+      lowStock={isLowStock(item.total_stock, item.total_qty)}
       isExpanded={expandedItems.has(item.item_id)}
       onToggle={() => toggleItem(item.item_id)}
-      grnDetails={grnDetailsCache[item.item_id] || null}
-      isLoadingGRNs={loadingGRNs.has(item.item_id)}
-      grnLoadFailed={failedGRNs.has(item.item_id)}
-      onRetryGRNs={() => fetchGRNDetails(item.item_id)}
-      styles={styles}
-      t={t}
+      grns={grnState(
+        grnDetailsCache[item.item_id] || null,
+        loadingGRNs.has(item.item_id),
+        failedGRNs.has(item.item_id),
+        () => fetchGRNDetails(item.item_id),
+      )}
+      emptyGRNsText={tr('reports.itemStockSummary.noGrnsInStock')}
+      onOpenGRN={openGRN}
+      style={styles.itemCard}
     />
-  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs, failedGRNs, fetchGRNDetails, styles, t]);
+  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs, failedGRNs, fetchGRNDetails, styles]);
 
   // Key extractor
   const keyExtractor = useCallback((item: ItemWiseStockItem) => item.item_id, []);

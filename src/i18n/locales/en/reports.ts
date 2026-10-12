@@ -93,8 +93,6 @@ export const reports = {
   },
   stockSummary: {
     loadError: "Couldn't load the stock summary. Check your connection and try again.",
-    itemA11y: '{{name}}, {{units}} units, {{grns}}',
-    itemA11yOutOfStock: '{{name}}, out of stock, {{grns}}',
     showsGrnsHint: 'Shows the GRNs for this item',
     grnsDispatched: '{{grns}} dispatched',
     emptiedOn: 'Emptied {{date}}',
@@ -122,7 +120,6 @@ export const reports = {
     loadError: "Couldn't load items. Check your connection and try again.",
     stockOfInStock: '{{stock}} of {{total}} in stock',
     ofTotal: 'of {{total}}',
-    showsGrnsHint: 'Shows the GRNs holding this item',
     loadingGrns: 'Loading GRNs',
     noGrnsInStock: 'No GRNs with this item in stock.',
     grnsLoadError: "Couldn't load the GRNs for this item.",

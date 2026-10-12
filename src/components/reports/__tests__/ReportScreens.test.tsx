@@ -415,7 +415,8 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
   it('item stock summary with low stock tag', async () => {
     const tree = await render(brand, mode, <ItemStockSummaryScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Item stock summary', 'Potato', 'Low stock', '1 GRN']));
+    // Packaging and GRN count are one fact line (FactLines) on the shared StockItemCard.
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Item stock summary', 'Potato', 'Low stock', '50 kg bag · 1 GRN']));
     act(() => tree.unmount());
   });
 
