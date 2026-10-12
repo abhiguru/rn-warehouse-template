@@ -135,7 +135,7 @@
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },
-    "testPathIgnorePatterns": ["/node_modules/", "/\\.claude/"],
+    "testPathIgnorePatterns": ["/node_modules/", "<rootDir>/\\.claude/"],
     "modulePathIgnorePatterns": ["<rootDir>/\\.claude/"],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/react-native|react-navigation|@react-navigation/.*|react-native-svg|standard-navigation|decode-uri-component))"
