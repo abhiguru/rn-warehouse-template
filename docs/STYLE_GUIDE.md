@@ -394,6 +394,7 @@ Rules:
 | Print job | `pending` / `printing` / `completed` / `failed` / `cancelled` | Neutral / Informative / Positive / Negative / Neutral | Waiting / Printing / Printed / Failed / Cancelled |
 | Image upload | `pending` / `uploading` / `completed` / `failed` | Neutral / Informative / Positive / Negative | Waiting / Uploading / Uploaded / Upload failed |
 | Facility access (enrollment) | requested / approved / rejected / revoked | Critical / Positive / Negative / Negative | Requested / Approved / Not approved / Revoked |
+| Facility on My facilities (central login) | `approved` / `requested` / `revoked` / `link_needed` / `unavailable` | Positive / Critical / Negative / Neutral / Neutral | Approved / Requested / Revoked / Confirm number / Unavailable |
 | Customer, item, user | active / inactive | no tag / Neutral | Inactive |
 | Operation result | `success` / `error` | Positive / Negative | — |
 
@@ -1014,11 +1015,12 @@ On tablets in landscape, list reports show the list on the left (360 wide) and t
 
 The app has one central sign-in that only proves who the user is, then facility selection, and each facility separately authorises data access.
 
-1. **Sign-in** (`app/login.tsx`): brand mark, app name, the title "Sign in", the subtitle "Enter your mobile number to get a one-time code.", a "MOBILE NUMBER" section with a fixed +91 prefix and 5 + 5 grouping, and the full-width primary "Send code". The facility row above shows the current facility and host with a "Change" link.
-2. **Code entry** (`app/otp.tsx`): six boxes or one field with `textContentType="oneTimeCode"` and `autoComplete="sms-otp"`, auto-submit on the sixth digit, a resend link with a countdown, and "Wrong number?" back.
-3. **Facility selection** (`app/operator-server.tsx`): association member facilities as object cells (name, town, status tag). Status: Approved (positive), Requested (critical), Not requested (neutral), Revoked (negative). "Request access" on facilities without access.
+1. **Sign-in** (`src/components/auth/PhoneSignInForm.tsx`, used by `app/central-login.tsx` and `app/login.tsx`): brand mark, app name, the title "Sign in", the subtitle "Enter your mobile number to get a one-time code.", a "MOBILE NUMBER" section with a fixed +91 prefix and 5 + 5 grouping, and the full-width primary "Send code". The central sign-in adds the line "One sign-in for every member cold storage." and, on a first sign-in, a terms checkbox per [13.4](#134-selection-controls); "Send code" is disabled until it is ticked. A facility's own sign-in shows the facility row above (facility and host with a "Change" link) instead.
+2. **Code entry** (`src/components/auth/CodeEntryForm.tsx`, used by `app/central-otp.tsx`, `app/otp.tsx` and `app/facility-link.tsx`): six boxes or one field with `textContentType="oneTimeCode"` and `autoComplete="sms-otp"`, auto-submit on the sixth digit, a resend link with a countdown, and "Wrong number?" back. The linking step gives it a heading that says why a code is asked for: "Confirm your number at <facility> once".
+3. **Facility selection** (`app/facilities.tsx`, "My facilities", with central login; `app/operator-server.tsx`, the server address, without): the person's facilities as object cells (name, town, status tag), newest-opened first. Status: Approved (positive), Requested (critical), Revoked (negative), Confirm number and Unavailable (neutral). One primary "Add facility" at the bottom opens the association's catalogue (`app/facility-catalogue.tsx`: search by name or town; loading, empty, no-match and error states with "Try again"), which also offers "Enter address". Opening a facility is how access is requested; there is no separate "Request access".
 4. **Waiting for approval** (`app/pending-enrollment.tsx`, `app/enrollment-review.tsx`): what was requested, from which facility, and what happens next. No data from the facility is shown until it approves.
 5. **Revoked or expired**: sign the user out of that facility, explain why in plain words, and return to facility selection. Never show a raw "401".
+6. **Inside a facility** (central login): Settings shows "Switch facility" with the facility's name; it asks first, then returns to My facilities. "Sign out" there leaves that facility only.
 
 ### 14.9 Offline
 

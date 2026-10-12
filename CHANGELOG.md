@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased — central login in the app (2026-10-12)
+
+**Off unless the build sets the central origin** (`EXPO_PUBLIC_CENTRAL_ORIGIN`). Without it
+nothing changes: one facility at a time, that facility's own SMS sign-in, the same screens
+and route decisions. With it the app needs a **central identity service**
+([central-identity-template](https://github.com/abhiguru/central-identity-template)) and, at
+every facility that takes part, **facility backend migration 49** (`central-exchange`, with
+the operator's `CENTRAL_ISSUER` set to the same issuer). The design, the flow as built and
+what is still open are in [docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). Not yet run on a
+phone against a real central service.
+
+- **Build settings** (`src/config/envConfig.ts`, `.env.example`):
+  `EXPO_PUBLIC_CENTRAL_ORIGIN`, an `https://` origin (a development build also accepts
+  `http://localhost:PORT` and `http://127.0.0.1:PORT`), and `EXPO_PUBLIC_CENTRAL_ISSUER`, the
+  issuer name facilities trust (defaults to the origin).
+- **Central sign-in** (`app/central-login.tsx`, `app/central-otp.tsx`): mobile number and
+  one-time code at the association's service, in the layout of the facility sign-in. The
+  first sign-in on a phone has a terms tick box; "Send code" is disabled until it is ticked.
+- **The central session** (`src/config/centralSession.ts`) keeps its tokens under its own
+  SecureStore keys (`secure_central_*`), apart from a facility session. One refresh at a time,
+  ahead of expiry and once on a 401; a refusal signs the person out centrally and says why.
+- **My facilities** (`app/facilities.tsx`): the person's own list, kept on the phone per
+  central person (`central_facilities_v1:<id>`, no token in it), newest-opened first, with a
+  status tag: Approved, Requested, Revoked, Confirm number, Unavailable. A status is checked
+  when the facility is opened; no facility is contacted in the background. With exactly one
+  approved facility and nothing waiting, the list is skipped at start.
+- **Add facility** (`app/facility-catalogue.tsx`): the association's catalogue, searched by
+  name or city, or "Enter address" (typed or scanned) for a facility that is not listed.
+- **Opening a facility** (`src/config/openFacility.ts`): discover it, switch to it with the
+  existing server-switch cleanup, get a token for that facility from the central service and
+  hand it to the facility's `central-exchange`. A session enters the facility; a waiting
+  request shows the existing waiting screen; a profile that existed before is linked once
+  with a code the facility sends ("Confirm your number at <facility> once"); every refusal
+  is a plain message on My facilities. A facility that does not accept association sign-in
+  is offered its own SMS sign-in.
+- **Inside a facility**: Settings has "Switch facility" (with the facility's name) in place
+  of "Change warehouse server", and "Sign out" there signs out of that facility only. "Sign
+  out" on My facilities ends the central sign-in and leaves the current facility; the
+  account entry has the name and "Delete my account" (the association's account only; each
+  facility keeps its own records).
+- **Route guard**: a new state, signed in centrally with no facility session, which may open
+  My facilities, the catalogue, the address entry, the linking step and the account, and is
+  sent to My facilities from every facility screen. Signed in nowhere goes to central
+  sign-in. With central login on the app starts without a selected server.
+- **Known limit: the catalogue's signature is not verified in the app.** It is an ES256
+  token and Hermes has no ES256. The app checks its type, issuer and expiry and relies on TLS
+  to the configured origin. Access is decided by each facility, which verifies its own
+  tokens, so a forged catalogue could show a wrong address but could not open anyone's data.
+- Shared code, no change in behaviour without central login: the server-switch sequence
+  moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
+  `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used
+  by both sign-ins; the sign-in and code screens draw with
+  `src/components/auth/PhoneSignInForm.tsx` and `CodeEntryForm.tsx`.
+- English and Gujarati text in the new area `central` (and five screen titles in `nav`); the
+  Gujarati is a draft for the owner's wording review.
+- Still open: passcode and biometrics, SMS auto-read, passkeys, shared devices, removing a
+  facility from the list, a header that shows the facility's name inside it.
+
 ## Unreleased — price history screen (2026-10-11)
 
 Needs backend migration 48 (`get_item_price_history`), which is in backend

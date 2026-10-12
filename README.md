@@ -101,6 +101,10 @@ Replace the placeholder assets in `assets/` and review the privacy and legal tex
 before distributing a branded build. Never put private server keys in
 `EXPO_PUBLIC_*` variables: they are bundled into the app.
 
+Central login (one sign-in at the association, then a list of facilities) is off
+unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
+[docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md).
+
 ## Checks and releases
 
 GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs lint, typecheck, Jest,

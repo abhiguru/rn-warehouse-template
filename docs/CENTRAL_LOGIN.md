@@ -1,7 +1,14 @@
 # Central login with facility-owned data — design
 
-Status: **proposed** (2026-10-09). Nothing here is implemented yet; today each facility
-backend runs its own SMS login (see "Today" in [CLAUDE.md](../CLAUDE.md)).
+Status: **built in the app, off by default** (2026-10-12). The app has central sign-in, My
+facilities, the catalogue, the exchange with a facility and the switcher (phase 5 below). It is
+on only in a build that names the central origin (see [Build settings](#build-settings));
+without it the app behaves exactly as before: one facility, that facility's own SMS login.
+It needs a facility backend with migration 49 (`central-exchange`) and a running central
+identity service ([central-identity-template](https://github.com/abhiguru/central-identity-template),
+contract in its `docs/API.md`). **None of it has been run on a phone against a real central
+service yet**; see [Not tested](#not-tested). What is still open is listed under
+[Still open](#still-open).
 
 ## Goal
 
@@ -40,6 +47,8 @@ keeps all of its data, and alone decides who may see it.
 - Revocation is the existing local mechanism: disabling a profile revokes its sessions.
 
 ### App
+The target; what exists is under [The app as built](#the-app-as-built).
+
 1. **Sign in** (association branding): logo, short title, phone number with a fixed +91,
    "Send code", terms (first run: a checkbox enables Continue).
 2. **Verify code**: auto-read on Android (SMS Retriever), resend timer, change number.
@@ -80,13 +89,156 @@ App ──token──▶ Facility F ──(profile approved?)──▶ F session
 
 ## Phases
 
-1. Record the purpose and this design (done with this document).
+1. Record the purpose and this design. **Done** (2026-10-09).
 2. Login screen layout ready for the target (branding slot, +91, "Send code", facility shown as
-   a small line with "Change").
-3. Central identity service (new repository; hosting decided by the association).
+   a small line with "Change"). **Done.**
+3. Central identity service (new repository; hosting decided by the association). **Built**
+   (central-identity-template); hosting is still the association's decision.
 4. Facility trust setting and exchange endpoint (backend migration and edge function).
-5. App: central sign-in, My facilities, catalogue, switcher.
-6. Passcode/biometric unlock, SMS auto-read, passkeys.
+   **Built** (backend migration 49; the backend's `docs/CENTRAL_LOGIN.md`).
+5. App: central sign-in, My facilities, catalogue, switcher. **Built** (2026-10-12); described
+   under [The app as built](#the-app-as-built).
+6. Passcode/biometric unlock, SMS auto-read, passkeys. **Not started.**
+
+## Build settings
+
+Two values, fixed when the app is built (`src/config/envConfig.ts`; commented out in
+`.env.example`):
+
+| Setting | Meaning |
+|---|---|
+| `EXPO_PUBLIC_CENTRAL_ORIGIN` | The address the app calls: the central service's `https://` origin, nothing after the host and port. A development build also accepts `http://localhost:PORT` and `http://127.0.0.1:PORT`. **Central login is on only when this is set.** A value that is not acceptable (plain `http` in a release build, a path, a typing mistake) leaves central login off. |
+| `EXPO_PUBLIC_CENTRAL_ISSUER` | The issuer name facilities trust: the `iss` of the tokens and the facility's `CENTRAL_ISSUER`. Defaults to the origin; set it when the app reaches the service at another address than the issuer's name (a development build through `localhost`). |
+
+`isCentralLoginConfigured()` is the one question the rest of the app asks. The terms version
+sent at sign-in is `TERMS_VERSION` in the same file (`2025-12`, the date on the terms page).
+
+## The app as built
+
+Everything below applies only with central login on.
+
+**Start.** The app no longer needs a facility server before it can show anything: without a
+selected server it renders the app shell, and the route guard (`src/navigation/routeAccess.ts`)
+decides where the person belongs:
+
+| Signed in centrally | Facility session | Where |
+|---|---|---|
+| no | no | Central sign-in (`/central-login`) |
+| yes | no | My facilities (`/facilities`) |
+| yes or no | yes | Inside the facility, by role, as before |
+
+A facility session from before central login keeps working; such a person meets central
+sign-in the first time they leave the facility.
+
+**Central sign-in** (`app/central-login.tsx`, `app/central-otp.tsx`). The layout and components
+of the facility sign-in (`src/components/auth/PhoneSignInForm.tsx`, `CodeEntryForm.tsx`), with
+the association line in place of a facility. The first sign-in on a phone shows a terms tick
+box; "Send code" is disabled until it is ticked. The phone remembers the terms version it
+signed in under (`central_terms_accepted_v1`) and asks again only when the version changes.
+
+**The central session** (`src/config/centralSession.ts`). Its own SecureStore keys
+(`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
+the facility request gate. The access token is replaced a minute before it expires and once
+when the service answers 401; one refresh runs at a time, and a refresh that got no answer is
+repeated once at once (the service answers a repeat within 10 seconds). When the service
+refuses the refresh token the person is signed out centrally, told why, and returned to
+central sign-in.
+
+**My facilities** (`app/facilities.tsx`, `src/config/centralFacilities.ts`). The person's own
+list, stored on the phone under `central_facilities_v1:<central user id>`: address, instance
+id, name, city, a status and when it was last opened. No token. It is kept on central
+sign-out and removed by "Delete my account".
+
+| Status | Shown as | Set when |
+|---|---|---|
+| `approved` | Approved (positive) | The facility answered with a session |
+| `requested` | Requested (critical) | The facility answered that the request waits |
+| `revoked` | Revoked (negative) | The facility answered `account_unavailable` |
+| `link_needed` | Confirm number (neutral) | The facility answered `link_required`, or a wrong code was entered |
+| `unavailable` | Unavailable (neutral) | Just added and never opened; the facility could not be reached; it refused the identity, a conflict, or it does not take association sign-in right now |
+
+A status is checked only when its facility is opened; no facility is contacted in the
+background, and pull to refresh reads the list and asks the central service who is signed in.
+A rate limit, a failure of the central service, and `central_keys_unavailable` leave the
+status as it was: they say nothing about the person's access. With exactly one approved
+facility and nothing waiting, the list is skipped once at start (and after a new central
+sign-in) and that facility is opened; "Switch facility" always shows the list.
+
+**Add facility** (`app/facility-catalogue.tsx`, `app/facility-address.tsx`). The catalogue
+from `GET /v1/facilities`, searched by name or city, with loading, empty, no-match and error
+states. "Enter address" reuses the server address screen (typed or scanned from the
+facility's QR code) for a facility that is not listed. Either way the facility goes on the
+list and is opened.
+
+**Opening a facility** (`src/config/openFacility.ts`), in this order:
+
+1. Discover the facility (`get-public-config`). Its `centralLogin.issuer` must equal this
+   build's issuer; otherwise the person is offered that facility's own SMS sign-in, and on
+   "Continue" the facility becomes the server and the existing sign-in screen takes over.
+2. Switch to it with the shared server-switch sequence (`src/store/operatorSwitch.ts`, also
+   used by the server address screen): the previous facility's session is ended and
+   everything that belonged to it is cleared before the new server is committed.
+3. Ask the central service for a token for this facility (`POST /v1/facility-token`).
+4. Hand it to the facility (`POST /functions/v1/central-exchange`, a facility call through
+   the request gate).
+5. The answer is handled by the code that handles an SMS sign-in
+   (`completeOperatorSignIn` in `src/config/supabaseConfig.ts`): a session and profile, or an
+   enrollment token and the waiting screen.
+
+| Facility answers | The person sees | Status |
+|---|---|---|
+| `login` | The facility | approved |
+| `pending` | Waiting for approval | requested |
+| `link_required` | "Confirm your number at <facility> once": the facility sends its own code, and the code goes back with a fresh token (`app/facility-link.tsx`) | link_needed |
+| `invalid_otp` (linking) | "That code is wrong or has expired…", still on the code step | link_needed |
+| `identity_conflict` | "This mobile number is linked to another sign-in at <facility>…" | unavailable |
+| `account_unavailable` | "<facility> has withdrawn your access…" | revoked |
+| `central_unavailable` | "<facility> is not accepting association sign-in right now…" | unavailable |
+| `central_keys_unavailable` | "<facility> couldn't check your sign-in just now…" | unchanged |
+| `invalid_identity_token` | "<facility> couldn't verify your sign-in…" | unavailable |
+| `identity_token_used` | Nothing: a fresh token is tried once; a second time counts as the row above | |
+| `rate_limited`, `enrollment_limited` | "Too many attempts at <facility>…" with the wait, or "Too many new access requests today…" | unchanged |
+| no answer | "The connection to <facility> was lost…" | unavailable |
+
+Every refusal is a message on My facilities; the person is never left on a raw error.
+
+**Inside a facility.** Settings shows "Switch facility" with the facility's name in place of
+"Change warehouse server"; it asks first and then leaves through the same cleanup, ending
+with no selected server. "Sign out" in Settings signs out of that facility only and returns
+to My facilities. On My facilities, "Sign out" revokes the central session, forgets it on the
+phone and also leaves the current facility; the account entry holds the name and "Delete my
+account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
+
+## Still open
+
+- **The catalogue's signature is not verified in the app.** The catalogue is a signed token
+  (ES256) and the central contract says the app verifies it; Hermes has no ES256. The app
+  checks the token's type, algorithm name, issuer and expiry, and relies on TLS to the
+  configured origin. A facility, not the app, decides access and verifies its own tokens, so
+  a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+- **Passcode and biometrics** after the first sign-in.
+- **SMS auto-read** on Android (SMS Retriever); the code fields already use one-time-code
+  autofill.
+- **Passkeys**, to depend less on SMS.
+- **Shared devices.** One central session per phone. The list of facilities is kept per
+  central person, so a second person on the same phone gets their own list after signing in,
+  but there is no account chooser.
+- Removing a facility from My facilities (the store can; no screen offers it).
+- A header inside the facility that always shows its name with the switcher. Today the name
+  and "Switch facility" are in Settings.
+- An administrator screen for `clear_user_central_identity` (unlink a profile).
+- Binding a token to a device key (DPoP).
+
+## Not tested
+
+- Nothing here has run on a phone or against a real central service: the central session,
+  the open sequence and the screens are covered by Jest tests with the service and the
+  facility mocked from their documented answers.
+- Opening a facility changes the selected server, which rebuilds the app's navigation tree
+  (as a server change always has). The result of the open is therefore kept outside the
+  screens and handled by whichever screen is mounted afterwards, and entering the facility is
+  left to the route guard. That hand-over is tested piece by piece, not end to end on a device.
+- The Gujarati text is a draft for the owner's wording review.
 
 ## Open questions
 

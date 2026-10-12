@@ -24,7 +24,19 @@ The target design, open questions and the research behind it are in
 [docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). Read it before changing sign-in, server
 selection or session handling.
 
-## How it works today (before central login exists)
+## Central login in the app (built 2026-10-12, off by default)
+
+On only in a build that sets `EXPO_PUBLIC_CENTRAL_ORIGIN` (`isCentralLoginConfigured()` in
+`src/config/envConfig.ts`). Then: central sign-in (`app/central-login.tsx`,
+`src/config/centralSession.ts`, its own `secure_central_*` keys and plain `fetch`, never
+`gatedFetch`), My facilities (`app/facilities.tsx`, `src/config/centralFacilities.ts`), and
+opening a facility (`src/config/openFacility.ts`: discover, the shared switch sequence in
+`src/store/operatorSwitch.ts`, a facility token, `central-exchange`). Transient central state
+that screens and the route guard share is in `src/config/centralState.ts`, outside React,
+because a server change rebuilds the navigation tree. With central login off every screen and
+route decision must stay exactly as described below; keep both paths tested.
+
+## How it works without central login
 
 - The user enters one facility's HTTPS origin (`app/operator-server.tsx`,
   `src/config/operatorServer.ts`); the app validates its public discovery document.
