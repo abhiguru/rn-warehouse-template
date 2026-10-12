@@ -15,6 +15,7 @@ import {
   signOutPendingEnrollment,
 } from '@/config/supabaseConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { isCentralLoginConfigured } from '@/config/envConfig';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -81,8 +82,11 @@ export default function PendingEnrollmentScreen() {
     }
   };
 
+  // Central login: there is no code to ask for again. The way on is My facilities,
+  // where opening this facility asks it once more (the route guard leads there).
+  const centralLogin = isCentralLoginConfigured();
   const message = status === 'approved'
-    ? tr('auth.enrollment.approvedMessage', { facility: facilityName })
+    ? tr(centralLogin ? 'central.pending.approvedMessage' : 'auth.enrollment.approvedMessage', { facility: facilityName })
     : status === 'rejected' || status === 'disabled'
       ? tr('auth.enrollment.noAccessMessage', { facility: facilityName })
       : tr('auth.enrollment.pendingMessage', { facility: facilityName });
@@ -127,7 +131,7 @@ export default function PendingEnrollmentScreen() {
                 <Button size="fullWidth" onPress={() => void refresh()}>{tr('auth.enrollment.checkStatus')}</Button>
               )}
               {status === 'approved' ? (
-                <Button size="fullWidth" onPress={() => void leave()}>{tr('auth.signIn')}</Button>
+                <Button size="fullWidth" onPress={() => void leave()}>{centralLogin ? tr('central.facilities.title') : tr('auth.signIn')}</Button>
               ) : (
                 <Button
                   size="fullWidth"
@@ -135,7 +139,7 @@ export default function PendingEnrollmentScreen() {
                   variant={status === 'pending' ? 'normal' : 'tint'}
                   onPress={() => void leave()}
                 >
-                  {tr('auth.signOut.action')}
+                  {centralLogin ? tr('central.facilities.title') : tr('auth.signOut.action')}
                 </Button>
               )}
             </View>

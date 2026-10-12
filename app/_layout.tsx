@@ -85,6 +85,9 @@ import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
+import { isCentralLoginConfigured } from '@/config/envConfig';
+import { restoreCentralSession } from '@/config/centralSession';
+import { leaveFacility } from '@/store/operatorSwitch';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
@@ -333,6 +336,15 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="operator-server" options={{ title: translate('nav.screens.facility') }} />
       <Stack.Screen name="enrollment-review" options={{ title: translate('nav.screens.enrollmentReview') }} />
 
+      {/* Central login (docs/CENTRAL_LOGIN.md): reachable only in a build that names the central origin */}
+      <Stack.Screen name="central-login" options={{ title: translate('nav.screens.signIn') }} />
+      <Stack.Screen name="central-otp" options={{ title: translate('nav.screens.enterCode') }} />
+      <Stack.Screen name="facilities" options={{ title: translate('nav.screens.myFacilities') }} />
+      <Stack.Screen name="facility-catalogue" options={{ title: translate('nav.screens.addFacility') }} />
+      <Stack.Screen name="facility-address" options={{ title: translate('nav.screens.facilityAddress') }} />
+      <Stack.Screen name="facility-link" options={{ title: translate('nav.screens.confirmNumber') }} />
+      <Stack.Screen name="central-account" options={{ title: translate('nav.screens.account') }} />
+
       {/* Detail screens */}
       {/* Sort and filter page of a list: slides up like a sheet, closes with its own button */}
       <Stack.Screen
@@ -399,14 +411,18 @@ function ThemedContent() {
   // restoration belongs at the root navigation boundary.
   useEffect(() => {
     let mounted = true;
-    void dispatch(initializeAuth())
-      .unwrap()
-      // initializeAuth records its failure in Redux; the root only needs to
-      // release the navigation gate after the attempt settles.
-      .catch(() => undefined)
-      .finally(() => {
-        if (mounted) setAuthCheckSettled(true);
-      });
+    void Promise.all([
+      dispatch(initializeAuth())
+        .unwrap()
+        // initializeAuth records its failure in Redux; the root only needs to
+        // release the navigation gate after the attempt settles.
+        .catch(() => undefined),
+      // With central login the guard also needs to know whether the person is
+      // signed in at the association: read that stored session too (no network).
+      isCentralLoginConfigured() ? restoreCentralSession().catch(() => undefined) : undefined,
+    ]).finally(() => {
+      if (mounted) setAuthCheckSettled(true);
+    });
     return () => {
       mounted = false;
     };
@@ -615,7 +631,11 @@ function BootstrapApp() {
     return <SplashScreen />;
   }
 
-  if (needsSelection) return <OperatorServerSelection initial />;
+  // Without central login nothing can be shown until a facility's server is chosen.
+  // With it, the app shell renders without a server: central sign-in, My facilities and
+  // the catalogue need none, and the route guard keeps every facility screen closed.
+  const centralLogin = isCentralLoginConfigured();
+  if (needsSelection && !centralLogin) return <OperatorServerSelection initial />;
 
   if (configError) {
     if (changingServer) {
@@ -625,7 +645,13 @@ function BootstrapApp() {
       <ConfigErrorScreen
         error={configError}
         onRetry={bootstrapApp}
-        onChangeServer={() => setChangingServer(true)}
+        onChangeServer={
+          centralLogin
+            ? // Central login: leave the facility that cannot be reached for My facilities.
+              // Nothing is revoked through a server that does not answer.
+              () => { void leaveFacility(store.dispatch, { localOnly: true }); }
+            : () => setChangingServer(true)
+        }
       />
     );
   }

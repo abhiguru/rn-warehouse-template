@@ -1,23 +1,11 @@
 /**
  * OTP Verification Screen - SAP Fiori for iOS Design
  *
- * Implements SAP Fiori onboarding verification pattern
+ * The code step of a facility's own SMS sign-in. The layout is shared with the
+ * central sign-in and the linking step: src/components/auth/CodeEntryForm.tsx.
  */
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Pressable,
-} from 'react-native';
+import React, { useEffect } from 'react';
 import { router } from 'expo-router';
-import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   setVerifyingOTP,
@@ -28,40 +16,17 @@ import {
   setOtpSent,
 } from '@/store/slices/authSlice';
 import { verifyOTP, signInWithPhone } from '@/config/supabaseConfig';
-import { Button } from '@/components/ui/Button';
+import { noteFacilitySmsSignIn } from '@/config/centralFacilities';
+import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
 import { parseErrorToFriendly } from '@/utils/errorHandler';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  typography,
-  type ThemeTokens,
-  trackedText,
-} from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft } from '@/utils/signInDraft';
-const CODE_LENGTH = 6;
 
 export default function OTPScreen() {
-  const [otpCode, setOtpCode] = useState('');
-  const [resendTimer, setResendTimer] = useState(60);
-  const [expiryTimer, setExpiryTimer] = useState(300); // 5 minutes
-  const [focusedIndex, setFocusedIndex] = useState(0);
-  const hiddenInputRef = useRef<TextInput | null>(null);
-  const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const insets = useSafeAreaInsets();
-  const t = useTokens();
-  const styles = useThemedStyles(makeStyles);
-
   const dispatch = useAppDispatch();
   const { phoneNumber, isVerifyingOTP, isAuthenticating } = useAppSelector(
     state => state.auth
@@ -80,61 +45,10 @@ export default function OTPScreen() {
   useEffect(() => {
     if (!phoneNumber) {
       router.replace('/login');
-      return;
     }
-
-    // Start countdown timers
-    const timer = setInterval(() => {
-      setResendTimer(prev => (prev > 0 ? prev - 1 : 0));
-      setExpiryTimer(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => {
-      clearInterval(timer);
-      if (autoSubmitTimerRef.current) {
-        clearTimeout(autoSubmitTimerRef.current);
-      }
-      if (focusTimerRef.current) {
-        clearTimeout(focusTimerRef.current);
-      }
-    };
   }, [phoneNumber]);
 
-  const handleOtpChange = (value: string) => {
-    // ૦-૯ typed on a Gujarati keyboard count as 0-9; the code is stored and sent in 0-9.
-    const numericValue = normalizeDigits(value).replace(/[^0-9]/g, '').slice(0, CODE_LENGTH);
-    setOtpCode(numericValue);
-    setFocusedIndex(numericValue.length);
-
-    if (autoSubmitTimerRef.current) {
-      clearTimeout(autoSubmitTimerRef.current);
-      autoSubmitTimerRef.current = null;
-    }
-
-    // Auto-submit when 6 digits are entered
-    if (numericValue.length === CODE_LENGTH && !isVerifyingOTP) {
-      autoSubmitTimerRef.current = setTimeout(() => {
-        handleVerifyOTPWithCode(numericValue);
-      }, 300);
-    }
-  };
-
-  const focusHiddenInput = () => {
-    hiddenInputRef.current?.blur();
-    if (focusTimerRef.current) {
-      clearTimeout(focusTimerRef.current);
-    }
-    focusTimerRef.current = setTimeout(() => {
-      hiddenInputRef.current?.focus();
-    }, 10);
-  };
-
   const handleVerifyOTPWithCode = async (code: string) => {
-    if (code.length !== CODE_LENGTH) {
-      showAlert(tr('auth.otp.incompleteTitle'), tr('auth.otp.incompleteMessage'));
-      return;
-    }
-
     try {
       dispatch(setVerifyingOTP(true));
 
@@ -144,9 +58,12 @@ export default function OTPScreen() {
         // Signed in (or waiting for approval): the number typed on the sign-in screen is no longer needed.
         clearSignInDraft();
         if (result.data.action === 'pending') {
+          // With central login: the facility goes on the person's list as requested.
+          void noteFacilitySmsSignIn('requested');
           dispatch(setOtpSent(false));
           router.replace('/pending-enrollment');
         } else if (result.data.customAuth && result.data.userProfile) {
+          void noteFacilitySmsSignIn('approved');
           dispatch(setUserProfile(result.data.userProfile));
 
           router.replace('/');
@@ -170,30 +87,21 @@ export default function OTPScreen() {
     }
   };
 
-  const handleVerifyOTP = async () => {
-    await handleVerifyOTPWithCode(otpCode);
-  };
-
-  const handleResendOTP = async () => {
-    if (resendTimer > 0 || isRateLimited) return;
-
+  const handleResendOTP = async (): Promise<boolean> => {
     try {
       dispatch(setAuthenticating(true));
 
       const result = await signInWithPhone(phoneNumber);
 
       if (result.success) {
-        setResendTimer(60);
-        setExpiryTimer(300); // Reset to 5 minutes
-        setOtpCode('');
-        setFocusedIndex(0);
         showAlert(
           tr('auth.otp.codeSentTitle'),
           tr('auth.otp.codeSentMessage', { phone: formatMobile(phoneNumber) })
         );
+        return true;
       } else {
         if (handleRateLimitError(result)) {
-          return;
+          return false;
         }
         // A limit of the server already comes in the app's words.
         const friendlyMessage = 'errorCode' in result && result.errorCode ? result.error : parseErrorToFriendly(result.error);
@@ -201,12 +109,13 @@ export default function OTPScreen() {
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
-        return;
+        return false;
       }
       showAlert(tr('auth.login.couldNotSendTitle'), tr('common.checkConnection'));
     } finally {
       dispatch(setAuthenticating(false));
     }
+    return false;
   };
 
   const handleBack = () => {
@@ -214,410 +123,15 @@ export default function OTPScreen() {
     router.back();
   };
 
-  // Format timer display (a number: ૦-૯ in Gujarati)
-  const formatTimer = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return localizeDigits(`${mins}:${secs.toString().padStart(2, '0')}`);
-  };
-
-  const displayPhone = formatMobile(phoneNumber);
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top + space.sm }]}>
-      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-
-      {/* Hidden TextInput for code entry; the boxes below mirror its value */}
-      <TextInput
-        ref={hiddenInputRef}
-        value={otpCode}
-        onChangeText={handleOtpChange}
-        keyboardType="number-pad"
-        textContentType="oneTimeCode"
-        autoComplete="sms-otp"
-        maxLength={CODE_LENGTH}
-        autoFocus
-        caretHidden
-        editable={!isVerifyingOTP}
-        style={styles.hiddenInput}
-        accessibilityLabel={tr('auth.otp.codeLabel')}
-        accessibilityHint={tr('auth.otp.codeHint', { phone: displayPhone })}
-      />
-
-      {/* Navigation bar - back button, outside the ScrollView */}
-      <HeaderBackButton onPress={handleBack} style={styles.backButton} />
-
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? space.md : 0}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + space.max },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.content}>
-            {/* A. Header Section */}
-            <View
-              style={styles.headerSection}
-              accessible={true}
-              accessibilityRole="header"
-            >
-              <View style={styles.iconContainer}>
-                <Icon
-                  name="shield-check-outline"
-                  size={iconSize.xl}
-                  color={t.brand.tint}
-                />
-              </View>
-              <Text style={styles.title}>{tr('auth.otp.title')}</Text>
-              <Text style={styles.description}>
-                {tr('auth.otp.sentToLead')}
-              </Text>
-              <Text style={styles.phoneNumber}>{displayPhone}</Text>
-            </View>
-
-            {/* B. Code Input Section */}
-            <View style={styles.otpSection}>
-              <Text style={styles.sectionHeader} accessibilityRole="header">
-                {tr('auth.otp.codeHeader')}
-              </Text>
-
-              <Pressable
-                style={styles.otpContainer}
-                onPress={focusHiddenInput}
-                accessibilityRole="button"
-                accessibilityLabel={tr('auth.otp.codeProgress', { entered: otpCode.length, total: CODE_LENGTH })}
-                accessibilityHint={tr('auth.otp.openKeyboardHint')}
-              >
-                {Array.from({ length: CODE_LENGTH }, (_, index) => {
-                  const digit = otpCode[index] || '';
-                  const isCurrent =
-                    index === otpCode.length && otpCode.length < CODE_LENGTH;
-
-                  return (
-                    <View
-                      key={index}
-                      style={[styles.otpBox, isCurrent && styles.otpBoxFocused]}
-                    >
-                      <Text style={styles.otpDigit}>{digit}</Text>
-                    </View>
-                  );
-                })}
-              </Pressable>
-
-              {/* Helper text */}
-              <Text style={styles.helperText}>
-                {tr('auth.otp.expiresIn', { time: formatTimer(expiryTimer) })}
-              </Text>
-            </View>
-
-            {/* C. Rate Limit Warning (Fiori critical message strip) */}
-            {isRateLimited && (
-              <View
-                style={styles.messageStrip}
-                accessible={true}
-                accessibilityRole="alert"
-                accessibilityLabel={tr('auth.rateLimit.warningLabel', { message: rateLimitMessage, time: countdown })}
-                accessibilityLiveRegion="polite"
-              >
-                <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
-                <View style={styles.messageStripContent}>
-                  <Text style={styles.messageStripTitle}>{rateLimitMessage}</Text>
-                  <Text style={styles.messageStripText}>
-                    {tr('auth.rateLimit.tryAgainIn', { time: countdown })}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* D. Primary Action Button: never disabled to signal a short code (§10) */}
-            <View style={styles.buttonSection}>
-              <Button
-                type="primary"
-                size="fullWidth"
-                onPress={handleVerifyOTP}
-                disabled={isVerifyingOTP}
-                loading={isVerifyingOTP}
-                loadingText={tr('auth.otp.verifying')}
-                accessibilityLabel={tr('auth.otp.verify')}
-                accessibilityHint={tr('auth.otp.verifyHint')}
-                accessibilityState={{
-                  disabled: isVerifyingOTP,
-                  busy: isVerifyingOTP,
-                }}
-              >
-                {tr('auth.otp.verify')}
-              </Button>
-            </View>
-
-            {/* E. Resend Section */}
-            <View style={styles.resendSection}>
-              <View style={styles.divider} />
-
-              <Text style={styles.resendLabel}>
-                {tr('auth.otp.notReceived')}
-              </Text>
-
-              {resendTimer > 0 || isRateLimited ? (
-                <Text
-                  style={styles.resendTimer}
-                  accessible={true}
-                  accessibilityRole="timer"
-                  accessibilityLabel={
-                    isRateLimited
-                      ? tr('auth.otp.waitBeforeResending', { time: countdown })
-                      : tr('auth.otp.resendAvailableIn', { time: formatTimer(resendTimer) })
-                  }
-                  accessibilityLiveRegion="polite"
-                >
-                  {isRateLimited
-                    ? tr('auth.rateLimit.wait', { time: countdown })
-                    : tr('auth.otp.resendIn', { time: formatTimer(resendTimer) })}
-                </Text>
-              ) : (
-                <Button
-                  type="tertiary"
-                  variant="tint"
-                  size="auto"
-                  onPress={handleResendOTP}
-                  disabled={isAuthenticating}
-                  loading={isAuthenticating}
-                  accessibilityLabel={tr('auth.otp.resend')}
-                  accessibilityHint={tr('auth.otp.resendHint', { phone: displayPhone })}
-                  accessibilityState={{
-                    disabled: isAuthenticating,
-                    busy: isAuthenticating,
-                  }}
-                >
-                  {tr('auth.otp.resend')}
-                </Button>
-              )}
-            </View>
-
-            {/* F. Wrong number: back to sign-in */}
-            <View style={styles.changeNumberSection}>
-              <Button
-                type="tertiary"
-                variant="tint"
-                size="auto"
-                onPress={handleBack}
-                accessibilityLabel={tr('auth.otp.wrongNumberLabel')}
-                accessibilityHint={tr('auth.otp.wrongNumberHint')}
-              >
-                {tr('auth.otp.wrongNumber')}
-              </Button>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </View>
+    <CodeEntryForm
+      phoneNumber={phoneNumber}
+      verifying={isVerifyingOTP}
+      resending={isAuthenticating}
+      rateLimit={{ isRateLimited, countdown, message: rateLimitMessage }}
+      onVerify={handleVerifyOTPWithCode}
+      onResend={handleResendOTP}
+      onBack={handleBack}
+    />
   );
 }
-
-// ============================================================================
-// STYLES (style guide §14.8)
-// ============================================================================
-
-const makeStyles = (t: ThemeTokens) => ({
-  container: {
-    flex: 1,
-    backgroundColor: t.background.base,
-  },
-
-  hiddenInput: {
-    position: 'absolute' as const,
-    top: -1000,
-    left: 0,
-    width: 1,
-    height: 50,
-    opacity: 0.01,
-  },
-
-  keyboardView: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    flexGrow: 1,
-  },
-
-  // Navigation bar - back button
-  // Custom back button (same on every headerless screen): platform glyph,
-  // brand.tint, the word "Back", at least touchTarget in size (§8)
-  backButton: {
-    alignSelf: 'flex-start' as const,
-    marginLeft: space.xs,
-    paddingLeft: space.xs,
-  },
-
-  content: {
-    flex: 1,
-    paddingHorizontal: layout.marginCompact,
-    maxWidth: layout.maxFormWidth,
-    width: '100%' as const,
-    alignSelf: 'center' as const,
-  },
-
-  // A. Header Section
-  headerSection: {
-    alignItems: 'center' as const,
-    marginBottom: space.lg,
-    marginTop: space.sm,
-  },
-
-  iconContainer: {
-    width: layout.avatar.lg,
-    height: layout.avatar.lg,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.subtle,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginBottom: space.sm,
-  },
-
-  title: {
-    ...typography.title1,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginBottom: space.sm,
-  },
-
-  description: {
-    ...typography.body,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
-
-  // Phone number - emphasised by weight, not colour
-  phoneNumber: {
-    ...typography.headline,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.xs,
-    fontVariant: ['tabular-nums' as const],
-  },
-
-  // B. Code Section
-  otpSection: {
-    marginBottom: space.xxl,
-  },
-
-  // Section header: footnote, capitals, secondary text
-  sectionHeader: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
-    marginBottom: space.lg,
-  },
-
-  otpContainer: {
-    flexDirection: 'row' as const,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    gap: space.sm,
-    marginBottom: space.lg,
-    minHeight: 70,
-    paddingVertical: space.sm,
-  },
-
-  // One code box; shrinks on narrow phones so six always fit
-  otpBox: {
-    flex: 1,
-    maxWidth: 48,
-    height: 56,
-    borderWidth: 1,
-    borderColor: t.border.field,
-    borderRadius: radius.button,
-    backgroundColor: t.surface.field,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  otpBoxFocused: {
-    borderWidth: 2,
-    borderColor: t.border.fieldFocus,
-  },
-
-  otpDigit: {
-    ...typography.title2,
-    fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-
-  helperText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
-
-  // C. Critical message strip (style guide §13.9)
-  messageStrip: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.status.critical.border,
-    backgroundColor: t.status.critical.background,
-    padding: space.md,
-    marginBottom: space.xxl,
-  },
-
-  messageStripContent: {
-    flex: 1,
-    marginLeft: space.sm,
-  },
-
-  messageStripTitle: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.status.critical.text,
-  },
-
-  messageStripText: {
-    ...typography.footnote,
-    color: t.status.critical.text,
-    marginTop: space.xs,
-  },
-
-  // D. Button Section
-  buttonSection: {
-    marginBottom: space.lg,
-  },
-
-  // E. Resend Section
-  resendSection: {
-    alignItems: 'center' as const,
-    marginBottom: space.sm,
-  },
-
-  divider: {
-    width: '100%' as const,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: t.border.divider,
-    marginBottom: space.xxl,
-  },
-
-  resendLabel: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    marginBottom: space.sm,
-  },
-
-  resendTimer: {
-    ...typography.callout,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-  },
-
-  // F. Wrong number
-  changeNumberSection: {
-    alignItems: 'center' as const,
-    marginTop: space.lg,
-  },
-});

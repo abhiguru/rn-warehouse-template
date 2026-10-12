@@ -1,0 +1,185 @@
+/**
+ * The start of the app with and without central login (app/_layout.tsx).
+ *
+ * Without it nothing can be shown until a facility's server is chosen. With it
+ * the app shell renders without a server, so central sign-in and My facilities
+ * can be reached, and the stored central session is read before the route guard
+ * decides anything.
+ */
+import React from 'react';
+import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import RootLayout from '../../../app/_layout';
+import { verifySelectedOperator } from '@/config/operatorBootstrap';
+import { restoreCentralSession } from '@/config/centralSession';
+import { leaveFacility } from '@/store/operatorSwitch';
+import { useRootRouteGuard } from '@/navigation/RouteGuard';
+import { store } from '@/store';
+
+let mockCentralOn = false;
+jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
+jest.mock('@/config/centralSession', () => ({ restoreCentralSession: jest.fn(async () => {}) }));
+jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
+
+const mockDispatch = jest.fn(() => ({ unwrap: async () => ({}) }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => mockDispatch,
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ theme: { preference: 'light', brand: 'orange', language: 'en' }, auth: {} }),
+}));
+jest.mock('@/store', () => ({ store: { dispatch: jest.fn() }, persistor: {} }));
+jest.mock('react-redux', () => ({ Provider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('redux-persist/integration/react', () => ({ PersistGate: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@tanstack/react-query', () => ({ QueryClientProvider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@gorhom/bottom-sheet', () => ({ BottomSheetModalProvider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  return {
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    SafeAreaInsetsContext: React.createContext({ top: 0, bottom: 0, left: 0, right: 0 }),
+    useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  };
+});
+jest.mock('react-native-paper', () => ({
+  PaperProvider: ({ children }: { children: React.ReactNode }) => children,
+  MD3LightTheme: { colors: {} },
+  MD3DarkTheme: { colors: {} },
+}));
+jest.mock('react-native-paper-dates', () => ({ en: {}, registerTranslation: jest.fn() }));
+jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
+jest.mock('expo-navigation-bar', () => ({ setStyle: jest.fn() }));
+jest.mock('expo-router', () => {
+  const React = require('react');
+  const Stack = ({ children }: { children: React.ReactNode }) => React.createElement('AppStack', null, children);
+  Stack.Screen = ({ name }: { name: string }) => React.createElement('StackScreen', { name });
+  return {
+    Stack,
+    DarkTheme: { colors: {} },
+    DefaultTheme: { colors: {} },
+    ThemeProvider: ({ children }: { children: React.ReactNode }) => children,
+  };
+});
+jest.mock('@/lib/queryClient', () => ({ queryClient: {} }));
+jest.mock('@/config/sentryConfig', () => ({
+  initializeSentry: jest.fn(), captureException: jest.fn(), captureMessage: jest.fn(), Sentry: { wrap: (c: unknown) => c },
+}));
+jest.mock('@/config/supabaseConfig', () => ({
+  initializeSupabase: jest.fn(), clearPendingEnrollment: jest.fn(), hasActiveOperatorMutation: jest.fn(() => false),
+}));
+jest.mock('@/components/OperatorServerSelection', () => {
+  const React = require('react');
+  return { OperatorServerSelection: (props: Record<string, unknown>) => React.createElement('ServerSelection', props) };
+});
+jest.mock('@/components/ConfigErrorScreen', () => {
+  const React = require('react');
+  return { __esModule: true, default: (props: Record<string, unknown>) => React.createElement('ConfigError', props) };
+});
+jest.mock('@/components/ErrorBoundary', () => ({ ErrorBoundary: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
+jest.mock('@/components/AlertHost', () => ({ AlertHost: () => null }));
+jest.mock('@/components/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
+jest.mock('@/components/AppStateManager', () => ({ AppStateManager: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@/components/ForceUpdateModal', () => ({ ForceUpdateModal: () => null }));
+jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
+jest.mock('@/hooks/useColdStartDeepLink', () => ({ useColdStartDeepLink: jest.fn() }));
+jest.mock('@/i18n/useAppLanguage', () => ({ useAppLanguage: () => ({ language: 'en', preference: 'system', setPreference: jest.fn() }) }));
+jest.mock('@/i18n/useProfileLanguage', () => ({ useProfileLanguage: jest.fn() }));
+jest.mock('@/navigation/RouteGuard', () => ({
+  GuardedScreen: ({ children }: { children: React.ReactNode }) => children,
+  useRootRouteGuard: jest.fn(),
+}));
+jest.mock('@/config/operatorServer', () => ({ onOperatorServerChange: jest.fn(() => () => undefined) }));
+jest.mock('@/config/operatorBootstrap', () => ({ verifySelectedOperator: jest.fn(), verifyForegroundOperator: jest.fn() }));
+jest.mock('@/config/operatorResume', () => ({
+  operatorResumeGate: { installVerifier: jest.fn(() => () => undefined), suspend: jest.fn() },
+}));
+jest.mock('@/config/resumeLifecycle', () => ({ createResumeLifecycle: jest.fn(() => jest.fn()) }));
+jest.mock('@/config/nativeHandoff', () => ({ isNativeHandoffActive: jest.fn(() => false) }));
+jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
+jest.mock('@/store/sessionScopedState', () => ({ clearSessionScopedState: jest.fn() }));
+jest.mock('@/store/slices/authSlice', () => ({ initializeAuth: jest.fn(() => ({ type: 'auth/initialize' })), logout: jest.fn() }));
+jest.mock('@/services/configService', () => ({ __esModule: true, default: { clearCache: jest.fn() } }));
+
+let tree: ReactTestRenderer | undefined;
+async function start() {
+  await act(async () => { tree = create(<RootLayout />); });
+  // The bootstrap and the session restore settle over a few turns.
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+}
+const shows = (type: string) => tree!.root.findAll(node => (node.type as unknown) === type).length > 0;
+const screens = () => tree!.root.findAll(node => (node.type as unknown) === 'StackScreen').map(node => node.props.name as string);
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockCentralOn = false;
+  jest.spyOn(console, 'log').mockImplementation(() => {});
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterEach(async () => {
+  if (tree) await act(async () => { tree!.unmount(); });
+  tree = undefined;
+  jest.restoreAllMocks();
+});
+
+describe('no facility server chosen yet', () => {
+  beforeEach(() => jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'selection' }));
+
+  it('central login off: only the server address screen is shown, as before', async () => {
+    await start();
+    expect(shows('ServerSelection')).toBe(true);
+    expect(shows('AppStack')).toBe(false);
+    expect(restoreCentralSession).not.toHaveBeenCalled();
+    expect(useRootRouteGuard).not.toHaveBeenCalled();
+  });
+
+  it('central login on: the app shell renders without a server, with the central screens registered', async () => {
+    mockCentralOn = true;
+    await start();
+    expect(shows('ServerSelection')).toBe(false);
+    expect(shows('AppStack')).toBe(true);
+    expect(screens()).toEqual(
+      expect.arrayContaining(['central-login', 'central-otp', 'facilities', 'facility-catalogue', 'facility-address', 'facility-link', 'central-account'])
+    );
+  });
+
+  it('central login on: the stored central session is read before the route guard may decide', async () => {
+    mockCentralOn = true;
+    let restored!: () => void;
+    jest.mocked(restoreCentralSession).mockReturnValue(new Promise<void>(resolve => { restored = resolve; }));
+    await start();
+    expect(restoreCentralSession).toHaveBeenCalledTimes(1);
+    // Until then the guard is told that nothing is known yet, and no screen is drawn.
+    expect(jest.mocked(useRootRouteGuard).mock.calls.every(([settled]) => settled === false)).toBe(true);
+    expect(shows('AppStack')).toBe(false);
+    await act(async () => { restored(); await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(useRootRouteGuard).toHaveBeenLastCalledWith(true);
+    expect(shows('AppStack')).toBe(true);
+  });
+});
+
+describe('the chosen facility cannot be reached', () => {
+  beforeEach(() => jest.mocked(verifySelectedOperator).mockRejectedValue(new Error('Server discovery timed out')));
+  const changeServer = async () => {
+    const error = tree!.root.find(node => (node.type as unknown) === 'ConfigError');
+    await act(async () => { await error.props.onChangeServer(); });
+  };
+
+  it('central login off: "change server" opens the server address screen and signs nothing out', async () => {
+    await start();
+    expect(shows('ConfigError')).toBe(true);
+    await changeServer();
+    expect(shows('ServerSelection')).toBe(true);
+    expect(leaveFacility).not.toHaveBeenCalled();
+  });
+
+  it('central login on: "change server" leaves that facility for My facilities without sending it anything', async () => {
+    mockCentralOn = true;
+    await start();
+    expect(shows('ConfigError')).toBe(true);
+    await changeServer();
+    expect(leaveFacility).toHaveBeenCalledTimes(1);
+    expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
+    expect(shows('ServerSelection')).toBe(false);
+  });
+});
