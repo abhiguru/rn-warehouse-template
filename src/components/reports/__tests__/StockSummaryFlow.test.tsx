@@ -214,6 +214,8 @@ async function open(store: Store) {
     return found[0];
   };
   const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
+  const matchLineNodes = () =>
+    tree.root.findAllByType(StockItemCard).flatMap(card => card.findAllByType(HighlightedText).filter(node => node.props.testID === 'stock-item-match-line'));
   return {
     tree,
     texts,
@@ -224,8 +226,9 @@ async function open(store: Store) {
     customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
     /** Item cards, in stock and out of stock, in the order they are drawn. */
     items: () => tree.root.findAllByType(StockItemCard).map(card => card.props.name as string),
-    /** At one customer's level: the lines naming what a search found inside a closed card. */
-    matchLines: () => tree.root.findAllByType(HighlightedText).map(node => node.props.text as string),
+    /** At one customer's level: the lines the item cards draw naming what a search found inside a closed card. */
+    matchLines: () => matchLineNodes().map(node => node.props.text as string),
+    matchLineNodes,
     status: () => texts().find(text => text.includes('Last updated')),
     search: async (text: string) => {
       const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
@@ -463,21 +466,32 @@ describe('stock summary, one customer', () => {
 
     await screen.search('a0042');
     expect(screen.items()).toEqual(['Red chilli']);
+    // The card itself names the GRN (no wrapper around it), in bold, and says it to a screen reader.
+    const [card] = screen.tree.root.findAllByType(StockItemCard);
+    expect(card.props.matchLine).toBe('GRN A0042');
+    expect(card.props.highlightWords).toEqual(['a0042']);
     expect(screen.matchLines()).toEqual(['GRN A0042']);
     expect(screen.bold()).toEqual(['A0042']);
+    expect(screen.has('Red chilli, 5 units, 2 GRNs, GRN A0042')).toBe(true);
     expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
 
-    // Opened, the card shows its GRNs: the line is not needed, and a GRN opens.
-    await screen.press('Red chilli, 5 units, 2 GRNs');
+    // Opened, the card shows its GRNs: the line is not needed, the GRN number is in bold, and a GRN opens.
+    await screen.press('Red chilli, 5 units, 2 GRNs, GRN A0042');
     expect(screen.matchLines()).toEqual([]);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['GRN A0009', 'GRN A0042']));
+    expect(screen.has('Red chilli, 5 units, 2 GRNs')).toBe(true);
+    // "GRN A0042" is drawn as "GRN " and a bold "A0042" inside it.
+    expect(screen.texts()).toContain('GRN A0009');
+    const rowTitles = screen.tree.root.findAllByType(HighlightedText).map(node => node.props.text as string);
+    expect(rowTitles).toEqual(expect.arrayContaining(['GRN A0009', 'GRN A0042']));
+    expect(screen.bold()).toEqual(['A0042']);
     await screen.press(screen.tree.root.findAll(node => String(node.props.accessibilityLabel ?? '').startsWith('GRN A0042') && typeof node.props.onPress === 'function')[0].props.accessibilityLabel);
     expect(mockRouterPush).toHaveBeenCalledWith('/grn-details/g3');
 
-    // A word the card's name already shows needs no line.
+    // A word the card's name already shows needs no line; the name shows it in bold.
     await screen.search('garlic');
     expect(screen.items()).toEqual(['Garlic']);
     expect(screen.matchLines()).toEqual([]);
+    expect(screen.bold()).toEqual(['Garlic']);
 
     await screen.press('Clear all filters and the search');
     expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Red chilli', 'Turmeric']);
@@ -541,7 +555,15 @@ describe.each(THEMES)('stock summary in %s %s', (brand, mode) => {
     // The out-of-stock count badge is on brand.fill.
     expect(screen.backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.fill]));
     await screen.search('a0042');
-    const line = screen.tree.root.findAllByType(HighlightedText)[0];
+    const [line] = screen.matchLineNodes();
     expect(StyleSheet.flatten(line.props.style).color).toBe(t.text.secondary);
+    // The item card carries its own surface: no second card around it.
+    const [card] = screen.tree.root.findAllByType(StockItemCard);
+    const around: unknown[] = [];
+    for (let node = card.parent; node; node = node.parent) {
+      if (typeof node.type === 'string') around.push(StyleSheet.flatten(node.props.style)?.backgroundColor);
+    }
+    expect(around).not.toContain(t.surface.card);
+    expect(StyleSheet.flatten(card.findAllByType('View' as never)[0].props.style).backgroundColor).toBe(t.surface.card);
   });
 });

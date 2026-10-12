@@ -13,6 +13,9 @@
  *   button with a chevron, a row that does not is read as one element with neither
  * - expanding uses `motion.standard` and does not animate with Reduce Motion (§9)
  * - loading, error with "Try again" and empty states for GRNs read on demand (§14)
+ * - search (§14.6): the item name and each GRN number show the searched words in
+ *   bold (`highlightWords`); a match the closed card does not show is named in a
+ *   short line under its facts (`matchLine`), read with the header
  */
 
 import React from 'react';
@@ -45,6 +48,7 @@ import { StatusTag } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { FactLines, joinFacts } from './FactLines';
 
 // ============================================================================
@@ -102,6 +106,17 @@ export interface StockItemCardProps {
   emptyGRNsText?: string;
   /** Opens a GRN; rows with a GRN id become buttons only when this is given. */
   onOpenGRN?: (grnId: string) => void;
+  /**
+   * Lower-cased search words (see `searchWords`), shown in bold in the item name and
+   * in each GRN number (§14.6). Without words the card is drawn as it always was.
+   */
+  highlightWords?: string[];
+  /**
+   * What a search found that the closed card does not show ("GRN A0042"), drawn
+   * under the facts while the card is closed and read with its header (§14.6).
+   * Once opened, the GRNs show it themselves and the line is not drawn.
+   */
+  matchLine?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -170,6 +185,8 @@ const makeStyles = (t: ThemeTokens) =>
     title: { ...typography.headline, color: t.text.primary },
     subtitle: { ...typography.subhead, color: t.text.secondary },
     tag: { marginTop: space.xxs },
+    // The line naming a match the closed card does not show (as on the GRN activity card).
+    matchLine: { ...typography.footnote, color: t.text.secondary },
     // The value keeps its width; the title and facts take what is left.
     value: { alignItems: 'flex-end', flexShrink: 0 },
     valueText: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'], textAlign: 'right' },
@@ -245,12 +262,14 @@ export interface StockGRNRowProps {
   /** Muted stock figure (out-of-stock items). */
   muted?: boolean;
   onOpen?: (grnId: string) => void;
+  /** Lower-cased search words, shown in bold in the GRN number. */
+  highlightWords?: string[];
 }
 
-export const StockGRNRow: React.FC<StockGRNRowProps> = ({ grn, isLast = false, muted = false, onOpen }) => {
+export const StockGRNRow: React.FC<StockGRNRowProps> = ({ grn, isLast = false, muted = false, onOpen, highlightWords }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  return <GRNRowView grn={grn} isLast={isLast} muted={muted} onOpen={onOpen} styles={styles} t={t} />;
+  return <GRNRowView grn={grn} isLast={isLast} muted={muted} onOpen={onOpen} highlightWords={highlightWords} styles={styles} t={t} />;
 };
 
 const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }> = ({
@@ -258,6 +277,7 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
   isLast = false,
   muted = false,
   onOpen,
+  highlightWords,
   styles,
   t,
 }) => {
@@ -293,7 +313,7 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
     <>
       <View style={styles.rowContent}>
         <View style={styles.rowTitleLine}>
-          <Text style={styles.rowTitle}>{title}</Text>
+          <HighlightedText style={styles.rowTitle} text={title} words={highlightWords} />
           {grn.packageMark ? <StatusTag status="neutral" label={grn.packageMark} icon={null} /> : null}
         </View>
         {grn.customerName ? (
@@ -369,6 +389,8 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
   grns,
   emptyGRNsText,
   onOpenGRN,
+  highlightWords,
+  matchLine,
   style,
 }) => {
   const styles = useThemedStyles(makeStyles);
@@ -385,8 +407,11 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
       ? { status: 'critical' as const, label: tr('common.lowStock') }
       : null;
 
-  // "Potato, 50 kg bag, 10 of 100 in stock, 1 GRN, Low stock"
-  const a11yLabel = [name, packaging || null, outOfStock ? null : stockPhrase(stock, total), grnText, status?.label]
+  // Only a closed card names the match; an open one shows it in its GRNs.
+  const shownMatch = !isExpanded && matchLine ? matchLine : null;
+
+  // "Potato, 50 kg bag, 10 of 100 in stock, 1 GRN, Low stock, GRN A0042"
+  const a11yLabel = [name, packaging || null, outOfStock ? null : stockPhrase(stock, total), grnText, status?.label, shownMatch]
     .filter(Boolean)
     .join(', ');
 
@@ -418,11 +443,18 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
           </View>
 
           <View style={styles.content}>
-            <Text style={styles.title} numberOfLines={2}>
-              {name}
-            </Text>
+            <HighlightedText style={styles.title} numberOfLines={2} text={name} words={highlightWords} />
             <FactLines facts={facts} style={styles.subtitle} numberOfLines={2} />
             {status ? <StatusTag status={status.status} label={status.label} style={styles.tag} /> : null}
+            {shownMatch ? (
+              <HighlightedText
+                style={styles.matchLine}
+                numberOfLines={2}
+                text={shownMatch}
+                words={highlightWords}
+                testID="stock-item-match-line"
+              />
+            ) : null}
           </View>
 
           {!outOfStock ? (
@@ -459,6 +491,7 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
                   isLast={index === rows.length - 1}
                   muted={outOfStock}
                   onOpen={onOpenGRN}
+                  highlightWords={highlightWords}
                   styles={styles}
                   t={t}
                 />

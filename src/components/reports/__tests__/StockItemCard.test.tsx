@@ -3,12 +3,13 @@
  * four themes closed and open; opening and closing (state, hint, animation and
  * Reduce Motion); GRN rows that open a GRN and rows that do not; GRN numbers in
  * full; the loading, error-with-retry and empty GRN states; the "Low stock" rule;
+ * search highlighting and the match line of a closed card, in all four themes;
  * and digits in Gujarati. All names and numbers are fictional.
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, LayoutAnimation, StyleSheet } from 'react-native';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
-import { BRANDS, getTokens, motion, touchTarget, type Mode } from '@/theme/tokens';
+import { BRANDS, fontWeight, getTokens, motion, touchTarget, typography, type Mode } from '@/theme/tokens';
 import { setLanguage } from '@/i18n';
 import { formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
@@ -86,7 +87,12 @@ function helpers(tree: TestRenderer.ReactTestRenderer) {
   const header = () => pressables().find(node => node.props.accessibilityState?.expanded !== undefined) as ReactTestInstance;
   const grnButtons = () => pressables().filter(node => node.props.accessibilityHint === 'Opens the GRN');
   const icons = (name: string) => tree.root.findAll(node => (node.type as unknown) === 'Icon' && node.props.name === name);
-  return { tree, texts, textNodes, header, grnButtons, icons };
+  const bold = () =>
+    textNodes()
+      .filter(node => flat(node.props.style)?.fontWeight === fontWeight.bold)
+      .map(node => [].concat(node.props.children).join(''));
+  const matchLine = () => tree.root.findAll(node => (node.type as unknown) === 'Text' && node.props.testID === 'stock-item-match-line');
+  return { tree, texts, textNodes, header, grnButtons, icons, bold, matchLine };
 }
 
 const flat = (style: unknown) => StyleSheet.flatten(style as never) as Record<string, unknown>;
@@ -114,6 +120,101 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     const backgrounds = tree.root.findAllByType('View' as never).map(node => flat(node.props.style)?.backgroundColor);
     expect(backgrounds).toContain(t.background.base);
     expect(pressedStyle(grnButtons()[0], true).backgroundColor).toBe(t.surface.cardPressed);
+  });
+});
+
+describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('search on the stock item card, %s %s', (brand, mode) => {
+  const t = getTokens(brand, mode);
+  beforeEach(() => {
+    mockState = { theme: { preference: mode, brand } };
+  });
+
+  it('no words: the same tree as without the prop, the name and GRN numbers as plain text, nothing bold', () => {
+    for (const isExpanded of [false, true]) {
+      // The drawn tree (elements, props and text; handlers are new closures on every render, so left out).
+      const drawn = (tree: TestRenderer.ReactTestRenderer) => JSON.stringify(tree.toJSON());
+      const plain = render(baseProps({ isExpanded }));
+      const before = drawn(plain.tree);
+      expect(before).toContain('"Example Potatoes"');
+      for (const highlightWords of [[], ['nothing-matches']]) {
+        expect(drawn(render(baseProps({ isExpanded, highlightWords })).tree)).toBe(before);
+      }
+      // As before the props existed: one Text holding the name as a string, two lines at most.
+      const title = plain.textNodes().find(node => node.props.children === 'Example Potatoes') as ReactTestInstance;
+      expect(title.props.numberOfLines).toBe(2);
+      expect(flat(title.props.style).color).toBe(t.text.primary);
+      expect(plain.bold()).toEqual([]);
+      expect(plain.matchLine()).toHaveLength(0);
+    }
+    const open = render(baseProps({ isExpanded: true }));
+    expect(open.textNodes().filter(node => node.props.children === 'GRN 311')).toHaveLength(1);
+  });
+
+  it('words: bold in the item name, and in each GRN number once opened; the rest keeps its colour', () => {
+    const closed = render(baseProps({ highlightWords: ['potat', '311'] }));
+    expect(closed.bold()).toEqual(['Potat']);
+    const title = closed.textNodes().find(node => [].concat(node.props.children).length === 3) as ReactTestInstance;
+    expect(flat(title.props.style).color).toBe(t.text.primary);
+    expect(title.props.numberOfLines).toBe(2);
+    // The header label is the plain name: bold is not read out.
+    expect(closed.header().props.accessibilityLabel).toBe('Example Potatoes, 50 kg bag, 65 of 100 in stock, 2 GRNs');
+
+    const open = render(baseProps({ isExpanded: true, highlightWords: ['potat', '311', 'b'] }));
+    // "B" also matches inside the long GRN number; its row button label stays the plain text.
+    expect(open.bold()).toEqual(['Potat', '311', 'B']);
+    expect(open.grnButtons()[0].props.accessibilityLabel).toMatch(/^GRN 311, mark RS,/);
+    const grnTitle = open.textNodes().find(node => [].concat(node.props.children)[0] === 'GRN ') as ReactTestInstance;
+    expect(grnTitle.props.numberOfLines).toBeUndefined();
+  });
+
+  it('match line: under a closed card in the footnote style, its match in bold, read with the header', () => {
+    const { matchLine, header, bold } = render(baseProps({ matchLine: 'GRN A0042', highlightWords: ['a0042'] }));
+    expect(matchLine()).toHaveLength(1);
+    const style = flat(matchLine()[0].props.style);
+    expect(style.color).toBe(t.text.secondary);
+    expect(style.fontSize).toBe(typography.footnote.fontSize);
+    expect(matchLine()[0].props.numberOfLines).toBe(2);
+    expect(bold()).toEqual(['A0042']);
+    expect(header().props.accessibilityLabel).toBe('Example Potatoes, 50 kg bag, 65 of 100 in stock, 2 GRNs, GRN A0042');
+  });
+
+  it('match line: not drawn once the card is open, nor read with its header', () => {
+    const { matchLine, header, texts } = render(baseProps({ isExpanded: true, matchLine: 'GRN A0042', highlightWords: ['a0042'] }));
+    expect(matchLine()).toHaveLength(0);
+    expect(texts()).not.toContain('GRN A0042');
+    expect(header().props.accessibilityLabel).toBe('Example Potatoes, 50 kg bag, 65 of 100 in stock, 2 GRNs');
+  });
+});
+
+describe('the match line while opening and closing', () => {
+  function Toggling() {
+    const [open, setOpen] = useState(false);
+    return <StockItemCard {...baseProps({ matchLine: 'GRN A0042 · GRN A0043' })} isExpanded={open} onToggle={() => setOpen(value => !value)} />;
+  }
+
+  it('goes when the card opens and comes back when it closes; without words it is plain text', () => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<Toggling />);
+    });
+    mounted.push(tree);
+    const { header, matchLine, bold } = helpers(tree);
+    expect(matchLine().map(node => node.props.children)).toEqual(['GRN A0042 · GRN A0043']);
+    expect(bold()).toEqual([]);
+    expect(header().props.accessibilityLabel).toMatch(/, GRN A0042 · GRN A0043$/);
+
+    act(() => header().props.onPress());
+    expect(matchLine()).toHaveLength(0);
+    expect(header().props.accessibilityLabel).toBe('Example Potatoes, 50 kg bag, 65 of 100 in stock, 2 GRNs');
+
+    act(() => header().props.onPress());
+    expect(matchLine()).toHaveLength(1);
+  });
+
+  it('an empty match line draws nothing', () => {
+    const { matchLine, header } = render(baseProps({ matchLine: '' }));
+    expect(matchLine()).toHaveLength(0);
+    expect(header().props.accessibilityLabel).toBe('Example Potatoes, 50 kg bag, 65 of 100 in stock, 2 GRNs');
   });
 });
 

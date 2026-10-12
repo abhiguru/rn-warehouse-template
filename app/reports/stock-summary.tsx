@@ -28,7 +28,7 @@ import {
   type ReportHeaderAction,
   type StockGRNRowData,
 } from '@/components/reports';
-import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
+import { matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import {
   STOCK_SUMMARY_CUSTOMER,
   STOCK_SUMMARY_CUSTOMERS,
@@ -65,14 +65,8 @@ const makeStyles = (t: ThemeTokens) => ({
     ...t.shadow[2],
   },
   cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
-  // The item card sits inside the row's card (which also holds the match line): no second shadow.
-  innerCard: { ...t.shadow[0], borderRadius: radius.card },
-  matchLine: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    paddingHorizontal: space.lg,
-    paddingBottom: space.md,
-  },
+  // The item card draws its own surface, shadow and match line; the list only spaces it.
+  itemCard: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
 
   // The out-of-stock section under the items
   section: { marginTop: space.lg },
@@ -415,8 +409,9 @@ const grnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData[]
   });
 
 /**
- * The GRNs a search found on an item whose card is closed (§14.6): the card
- * shows its name, not its GRN numbers. Only for words the name does not already show.
+ * The GRNs a search found on an item (§14.6): a closed card shows its name, not
+ * its GRN numbers, so it names them in its match line (the card draws the line
+ * only while closed). Only for words the name does not already show.
  */
 function hiddenMatches(item: StockItemSummary, words: string[]): string[] {
   const name = item.item_name.toLowerCase();
@@ -443,24 +438,21 @@ const ItemRow = memo(function ItemRow({ item, words, isExpanded, onToggle, outOf
   const { item_id: itemId } = item;
   const handleToggle = useCallback(() => onToggle(itemId), [onToggle, itemId]);
   const grns = useMemo(() => ({ status: 'loaded' as const, rows: grnRows(item, outOfStock) }), [item, outOfStock]);
-  const matched = isExpanded ? [] : hiddenMatches(item, words);
+  const matchLine = useMemo(() => hiddenMatches(item, words).join(' · ') || undefined, [item, words]);
   return (
-    <View style={styles.card}>
-      <View style={styles.cardClip}>
-        <StockItemCard
-          name={item.item_name}
-          grnCount={item.grn_count}
-          stock={item.total_stock}
-          outOfStock={outOfStock}
-          isExpanded={isExpanded}
-          onToggle={handleToggle}
-          grns={grns}
-          onOpenGRN={openGRN}
-          style={styles.innerCard}
-        />
-        {matched.length > 0 ? <HighlightedText style={styles.matchLine} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
-      </View>
-    </View>
+    <StockItemCard
+      name={item.item_name}
+      grnCount={item.grn_count}
+      stock={item.total_stock}
+      outOfStock={outOfStock}
+      isExpanded={isExpanded}
+      onToggle={handleToggle}
+      grns={grns}
+      onOpenGRN={openGRN}
+      highlightWords={words}
+      matchLine={matchLine}
+      style={styles.itemCard}
+    />
   );
 });
 
