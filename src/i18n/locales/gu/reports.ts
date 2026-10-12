@@ -42,7 +42,21 @@ export const reports: Translation<typeof source> = {
     noStockForCustomerDescription: 'આ વેપારીના માલની આવક થશે એટલે સ્ટોક અહીં દેખાશે.',
     customerIdRequired: 'વેપારી પસંદ કરવો જરૂરી છે',
   },
+  scaffold: {
+    updated: 'છેલ્લે અપડેટ થયું: {{time}}',
+    showing: '{{total}}માંથી {{shown}} બતાવ્યા છે',
+    notUpdated: 'અપડેટ થઈ શક્યું નથી. આ આંકડા અગાઉ લોડ થયેલા છે.',
+  },
+  sort: {
+    grns: 'આવક પાવતી',
+    latestGrn: 'છેલ્લી આવક પાવતી',
+    stockLeft: 'બાકી સ્ટોક',
+  },
+  filters: {
+    invoicing: 'ઇન્વૉઇસ',
+  },
   period: {
+    label: 'સમયગાળો',
     groupLabel: 'અહેવાલનો સમયગાળો',
     days: '{{count}} દિવસ',
     lastDays: 'છેલ્લા {{count}} દિવસ',

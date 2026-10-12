@@ -39,7 +39,23 @@ export const reports = {
     noStockForCustomerDescription: 'Stock appears here once goods are received for this customer.',
     customerIdRequired: 'Customer ID is required',
   },
+  // The shared report layout (ReportScaffold)
+  scaffold: {
+    updated: 'Last updated {{time}}',
+    showing: 'Showing {{shown}} of {{total}}',
+    notUpdated: "Couldn't update. These figures were loaded earlier.",
+  },
+  // Sort options and filters of the report screens (src/features/filters/configs/reports)
+  sort: {
+    grns: 'GRNs',
+    latestGrn: 'Latest GRN',
+    stockLeft: 'Stock left',
+  },
+  filters: {
+    invoicing: 'Invoicing',
+  },
   period: {
+    label: 'Period',
     groupLabel: 'Report period',
     days: '{{count}} days',
     lastDays: 'Last {{count}} days',

@@ -12,6 +12,10 @@ export { KPIGrid, type KPIItem } from './KPIGrid';
 export { ReportHeader, type ReportHeaderAction } from './ReportHeader';
 export { PeriodSelector, getDateRangeForPeriod } from './PeriodSelector';
 
+// The one layout every report uses
+export { ReportScaffold, type ReportScaffoldProps } from './ReportScaffold';
+export { ReportStatusLine, type ReportStatusLineProps } from './ReportStatusLine';
+
 // States
 export { ReportEmptyState } from './ReportEmptyState';
 

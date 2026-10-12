@@ -31,6 +31,9 @@ import { ListSearchField } from './ListSearchField';
  */
 const LIST_NOUNS = { GRNs: 'grn', dispatches: 'dispatch', invoices: 'invoice', orders: 'order' } as const;
 export type ListNounPlural = keyof typeof LIST_NOUNS;
+/** What a list or a report can find nothing of. Reports also list customers and items. */
+const EMPTY_NOUNS = { ...LIST_NOUNS, customers: 'customer', items: 'item' } as const;
+export type EmptyNounPlural = keyof typeof EMPTY_NOUNS;
 
 export interface FilteredListHeaderProps {
   title: string;
@@ -131,9 +134,9 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
 }
 
 /** Wording of a list's "nothing matches" state for `ListEmptyState`. */
-export function filteredEmptyProps(filters: ReturnType<typeof useListFilters>, nounPlural: ListNounPlural) {
+export function filteredEmptyProps(filters: ReturnType<typeof useListFilters>, nounPlural: EmptyNounPlural) {
   const search = filters.search.trim();
-  const noun = LIST_NOUNS[nounPlural];
+  const noun = EMPTY_NOUNS[nounPlural];
   return {
     activeFilterCount: filters.hasAny ? 1 : 0,
     filteredTitle: search ? translate(`filters.empty.noMatchSearch.${noun}`, { search }) : translate(`filters.empty.noMatchFilters.${noun}`),
