@@ -141,11 +141,16 @@ tick was given.
 **The central session** (`src/config/centralSession.ts`). Its own SecureStore keys
 (`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
 the facility request gate. The access token is replaced a minute before it expires and once
-when the service answers 401; one refresh runs at a time, and a refresh token is sent exactly
-once. A refresh whose answer was lost is not repeated: the session is kept and the next need
-refreshes again, which the service treats as reuse of the token, revokes the session family,
-and the person signs in again. When the service refuses the refresh token the person is signed
-out centrally, told why, and returned to central sign-in. A secure store
+when the service answers 401; one refresh runs at a time, and the refresh path sends a refresh
+token exactly once. A refresh whose answer was lost is not repeated: the session is kept and
+the next need refreshes again with the same token. If the lost request had reached the
+service, that next refresh is reuse: the service revokes the session family and the person
+signs in again; if it had not (the connection failed before it arrived), the next refresh
+simply succeeds. When the service refuses the refresh token the person is signed out
+centrally, told why, and returned to central sign-in. One deliberate exception: sign-out with
+an expired access token sends the stored refresh token once more, outside the refresh path,
+to obtain a token for the revocation; the family is being revoked in the same breath, so a
+reuse refusal there changes nothing. A secure store
 that does not answer is not "no session": nothing is cleared, the store is read again once
 2 seconds later and on each return to the foreground, and the next call reads again.
 
@@ -217,11 +222,16 @@ facilities cannot open it again and file a new access request: before the deleti
 dispatched (the facility session empties the store the moment it starts) the start-up skip is
 spent and the entry is marked Unavailable on the phone, the entry is removed after the
 deletion, and no facility is opened while a sign-out or deletion is still running. The
-deletion's own report says what the server did: deleted (also when the session then changed
-or the sign-out failed) removes the entry and leaves; kept (the server refused, an auth
-refusal included) restores the entry's status and shows the message, on My facilities when
-Settings is already gone; not known (no answer) leaves the entry Unavailable, leaves the
-facility and shows the message. On My facilities, "Sign out" revokes the central session, forgets it on the
+deletion's own report says what the server did, and it is conservative: "kept" is claimed
+only for the database's own answer (the RPC's `success: false`, the last-administrator
+refusal, or a PostgREST/SQL error with its code); everything else that is not a success (no
+connection, a gateway's error page, a session that changed after the answer, an exception) is
+"not known". Deleted (also when the session then changed or the sign-out that follows
+failed; that row now says "Session changed" where it used to show the generic failure)
+removes the entry and leaves; kept restores the entry's status and shows the message, on My
+facilities when Settings is already gone; not known leaves the entry Unavailable, leaves the
+facility and shows the message, or the cleanup's own message when that cleanup did not
+finish. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility; the account entry holds the name and "Delete my
 account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
 

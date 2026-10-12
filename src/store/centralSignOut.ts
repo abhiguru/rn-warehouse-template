@@ -14,6 +14,7 @@ import { deleteAccount, isDeleteAccountRejection } from '@/store/slices/authSlic
 import { store } from '@/store';
 import { queryClient } from '@/lib/queryClient';
 import { t } from '@/i18n';
+import { showAlert } from '@/utils/alert';
 import { leaveFacility, type LeaveFacilityOutcome } from './operatorSwitch';
 
 /** How long a write in flight is given to settle before the final cleanup is tried again. */
@@ -59,6 +60,11 @@ async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
  */
 function reportDeletionFailure(server: OperatorServer, message: string): 'reported' {
   if (store.getState().auth.userProfile !== null) throw message;
+  // An answer already waiting on the list is not overwritten: this one is shown directly.
+  if (getCentralState().outcome !== null) {
+    showAlert(t('central.account.deleteFailedTitle'), message);
+    return 'reported';
+  }
   setCentralState({
     outcome: {
       id: nextOutcomeId(),
@@ -175,7 +181,11 @@ export function deleteFacilityAccount(dispatch: Dispatch): Promise<DeleteFacilit
     // anything through it, and an entry whose fate is not known stays
     // `unavailable` so no start can open it on its own.
     const outcome = await leaveWithRetry(dispatch, { localOnly: true });
-    if (serverDeleted === null && server) return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
+    // Not known what the server did: the person is told, unless the cleanup
+    // itself did not finish; then they are still inside the facility and the
+    // cleanup's own message is the one that matters (the entry stays
+    // Unavailable either way).
+    if (serverDeleted === null && server && outcome === 'left') return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
     return outcome;
   });
 }

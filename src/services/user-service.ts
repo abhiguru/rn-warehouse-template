@@ -6,7 +6,7 @@ import {
   CustomerAssignment
 } from '@/types/user.types';
 // M3 Fix: Import executeRPC utilities (kept for future use - current methods have extensive debug logging)
-import { executeRPC, createErrorResponse, handleGlobalAuthError, isOfflineFailure } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -223,6 +223,19 @@ export class UserService {
    *
    * @returns Success status and message
    */
+  /**
+   * True only for an error the database itself answered: a PostgREST or SQL
+   * error with its code (a SQLSTATE such as 42501 or P0001, or PGRSTnnn).
+   * postgrest-js gives `code: ""` for a lost connection and for a body that is
+   * not JSON (a gateway's HTML page), and nothing at all for "Session changed"
+   * thrown by the app's own fetch gate after the answer arrived. None of those
+   * says what the server did, so none of them counts as a refusal.
+   */
+  static isDatabaseAnswer(error: unknown): boolean {
+    const code = (error as { code?: unknown } | null)?.code;
+    return typeof code === 'string' && /^(PGRST\d{3}|[0-9A-Z]{5})$/.test(code);
+  }
+
   static async deleteAccount(): Promise<UserServiceResponse<void>> {
     try {
 
@@ -237,9 +250,10 @@ export class UserService {
           success: false,
           message: t('errors.user.deleteAccountFailed'),
           error: error.message,
-          // An answer from the server (an auth refusal included) kept the account;
-          // a lost connection says nothing about what the server did.
-          outcome: isOfflineFailure(error) ? 'unknown' : 'refused',
+          // Only the database's own answer says the account was kept; anything
+          // else (no connection, a gateway page, a session that changed after
+          // the answer) leaves open whether the deletion was committed.
+          outcome: UserService.isDatabaseAnswer(error) ? 'refused' : 'unknown',
         };
       }
 

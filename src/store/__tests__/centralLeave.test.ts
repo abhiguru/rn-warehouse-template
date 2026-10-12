@@ -12,6 +12,7 @@ import { deleteCentralAccount, signOutCentral } from '@/config/centralSession';
 import { beginOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment, clearPendingEnrollment } from '@/config/supabaseConfig';
 import { deleteAccount, logout } from '@/store/slices/authSlice';
 import { queryClient } from '@/lib/queryClient';
+import { showAlert } from '@/utils/alert';
 
 const mockEvents: string[] = [];
 let mockActive: unknown = null;
@@ -47,6 +48,7 @@ jest.mock('@/services/configService', () => ({
   default: { clearCache: jest.fn(async () => { mockEvents.push('clear config'); }) },
 }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: jest.fn(() => 0) } }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 let mockAuth: { userProfile: unknown } = { userProfile: null };
 jest.mock('@/store', () => ({ store: { getState: () => ({ auth: mockAuth }) } }));
 
@@ -300,6 +302,31 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     expect(getCentralState().leaving).toBe(0);
   });
 
+  it('no answer from the server and a cleanup that could not finish: the cleanup\'s own outcome is what Settings hears', async () => {
+    mockDeletion = 'unknown';
+    jest.mocked(queryClient.isMutating).mockReturnValue(1);
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      const result = deleteFacilityAccount(dispatch);
+      await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 200);
+      expect(await result).toBe('busy');
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(getCentralState().outcome).toBeNull();
+    expect((await loadMyFacilities('asha')).find(item => item.origin === facility.origin)?.status).toBe('unavailable');
+    expect(mockActive).toBe(facility);
+  });
+
+  it('a report that finds an answer already waiting on the list is shown directly instead of replacing it', async () => {
+    mockDeletion = 'refusedForced';
+    const waiting = { id: 99, origin: 'https://south-cold.example.test', name: 'South', outcome: { kind: 'pending' as const } };
+    setCentralState({ outcome: waiting });
+    expect(await deleteFacilityAccount(dispatch)).toBe('reported');
+    expect(getCentralState().outcome).toBe(waiting);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't delete the account", 'Session changed');
+  });
+
   it('no answer from the server: the entry stays Unavailable, the facility is left locally and the person is told', async () => {
     const { updateMyFacility } = jest.requireActual('@/config/centralFacilities');
     await updateMyFacility('asha', facility.origin, { status: 'approved' });
@@ -378,10 +405,15 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
         if (free && !mockEvents.includes('gate free')) mockEvents.push('gate free');
         return free;
       });
+      const startedAt = Date.now();
+      let retriedAt: number | undefined;
+      jest.mocked(beginOperatorSwitch).mockImplementation(() => { retriedAt = Date.now(); mockEvents.push('begin switch'); return true; });
       const result = deleteFacilityAccount(dispatch);
       await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS);
       expect(await result).toBe('left');
+      expect(mockEvents.indexOf('gate free')).toBeGreaterThanOrEqual(0);
       expect(mockEvents.indexOf('begin switch')).toBeGreaterThan(mockEvents.indexOf('gate free'));
+      expect(retriedAt! - startedAt).toBeGreaterThanOrEqual(800);
     } finally {
       jest.useRealTimers();
     }
