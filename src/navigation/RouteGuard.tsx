@@ -24,6 +24,27 @@ import { isCentralLoginConfigured } from '@/config/envConfig';
 import { useCentralState } from '@/hooks/useCentralState';
 import { decideRoute, isPublicRoute, type RouteAuthState, type RouteDecision } from './routeAccess';
 
+/** A navigation state as far as the guard reads it. */
+type RootState = { index?: number; routes: ReadonlyArray<{ name: string; state?: RootState }> };
+
+/** expo-router's own wrapper route around the root layout (INTERNAL_SLOT_NAME in expo-router). */
+const ROUTER_ROOT = '__root';
+
+/**
+ * The route the root stack shows right now, read from the navigator itself: "facilities",
+ * "(tabs)", "grn-details/[id]". Undefined when it cannot be read.
+ */
+export function liveRootRoute(state: RootState | undefined): string | undefined {
+  let current = state;
+  while (current && current.routes.length > 0) {
+    const route = current.routes[current.index ?? current.routes.length - 1];
+    if (!route) return undefined;
+    if (route.name !== ROUTER_ROOT) return route.name;
+    current = route.state;
+  }
+  return undefined;
+}
+
 export function useRouteAuthState(): RouteAuthState {
   const { userProfile, session, user } = useAppSelector((state) => state.auth);
   const central = useCentralState();
@@ -68,6 +89,7 @@ function useNavigationReady(): boolean {
  */
 export function useRootRouteGuard(authRestored: boolean): RouteDecision {
   const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
   const segments = useSegments();
   const { isSignedIn, role, central } = useRouteAuthState();
   const centralSignedIn = central?.signedIn;
@@ -84,12 +106,27 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
 
   useEffect(() => {
     if (!navigationReady) return;
+    if (decision === 'allow') return;
+    // Central login: a server change rebuilds the navigation tree, and the guard's first
+    // replace then brings in My facilities while useSegments() still names the route the
+    // stack started on. Replacing again from that stale name would throw away what the new
+    // screen has just asked for (the waiting screen, the linking step). The navigator's own
+    // route is what is shown: when that one is allowed, the segments are only behind and
+    // this effect runs again once they catch up.
+    if (centralSignedIn !== undefined) {
+      const live = liveRootRoute(navigationRef.getRootState?.() as RootState | undefined);
+      if (
+        live !== undefined &&
+        decideRoute(live, { isSignedIn, role, central: { signedIn: centralSignedIn, facilitySms: Boolean(facilitySms) } }) === 'allow'
+      )
+        return;
+    }
     if (decision === 'login') router.replace('/login');
     else if (decision === 'home') router.replace('/');
     else if (decision === 'centralLogin') router.replace('/central-login');
     else if (decision === 'facilities') router.replace('/facilities');
     // `path` is listed so a second refused route is replaced as well.
-  }, [decision, path, router, navigationReady]);
+  }, [decision, path, router, navigationReady, navigationRef, isSignedIn, role, centralSignedIn, facilitySms]);
 
   return decision;
 }

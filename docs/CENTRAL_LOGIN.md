@@ -263,7 +263,13 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
 - Opening a facility changes the selected server, which rebuilds the app's navigation tree
   (as a server change always has). The result of the open is therefore kept outside the
   screens and handled by whichever screen is mounted afterwards, and entering the facility is
-  left to the route guard. That hand-over is tested piece by piece, not end to end on a device.
+  left to the route guard. After the rebuild `useSegments()` can still name the route the
+  stack started on while the navigator already shows My facilities; with central login the
+  guard therefore goes by the navigator's own route before it replaces anything, so it does
+  not undo the waiting screen or the linking step that My facilities has just opened
+  (phone report 2026-10-12). `src/tests/navigation/CentralOpenRemount.test.tsx` runs that
+  hand-over through the real router, route guard and screens; it has not been re-run on a
+  device since the fix.
 - The Gujarati text is a draft for the owner's wording review.
 
 ## Open questions
