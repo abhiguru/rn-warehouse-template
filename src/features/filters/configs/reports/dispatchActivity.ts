@@ -58,7 +58,6 @@ export const DISPATCH_ACTIVITY_CUSTOMER: FilterListConfig<DispatchRecordsRequest
       { field: 'date', get label() { return t('common.date'); }, kind: 'date' },
       { field: 'number', get label() { return t('common.dispatchNumber'); }, get chipLabel() { return t('filters.sort.numberChip'); }, kind: 'number' },
       { field: 'bags', get label() { return t('common.bags'); }, kind: 'amount' },
-      { field: 'weight', get label() { return t('common.weight'); }, kind: 'amount' },
     ],
     default: { field: 'date', order: 'desc' },
   },
@@ -86,7 +85,6 @@ export function dispatchRecordsView(rows: readonly DispatchActivityRecord[], vie
       date: dispatch => dispatch.disp_date,
       number: dispatch => dispatch.disp_no,
       bags: dispatch => dispatch.total_qty,
-      weight: dispatch => dispatch.total_weight,
     }
   );
 }

@@ -103,22 +103,23 @@ const answerCustomers = (rows: ReturnType<typeof customer>[]) => ({
 });
 
 const item = (name: string, over: Record<string, unknown> = {}) => ({ item_name: name, qty: 10, source_grn: 'A0001', ...over });
-const dispatch = (id: string, number: string, date: string, bags: number, weight: number, supervisor: string, items: unknown[]) => ({
+// The server returns no weight for a dispatch (the service maps it to 0), so none is made up here.
+const dispatch = (id: string, number: string, date: string, bags: number, supervisor: string, items: unknown[]) => ({
   disp_id: id,
   disp_no: number,
   disp_date: date,
   supervisor_name: supervisor,
   total_qty: bags,
-  total_weight: weight,
+  total_weight: 0,
   items,
 });
 const DISPATCHES = [
-  dispatch('d1', 'DD0010', '2026-10-12', 50, 2600, 'Asha Example', [
+  dispatch('d1', 'DD0010', '2026-10-12', 50, 'Asha Example', [
     item('Garlic', { qty: 50, orig_qty: 60, weight: 2600, source_grn: 'A0010', source_grn_id: 'g1', rack: 'B-14', package_mark: 'GV' }),
   ]),
-  dispatch('d2', 'DD0009', '2026-10-11', 200, 900, 'Ravi Example', [item('Red chilli', { qty: 200, source_grn: 'A0009' })]),
-  dispatch('d3', 'DD0100', '2026-10-11', 120, 6100, 'Asha Example', [item('Cumin', { qty: 120, source_grn: 'A0100' })]),
-  dispatch('d4', 'DD0050', '2026-09-20', 20, 3000, 'Meera Example', [item('Turmeric', { qty: 20, source_grn: 'A0050' })]),
+  dispatch('d2', 'DD0009', '2026-10-11', 200, 'Ravi Example', [item('Red chilli', { qty: 200, source_grn: 'A0009' })]),
+  dispatch('d3', 'DD0100', '2026-10-11', 120, 'Asha Example', [item('Cumin', { qty: 120, source_grn: 'A0100' })]),
+  dispatch('d4', 'DD0050', '2026-09-20', 20, 'Meera Example', [item('Turmeric', { qty: 20, source_grn: 'A0050' })]),
 ];
 const answerDispatches = {
   success: true,
@@ -364,8 +365,6 @@ describe('dispatch activity, one customer', () => {
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Bags');
     expect(screen.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050']);
-    await screen.press('Weight');
-    expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0009']);
     await screen.press('Dispatch number');
     expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0009']);
     await screen.press('Lowest number first');
@@ -379,6 +378,28 @@ describe('dispatch activity, one customer', () => {
     await screen.press('Done');
     expect(screen.dispatchRows()).toEqual(['Sun, 20 Sep', 'Dispatch DD0050', 'Yesterday', 'Dispatch DD0009', 'Dispatch DD0100', 'Today', 'Dispatch DD0010']);
     expect(customerActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it('a weight sort remembered by an older version falls back to date, newest first: on screen, in the sort sheet and in the PDF', async () => {
+    mockParams = GREEN;
+    const remembered = sanitizeReportPrefs({
+      byScope: { [SCOPE]: { sort: { 'report-dispatch-activity-customer': { field: 'weight', order: 'asc' } }, usedAt: 1 } },
+    });
+    // The stored choice is read back as it was written (a sort by weight, lowest first)...
+    expect(remembered.byScope[SCOPE].sort['report-dispatch-activity-customer']).toEqual({ field: 'weight', order: 'asc' });
+    const screen = await open(makeStore(STAFF, remembered));
+    // ...but the report offers no such sort, so it opens on its default.
+    expect(screen.has('Sorted by Date, newest first. Change sort')).toBe(true);
+    expect(screen.dispatchRows()).toEqual(BY_DATE);
+
+    await screen.press('Sorted by Date, newest first. Change sort');
+    expect(['Date', 'Dispatch number', 'Bags'].map(screen.has)).toEqual([true, true, true]);
+    expect(screen.has('Weight')).toBe(false);
+    await screen.press('Done');
+
+    makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[{ report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'date', order: 'desc' } }]]);
   });
 
   it('finds dispatches by supervisor and by an item inside the card, names that item, and Clear all keeps the sort', async () => {
@@ -559,18 +580,6 @@ describe('dispatch activity, the report PDF', () => {
       { report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'disp_no', order: 'desc' } },
       'Dispatch_activity_Green_Valley_Traders_2026_06_15_to_2026_10_12.pdf'
     );
-  });
-
-  it('one customer sorted by weight: the PDF has no weight column, so no sort is sent', async () => {
-    mockParams = GREEN;
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Weight');
-    await screen.press('Done');
-    expect(screen.has('Sorted by Weight, highest first. Change sort')).toBe(true);
-    makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
-    await screen.press('Share PDF');
-    expect(makePdf.mock.calls).toEqual([[{ report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: undefined }]]);
   });
 });
 

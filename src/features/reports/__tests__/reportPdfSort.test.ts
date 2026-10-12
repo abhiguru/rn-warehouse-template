@@ -62,10 +62,8 @@ const SCREEN_CONFIGS: Record<ReportPdfName, Record<ReportPdfLevel, AnyConfig>> =
   'customer-activity': { customers: CUSTOMER_ACTIVITY_CUSTOMERS, customer: CUSTOMER_ACTIVITY_CUSTOMER },
 };
 
-/** Screen sorts the PDF has no column for: they are not sent. */
-const NO_PDF_COLUMN: Partial<Record<ReportPdfName, Partial<Record<ReportPdfLevel, string[]>>>> = {
-  'dispatch-activity': { customer: ['weight'] },
-};
+/** Screen sorts the PDF has no column for: they are not sent. None at present. */
+const NO_PDF_COLUMN: Partial<Record<ReportPdfName, Partial<Record<ReportPdfLevel, string[]>>>> = {};
 
 const REPORTS = Object.keys(SCREEN_CONFIGS) as ReportPdfName[];
 const LEVELS: ReportPdfLevel[] = ['customers', 'customer'];

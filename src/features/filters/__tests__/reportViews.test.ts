@@ -203,12 +203,14 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     found: ['i2'],
     id: (row: { item_id: string }) => row.item_id,
   },
+  // The server returns no weight for a dispatch (the service maps it to 0), so none is set here:
+  // a sort by weight would give the written order and fail below.
   'report-dispatch-activity-customer': {
     rows: [
-      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, total_weight: 5000, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
-      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, total_weight: 900, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
-      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, total_weight: 6100, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
-      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, total_weight: 3000, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
+      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
+      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
+      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
+      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
     ],
     search: 'red chilli',
     found: ['d2'],

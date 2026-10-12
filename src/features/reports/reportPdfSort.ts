@@ -27,7 +27,6 @@ export const REPORT_PDF_SORT_COLUMNS: Readonly<Record<ReportPdfName, Readonly<Re
   },
   'dispatch-activity': {
     customers: { bags: 'quantity', dispatches: 'dispatches', name: 'customer' },
-    // The PDF has no weight column: a sort by weight is not sent.
     customer: { date: 'date', number: 'disp_no', bags: 'quantity' },
   },
   'invoice-history': {
