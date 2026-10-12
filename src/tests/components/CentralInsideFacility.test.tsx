@@ -10,7 +10,8 @@ import SettingsScreen from '../../../app/settings';
 import LoginScreen from '../../../app/login';
 import PendingEnrollmentScreen from '../../../app/pending-enrollment';
 import { leaveFacility } from '@/store/operatorSwitch';
-import { logout } from '@/store/slices/authSlice';
+import { deleteFacilityAccount } from '@/store/centralSignOut';
+import { deleteAccount, logout } from '@/store/slices/authSlice';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '@/config/centralState';
 import { getEnrollmentStatus, signOutPendingEnrollment } from '@/config/supabaseConfig';
 import { showAlert } from '@/utils/alert';
@@ -46,6 +47,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   signInWithPhone: jest.fn(),
 }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
+jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(async () => {}) }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
   deleteAccount: jest.fn(),
@@ -121,6 +123,21 @@ describe('Settings with central login on', () => {
     expect(alerts()[1]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
   });
 
+  it('"Delete account" deletes the profile at this facility through the central-mode helper and does not open a sign-in screen', async () => {
+    await render(<SettingsScreen />);
+    await press('Delete account, Permanently delete your account and data');
+    // Warning step, then the number is asked for.
+    const proceed = tree!.root.findAll(node => node.props.accessibilityLabel === 'Continue' && typeof node.props.onPress === 'function').pop();
+    if (proceed) await act(async () => { await proceed.props.onPress(); });
+    const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
+    await act(async () => { field.props.onChangeText('9000000001'); });
+    const confirm = tree!.root.findAll(node => node.props.accessibilityLabel === 'Delete account' && typeof node.props.onPress === 'function').pop()!;
+    await act(async () => { await confirm.props.onPress(); });
+    expect(deleteFacilityAccount).toHaveBeenCalledWith(mockDispatch);
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
   it('"Sign out" signs out of this facility only and returns to My facilities', async () => {
     await render(<SettingsScreen />);
     await press('Sign out');
@@ -180,10 +197,14 @@ describe('the waiting screen once the facility has approved', () => {
     expect(getEnrollmentStatus).toHaveBeenCalled();
     expect(texts()).toContain('North Cold Store approved your access. Open it from My facilities.');
     expect(texts()).not.toContain('Sign in');
+    // The request came from this facility's own SMS sign-in.
+    await act(async () => { setCentralState({ facilitySmsOrigin: 'https://north-cold.example.test' }); });
     await press('My facilities');
     expect(signOutPendingEnrollment).toHaveBeenCalled();
-    // `/login` is not for this person: the route guard sends them on to My facilities.
-    expect(router.replace).toHaveBeenCalledWith('/login');
+    expect(router.replace).toHaveBeenCalledWith('/facilities');
+    expect(router.replace).not.toHaveBeenCalledWith('/login');
+    // Otherwise the guard would turn My facilities back into that facility's sign-in.
+    expect(getCentralState().facilitySmsOrigin).toBeNull();
   });
 
   it('central login off: the facility asks for a new code', async () => {

@@ -23,6 +23,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout, deleteAccount } from '@/store/slices/authSlice';
 import { leaveFacility } from '@/store/operatorSwitch';
+import { deleteFacilityAccount } from '@/store/centralSignOut';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { useTheme, useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -179,6 +180,12 @@ const SettingsScreen: React.FC = () => {
     setDeleteError(null);
 
     try {
+      if (centralLogin) {
+        // The profile at this facility is deleted; the route guard returns to My facilities.
+        await deleteFacilityAccount(dispatch);
+        setShowDeleteModal(false);
+        return;
+      }
       await dispatch(deleteAccount()).unwrap();
       setShowDeleteModal(false);
       router.replace('/login');

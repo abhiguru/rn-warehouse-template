@@ -251,17 +251,36 @@ describe('central sign-in', () => {
     expect(button('Send code').props.disabled).toBe(true);
   });
 
-  it('asks for no tick on a phone that has signed in under these terms before', async () => {
-    await AsyncStorage.setItem('central_terms_accepted_v1', '2025-12');
+  const tickShown = () => tree!.root.findAll(node => node.props.testID === 'accept-terms').length > 0;
+
+  it('asks the tick of every NUMBER once: a second person on the same phone sees it, the first does not', async () => {
+    // Asha has signed in on this phone before.
+    await AsyncStorage.setItem('central_terms_accepted_v1:919000000001', '2025-12');
     await render(<CentralLoginScreen />);
-    expect(tree!.root.findAll(node => node.props.testID === 'accept-terms')).toHaveLength(0);
+    expect(tickShown()).toBe(true);
+    await type('9000000001');
+    expect(tickShown()).toBe(false);
     expect(button('Send code').props.disabled).toBe(false);
+    // Bhavin types his number on the same phone: the terms are asked of him.
+    await type('9000000002');
+    expect(tickShown()).toBe(true);
+    expect(button('Send code').props.disabled).toBe(true);
+    jest.mocked(requestCentralCode).mockResolvedValue({ ok: true, resendAfterSeconds: 60, expiresAt: null });
+    await press(button('Send code'));
+    expect(requestCentralCode).not.toHaveBeenCalled();
+    await tick();
+    await press(button('Send code'));
+    expect(requestCentralCode).toHaveBeenCalledWith('+919000000002');
+    // Back to Asha's number, written with the country code this time: still no tick.
+    await type('919000000001');
+    expect(tickShown()).toBe(false);
   });
 
   it('asks again when the terms version has changed', async () => {
-    await AsyncStorage.setItem('central_terms_accepted_v1', '2024-01');
+    await AsyncStorage.setItem('central_terms_accepted_v1:919000000001', '2024-01');
     await render(<CentralLoginScreen />);
-    expect(tree!.root.findAll(node => node.props.testID === 'accept-terms').length).toBeGreaterThan(0);
+    await type('9000000001');
+    expect(tickShown()).toBe(true);
   });
 
   it('refuses a number that is not ten digits without calling the service', async () => {
@@ -319,7 +338,9 @@ describe('central code step', () => {
     await enter('482913');
     expect(verifyCentralCode).toHaveBeenCalledWith('+919000000001', '482913', '2025-12');
     expect(router.replace).toHaveBeenCalledWith('/facilities');
-    expect(await AsyncStorage.getItem('central_terms_accepted_v1')).toBe('2025-12');
+    // Recorded for this number only.
+    expect(await AsyncStorage.getItem('central_terms_accepted_v1:919000000001')).toBe('2025-12');
+    expect((await AsyncStorage.getAllKeys()).filter(key => key.startsWith('central_terms_accepted_v1'))).toEqual(['central_terms_accepted_v1:919000000001']);
     // A new sign-in is a start: one approved facility may be opened without the list.
     expect(getCentralState().autoOpenSpent).toBe(false);
   });
@@ -332,7 +353,7 @@ describe('central code step', () => {
     await enter('000000');
     expect(alerts()[0]).toEqual(["Couldn't verify the code", 'That code is wrong or has expired. Check it, or ask for a new code.']);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(await AsyncStorage.getItem('central_terms_accepted_v1')).toBeNull();
+    expect((await AsyncStorage.getAllKeys()).filter(key => key.startsWith('central_terms_accepted_v1'))).toEqual([]);
   });
 
   it('without a number it returns to central sign-in', async () => {

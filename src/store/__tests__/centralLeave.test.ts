@@ -5,12 +5,12 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { leaveFacility } from '../operatorSwitch';
-import { deleteAccountEverywhere, signOutEverywhere } from '../centralSignOut';
-import { addMyFacility, loadMyFacilities } from '@/config/centralFacilities';
+import { deleteAccountEverywhere, deleteFacilityAccount, signOutEverywhere } from '../centralSignOut';
+import { addMyFacility, loadMyFacilities, soleApprovedFacility } from '@/config/centralFacilities';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '@/config/centralState';
 import { deleteCentralAccount, signOutCentral } from '@/config/centralSession';
 import { beginOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment, clearPendingEnrollment } from '@/config/supabaseConfig';
-import { logout } from '@/store/slices/authSlice';
+import { deleteAccount, logout } from '@/store/slices/authSlice';
 import { queryClient } from '@/lib/queryClient';
 
 const mockEvents: string[] = [];
@@ -33,7 +33,10 @@ jest.mock('@/config/centralSession', () => ({
   signOutCentral: jest.fn(async () => { mockEvents.push('central sign-out'); }),
   deleteCentralAccount: jest.fn(),
 }));
-jest.mock('@/store/slices/authSlice', () => ({ logout: jest.fn((options?: unknown) => ({ type: 'test/logout', options })) }));
+jest.mock('@/store/slices/authSlice', () => ({
+  logout: jest.fn((options?: unknown) => ({ type: 'test/logout', options })),
+  deleteAccount: jest.fn(() => ({ type: 'test/deleteAccount' })),
+}));
 jest.mock('@/store/sessionScopedState', () => ({
   clearSessionScopedState: jest.fn(async () => { mockEvents.push('clear session state'); }),
 }));
@@ -43,7 +46,13 @@ jest.mock('@/services/configService', () => ({
 }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: jest.fn(() => 0) } }));
 
-const dispatch = jest.fn((action: { type: string }) => ({ unwrap: async () => { mockEvents.push(action.type === 'test/logout' ? 'logout' : action.type); } }));
+const dispatch = jest.fn((action: { type: string }) => ({
+  unwrap: async () => {
+    if (action.type === 'test/deleteAccount' && mockDeleteFails) throw 'Couldn\'t delete your account.';
+    mockEvents.push(action.type === 'test/logout' ? 'logout' : action.type === 'test/deleteAccount' ? 'delete facility account' : action.type);
+  },
+}));
+let mockDeleteFails = false;
 const facility = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
 
 beforeEach(async () => {
@@ -56,6 +65,7 @@ beforeEach(async () => {
   jest.mocked(beginOperatorSwitch).mockImplementation(() => { mockEvents.push('begin switch'); return true; });
   jest.mocked(queryClient.isMutating).mockReturnValue(0);
   jest.mocked(getPendingEnrollmentToken).mockResolvedValue(null);
+  mockDeleteFails = false;
 });
 
 describe('Switch facility', () => {
@@ -127,24 +137,80 @@ describe('Sign out on My facilities', () => {
 });
 
 describe('Delete my account', () => {
-  it('deletes the person centrally, then removes that person\'s list and the facility session from the device', async () => {
+  it('leaves the facility, deletes the person centrally, then removes that person\'s list from the device', async () => {
     await addMyFacility('asha', { origin: facility.origin, name: 'North Cold Store' });
     await addMyFacility('bhavin', { origin: facility.origin, name: 'North Cold Store' });
     jest.mocked(deleteCentralAccount).mockImplementation(async () => { mockEvents.push('central delete'); return { ok: true, userId: 'asha' }; });
     expect(await deleteAccountEverywhere(dispatch)).toEqual({ ok: true });
-    expect(mockEvents).toEqual(['central delete', 'begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch']);
+    expect(mockEvents).toEqual(['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch', 'central delete']);
     expect(await loadMyFacilities('asha')).toEqual([]);
     expect(await AsyncStorage.getItem('central_facilities_v1:asha')).toBeNull();
     expect(await loadMyFacilities('bhavin')).toHaveLength(1);
   });
 
-  it('changes nothing on the device when the association could not delete the account', async () => {
+  it('keeps the list and the central sign-in when the association could not delete the account', async () => {
     await addMyFacility('asha', { origin: facility.origin, name: 'North Cold Store' });
     const failure = { ok: false as const, code: 'network' as const, message: "Couldn't reach the association's sign-in service. Check your connection and try again." };
     jest.mocked(deleteCentralAccount).mockResolvedValue(failure);
     expect(await deleteAccountEverywhere(dispatch)).toEqual({ ok: false, reason: 'central', failure });
     expect(await loadMyFacilities('asha')).toHaveLength(1);
-    expect(dispatch).not.toHaveBeenCalled();
+    expect(getCentralState().status).toBe('signedIn');
+  });
+
+  it('is refused while a write is in flight, and deletes nothing', async () => {
+    jest.mocked(queryClient.isMutating).mockReturnValue(1);
+    expect(await deleteAccountEverywhere(dispatch)).toEqual({ ok: false, reason: 'busy' });
+    expect(deleteCentralAccount).not.toHaveBeenCalled();
     expect(mockActive).toBe(facility);
+  });
+});
+
+describe('Delete account inside a facility (Settings, central login on)', () => {
+  beforeEach(async () => {
+    await addMyFacility('asha', { origin: facility.origin, name: 'North Cold Store' });
+    await addMyFacility('asha', { origin: 'https://south-cold.example.test', name: 'South Cold Store' });
+    // A cold start that skipped the list: the one chance to open a facility without a tap is unspent.
+    setCentralState({ autoOpenSpent: false });
+  });
+
+  it('deletes the profile there, takes the facility off the list and leaves without revoking anything', async () => {
+    await deleteFacilityAccount(dispatch);
+    expect(deleteAccount).toHaveBeenCalledTimes(1);
+    expect(mockEvents).toEqual(['delete facility account', 'begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch']);
+    expect(logout).toHaveBeenCalledWith({ localOnly: true });
+    expect((await loadMyFacilities('asha')).map(entry => entry.origin)).toEqual(['https://south-cold.example.test']);
+    expect(getCentralState().status).toBe('signedIn');
+  });
+
+  it('cannot lead to a new access request: the list no longer names the facility and the start-up skip is spent before the server is cleared', async () => {
+    // Only this facility, approved: before the deletion My facilities would open it without a tap.
+    await AsyncStorage.clear();
+    await addMyFacility('asha', { origin: facility.origin, name: 'North Cold Store' });
+    const { updateMyFacility } = jest.requireActual('@/config/centralFacilities');
+    await updateMyFacility('asha', facility.origin, { status: 'approved' });
+    expect(soleApprovedFacility(await loadMyFacilities('asha'))?.origin).toBe(facility.origin);
+
+    let spentWhenServerCleared: boolean | undefined;
+    let listWhenServerCleared: string[] | undefined;
+    const { clearOperatorServer } = jest.requireMock('@/config/operatorServer');
+    jest.mocked(clearOperatorServer as () => Promise<void>).mockImplementationOnce(async () => {
+      spentWhenServerCleared = getCentralState().autoOpenSpent;
+      listWhenServerCleared = (await loadMyFacilities('asha')).map(entry => entry.origin);
+      mockActive = null;
+      mockEvents.push('clear server');
+    });
+    await deleteFacilityAccount(dispatch);
+    // What My facilities sees the moment the route guard sends the person there:
+    expect(spentWhenServerCleared).toBe(true);
+    expect(listWhenServerCleared).toEqual([]);
+    expect(soleApprovedFacility(await loadMyFacilities('asha'))).toBeNull();
+  });
+
+  it('leaves everything in place when the facility refused the deletion', async () => {
+    mockDeleteFails = true;
+    await expect(deleteFacilityAccount(dispatch)).rejects.toBe("Couldn't delete your account.");
+    expect((await loadMyFacilities('asha'))).toHaveLength(2);
+    expect(mockActive).toBe(facility);
+    expect(mockEvents).toEqual([]);
   });
 });

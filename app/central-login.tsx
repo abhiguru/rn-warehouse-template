@@ -6,19 +6,16 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PhoneSignInForm, isValidMobile, toInternationalMobile } from '@/components/auth/PhoneSignInForm';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
 import { setCentralState } from '@/config/centralState';
 import { requestCentralCode } from '@/config/centralSession';
-import { getCentralLoginConfig, TERMS_VERSION } from '@/config/envConfig';
+import { getCentralLoginConfig } from '@/config/envConfig';
+import { hasAcceptedTerms } from '@/config/centralTerms';
 import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
-
-/** The terms version this phone last signed in under; no tick is asked for again until it changes. */
-export const CENTRAL_TERMS_KEY = 'central_terms_accepted_v1';
 
 export default function CentralLoginScreen() {
   const central = useCentralState();
@@ -41,18 +38,17 @@ export default function CentralLoginScreen() {
   }, [draftKey]);
 
   const [busy, setBusy] = useState(false);
-  // First sign-in on this phone: the terms are accepted with a tick.
+  // The first sign-in of a NUMBER on this phone: the terms are accepted with a tick.
+  // The box is shown until the typed number is one that has accepted them before.
   const [termsNeeded, setTermsNeeded] = useState(true);
   const [termsAccepted, setTermsAccepted] = useState(false);
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(CENTRAL_TERMS_KEY)
-      .then(version => {
-        if (active && version === TERMS_VERSION) setTermsNeeded(false);
-      })
-      .catch(() => {});
+    void hasAcceptedTerms(phoneNumber).then(accepted => {
+      if (active) setTermsNeeded(!accepted);
+    });
     return () => { active = false; };
-  }, []);
+  }, [phoneNumber]);
 
   // A session the service ended is explained once.
   const endedMessage = central.endedMessage;

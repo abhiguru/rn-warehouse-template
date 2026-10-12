@@ -6,18 +6,17 @@
  */
 import React, { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
 import { setCentralState } from '@/config/centralState';
 import { requestCentralCode, verifyCentralCode } from '@/config/centralSession';
 import { TERMS_VERSION } from '@/config/envConfig';
+import { recordTermsAccepted } from '@/config/centralTerms';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft } from '@/utils/signInDraft';
-import { CENTRAL_TERMS_KEY } from './central-login';
 
 export default function CentralOtpScreen() {
   const phoneNumber = useCentralState().signInPhone ?? '';
@@ -38,8 +37,8 @@ export default function CentralOtpScreen() {
       const result = await verifyCentralCode(phoneNumber, code, TERMS_VERSION);
       if (result.ok) {
         clearSignInDraft();
-        // The terms were accepted for this sign-in; the tick is not asked for again on this phone.
-        await AsyncStorage.setItem(CENTRAL_TERMS_KEY, TERMS_VERSION).catch(() => {});
+        // The terms were accepted for this number; the tick is not asked of it again on this phone.
+        await recordTermsAccepted(phoneNumber);
         // A new sign-in is a start: one approved facility is opened without showing the list.
         setCentralState({ autoOpenSpent: false });
         router.replace('/facilities');
