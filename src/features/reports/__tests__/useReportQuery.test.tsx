@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSessionIdentity } from '@/config/supabaseConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { queryClient } from '@/lib/queryClient';
+import { ACCESS_REFUSED_CODE } from '@/utils/rpcRefusal';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries as settle } from '@/tests/helpers/reportQueries';
 import { useReportQuery, type ReportQuery, type ReportServiceResult } from '../useReportQuery';
 import { readReportCache, writeReportCache } from '../reportCache';
@@ -338,6 +339,19 @@ describe('a refusal', () => {
     expect(probe.query()).toMatchObject({ phase: 'ready', data: other, updatedAt: keptAt, isFetching: true });
     await probe.answer(1, rows('fresh GRN B0021'));
     expect(probe.query()).toMatchObject({ phase: 'ready', data: { rows: ['fresh GRN B0021'] } });
+  });
+
+  it('is recognised by its code when the message is in Gujarati and the server sent no code', async () => {
+    signIn();
+    await keep();
+    const probe = setup('a');
+    await probe.run(() => {});
+    // As refusedReport answers in Gujarati: the app's own sentence, and the code it gives an access refusal.
+    const message = 'તમને આ કામ કરવાની પરવાનગી નથી.';
+    await probe.answer(0, { success: false, message, error: ACCESS_REFUSED_CODE });
+    expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, updatedAt: undefined, error: message });
+    expect(await readReportCache(['test', 'a'])).toBeNull();
+    expect(await storedKeys()).toEqual([]);
   });
 
   it('is told apart from a plain failure, which keeps the kept answer beside the error', async () => {

@@ -3,7 +3,8 @@
  * search field, the sort sheet and the end of the list are worked as a person
  * would, and what reaches the server is read where it leaves the app, as the
  * parameters of get_item_wise_stock_list. Only the server (the RPC), the GRN
- * drill-down service and the router are stand-ins.
+ * drill-down service, the report PDF service, the share sheet, the alert and
+ * the router are stand-ins.
  *
  * The server is played by `facility`: a backend with migration 52 searches,
  * sorts, pages and totals; one without it refuses p_sort_by and p_sort_order
@@ -16,15 +17,20 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import { StockItemCard } from '@/components/reports/StockItemCard';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { getAllGRNItems } from '@/services/grn-service';
+import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { forgetItemSortSupport } from '@/services/stock-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
-import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
+import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { showAlert } from '@/utils/alert';
+import { downloadAndSharePDF } from '@/utils/shareDocument';
 import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
 
 let mockStore: Store;
+let mockParams: Record<string, string> = {};
 // The app's hooks reading the test's store, as in GRNActivityFlow.test.tsx.
 jest.mock('@/store/hooks', () => {
   const { useRef, useSyncExternalStore } = jest.requireActual('react');
@@ -46,7 +52,7 @@ jest.mock('@/store/hooks', () => {
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
   router: { push: jest.fn(), back: jest.fn() },
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
@@ -58,6 +64,9 @@ jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(),
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } }, forceLogoutOnInvalidToken: jest.fn() }));
 jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCustomerGRNItems: jest.fn() }));
+jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
+jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
@@ -66,6 +75,9 @@ jest.mock('@/utils/logger', () => {
 const STAFF = { userProfile: { id: 'user-a', name: 'Asha Example', role: 'staff' } };
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 const grnItems = jest.mocked(getAllGRNItems);
+const makePdf = jest.mocked(generateReportPDF);
+const sharePdf = jest.mocked(downloadAndSharePDF);
+const alert = jest.mocked(showAlert);
 
 // ---------------------------------------------------------------------------
 // The facility
@@ -175,6 +187,9 @@ beforeEach(() => {
   forgetQueries();
   forgetItemSortSupport();
   jest.clearAllMocks();
+  mockParams = {};
+  resetReportExportAvailability();
+  sharePdf.mockResolvedValue({ success: true });
   rpc.mockReset();
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
 });
@@ -210,7 +225,13 @@ async function open(store: Store = makeStore()) {
     tree,
     texts,
     store,
+    control,
     press: (label: string) => run(() => control(label).props.onPress()),
+    has: (label: string) => tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function').length > 0,
+    bold: () =>
+      tree.root
+        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
+        .map(node => [node.props.children].flat().join('')),
     /** Item names in the order the rows show them. */
     items: () => tree.root.findAllByType(StockItemCard).map(card => card.props.name as string),
     status: () => texts().find(text => text.includes('Last updated')),
@@ -400,5 +421,88 @@ describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => 
       .map(node => (StyleSheet.flatten(typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style) ?? {}).backgroundColor);
     expect(backgrounds).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle]));
     expect(screen.texts()).toEqual(expect.arrayContaining(['Item stock summary', 'All customers', 'Example Item 001', 'Show more items']));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The report PDF
+// ---------------------------------------------------------------------------
+
+const PDF_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/report/r.pdf?token=fictional';
+const NOT_AVAILABLE = 'This report is not available to your account as a PDF.';
+const NEEDS_UPDATE = "This facility's server needs an update before reports can be shared as PDF.";
+
+/**
+ * The header's export action sends exactly `request` (a field it leaves out is
+ * not sent at all) and is busy until the file is shared under `filename`; a
+ * 403 is said in an alert and the action stays; a server without report PDFs
+ * is said once and the action goes.
+ */
+async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+  let answer!: (result: ReportPdfResult) => void;
+  makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+  await screen.press(label);
+  expect(makePdf.mock.calls).toEqual([[request]]);
+  for (const field of ['customer_id', 'from', 'to', 'sort']) {
+    if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
+  }
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(sharePdf).not.toHaveBeenCalled();
+  await act(async () => {
+    answer({ success: true, pdfUrl: PDF_URL });
+    await settleQueries();
+  });
+  expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(alert).not.toHaveBeenCalled();
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
+  await screen.press(label);
+  expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
+  expect(sharePdf).toHaveBeenCalledTimes(1);
+  expect(screen.has(label)).toBe(true);
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
+  await screen.press(label);
+  expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
+  expect(screen.has(label)).toBe(false);
+}
+
+describe('the report PDF (backend with migration 52)', () => {
+  it('every customer: shares the sort on screen as the PDF names it, with no customer and no dates', async () => {
+    serve(facility(FEW, { sorts: true }));
+    const screen = await open();
+    await screen.press('Sorted by Item, A to Z. Change sort');
+    await screen.press('Received quantity');
+    await screen.press('Highest first');
+    await screen.press('Done');
+    expect(screen.has('Sorted by Received quantity, highest first. Change sort')).toBe(true);
+    await sharesThePdf(screen, { report: 'item-stock-summary', sort: { field: 'received', order: 'desc' } }, 'Item_stock_summary_All.pdf');
+  });
+
+  it('one customer: shares that customer and the sort on screen, with no dates', async () => {
+    serve(facility(FEW, { sorts: true }));
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    const screen = await open();
+    expect(calls()).toEqual([page0({ p_customer_id: 'c2' })]);
+    await sharesThePdf(
+      screen,
+      { report: 'item-stock-summary', customer_id: 'c2', sort: { field: 'item', order: 'asc' } },
+      'Item_stock_summary_Green_Valley_Traders.pdf'
+    );
+  });
+});
+
+describe('the search words in bold', () => {
+  it('gives the item cards the search words, so the matching part of the item name is bold', async () => {
+    serve(facility(FEW, { sorts: true }));
+    const screen = await open();
+    expect(screen.bold()).toEqual([]);
+    await screen.type('ga', 'garlic');
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual(['Example Garlic']);
+    const [card] = screen.tree.root.findAllByType(StockItemCard);
+    expect(card.props.highlightWords).toEqual(['garlic']);
+    expect(screen.bold()).toEqual(['Garlic']);
   });
 });

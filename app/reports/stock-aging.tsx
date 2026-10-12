@@ -30,6 +30,7 @@ import {
   animateExpand,
   type AgingBucketId,
   type KPIItem,
+  type ReportHeaderAction,
 } from '@/components/reports';
 import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { StatusTag } from '@/components/ui';
@@ -46,11 +47,15 @@ import {
   type StockAgingGroup,
   type StockAgingLine,
 } from '@/features/filters/configs/reports/stockAging';
+import type { SortState } from '@/features/filters/types';
+import { reportById } from '@/features/reports/reportRegistry';
+import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
+import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/stock-aging-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -58,6 +63,27 @@ import type { AgingBucketData, AllStockAgingData, CustomerAgingSummary, StockAgi
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'stock-aging';
+
+// ============================================================================
+// The PDF (generate-report-pdf)
+// ============================================================================
+
+/**
+ * The PDF's column for each sort of the screen (backend report-definitions.ts).
+ * A sort the PDF has no column for is not sent: the PDF keeps its own order.
+ * The report is of today's stock: the PDF is asked for no dates.
+ */
+const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = { age: 'average_age', stock: 'stock', name: 'customer' };
+const PDF_SORT_ITEMS: Readonly<Record<string, string>> = { age: 'age', stock: 'stock', item: 'item' };
+
+function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
+  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
+  return { field: columns[sort.field], order: sort.order };
+}
+
+/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
+const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
+  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -192,6 +218,11 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const { data } = query;
   const rows = useMemo(() => stockAgingCustomersView(data?.by_customer ?? [], view), [data, view]);
   const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket), [data]);
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
@@ -203,6 +234,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     <ReportScaffold
       title={tr('reports.titles.stockAging')}
       subtitle={tr('reports.shared.allCustomers')}
+      actions={actions}
       filters={{ config: STOCK_AGING_CUSTOMERS, state: filters }}
       query={query}
       kpis={kpis}
@@ -289,9 +321,16 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const rows = useMemo(() => stockAgingItemsView(groups, view), [groups, view]);
   // The figures are the whole stock's, not what the search or the bucket leaves.
   const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket), [data]);
-  const actions = useMemo(
-    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
-    [onChangeCustomer]
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: pdfSort(view.sort, PDF_SORT_ITEMS) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...exportActions({ exportPdf, busy, available }),
+    ],
+    [onChangeCustomer, exportPdf, busy, available]
   );
 
   // Which items are open, and which lines of each: a line is one item on one GRN, so two

@@ -393,7 +393,8 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
   it('stock summary list', async () => {
     const tree = await render(brand, mode, <StockSummaryScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(tree.root.findAll(n => (n.type as unknown) === 'Icon' && n.props.name === 'file-pdf-box').map(n => n.props.color)).toEqual([t.brand.tint]);
+    // The header's stock PDF of every customer, and the one customer's share button.
+    expect(tree.root.findAll(n => (n.type as unknown) === 'Icon' && n.props.name === 'file-pdf-box').map(n => n.props.color)).toEqual([t.brand.tint, t.brand.tint]);
     // On the shared report layer: no period, the sort chip, and one card per customer with its share button.
     expect(texts(tree)).toEqual(expect.arrayContaining(['Stock summary', 'All customers', 'Stock', 'Patel Traders', '2 items · 1 GRN', '300']));
     expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Share PDF for Patel Traders' && typeof n.props.onPress === 'function')).not.toHaveLength(0);

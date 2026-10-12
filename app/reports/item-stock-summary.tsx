@@ -28,17 +28,22 @@ import {
   StockItemCard,
   isLowStock,
   type KPIItem,
+  type ReportHeaderAction,
   type StockGRNRowData,
   type StockGRNState,
 } from '@/components/reports';
 import { ReportLoadMoreFooter, type ReportLoadMoreState } from '@/components/reports/ReportLoadMoreFooter';
 import { ITEM_STOCK, itemStockFallbackView } from '@/features/filters/configs/reports/itemStock';
+import type { SortState } from '@/features/filters/types';
+import { reportById } from '@/features/reports/reportRegistry';
+import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { getAllGRNItems, getCustomerGRNItems, type GRNItem } from '@/services/grn-service';
+import type { ReportPdfSort } from '@/services/pdf-service';
 import { StockService } from '@/services/stock-service';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import type { ItemWiseStockItem } from '@/types/stock.types';
@@ -46,6 +51,19 @@ import type { ItemWiseStockItem } from '@/types/stock.types';
 const REPORT_ID = 'item-stock-summary';
 /** Items per page; the server allows more, the style guide asks for 25 to 50 (§13.6). */
 const ITEM_STOCK_PAGE_SIZE = 50;
+
+/**
+ * The PDF's column for each sort of the screen (backend report-definitions.ts;
+ * the screen's sorts are the list RPC's own names). A sort the PDF has no
+ * column for is not sent: the PDF keeps its own order. The report is of
+ * today's stock: the PDF is asked for no dates.
+ */
+const PDF_SORT_ITEMS: Readonly<Record<string, string>> = { item_name: 'item', total_stock: 'stock', total_qty: 'received', grn_count: 'grns' };
+
+function pdfSort(sort: SortState | undefined): ReportPdfSort | undefined {
+  if (!sort || !Object.prototype.hasOwnProperty.call(PDF_SORT_ITEMS, sort.field)) return undefined;
+  return { field: PDF_SORT_ITEMS[sort.field], order: sort.order };
+}
 
 type ItemPage = NonNullable<Awaited<ReturnType<typeof StockService.getItemWiseStockList>>['data']>;
 
@@ -76,6 +94,7 @@ export default function ItemStockSummaryScreen() {
         <ItemStockReport
           key={level.customerId}
           customerId={level.customerId}
+          customerName={level.customerName}
           subtitle={level.customerName || undefined}
           onChangeCustomer={scope.changeCustomer}
         />
@@ -125,11 +144,13 @@ const itemKey = (item: ItemWiseStockItem) => item.item_id;
 interface ItemStockReportProps {
   /** Left out for every customer. */
   customerId?: string;
+  /** The customer's name for the PDF's file name; left out for every customer. */
+  customerName?: string;
   subtitle?: string;
   onChangeCustomer?: () => void;
 }
 
-function ItemStockReport({ customerId, subtitle, onChangeCustomer }: ItemStockReportProps) {
+function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer }: ItemStockReportProps) {
   const styles = useThemedStyles(makeStyles);
   const filters = useReportFilters(ITEM_STOCK);
   const { view, server } = filters.request;
@@ -216,6 +237,7 @@ function ItemStockReport({ customerId, subtitle, onChangeCustomer }: ItemStockRe
     refreshFirst();
   }, [listId, refreshFirst]);
   const query = { ...first, refresh };
+  const extraData = useMemo(() => ({ drill, words: view.words }), [drill, view.words]);
 
   const renderRow = useCallback(
     (item: ItemWiseStockItem) => (
@@ -231,15 +253,25 @@ function ItemStockReport({ customerId, subtitle, onChangeCustomer }: ItemStockRe
         grns={drill.state(item.item_id)}
         emptyGRNsText={tr('reports.itemStockSummary.noGrnsInStock')}
         onOpenGRN={openGRN}
+        highlightWords={view.words}
         style={styles.card}
       />
     ),
-    [drill, styles]
+    [drill, styles, view.words]
   );
 
-  const actions = useMemo(
-    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
-    [onChangeCustomer]
+  // The PDF is of the whole list in the chosen order (the server does not search it).
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, ...(customerId ? { customer_id: customerId } : {}), sort: pdfSort(view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      // Left out once the facility's server has said it cannot make report PDFs.
+      ...(available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : []),
+    ],
+    [onChangeCustomer, available, busy, exportPdf]
   );
 
   return (
@@ -254,7 +286,7 @@ function ItemStockReport({ customerId, subtitle, onChangeCustomer }: ItemStockRe
       rows={rows}
       renderRow={renderRow}
       keyExtractor={itemKey}
-      extraData={drill}
+      extraData={extraData}
       onEndReached={loadMore}
       footer={
         <ReportLoadMoreFooter

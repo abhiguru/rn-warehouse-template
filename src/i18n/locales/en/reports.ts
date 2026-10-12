@@ -365,6 +365,8 @@ export const reports = {
   // Report PDFs (generateReportPDF in src/services/pdf-service.ts, useReportExport).
   // Connection: common.checkConnection; session ended: errors.code.sessionExpired.
   export: {
+    /** The header action of a report screen that shares what it shows as a PDF. */
+    sharePdf: 'Share PDF',
     failedTitle: "Couldn't create the PDF",
     shareFailedTitle: "Couldn't share the PDF",
     notAvailable: 'This report is not available to your account as a PDF.',

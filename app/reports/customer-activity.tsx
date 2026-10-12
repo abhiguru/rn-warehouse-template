@@ -29,6 +29,7 @@ import {
   ReportScaffold,
   agingBucketsFrom,
   type KPIItem,
+  type ReportHeaderAction,
 } from '@/components/reports';
 import { StockTrendChart } from '@/components/reports/StockTrendChart';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -39,12 +40,16 @@ import {
   customerActivityCustomersView,
 } from '@/features/filters/configs/reports/customerActivity';
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports/shared';
+import type { SortState } from '@/features/filters/types';
+import { reportById } from '@/features/reports/reportRegistry';
+import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier, type TranslationKey } from '@/i18n';
+import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllCustomerActivity, getCustomerActivityDetail } from '@/services/reporting/customer-activity-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -52,6 +57,31 @@ import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActiv
 import { formatCount, formatCurrency, formatDate, formatNumber, toDate } from '@/utils/formatters';
 
 const REPORT_ID = 'customer-activity';
+
+// ============================================================================
+// The PDF (generate-report-pdf)
+// ============================================================================
+
+/**
+ * The PDF's column for each sort of the customers list (backend
+ * report-definitions.ts). A sort the PDF has no column for is not sent: the
+ * PDF keeps its own order. One customer's dashboard has no sort.
+ */
+const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = {
+  lastActive: 'last_activity',
+  stock: 'stock',
+  invoiced: 'amount',
+  name: 'customer',
+};
+
+function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
+  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
+  return { field: columns[sort.field], order: sort.order };
+}
+
+/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
+const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
+  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -187,6 +217,12 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     [data]
   );
 
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
     (customer: CustomerActivityRow) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
@@ -197,6 +233,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     <ReportScaffold
       title={tr('reports.titles.customerActivity')}
       subtitle={tr('reports.customerActivity.allCustomers')}
+      actions={actions}
       filters={{ config: CUSTOMER_ACTIVITY_CUSTOMERS, state: filters }}
       query={query}
       kpis={kpis}
@@ -312,9 +349,16 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
     [data]
   );
   const rows = data && hasActivity(data) ? DASHBOARD_ROWS : NO_ROWS;
-  const actions = useMemo(
-    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
-    [onChangeCustomer]
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, from: period.from, to: period.to }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName: name }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...exportActions({ exportPdf, busy, available }),
+    ],
+    [onChangeCustomer, exportPdf, busy, available]
   );
 
   // A quick-access card opens its report for this customer, as a customers list opens one:

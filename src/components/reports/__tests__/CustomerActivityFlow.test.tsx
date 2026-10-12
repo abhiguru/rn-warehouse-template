@@ -16,6 +16,10 @@ import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
 import { BRANDS, fontWeight, getTokens, touchTarget, type Brand, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { resetReportExportAvailability } from '@/features/reports/useReportExport';
+import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
+import { showAlert } from '@/utils/alert';
+import { downloadAndSharePDF } from '@/utils/shareDocument';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
 
 const mockPush = jest.fn();
@@ -56,10 +60,20 @@ jest.mock('@/config/operatorServer', () => ({
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } } }));
+jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
+jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/logger', () => {
+  const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+  return { createLogger: () => log };
+});
 jest.mock('@/services/reporting/customer-activity-service', () => ({ getAllCustomerActivity: jest.fn(), getCustomerActivityDetail: jest.fn() }));
 
 const allActivity = jest.mocked(getAllCustomerActivity);
 const detail = jest.mocked(getCustomerActivityDetail);
+const makePdf = jest.mocked(generateReportPDF);
+const sharePdf = jest.mocked(downloadAndSharePDF);
+const alert = jest.mocked(showAlert);
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 const STAFF = { userProfile: { id: 'user-a', name: 'Asha Example', role: 'staff' } };
 
@@ -156,6 +170,8 @@ beforeEach(() => {
   });
   forgetQueries();
   jest.clearAllMocks();
+  resetReportExportAvailability();
+  sharePdf.mockResolvedValue({ success: true });
   mockParams = {};
   allActivity.mockImplementation(async ({ fromDate } = {}) => answerCustomers((fromDate ?? '') < '2026-06-15' ? [...CUSTOMERS, OLD_MILL] : CUSTOMERS) as never);
   detail.mockResolvedValue(answerDetail() as never);
@@ -194,6 +210,7 @@ async function open(store: Store) {
     tree,
     texts,
     controls,
+    control,
     press: (label: string) => run(() => control(label).props.onPress()),
     pressStarting: (start: string) => run(() => controls(text => text.startsWith(start))[0].props.onPress()),
     has: (label: string) => controls(text => text === label).length > 0,
@@ -469,5 +486,74 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(chart.props.yAxisTextStyle.color).toBe(t.text.secondary);
     await screen.pressStarting('Stock level trend. ');
     expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.brand.fill, t.surface.header]));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The report PDF
+// ---------------------------------------------------------------------------
+
+const PDF_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/report/r.pdf?token=fictional';
+const NOT_AVAILABLE = 'This report is not available to your account as a PDF.';
+const NEEDS_UPDATE = "This facility's server needs an update before reports can be shared as PDF.";
+
+/**
+ * The header's export action sends exactly `request` (a field it leaves out is
+ * not sent at all) and is busy until the file is shared under `filename`; a
+ * 403 is said in an alert and the action stays; a server without report PDFs
+ * is said once and the action goes.
+ */
+async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+  let answer!: (result: ReportPdfResult) => void;
+  makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+  await screen.press(label);
+  expect(makePdf.mock.calls).toEqual([[request]]);
+  for (const field of ['customer_id', 'from', 'to', 'sort']) {
+    if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
+  }
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(sharePdf).not.toHaveBeenCalled();
+  await act(async () => {
+    answer({ success: true, pdfUrl: PDF_URL });
+    await settleQueries();
+  });
+  expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(alert).not.toHaveBeenCalled();
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
+  await screen.press(label);
+  expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
+  expect(sharePdf).toHaveBeenCalledTimes(1);
+  expect(screen.has(label)).toBe(true);
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
+  await screen.press(label);
+  expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
+  expect(screen.has(label)).toBe(false);
+}
+
+describe('customer activity, the report PDF', () => {
+  it('every customer: shares the period and the sort on screen as the PDF names them, with no customer', async () => {
+    const screen = await open(makeStore());
+    // The screen's "Last active" is the PDF's last_activity column.
+    expect(screen.has('Sorted by Last active, newest first. Change sort')).toBe(true);
+    await sharesThePdf(
+      screen,
+      { report: 'customer-activity', from: '2026-06-15', to: '2026-10-12', sort: { field: 'last_activity', order: 'desc' } },
+      'Customer_activity_All_2026_06_15_to_2026_10_12.pdf'
+    );
+  });
+
+  it('one customer: shares that customer and the period, with no sort (the dashboard has none)', async () => {
+    openGreenValley();
+    const screen = await open(makeStore());
+    await screen.press('Period: Last 120 days. Change');
+    await screen.press('Last 240 days');
+    await sharesThePdf(
+      screen,
+      { report: 'customer-activity', customer_id: 'c2', from: '2026-02-15', to: '2026-10-12' },
+      'Customer_activity_Green_Valley_Traders_2026_02_15_to_2026_10_12.pdf'
+    );
   });
 });

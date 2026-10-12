@@ -144,6 +144,9 @@ describe('the period', () => {
     expect(screen.texts()).toEqual(
       expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Total weight', '5,400.50', 'Period averages', '2.5', '1', 'Recent activity'])
     );
+    // generate-report-pdf has no operations dashboard: the header offers no PDF.
+    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Share PDF')).toEqual([]);
+    expect(screen.tree.root.findAll(node => node.props.name === 'file-pdf-box')).toEqual([]);
   });
 
   it('with no activity in the period says so under the figures', async () => {

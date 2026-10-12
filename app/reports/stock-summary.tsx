@@ -1,6 +1,6 @@
 /**
  * Stock summary report (C1): today's stock, by customer and by item, with a
- * stock PDF to share.
+ * stock PDF to share (generate-report-pdf, through useReportExport).
  *
  * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportScope says
  * whose stock, useReportFilters holds the search and sort, useReportQuery the
@@ -10,7 +10,7 @@
  * header's agree.
  */
 
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -35,23 +35,22 @@ import {
   stockSummaryCustomersView,
   stockSummaryItemsView,
 } from '@/features/filters/configs/reports/stockSummary';
+import type { SortState } from '@/features/filters/types';
+import { reportById } from '@/features/reports/reportRegistry';
+import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { generateCustomerStockPDF } from '@/services/pdf-service';
+import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllStockSummary, getCustomerStockSummary } from '@/services/reporting';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllStockSummaryData, CustomerStockRow, StockItemSummary, StockSummaryData } from '@/types/report.types';
-import { showAlert } from '@/utils/alert';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
-import { createLogger } from '@/utils/logger';
-import { downloadAndSharePDF } from '@/utils/shareDocument';
 
 const REPORT_ID = 'stock-summary';
-const logger = createLogger('StockSummary');
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -146,58 +145,21 @@ function NoCustomer() {
 // ============================================================================
 
 /**
- * "Stock_<name>.pdf". Letters (with their vowel signs) and digits of any script
- * are kept, so a Gujarati name stays a name; anything else becomes "_". A name
- * with nothing left gives the first 8 characters of the customer id instead.
+ * The PDF's column for each sort of the screen (backend report-definitions.ts).
+ * A sort the PDF has no column for is not sent: the PDF keeps its own order.
+ * The report is of today's stock: the PDF is asked for no dates.
  */
-const stockPdfFilename = (customerName: string, customerId: string): string => {
-  const name = (customerName ?? '').replace(/[^\p{L}\p{M}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '');
-  return `Stock_${name || customerId.slice(0, 8)}.pdf`;
-};
+const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = { stock: 'stock', items: 'items', grns: 'grns', name: 'customer' };
+const PDF_SORT_ITEMS: Readonly<Record<string, string>> = { stock: 'stock', name: 'item' };
 
-/**
- * Shares a customer's stock PDF. Each customer has its own busy state: a second
- * tap for a customer whose PDF is on its way is ignored, and one export ending
- * does not clear another's. A failure is said in an alert, not only logged.
- */
-function useStockPdf() {
-  const inFlight = useRef(new Set<string>());
-  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
-  const mark = useCallback((customerId: string, on: boolean) => {
-    if (on) inFlight.current.add(customerId);
-    else inFlight.current.delete(customerId);
-    setBusy(new Set(inFlight.current));
-  }, []);
-
-  const share = useCallback(
-    async (customerId: string, customerName: string) => {
-      if (!customerId || inFlight.current.has(customerId)) return;
-      mark(customerId, true);
-      try {
-        const result = await generateCustomerStockPDF(customerId);
-        if (!result.success || !result.pdfUrl) {
-          logger.warn('Stock PDF was not created');
-          showAlert(tr('reports.stockSummary.pdfErrorTitle'), tr('common.checkConnection'));
-          return;
-        }
-        const shared = await downloadAndSharePDF(result.pdfUrl, stockPdfFilename(customerName, customerId));
-        if (!shared.success) {
-          logger.warn('Stock PDF was not shared');
-          // The share helper's reasons are already in the app's language.
-          showAlert(tr('reports.stockSummary.shareErrorTitle'), shared.error || tr('common.checkConnection'));
-        }
-      } catch (error) {
-        logger.error('Stock PDF failed', error);
-        showAlert(tr('reports.stockSummary.pdfErrorTitle'), tr('common.checkConnection'));
-      } finally {
-        mark(customerId, false);
-      }
-    },
-    [mark]
-  );
-
-  return { busy, share };
+function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
+  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
+  return { field: columns[sort.field], order: sort.order };
 }
+
+/** The header's stock PDF action, left out once the facility's server has said it cannot make report PDFs. */
+const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
+  available ? [{ icon: 'file-pdf-box', label: tr('reports.stockSummary.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 // ============================================================================
 // Every customer
@@ -224,26 +186,23 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     [data]
   );
 
-  const pdf = useStockPdf();
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
-    (customer: CustomerStockRow) => (
-      <CustomerRow
-        customer={customer}
-        words={view.words}
-        onOpen={openCustomer}
-        onShare={pdf.share}
-        isSharing={pdf.busy.has(customer.customer_id)}
-      />
-    ),
-    [view.words, openCustomer, pdf.share, pdf.busy]
+    (customer: CustomerStockRow) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
+    [view.words, openCustomer]
   );
-  const extraData = useMemo(() => ({ words: view.words, busy: pdf.busy }), [view.words, pdf.busy]);
 
   return (
     <ReportScaffold
       title={tr('reports.titles.stockSummary')}
       subtitle={tr('reports.shared.allCustomers')}
+      actions={actions}
       filters={{ config: STOCK_SUMMARY_CUSTOMERS, state: filters }}
       query={query}
       kpis={kpis}
@@ -251,7 +210,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       rows={rows}
       renderRow={renderRow}
       keyExtractor={customerKey}
-      extraData={extraData}
+      extraData={view.words}
       noun="customers"
       empty={{ icon: 'package-variant-closed', title: tr('reports.shared.noStockYet'), description: tr('reports.shared.noStockYetDescription') }}
       errorTitle={tr('reports.stockSummary.errorTitle')}
@@ -267,12 +226,29 @@ interface CustomerRowProps {
   customer: CustomerStockRow;
   words: string[];
   onOpen: (customer: ReportCustomerRef) => void;
-  onShare: (customerId: string, customerName: string) => void;
-  isSharing: boolean;
 }
 
-const CustomerRow = memo(function CustomerRow({ customer, words, onOpen, onShare, isSharing }: CustomerRowProps) {
+/**
+ * Keyed by the customer: a list cell drawn again for another customer gets a
+ * row of its own, so one customer's PDF on its way never shows as another's.
+ */
+const CustomerRow = memo(function CustomerRow(props: CustomerRowProps) {
+  return <CustomerStockRowCard key={props.customer.customer_id} {...props} />;
+});
+
+/**
+ * A customer's row and its share button. Each row has its own export, so each
+ * has its own busy state: a second tap while its PDF is on its way is ignored,
+ * and one export ending does not clear another's. The PDF is that customer's
+ * stock summary, in the PDF's own order.
+ */
+function CustomerStockRowCard({ customer, words, onOpen }: CustomerRowProps) {
   const styles = useThemedStyles(makeStyles);
+  const { customer_id: customerId, customer_name: customerName } = customer;
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => (customerId ? { report: REPORT_ID, customer_id: customerId } : null),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
@@ -284,14 +260,14 @@ const CustomerRow = memo(function CustomerRow({ customer, words, onOpen, onShare
           value={customer.total_stock}
           valueLabel={tr('reports.shared.units')}
           onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
-          onShare={() => onShare(customer.customer_id, customer.customer_name)}
-          isSharing={isSharing}
+          onShare={available ? () => void exportPdf() : undefined}
+          isSharing={busy}
           accessibilityHint={tr('reports.stockSummary.opensCustomerHint')}
         />
       </View>
     </View>
   );
-});
+}
 
 // ============================================================================
 // One customer's items
@@ -343,15 +319,16 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggleItem = useCallback((itemId: string) => setOpen(ids => toggled(ids, itemId)), []);
 
-  const pdf = useStockPdf();
-  const { share } = pdf;
-  const sharing = pdf.busy.has(customerId);
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: pdfSort(view.sort, PDF_SORT_ITEMS) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      { icon: 'file-pdf-box', label: tr('reports.stockSummary.sharePdf'), busy: sharing, onPress: () => share(customerId, customerName) },
+      ...exportActions({ exportPdf, busy, available }),
     ],
-    [onChangeCustomer, sharing, share, customerId, customerName]
+    [onChangeCustomer, exportPdf, busy, available]
   );
   const oldest = data?.summary.oldest_stock_date;
   const subtitle = customerName || (oldest ? tr('reports.stockSummary.oldestStock', { date: formatDate(oldest) }) : undefined);

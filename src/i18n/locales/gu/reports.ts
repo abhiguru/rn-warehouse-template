@@ -358,6 +358,7 @@ export const reports: Translation<typeof source> = {
     },
   },
   export: {
+    sharePdf: 'PDF શેર કરો',
     failedTitle: 'PDF બનાવી શકાઈ નથી',
     shareFailedTitle: 'PDF શેર કરી શકાઈ નથી',
     notAvailable: 'આ અહેવાલની PDF તમારા ખાતા માટે ઉપલબ્ધ નથી.',

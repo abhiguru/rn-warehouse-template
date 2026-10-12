@@ -20,6 +20,10 @@ import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
 import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { resetReportExportAvailability } from '@/features/reports/useReportExport';
+import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
+import { showAlert } from '@/utils/alert';
+import { downloadAndSharePDF } from '@/utils/shareDocument';
 import StockAgingScreen from '../../../../app/reports/stock-aging';
 
 const mockPush = jest.fn();
@@ -59,10 +63,20 @@ jest.mock('@/config/operatorServer', () => ({
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } } }));
+jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
+jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/logger', () => {
+  const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+  return { createLogger: () => log };
+});
 jest.mock('@/services/reporting/stock-aging-service', () => ({ getAllStockAging: jest.fn(), getCustomerStockAging: jest.fn() }));
 
 const allAging = jest.mocked(getAllStockAging);
 const customerAging = jest.mocked(getCustomerStockAging);
+const makePdf = jest.mocked(generateReportPDF);
+const sharePdf = jest.mocked(downloadAndSharePDF);
+const alert = jest.mocked(showAlert);
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 const STAFF = { userProfile: { id: 'user-a', name: 'Asha Example', role: 'staff' } };
 
@@ -182,6 +196,8 @@ beforeEach(() => {
   });
   forgetQueries();
   jest.clearAllMocks();
+  resetReportExportAvailability();
+  sharePdf.mockResolvedValue({ success: true });
   mockParams = {};
   allAging.mockResolvedValue(answerCustomers as never);
   customerAging.mockResolvedValue(answerLines as never);
@@ -220,6 +236,7 @@ async function open(store: Store) {
   return {
     tree,
     texts,
+    control,
     press: (label: string) => run(() => control(label).props.onPress()),
     pressStarting: (start: string, index = 0) => run(() => controls(text => text.startsWith(start))[index].props.onPress()),
     has: (label: string) => controls(text => text === label).length > 0,
@@ -511,5 +528,72 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     await screen.pressStarting('GRN A0010, ');
     expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.negative.background]));
     expect(screen.lines()).toEqual(['GRN A0010 (open)', 'GRN A0011']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The report PDF
+// ---------------------------------------------------------------------------
+
+const PDF_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/report/r.pdf?token=fictional';
+const NOT_AVAILABLE = 'This report is not available to your account as a PDF.';
+const NEEDS_UPDATE = "This facility's server needs an update before reports can be shared as PDF.";
+
+/**
+ * The header's export action sends exactly `request` (a field it leaves out is
+ * not sent at all) and is busy until the file is shared under `filename`; a
+ * 403 is said in an alert and the action stays; a server without report PDFs
+ * is said once and the action goes.
+ */
+async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+  let answer!: (result: ReportPdfResult) => void;
+  makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+  await screen.press(label);
+  expect(makePdf.mock.calls).toEqual([[request]]);
+  for (const field of ['customer_id', 'from', 'to', 'sort']) {
+    if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
+  }
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(sharePdf).not.toHaveBeenCalled();
+  await act(async () => {
+    answer({ success: true, pdfUrl: PDF_URL });
+    await settleQueries();
+  });
+  expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(alert).not.toHaveBeenCalled();
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
+  await screen.press(label);
+  expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
+  expect(sharePdf).toHaveBeenCalledTimes(1);
+  expect(screen.has(label)).toBe(true);
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
+  await screen.press(label);
+  expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
+  expect(screen.has(label)).toBe(false);
+}
+
+describe('stock aging, the report PDF', () => {
+  it('every customer: shares the sort on screen as the PDF names it, with no customer and no dates', async () => {
+    const screen = await open(makeStore());
+    await screen.press('Sorted by Average age, highest first. Change sort');
+    await screen.press('Customer');
+    await screen.press('Done');
+    expect(screen.has('Sorted by Customer, Z to A. Change sort')).toBe(true);
+    await sharesThePdf(screen, { report: 'stock-aging', sort: { field: 'customer', order: 'desc' } }, 'Stock_aging_All.pdf');
+  });
+
+  it('one customer: shares that customer and the sort on screen, with no dates', async () => {
+    openGreenValley();
+    const screen = await open(makeStore());
+    // The screen's "Age" is the PDF's age column.
+    expect(screen.has('Sorted by Age, highest first. Change sort')).toBe(true);
+    await sharesThePdf(
+      screen,
+      { report: 'stock-aging', customer_id: 'c2', sort: { field: 'age', order: 'desc' } },
+      'Stock_aging_Green_Valley_Traders.pdf'
+    );
   });
 });

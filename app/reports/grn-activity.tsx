@@ -21,6 +21,7 @@ import {
   ReportLastCustomer,
   ReportScaffold,
   type KPIItem,
+  type ReportHeaderAction,
 } from '@/components/reports';
 import { StatusTag } from '@/components/ui';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -32,11 +33,15 @@ import {
   isLongestPeriod,
   type ReportPeriod,
 } from '@/features/filters/configs/reports';
+import type { SortState } from '@/features/filters/types';
+import { reportById } from '@/features/reports/reportRegistry';
+import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
+import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/grn-activity-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
@@ -44,6 +49,26 @@ import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivi
 import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
 
 const REPORT_ID = 'grn-activity';
+
+// ============================================================================
+// The PDF (generate-report-pdf)
+// ============================================================================
+
+/**
+ * The PDF's column for each sort of the screen (backend report-definitions.ts).
+ * A sort the PDF has no column for is not sent: the PDF keeps its own order.
+ */
+const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = { bags: 'quantity', grns: 'grns', latest: 'latest', name: 'customer' };
+const PDF_SORT_GRNS: Readonly<Record<string, string>> = { date: 'date', number: 'gr_no', bags: 'quantity', stock: 'stock' };
+
+function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
+  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
+  return { field: columns[sort.field], order: sort.order };
+}
+
+/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
+const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
+  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -182,6 +207,12 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     [data]
   );
 
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
     (customer: CustomerGRNSummary) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
@@ -192,6 +223,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     <ReportScaffold
       title={tr('reports.titles.grnActivity')}
       subtitle={tr('reports.shared.allCustomers')}
+      actions={actions}
       filters={{ config: GRN_ACTIVITY_CUSTOMERS, state: filters }}
       query={query}
       kpis={kpis}
@@ -302,9 +334,22 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       ],
     [data]
   );
-  const actions = useMemo(
-    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
-    [onChangeCustomer]
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({
+      report: REPORT_ID,
+      customer_id: customerId,
+      from: period.from,
+      to: period.to,
+      sort: pdfSort(view.sort, PDF_SORT_GRNS),
+    }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...exportActions({ exportPdf, busy, available }),
+    ],
+    [onChangeCustomer, exportPdf, busy, available]
   );
 
   const renderRow = useCallback(

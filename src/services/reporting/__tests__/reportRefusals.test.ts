@@ -6,6 +6,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
+import { ACCESS_REFUSED_CODE, isAccessRefusal } from '@/utils/rpcRefusal';
 import { getCustomerStockSummary, getAllStockSummary } from '../stock-summary-service';
 import { getCustomerDispatchActivity, getAllDispatchActivity } from '../dispatch-activity-service';
 import { getOperationsDashboard } from '../operations-dashboard-service';
@@ -97,6 +98,24 @@ describe.each(calls)('%s', (_label, name, call) => {
     expect(result.message).toBe(t('errors.parsed.noPermission'));
   });
 
+  it('gives a refusal without a code one that says so, also when the message is in Gujarati', async () => {
+    setLanguage('gu');
+    answer({ success: false, error: 'Access denied: customer not accessible' });
+    const result = await call();
+    expect(result.message).toBe(t('errors.parsed.noPermission'));
+    expect(result.error).toBe(ACCESS_REFUSED_CODE);
+    // What useReportQuery reads: the code, not the words shown.
+    expect(isAccessRefusal({ code: result.error, text: result.message })).toBe(true);
+  });
+
+  it('does not give a server failure the refusal code', async () => {
+    answer({ success: false, error: 'Failed to retrieve report: division by zero' });
+    const result = await call();
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('REPORT_REFUSED');
+    expect(isAccessRefusal({ code: result.error, text: result.message })).toBe(false);
+  });
+
   it('does not log the answer or the request', async () => {
     answer({ success: true, data: { summary: {}, customers: [{ customer_name: 'Example Traders' }] } });
     await call();
@@ -124,6 +143,14 @@ describe('Operations Dashboard', () => {
       error: 'STAFF_ONLY',
       message: t('reports.operations.service.accessDenied'),
     });
+  });
+
+  it('names a role denial STAFF_ONLY in Gujarati too, and that code is an access refusal', async () => {
+    setLanguage('gu');
+    answer({ error: 'Access denied: admin or supervisor role required', kpis: null });
+    const result = await getOperationsDashboard(RANGE);
+    expect(result).toMatchObject({ success: false, error: 'STAFF_ONLY', message: t('reports.operations.service.accessDenied') });
+    expect(isAccessRefusal({ code: result.error, text: result.message })).toBe(true);
   });
 
   it('reads a report when the body is one', async () => {
