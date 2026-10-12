@@ -15,6 +15,8 @@ jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
 });
+// The one logger the service and the shared error handler both write to.
+const log = jest.requireMock('@/utils/logger').createLogger('test') as Record<'debug' | 'info' | 'warn' | 'error', jest.Mock>;
 
 const rpc = jest.fn();
 const ITEMS = [{ item_id: 'i1', item_name: 'Example Garlic', total_qty: 100, total_stock: 40, grn_count: 2 }];
@@ -117,12 +119,80 @@ describe('a backend without migration 52', () => {
     const result = await ask();
     expect(rpc).toHaveBeenCalledTimes(2);
     expect(result.data).toMatchObject({ sortApplied: false });
+    expect(log.error).not.toHaveBeenCalled();
   });
 
-  it('reports the failure of the second call as the answer', async () => {
+  it('reports the failure of the second call as the answer, and logs it as an error', async () => {
     rpc.mockResolvedValueOnce(OLD_BACKEND).mockResolvedValueOnce({ data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } });
     const result = await ask();
     expect(rpc).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({ success: false });
+    // Only the timeout is a fault; the refusal of the sort before it was not.
+    expect(log.error).toHaveBeenCalledTimes(1);
+    expect(log.error.mock.calls[0][1]).toMatchObject({ code: '57014' });
+  });
+});
+
+describe('what is logged when a backend lacks the sort', () => {
+  it('writes no error for the refusal of the sort, one info line instead, and still asks again', async () => {
+    rpc.mockResolvedValueOnce(OLD_BACKEND).mockResolvedValueOnce(answer());
+    const result = await ask({ customerId: 'c-private-77', searchQuery: 'zinnia' });
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc.mock.calls[1][1]).toEqual({ p_customer_id: 'c-private-77', p_search_query: 'zinnia', p_limit: 50, p_offset: 50 });
+    expect(result).toMatchObject({ success: true, data: { sortApplied: false } });
+
+    expect(log.error).not.toHaveBeenCalled();
+    expect(log.warn).not.toHaveBeenCalled();
+    expect(log.info).toHaveBeenCalledTimes(1);
+    const [line, ...rest] = log.info.mock.calls[0];
+    expect(line).toBe('[StockService.getItemWiseStockList] This server cannot sort the item list; asking again without the sort.');
+    // Nothing of the request (customer, search words) or the server is in the line.
+    expect(rest).toEqual([]);
+    expect(line).not.toMatch(/c-private-77|zinnia|warehouse\.example|PGRST/);
+  });
+
+  it('says it once for a facility, not on every later call', async () => {
+    rpc.mockResolvedValueOnce(OLD_BACKEND).mockResolvedValue(answer());
+    await ask();
+    await ask({ offset: 100 });
+    await ask({ offset: 150 });
+    expect(rpc).toHaveBeenCalledTimes(4);
+    expect(log.info).toHaveBeenCalledTimes(1);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it('still logs another failure of the sort attempt as an error, and does not ask again', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '57014', message: 'canceling statement due to statement timeout', details: null } });
+    const result = await ask();
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: false });
+    expect(log.error).toHaveBeenCalledTimes(1);
+    expect(log.error).toHaveBeenCalledWith('[StockService.getItemWiseStockList] RPC error:', {
+      rpcName: 'get_item_wise_stock_list',
+      message: 'canceling statement due to statement timeout',
+      code: '57014',
+      details: null,
+    });
+    expect(log.info).not.toHaveBeenCalled();
+  });
+
+  it('still logs a refusal of the plain call, the one made without the sort, as an error', async () => {
+    // A server without the function at all: the sort attempt and the retry are both refused.
+    rpc.mockResolvedValueOnce(OLD_BACKEND).mockResolvedValueOnce(OLD_BACKEND);
+    const result = await ask();
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ success: false });
+    expect(log.error).toHaveBeenCalledTimes(1);
+    expect(log.error.mock.calls[0][0]).toBe('[StockService.getItemWiseStockList] RPC error:');
+    expect(log.error.mock.calls[0][1]).toMatchObject({ code: 'PGRST202' });
+  });
+
+  it('logs a call that asked for no sort exactly as before when the server refuses it', async () => {
+    rpc.mockResolvedValueOnce(OLD_BACKEND);
+    const result = await StockService.getItemWiseStockList({ customerId: 'c1' });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: false });
+    expect(log.error).toHaveBeenCalledTimes(1);
+    expect(log.info).not.toHaveBeenCalled();
   });
 });

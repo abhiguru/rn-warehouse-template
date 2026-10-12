@@ -733,7 +733,7 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
 
-Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen.
+Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen. The initials are the first letter or digit of each of the first two words that have one, so a name that starts with an emoji or a symbol ("🧊 Ice Depot") gives "ID", never half of a character.
 
 ---
 

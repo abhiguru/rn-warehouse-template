@@ -385,10 +385,17 @@ type MonthRow = {
 /** Wide enough for "₹12,34,567" on one line: a cell is one line, and an amount is never cut short (§4). */
 const AMOUNT_COLUMN_WIDTH = 120;
 
+/**
+ * Wide enough for the header "Invoices" on one line at 1.3 times text size (about
+ * 65 for the word, 24 of padding; the default 80 broke it as "Invoice" / "s") and
+ * for a little more: a header shrinks before it is cut, and never breaks a word.
+ */
+const COUNT_COLUMN_WIDTH = 104;
+
 /** Five columns: the month is pinned while the figures scroll (§13.7). */
 const monthColumns = (): DataTableColumn[] => [
   { key: 'month', label: tr('reports.customerActivity.trend.month') },
-  { key: 'invoices', label: tr('reports.invoiceHistory.invoices'), dataType: 'number' },
+  { key: 'invoices', label: tr('reports.invoiceHistory.invoices'), dataType: 'number', width: COUNT_COLUMN_WIDTH },
   { key: 'amount', label: tr('common.amount'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
   { key: 'paid', label: tr('reports.customerActivity.paid'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
   { key: 'pending', label: tr('common.pending'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },

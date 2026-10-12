@@ -43,6 +43,9 @@ const makeStyles = (_t: ThemeTokens) => ({
   text: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
+    // The label gives way (one line, then an ellipsis) when the tag's box is narrower
+    // than the label: the tag never draws wider than its box. With room, nothing changes.
+    flexShrink: 1,
   },
 });
 

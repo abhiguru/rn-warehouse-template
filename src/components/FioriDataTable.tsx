@@ -5,6 +5,7 @@
  * this component, so all three import paths render the same table.
  *
  * - Header: footnote 600 in text.secondary on background.base, separator below.
+ *   One line that shrinks slightly before it is cut, so a word never breaks.
  *   Sortable columns show a sort icon and announce the current order.
  * - Body: subhead in text.primary, rows at least 44 high (36 for read-only
  *   compact tables), divider between rows, no alternate shading.
@@ -165,6 +166,12 @@ const columnAlign = (column: Column): 'left' | 'center' | 'right' =>
 
 const columnWidth = (column: Column, pinned: boolean) =>
   column.width || column.minWidth || (pinned ? D.stickyColumnWidth : D.columnMinWidth);
+
+/**
+ * A header is one line that shrinks a little before it is cut: a word is never
+ * broken across two lines ("Invoice" / "s"), whatever the text size (§4, §11.4).
+ */
+const HEADER_MIN_FONT_SCALE = 0.85;
 
 const numberFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
@@ -350,7 +357,12 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
       column.renderHeader()
     ) : (
       <>
-        <Text style={styles.headerCellText} numberOfLines={2}>
+        <Text
+          style={styles.headerCellText}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={HEADER_MIN_FONT_SCALE}
+        >
           {column.label}
         </Text>
         {column.sortable && (

@@ -3,8 +3,10 @@
  *
  * Follows the object cell spec in docs/STYLE_GUIDE.md §13.6:
  * - 44 avatar on the left (shared `Avatar`, keyed by the customer id)
- * - Title (`headline`, two lines) and subtitle (`subhead`)
- * - Value (`headline`, tabular) and its label on the right
+ * - Title (`headline`, two lines), subtitle (`subhead`, two lines) and, when there
+ *   is one, the status tag on a line of its own under them (left-aligned)
+ * - Value (`headline`, tabular) and its label on the right: that column is only as
+ *   wide as the value and its label, so a long tag never squeezes the name
  * - Chevron in `icon.secondary`; pressed row `surface.cardPressed`
  * - Optional share button (`touchTarget` square, `brand.tint`): a target of its own
  *   beside the row's, 8 apart, not inside it, so a screen reader reaches each
@@ -45,9 +47,9 @@ export interface ReportCustomerCardProps {
    */
   subtitle: string | string[];
   /**
-   * Line limit of the subtitle in English (default 1, so rows keep one height).
-   * A report whose subtitle is one longer fact gives 2, so it wraps rather than
-   * being cut (§4). Gujarati stacks the facts, two lines each, whatever this says.
+   * Line limit of the subtitle in English (default 2, so a longer fact wraps
+   * rather than being cut, §4). Gujarati stacks the facts, two lines each,
+   * whatever this says.
    */
   subtitleLines?: number;
   /** Main numeric value to display */
@@ -58,7 +60,7 @@ export interface ReportCustomerCardProps {
   onPress: () => void;
   /** Customer id: keys the avatar colour so a customer looks the same on every screen. */
   customerId?: string | null;
-  /** Optional status tag under the value (at most one per row, guide §3.5). */
+  /** Optional status tag under the subtitle, on its own line (at most one per row, guide §3.5). */
   status?: { status: StatusKind; label: string };
   /** Optional share handler */
   onShare?: () => void;
@@ -151,8 +153,11 @@ const makeStyles = (t: ThemeTokens) =>
       color: t.text.secondary,
       marginTop: space.xxs,
     },
+    // On its own line under the subtitle, left-aligned with the name. It never
+    // takes the value column's width, and never grows wider than the content column.
     status: {
-      alignSelf: 'flex-end',
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
       marginTop: space.xs,
     },
   });
@@ -165,7 +170,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   title,
   highlightWords,
   subtitle,
-  subtitleLines = 1,
+  subtitleLines = 2,
   value,
   valueLabel = tr('reports.shared.units'),
   onPress,
@@ -202,13 +207,13 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       <View style={styles.content}>
         <HighlightedText style={styles.title} numberOfLines={2} text={title} words={highlightWords} />
         <FactLines facts={facts} style={styles.subtitle} numberOfLines={subtitleLines} />
+        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
       </View>
 
       {/* C. Value */}
       <View style={styles.valueContainer}>
         <Text style={styles.value}>{formatNumber(value)}</Text>
         <Text style={styles.valueLabel}>{valueLabel}</Text>
-        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
       </View>
 
       {/* D. Navigation Chevron */}
