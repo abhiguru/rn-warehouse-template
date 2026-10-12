@@ -111,6 +111,25 @@ The other report screens on the shared layer, and the work they build on:
   reference reads the same on screen and to a screen reader. Still for
   administrators and supervisors only; a refusal from the server shows its
   reason. No backend change.
+- **Dispatch activity** is built on the shared report layer: the period, search
+  and sort are in the filter bar, and the period and sort are remembered; a
+  warehouse role opens a customer as its own page, and the customer opened last
+  is one tap away; customers sort by bags, dispatches or name; a customer's
+  dispatches search by number, supervisor and item names (a closed card names
+  the item it matched) and sort by date, number, bags or weight, with date
+  headings only under the date sort; opening a dispatch is its own target
+  beside the card, not a button inside it; an item row is read with its weight,
+  the "of N" quantity, rack and mark; an empty report no longer suggests a
+  longer period when the longest is chosen. No backend change.
+- **Invoice history** is built on the shared report layer: each customer row
+  shows its net amount, and customers sort by net amount, invoices or name; a
+  customer's invoices search by invoice number, GRN and item names, sort by
+  date, number or net amount, and can be narrowed to paid or pending; the
+  figures (invoices, paid, pending) always cover the whole period; the monthly
+  breakdown is a table with the month column fixed and a totals row, collapsed
+  until opened; a payment status other than paid or pending shows as "Unknown"
+  instead of "Pending"; opening a customer from a link no longer shows two
+  placeholder tiles before the three real ones. No backend change.
 - **Report PDFs, app side (no screen uses it yet).** `generateReportPDF` in
   `src/services/pdf-service.ts` calls the backend's `generate-report-pdf`, and
   `useReportExport` gives a report screen `{ exportPdf, busy, available }`.

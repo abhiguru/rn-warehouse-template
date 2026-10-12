@@ -50,6 +50,9 @@ export { AgingBucketBar, agingBucketsFrom, agingBucketIdFromKey, agingBucketLabe
 export { StockItemCard, StockGRNRow, isLowStock, LOW_STOCK_PERCENT, EXPAND_ANIMATION, animateExpand } from './StockItemCard';
 export type { StockItemCardProps, StockGRNRowData, StockGRNRowProps, StockGRNState } from './StockItemCard';
 
+// The status tag of an invoice's payment (invoice history)
+export { invoicePaymentStatus, type InvoicePaymentStatusInfo } from './invoicePaymentStatus';
+
 // Customer activity's stock trend (chart or table)
 export { StockTrendChart, type StockTrendChartProps } from './StockTrendChart';
 
