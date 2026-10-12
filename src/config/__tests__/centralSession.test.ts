@@ -24,7 +24,7 @@ import {
   updateCentralName,
   verifyCentralCode,
 } from '../centralSession';
-import { getCentralState, resetCentralStateForTests } from '../centralState';
+import { getCentralState, resetCentralStateForTests, setCentralState } from '../centralState';
 import { setLanguage } from '@/i18n';
 
 const ORIGIN = 'https://identity.example.test';
@@ -262,6 +262,22 @@ describe('signed-in calls', () => {
     await signedIn();
     fetchMock.mockRejectedValue(new TypeError('Network request failed'));
     expect(await deleteCentralAccount()).toMatchObject({ ok: false, code: 'network' });
+    expect(getCentralState().status).toBe('signedIn');
+    expect(secure.has(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(true);
+  });
+
+  it.each([
+    ['memory names another person than the stored session', 'memory'],
+    ['the stored user is another person than the one in memory', 'store'],
+  ])('a deletion is refused when %s: nothing is deleted at the service, and the failure result is returned', async (_name, side) => {
+    await signedIn();
+    const other = { id: 'user-2', phoneNumber: '919000000002', name: null, createdAt: '' };
+    if (side === 'memory') setCentralState({ user: other });
+    else secure.set(CENTRAL_SECURE_KEYS.USER, JSON.stringify(other));
+    serve({ 'DELETE /v1/me': { body: { ok: true } } });
+    expect(await deleteCentralAccount()).toMatchObject({ ok: false, code: 'failed' });
+    expect(calls('DELETE /v1/me')).toHaveLength(0);
+    // Nothing else happened either: the person stays signed in and the session stays stored.
     expect(getCentralState().status).toBe('signedIn');
     expect(secure.has(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(true);
   });

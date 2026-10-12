@@ -472,11 +472,40 @@ phone against a real central service.
   just stored, or leave the app saying signed in over an empty store; and a start-up read
   that found a leftover could remove a session stored after the read. The check, the store
   write and the undo are now one queued store operation, and a leftover is removed in the
-  operation that read it. A code check that starts during a token refresh and then fails
-  still loses the refresh's new tokens: not fixed here, it needs its own decision. Pressing "Verify code"
+  operation that read it. (A code check that starts during a token refresh and then fails
+  lost the refresh's new tokens: fixed in the next entry.) Pressing "Verify code"
   within 300 ms of the sixth digit started two checks with the same code; it starts one, and
   the code step ignores a second press made before it has redrawn. Tests added for each,
   and for when the access token expires on the device's clock (no code change there).
+- **Refresh, profile, deletion and start-up of the central session (low-severity review
+  items, central login only).** The new token pair of a refresh is written in one queued
+  store operation, and only if the refresh token stored at that moment is the one the
+  refresh sent; otherwise (another person signed in, or a sign-out or an undone check
+  emptied the store) nothing is written. Before, a code check that failed during a refresh
+  dropped the new pair, so the next refresh presented a spent token and the service ended
+  the session; and a refresh answer arriving after a check for another person had stored its
+  session could write the first person's tokens over it (signed in as one person with
+  another's tokens), or into an emptied store. A refresh asked for after a code check began
+  now waits for the one in flight instead of sending the same token beside it. The profile
+  is kept only while the stored session is still that person's. Deleting the account checks
+  the stored person in the same queued read that takes the token for the request (and again
+  after a refresh, and before it sends again after a 401): if that person is not the one in
+  memory, nothing is sent and the deletion fails. (The first version of this check read the
+  person in one queued operation and the token in a later one, so a code check for another
+  person stored in between could still make the deletion carry that person's token.) A refresh
+  that finds the store empty ends the session only while the app says someone is signed in:
+  one that waited behind a slow refresh across a sign-out used to begin during the next
+  sign-in, find the store empty and cancel that sign-in (the right code answered "failed").
+  One failed read of the stored refresh token as a refresh answer arrives no longer signs the
+  person out: the new pair is written if nothing has begun since the refresh did, and dropped
+  only if something has. A start with some token keys but no whole session and no user used to
+  leave those keys behind; it now clears all four. Tests: a state-and-store sweep of 5,000
+  fixed random interleavings (and 2,500 that start from broken stored keys) against a stand-in
+  service whose refresh tokens work once (it also checks whose token every account deletion
+  carried and that the last right code of a run signs in), the refresh and profile cases one
+  by one, a failed read of the refresh token, the start-up cases, the deletion mismatch, and
+  the central code step's release of its guard after a wrong code.
+  Test only: the type errors in the operator-server and central-leave tests are fixed.
 - Shared code, no change in behaviour without central login: the server-switch sequence
   moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
   `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used
@@ -490,6 +519,14 @@ phone against a real central service.
   `CodeEntryForm.tsx`, which the linking step also uses). The button now cancels the timer.
   Nothing else on the screen changes: with no button press the sixth digit still starts the
   check 300 ms later, once.
+- **Also in a build without central login: a second press of "Verify code" before the
+  screen has redrawn starts no second check on the facility's own code screen
+  (`app/otp.tsx`).** Two presses in one frame, or a press right after the 300 ms
+  auto-submit fired, started two checks with the same code, because the screen had no
+  guard of its own and relied on redux state that is redrawn later. It now uses a ref set
+  at once and released when the check ends, as the central code step does; the linking step
+  (`app/facility-link.tsx`, central login only) the same. A wrong code can still be tried
+  again. Nothing else on the screen changes.
 - English and Gujarati text in the new area `central` (and five screen titles in `nav`); the
   Gujarati is a draft for the owner's wording review.
 - Still open: passcode and biometrics, SMS auto-read, passkeys, shared devices, removing a

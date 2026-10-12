@@ -135,10 +135,15 @@ afterEach(async () => {
   renderer = undefined;
 });
 
-const button = (label: string) => renderer!.root.findAllByType('Button').find(node => node.props.children === label)!;
+// The mocked react-native components are plain strings in the tree, so the tag names are cast
+// to the element type findByType expects (the same cast the other component tests use).
+const tag = (name: string) => name as unknown as React.ElementType;
+const BUTTON = tag('Button');
+const TEXT_INPUT = tag('TextInput');
+const button = (label: string) => renderer!.root.findAllByType(BUTTON).find(node => node.props.children === label)!;
 async function choose(initial = false) {
   await act(async () => { renderer = create(<OperatorServerSelection initial={initial} />); });
-  await act(async () => { renderer!.root.findByType('TextInput').props.onChangeText(next.origin); });
+  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText(next.origin); });
   await act(async () => { button('Check server').props.onPress(); });
   await act(async () => { button('Use this server').props.onPress(); });
 }
@@ -222,7 +227,7 @@ it('ignores an old confirmation after the server input changes', async () => {
   const drafts = store.getState();
   await choose();
   const change = confirmation().find(action => action.text === 'Change server')!;
-  await act(async () => { renderer!.root.findByType('TextInput').props.onChangeText('https://third.example.test'); });
+  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText('https://third.example.test'); });
   await act(async () => { change.onPress!(); });
   expect(store.getState()).toEqual(drafts);
   expect(beginOperatorSwitch).not.toHaveBeenCalled();

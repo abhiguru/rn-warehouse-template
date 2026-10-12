@@ -57,10 +57,25 @@ const settle = async () => { for (let i = 0; i < 30; i += 1) await Promise.resol
 const input = () => tree!.root.find(node => node.props.textContentType === 'oneTimeCode' && typeof node.props.onChangeText === 'function');
 const verifyButton = () => tree!.root.findAllByType(Button).find(node => node.props.children === 'Verify code')!;
 
-/** What each screen does with the code 482913: the call that starts its check, and what it is called with. */
+/**
+ * What each screen does with the code 482913: the call that starts its check, what it is called
+ * with, and how to make the next check answer "wrong code" (the check never answers otherwise).
+ */
 const SCREENS = [
-  { name: 'app/otp.tsx (facility SMS sign-in)', screen: <OTPScreen />, started: () => jest.mocked(verifyOTP), args: ['+919000000001', '482913'] },
-  { name: 'app/facility-link.tsx (linking step)', screen: <FacilityLinkScreen />, started: () => jest.mocked(completeFacilityLink), args: ['482913'] },
+  {
+    name: 'app/otp.tsx (facility SMS sign-in)',
+    screen: <OTPScreen />,
+    started: () => jest.mocked(verifyOTP),
+    args: ['+919000000001', '482913'],
+    answerWrongOnce: () => jest.mocked(verifyOTP).mockResolvedValueOnce({ success: false, error: 'Invalid code' } as never),
+  },
+  {
+    name: 'app/facility-link.tsx (linking step)',
+    screen: <FacilityLinkScreen />,
+    started: () => jest.mocked(completeFacilityLink),
+    args: ['482913'],
+    answerWrongOnce: () => jest.mocked(completeFacilityLink).mockResolvedValueOnce({ kind: 'failed', message: 'Wrong code' } as never),
+  },
 ];
 
 beforeEach(() => {
@@ -76,7 +91,7 @@ afterEach(async () => {
   jest.useRealTimers();
 });
 
-describe.each(SCREENS)('$name', ({ screen, started, args }) => {
+describe.each(SCREENS)('$name', ({ screen, started, args, answerWrongOnce }) => {
   it('"Verify code" pressed 150 ms after the sixth digit starts ONE check, also after the 300 ms timer would have fired', async () => {
     jest.useFakeTimers();
     await act(async () => { tree = create(screen); });
@@ -100,6 +115,40 @@ describe.each(SCREENS)('$name', ({ screen, started, args }) => {
     expect(started()).toHaveBeenCalledTimes(1);
     await act(async () => { jest.advanceTimersByTime(2000); await settle(); });
     expect(started()).toHaveBeenCalledTimes(1);
+  });
+
+  it('two presses of "Verify code" in one frame (before the screen has drawn "verifying") start ONE check', async () => {
+    jest.useFakeTimers();
+    await act(async () => { tree = create(screen); });
+    await act(async () => { input().props.onChangeText('482913'); });
+    const pressNow = verifyButton().props.onPress;
+    await act(async () => { pressNow(); pressNow(); await settle(); });
+    await act(async () => { jest.advanceTimersByTime(1000); await settle(); });
+    expect(started()).toHaveBeenCalledTimes(1);
+    expect(started()).toHaveBeenCalledWith(...args);
+  });
+
+  it('a press right after the 300 ms timer fired, before the screen has redrawn, starts ONE check', async () => {
+    jest.useFakeTimers();
+    await act(async () => { tree = create(screen); });
+    await act(async () => { input().props.onChangeText('482913'); });
+    const pressNow = verifyButton().props.onPress; // the button as drawn before the timer fires
+    await act(async () => { jest.advanceTimersByTime(300); pressNow(); await settle(); });
+    await act(async () => { jest.advanceTimersByTime(1000); await settle(); });
+    expect(started()).toHaveBeenCalledTimes(1);
+    expect(started()).toHaveBeenCalledWith(...args);
+  });
+
+  it('after a wrong code a second press starts a second check (the guard is released)', async () => {
+    jest.useFakeTimers();
+    answerWrongOnce();
+    await act(async () => { tree = create(screen); });
+    await act(async () => { input().props.onChangeText('482913'); });
+    await act(async () => { verifyButton().props.onPress(); await settle(); });
+    expect(started()).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(showAlert).mock.calls.map(call => call[0])).toEqual(["Couldn't verify the code"]);
+    await act(async () => { verifyButton().props.onPress(); await settle(); });
+    expect(started()).toHaveBeenCalledTimes(2);
   });
 
   it('a short code is not sent; the button says so and no timer sends it later', async () => {

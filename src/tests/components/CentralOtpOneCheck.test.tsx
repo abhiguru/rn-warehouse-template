@@ -121,4 +121,17 @@ describe('the central code step', () => {
     expect(verifyCalls()).toHaveLength(1);
     expect(jest.mocked(showAlert).mock.calls.map(call => call[0])).toEqual(["Couldn't verify the code"]);
   });
+
+  it('R7e. a wrong code, then "Verify code" again: two checks in total (the guard is released after the first)', async () => {
+    jest.useFakeTimers();
+    fetchMock.mockImplementation(async () => reply(401, { error: { code: 'invalid_code', message: 'x' } }));
+    await act(async () => { tree = create(<CentralOtpScreen />); });
+    await act(async () => { input().props.onChangeText('482913'); });
+    await act(async () => { verifyButton().props.onPress(); await settle(); });
+    expect(verifyCalls()).toHaveLength(1);
+    expect(jest.mocked(showAlert)).toHaveBeenCalledTimes(1);
+    await act(async () => { verifyButton().props.onPress(); await settle(); });
+    expect(verifyCalls()).toHaveLength(2);
+    expect(jest.mocked(showAlert)).toHaveBeenCalledTimes(2);
+  });
 });

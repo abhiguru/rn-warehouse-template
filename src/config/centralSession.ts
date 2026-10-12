@@ -359,6 +359,18 @@ function readStoredUser(text: string | null): CentralUser | null {
   }
 }
 
+/** True when any of the three token keys holds a value: with no whole session, that is a leftover. */
+async function anyTokenKeyStored(): Promise<boolean> {
+  try {
+    for (const key of [CENTRAL_SECURE_KEYS.ACCESS_TOKEN, CENTRAL_SECURE_KEYS.REFRESH_TOKEN, CENTRAL_SECURE_KEYS.ACCESS_EXPIRES])
+      if ((await SecureStore.getItemAsync(key)) !== null) return true;
+    return false;
+  } catch {
+    // The store stopped answering: nothing is removed on a guess.
+    return false;
+  }
+}
+
 /**
  * Reads the stored session at start. No network: an expired access token is
  * replaced when the first call needs it. A session with a refresh token counts
@@ -394,16 +406,17 @@ export async function restoreCentralSession(): Promise<void> {
     const foundUserText: string | null | typeof UNREADABLE = await SecureStore.getItemAsync(
       CENTRAL_SECURE_KEYS.USER
     ).catch((): typeof UNREADABLE => UNREADABLE);
-    // A leftover (a session without a user, a user without a session, or a user that cannot
-    // be read) is removed in the same queued operation as the read that found it: no
-    // sign-in can store a session between the read and the removal. Not when a sign-in or a
-    // sign-out has begun since this start, nor when the store did not answer.
+    // A leftover (a session without a user, a user without a session, a user that cannot be
+    // read, or some token keys but not a whole session) is removed, all four keys, in the same
+    // queued operation as the read that found it: no sign-in can store a session between the
+    // read and the removal. Not when a sign-in or a sign-out has begun since this start, nor
+    // when the store did not answer.
     if (
       started === epoch &&
       found !== UNREADABLE &&
       foundUserText !== UNREADABLE &&
       !(found && readStoredUser(foundUserText)) &&
-      (found || foundUserText)
+      (found || foundUserText || (await anyTokenKeyStored()))
     )
       await clearStored();
     return [found, foundUserText];
@@ -510,7 +523,10 @@ type RefreshOutcome = { kind: 'ok'; session: StoredSession } | { kind: 'refused'
 /**
  * One refresh at a time. The service revokes the whole session family when a
  * refresh token is presented a second time, so two callers must never each
- * send the stored token: the second one waits for the first.
+ * send the stored token: the second one waits for the first. A caller that
+ * comes after a sign-in step began (the epoch moved, also for a code check that
+ * then fails) cannot share the running refresh's answer, so it waits for it to
+ * end and refreshes after it, with whatever the store holds by then.
  */
 type RefreshFailure = { kind: 'unavailable'; failure: CentralFailure };
 const unreadable = (): RefreshFailure => ({ kind: 'unavailable', failure: failure('unavailable') });
@@ -518,11 +534,14 @@ let refreshInFlight: { epoch: number; promise: Promise<RefreshOutcome> } | null 
 
 export function refreshCentralSession(): Promise<RefreshOutcome> {
   if (refreshInFlight?.epoch === epoch) return refreshInFlight.promise;
-  const started = epoch;
-  const promise = runRefresh(started).finally(() => {
+  const key = epoch;
+  const earlier = refreshInFlight?.promise;
+  // It runs for the epoch that is current when it begins, which is later than now if it waits.
+  const run = earlier ? earlier.then(() => undefined, () => undefined).then(() => runRefresh(epoch)) : runRefresh(epoch);
+  const promise = run.finally(() => {
     if (refreshInFlight?.promise === promise) refreshInFlight = null;
   });
-  refreshInFlight = { epoch: started, promise };
+  refreshInFlight = { epoch: key, promise };
   return promise;
 }
 
@@ -531,7 +550,11 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
   if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
   if (stored === UNREADABLE) return unreadable();
   if (!stored) {
-    await endLocally(null);
+    // An empty store ends a session only if the app says there is one: a refresh that began
+    // while a sign-out was running (or waited behind another and began during the next
+    // sign-in) finds the store empty because nobody is signed in, and ending "the session" then
+    // would cancel the sign-in that has begun, or the phone number on its code step.
+    if (getCentralState().status === 'signedIn') await endLocally(null);
     return { kind: 'refused' };
   }
   // The refresh token is sent exactly once. The service revokes the whole
@@ -542,7 +565,11 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
   const answer = await centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', {
     body: { refresh_token: stored.refreshToken },
   });
-  if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
+  // Only a refusal or a failure is dropped when a sign-in or a sign-out has begun since
+  // this refresh did: they would end or leave alone a session that is not the one that was
+  // asked about. A new token pair is never dropped for that reason (below): it is the only
+  // copy of the session this refresh spent.
+  if (answer.kind !== 'ok' && started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
   if (answer.kind === 'transport') return { kind: 'unavailable', failure: failureOf(answer) };
   if (answer.kind === 'error') {
     // The service's definitive word: the refresh token is unknown, expired,
@@ -557,49 +584,120 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
   // A success without both tokens is not stored: nothing stored is replaced by half an answer.
   const session = parseSession(answer.body.session, Date.now());
   if (!session) return { kind: 'unavailable', failure: failure('unavailable') };
+  // The new pair is written in ONE queued operation, and only if the refresh token stored at
+  // that moment is the very one this refresh sent. If it is not (a sign-in stored another
+  // session, or a sign-out or an undone check emptied the store) the answer belongs to a
+  // session that is gone: nothing is written and state and store stay as they are. The epoch
+  // plays no part: a code check that failed, or an unrelated sign-in step, must not cost the
+  // person the new pair (the next refresh would present the spent token and sign them out).
+  // One failed read of that token does not decide it either: when the store cannot say what it
+  // holds, the pair is written if nothing has begun since this refresh did (the epoch has not
+  // moved), and dropped only if something has.
+  let replaced: boolean;
   try {
-    await serialize(() => writeSession(session));
+    replaced = await serialize(async () => {
+      let current: string | null | typeof UNREADABLE;
+      try {
+        current = await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.REFRESH_TOKEN);
+      } catch {
+        current = UNREADABLE;
+      }
+      if (current === UNREADABLE ? started !== epoch : current !== stored.refreshToken) return false;
+      await writeSession(session);
+      return true;
+    });
   } catch {
     // The old refresh token is spent and the new one could not be kept.
     await endLocally(centralErrorMessage('session_ended'));
     return { kind: 'refused' };
   }
-  if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
+  if (!replaced) return { kind: 'unavailable', failure: failure('session_ended') };
+  // Something else began meanwhile (a sign-out, a code check): answer ok only if the pair
+  // written above is still the stored session, so a sign-out that came right after is honoured.
+  if (started !== epoch) {
+    const current = await serialize(readSession);
+    if (current === UNREADABLE || current?.refreshToken !== session.refreshToken)
+      return { kind: 'unavailable', failure: failure('session_ended') };
+  }
   return { kind: 'ok', session };
 }
 
-/** A usable access token: the stored one, or a new one when it is about to expire. */
-async function accessToken(): Promise<{ token: string } | CentralFailure> {
+/**
+ * The stored session, and whether the stored user is the person asked for, read in ONE queued
+ * operation: no sign-in can store another person's session between the two answers.
+ * `onlyFor` is the id of that person; `null` means nobody (no stored session is anybody's);
+ * `undefined` means no particular person (the second answer is then always true).
+ */
+const readSessionFor = (onlyFor?: string | null) =>
+  serialize(async (): Promise<[ReadSession, boolean]> => {
+    const session = await readSession();
+    if (onlyFor === undefined) return [session, true];
+    if (!session || session === UNREADABLE) return [session, false];
+    try {
+      const user = readStoredUser(await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER));
+      return [session, onlyFor !== null && user?.id === onlyFor];
+    } catch {
+      return [UNREADABLE, false];
+    }
+  });
+
+/**
+ * A usable access token: the stored one, or a new one when it is about to expire.
+ * With `onlyFor` the token is given only if the stored session is that person's: the person
+ * is checked in the same queued read that takes the token, and once more after a refresh
+ * (which may have waited and then served whoever is stored by then). `refused` is a token
+ * the service has just refused: it is not given again.
+ */
+async function accessToken(onlyFor?: string | null, refused?: string): Promise<{ token: string } | CentralFailure> {
   if (!getCentralLoginConfig()) return failure('not_configured');
-  const stored = await serialize(readSession);
+  const [stored, mine] = await readSessionFor(onlyFor);
   if (stored === UNREADABLE) return failure('unavailable');
-  if (stored && stored.expiresAt - Date.now() > RENEW_AHEAD_MS) return { token: stored.accessToken };
+  if (stored && !mine) return failure('failed');
+  if (stored && stored.accessToken !== refused && stored.expiresAt - Date.now() > RENEW_AHEAD_MS) return { token: stored.accessToken };
   if (!stored && getCentralState().status !== 'signedIn') return failure('session_ended');
   const refreshed = await refreshCentralSession();
+  if (refreshed.kind === 'ok' && onlyFor !== undefined) {
+    // The stored session must still be this person's and the very pair the refresh stored.
+    const [now, stillMine] = await readSessionFor(onlyFor);
+    if (now === UNREADABLE) return failure('unavailable');
+    if (!now || !stillMine || now.refreshToken !== refreshed.session.refreshToken) return failure('failed');
+  }
   if (refreshed.kind === 'ok') return { token: refreshed.session.accessToken };
   if (refreshed.kind === 'refused') return failure('session_ended');
   return refreshed.failure;
 }
 
-/** A call that needs sign-in: refreshes ahead of expiry, and once when the service answers 401. */
+/**
+ * A call that needs sign-in: refreshes ahead of expiry, and once when the service answers 401.
+ * `onlyFor` (see `accessToken`) is for a call that acts on one person's behalf and must never
+ * carry another person's token: every token it sends is chosen together with that check.
+ */
 async function signedCall(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  onlyFor?: string | null
 ): Promise<{ kind: 'ok'; body: Record<string, unknown> } | CentralFailure> {
   const config = getCentralLoginConfig();
-  const first = await accessToken();
+  const first = await accessToken(onlyFor);
   if ('ok' in first) return first;
   let answer = await centralFetch(config, method, path, { body, accessToken: first.token });
   if (answer.kind === 'error' && answer.status === 401) {
-    // Another call may have replaced the token while this one was in flight.
-    const current = await serialize(readSession);
-    let next: string | null = current && current !== UNREADABLE && current.accessToken !== first.token ? current.accessToken : null;
-    if (!next) {
-      const refreshed = await refreshCentralSession();
-      if (refreshed.kind === 'refused') return failure('session_ended');
-      if (refreshed.kind === 'unavailable') return refreshed.failure;
-      next = refreshed.session.accessToken;
+    let next: string | null;
+    if (onlyFor !== undefined) {
+      const again = await accessToken(onlyFor, first.token);
+      if ('ok' in again) return again;
+      next = again.token;
+    } else {
+      // Another call may have replaced the token while this one was in flight.
+      const current = await serialize(readSession);
+      next = current && current !== UNREADABLE && current.accessToken !== first.token ? current.accessToken : null;
+      if (!next) {
+        const refreshed = await refreshCentralSession();
+        if (refreshed.kind === 'refused') return failure('session_ended');
+        if (refreshed.kind === 'unavailable') return refreshed.failure;
+        next = refreshed.session.accessToken;
+      }
     }
     answer = await centralFetch(config, method, path, { body, accessToken: next });
     if (answer.kind === 'error' && answer.status === 401) {
@@ -616,31 +714,38 @@ async function signedCall(
 // Signed-in calls
 // ---------------------------------------------------------------------------
 
-async function keepUser(user: CentralUser, started: number): Promise<void> {
-  if (started !== epoch) return;
-  setCentralState({ user });
-  await serialize(() => writeUser(user)).catch(() => {});
+/**
+ * Keeps the profile the service answered with, in the store and in memory, in ONE queued
+ * operation and only while the stored session still belongs to that person: an answer for
+ * a person who has since been replaced or signed out is dropped.
+ */
+async function keepUser(user: CentralUser): Promise<void> {
+  await serialize(async () => {
+    const session = await readSession();
+    const storedUser = readStoredUser(await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER));
+    if (!session || session === UNREADABLE || storedUser?.id !== user.id) return;
+    await writeUser(user);
+    if (getCentralState().status === 'signedIn') setCentralState({ user });
+  }).catch(() => {});
 }
 
 /** `GET /v1/me`. */
 export async function fetchCentralProfile(): Promise<CentralResult<{ user: CentralUser }>> {
-  const started = epoch;
   const answer = await signedCall('GET', '/v1/me');
   if ('ok' in answer) return answer;
   const user = parseUser(answer.body.user);
   if (!user) return failure('unavailable');
-  await keepUser(user, started);
+  await keepUser(user);
   return { ok: true, user };
 }
 
 /** `PATCH /v1/me`: sets the name (1 to 80 characters). */
 export async function updateCentralName(name: string): Promise<CentralResult<{ user: CentralUser }>> {
-  const started = epoch;
   const answer = await signedCall('PATCH', '/v1/me', { name: name.trim() });
   if ('ok' in answer) return answer;
   const user = parseUser(answer.body.user);
   if (!user) return failure('unavailable');
-  await keepUser(user, started);
+  await keepUser(user);
   return { ok: true, user };
 }
 
@@ -652,7 +757,11 @@ export async function updateCentralName(name: string): Promise<CentralResult<{ u
  */
 export async function deleteCentralAccount(): Promise<CentralResult<{ userId: string | null }>> {
   const userId = getCentralState().user?.id ?? null;
-  const answer = await signedCall('DELETE', '/v1/me');
+  // The deletion acts on the person whose token is sent, and the caller removes the list of
+  // the person named here: they must be the same one. The stored person is checked in the same
+  // queued read that takes the token for the request, and again after a refresh; if it is not
+  // the person named here (nobody, when memory says signed out) nothing is sent.
+  const answer = await signedCall('DELETE', '/v1/me', undefined, userId);
   if ('ok' in answer) return answer;
   await endLocally(null);
   return { ok: true, userId };

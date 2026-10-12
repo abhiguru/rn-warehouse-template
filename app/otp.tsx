@@ -4,7 +4,7 @@
  * The code step of a facility's own SMS sign-in. The layout is shared with the
  * central sign-in and the linking step: src/components/auth/CodeEntryForm.tsx.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
@@ -48,7 +48,11 @@ export default function OTPScreen() {
     }
   }, [phoneNumber]);
 
+  // A ref, not the redux flag: a second press made before the screen has redrawn still sees it.
+  const checking = useRef(false);
   const handleVerifyOTPWithCode = async (code: string) => {
+    if (checking.current) return;
+    checking.current = true;
     try {
       dispatch(setVerifyingOTP(true));
 
@@ -83,6 +87,7 @@ export default function OTPScreen() {
     } catch {
       showAlert(tr('auth.otp.couldNotVerifyTitle'), tr('common.checkConnection'));
     } finally {
+      checking.current = false;
       dispatch(setVerifyingOTP(false));
     }
   };

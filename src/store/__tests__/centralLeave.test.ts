@@ -53,7 +53,7 @@ let mockAuth: { userProfile: unknown } = { userProfile: null };
 jest.mock('@/store', () => ({ store: { getState: () => ({ auth: mockAuth }) } }));
 
 /** What My facilities would see the moment the real `deleteAccount` thunk empties the store. */
-let mockSeenAtDeletion: { autoOpenSpent: boolean; soleApproved: string | null; leaving: boolean; statusOnDisk: string | undefined } | undefined;
+let mockSeenAtDeletion: { autoOpenSpent: boolean; soleApproved: string | null; leaving: number; statusOnDisk: string | undefined } | undefined;
 /**
  * How the mocked thunk ends, with the payload the real one builds:
  *   ok              resolved

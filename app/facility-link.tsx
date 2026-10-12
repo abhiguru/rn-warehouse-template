@@ -48,8 +48,11 @@ export default function FacilityLinkScreen() {
     if (!hasLink && !finished.current) returnToMyFacilities();
   }, [hasLink]);
 
+  // A ref, not the state: a second press made before the screen has redrawn still sees it.
+  const checking = useRef(false);
   const verify = async (code: string) => {
-    if (verifying) return;
+    if (checking.current) return;
+    checking.current = true;
     setVerifying(true);
     try {
       finished.current = true;
@@ -63,6 +66,7 @@ export default function FacilityLinkScreen() {
       if (outcome.kind === 'pending') router.replace('/pending-enrollment');
       else if (outcome.kind === 'failed') showAlert(tr('auth.otp.couldNotVerifyTitle'), outcome.message);
     } finally {
+      checking.current = false;
       setVerifying(false);
     }
   };
