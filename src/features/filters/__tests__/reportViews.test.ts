@@ -5,6 +5,7 @@
  * are shown or their order, on rows made for the purpose.
  */
 import { REPORT_VIEW_CONFIGS, isLongestPeriod, reportPeriod, sortRows, type ReportRequest } from '../configs/reports';
+import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT, dispatchRecordsView, hasDispatchWeights } from '../configs/reports/dispatchActivity';
 import { groupStockAgingLines } from '../configs/reports/stockAging';
 import { isFieldActive, isRequiredField, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterValue, SortState } from '../types';
@@ -203,14 +204,15 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     found: ['i2'],
     id: (row: { item_id: string }) => row.item_id,
   },
-  // The server returns no weight for a dispatch (the service maps it to 0), so none is set here:
-  // a sort by weight would give the written order and fail below.
+  // One customer's dispatches, with the weights the screen only offers a sort by when the server sent
+  // some (its configuration with Weight is the one registered). No two rows share a date, number, bags
+  // or weight, and weight gives an order none of the others does: d3, d1, d4, d2 (highest first).
   'report-dispatch-activity-customer': {
     rows: [
-      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
-      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
-      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
-      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
+      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, total_weight: 5000, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
+      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, total_weight: 900, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
+      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, total_weight: 6100, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
+      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, total_weight: 3000, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
     ],
     search: 'red chilli',
     found: ['d2'],
@@ -328,6 +330,64 @@ describe.each(REPORT_VIEW_CONFIGS.map(entry => [entry.config.listKey, entry] as 
   it('gives each sort its own order', () => {
     const orders = (config.sort?.options ?? []).map(option => shown({}, { field: option.field, order: 'desc' }).join(','));
     expect(new Set(orders).size).toBe(orders.length);
+  });
+});
+
+describe('one customer\'s dispatches, with and without weights', () => {
+  const labels = (config: typeof DISPATCH_ACTIVITY_CUSTOMER) => config.sort!.options.map(option => option.label);
+
+  it('the configuration without weights has exactly Date, Dispatch number and Bags; the other adds Weight, last', () => {
+    expect(labels(DISPATCH_ACTIVITY_CUSTOMER)).toEqual(['Date', 'Dispatch number', 'Bags']);
+    expect(DISPATCH_ACTIVITY_CUSTOMER.sort!.options.map(option => option.field)).toEqual(['date', 'number', 'bags']);
+    expect(labels(DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT)).toEqual(['Date', 'Dispatch number', 'Bags', 'Weight']);
+    const weight = DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT.sort!.options[3];
+    expect([weight.field, weight.kind]).toEqual(['weight', 'amount']);
+  });
+
+  it('share the list key, the fields, the search and the default sort, so the choice carries from one to the other', () => {
+    const [without, withWeight] = [DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT];
+    expect(without).not.toBe(withWeight);
+    expect(without.listKey).toBe('report-dispatch-activity-customer');
+    expect(withWeight.listKey).toBe(without.listKey);
+    expect(withWeight.fields).toEqual(without.fields);
+    expect(withWeight.fastFilters).toEqual(without.fastFilters);
+    expect(withWeight.search?.placeholder).toBe(without.search?.placeholder);
+    expect(withWeight.sort!.default).toEqual({ field: 'date', order: 'desc' });
+    expect(without.sort!.default).toEqual({ field: 'date', order: 'desc' });
+    expect(withWeight.noun).toEqual(without.noun);
+  });
+
+  it('keep their labels as getters, so they follow the app\'s language (a copy of a config would not)', () => {
+    for (const config of [DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT]) {
+      expect(typeof Object.getOwnPropertyDescriptor(config, 'title')?.get).toBe('function');
+      for (const option of config.sort!.options) expect(typeof Object.getOwnPropertyDescriptor(option, 'label')?.get).toBe('function');
+    }
+  });
+
+  it('each asks for the view it was built with: the search and sort of its own configuration', () => {
+    for (const config of [DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT]) {
+      const view = config.toRequest({ search: 'Red Chilli' }, { field: 'bags', order: 'asc' }, staff, today).view;
+      expect(view).toEqual({ sort: { field: 'bags', order: 'asc' }, words: ['red', 'chilli'] });
+    }
+  });
+
+  it('offers a sort by weight only for dispatches of which one has a weight above zero', () => {
+    const weights = FIXTURES['report-dispatch-activity-customer'].rows as { total_weight: number }[];
+    expect(hasDispatchWeights(weights)).toBe(true);
+    // What an older server sends: the service maps the missing weight to 0.
+    expect(hasDispatchWeights(weights.map(row => ({ ...row, total_weight: 0 })))).toBe(false);
+    expect(hasDispatchWeights([{ total_weight: 0 }, { total_weight: 1250.5 }])).toBe(true);
+    expect(hasDispatchWeights([])).toBe(false);
+    expect(hasDispatchWeights(undefined)).toBe(false);
+    expect(hasDispatchWeights([{ total_weight: -3 }, { total_weight: Number.NaN }])).toBe(false);
+  });
+
+  it('sorting by weight puts the heaviest first, zero weights last, and the other direction reverses it', () => {
+    const rows = FIXTURES['report-dispatch-activity-customer'].rows as Parameters<typeof dispatchRecordsView>[0];
+    const ids = (order: 'asc' | 'desc') =>
+      dispatchRecordsView(rows, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT.toRequest({}, { field: 'weight', order }, staff, today).view).map(row => row.disp_id);
+    expect(ids('desc')).toEqual(['d3', 'd1', 'd4', 'd2']);
+    expect(ids('asc')).toEqual(['d2', 'd4', 'd1', 'd3']);
   });
 });
 
