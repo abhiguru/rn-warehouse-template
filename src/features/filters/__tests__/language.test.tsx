@@ -100,8 +100,8 @@ describe('a language switch at run time', () => {
     expect(sortLabels()).toEqual(['આવક પાવતી નંબર', 'તારીખ']);
     expect(SORT_DIRECTIONS.date).toEqual({ desc: 'સૌથી નવા પહેલાં', asc: 'સૌથી જૂના પહેલાં' });
     expect(SORT_DIRECTIONS.number).toEqual({ desc: 'નંબર: ઉતરતા ક્રમમાં', asc: 'નંબર: ચઢતા ક્રમમાં' });
-    expect(describeSort(GRN_FILTERS, undefined)).toEqual({ label: 'આવક નં.', direction: 'નંબર: ઉતરતા ક્રમમાં', spoken: 'નંબર: ઉતરતા ક્રમમાં' });
-    expect(describeSort(INVOICE_FILTERS, { field: 'customer_name', order: 'asc' })).toEqual({ label: 'વેપારી', direction: 'A થી Z', spoken: 'A થી Z' });
+    expect(describeSort(GRN_FILTERS, undefined)).toEqual({ label: 'આવક નં.', spokenLabel: 'આવક પાવતી નંબર', direction: 'નંબર: ઉતરતા ક્રમમાં', spoken: 'નંબર: ઉતરતા ક્રમમાં' });
+    expect(describeSort(INVOICE_FILTERS, { field: 'customer_name', order: 'asc' })).toEqual({ label: 'વેપારી', spokenLabel: 'વેપારી', direction: 'A થી Z', spoken: 'A થી Z' });
     expect(describeSort(ORDER_FILTERS, undefined).label).toBe('સૉર્ટ કરો');
   });
 
@@ -231,7 +231,7 @@ describe('the filter bar in Gujarati', () => {
     const bar = labels({ stock: 'in_stock', weight: { min: 10, max: 50 }, search: 'A0010થી A0012' });
     expect(bar.found).toEqual([
       'ફિલ્ટર, ૨ લાગુ છે. સૉર્ટ અને ફિલ્ટર ખોલો',
-      'આવક નં. મુજબ સૉર્ટ કરેલું, નંબર: ઉતરતા ક્રમમાં. સૉર્ટ બદલો',
+      'આવક પાવતી નંબર મુજબ સૉર્ટ કરેલું, નંબર: ઉતરતા ક્રમમાં. સૉર્ટ બદલો',
       'સ્ટોક: સ્ટોકમાં છે. બદલો',
       'સ્ટોક: સ્ટોકમાં છે ફિલ્ટર કાઢી નાખો',
       'વજન: ૧૦થી ૫૦ કિલો સુધી. બદલો',
@@ -252,7 +252,7 @@ describe('the filter bar in Gujarati', () => {
     const bar = labels({ stock: 'in_stock', search: 'A0010 to A0012' });
     expect(bar.found).toEqual([
       'Filters, 2 applied. Open sort and filter',
-      'Sorted by GRN no., highest number first. Change sort',
+      'Sorted by GRN number, highest number first. Change sort',
       'Stock: In stock. Change',
       'Remove filter Stock In stock',
       'Numbers A0010 to A0012, read from your search. Search for these words as text instead',

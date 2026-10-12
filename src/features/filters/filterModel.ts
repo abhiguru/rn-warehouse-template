@@ -224,14 +224,18 @@ export function isDefaultSort(config: FilterListDefinition, sort: SortState | un
 export function describeSort(
   config: FilterListDefinition,
   sort: SortState | undefined
-): { label: string; direction: string; spoken: string } {
+): { label: string; spokenLabel: string; direction: string; spoken: string } {
   const active = currentSort(config, sort);
   const option = config.sort?.options.find(candidate => candidate.field === active?.field);
-  if (!active || !option) return { label: t('filters.sort.fallback'), direction: '', spoken: '' };
+  if (!active || !option) {
+    const fallback = t('filters.sort.fallback');
+    return { label: fallback, spokenLabel: fallback, direction: '', spoken: '' };
+  }
   const direction = SORT_DIRECTIONS[option.kind][active.order];
   // Inside a sentence the direction starts in lower case, except "A to Z" and "Z to A".
   const spoken = SORT_DIRECTIONS_SPOKEN[option.kind][active.order];
-  return { label: option.chipLabel ?? option.label, direction, spoken };
+  // The chip shows the short name ("GRN no."); a screen reader says the full one ("GRN number").
+  return { label: option.chipLabel ?? option.label, spokenLabel: option.label, direction, spoken };
 }
 
 /** Order-independent comparison of two sets of values, for "are there unsaved changes". */

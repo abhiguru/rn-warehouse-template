@@ -1,15 +1,17 @@
 /**
  * Single-choice chips with radio semantics (docs/STYLE_GUIDE.md §13.3):
- * wrapping, at least 36 tall, the selected one in brand.subtle with a check.
+ * wrapping, the pill at least 36 tall, the selected one in brand.subtle with a check.
+ *
+ * Each pressable is a whole touch target (`touchTarget` tall, §11.2) with the
+ * pill centred in it; a hitSlop would not reach past the group's bounds.
  */
 import React from 'react';
-import { Pressable, Text, View, type Insets } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 const HEIGHT = 36;
-const HIT_SLOP: Insets = { top: (touchTarget - HEIGHT) / 2, bottom: (touchTarget - HEIGHT) / 2 };
 
 export interface ChoiceChipsProps<T extends string> {
   options: { value: T; label: string }[];
@@ -21,7 +23,9 @@ export interface ChoiceChipsProps<T extends string> {
 }
 
 const makeStyles = (t: ThemeTokens) => ({
-  group: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm },
+  // No row gap: the space above and below each pill inside its target already parts the rows.
+  group: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, columnGap: space.sm },
+  target: { minHeight: touchTarget, justifyContent: 'center' as const },
   chip: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -52,21 +56,24 @@ export function ChoiceChips<T extends string>({ options, value, onChange, access
         return (
           <Pressable
             key={option.value}
-            style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && !selected && styles.chipPressed]}
+            style={styles.target}
             onPress={() => onChange(option.value)}
-            hitSlop={HIT_SLOP}
             accessibilityRole="radio"
             accessibilityLabel={option.label}
             accessibilityState={{ selected, checked: selected }}
           >
-            {selected ? <Icon name="check" size={iconSize.sm} color={t.brand.tint} /> : null}
-            {/*
-              One line (Gujarati): "બધાં વર્ષ" was drawn as "બધાં" with the top of "વર્ષ" showing
-              under it, a second line the chip had no height for.
-            */}
-            <Text style={[styles.label, selected && styles.labelSelected]} maxFontSizeMultiplier={1.6} {...singleLineText()}>
-              {option.label}
-            </Text>
+            {({ pressed }) => (
+              <View style={[styles.chip, selected && styles.chipSelected, pressed && !selected && styles.chipPressed]}>
+                {selected ? <Icon name="check" size={iconSize.sm} color={t.brand.tint} /> : null}
+                {/*
+                  One line (Gujarati): "બધાં વર્ષ" was drawn as "બધાં" with the top of "વર્ષ" showing
+                  under it, a second line the chip had no height for.
+                */}
+                <Text style={[styles.label, selected && styles.labelSelected]} maxFontSizeMultiplier={1.6} {...singleLineText()}>
+                  {option.label}
+                </Text>
+              </View>
+            )}
           </Pressable>
         );
       })}

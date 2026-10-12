@@ -398,7 +398,7 @@ describe('invoice history, one customer', () => {
     await screen.press('Done');
     expect(screen.texts()).toEqual(expect.arrayContaining(['11 Oct', '12 Oct', '20 Sep']));
 
-    await screen.press('Sorted by Number, lowest number first. Change sort');
+    await screen.press('Sorted by Invoice number, lowest number first. Change sort');
     await screen.press('Date');
     await screen.press('Done');
     expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0050', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', 'Today', 'Invoice 2026/0010']);
@@ -598,7 +598,7 @@ describe('invoice history, the report PDF', () => {
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Invoice number');
     await screen.press('Done');
-    expect(screen.has('Sorted by Number, highest number first. Change sort')).toBe(true);
+    expect(screen.has('Sorted by Invoice number, highest number first. Change sort')).toBe(true);
     await sharesThePdf(
       screen,
       { report: 'invoice-history', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'invoice_no', order: 'desc' } },

@@ -14,7 +14,7 @@
  * request; a customer account is checked here first so that a route naming
  * somebody else's customer asks the server nothing.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
@@ -41,6 +41,9 @@ export interface ReportScope {
 }
 
 const param = (value: string | string[] | undefined): string => (typeof value === 'string' ? value : '');
+
+/** A second push within this long of the first is a double tap, and is ignored. */
+export const PUSH_GUARD_MS = 600;
 
 export function useReportScope(reportId: string): ReportScope {
   const router = useRouter();
@@ -92,8 +95,13 @@ export function useReportScope(reportId: string): ReportScope {
     }
   }, [routeCustomerId, routeCustomerName, isWarehouseUser, assignedCustomerIds, assignedName, reportScope, singleAssignedCustomerId, chosen, remembered]);
 
+  // A double tap on a row would push the customer twice, and back would then show it again.
+  const lastPushAt = useRef(0);
   const openCustomer = useCallback(
     (customer: ReportCustomerRef) => {
+      const now = Date.now();
+      if (now - lastPushAt.current < PUSH_GUARD_MS) return;
+      lastPushAt.current = now;
       setCustomer(reportId, customer);
       router.push({ pathname: `/reports/${reportId}`, params: { customerId: customer.id, customerName: customer.name } } as never);
     },

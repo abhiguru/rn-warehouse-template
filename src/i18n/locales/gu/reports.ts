@@ -77,6 +77,7 @@ export const reports: Translation<typeof source> = {
   },
   components: {
     kpiLoading: '{{label}}, લોડ થઈ રહ્યું છે',
+    kpisLoading: 'આંકડા લોડ થઈ રહ્યા છે',
     kpiValue: '{{label}}: {{value}}',
     kpiValueUnit: '{{label}}: {{value}} {{unit}}',
     trendUp: '{{value}} વધારો',

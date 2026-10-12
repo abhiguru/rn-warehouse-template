@@ -373,7 +373,7 @@ describe('dispatch activity, one customer', () => {
     // With no heading above it, each card gives its own date.
     expect(screen.texts()).toEqual(expect.arrayContaining(['11 Oct', '12 Oct', '20 Sep']));
 
-    await screen.press('Sorted by Number, lowest number first. Change sort');
+    await screen.press('Sorted by Dispatch number, lowest number first. Change sort');
     await screen.press('Date');
     await screen.press('Done');
     expect(screen.dispatchRows()).toEqual(['Sun, 20 Sep', 'Dispatch DD0050', 'Yesterday', 'Dispatch DD0009', 'Dispatch DD0100', 'Today', 'Dispatch DD0010']);
@@ -550,7 +550,7 @@ describe('dispatch activity, the report PDF', () => {
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Dispatch number');
     await screen.press('Done');
-    expect(screen.has('Sorted by Number, highest number first. Change sort')).toBe(true);
+    expect(screen.has('Sorted by Dispatch number, highest number first. Change sort')).toBe(true);
     await sharesThePdf(
       screen,
       { report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'disp_no', order: 'desc' } },

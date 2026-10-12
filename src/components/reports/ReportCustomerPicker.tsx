@@ -8,6 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useRoleBasedAccess, type AssignedCustomerRef } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -47,7 +48,6 @@ export interface ReportCustomerPickerProps {
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: t.background.base },
-    scrollContent: { paddingBottom: space.xxxl },
     section: { marginTop: space.lg, paddingHorizontal: layout.marginCompact },
     card: { backgroundColor: t.surface.card, borderRadius: radius.card, ...t.shadow[2] },
     cardClip: { borderRadius: radius.card, overflow: 'hidden' },
@@ -74,6 +74,7 @@ const makeStyles = (t: ThemeTokens) =>
 export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ title, onPick }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const insets = useSafeAreaInsets();
   const { assignedCustomers, assignedCustomerIds } = useRoleBasedAccess();
 
   // Ids the profile gives no name for. Empty for a profile that carries names.
@@ -130,7 +131,8 @@ export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ titl
   return (
     <View style={styles.container}>
       <ReportHeader title={title} subtitle={tr('reports.shared.chooseCustomer')} />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {/* The last row clears the system navigation bar. */}
+      <ScrollView contentContainerStyle={{ paddingBottom: space.xxxl + insets.bottom }} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <View style={styles.card}>
             <View style={styles.cardClip}>

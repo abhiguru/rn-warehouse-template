@@ -5,8 +5,10 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
-import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { BRANDS, getTokens, radius, space, touchTarget, type Mode } from '@/theme/tokens';
+import { ChoiceChips } from '../components/ChoiceChips';
 import { FilterBar } from '../components/FilterBar';
+import { CHIP_HEIGHT, CHIP_INSET } from '../components/FilterBarChip';
 import { FILTER_CONFIGS } from '../configs';
 import { countActiveFilters, currentSort, hasAnyFilter, visibleFields } from '../filterModel';
 import type { FilterContext, FilterValues, SortState } from '../types';
@@ -89,7 +91,7 @@ describe('FilterBar chips', () => {
     const bar = renderBar(makeFilters({}));
     expect(bar.labels()).toEqual([
       'Filters. Open sort and filter',
-      'Sorted by GRN no., highest number first. Change sort',
+      'Sorted by GRN number, highest number first. Change sort',
       'Filter by stock',
       'Filter by date',
       'Filter by customer',
@@ -161,7 +163,7 @@ describe('FilterBar chips', () => {
     const labels = renderer.root
       .findAll(node => typeof node.type !== 'string' && node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function')
       .map(node => node.props.accessibilityLabel as string);
-    expect(labels[0]).toBe('Sorted by GRN no., highest number first. Change sort');
+    expect(labels[0]).toBe('Sorted by GRN number, highest number first. Change sort');
   });
 });
 
@@ -173,7 +175,7 @@ describe('FilterBar by account', () => {
   it('hides the customer filter from a customer account with one customer', () => {
     expect(renderBar(makeFilters({}, customerWithOne)).labels()).toEqual([
       'Filters. Open sort and filter',
-      'Sorted by GRN no., highest number first. Change sort',
+      'Sorted by GRN number, highest number first. Change sort',
       'Filter by stock',
       'Filter by date',
     ]);
@@ -193,6 +195,86 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(backgrounds).toContain(t.brand.subtle);
     expect(backgrounds).toContain(t.surface.card);
   });
+
+  // §11.2: React Native sends no touch outside a parent's bounds, so a hitSlop on a
+  // pressable inside a 36 high pill gave a 36 high target. Each pressable is now the
+  // whole target, with the 36 high pill drawn behind it in the theme's colours.
+  it('makes every chip, and the remove button of an active one, a whole touch target', () => {
+    mockState = { theme: { preference: mode, brand } };
+    const t = getTokens(brand, mode);
+    const { renderer } = renderBar(makeFilters({ stock: 'in_stock' }));
+    const pressables = renderer.root.findAll(
+      node => typeof node.type !== 'string' && node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function' && node.props.style !== undefined
+    );
+    expect(pressables.length).toBeGreaterThanOrEqual(5);
+    for (const pressable of pressables) {
+      expect(pressable.props.hitSlop).toBeUndefined();
+      expect(StyleSheet.flatten(pressable.props.style).minHeight).toBe(touchTarget);
+    }
+    // The pills: 36 high inside the target, centred, outlined or filled from the theme.
+    const pills = renderer.root.findAll(node => (node.type as unknown) === 'View' && StyleSheet.flatten(node.props.style)?.position === 'absolute' && StyleSheet.flatten(node.props.style)?.borderWidth === 1);
+    expect(pills.length).toBeGreaterThanOrEqual(4);
+    for (const pill of pills) {
+      const style = StyleSheet.flatten(pill.props.style);
+      expect(style).toMatchObject({ top: CHIP_INSET, bottom: CHIP_INSET });
+      expect(touchTarget - CHIP_INSET * 2).toBe(CHIP_HEIGHT);
+    }
+    const colours = pills.map(pill => StyleSheet.flatten(pill.props.style).backgroundColor);
+    expect(colours).toContain(t.surface.card);
+    expect(colours).toContain(t.brand.subtle);
+  });
+
+  it('keeps the bar one height with the pills where they were, whatever chips it shows', () => {
+    mockState = { theme: { preference: mode, brand } };
+    const rowStyle = (filters: Filters) => {
+      const { renderer } = renderBar(filters);
+      const row = renderer.root.find(node => (node.type as unknown) === 'View' && StyleSheet.flatten(node.props.style)?.flexDirection === 'row' && StyleSheet.flatten(node.props.style)?.paddingHorizontal !== undefined && StyleSheet.flatten(node.props.style)?.gap !== undefined);
+      return StyleSheet.flatten(row.props.style);
+    };
+    for (const filters of [makeFilters({}), makeFilters({ stock: 'in_stock', search: 'A0010 to A0012' })]) {
+      const row = rowStyle(filters);
+      // Padding + a touch target fills the row's fixed height exactly: no chip makes it taller.
+      expect(row.paddingVertical * 2 + touchTarget).toBe(row.minHeight);
+      expect(row.minHeight).toBe(CHIP_HEIGHT + space.sm * 2);
+      // The pill sits `space.sm` from the edge, as before.
+      expect(row.paddingVertical + CHIP_INSET).toBe(space.sm);
+    }
+  });
+
+  it('makes each choice chip a whole touch target with its pill drawn inside', () => {
+    mockState = { theme: { preference: mode, brand } };
+    const t = getTokens(brand, mode);
+    const onChange = jest.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <ChoiceChips options={[{ value: 'desc', label: 'Newest first' }, { value: 'asc', label: 'Oldest first' }]} value="desc" onChange={onChange} accessibilityLabel="Order" />
+      );
+    });
+    const radios = renderer.root.findAll(node => typeof node.type !== 'string' && node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
+    expect(radios).toHaveLength(2);
+    for (const radio of radios) {
+      expect(radio.props.hitSlop).toBeUndefined();
+      expect(StyleSheet.flatten(radio.props.style).minHeight).toBe(touchTarget);
+    }
+    const pillOf = (radio: (typeof radios)[number]) =>
+      StyleSheet.flatten(radio.findAll(node => (node.type as unknown) === 'View' && StyleSheet.flatten(node.props.style)?.borderRadius === radius.pill)[0].props.style);
+    expect(pillOf(radios[0])).toMatchObject({ minHeight: CHIP_HEIGHT, backgroundColor: t.brand.subtle, borderColor: t.brand.tint });
+    expect(pillOf(radios[1])).toMatchObject({ minHeight: CHIP_HEIGHT, backgroundColor: t.surface.card, borderColor: t.border.button });
+    act(() => radios[1].props.onPress());
+    expect(onChange).toHaveBeenCalledWith('asc');
+  });
+});
+
+describe('FilterBar sort chip', () => {
+  it('shows the short name on the chip and says the full one', () => {
+    const { renderer, labels } = renderBar(makeFilters({}));
+    const chipTexts = renderer.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+    expect(chipTexts).toContain('GRN no.');
+    expect(chipTexts).not.toContain('GRN number');
+    expect(labels()).toContain('Sorted by GRN number, highest number first. Change sort');
+    expect(labels()).not.toContain('Sorted by GRN no., highest number first. Change sort');
+  });
 });
 
 describe('FilterBar wording', () => {
@@ -211,7 +293,7 @@ describe('FilterBar wording', () => {
     expect(labelFor({ field: 'total', order: 'desc' })).toBe('Sorted by Total, highest first. Change sort');
     expect(labelFor({ field: 'total', order: 'asc' })).toBe('Sorted by Total, lowest first. Change sort');
     expect(labelFor({ field: 'customer_name', order: 'asc' })).toBe('Sorted by Customer, A to Z. Change sort');
-    expect(labelFor({ field: 'inv_no', order: 'desc' })).toBe('Sorted by Number, highest number first. Change sort');
+    expect(labelFor({ field: 'inv_no', order: 'desc' })).toBe('Sorted by Invoice number, highest number first. Change sort');
   });
 
   it('names a switch that is on without repeating its label', () => {

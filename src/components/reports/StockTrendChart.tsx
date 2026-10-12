@@ -20,6 +20,7 @@ import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWind
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LineChart } from 'react-native-gifted-charts';
+import { useReducedMotion } from 'react-native-reanimated';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t as tr } from '@/i18n';
@@ -151,6 +152,8 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [fullscreen, setFullscreen] = useState(false);
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  // Reduce Motion: the full-screen chart fades in instead of sliding (§9).
+  const reduceMotion = useReducedMotion();
 
   if (trends.length === 0) {
     return (
@@ -249,7 +252,7 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
         <Text style={styles.summary}>{summary}</Text>
       </Pressable>
 
-      <Modal visible={fullscreen} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
+      <Modal visible={fullscreen} animationType={reduceMotion ? 'fade' : 'slide'} presentationStyle="fullScreen" onRequestClose={close}>
         <View style={styles.screen}>
           <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} active={fullscreen} />
           <View style={[styles.screenHeader, { paddingTop: insets.top + space.xs }]}>

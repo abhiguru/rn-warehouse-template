@@ -15,6 +15,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { Pressable, RefreshControl, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeleton } from '@/components/skeletons/ListSkeleton';
@@ -32,6 +33,14 @@ import { ReportEmptyState } from './ReportEmptyState';
 import { ReportHeader, type ReportHeaderAction } from './ReportHeader';
 import { ReportStatusLine, type ReportStatusLineProps } from './ReportStatusLine';
 
+/** The button of a report's "nothing there" state. */
+export interface ReportEmptyAction {
+  label: string;
+  onPress: () => void;
+  /** MaterialCommunityIcons name. Defaults to a calendar, for the period. */
+  icon?: string;
+}
+
 export interface ReportScaffoldProps<T> {
   title: string;
   /** Whose data this is: "All customers" or the customer's name. */
@@ -42,6 +51,12 @@ export interface ReportScaffoldProps<T> {
 
   /** The report's search, filters, sort and period. Left out for a report with none of them. */
   filters?: { config: CountableFilterList; state: ReturnType<typeof useListFilters> };
+  /**
+   * The search is sent to the server (item stock), so the field shows a spinner while
+   * the answer is fetched. Default false: the search runs on the phone over rows already
+   * read, and a background refresh must not hide the clear button behind a spinner.
+   */
+  searchIsServerSide?: boolean;
 
   /** The state of the report's data. */
   query: Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'>;
@@ -68,15 +83,17 @@ export interface ReportScaffoldProps<T> {
 
   /** What the rows are, for "No GRNs match ...". */
   noun: EmptyNounPlural;
-  /** Shown when there are no rows and nothing narrows them. */
-  empty: { icon: string; title: string; description?: string };
+  /**
+   * Shown when there are no rows and nothing narrows them. `action` is the button
+   * under it, for a way out the description suggests ("Choose a longer period").
+   */
+  empty: { icon: string; title: string; description?: string; action?: ReportEmptyAction };
   /** Title of the failure with nothing to show. The reason is shown under it. */
   errorTitle?: string;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
-  listContent: { paddingBottom: space.xxl },
   stale: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -109,6 +126,7 @@ function ReportScaffoldInner<T>({
   onBack,
   actions,
   filters,
+  searchIsServerSide = false,
   query,
   kpis,
   kpiPlaceholders = 2,
@@ -127,7 +145,10 @@ function ReportScaffoldInner<T>({
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
   const { phase, error, retry, refresh, isRefreshing, isFetching, updatedAt } = query;
+  // The last row clears the system navigation bar (three-button Android, iOS home indicator).
+  const listContentStyle = useMemo(() => ({ paddingBottom: space.xxl + insets.bottom }), [insets.bottom]);
 
   const head = (
     <>
@@ -138,7 +159,8 @@ function ReportScaffoldInner<T>({
           value={filters.state.search}
           onSearch={filters.state.setSearch}
           placeholder={filters.config.search.placeholder}
-          loading={isFetching && phase === 'ready'}
+          // A search run on the phone has nothing to wait for: keep the clear button.
+          loading={searchIsServerSide && isFetching && phase === 'ready'}
         />
       ) : null}
       {filters ? <FilterBar config={filters.config} filters={filters.state} /> : null}
@@ -164,12 +186,20 @@ function ReportScaffoldInner<T>({
       <View style={styles.container}>
         {head}
         {/* The grid keeps its own side margin: wrapped in another, the tiles would sit twice as far in as the rows. */}
+        {/*
+          One element for the screen reader, "Loading figures", instead of one unnamed
+          ", loading" per placeholder tile.
+        */}
         {kpiPlaceholders > 0 ? (
-          <KPIGrid
-            items={Array.from({ length: kpiPlaceholders }, () => ({ icon: 'circle-outline', value: '—', label: '' }))}
-            isLoading
-            compact
-          />
+          <View accessible accessibilityLabel={tr('reports.components.kpisLoading')} accessibilityState={{ busy: true }}>
+            <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              <KPIGrid
+                items={Array.from({ length: kpiPlaceholders }, () => ({ icon: 'circle-outline', value: '—', label: '' }))}
+                isLoading
+                compact
+              />
+            </View>
+          </View>
         ) : null}
         <ListSkeleton count={4} metricsCount={2} showFooter={false} />
       </View>
@@ -229,7 +259,7 @@ function ReportScaffoldInner<T>({
         extraData={extraData}
         // A new sort or search must not stay anchored on the row that was on top before.
         maintainVisibleContentPosition={{ disabled: true }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={listContentStyle}
         keyboardShouldPersistTaps="handled"
         refreshControl={refreshControl}
         ListHeaderComponent={listHeader}
@@ -242,6 +272,10 @@ function ReportScaffoldInner<T>({
             emptyTitle={empty.title}
             // Without a description the list's own default ("Items you create appear here.") would show.
             emptySubtitle={empty.description ?? ''}
+            showCreateButton={Boolean(empty.action)}
+            createButtonLabel={empty.action?.label}
+            createButtonIcon={empty.action ? empty.action.icon ?? 'calendar-range' : undefined}
+            onCreatePress={empty.action?.onPress}
           />
         }
         ListFooterComponent={footer ? <>{footer}</> : null}

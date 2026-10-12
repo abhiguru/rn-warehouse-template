@@ -16,7 +16,7 @@ import type { CountableFilterList } from '../configs';
 import { describeDateRange, describeSort, describeValue, financialYearLabel, isFieldActive, isRequiredField, readSearch } from '../filterModel';
 import type { FilterFieldDef } from '../types';
 import type { useListFilters } from '../useListFilters';
-import { CHIP_HEIGHT, FilterBarChip } from './FilterBarChip';
+import { CHIP_HEIGHT, CHIP_INSET, FilterBarChip } from './FilterBarChip';
 import { SingleFilterSheet, type OpenFilter } from './SingleFilterSheet';
 
 export interface FilterBarProps {
@@ -32,13 +32,16 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomWidth: 1,
     borderBottomColor: t.border.separator,
   },
+  // Each chip is a touch target tall with its pill centred, so the row pads only what
+  // the target leaves: the pills still sit `space.sm` from the edges and the bar keeps
+  // one height, whichever chips are shown.
   row: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.sm,
     minHeight: CHIP_HEIGHT + space.sm * 2,
     paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
+    paddingVertical: space.sm - CHIP_INSET,
   },
 });
 
@@ -91,7 +94,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={sortText.label}
               chevron
               onPress={() => setOpen({ type: 'sort' })}
-              accessibilityLabel={translate('filters.bar.sortedBy', { label: sortText.label, direction: sortText.spoken })}
+              accessibilityLabel={translate('filters.bar.sortedBy', { label: sortText.spokenLabel, direction: sortText.spoken })}
             />
           ) : null}
           {required.map(field => {

@@ -78,6 +78,8 @@ export const reports = {
   },
   components: {
     kpiLoading: '{{label}}, loading',
+    // The figure tiles of a report while its first answer is read: one element, not one per tile
+    kpisLoading: 'Loading figures',
     kpiValue: '{{label}}: {{value}}',
     kpiValueUnit: '{{label}}: {{value}} {{unit}}',
     trendUp: 'up {{value}}',

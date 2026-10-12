@@ -12,9 +12,10 @@ import { countActiveFilters, currentSort, hasAnyFilter, visibleFields } from '@/
 import type { FilterContext, FilterListConfig, FilterValues } from '@/features/filters/types';
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
-import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { BRANDS, getTokens, space, type Mode } from '@/theme/tokens';
+import { KPICard } from '../KPICard';
 import { KPIGrid } from '../KPIGrid';
-import { ReportScaffold } from '../ReportScaffold';
+import { ReportScaffold, type ReportEmptyAction } from '../ReportScaffold';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -23,7 +24,8 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+let mockBottomInset = 0;
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: mockBottomInset, left: 0, right: 0 }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), push: jest.fn() }) }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
@@ -71,8 +73,8 @@ const query = (over: Partial<Query>): Query => ({
   error: null,
   refresh: jest.fn(),
   retry: jest.fn(),
-  // 10:42 in the morning, local time.
-  updatedAt: new Date(2026, 9, 12, 10, 42).getTime(),
+  // 10:42 this morning, local time: the status line gives the time alone for today.
+  updatedAt: new Date(new Date().setHours(10, 42, 0, 0)).getTime(),
   ...over,
 });
 
@@ -82,7 +84,17 @@ afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
 });
 
-function render(over: { query?: Partial<Query>; rows?: string[]; values?: FilterValues; description?: string | null } = {}) {
+function render(
+  over: {
+    query?: Partial<Query>;
+    rows?: string[];
+    values?: FilterValues;
+    description?: string | null;
+    action?: ReportEmptyAction;
+    searchIsServerSide?: boolean;
+    kpiPlaceholders?: number;
+  } = {}
+) {
   const filters = makeFilters({ period: { preset: 'last120' }, ...over.values });
   const state = query(over.query ?? {});
   let tree!: TestRenderer.ReactTestRenderer;
@@ -92,14 +104,21 @@ function render(over: { query?: Partial<Query>; rows?: string[]; values?: Filter
         title="GRN activity"
         subtitle="All customers"
         filters={{ config, state: filters }}
+        searchIsServerSide={over.searchIsServerSide}
         query={state}
         kpis={[{ icon: 'package-variant', value: 12, label: 'GRNs' }]}
+        kpiPlaceholders={over.kpiPlaceholders}
         status={{ range: { from: '2024-06-15', to: '2024-10-12' }, shown: over.rows?.length ?? 2, total: 5 }}
         rows={over.rows ?? ['GRN A0010', 'GRN A0011']}
         renderRow={row => <Text>{row}</Text>}
         keyExtractor={row => row}
         noun="GRNs"
-        empty={{ icon: 'package-variant-closed', title: 'No GRNs in this period', description: over.description === null ? undefined : 'Choose a longer period.' }}
+        empty={{
+          icon: 'package-variant-closed',
+          title: 'No GRNs in this period',
+          description: over.description === null ? undefined : 'Choose a longer period.',
+          action: over.action,
+        }}
         footer={<Text>Total 2 GRNs</Text>}
       />
     );
@@ -190,5 +209,66 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(text()).not.toContain('No GRNs in this period');
     act(() => labelled('Clear search and filters')[0].props.onPress());
     expect(filters.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the way out the empty state names, as its button, in the theme', () => {
+    const onPress = jest.fn();
+    const { labelled, tree } = render({ rows: [], action: { label: 'Choose period', onPress } });
+    const [button] = labelled('Choose period');
+    expect(button).toBeDefined();
+    expect(StyleSheet.flatten(button.props.style({ pressed: false })).backgroundColor).toBe(getTokens(brand, mode).brand.fill);
+    expect(tree.root.findAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'calendar-range').length).toBeGreaterThan(0);
+    act(() => button.props.onPress());
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('report layout, accessibility and fit', () => {
+  afterEach(() => {
+    mockBottomInset = 0;
+  });
+
+  it('reads the loading figures as one "Loading figures", the placeholder tiles hidden', () => {
+    const { tree } = render({ query: { phase: 'loading', updatedAt: undefined }, kpiPlaceholders: 3 });
+    const group = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessible && node.props.accessibilityLabel === 'Loading figures');
+    expect(group).toHaveLength(1);
+    expect(group[0].props.accessibilityState).toEqual({ busy: true });
+    // Every tile sits under a view that hides it from the screen reader (Android and iOS).
+    const tiles = tree.root.findAllByType(KPICard);
+    expect(tiles).toHaveLength(3);
+    for (const tile of tiles) {
+      let node = tile.parent;
+      let hidden = false;
+      while (node) {
+        if (node.props.importantForAccessibility === 'no-hide-descendants' && node.props.accessibilityElementsHidden) hidden = true;
+        node = node.parent;
+      }
+      expect(hidden).toBe(true);
+    }
+  });
+
+  it('offers no empty-state button unless the report gives one, and none when a search narrows the rows', () => {
+    expect(render({ rows: [] }).tree.root.findAll(node => node.props.accessibilityLabel === 'Create' && typeof node.props.onPress === 'function')).toEqual([]);
+    const { labelled } = render({ rows: [], values: { search: 'garlic' }, action: { label: 'Choose period', onPress: jest.fn() } });
+    expect(labelled('Choose period')).toEqual([]);
+    expect(labelled('Clear search and filters').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the last row clear of the system navigation bar', () => {
+    mockBottomInset = 48;
+    const { tree } = render();
+    expect(StyleSheet.flatten(tree.root.findByType('FlashList' as never).props.contentContainerStyle).paddingBottom).toBe(space.xxl + 48);
+  });
+
+  it('keeps the clear button during a background fetch of a search made on the phone', () => {
+    const { tree } = render({ values: { search: 'garlic' }, query: { isFetching: true } });
+    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Clear search' && typeof node.props.onPress === 'function').length).toBeGreaterThan(0);
+    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Searching')).toEqual([]);
+  });
+
+  it('shows the spinner while a server search is fetched', () => {
+    const { tree } = render({ values: { search: 'garlic' }, query: { isFetching: true }, searchIsServerSide: true });
+    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Searching').length).toBeGreaterThan(0);
+    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Clear search' && typeof node.props.onPress === 'function')).toEqual([]);
   });
 });

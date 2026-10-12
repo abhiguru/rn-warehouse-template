@@ -815,7 +815,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 
 | Component | Spec |
 |---|---|
-| `features/filters/components/FilterBarChip.tsx` | Pill, 36 px high with a 44 px touch target. Idle (a fast filter that is off): `surface.card`, 1 px `border.button`, `text.primary`, chevron when it opens a sheet. Active (a filter that is on): `brand.subtle`, `brand.tint` label in weight 600, and a separate `close` target labelled "Remove filter …". Action ("Filters" with its count badge, the sort chip). Text ("Clear all"). |
+| `features/filters/components/FilterBarChip.tsx` | Pill, 36 px high, drawn centred in a pressable that is `touchTarget` tall (44 iOS, 48 Android), not a hitSlop. Idle (a fast filter that is off): `surface.card`, 1 px `border.button`, `text.primary`, chevron when it opens a sheet. Active (a filter that is on): `brand.subtle`, `brand.tint` label in weight 600, and a separate `close` target labelled "Remove filter …". Action ("Filters" with its count badge, the sort chip). Text ("Clear all"). |
 | `features/filters/components/ChoiceChips.tsx` | A radio group of pills. Unselected: `surface.card`, 1 px `border.button`, `text.primary`. Selected: `brand.subtle`, `brand.tint`, check icon. |
 | `features/filters/components/FilterBar.tsx` | One row that scrolls sideways, in this order: Filters (opens the full page), the sort chip, active filters, unused fast filters, "Clear all". Its height never changes, so the list below does not jump. |
 | `common/overview-tab/InfoChip.tsx` | Neutral tag: `status.neutral.background`, `status.neutral.text`. |

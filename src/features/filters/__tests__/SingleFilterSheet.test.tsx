@@ -1,5 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
+import { Modal } from 'react-native';
 import { SingleFilterSheet, type OpenFilter } from '../components/SingleFilterSheet';
 import { FILTER_CONFIGS } from '../configs';
 import { currentSort, visibleFields } from '../filterModel';
@@ -15,6 +16,11 @@ jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+let mockReduceMotion = false;
+jest.mock('react-native-reanimated', () => ({
+  ...jest.requireActual('react-native-reanimated'),
+  useReducedMotion: () => mockReduceMotion,
 }));
 
 const config = { ...FILTER_CONFIGS['grn-list'], countResults: jest.fn(() => Promise.resolve(24)) };
@@ -45,7 +51,8 @@ function setup(values: FilterValues) {
         .findAll(node => typeof node.type !== 'string' && node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0]
         .props.onPress()
     );
-  return { filters, onClose, input, press, open: (open: OpenFilter) => act(() => renderer.update(element(open))) };
+  const modal = () => renderer.root.findAllByType(Modal).find(node => node.props.visible);
+  return { filters, onClose, input, press, modal, open: (open: OpenFilter) => act(() => renderer.update(element(open))) };
 }
 
 describe('single filter sheet', () => {
@@ -82,5 +89,22 @@ describe('single filter sheet', () => {
     sheet.press('In stock');
     expect(sheet.filters.setField.mock.calls).toEqual([['stock', 'in_stock']]);
     expect(sheet.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // §9: with Reduce Motion on, the sheet fades in instead of sliding up.
+  it('slides up normally and fades in when Reduce Motion is on', () => {
+    try {
+      mockReduceMotion = false;
+      const sliding = setup({});
+      sliding.open({ type: 'field', key: 'stock' });
+      expect(sliding.modal()?.props.animationType).toBe('slide');
+
+      mockReduceMotion = true;
+      const fading = setup({});
+      fading.open({ type: 'field', key: 'stock' });
+      expect(fading.modal()?.props.animationType).toBe('fade');
+    } finally {
+      mockReduceMotion = false;
+    }
   });
 });

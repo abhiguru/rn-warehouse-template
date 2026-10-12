@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { useReportScope, type ReportScope } from '../useReportScope';
+import { PUSH_GUARD_MS, useReportScope, type ReportScope } from '../useReportScope';
 
 const mockDispatch = jest.fn();
 const mockPush = jest.fn();
@@ -71,6 +71,27 @@ describe('a warehouse role', () => {
       type: 'reportPrefs/setReportCustomer',
       payload: expect.objectContaining({ scope: SCOPE, reportId: 'grn-activity', customer: GREEN }),
     });
+  });
+
+  it('opens a customer once for a double tap, and another one after the first push has gone through', () => {
+    const now = jest.spyOn(Date, 'now');
+    try {
+      signIn({ role: 'staff' });
+      const probe = use();
+      now.mockReturnValue(2_000_000);
+      probe.run(() => probe.scope().openCustomer(GREEN));
+      now.mockReturnValue(2_000_000 + PUSH_GUARD_MS - 1);
+      probe.run(() => probe.scope().openCustomer(GREEN));
+      probe.run(() => probe.scope().openCustomer(RIVER));
+      expect(mockPush.mock.calls.map(([route]) => route.params.customerId)).toEqual(['c1']);
+      // The double tap is not remembered as the customer opened last either.
+      expect(actions().filter(action => action.type === 'reportPrefs/setReportCustomer').map(action => action.payload.customer)).toEqual([GREEN]);
+      now.mockReturnValue(2_000_000 + PUSH_GUARD_MS);
+      probe.run(() => probe.scope().openCustomer(RIVER));
+      expect(mockPush.mock.calls.map(([route]) => route.params.customerId)).toEqual(['c1', 'c2']);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('shows the customer a route names, from the list or from a link in another report', () => {

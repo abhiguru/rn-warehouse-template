@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, Text, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
@@ -71,8 +72,10 @@ const makeStyles = (t: ThemeTokens) => ({
 export function SheetFrame({ visible, title, onClose, closeLabel = t('common.cancel'), action, tall = false, footer, children }: SheetFrameProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  // Reduce Motion: the sheet fades in instead of sliding up (§9).
+  const reduceMotion = useReducedMotion();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <Modal visible={visible} transparent animationType={reduceMotion ? 'fade' : 'slide'} onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <KeyboardAvoidingView style={styles.root} behavior="padding">
         <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('filters.sheet.closeScrim', { action: closeLabel, title })} />
         <View style={[styles.sheet, tall && styles.sheetTall]} accessibilityViewIsModal>

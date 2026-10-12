@@ -4,9 +4,9 @@
  * them, and the customer it hands back.
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { BRANDS, getTokens, space, type Mode } from '@/theme/tokens';
 import { ReportCustomerPicker } from '../ReportCustomerPicker';
 
 let mockState: Record<string, unknown> = {};
@@ -14,7 +14,8 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+let mockBottomInset = 0;
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: mockBottomInset, left: 0, right: 0 }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), push: jest.fn() }) }));
 // The customers table as row-level security shows it to the signed-in account.
 let mockRows: { id: string; name: string | null }[] | Error = [];
@@ -69,6 +70,18 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     await act(async () => rows()[1].props.onPress());
     expect(onPick).toHaveBeenCalledWith({ id: 'c2', name: 'Riverbank Produce' });
     expect(mockNameQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('the system navigation bar', () => {
+  afterEach(() => {
+    mockBottomInset = 0;
+  });
+
+  it('keeps the last customer clear of it', async () => {
+    mockBottomInset = 48;
+    await render(NAMED);
+    expect(flat(tree!.root.findByType(ScrollView).props.contentContainerStyle).paddingBottom).toBe(space.xxxl + 48);
   });
 });
 

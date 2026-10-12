@@ -251,6 +251,27 @@ describe('pressing', () => {
     expect(mockPush).toHaveBeenCalledWith('/reports/grn-activity');
     expect(mockDispatch).not.toHaveBeenCalled();
   });
+
+  it('opens a report once for a double tap, and again for a tap after the first has gone through', () => {
+    const now = jest.spyOn(Date, 'now');
+    try {
+      signIn('staff');
+      const tree = render();
+      now.mockReturnValue(1_000_000);
+      press(target(section(tree, 'movement'), OPEN_GRN));
+      now.mockReturnValue(1_000_250);
+      press(target(section(tree, 'movement'), OPEN_GRN));
+      // A second row hit by the same double tap opens nothing either.
+      press(section(tree, 'financial').findAll((node) => String(node.props.accessibilityLabel ?? '').startsWith('Invoice history. ') && typeof node.props.onPress === 'function')[0]);
+      expect(mockPush.mock.calls).toEqual([['/reports/grn-activity']]);
+      // Back on the tab later: the next tap opens its report.
+      now.mockReturnValue(1_000_700);
+      press(target(section(tree, 'movement'), OPEN_GRN));
+      expect(mockPush.mock.calls).toEqual([['/reports/grn-activity'], ['/reports/grn-activity']]);
+    } finally {
+      now.mockRestore();
+    }
+  });
 });
 
 const MODES: Mode[] = ['light', 'dark'];

@@ -7,7 +7,7 @@
  * pins and recent reports are kept per facility and account (useReportPrefs).
  */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
@@ -28,6 +28,9 @@ import { reportHubSections, type ReportHubSectionId } from '@/components/reports
 import { Avatar, SectionHeader } from '@/components/ui';
 import { t as translate } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
+
+/** A second tap on a report within this long of the first is a double tap, and is ignored. */
+const REPORT_PUSH_GUARD_MS = 600;
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -115,7 +118,12 @@ export default function ReportsScreen() {
   // Every id, from the registry and from what was stored, passes the role's gate here.
   const sections = reportHubSections(role, prefs.pinned, prefs.recent);
 
+  // A double tap on a row would push the report twice, and back would then show it again.
+  const lastPushAt = useRef(0);
   const openReport = (report: ReportDefinition) => {
+    const now = Date.now();
+    if (now - lastPushAt.current < REPORT_PUSH_GUARD_MS) return;
+    lastPushAt.current = now;
     noteOpened(report.id);
     router.push(report.route as any);
   };
