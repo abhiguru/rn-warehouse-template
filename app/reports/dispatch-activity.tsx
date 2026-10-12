@@ -86,27 +86,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     textAlign: 'center' as const,
   },
-  retryRow: {
-    alignItems: 'center' as const,
-    paddingBottom: space.xxl,
-  },
-  retryButton: {
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  retryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  retryText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
   // Section header (guide §13.6)
   sectionHeader: {
     flexDirection: 'row' as const,
@@ -748,8 +727,12 @@ function DispatchActivityReport({ scope }: { scope: ReportScope }) {
     setDateRange(range);
   }, []);
 
-  // Refetch when date range changes
+  // Refetch when the date range changes. The range the screen opened with is
+  // fetched by the effect above, so this one waits for another range.
+  const fetchedRange = React.useRef(dateRange);
   useEffect(() => {
+    if (fetchedRange.current === dateRange) return;
+    fetchedRange.current = dateRange;
     if (shouldShowListView && viewMode === 'all') {
       fetchAllCustomersData();
     } else if (selectedCustomer) {
@@ -757,7 +740,6 @@ function DispatchActivityReport({ scope }: { scope: ReportScope }) {
     } else if (singleAssignedCustomerId) {
       fetchSingleCustomerData(singleAssignedCustomerId);
     }
-    // Only trigger on dateRange change, not on initial mount (handled by separate effect)
   }, [dateRange]);
 
   // Generate unique key for dispatch (disp_id may be undefined)
@@ -898,21 +880,12 @@ function DispatchActivityReport({ scope }: { scope: ReportScope }) {
         />
         <ReportEmptyState
           icon="alert-circle-outline"
+          tone="error"
           message={tr('reports.dispatchActivity.errorTitle')}
           description={errorReason ?? tr(error)}
+          actionLabel={canRetry ? tr('common.retry') : undefined}
+          onAction={canRetry ? handleRetry : undefined}
         />
-        {canRetry && (
-          <View style={styles.retryRow}>
-            <Pressable
-              onPress={handleRetry}
-              style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={tr('reports.dispatchActivity.retryLabel')}
-            >
-              <Text style={styles.retryText}>{tr('common.retry')}</Text>
-            </Pressable>
-          </View>
-        )}
       </View>
     );
   }
@@ -932,6 +905,7 @@ function DispatchActivityReport({ scope }: { scope: ReportScope }) {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={refreshControl}
         >
           {/* KPI Summary */}
@@ -977,9 +951,11 @@ function DispatchActivityReport({ scope }: { scope: ReportScope }) {
             </View>
           ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
             <ReportEmptyState
-              icon="magnify"
+              icon="magnify-close"
               message={tr('reports.dispatchActivity.noMatch', { search: customerSearchQuery.trim() })}
               description={tr('reports.dispatchActivity.tryFewerLetters')}
+              actionLabel={tr('common.clearSearch')}
+              onAction={() => setCustomerSearchQuery('')}
             />
           ) : (
             <ReportEmptyState

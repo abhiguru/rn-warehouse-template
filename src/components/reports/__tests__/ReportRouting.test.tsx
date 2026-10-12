@@ -158,7 +158,7 @@ afterEach(async () => {
 describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
   it.each(WAREHOUSE)('%s gets the all-customers request', async (account) => {
     await open(Screen, account);
-    // (Dispatch activity asks twice on opening; how often is not this test's subject.)
+    // (How often is not this test's subject: see ReportRequests.test.tsx.)
     expect(all).toHaveBeenCalled();
     expect(one).not.toHaveBeenCalled();
     expect(pickerRows()).toHaveLength(0);

@@ -30,7 +30,6 @@ import {
   ReportCustomerScope,
   type ReportScope,
 } from '@/components/reports';
-import { Button } from '@/components/ui/Button';
 import { getCustomerGRNActivity, getAllGRNActivity } from '@/services/reporting/grn-activity-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -54,8 +53,8 @@ import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/util
 import { StatusTag, Avatar } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 
-const NO_CUSTOMER_ERROR = 'No customer assigned to your account';
-
+// A function, not a constant: the text follows the app language (docs/I18N.md rule 2).
+const noCustomerError = () => tr('reports.shared.noCustomer');
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -173,7 +172,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.border.divider,
     marginLeft: space.lg + layout.avatar.md + space.md,
   },
-  retry: { alignItems: 'center' as const, paddingBottom: space.xxl },
 });
 
 type Styles = ReturnType<typeof makeStyles>;
@@ -421,7 +419,7 @@ function GRNActivityReport({ scope }: { scope: ReportScope }) {
     } else if (singleAssignedCustomerId) {
       fetchSingleCustomerData(singleAssignedCustomerId, selectedPeriod);
     } else {
-      setError(NO_CUSTOMER_ERROR);
+      setError(noCustomerError());
       setIsLoading(false);
     }
   }, []);
@@ -569,27 +567,24 @@ function GRNActivityReport({ scope }: { scope: ReportScope }) {
 
   // Error
   if (error && !hasData) {
-    const noCustomer = error === NO_CUSTOMER_ERROR;
+    const noCustomer = error === noCustomerError();
     return (
       <View style={styles.container}>
         <ReportHeader title={tr('reports.titles.grnActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <ReportEmptyState
           icon="alert-circle-outline"
+          tone={noCustomer ? 'default' : 'error'}
           message={tr(noCustomer ? 'reports.grnActivity.noCustomerTitle' : 'reports.grnActivity.errorTitle')}
           description={
             noCustomer
               ? tr('reports.grnActivity.noCustomerDescription')
               : tr('common.checkConnection')
           }
+          actionLabel={noCustomer ? undefined : tr('common.retry')}
+          // The period's own fetch: it shows the loading state, where a refresh would show "No GRNs".
+          onAction={noCustomer ? undefined : () => handlePeriodChange(selectedPeriod)}
         />
-        {!noCustomer && (
-          <View style={styles.retry}>
-            <Button type="secondary" variant="tint" onPress={handleRefresh}>
-              {tr('common.retry')}
-            </Button>
-          </View>
-        )}
       </View>
     );
   }
@@ -638,9 +633,11 @@ function GRNActivityReport({ scope }: { scope: ReportScope }) {
             </View>
           ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
             <ReportEmptyState
-              icon="magnify"
+              icon="magnify-close"
               message={tr('reports.dispatchActivity.noMatch', { search: customerSearchQuery.trim() })}
               description={tr('reports.dispatchActivity.tryFewerLetters')}
+              actionLabel={tr('common.clearSearch')}
+              onAction={() => setCustomerSearchQuery('')}
             />
           ) : (
             <ReportEmptyState

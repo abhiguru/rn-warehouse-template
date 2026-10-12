@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — reports (2026-10-12)
+
+No backend change is needed for the entries below.
+
+Fixes on the report screens:
+
+- **Invoice history** now shows its figures (invoices and net amount for all
+  customers; invoices, paid and pending for one customer). They were worked
+  out but only ever drawn as a loading placeholder.
+- **Stock summary**: a customer with nothing in stock can see their
+  out-of-stock items. The "no stock" message used to replace the whole screen.
+- **Item stock summary**: a search typed while a load was in flight is no
+  longer dropped, and an older answer can no longer replace a newer one. A
+  GRN list that failed to load says so and offers "Try again"; it used to read
+  "No GRNs with this item in stock".
+- **Dispatch activity** asks the server once on opening, not twice, and no
+  longer asks for every customer when it was opened for one.
+- Dispatch activity, GRN activity and Invoice history show a failure the same
+  way (error tone, one "Try again" that shows the loading state), and their
+  "no customers match" state offers "Clear search".
+- Three texts that were always English follow the app's language.
+- The eight reports are listed in one table
+  (`src/features/reports/reportRegistry.ts`) that the Reports tab and the
+  route declarations both read; all eight routes are now declared.
+
 ## Unreleased — price history screen (2026-10-11)
 
 Needs backend migration 48 (`get_item_price_history`), which is in backend

@@ -28,7 +28,6 @@ import {
   ReportCustomerScope,
   type ReportScope,
 } from '@/components/reports';
-import { Button } from '@/components/ui/Button';
 import { getCustomerInvoiceHistory, getAllInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
@@ -186,7 +185,6 @@ const makeStyles = (t: ThemeTokens) => ({
     marginLeft: space.lg + layout.avatar.md + space.md,
     backgroundColor: t.border.divider,
   },
-  retry: { alignItems: 'center' as const, paddingHorizontal: layout.marginCompact },
 });
 
 type Styles = ReturnType<typeof makeStyles>;
@@ -586,10 +584,18 @@ function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer}>
           <KPIGrid
-            items={[
-              { icon: 'file-document-outline', value: '-', label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
-              { icon: 'currency-inr', value: '-', label: tr('common.amount'), variant: 'secondary' },
-            ]}
+            items={
+              isListView
+                ? [
+                    { icon: 'file-document-outline', value: '-', label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+                    { icon: 'currency-inr', value: '-', label: tr('reports.invoiceHistory.netAmount'), variant: 'secondary' },
+                  ]
+                : [
+                    { icon: 'file-document-outline', value: '-', label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+                    { icon: 'check-circle', value: '-', label: tr('reports.customerActivity.paid'), variant: 'success' },
+                    { icon: 'alert', value: '-', label: tr('common.pending'), variant: 'warning' },
+                  ]
+            }
             isLoading={true}
             compact
           />
@@ -600,16 +606,19 @@ function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
 
   // Error
   if (error && !hasData) {
+    const canRetry = Boolean(shouldShowListView || singleAssignedCustomerId || selectedCustomer);
     return (
       <View style={styles.container}>
         <ReportHeader title={tr('reports.titles.invoiceHistory')} onBack={scope.onChangeCustomer} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState icon="alert-circle-outline" message={tr('reports.customerActivity.errorTitle')} description={errorReason ?? tr(error)} />
-        {(shouldShowListView || singleAssignedCustomerId || selectedCustomer) && (
-          <View style={styles.retry}>
-            <Button type="secondary" onPress={() => handlePeriodChange(selectedPeriod)}>{tr('common.retry')}</Button>
-          </View>
-        )}
+        <ReportEmptyState
+          icon="alert-circle-outline"
+          tone="error"
+          message={tr('reports.customerActivity.errorTitle')}
+          description={errorReason ?? tr(error)}
+          actionLabel={canRetry ? tr('common.retry') : undefined}
+          onAction={canRetry ? () => handlePeriodChange(selectedPeriod) : undefined}
+        />
       </View>
     );
   }
@@ -631,6 +640,7 @@ function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -640,6 +650,8 @@ function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
             />
           }
         >
+          <KPIGrid items={allCustomersKpis} isLoading={isLoading} compact />
+
           {/* Customer Search */}
           <View style={styles.section}>
             <ReportCustomerSearch
@@ -662,11 +674,19 @@ function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
                 ))}
               </View>
             </View>
+          ) : customerSearchQuery.trim() ? (
+            <ReportEmptyState
+              icon="magnify-close"
+              message={tr('reports.invoiceHistory.noMatch')}
+              description={tr('reports.invoiceHistory.noMatchDescription')}
+              actionLabel={tr('common.clearSearch')}
+              onAction={() => setCustomerSearchQuery('')}
+            />
           ) : (
             <ReportEmptyState
               icon="file-document-outline"
-              message={tr(customerSearchQuery.trim() ? 'reports.invoiceHistory.noMatch' : 'reports.invoiceHistory.emptyTitle')}
-              description={tr(customerSearchQuery.trim() ? 'reports.invoiceHistory.noMatchDescription' : 'reports.invoiceHistory.emptyDescription')}
+              message={tr('reports.invoiceHistory.emptyTitle')}
+              description={tr('reports.invoiceHistory.emptyDescription')}
             />
           )}
         </ScrollView>
@@ -717,6 +737,8 @@ function InvoiceHistoryReport({ scope }: { scope: ReportScope }) {
           />
         }
       >
+        <KPIGrid items={singleCustomerKpis} isLoading={isLoading} compact />
+
         {/* Monthly Breakdown */}
         {data.by_month.length > 0 && (
           <View style={styles.section}>

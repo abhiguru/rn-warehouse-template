@@ -22,91 +22,10 @@ import {
   type ThemeTokens,
   trackedText,
 } from '@/theme/tokens';
-import type { ReportDefinition } from '@/types/report.types';
+import { REPORTS, type ReportDefinition } from '@/features/reports/reportRegistry';
 import { Avatar } from '@/components/ui';
 import { t as translate } from '@/i18n';
 import { canOpenScreen, isWarehouseUser } from '@/config/roles';
-
-// Define all available reports. Titles and descriptions are getters, so they
-// follow the app's language (docs/I18N.md rule 2). The titles are the report
-// screens' own titles (`reports.titles`), so the hub and the screen say the same.
-const CUSTOMER_REPORTS: ReportDefinition[] = [
-  {
-    id: 'customer-activity',
-    get title() { return translate('reports.titles.customerActivity'); },
-    get description() { return translate('nav.reports.descriptions.customerActivity'); },
-    icon: 'account-group-outline',
-    route: '/reports/customer-activity',
-    staffOnly: false,
-    category: 'operations',
-  },
-  {
-    id: 'stock-summary',
-    get title() { return translate('reports.titles.stockSummary'); },
-    get description() { return translate('nav.reports.descriptions.stockSummary'); },
-    icon: 'warehouse',
-    route: '/reports/stock-summary',
-    staffOnly: false,
-    category: 'stock',
-  },
-  {
-    id: 'item-stock-summary',
-    get title() { return translate('reports.titles.itemStockSummary'); },
-    get description() { return translate('nav.reports.descriptions.itemStockSummary'); },
-    icon: 'cube-outline',
-    route: '/reports/item-stock-summary',
-    staffOnly: false,
-    category: 'stock',
-  },
-  {
-    id: 'dispatch-activity',
-    get title() { return translate('reports.titles.dispatchActivity'); },
-    get description() { return translate('nav.reports.descriptions.dispatchActivity'); },
-    icon: 'truck-delivery-outline',
-    route: '/reports/dispatch-activity',
-    staffOnly: false,
-    category: 'movement',
-  },
-  {
-    id: 'grn-activity',
-    get title() { return translate('reports.titles.grnActivity'); },
-    get description() { return translate('nav.reports.descriptions.grnActivity'); },
-    icon: 'package-down',
-    route: '/reports/grn-activity',
-    staffOnly: false,
-    category: 'movement',
-  },
-  {
-    id: 'invoice-history',
-    get title() { return translate('reports.titles.invoiceHistory'); },
-    get description() { return translate('nav.reports.descriptions.invoiceHistory'); },
-    icon: 'file-document-outline',
-    route: '/reports/invoice-history',
-    staffOnly: false,
-    category: 'financial',
-  },
-  {
-    id: 'stock-aging',
-    get title() { return translate('reports.titles.stockAging'); },
-    get description() { return translate('nav.reports.descriptions.stockAging'); },
-    icon: 'calendar-clock',
-    route: '/reports/stock-aging',
-    staffOnly: false,
-    category: 'stock',
-  },
-];
-
-const STAFF_REPORTS: ReportDefinition[] = [
-  {
-    id: 'operations-dashboard',
-    get title() { return translate('reports.titles.operationsDashboard'); },
-    get description() { return translate('nav.reports.descriptions.operationsDashboard'); },
-    icon: 'view-dashboard-outline',
-    route: '/reports/operations-dashboard',
-    staffOnly: true,
-    category: 'operations',
-  },
-];
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -277,9 +196,9 @@ export default function ReportsScreen() {
   const t = useTokens();
 
   // The operations dashboard is for administrators and supervisors (the server refuses it
-  // to staff); every other report is offered to all roles.
+  // to staff); every other report is offered to all roles. The gate of each report is in
+  // the registry (src/features/reports/reportRegistry.ts).
   const role = userProfile?.role;
-  const showOperations = canOpenScreen(role, 'operationsDashboard');
   // Staff see every customer's reports, like the managers.
   const seesAllCustomers = isWarehouseUser(role);
 
@@ -287,9 +206,10 @@ export default function ReportsScreen() {
     router.push(report.route as any);
   };
 
-  // Group reports by category
-  const customerReports = CUSTOMER_REPORTS;
-  const staffReports = showOperations ? STAFF_REPORTS : [];
+  // Reports for every role, then the ones this role's gate lets it open
+  const customerReports = REPORTS.filter((report) => !report.gate);
+  const staffReports = REPORTS.filter((report) => report.gate && canOpenScreen(role, report.gate));
+  const showOperations = staffReports.length > 0;
 
   return (
     <View style={styles.container}>

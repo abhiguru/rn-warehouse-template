@@ -79,6 +79,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { useProfileLanguage } from '@/i18n/useProfileLanguage';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
+import { REPORTS } from '@/features/reports/reportRegistry';
 import { t as translate } from '@/i18n';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
@@ -364,19 +365,10 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="terms-of-service" options={{ headerShown: false }} />
       <Stack.Screen name="privacy-policy" options={{ headerShown: false }} />
 
-      {/* Report screens */}
-      <Stack.Screen
-        name="reports/stock-summary"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="reports/dispatch-activity"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="reports/operations-dashboard"
-        options={{ headerShown: false }}
-      />
+      {/* Report screens: one per report of the registry */}
+      {REPORTS.map((report) => (
+        <Stack.Screen key={report.id} name={`reports/${report.id}`} options={{ headerShown: false }} />
+      ))}
     </Stack>
   );
 }

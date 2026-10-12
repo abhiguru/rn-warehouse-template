@@ -41,7 +41,7 @@ export interface ReportCustomerCardProps {
   subtitle: string | string[];
   /** Main numeric value to display */
   value: number | string;
-  /** Label for the value (default: "units") */
+  /** Label for the value (default: "units", in the app's language) */
   valueLabel?: string;
   /** Press handler for navigation */
   onPress: () => void;
@@ -139,7 +139,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   title,
   subtitle,
   value,
-  valueLabel = 'units',
+  valueLabel = tr('reports.shared.units'),
   onPress,
   customerId,
   status,

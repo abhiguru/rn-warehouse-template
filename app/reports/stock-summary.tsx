@@ -780,7 +780,7 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
 
   // Get current customer info for single customer view
   const currentCustomerId = selectedCustomer?.customer_id || singleAssignedCustomerId;
-  const currentCustomerName = selectedCustomer?.customer_name || scope.customerName || 'Customer';
+  const currentCustomerName = selectedCustomer?.customer_name || scope.customerName || tr('reports.shared.unnamedCustomer');
   const pdfActions = currentCustomerId
     ? [
         {
@@ -793,8 +793,11 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
     : [];
 
   // Single Customer View (for single-assigned users or drill-down from list view)
+  const hasItems = !!data?.items && data.items.length > 0;
+  const hasOutOfStockItems = !!data?.out_of_stock_items && data.out_of_stock_items.length > 0;
+
   // Empty state
-  if (!data?.items || data.items.length === 0) {
+  if (!data || (!hasItems && !hasOutOfStockItems)) {
     return (
       <View style={styles.container}>
         <ReportHeader
@@ -827,25 +830,36 @@ function StockSummaryReport({ scope }: { scope: ReportScope }) {
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
-        {/* KPI Summary */}
-        <KPIGrid items={singleCustomerKpiItems} isLoading={isLoading} compact />
+        {hasItems ? (
+          <>
+            {/* KPI Summary */}
+            <KPIGrid items={singleCustomerKpiItems} isLoading={isLoading} compact />
 
-        {/* Items List */}
-        <View style={styles.section}>
-          <SectionHeader title={tr('reports.stockSummary.itemsInStorage')} styles={styles} />
-          <View style={styles.itemsList}>
-            {data.items.map((item) => (
-              <ItemCard
-                key={item.item_id}
-                item={item}
-                isExpanded={expandedItems.has(item.item_id)}
-                onToggle={() => toggleItem(item.item_id)}
-                styles={styles}
-                t={t}
-              />
-            ))}
-          </View>
-        </View>
+            {/* Items List */}
+            <View style={styles.section}>
+              <SectionHeader title={tr('reports.stockSummary.itemsInStorage')} styles={styles} />
+              <View style={styles.itemsList}>
+                {data.items.map((item) => (
+                  <ItemCard
+                    key={item.item_id}
+                    item={item}
+                    isExpanded={expandedItems.has(item.item_id)}
+                    onToggle={() => toggleItem(item.item_id)}
+                    styles={styles}
+                    t={t}
+                  />
+                ))}
+              </View>
+            </View>
+          </>
+        ) : (
+          // Nothing in stock now: the same message as the empty state, above what was emptied
+          <ReportEmptyState
+            icon="package-variant-closed"
+            message={tr('reports.shared.noStockForCustomer')}
+            description={tr('reports.shared.noStockForCustomerDescription')}
+          />
+        )}
 
         {/* Out of Stock Section - Collapsible */}
         {data.out_of_stock_items && data.out_of_stock_items.length > 0 && (

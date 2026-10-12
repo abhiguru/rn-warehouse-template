@@ -38,6 +38,7 @@ import {
 } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
+import { Button } from '@/components/ui/Button';
 import { createLogger } from '@/utils/logger';
 import { t as tr, formatIdentifier } from '@/i18n';
 import type { ItemWiseStockItem } from '@/types/stock.types';
@@ -143,6 +144,13 @@ const makeStyles = (t: ThemeTokens) =>
       paddingVertical: space.xl,
       paddingHorizontal: space.lg,
     },
+    grnErrorContainer: {
+      alignItems: 'center',
+      paddingVertical: space.lg,
+      paddingHorizontal: space.lg,
+      gap: space.sm,
+    },
+    grnErrorText: { ...typography.footnote, color: t.status.negative.text, textAlign: 'center' },
 
     // GRN row
     grnRow: {
@@ -288,6 +296,9 @@ interface ItemCardProps {
   onToggle: () => void;
   grnDetails: GRNItem[] | null;
   isLoadingGRNs: boolean;
+  /** The GRNs could not be loaded: an error with "Try again", not "no GRNs". */
+  grnLoadFailed: boolean;
+  onRetryGRNs: () => void;
   styles: Styles;
   t: ThemeTokens;
 }
@@ -298,6 +309,8 @@ const ItemCard: React.FC<ItemCardProps> = ({
   onToggle,
   grnDetails,
   isLoadingGRNs,
+  grnLoadFailed,
+  onRetryGRNs,
   styles,
   t,
 }) => {
@@ -361,6 +374,13 @@ const ItemCard: React.FC<ItemCardProps> = ({
               <View style={styles.grnLoadingContainer} accessibilityLiveRegion="polite">
                 <ActivityIndicator size="small" color={t.brand.tint} />
                 <Text style={styles.grnLoadingText}>{tr('reports.itemStockSummary.loadingGrns')}</Text>
+              </View>
+            ) : grnLoadFailed ? (
+              <View style={styles.grnErrorContainer} accessibilityLiveRegion="polite">
+                <Text style={styles.grnErrorText}>{tr('reports.itemStockSummary.grnsLoadError')}</Text>
+                <Button type="tertiary" size="compact" onPress={onRetryGRNs}>
+                  {tr('common.retry')}
+                </Button>
               </View>
             ) : grnDetails && grnDetails.length > 0 ? (
               grnDetails.map((grn, index) => (
@@ -457,8 +477,12 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [grnDetailsCache, setGrnDetailsCache] = useState<Record<string, GRNItem[]>>({});
   const [loadingGRNs, setLoadingGRNs] = useState<Set<string>>(new Set());
+  // Items whose GRNs could not be loaded. Kept apart from the cache: a failure is not "no GRNs".
+  const [failedGRNs, setFailedGRNs] = useState<Set<string>>(new Set());
 
-  // Refs for preventing duplicate fetches
+  // A newer request (the user kept typing, or pulled to refresh) replaces an
+  // older one: late answers to old questions are dropped.
+  const latestRequest = useRef(0);
   const fetchInProgressRef = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -490,7 +514,9 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
       setIsLoading(false);
       return;
     }
-    if (fetchInProgressRef.current && !isRefresh) return;
+    // The next page waits for the request before it, so one offset is asked for once.
+    if (isLoadMore && fetchInProgressRef.current) return;
+    const requestId = ++latestRequest.current;
     fetchInProgressRef.current = true;
 
     try {
@@ -512,7 +538,7 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
         offset,
       });
 
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
       if (response.success && response.data) {
         const newItems = response.data.items;
@@ -524,6 +550,7 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
           // Clear expanded state and cache on new search/refresh
           setExpandedItems(new Set());
           setGrnDetailsCache({});
+          setFailedGRNs(new Set());
         }
 
         setPagination({
@@ -542,15 +569,18 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
         setError(loadError());
       }
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || requestId !== latestRequest.current) return;
       logger.error('Exception', err);
       setError(loadError());
     } finally {
-      fetchInProgressRef.current = false;
-      if (isMountedRef.current) {
-        setIsLoading(false);
-        setIsRefreshing(false);
-        setIsLoadingMore(false);
+      // Only the newest request ends the loading state: an older one finishing must not hide it.
+      if (requestId === latestRequest.current) {
+        fetchInProgressRef.current = false;
+        if (isMountedRef.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+          setIsLoadingMore(false);
+        }
       }
     }
   }, [customerId, noCustomer]);
@@ -564,6 +594,12 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
     if (loadingGRNs.has(itemId)) return;
 
     setLoadingGRNs(prev => new Set(prev).add(itemId));
+    setFailedGRNs(prev => {
+      if (!prev.has(itemId)) return prev;
+      const next = new Set(prev);
+      next.delete(itemId);
+      return next;
+    });
 
     try {
       logger.debug('Fetching GRN details for item', { itemId });
@@ -583,18 +619,12 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
         logger.debug('GRN details loaded', { count: response.data.items.length });
       } else {
         logger.warn('Failed to load GRN details', { message: response.message });
-        // Cache empty array to prevent re-fetching
-        setGrnDetailsCache(prev => ({
-          ...prev,
-          [itemId]: [],
-        }));
+        // Not cached: the card shows the error, and "Try again" or opening it again reads once more
+        setFailedGRNs(prev => new Set(prev).add(itemId));
       }
     } catch (err) {
       logger.error('Exception fetching GRN details', err);
-      setGrnDetailsCache(prev => ({
-        ...prev,
-        [itemId]: [],
-      }));
+      if (isMountedRef.current) setFailedGRNs(prev => new Set(prev).add(itemId));
     } finally {
       if (isMountedRef.current) {
         setLoadingGRNs(prev => {
@@ -672,10 +702,12 @@ function ItemStockSummaryReport({ scope }: { scope: ReportScope }) {
       onToggle={() => toggleItem(item.item_id)}
       grnDetails={grnDetailsCache[item.item_id] || null}
       isLoadingGRNs={loadingGRNs.has(item.item_id)}
+      grnLoadFailed={failedGRNs.has(item.item_id)}
+      onRetryGRNs={() => fetchGRNDetails(item.item_id)}
       styles={styles}
       t={t}
     />
-  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs, styles, t]);
+  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs, failedGRNs, fetchGRNDetails, styles, t]);
 
   // Key extractor
   const keyExtractor = useCallback((item: ItemWiseStockItem) => item.item_id, []);

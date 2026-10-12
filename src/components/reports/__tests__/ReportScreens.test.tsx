@@ -12,9 +12,18 @@ import StockSummaryScreen from '../../../../app/reports/stock-summary';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
 import StockAgingScreen from '../../../../app/reports/stock-aging';
 import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
+import DispatchActivityScreen from '../../../../app/reports/dispatch-activity';
+import GRNActivityScreen from '../../../../app/reports/grn-activity';
+import InvoiceHistoryScreen from '../../../../app/reports/invoice-history';
 import SensorsEntry, { SensorsScreen, rowStatus } from '../../../../app/sensors';
 import SensorDetailScreen from '../../../../app/sensor-detail/[id]';
 import type { SensorDevice } from '@/types/sensor.types';
+import { ReportEmptyState } from '@/components/reports';
+import { Button } from '@/components/ui/Button';
+import * as reporting from '@/services/reporting';
+import * as customerActivity from '@/services/reporting/customer-activity-service';
+import * as grnActivity from '@/services/reporting/grn-activity-service';
+import * as invoiceHistory from '@/services/reporting/invoice-history-service';
 
 let mockState: Record<string, unknown> = {};
 jest.mock('@/store/hooks', () => ({
@@ -155,6 +164,68 @@ jest.mock('@/services/reporting', () => ({
     })
   ),
   getCustomerStockSummary: jest.fn(),
+  getAllDispatchActivity: jest.fn(() =>
+    Promise.resolve({
+      success: true,
+      data: {
+        summary: { total_dispatches: 3, total_quantity: 140, total_weight: 7000 },
+        by_customer: [
+          { customer_id: 'c1', customer_name: 'Fictional Traders', dispatch_count: 3, total_quantity: 140, total_weight: 7000 },
+        ],
+      },
+    })
+  ),
+  getCustomerDispatchActivity: jest.fn(),
+}));
+
+jest.mock('@/services/reporting/grn-activity-service', () => ({
+  getAllGRNActivity: jest.fn(() =>
+    Promise.resolve({
+      success: true,
+      data: {
+        summary: { total_grns: 4, total_quantity: 220 },
+        by_customer: [
+          { customer_id: 'c1', customer_name: 'Fictional Traders', grn_count: 4, total_quantity: 220, total_weight: 11000, latest_grn_date: '2026-10-01' },
+        ],
+      },
+    })
+  ),
+  getCustomerGRNActivity: jest.fn(),
+}));
+
+jest.mock('@/services/reporting/invoice-history-service', () => ({
+  getAllInvoiceHistory: jest.fn(() =>
+    Promise.resolve({
+      success: true,
+      data: {
+        summary: { total_invoices: 2, total_customers: 1, total_amount: 5000, total_tax: 500, net_amount: 4500 },
+        by_customer: [
+          { customer_id: 'c1', customer_name: 'Fictional Traders', invoice_count: 2, total_amount: 5000, net_amount: 4500, latest_invoice_date: '2026-10-01' },
+        ],
+        by_month: [],
+      },
+    })
+  ),
+  getCustomerInvoiceHistory: jest.fn(() =>
+    Promise.resolve({
+      success: true,
+      data: {
+        summary: {
+          total_invoices: 2, total_amount: 5000, total_labour: 0, total_tax: 500, total_discount: 0, net_amount: 4500,
+          paid_count: 1, pending_count: 1, paid_amount: 3000, pending_amount: 1500,
+        },
+        invoices: [
+          {
+            invoice_id: 'inv-1', invoice_number: '2026-0042', invoice_date: '2026-10-01', financial_year: '2026-27',
+            grn_ref: '311', grn_id: 'g1', total: 3000, labour: 0, discount: 0, tax_amount: 0, net_total: 3000,
+            item_count: 1, total_quantity: 10, notes: null,
+            payment_status: { status: 'paid', paid_date: null, payment_ref: null }, line_items: [],
+          },
+        ],
+        by_month: [],
+      },
+    })
+  ),
 }));
 
 jest.mock('@/services/reporting/customer-activity-service', () => ({
@@ -247,6 +318,33 @@ function texts(tree: ReactTestRenderer): string[] {
   return tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
 }
 
+/** The KPI tiles that are drawn as loading placeholders, by what they say to a screen reader. */
+function loadingTiles(tree: ReactTestRenderer): string[] {
+  return tree.root
+    .findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityState?.busy === true)
+    .map(n => String(n.props.accessibilityLabel))
+    .filter(label => label.endsWith(', loading'));
+}
+
+/** Presses the first control whose accessibility label starts with the text. */
+async function press(tree: ReactTestRenderer, label: string) {
+  const control = tree.root.findAll(
+    n => typeof n.props.onPress === 'function' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith(label)
+  )[0];
+  await act(async () => {
+    control.props.onPress();
+  });
+}
+
+/** A request that stays unanswered until the test answers it. */
+function pending() {
+  let answer!: (value: unknown) => void;
+  const promise = new Promise<never>(resolve => {
+    answer = resolve as (value: unknown) => void;
+  });
+  return { promise, answer };
+}
+
 describe('sensor row status', () => {
   it('shows the most severe of health, connection and battery', () => {
     expect(rowStatus({ ...DEVICE, health_status: 'healthy' })).toEqual({ kind: 'positive', label: 'Healthy' });
@@ -304,6 +402,31 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
+  it('dispatch activity list', async () => {
+    const tree = await render(brand, mode, <DispatchActivityScreen />);
+    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(texts(tree)).toEqual(
+      expect.arrayContaining(['Dispatch activity', 'Bags dispatched', 'Customers with dispatches', 'Fictional Traders', '3 dispatches'])
+    );
+    act(() => tree.unmount());
+  });
+
+  it('GRN activity list', async () => {
+    const tree = await render(brand, mode, <GRNActivityScreen />);
+    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['GRN activity', 'GRNs', 'Customers', 'Fictional Traders']));
+    act(() => tree.unmount());
+  });
+
+  it('invoice history list with its summary', async () => {
+    const tree = await render(brand, mode, <InvoiceHistoryScreen />);
+    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(texts(tree)).toEqual(
+      expect.arrayContaining(['Invoice history', 'Invoices', 'Net amount', '₹4,500', 'Customers', 'Fictional Traders'])
+    );
+    act(() => tree.unmount());
+  });
+
   it('sensors list with one status per sensor', async () => {
     const tree = await render(brand, mode, <SensorsScreen />);
     expect(backgrounds(tree)).toEqual(
@@ -330,6 +453,155 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     expect(all).toEqual(expect.arrayContaining(['Chamber 2 sensor', 'Warning', 'Online', 'Historical trend']));
     expect(all).toContain('Summary, last 7 days');
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    act(() => tree.unmount());
+  });
+});
+
+const [BRAND] = BRANDS;
+
+describe('invoice history summary', () => {
+  it('shows the totals above the customers, and one customer\'s totals above its invoices', async () => {
+    const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Invoices', '2', 'Net amount', '₹4,500']));
+    expect(loadingTiles(tree)).toEqual([]);
+
+    await press(tree, 'Fictional Traders');
+    const all = texts(tree);
+    expect(all).toEqual(expect.arrayContaining(['Paid (1)', '₹3,000', 'Pending (1)', '₹1,500', 'Invoice 2026-0042']));
+    expect(all).not.toContain('Net amount');
+    // The summary comes before the invoices (style guide 14.10).
+    expect(all.indexOf('Paid (1)')).toBeLessThan(all.indexOf('Invoice 2026-0042'));
+    act(() => tree.unmount());
+  });
+
+  it('draws as many loading tiles as the view shows once loaded', async () => {
+    jest.mocked(invoiceHistory.getAllInvoiceHistory).mockImplementationOnce(() => pending().promise);
+    const waiting = await render(BRAND, 'light', <InvoiceHistoryScreen />);
+    expect(loadingTiles(waiting)).toEqual(['Invoices, loading', 'Net amount, loading']);
+    act(() => waiting.unmount());
+
+    const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
+    jest.mocked(invoiceHistory.getCustomerInvoiceHistory).mockImplementationOnce(() => pending().promise);
+    await press(tree, 'Fictional Traders');
+    expect(loadingTiles(tree)).toEqual(['Invoices, loading', 'Paid, loading', 'Pending, loading']);
+    act(() => tree.unmount());
+  });
+});
+
+describe('stock summary of one customer', () => {
+  const summary = { total_items: 0, total_quantity: 0, total_weight_kg: 0, oldest_stock_date: null, grn_count: 0, grn_count_empty: 1 };
+  const onions = { item_id: 'i9', item_name: 'Example Onions', total_stock: 0, total_weight: 0, grn_count: 1, grns: [] };
+  const potatoes = { item_id: 'i1', item_name: 'Example Potatoes', total_stock: 40, total_weight: 2000, grn_count: 1, grns: [] };
+  const openCustomer = async (data: unknown) => {
+    jest.mocked(reporting.getCustomerStockSummary).mockResolvedValueOnce({ success: true, message: '', data } as never);
+    const tree = await render(BRAND, 'light', <StockSummaryScreen />);
+    await press(tree, 'Patel Traders');
+    return tree;
+  };
+
+  it('with nothing in stock still offers the out-of-stock items, under the empty message', async () => {
+    const tree = await openCustomer({ summary, items: [], out_of_stock_items: [onions] });
+    const all = texts(tree);
+    expect(all).toEqual(expect.arrayContaining(['No stock for this customer', 'Out of stock', 'Last 360 days']));
+    expect(all).not.toContain('Items in storage');
+    expect(all).not.toContain('Example Onions');
+
+    await press(tree, 'Out of stock, 1 item');
+    expect(texts(tree)).toContain('Example Onions');
+    act(() => tree.unmount());
+  });
+
+  it('with no items at all shows the empty message only', async () => {
+    const tree = await openCustomer({ summary, items: [], out_of_stock_items: [] });
+    const all = texts(tree);
+    expect(all).toContain('No stock for this customer');
+    expect(all).not.toContain('Out of stock');
+    act(() => tree.unmount());
+  });
+
+  it('with stock shows the items and the out-of-stock section, and no empty message', async () => {
+    const tree = await openCustomer({ summary: { ...summary, total_items: 1, total_quantity: 40 }, items: [potatoes], out_of_stock_items: [onions] });
+    const all = texts(tree);
+    expect(all).toEqual(expect.arrayContaining(['Items in storage', 'Example Potatoes', 'Out of stock']));
+    expect(all).not.toContain('No stock for this customer');
+    act(() => tree.unmount());
+  });
+});
+
+describe('a report that could not be loaded', () => {
+  const FAILED: [string, React.ComponentType, jest.Mock, string][] = [
+    ['dispatch activity', DispatchActivityScreen, reporting.getAllDispatchActivity as jest.Mock, 'No dispatches in this period'],
+    ['GRN activity', GRNActivityScreen, grnActivity.getAllGRNActivity as jest.Mock, 'No GRNs in this period'],
+    ['invoice history', InvoiceHistoryScreen, invoiceHistory.getAllInvoiceHistory as jest.Mock, 'No invoices in this period'],
+    ['customer activity', CustomerActivityScreen, customerActivity.getAllCustomerActivity as jest.Mock, 'No customer activity'],
+  ];
+  const refused = { success: false, message: 'The facility refused this report.' };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it.each(FAILED)('%s: an error state with one "Try again", which shows the loading state', async (_name, Screen, request, emptyTitle) => {
+    request.mockResolvedValueOnce(refused);
+    const tree = await render(BRAND, 'light', <Screen />);
+    expect(request).toHaveBeenCalledTimes(1);
+
+    // The shared empty state in its error tone, with the retry as its own action.
+    const states = tree.root.findAllByType(ReportEmptyState);
+    expect(states).toHaveLength(1);
+    expect(states[0].props).toMatchObject({ icon: 'alert-circle-outline', tone: 'error', actionLabel: 'Try again' });
+    const icon = tree.root.findAll(n => (n.type as unknown) === 'Icon' && n.props.name === 'alert-circle-outline')[0];
+    expect(icon.props.color).toBe(getTokens(BRAND, 'light').status.negative.text);
+    const retries = tree.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityRole === 'button' && /try|retry/i.test(String(n.props.accessibilityLabel)));
+    expect(new Set(retries.map(n => n.props.accessibilityLabel))).toEqual(new Set(['Try again']));
+    expect(tree.root.findAllByType(Button).filter(button => button.props.children === 'Try again')).toHaveLength(1);
+
+    // Try again: the request is sent once more, and until its answer the screen is loading,
+    // not empty ("No GRNs in this period" would be a wrong answer).
+    const second = pending();
+    request.mockImplementationOnce(() => second.promise);
+    await act(async () => {
+      states[0].props.onAction();
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(tree.root.findAllByType(ReportEmptyState)).toHaveLength(0);
+    expect(loadingTiles(tree).length).toBeGreaterThan(0);
+    expect(texts(tree)).not.toContain(emptyTitle);
+
+    // A second refusal brings the error back.
+    await act(async () => {
+      second.answer(refused);
+    });
+    expect(tree.root.findAllByType(ReportEmptyState).map(state => state.props.tone)).toEqual(['error']);
+    expect(loadingTiles(tree)).toEqual([]);
+    act(() => tree.unmount());
+  });
+});
+
+describe('a customer search that matches nothing', () => {
+  const SEARCHED: [string, React.ComponentType][] = [
+    ['dispatch activity', DispatchActivityScreen],
+    ['GRN activity', GRNActivityScreen],
+    ['invoice history', InvoiceHistoryScreen],
+  ];
+
+  it.each(SEARCHED)('%s: offers "Clear search", which brings the customers back', async (_name, Screen) => {
+    const tree = await render(BRAND, 'light', <Screen />);
+    // The list scrolls with the keyboard open, and a tap on a row is not swallowed by it.
+    expect(tree.root.findAll(n => n.props.keyboardShouldPersistTaps === 'handled').length).toBeGreaterThan(0);
+
+    const search = tree.root.findAll(n => typeof n.props.onChangeText === 'function')[0];
+    await act(async () => {
+      search.props.onChangeText('zzz');
+    });
+    expect(texts(tree)).not.toContain('Fictional Traders');
+    const states = tree.root.findAllByType(ReportEmptyState);
+    expect(states).toHaveLength(1);
+    expect(states[0].props).toMatchObject({ icon: 'magnify-close', actionLabel: 'Clear search' });
+
+    await act(async () => {
+      states[0].props.onAction();
+    });
+    expect(tree.root.findAllByType(ReportEmptyState)).toHaveLength(0);
+    expect(texts(tree)).toContain('Fictional Traders');
     act(() => tree.unmount());
   });
 });

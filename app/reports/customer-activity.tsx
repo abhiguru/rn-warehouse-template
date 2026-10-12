@@ -1133,7 +1133,8 @@ function CustomerActivityReport({ scope }: { scope: ReportScope }) {
           message={tr(noCustomer ? 'reports.customerActivity.noCustomerTitle' : 'reports.customerActivity.errorTitle')}
           description={errorReason ?? tr(error)}
           actionLabel={noCustomer ? undefined : tr('common.retry')}
-          onAction={noCustomer ? undefined : handleRefresh}
+          // The period's own fetch: it shows the loading state, where a refresh would show "No activity".
+          onAction={noCustomer ? undefined : () => handlePeriodChange(selectedPeriod)}
         />
       </View>
     );
