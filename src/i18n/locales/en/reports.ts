@@ -64,6 +64,9 @@ export const reports = {
     grns: 'GRNs',
     latestGrn: 'Latest GRN',
     stockLeft: 'Stock left',
+    age: 'Age',
+    lastActive: 'Last active',
+    invoicedAmount: 'Invoiced amount',
   },
   filters: {
     invoicing: 'Invoicing',
@@ -157,6 +160,12 @@ export const reports = {
     overOneYearCount: '{{over}} over 1 year',
     opensCustomerHint: "Opens this customer's stock aging",
     itemsHighestFirst: 'Items, highest stock first',
+    errorTitle: "Couldn't load stock aging",
+    // The age on an item's tag is that of its oldest GRN line.
+    oldestAge: 'Oldest {{age}}',
+    // A customer's tag names the bucket of the customer's average stock age.
+    averageBucket: 'Average: {{bucket}}',
+    searchItems: 'Search items or GRN numbers',
     service: {
       fetchFailed: 'Failed to fetch stock aging report',
       noData: 'No stock aging data found',
@@ -204,6 +213,9 @@ export const reports = {
     myCustomers: 'My customers',
     emptyTitle: 'No customer activity',
     emptyDescription: 'No GRNs, dispatches or invoices in this period. Try a longer period.',
+    // The same at the longest period, which has no longer period to try.
+    emptyDescriptionLongest: 'No GRNs, dispatches or invoices in this period.',
+    loadFailedTitle: "Couldn't load customer activity",
     // Customer rows
     activeToday: 'Active today',
     lastActive: 'Last active {{date}}',
@@ -249,6 +261,7 @@ export const reports = {
       periodLabel: 'Period {{value}}',
       summaryOne: 'Stock at the end of {{month}}: {{stock}}.',
       summaryRange: 'Stock went from {{first}} in {{firstMonth}} to {{latest}} in {{lastMonth}}. Highest {{highest}}.',
+      empty: 'No stock levels to show for this period.',
     },
     // Quick access cards
     viewAll: 'View all',

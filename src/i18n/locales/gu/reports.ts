@@ -63,6 +63,9 @@ export const reports: Translation<typeof source> = {
     grns: 'આવક પાવતી',
     latestGrn: 'છેલ્લી આવક પાવતી',
     stockLeft: 'બાકી સ્ટોક',
+    age: 'કેટલા દિવસથી',
+    lastActive: 'છેલ્લી કામગીરી',
+    invoicedAmount: 'ઇન્વૉઇસની રકમ',
   },
   filters: {
     invoicing: 'ઇન્વૉઇસ',
@@ -156,6 +159,10 @@ export const reports: Translation<typeof source> = {
     overOneYearCount: '{{over}} આઇટમ ૧ વર્ષથી વધુ',
     opensCustomerHint: 'આ વેપારીનો માલ કેટલા દિવસથી પડ્યો છે તે ખોલે છે',
     itemsHighestFirst: 'આઇટમ, સૌથી વધુ સ્ટોક પહેલાં',
+    errorTitle: 'માલ કેટલા દિવસથી પડ્યો છે તે લોડ કરી શકાયું નથી',
+    oldestAge: 'સૌથી જૂનો માલ {{age}}થી',
+    averageBucket: 'સરેરાશ: {{bucket}}',
+    searchItems: 'આઇટમ કે આવક પાવતી નંબર શોધો',
     service: {
       fetchFailed: 'માલ કેટલા દિવસથી પડ્યો છે તેનો અહેવાલ મેળવી શકાયો નથી',
       noData: 'માલ કેટલા દિવસથી પડ્યો છે તેની કોઈ માહિતી મળી નથી',
@@ -203,6 +210,8 @@ export const reports: Translation<typeof source> = {
     myCustomers: 'મારા વેપારી',
     emptyTitle: 'વેપારીની કોઈ કામગીરી નથી',
     emptyDescription: 'આ સમયગાળામાં કોઈ આવક પાવતી, જાવક કે ઇન્વૉઇસ નથી. લાંબો સમયગાળો પસંદ કરી જુઓ.',
+    emptyDescriptionLongest: 'આ સમયગાળામાં કોઈ આવક પાવતી, જાવક કે ઇન્વૉઇસ નથી.',
+    loadFailedTitle: 'વેપારીની કામગીરી લોડ કરી શકાઈ નથી',
     // Customer rows
     activeToday: 'આજે કામગીરી થઈ',
     lastActive: 'છેલ્લી કામગીરી {{date}}',
@@ -248,6 +257,7 @@ export const reports: Translation<typeof source> = {
       periodLabel: 'સમયગાળો {{value}}',
       summaryOne: '{{month}}ના અંતે સ્ટોક: {{stock}}.',
       summaryRange: 'સ્ટોક {{firstMonth}}માં {{first}} હતો, {{lastMonth}}માં {{latest}} થયો. સૌથી વધુ {{highest}}.',
+      empty: 'આ સમયગાળામાં બતાવવા માટે સ્ટોકના આંકડા નથી.',
     },
     // Quick access cards
     viewAll: 'બધું જુઓ',

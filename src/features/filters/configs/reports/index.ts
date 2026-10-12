@@ -4,9 +4,11 @@
  * the server returned; `reportViews.test.ts` checks every pair.
  */
 import type { FilterListConfig } from '../../types';
+import { CUSTOMER_ACTIVITY_CUSTOMERS, customerActivityCustomersView } from './customerActivity';
 import { GRN_ACTIVITY_CUSTOMER, GRN_ACTIVITY_CUSTOMERS, grnCustomersView, grnRecordsView } from './grnActivity';
 import type { ReportRequest } from './shared';
 import { STOCK_SUMMARY_CUSTOMER, STOCK_SUMMARY_CUSTOMERS, stockSummaryCustomersView, stockSummaryItemsView } from './stockSummary';
+import { STOCK_AGING_CUSTOMER, STOCK_AGING_CUSTOMERS, stockAgingCustomersView, stockAgingItemsView } from './stockAging';
 
 export interface ReportViewConfig {
   config: FilterListConfig<ReportRequest<object>>;
@@ -23,6 +25,9 @@ export const REPORT_VIEW_CONFIGS: ReportViewConfig[] = [
   pair(GRN_ACTIVITY_CUSTOMER, grnRecordsView),
   pair(STOCK_SUMMARY_CUSTOMERS, stockSummaryCustomersView),
   pair(STOCK_SUMMARY_CUSTOMER, stockSummaryItemsView),
+  pair(STOCK_AGING_CUSTOMERS, stockAgingCustomersView),
+  pair(STOCK_AGING_CUSTOMER, stockAgingItemsView),
+  pair(CUSTOMER_ACTIVITY_CUSTOMERS, customerActivityCustomersView),
 ];
 
 export * from './grnActivity';

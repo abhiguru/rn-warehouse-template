@@ -306,6 +306,32 @@ describe('a report opened for a named customer (from Customer activity)', () => 
   });
 });
 
+describe('the arguments of stock aging and customer activity', () => {
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+  it('stock aging asks for today\'s stock: no argument for every customer, the id alone for one', async () => {
+    await open(StockAgingScreen, 'staff');
+    expect(jest.mocked(stockAging.getAllStockAging).mock.calls).toEqual([[]]);
+    act(() => tree!.unmount());
+    tree = undefined;
+    await open(StockAgingScreen, 'customer with one customer');
+    expect(jest.mocked(stockAging.getCustomerStockAging).mock.calls).toEqual([[{ customerId: 'c1' }]]);
+  });
+
+  it('customer activity asks for the two days of its period, and the customer for one', async () => {
+    await open(CustomerActivityScreen, 'staff');
+    const [all] = jest.mocked(customerActivity.getAllCustomerActivity).mock.calls[0];
+    expect(Object.keys(all ?? {}).sort()).toEqual(['fromDate', 'toDate']);
+    expect(all?.fromDate).toMatch(DAY);
+    act(() => tree!.unmount());
+    tree = undefined;
+    await open(CustomerActivityScreen, 'customer with one customer');
+    const [one] = jest.mocked(customerActivity.getCustomerActivityDetail).mock.calls[0];
+    expect(Object.keys(one).sort()).toEqual(['customerId', 'fromDate', 'toDate']);
+    expect(one).toEqual({ customerId: 'c1', fromDate: all?.fromDate, toDate: all?.toDate });
+  });
+});
+
 describe('operations dashboard', () => {
   it.each([
     ['admin', true],

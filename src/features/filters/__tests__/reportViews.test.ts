@@ -5,6 +5,7 @@
  * are shown or their order, on rows made for the purpose.
  */
 import { REPORT_VIEW_CONFIGS, isLongestPeriod, reportPeriod, sortRows, type ReportRequest } from '../configs/reports';
+import { groupStockAgingLines } from '../configs/reports/stockAging';
 import { isFieldActive, isRequiredField, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterValue, SortState } from '../types';
 
@@ -41,6 +42,21 @@ const stockItem = (id: string, name: string, stock: number, grns: string[]) => (
   total_weight: stock * 50,
   grn_count: grns.length,
   grns: grns.map((gr_no, index) => ({ grn_id: `${id}-g${index}`, gr_no, date: '2026-09-01', orig_qty: stock, stock, item_weight: 50, rack: '', packaging: 'Bag' })),
+const stockLine = (over: Record<string, unknown>) => ({
+  grn_id: 'g',
+  gr_no: 'A0001',
+  item_name: 'Garlic',
+  packaging: 'Bag',
+  current_stock: 0,
+  original_qty: 0,
+  weight: 0,
+  rack: '',
+  package_mark: '',
+  grn_date: '2026-01-01',
+  aging_days: 0,
+  aging_bucket: '0-120',
+  dispatch_info: { total_dispatched: 0, dispatch_count: 0, last_dispatch_date: null, days_since_last_dispatch: null, avg_days_between_dispatches: null },
+  ...over,
 });
 
 /**
@@ -93,6 +109,40 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     search: 'a0042',
     found: ['i2'],
     id: (row: { item_id: string }) => row.item_id,
+  'report-stock-aging': {
+    rows: [
+      { customer_id: 's1', customer_name: 'Riverbank Produce', total_stock: 80, average_age_days: 400, oldest_stock_days: 500, items_over_365_days: 2, aging_distribution: {} },
+      { customer_id: 's2', customer_name: 'Green Valley Traders', total_stock: 300, average_age_days: 50, oldest_stock_days: 90, items_over_365_days: 0, aging_distribution: {} },
+      { customer_id: 's3', customer_name: 'Sunrise Agro Foods', total_stock: 120, average_age_days: 200, oldest_stock_days: 380, items_over_365_days: 1, aging_distribution: {} },
+      { customer_id: 's4', customer_name: 'Hillside Growers', total_stock: 50, average_age_days: 130, oldest_stock_days: 250, items_over_365_days: 0, aging_distribution: {} },
+    ],
+    search: 'riverbank',
+    found: ['s1'],
+    id: (row: { customer_id: string }) => row.customer_id,
+  },
+  // Items of one customer, each with its GRN lines (Garlic has two, in different buckets).
+  'report-stock-aging-customer': {
+    rows: groupStockAgingLines([
+      stockLine({ grn_id: 'g1', gr_no: 'A0010', item_name: 'Garlic', current_stock: 30, aging_days: 400, aging_bucket: '364+' }),
+      stockLine({ grn_id: 'g2', gr_no: 'A0020', item_name: 'Cumin', current_stock: 200, aging_days: 150, aging_bucket: '121-240' }),
+      stockLine({ grn_id: 'g3', gr_no: 'A0030', item_name: 'Turmeric', current_stock: 10, aging_days: 300, aging_bucket: '241-364' }),
+      stockLine({ grn_id: 'g4', gr_no: 'A0011', item_name: 'Garlic', current_stock: 20, aging_days: 90, aging_bucket: '0-120' }),
+      stockLine({ grn_id: 'g5', gr_no: 'A0040', item_name: 'Red chilli', current_stock: 120, aging_days: 30, aging_bucket: '0-120' }),
+    ]),
+    search: 'red chilli',
+    found: ['Red chilli'],
+    id: (row: { key: string }) => row.key,
+  },
+  'report-customer-activity': {
+    rows: [
+      { customer_id: 'a1', customer_name: 'Riverbank Produce', customer_city: 'Rajkot', current_stock: 80, total_grns: 3, total_dispatches: 1, total_invoice_amount: 5000, last_activity_date: '2026-08-11', last_activity_type: 'grn' },
+      { customer_id: 'a2', customer_name: 'Green Valley Traders', customer_city: 'Surat', current_stock: 300, total_grns: 1, total_dispatches: 4, total_invoice_amount: 1200, last_activity_date: '2026-09-20', last_activity_type: 'dispatch' },
+      { customer_id: 'a3', customer_name: 'Sunrise Agro Foods', customer_city: 'Anand', current_stock: 120, total_grns: 6, total_dispatches: 0, total_invoice_amount: 9000, last_activity_date: '2026-07-01', last_activity_type: 'grn' },
+      { customer_id: 'a4', customer_name: 'Hillside Growers', customer_city: 'Morbi', current_stock: 50, total_grns: 2, total_dispatches: 2, total_invoice_amount: 300, last_activity_date: '2026-10-02', last_activity_type: 'dispatch' },
+    ],
+    search: 'riverbank',
+    found: ['a1'],
+    id: (row: { customer_id: string }) => row.customer_id,
   },
 };
 

@@ -401,17 +401,19 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
 
   it('customer activity list', async () => {
     const tree = await render(brand, mode, <CustomerActivityScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.fill]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Customer activity', 'Patel Traders', '2 GRNs', '1 dispatch']));
+    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.surface.header]));
+    // ReportScaffold: the figures, then one ReportCustomerCard per customer with its city and stock.
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Customer activity', 'All customers', 'Customers', 'Stock', 'Patel Traders', '300', 'in stock']));
+    expect(texts(tree).some(text => text.startsWith('Rajkot · '))).toBe(true);
     act(() => tree.unmount());
   });
 
   it('stock aging list with status buckets', async () => {
     const tree = await render(brand, mode, <StockAgingScreen />);
     expect(backgrounds(tree)).toEqual(
-      expect.arrayContaining([t.background.base, t.status.positive.element, t.status.negative.element])
+      expect.arrayContaining([t.background.base, t.surface.card, t.status.positive.element, t.status.negative.element])
     );
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Stock aging', '0–120 days', 'Over 364 days', 'Patel Traders']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Stock aging', 'All customers', 'Stock age', '0–120 days', 'Over 364 days', 'Patel Traders', 'Average: 121–240 days']));
     act(() => tree.unmount());
   });
 
