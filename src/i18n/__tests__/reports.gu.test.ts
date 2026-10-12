@@ -1,26 +1,19 @@
 import { t, setLanguage } from '..';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
 
 afterEach(() => setLanguage('en'));
 
 describe('reports in Gujarati', () => {
   it('writes a period with its day count in Gujarati digits', () => {
     expect(t('reports.period.lastDays', { count: 120 }, 'gu')).toBe('છેલ્લા ૧૨૦ દિવસ');
-    expect(t('reports.period.days', { count: 364 }, 'gu')).toBe('૩૬૪ દિવસ');
-  });
-
-  it('puts "થી … સુધી" after the dates of a range', () => {
-    setLanguage('gu');
-    expect(t('reports.period.dateRange', { from: formatDate('2026-06-01'), to: formatDate('2026-10-10') })).toBe(
-      `${formatDate('2026-06-01')}થી ${formatDate('2026-10-10')} સુધી`
-    );
-    expect(t('reports.period.dateRange', { from: 'A', to: 'B' }, 'en')).toBe('A – B');
   });
 
   it('keeps a document number in 0-9 and formats counts around it', () => {
     setLanguage('gu');
     expect(t('reports.shared.grnNumber', { number: '2026/0145' })).toBe('આવક પાવતી 2026/0145');
-    expect(t('reports.stockSummary.stockOf', { stock: formatNumber(1250), total: formatNumber(4000) })).toBe('૪,૦૦૦માંથી ૧,૨૫૦');
+    expect(t('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(1250), total: formatNumber(4000) })).toBe(
+      '૪,૦૦૦માંથી ૧,૨૫૦ સ્ટોકમાં છે'
+    );
   });
 
   it('says how long stock has been lying, with the age after the number', () => {
@@ -31,6 +24,45 @@ describe('reports in Gujarati', () => {
     expect(
       t('reports.stockAging.dispatchedIn', { quantity: formatNumber(300), dispatches: formatCount(3, 'dispatch', 'dispatches') })
     ).toBe('૩ જાવકમાં ૩૦૦');
+  });
+});
+
+describe('the reviewed Gujarati wording of the report texts', () => {
+  it('says how many rows show without a gendered verb', () => {
+    expect(t('reports.scaffold.showing', { shown: '૩', total: '૪૦' }, 'gu')).toBe('૪૦માંથી ૩ દેખાય છે');
+  });
+
+  it('names the age sort with a plain noun, so the spoken "… મુજબ સૉર્ટ કરેલું" is a sentence', () => {
+    expect(t('reports.sort.age', undefined, 'gu')).toBe('દિવસ');
+    // The older average-age label is outside this review and is unchanged.
+    expect(t('reports.stockAging.averageAge', undefined, 'gu')).toBe('સરેરાશ કેટલા દિવસથી');
+  });
+
+  it('says only the loaded items are sorted', () => {
+    expect(t('reports.itemStockSummary.sortedAmongLoaded', { count: 40 }, 'gu')).toBe('ફક્ત લોડ થયેલી ૪૦ આઇટમ જ સૉર્ટ થઈ છે');
+  });
+
+  it('uses એકાઉન્ટ for the login account and લાઇન for a row of the PDF', () => {
+    expect(t('reports.export.notAvailable', undefined, 'gu')).toBe('આ અહેવાલની PDF તમારા એકાઉન્ટ માટે ઉપલબ્ધ નથી.');
+    expect(t('reports.export.truncated', { shown: '૫,૦૦૦', total: '૧૨,૩૪૫' }, 'gu')).toBe('આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ લાઇન જ છે.');
+  });
+});
+
+describe('units after a stock figure', () => {
+  it('is "unit" for exactly 1 in English and "units" otherwise, and "units" when no count is given', () => {
+    expect(t('reports.shared.units', { count: 1 })).toBe('unit');
+    expect(t('reports.shared.units', { count: 2 })).toBe('units');
+    expect(t('reports.shared.units', { count: 0 })).toBe('units');
+    expect(t('reports.shared.units')).toBe('units');
+    expect(formatCount(1, 'unit')).toBe('1 unit');
+    expect(formatCount(1200, 'unit')).toBe('1,200 units');
+  });
+
+  it('is the same word for 1 and for more in Gujarati', () => {
+    for (const count of [0, 1, 2, 1200]) expect(t('reports.shared.units', { count }, 'gu')).toBe('નંગ');
+    setLanguage('gu');
+    expect(formatCount(1, 'unit')).toBe('૧ નંગ');
+    expect(formatCount(1200, 'unit')).toBe('૧,૨૦૦ નંગ');
   });
 });
 

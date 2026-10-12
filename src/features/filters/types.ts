@@ -13,7 +13,23 @@ export interface SortState {
   order: SortOrder;
 }
 
-export type DatePresetId = 'today' | 'yesterday' | 'last7' | 'thisMonth' | 'lastMonth';
+export type DatePresetId =
+  | 'today'
+  | 'yesterday'
+  | 'last7'
+  | 'thisMonth'
+  | 'lastMonth'
+  // A report's period (docs/STYLE_GUIDE.md §14.10).
+  | 'last120'
+  | 'last240'
+  | 'last364'
+  | 'last420'
+  | 'thisFinancialYear';
+/** A quick range offered as a chip. The label is a getter (docs/I18N.md rule 2). */
+export interface DatePreset {
+  id: DatePresetId;
+  readonly label: string;
+}
 /** A preset is resolved to dates when the request is built, so "Today" stays today. */
 export interface DateRangeValue {
   preset?: DatePresetId;
@@ -83,6 +99,23 @@ export interface ToggleField extends FieldBase {
 }
 export interface DateRangeField extends FieldBase {
   kind: 'dateRange';
+  /** The quick ranges offered. Defaults to the lists' own (`DATE_PRESETS`). */
+  presets?: DatePreset[];
+  /**
+   * The range always has a value (a report's period). It is drawn next to the
+   * sort chip without a remove target, is not counted as a filter, and
+   * "Clear all" leaves it alone.
+   */
+  required?: boolean;
+  /** A quick range applies on the tap and closes the sheet; typed days stay a draft. */
+  applyPresetOnTap?: boolean;
+  /**
+   * Today for this range, as a Date whose local year, month and day are that day: the day the
+   * list's own `toRequest` counts its quick ranges from, so the days the sheet shows are the days
+   * the request sends. A report's period gives India's (`todayInIST`). Without it the phone's
+   * own today is used, as the lists' requests use it.
+   */
+  today?: () => Date;
 }
 export interface NumberRangeField extends FieldBase {
   kind: 'numberRange';
@@ -174,6 +207,6 @@ export interface FilterListConfig<TRequest = unknown> extends FilterListDefiniti
    * call it, so a field cannot be shown without being sent.
    */
   toRequest: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext, today?: Date) => TRequest;
-  /** Number of results for a request. */
-  fetchCount: (request: TRequest, ctx: FilterContext) => Promise<number>;
+  /** Number of results for a request. Left out where nothing can count them: the button then reads "Show results". */
+  fetchCount?: (request: TRequest, ctx: FilterContext) => Promise<number>;
 }

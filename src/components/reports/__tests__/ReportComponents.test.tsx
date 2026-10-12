@@ -1,14 +1,14 @@
 import React from 'react';
 import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
-import { StyleSheet } from 'react-native';
-import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
+import { Dimensions, StyleSheet } from 'react-native';
+import { setLanguage } from '@/i18n';
+import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { KPICard } from '../KPICard';
 import { KPIGrid } from '../KPIGrid';
-import { PeriodSelector } from '../PeriodSelector';
 import { ReportHeader } from '../ReportHeader';
+import { ReportStatusLine } from '../ReportStatusLine';
 import { ReportEmptyState } from '../ReportEmptyState';
 import { ReportCustomerCard } from '../ReportCustomerCard';
-import { ReportCustomerSearch } from '../ReportCustomerSearch';
 
 let mockState: { theme: { preference: string; brand: string } } = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -23,7 +23,6 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack, push: jest.fn() }), router: { back: jest.fn() } }));
-jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
@@ -91,20 +90,6 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
-  it('period selector marks the selected segment with brand fill and reports the range', () => {
-    const onChange = jest.fn();
-    const tree = render(brand, mode, <PeriodSelector selectedPeriod="last240days" onPeriodChange={onChange} />);
-    const radios = tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function');
-    expect(radios).toHaveLength(4);
-    const selected = radios.filter(r => r.props.accessibilityState?.selected);
-    expect(selected).toHaveLength(1);
-    expect(selected[0].props.accessibilityLabel).toBe('Last 240 days');
-    expect(hasStyle(tree, 'backgroundColor', t.brand.fill)).toBe(true);
-    act(() => radios[0].props.onPress());
-    expect(onChange).toHaveBeenCalledWith('last120days', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }));
-    act(() => tree.unmount());
-  });
-
   it('header uses header surface, brand tint actions and labelled buttons', () => {
     const onShare = jest.fn();
     const tree = render(brand, mode, (
@@ -134,7 +119,7 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
-  it('customer cell and search field use token colours', () => {
+  it('customer cell uses token colours and highlights the search words', () => {
     let tree = render(brand, mode, (
       <ReportCustomerCard title="Patel Traders" subtitle="3 items" value={1200} onPress={jest.fn()} onShare={jest.fn()} />
     ));
@@ -142,56 +127,88 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     expect(texts(tree)).toContain('1,200');
     const share = tree.root.findAll(n => n.props.accessibilityLabel === 'Share PDF for Patel Traders' && typeof n.props.onPress === 'function');
     expect(share.length).toBeGreaterThan(0);
+    // Without search words the name is plain text, as on every screen that does not pass them.
+    expect(tree.root.findAll(n => (n.type as unknown) === 'Text' && flat(n).fontWeight === fontWeight.bold)).toHaveLength(0);
     act(() => tree.unmount());
 
     tree = render(brand, mode, (
-      <ReportCustomerSearch searchQuery="pat" onSearchChange={jest.fn()} onCustomerSelect={jest.fn()} visibleCustomerIds={[]} />
+      <ReportCustomerCard title="Green Valley Traders" highlightWords={['valley']} subtitle="2 GRNs" value={300} onPress={jest.fn()} />
     ));
-    expect(hasStyle(tree, 'backgroundColor', t.surface.field)).toBe(true);
-    expect(hasStyle(tree, 'borderColor', t.border.field)).toBe(true);
+    const boldText = tree.root.findAll(n => (n.type as unknown) === 'Text' && flat(n).fontWeight === fontWeight.bold);
+    expect(boldText.map(n => n.props.children)).toEqual(['Valley']);
+    // The row still reads the whole name.
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Green Valley Traders, 2 GRNs, 300 units' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
     act(() => tree.unmount());
   });
 });
 
-// M9-10: the answer to an earlier search must not replace the dropdown of the current one.
-describe('ReportCustomerSearch, answers out of order', () => {
-  const { searchService } = require('@/services/search-service') as { searchService: { searchCustomers: jest.Mock } };
-  beforeEach(() => jest.useFakeTimers());
+describe('report status line', () => {
+  // Noon on 12 Oct 2026, local time.
+  const NOW = new Date(2026, 9, 12, 12, 0);
+  beforeEach(() => jest.useFakeTimers({ now: NOW }));
   afterEach(() => {
     jest.useRealTimers();
-    searchService.searchCustomers.mockImplementation(() => Promise.resolve([]));
+    setLanguage('en');
   });
 
-  it('keeps the customers found for the text the field shows', async () => {
-    const pending: Record<string, (rows: { value: string; label: string }[]) => void> = {};
-    searchService.searchCustomers.mockImplementation((query: string) => new Promise(resolve => {
-      pending[query] = resolve;
-    }));
-    const element = (query: string) => (
-      <ReportCustomerSearch searchQuery={query} onSearchChange={jest.fn()} onCustomerSelect={jest.fn()} visibleCustomerIds={[]} />
-    );
-    const tree = render('orange' as Brand, 'light', element('pa'));
-    act(() => {
-      jest.advanceTimersByTime(300);
-    });
-    act(() => tree.update(element('patel')));
-    act(() => {
-      jest.advanceTimersByTime(300);
-    });
-    expect(Object.keys(pending)).toEqual(['pa', 'patel']);
-
-    // The name is drawn in pieces (the match is highlighted), so the pieces are read together.
-    const shown = () => texts(tree).join(' ');
-    await act(async () => {
-      pending.patel([{ value: 'c1', label: 'Patel Traders' }]);
-    });
-    expect(shown()).toContain('Traders');
-
-    await act(async () => {
-      pending.pa([{ value: 'c2', label: 'Parmar Stores' }, { value: 'c1', label: 'Patel Traders' }]);
-    });
-    expect(shown()).toContain('Traders');
-    expect(shown()).not.toContain('Stores');
+  const line = (props: React.ComponentProps<typeof ReportStatusLine>) => {
+    const tree = render('orange', 'light', <ReportStatusLine {...props} />);
+    const view = tree.root.findAll(n => (n.type as unknown) === 'View')[0];
+    const shown = texts(tree);
+    const lineLimits = tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => n.props.numberOfLines);
+    const liveRegion = view.props.accessibilityLiveRegion;
     act(() => tree.unmount());
+    return { shown, liveRegion, lineLimits };
+  };
+
+  it('gives the time alone for figures read today', () => {
+    expect(line({ updatedAt: new Date(2026, 9, 12, 10, 42).getTime() }).shown).toEqual(['Last updated 10:42 am']);
+  });
+
+  it('names the day for figures kept on the phone from an earlier day', () => {
+    expect(line({ updatedAt: new Date(2026, 9, 11, 16, 5).getTime() }).shown).toEqual(['Last updated 11 Oct 2026, 4:05 pm']);
+    expect(line({ updatedAt: new Date(2026, 9, 9, 9, 30).getTime() }).shown).toEqual(['Last updated 9 Oct 2026, 9:30 am']);
+  });
+
+  it('writes the day and time in Gujarati digits, each fact on its own uncut line', () => {
+    setLanguage('gu');
+    expect(line({ updatedAt: new Date(2026, 9, 12, 10, 42).getTime() }).shown).toEqual(['છેલ્લે અપડેટ થયું: ૧૦:૪૨ AM']);
+    const yesterday = line({ updatedAt: new Date(2026, 9, 11, 16, 5).getTime(), shown: 3, total: 40 });
+    expect(yesterday.shown).toEqual(['૪૦માંથી ૩ દેખાય છે', 'છેલ્લે અપડેટ થયું: ૧૧ ઑક્ટો ૨૦૨૬, ૪:૦૫ PM']);
+    expect(yesterday.lineLimits).toEqual([undefined, undefined]);
+  });
+
+  it('never cuts the line, and announces a new count politely', () => {
+    const { shown, liveRegion, lineLimits } = line({ range: { from: '2026-06-15', to: '2026-10-12' }, shown: 3, total: 40, updatedAt: new Date(2026, 9, 11, 16, 5).getTime() });
+    expect(shown).toEqual(['15 Jun – 12 Oct · Showing 3 of 40 · Last updated 11 Oct 2026, 4:05 pm']);
+    expect(lineLimits).toEqual([undefined]);
+    expect(liveRegion).toBe('polite');
   });
 });
+
+describe('figure tiles and text size', () => {
+  const before = Dimensions.get('window');
+  afterEach(() => Dimensions.set({ window: before }));
+
+  const rowSizes = (fontScale: number, count: number) => {
+    Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale } });
+    const items = Array.from({ length: count }, (_, i) => ({ icon: 'warehouse', value: 1200 + i, label: `Figure ${i + 1}` }));
+    const tree = render('orange', 'light', <KPIGrid items={items} compact />);
+    // Each row of tiles is the parent of its cards.
+    const parents = new Map<ReactTestInstance, number>();
+    for (const card of tree.root.findAllByType(KPICard)) parents.set(card.parent!, (parents.get(card.parent!) ?? 0) + 1);
+    act(() => tree.unmount());
+    return [...parents.values()];
+  };
+
+  it('puts three compact tiles across at ordinary text sizes', () => {
+    expect(rowSizes(1, 3)).toEqual([3]);
+    expect(rowSizes(1.2, 6)).toEqual([3, 3]);
+  });
+
+  it('puts two across above 1.2 times the text size, so values are not cut', () => {
+    expect(rowSizes(1.3, 3)).toEqual([2, 1]);
+    expect(rowSizes(2, 6)).toEqual([2, 2, 2]);
+  });
+});
+

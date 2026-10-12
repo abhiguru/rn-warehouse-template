@@ -21,12 +21,6 @@ export interface ReportDateRange {
   toDate: string; // ISO date string
 }
 
-/**
- * Period presets for quick selection
- * Standardized across all reports: 120d, 240d, 364d, 420d
- */
-export type ReportPeriod = 'last120days' | 'last240days' | 'last364days' | 'last420days' | 'custom';
-
 // ============================================================
 // C1: Stock Summary Types
 // ============================================================
@@ -272,32 +266,6 @@ export interface OperationsDashboardData {
 export type OperationsDashboardResponse = ServiceResponse<OperationsDashboardData>;
 
 // ============================================================
-// Report Menu/Navigation Types
-// ============================================================
-
-/**
- * Report definition for menu display
- */
-export interface ReportDefinition {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  route: string;
-  staffOnly: boolean;
-  category: 'stock' | 'movement' | 'financial' | 'operations';
-}
-
-/**
- * Report category grouping
- */
-export interface ReportCategory {
-  id: string;
-  title: string;
-  reports: ReportDefinition[];
-}
-
-// ============================================================
 // C5: Stock Aging Types
 // ============================================================
 
@@ -526,7 +494,11 @@ export type AllGRNActivityResponse = ServiceResponse<AllGRNActivityData>;
 // ============================================================
 
 /**
- * Invoice history summary KPIs
+ * Invoice history summary KPIs. One customer's screen shows none of them: `net_amount` and the paid and
+ * pending sums are built from `net_total`, which counts labour and tax twice before backend migration 61,
+ * and `total_invoices` counts an invoice once per payment before 61, so the tiles are worked out from the
+ * invoices instead (the Invoices tile is the length of the list, the Paid and Pending tiles come from each
+ * invoice's `total`). The all-customers level still shows the server's `total_invoices`.
  */
 export interface InvoiceHistoryKPIs {
   total_invoices: number;
@@ -545,9 +517,20 @@ export interface InvoiceHistoryKPIs {
  * Payment status for invoice
  */
 export interface InvoicePaymentStatus {
+  /**
+   * The server's word. Before backend migration 62 it is "paid" as soon as any payment is recorded, also
+   * for a part payment, so the invoice history report does not show it: it works Paid and Pending out from
+   * `amount` and the invoice's `total` (`invoicePayment` in src/features/filters/configs/reports).
+   */
   status: 'paid' | 'pending';
   paid_date: string | null;
   payment_ref: string | null;
+  /**
+   * The payments recorded against the invoice: from backend migration 61 the sum of its payment rows
+   * (before, the amount of one row, and the invoice was listed once per payment: the service merges
+   * those rows and adds their amounts, so here it is the sum on any server). Not sent for an invoice
+   * with no payment.
+   */
   amount?: number;
   payment_mode?: string;
 }
@@ -590,10 +573,15 @@ export interface InvoiceHistoryRecord {
   financial_year: string;
   grn_ref: string;
   grn_id: string;
+  /** The invoice's amount: ceil(storage + labour + tax - discount), what the customer pays. */
   total: number;
   labour: number;
   discount: number;
   tax_amount: number;
+  /**
+   * Not used by the app. Before backend migration 61 it is total + labour + tax_amount - discount
+   * (labour and tax counted a second time, the discount taken off a second time); from 61 it is `total`.
+   */
   net_total: number;
   item_count: number;
   total_quantity: number;
@@ -628,8 +616,10 @@ export interface InvoiceHistoryData {
 export interface AllInvoiceHistoryKPIs {
   total_invoices: number;
   total_customers: number;
+  /** The sum of the invoices' `total`: the amount the screen shows. */
   total_amount: number;
   total_tax: number;
+  /** Not used by the app: counts labour and tax twice before backend migration 61. */
   net_amount: number;
 }
 
@@ -640,7 +630,9 @@ export interface CustomerInvoiceSummary {
   customer_id: string;
   customer_name: string;
   invoice_count: number;
+  /** The sum of the customer's invoice `total`: the amount the screen shows and sorts by. */
   total_amount: number;
+  /** Not used by the app: counts labour and tax twice before backend migration 61. */
   net_amount: number;
   latest_invoice_date: string;
 }
@@ -672,15 +664,6 @@ export type AllInvoiceHistoryResponse = ServiceResponse<AllInvoiceHistoryData>;
 // ============================================================
 // C6: Customer Activity Types
 // ============================================================
-
-/**
- * Customer Activity period extended options
- */
-/**
- * Customer Activity period - now uses standardized ReportPeriod
- * @deprecated Use ReportPeriod instead
- */
-export type CustomerActivityPeriod = ReportPeriod;
 
 /**
  * Customer Activity summary KPIs (Level 1 - list view)

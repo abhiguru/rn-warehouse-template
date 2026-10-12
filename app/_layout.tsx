@@ -79,12 +79,17 @@ import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { useProfileLanguage } from '@/i18n/useProfileLanguage';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
+import { REPORTS } from '@/features/reports/reportRegistry';
 import { t as translate } from '@/i18n';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
+import { isCentralLoginConfigured } from '@/config/envConfig';
+import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
+import { leaveFacility } from '@/store/operatorSwitch';
+import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
@@ -287,7 +292,8 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
 }
 
-function NavigationStack({ screenBackground }: { screenBackground: string }) {
+/** The root stack; exported so a test can list the routes it declares. */
+export function NavigationStack({ screenBackground }: { screenBackground: string }) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
 
@@ -333,6 +339,15 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="operator-server" options={{ title: translate('nav.screens.facility') }} />
       <Stack.Screen name="enrollment-review" options={{ title: translate('nav.screens.enrollmentReview') }} />
 
+      {/* Central login (docs/CENTRAL_LOGIN.md): reachable only in a build that names the central origin */}
+      <Stack.Screen name="central-login" options={{ title: translate('nav.screens.signIn') }} />
+      <Stack.Screen name="central-otp" options={{ title: translate('nav.screens.enterCode') }} />
+      <Stack.Screen name="facilities" options={{ title: translate('nav.screens.myFacilities') }} />
+      <Stack.Screen name="facility-catalogue" options={{ title: translate('nav.screens.addFacility') }} />
+      <Stack.Screen name="facility-address" options={{ title: translate('nav.screens.facilityAddress') }} />
+      <Stack.Screen name="facility-link" options={{ title: translate('nav.screens.confirmNumber') }} />
+      <Stack.Screen name="central-account" options={{ title: translate('nav.screens.account') }} />
+
       {/* Detail screens */}
       {/* Sort and filter page of a list: slides up like a sheet, closes with its own button */}
       <Stack.Screen
@@ -364,19 +379,10 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="terms-of-service" options={{ headerShown: false }} />
       <Stack.Screen name="privacy-policy" options={{ headerShown: false }} />
 
-      {/* Report screens */}
-      <Stack.Screen
-        name="reports/stock-summary"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="reports/dispatch-activity"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="reports/operations-dashboard"
-        options={{ headerShown: false }}
-      />
+      {/* Report screens: one per report of the registry */}
+      {REPORTS.map((report) => (
+        <Stack.Screen key={report.id} name={`reports/${report.id}`} options={{ headerShown: false }} />
+      ))}
     </Stack>
   );
 }
@@ -399,14 +405,18 @@ function ThemedContent() {
   // restoration belongs at the root navigation boundary.
   useEffect(() => {
     let mounted = true;
-    void dispatch(initializeAuth())
-      .unwrap()
-      // initializeAuth records its failure in Redux; the root only needs to
-      // release the navigation gate after the attempt settles.
-      .catch(() => undefined)
-      .finally(() => {
-        if (mounted) setAuthCheckSettled(true);
-      });
+    void Promise.all([
+      dispatch(initializeAuth())
+        .unwrap()
+        // initializeAuth records its failure in Redux; the root only needs to
+        // release the navigation gate after the attempt settles.
+        .catch(() => undefined),
+      // With central login the guard also needs to know whether the person is
+      // signed in at the association: read that stored session too (no network).
+      isCentralLoginConfigured() ? restoreCentralSession().catch(() => undefined) : undefined,
+    ]).finally(() => {
+      if (mounted) setAuthCheckSettled(true);
+    });
     return () => {
       mounted = false;
     };
@@ -523,14 +533,16 @@ function BootstrapApp() {
     // Suspend credentialed work for a real background stay only: not for the
     // 'inactive' blip of a system dialog, and not for a camera, picker, share
     // or multi-request upload round trip that returns within the grace window.
-    const lifecycle = AppState.addEventListener(
-      'change',
-      createResumeLifecycle({
-        gate: operatorResumeGate,
-        isHandoffActive: () => isNativeHandoffActive() || hasActiveOperatorMutation(),
-        initialState: AppState.currentState,
-      })
-    );
+    const resume = createResumeLifecycle({
+      gate: operatorResumeGate,
+      isHandoffActive: () => isNativeHandoffActive() || hasActiveOperatorMutation(),
+      initialState: AppState.currentState,
+    });
+    const lifecycle = AppState.addEventListener('change', state => {
+      resume(state);
+      // A central session whose store did not answer at start is read again now.
+      if (state === 'active' && isCentralLoginConfigured()) void retryCentralRestoreIfNeeded();
+    });
     return () => {
       bootstrapRun.current += 1;
       lifecycle.remove(); removeVerifier(); unsubscribe(); operatorResumeGate.suspend();
@@ -615,7 +627,11 @@ function BootstrapApp() {
     return <SplashScreen />;
   }
 
-  if (needsSelection) return <OperatorServerSelection initial />;
+  // Without central login nothing can be shown until a facility's server is chosen.
+  // With it, the app shell renders without a server: central sign-in, My facilities and
+  // the catalogue need none, and the route guard keeps every facility screen closed.
+  const centralLogin = isCentralLoginConfigured();
+  if (needsSelection && !centralLogin) return <OperatorServerSelection initial />;
 
   if (configError) {
     if (changingServer) {
@@ -625,7 +641,17 @@ function BootstrapApp() {
       <ConfigErrorScreen
         error={configError}
         onRetry={bootstrapApp}
-        onChangeServer={() => setChangingServer(true)}
+        onChangeServer={
+          centralLogin
+            ? // Central login: leave the facility that cannot be reached for My facilities.
+              // Nothing is revoked through a server that does not answer.
+              () => {
+                void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
+                  if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.switch.busyMessage'));
+                });
+              }
+            : () => setChangingServer(true)
+        }
       />
     );
   }

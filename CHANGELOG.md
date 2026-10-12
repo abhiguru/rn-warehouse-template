@@ -1,5 +1,650 @@
 # Changelog
 
+## Unreleased — reports (2026-10-12)
+
+No backend change is needed for the entries below unless an entry says so
+(item stock summary, report PDFs and their payment filter, dispatch weights).
+
+- **Reports tab: pinned, recent and categories.** The tab now shows the reports
+  you pinned (in the order you pinned them), up to three you opened last, then
+  every report you may open under Stock, Movement, Financial and Operations. A
+  star at the end of each row pins or unpins the report (filled when pinned;
+  the screen reader says "Pin … to the top" / "Unpin …" and whether it is
+  selected). Pins and recent reports are kept per facility and account. A
+  pinned or recent report that the account's role may not open, such as the
+  operations dashboard for staff and customer accounts, is never shown.
+- **Stock age bars (stock aging, customer activity).** Both reports draw the
+  stock-age buckets with one shared component, `AgingBucketBar`. Each bar shows
+  its bucket's share of all stock, so the four bars add up to 100%, instead of
+  its share of the largest bucket. The share is worked out from quantities on
+  both screens: the stock aging report used to show the backend's share of
+  stock entries, so its percentages change. Every quantity shows its unit, a
+  screen reader reads the group as one summary with a sentence per bucket, and
+  a customer with no stock sees "No stock yet". The "Over 1 year" KPI is
+  unchanged for now: its backend count uses more than 365 days while the last
+  bucket is over 364 days; the stock aging rebuild aligns it.
+- **Stock reports share one item card.** The stock summary and the item stock
+  summary draw their items with `StockItemCard` instead of two copies. GRN
+  numbers are shown in full and wrap instead of being cut off. Opening an item
+  animates for 200 ms instead of 300 ms, and not at all with Reduce Motion on.
+  The item header tells screen readers whether it is open; a GRN row that opens
+  the GRN reads as one button with the hint "Opens the GRN", and a row that
+  cannot open has no chevron. In the item stock summary the item's packaging
+  and GRN count share one line, and "Low stock" is the only tag.
+
+Fixes on the report screens:
+
+- **Invoice history** now shows its figures (invoices and amount for all
+  customers; invoices, paid and pending for one customer). They were worked
+  out but only ever drawn as a loading placeholder.
+- **Invoice history, one customer: the Monthly breakdown now adds up.** The old
+  table mixed the invoice totals (right) with paid and pending sums that
+  counted labour and tax twice, so the columns did not add up (for example
+  Amount 699 against Pending 818 with Paid 0). The table is now built in the
+  app from the period's invoices, using each invoice's total, with the columns
+  Month, Invoices, Amount, Paid and Pending. Paid plus Pending is the Amount
+  when every invoice is paid or pending; an invoice with any other status
+  counts in Invoices and Amount only. The table covers every invoice of the
+  period: the search and the Paid or Pending choice do not narrow it. No
+  backend change.
+- **Report days follow India's calendar (Invoice history, GRN activity).** The
+  months in the Monthly breakdown, and the date headings in the invoice history
+  and GRN activity reports, now use the calendar day in India. An invoice or a
+  GRN made between midnight and 5:30 am India time sits under its own day and
+  month, whatever the phone's time zone. GRN activity also drew one heading per
+  moment when two GRNs of a day had different times; it now draws one heading
+  per day.
+- **Stock summary**: a customer with nothing in stock can see their
+  out-of-stock items. The "no stock" message used to replace the whole screen.
+- **Item stock summary**: a search typed while a load was in flight is no
+  longer dropped, and an older answer can no longer replace a newer one. A
+  GRN list that failed to load says so and offers "Try again"; it used to read
+  "No GRNs with this item in stock".
+- **Dispatch activity** asks the server once on opening, not twice, and no
+  longer asks for every customer when it was opened for one.
+- Dispatch activity, GRN activity and Invoice history show a failure the same
+  way (error tone, one "Try again" that shows the loading state), and their
+  "no customers match" state offers "Clear search".
+- Three texts that were always English follow the app's language.
+- The eight reports are listed in one table
+  (`src/features/reports/reportRegistry.ts`) that the Reports tab and the
+  route declarations both read; all eight routes are now declared.
+
+**GRN activity report** is the first report on the shared report layout
+(`ReportScaffold`). Its period is a chip in the filter bar next to a sort, and
+both are remembered after the app is closed; a search finds customers, or GRNs
+by number, sender, vehicle, invoice or item, with the match in bold, and one
+customer's GRNs can be narrowed to invoiced or not. A line under the figures
+gives the dates, how many rows are shown of how many and when they were read;
+a failed refresh keeps the rows and says they are not current. A customer
+opens on a page of its own, so the phone's back button returns to the list,
+and the customer opened last is offered above the list. Date headings appear
+only while GRNs are sorted by date.
+
+The other report screens on the shared layer, and the work they build on:
+
+- **Stock summary on the shared report layout.** The stock summary now has the
+  same layout as GRN activity: search and sort (stock, items, GRNs, name for
+  customers; stock, name for items), "Clear all" that keeps the sort, the sort
+  remembered per facility and account, the last-opened customer shown above
+  the list, and pull to refresh that keeps the old figures with a "Couldn't
+  update" note. A customer's items can be searched by item name or GRN number;
+  a closed item names the GRN it matched. The out-of-stock section (last 360
+  days) still shows when nothing is in stock. Sharing a stock PDF keeps each
+  customer's button busy on its own, says so in an alert when the PDF can't be
+  made or shared, and keeps letters of any script in the file name. The
+  per-row share button is its own target for screen readers. No backend
+  change.
+- **Stock aging.** Rebuilt on the shared report layer. Customers can be
+  searched by name and sorted by average age, stock or name; the sort is
+  remembered, and the last opened customer is offered. One customer's items
+  can be searched by item or GRN number, sorted by age, stock or item, and
+  filtered by age bucket. Each GRN line now opens on its own (two lines of one
+  GRN used to open together). The item tag reads "Oldest N days" and the
+  customer tag "Average: \<bucket\>". Details stack at large text. **KPI
+  change:** the oldest-stock figure is now `by_bucket['364+'].item_count`,
+  labelled "Over 364 days", so it matches the bar; it used to be the RPC's
+  `items_over_365_days`, which counts from 365 days. No backend change.
+- **Customer activity.** Rebuilt on the shared report layer, with the period
+  chip, a customer search, and sorts by last active, stock, invoiced amount or
+  name. The customer dashboard keeps the stock trend: full-screen chart or
+  table, chart/table switch now full touch targets, y-axis numbers formatted
+  with a unit, and an empty state. Quick-access cards open their report for
+  the customer and are counted from the period totals. GRN, dispatch and
+  invoice preview rows open the document. No backend change.
+- **Item stock summary.** Now on the shared report layer. The server searches,
+  sorts (item name, stock, received quantity, GRN count) and pages it, and the
+  Stock figure is the server's total for the whole filtered list. **Needs
+  backend migration 52** (`get_item_wise_stock_list` with
+  `p_sort_by`/`p_sort_order` and `data.summary`); deploy the backend first.
+  Against an older backend the app asks once more without the sort and stops
+  asking for that facility; it then sorts only the items already loaded and
+  shows "—" for Stock until every item is loaded. "Showing N of M", a
+  load-more footer with "Try again", and the GRNs read when a card opens all
+  work as before.
+- **Operations dashboard.** Now on the shared report layer, with the period
+  chip the other rebuilt reports use instead of its own period selector. Recent
+  activity rows no longer look tappable (they carry no document id), and their
+  reference reads the same on screen and to a screen reader. Still for
+  administrators and supervisors only; a refusal from the server shows its
+  reason. No backend change.
+- **Dispatch activity** is built on the shared report layer: the period, search
+  and sort are in the filter bar, and the period and sort are remembered; a
+  warehouse role opens a customer as its own page, and the customer opened last
+  is one tap away; customers sort by bags, dispatches or name; a customer's
+  dispatches search by number, supervisor and item names (a closed card names
+  the item it matched) and sort by date, number and bags, and by weight when
+  the server sends weights (backend migration 58; see "Dispatch activity:
+  weights"), with date headings only under the date sort; opening a dispatch is
+  its own target beside the card, not a button inside it; an item row is read
+  with its weight, the "of N" quantity, rack and mark; an empty report no longer
+  suggests a longer period when the longest is chosen. No backend change,
+  except for weights (migration 58).
+- **Invoice history** is built on the shared report layer: each customer row
+  shows its amount, and customers sort by amount, invoices or name; a
+  customer's invoices search by invoice number, GRN and item names, sort by
+  date, number or amount, and can be narrowed to paid or pending; the
+  figures (invoices, paid, pending) always cover the whole period; the monthly
+  breakdown is a table with the month column fixed and a totals row, collapsed
+  until opened; a payment status other than paid or pending shows as "Unknown"
+  instead of "Pending"; opening a customer from a link no longer shows two
+  placeholder tiles before the three real ones. No backend change.
+- **Report PDFs.** Every report except the operations dashboard can be shared
+  as a PDF with "Share PDF" in its header, for all customers and for one
+  customer; the PDF follows the period and the sort on screen (a sort the PDF
+  has no column for leaves the PDF in its own order). `generateReportPDF` in
+  `src/services/pdf-service.ts` calls the backend's `generate-report-pdf`;
+  `useReportExport` runs the export and
+  `reportPdfSort` (`src/features/reports/reportPdfSort.ts`) holds the one table
+  of sort names. Failures are shown in a dialog in the app's language; a share
+  that fails gives the share sheet's own reason (for example "Sharing is not
+  available on this device"). File names keep letters of any script (shared PDF
+  file names now keep letters, vowel signs and digits of any script, capped at
+  100 characters and 200 bytes), and a name with none falls back to the start
+  of the customer id. **Needs the backend release with migrations 52–53 and the
+  `generate-report-pdf` function.** With an older backend the first export
+  shows "This facility's server needs an update before reports can be shared
+  as PDF." and the export action is hidden for that facility until the app is
+  restarted; the stock summary instead falls back to the facility's existing
+  stock PDF (`generate-customer-stock-pdf`) for a customer's row and for one
+  customer's header, with no message, and hides only the all-customers PDF,
+  which has no older version.
+- **Refusals in any language.** Every report refusal carries a machine code
+  (the server's 42501, else `ACCESS_REFUSED`), and the operations dashboard's
+  `STAFF_ONLY` is recognised as a refusal too, so a refusal shown in Gujarati
+  without a server code is still treated as one.
+- **Last figures kept on the phone.** Reports opened after the app was closed
+  show their last figures at once, with the time they were given, and refresh
+  behind them; if the refresh fails the figures stay with the "not updated"
+  message. The copy is kept on the phone per facility and account for at most
+  three days, skips very large answers, and is removed with the other caches
+  at sign-out and facility switch. A refusal from the facility (the account
+  lost its role or the customer) removes the kept answer and drops the figures
+  on screen, so the report shows only the refusal.
+- **Cleanup.** Removed the report components no screen used after the rebuild
+  (`PeriodSelector` with `getDateRangeForPeriod`, `ReportCustomerSearch`,
+  `ReportCustomerScope`), the old `ReportPeriod`/`CustomerActivityPeriod`/
+  `ReportDefinition`/`ReportCategory` types in `src/types/report.types.ts`, and
+  the English and Gujarati texts only they used. The report registry test now
+  renders the root stack instead of matching its source text.
+
+Review fixes (2026-10-12):
+
+- **Stock screens.**
+  - Stock aging: the oldest-stock figure now reads "Items over 364 days" and
+    matches the red bar; customer rows no longer show a separate "over 1 year"
+    count, and their average age wraps instead of being cut.
+  - Stock summary: the items that ran out are rows of the list under an "Out of
+    stock" header that opens and closes them, so long lists scroll smoothly; a
+    search that finds only items that ran out says so and opens them; the
+    header action reads "Share PDF" and the quantity figure "Stock", as on the
+    other reports; an item with no GRNs says so when opened.
+  - Stock reports: a GRN's package mark is shown in full in the row's details
+    instead of in a tag that could cut it.
+- **The shared report layer and filter kit.**
+  - "Last updated" gives the date as well as the time for figures kept from an
+    earlier day, and is never cut off; screen readers announce the "Showing X
+    of Y" count after a search.
+  - Every filter chip, choice chip and recent-search chip can be tapped across
+    the full 48 dp (Android) / 44 pt (iOS) target, not only the 36 dp pill; the
+    filter bar keeps one height.
+  - While a report first loads, screen readers hear "Loading figures" once.
+  - The sort chip's spoken label uses the full field name.
+  - Filter sheets and the full-screen stock trend chart fade instead of
+    sliding when Reduce Motion is on.
+  - With large text (above 1.2×) the figure tiles show two across.
+  - The last row of a report and of the customer picker is no longer hidden
+    under the system navigation bar; empty states can offer a button, and
+    period reports offer "Show last 420 days" until the longest period is
+    chosen.
+  - The search field keeps its clear button during a background refresh; the
+    spinner shows only for a server search (item stock), also while a new
+    search is first answered.
+  - A double tap on a report or a customer row opens it once.
+- **Item stock summary, report queries, kept figures and PDFs.**
+  - Item stock summary: opening an item no longer closes when an earlier
+    item's GRNs answer late, after a search or a pull to refresh.
+  - Item stock summary: an opened item says "Showing 100 of N" under its GRNs
+    when it has more than the 100 shown.
+  - Item stock summary: the Items and Stock figures stay those of every item
+    while a search is typed.
+  - Item stock summary: a pull to refresh keeps the items loaded below the
+    first page until the new first page arrives, and keeps them if the refresh
+    fails; no next page is loaded against a page still being refreshed or
+    shown from the phone.
+  - Item stock summary on a facility server without migration 52: a note says
+    the order covers only the items loaded, and Share PDF is not offered.
+  - Reports keep only first pages without a search on the phone, so other
+    reports' saved figures are no longer pushed out.
+  - Reports show their own wording, not the server's or the system's, when a
+    report cannot be loaded; access refusals still show the facility's reason.
+  - When the facility refuses a customer's report, that customer's saved
+    figures for every period are removed, not only the period asked for.
+  - Share PDF says how many rows a shortened PDF holds before sharing it, and
+    shows plain wording instead of system error text when sharing fails.
+  - PDF file names for all customers say "All customers" in the app's
+    language.
+- **Shared report parts and wording.** Every report says "No customer linked"
+  in the same words when a customer account has none (it was worded four
+  ways); GRN activity's failure reads "Couldn't load GRN activity. Check your
+  connection and try again." instead of "Failed to fetch GRN activity";
+  customer activity's quick-access cards and stock trend axis count bags, as
+  every other report does, instead of "units"; and a stock trend whose months
+  are all 0 says "Highest 0" instead of "Highest 1". The no-customer state,
+  the date heading over a day's rows and the header's "Share PDF" are one
+  shared part each (`ReportNoCustomer`, `ReportDateHeading`,
+  `exportHeaderActions`) instead of a copy in each screen.
+
+After the device runs (2026-10-12):
+
+- **Rows that tie.** Rows with equal sort values (for example several
+  customers with the same bags) appear A to Z by name in both directions
+  instead of in server order.
+- **Reports tab.** When Recent or Pinned appears at the top, the tab scrolls
+  up so it is visible.
+- **Search fields (lists and reports).** Pressing the clear (×) button also
+  closes the keyboard.
+- **Report customer cards (stock aging and the other customer reports).** The
+  status tag, such as "Average: 121–240 days", sits on its own line under the
+  subtitle instead of in the value column, so names and subtitles no longer
+  shrink to a sliver at large text sizes; a subtitle may use two lines.
+- **Status tags.** A tag's label can no longer draw wider than its box in a
+  narrow column.
+- **Avatars (everywhere).** Initials come from the first letter or digit of
+  the first two words that have one, so a name that starts with an emoji or a
+  symbol, such as "🧊 Ice Depot", shows "ID" instead of a broken character.
+  Other names and all colours are unchanged; the customers list and the
+  profile use the same rule.
+- **Item stock summary.** A facility whose server has no item sort is noted
+  as one info line in the log instead of an error; the report works as
+  before.
+- **Invoice history (Monthly breakdown).** Table headers stay on one line and
+  shrink slightly before they are cut, and the Invoices column is wider, so
+  "Invoices" no longer breaks as "Invoice / s" at large text.
+- **Dispatch activity, one customer.** The Weight sort is removed, because the
+  server sends no weight for a dispatch and the sort changed nothing; a Weight
+  sort remembered from before opens on date, newest first. Since changed: the
+  Weight sort is offered again when the server sends weights (see "Dispatch
+  activity: weights" below).
+- **Dispatch activity: opening a dispatch.** The control that opens a dispatch
+  from its card appears only when the server sends the dispatch's id, which
+  **needs backend migration 57**; against an older backend the cards open and
+  close as before and have no such control.
+- **Dispatch activity: weights.** When the facility's server sends dispatch
+  weights, each dispatch card of one customer shows the dispatch's weight (kg)
+  on its own line under the bags, a screen reader hears it with the card, and
+  the sort sheet offers Weight. This **needs backend migration 58**:
+  `get_customer_dispatch_activity` then returns `total_weight` (kg) for each
+  dispatch and `weight` for each item line. Deploy the backend first. Weight is
+  offered while a dispatch of the period has a weight above zero. On an older
+  backend nothing changes: no weight on the cards, the sort options are Date,
+  Dispatch number and Bags, and a Weight sort remembered from before opens on
+  date, newest first (the remembered choice is kept and comes back once weights
+  are sent). The report PDF has no weight column, so a PDF shared while sorted
+  by Weight is in its own order.
+- **Start-up.** Neither `reportPrefsSlice` nor `listFilterSlice` imports
+  `authSlice` any more. Both react to sign-out by the action's type string,
+  `'auth/logout/fulfilled'`, so the "Require cycle" warning at start-up
+  (`authSlice` to `sessionScopedState` to the slice and back) is gone. A test,
+  `src/tests/storeRequireCycle.test.ts`, fails if anything imported by
+  `sessionScopedState` imports `authSlice` again.
+
+After the seed-data check (2026-10-12):
+
+- **Invoice history shows the invoice total.** The report used the server's
+  "net" figure. On a server without backend migration 61 that figure counts
+  labour and tax a second time and takes the discount off a second time: one
+  customer showed 818 where the real amount is 699, and one discounted invoice
+  showed as a negative amount. The invoice cards, the Monthly breakdown, the
+  Paid and Pending tiles and their counts (now worked out in the app from the
+  period's invoices), the all-customers amount, the customer rows and the sorts
+  by amount now use the invoice total. It is the same figure as the invoice
+  list, the invoice screen and the invoice PDF. The label is "Amount", no longer
+  "Net amount". The amount of each invoice is right on servers with or without
+  backend migration 61; such a server also lists an invoice once per payment,
+  which "Fixes after the independent review" below repairs for one customer's
+  screen. The customer activity report's invoiced amounts and the report PDFs follow the
+  server and are right from backend migration 61. The Monthly breakdown is
+  described above.
+- **Invoice history, Monthly breakdown: paise.** When any amount in the table
+  has paise, every amount cell (rows and Total) shows two decimals, so Paid plus
+  Pending equals the Amount and the rows add up to the Total. A table of whole
+  rupees looks as before, and the figure tiles stay in whole rupees. The amount
+  columns are wider while paise are shown, so a large amount is not cut.
+- **Invoice history, one customer: Share PDF follows the Payment filter.** With
+  Paid or Pending chosen, the PDF holds only the paid, or only the pending,
+  invoices of the period. The search does not narrow it. **Needs the backend
+  release with migrations 59 to 61**, where `generate-report-pdf` accepts the
+  optional `status` field. On a server without it nothing is shared: the app
+  says that the facility's server can't filter the PDF by payment yet, and to
+  remove the Payment filter or ask for a server update. Exports without the
+  filter still work there. (At first the app asked once more without the filter
+  and shared the PDF of all the period's invoices with no warning; changed
+  after the independent review, below.)
+- **Every report date follows India's calendar.** This extends "Report days
+  follow India's calendar (Invoice history, GRN activity)" above to all the
+  reports, on a phone in any time zone: card dates, "Latest" dates, "Active
+  today", the GRN dates in stock aging and in an item's stock, older activity
+  on the operations dashboard, and "Today" and "Yesterday" in date headings.
+  The period sheet shows the same two days the request sends, and a report
+  asks again when the day turns over in India. The year that a short date
+  leaves out is India's current year on every screen. The GRN, dispatch,
+  invoice and pricing lists are unchanged and still use the phone's own today.
+  Nothing changes on a phone in India. The app needs no backend migration for
+  this; the stock reports' server-side days follow India's calendar from
+  backend migration 60.
+- **Dispatch activity: the weight has its own line.** A dispatch card's weight
+  now sits on its own line under the bags, at the same right edge on every
+  card, so a long weight no longer wraps the dispatch number. A card without a
+  weight is unchanged. See "Dispatch activity: weights" above.
+- **Data table: the totals row.** A screen reader now reads the totals row as
+  one element that names each column with its total, as it already read a data
+  row. Before, it read the bare figures one at a time. Invoice history's
+  Monthly breakdown is the one table that draws a totals row.
+- **Customer activity: the stock trend.** The trend draws the month in
+  progress at the Stock tile's figure, so its latest and highest figures no
+  longer fall below the tile. The same holds for any later month of a period
+  that runs past today. Finished months keep the server's month-end figures.
+  Why the server's two figures for the month in progress differed for one
+  customer has not been found.
+- **Gujarati.** The pin label on the Reports tab was corrected after a wording
+  review: "… સૌથી ઉપર પિન કરો". A model did the review, not a native speaker.
+  Five app texts and seven report PDF labels are marked as doubtful and left
+  as they are, for the owner's own check, which is still open.
+
+After device run 5 (2026-10-12):
+
+- **Paid and Pending follow the money (invoice history).** Paid is now the
+  money received and Pending is what is still owed. An invoice counts as Paid
+  only when no more than ₹0.50 is owed; a part-paid invoice stays Pending with
+  its balance. Until now any payment made an invoice paid for its whole amount.
+  The Paid and Pending tiles, the Monthly breakdown, the Payment filter and each
+  card's tag use this one rule, worked out in the app from each invoice's total
+  and the payments recorded against it, so Paid plus Pending always equals the
+  Amount. A part-paid invoice's card adds one line, "Paid: ₹4.00 · Pending:
+  ₹10.00", which a screen reader also reads; fully paid and unpaid cards are
+  unchanged. The screen is the same on a server with or without backend
+  migration 62; it needs backend migration 61 for the received amount to be the
+  sum of an invoice's payments. The report PDF's Paid or Pending filter, and the
+  customer activity report's recent invoices and pending amount, follow the same
+  rule from backend migration 62. An invoice whose status the app does not know
+  no longer shows as "Unknown" here: the money decides, so with no payment
+  recorded it counts as Pending for its whole amount.
+- **Stock reports say "1 unit".** A stock of one reads "1 unit" on stock aging,
+  the stock summary and the item cards (English; the Gujarati word does not
+  change).
+- **Stock aging, one customer: the Items figure counts items.** It counts the
+  items shown as cards, not the stock lines (a customer with one item in two
+  lots read one more than its cards). The all-customers level keeps the
+  server's count.
+- **Filter bar: "Clear all" at large text, not changed.** At large text sizes
+  "Clear all" sits past the end of the filter row until the row is swiped.
+  Pinning it at the end of the row was tried and taken back the same day: on
+  the phone it left too little room for the chips, so the active filter chip
+  and its remove button were cut off. The row is as it was.
+- **Gujarati wording.** Five report texts were reworded after the wording
+  review: "દેખાય છે" for how many rows show, "દિવસ" for the age sort, a plainer
+  note that only loaded items are sorted, "એકાઉન્ટ" and "લાઇન" in the PDF
+  messages. The owner's own check of the Gujarati is still open.
+
+Fixes after the independent review (2026-10-12):
+
+- **A refused report no longer shows earlier figures.** After a facility
+  refuses an account a customer's report, figures from before the refusal could
+  stay on screen or come back: a copy kept on the phone that was still being
+  read, or the answer to a request sent before the refusal (another period, or
+  a pull to refresh). Neither is shown or kept now; the report shows the
+  refusal. A request sent after the refusal is treated as usual, so the report
+  comes back when access is given back. A report also no longer stays on
+  "loading" when the refused request was not the last one sent for it.
+- **A report names its customer as the facility does, not as a link does.** A
+  link can open a customer's report with any name written in it
+  (`...?customerId=...&customerName=...`), and the report showed that name over
+  the customer's real figures; the shared PDF's file carried it too. The name
+  in a link is no longer read. A report shows the facility's own name: the row
+  that was tapped, the customer picker's list, the account's assigned
+  customers, or one lookup by id; until the facility has answered it shows no
+  name. The PDF's file is named after the customer as the PDF itself names
+  them. "Last opened" keeps the facility's name, and a name kept by an earlier
+  version is corrected the first time that customer is opened. A customer
+  account with one customer now sees that customer's name under the report
+  title. Nothing about access changes: the id is still what the server judges.
+- **"Share PDF" is offered again for a replaced facility server.** The note
+  that a facility's server cannot make report PDFs was kept per address; it is
+  now kept per address and instance, so a server replaced by a new instance at
+  the same address offers the export without restarting the app.
+- **Invoice history, one customer: an invoice paid in several parts is one
+  invoice.** A server before backend migration 61 lists an invoice once per
+  payment. The app now merges those rows: the list, the Invoices tile, the
+  Monthly breakdown, the Paid and Pending tiles and the cards count the invoice
+  once, with its payments added up (an invoice of 14 paid as 4 and 10 is 1
+  invoice, Paid 14, Pending 0; it showed as 2 invoices, Amount 28, Pending 14).
+  The Invoices tile counts the invoices listed, not the server's own count.
+  Still server-dependent before migration 61: the all-customers level (its
+  figures are the server's totals), the customer activity report and the PDF.
+- **Invoice history, one customer: a filtered PDF is never shared unfiltered.**
+  See "Share PDF follows the Payment filter" above: on a server whose PDF
+  function does not know the Payment filter the app now refuses with a clear
+  message and shares nothing.
+- **Operations dashboard: daily averages over the whole period.** "GRNs per
+  day" and "Dispatches per day" divide by every day of the period that has
+  happened, not only by the days that had events: seven GRNs on one day of a
+  week read 1 a day, not 7. A period that runs past today, such as "This
+  month", is counted up to today in India. An average that is not zero but too
+  small for one decimal reads "<0.1", never "0". "Recent activity" still shows
+  the latest events whatever the period.
+- **Item stock summary: the list starts again when it changed.** If the list
+  changes while you scroll (an item leaves stock, or the total stock or
+  quantity moves), the next page is no longer added to the old pages. The list
+  loads again from its first page, at most twice in a row, so no item in stock
+  is skipped and no removed one stays on screen. Needs backend migration 52 for
+  the totals; without them the item count alone decides.
+- **Stock aging, one customer: "Items over 364 days" counts items.** It counts
+  the items with at least one lot over 364 days, not stock lines: an item with
+  two such lots counts once, like the Items figure beside it. The bar still
+  shows the server's quantities, and the all-customers level and the PDF keep
+  the server's count.
+- **Data tables on iOS.** The scrolling half of each row and of the totals row
+  is now hidden from VoiceOver as it already was from Android's screen reader,
+  so a row's figures are not read twice. Not checked on an iPhone.
+
+Backend migrations this release of the reports work relates to: 52 (server
+sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
+function (report PDFs), 54–56 (a period includes its last day; report days
+follow India's calendar), 57 (the dispatch id), 58 (the dispatch weight), 59
+(GRN activity weight totals; the app shows neither figure), 60 (the stock
+reports cut their days on India's calendar), 61 (invoice amounts in the
+reports are the invoice total; the customer activity report and the report PDFs
+are right from it) and 62 (Paid and Pending follow the money in the invoice
+reports and their PDF) and 63 (the GRN activity of one customer lists a GRN
+once whatever its number of invoices), and the optional `status` field of
+`generate-report-pdf` (the Payment filter of one customer's invoice history
+PDF), which comes with the release of 59 to 61. The app works against a backend
+without them, with the fallbacks described in the entries above, and nothing in
+the app needs migrations 54–56. Without them these figures are wrong or
+missing: the customer activity report's invoiced amounts are overstated before
+61, the stock summary's GRN days are cut in UTC before 60, the PDF of one
+customer's invoice history is not made with a Payment filter without `status`
+(the app refuses instead), without 62 the customer activity report's recent
+invoices and the PDF still treat any payment as paid in full, and without 63 a
+GRN with two old invoices is listed and counted twice in one customer's GRN
+activity.
+
+## Unreleased — central login in the app (2026-10-12)
+
+**Off unless the build sets the central origin** (`EXPO_PUBLIC_CENTRAL_ORIGIN`). Without it
+nothing changes: one facility at a time, that facility's own SMS sign-in, the same screens
+and route decisions. With it the app needs a **central identity service**
+([central-identity-template](https://github.com/abhiguru/central-identity-template)) and, at
+every facility that takes part, **facility backend migration 49** (`central-exchange`, with
+the operator's `CENTRAL_ISSUER` set to the same issuer). The design, the flow as built and
+what is still open are in [docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). Not yet run on a
+phone against a real central service.
+
+- **Build settings** (`src/config/envConfig.ts`, `.env.example`):
+  `EXPO_PUBLIC_CENTRAL_ORIGIN`, an `https://` origin (a development build also accepts
+  `http://localhost:PORT` and `http://127.0.0.1:PORT`), and `EXPO_PUBLIC_CENTRAL_ISSUER`, the
+  issuer name facilities trust (defaults to the origin).
+- **Central sign-in** (`app/central-login.tsx`, `app/central-otp.tsx`): mobile number and
+  one-time code at the association's service, in the layout of the facility sign-in. The
+  first sign-in of a number on a phone has a terms tick box; "Send code" is disabled until it
+  is ticked, and `terms_version` is sent only for a number whose tick was given.
+- **The central session** (`src/config/centralSession.ts`) keeps its tokens under its own
+  SecureStore keys (`secure_central_*`), apart from a facility session. One refresh at a time,
+  ahead of expiry and once on a 401; a refusal signs the person out centrally and says why.
+- **My facilities** (`app/facilities.tsx`): the person's own list, kept on the phone per
+  central person (`central_facilities_v1:<id>`, no token in it), newest-opened first, with a
+  status tag: Approved, Requested, Revoked, Confirm number, Unavailable. A status is checked
+  when the facility is opened; no facility is contacted in the background, and a facility
+  that cannot be reached keeps its status. With exactly one approved facility and nothing
+  waiting, the list is skipped at start.
+- **Add facility** (`app/facility-catalogue.tsx`): the association's catalogue, searched by
+  name or city, or "Enter address" (typed or scanned) for a facility that is not listed.
+- **Opening a facility** (`src/config/openFacility.ts`): discover it, switch to it with the
+  existing server-switch cleanup, get a token for that facility from the central service and
+  hand it to the facility's `central-exchange`. A session enters the facility; a waiting
+  request shows the existing waiting screen; a profile that existed before is linked once
+  with a code the facility sends ("Confirm your number at <facility> once"); every refusal
+  is a plain message on My facilities. A facility that does not accept association sign-in
+  is offered its own SMS sign-in.
+- **Inside a facility**: Settings has "Switch facility" (with the facility's name) in place
+  of "Change warehouse server", "Sign out" there signs out of that facility only, and
+  "Delete account" there deletes the profile at that facility, takes it off the list and
+  returns to My facilities. "Sign
+  out" on My facilities ends the central sign-in and leaves the current facility; the
+  account entry has the name and "Delete my account" (the association's account only; each
+  facility keeps its own records).
+- **Route guard**: a new state, signed in centrally with no facility session, which may open
+  My facilities, the catalogue, the address entry, the linking step and the account, and is
+  sent to My facilities from every facility screen. Signed in nowhere goes to central
+  sign-in. With central login on the app starts without a selected server.
+- **Known limit: the catalogue's signature is not verified in the app.** It is an ES256
+  token and Hermes has no ES256. The app checks its type, issuer and expiry and relies on TLS
+  to the configured origin. Access is decided by each facility, which verifies its own
+  tokens, so a forged catalogue could show a wrong address but could not open anyone's data.
+- **Server address screen and the keyboard** (`src/components/OperatorServerSelection.tsx`,
+  used for the first server choice, "Change warehouse server" and, with central login,
+  "Enter address"). Tapping "Check server", or the keyboard's Go key, now closes the keyboard,
+  so the result card and "Use this server" are no longer hidden behind it until you close it
+  by hand. On Android the screen now shrinks above the keyboard the way the sign-in screens
+  do, so you can scroll to the card with the keyboard open and tap "Use this server" once.
+  Nothing else on the screen changes. Not yet run on a phone.
+- **Central screens and a facility's screens no longer stay under one another (review
+  fixes).** Central login only; a build without it behaves as before. A facility session that
+  ends on a pushed screen after the central session has ended now leaves central sign-in
+  alone (it left `[home, central-login]`, and Back showed a spinner), and the same for the
+  facility's own sign-in; the waiting screen's "My facilities" after a facility's own SMS
+  sign-in leaves My facilities alone, with that sign-in taken off the stack (it left
+  `[login, facilities]`); and Back during the central code check, followed by a correct code,
+  no longer navigates from the removed code step (it put a second My facilities in place of
+  the first), nor does a wrong code speak over the screen shown by then. The real-router tests
+  now cover the guard's "entering a facility takes the stack down" rule and a facility's own
+  SMS sign-in that clears its marker as the app does.
+- **Two more fixes from the same review (central login only).** The waiting screen's "My
+  facilities", followed by hardware Back before the facility's sign-out returned, replaced the
+  My facilities that was already shown and mounted it a second time; when My facilities is the
+  route shown (or the stack cannot be read) the return now changes nothing. And Back during the
+  central code check, then a new code step, then a correct answer of the first check, left the
+  person signed in on the new code step; that answer now takes the stack down to My facilities
+  alone. Tests added for both, for a single approved facility opening by itself after Back
+  during the code check, and for sign-in taking the stack down from a form with its own stack.
+  Test only: several tests in `centralSession.test.ts` failed whenever a second boundary fell
+  between two readings of the clock that built the same access token (one when the service
+  stand-in issued it, one when the assertion built it again); all tokens there now share one
+  issue time.
+- **The stored central session and the code step (review fixes, central login only).** A code
+  check overtaken by a newer check or by a sign-out while it was writing to the secure store
+  answered "failed" but left its session stored (the next start signed that person in, also
+  as another number); a check whose write failed could empty the session a newer check had
+  just stored, or leave the app saying signed in over an empty store; and a start-up read
+  that found a leftover could remove a session stored after the read. The check, the store
+  write and the undo are now one queued store operation, and a leftover is removed in the
+  operation that read it. (A code check that starts during a token refresh and then fails
+  lost the refresh's new tokens: fixed in the next entry.) Pressing "Verify code"
+  within 300 ms of the sixth digit started two checks with the same code; it starts one, and
+  the code step ignores a second press made before it has redrawn. Tests added for each,
+  and for when the access token expires on the device's clock (no code change there).
+- **Refresh, profile, deletion and start-up of the central session (low-severity review
+  items, central login only).** The new token pair of a refresh is written in one queued
+  store operation, and only if the refresh token stored at that moment is the one the
+  refresh sent; otherwise (another person signed in, or a sign-out or an undone check
+  emptied the store) nothing is written. Before, a code check that failed during a refresh
+  dropped the new pair, so the next refresh presented a spent token and the service ended
+  the session; and a refresh answer arriving after a check for another person had stored its
+  session could write the first person's tokens over it (signed in as one person with
+  another's tokens), or into an emptied store. A refresh asked for after a code check began
+  now waits for the one in flight instead of sending the same token beside it. The profile
+  is kept only while the stored session is still that person's. Deleting the account checks
+  the stored person in the same queued read that takes the token for the request (and again
+  after a refresh, and before it sends again after a 401): if that person is not the one in
+  memory, nothing is sent and the deletion fails. (The first version of this check read the
+  person in one queued operation and the token in a later one, so a code check for another
+  person stored in between could still make the deletion carry that person's token.) A refresh
+  that finds the store empty ends the session only while the app says someone is signed in:
+  one that waited behind a slow refresh across a sign-out used to begin during the next
+  sign-in, find the store empty and cancel that sign-in (the right code answered "failed").
+  One failed read of the stored refresh token as a refresh answer arrives no longer signs the
+  person out: the new pair is written if nothing has begun since the refresh did, and dropped
+  only if something has. A start with some token keys but no whole session and no user used to
+  leave those keys behind; it now clears all four. Tests: a state-and-store sweep of 5,000
+  fixed random interleavings (and 2,500 that start from broken stored keys) against a stand-in
+  service whose refresh tokens work once (it also checks whose token every account deletion
+  carried and that the last right code of a run signs in), the refresh and profile cases one
+  by one, a failed read of the refresh token, the start-up cases, the deletion mismatch, and
+  the central code step's release of its guard after a wrong code.
+  Test only: the type errors in the operator-server and central-leave tests are fixed.
+- Shared code, no change in behaviour without central login: the server-switch sequence
+  moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
+  `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used
+  by both sign-ins; the sign-in and code screens draw with
+  `src/components/auth/PhoneSignInForm.tsx` and `CodeEntryForm.tsx`.
+- **Also in a build without central login: one check per code on the facility's own code
+  screen.** The facility's SMS sign-in (`app/otp.tsx`) arms a 300 ms submit at the sixth
+  digit and "Verify code" did not cancel it, so pressing the button within 300 ms of the
+  sixth digit started the check twice with the same code (the released app has the same
+  fault in its own copy of the timer; this branch had moved it into the shared
+  `CodeEntryForm.tsx`, which the linking step also uses). The button now cancels the timer.
+  Nothing else on the screen changes: with no button press the sixth digit still starts the
+  check 300 ms later, once.
+- **Also in a build without central login: a second press of "Verify code" before the
+  screen has redrawn starts no second check on the facility's own code screen
+  (`app/otp.tsx`).** Two presses in one frame, or a press right after the 300 ms
+  auto-submit fired, started two checks with the same code, because the screen had no
+  guard of its own and relied on redux state that is redrawn later. It now uses a ref set
+  at once and released when the check ends, as the central code step does; the linking step
+  (`app/facility-link.tsx`, central login only) the same. A wrong code can still be tried
+  again. Nothing else on the screen changes.
+- English and Gujarati text in the new area `central` (and five screen titles in `nav`); the
+  Gujarati is a draft for the owner's wording review.
+- Still open: passcode and biometrics, SMS auto-read, passkeys, shared devices, removing a
+  facility from the list, a header that shows the facility's name inside it.
+- Development setup: Metro no longer watches `.claude/` in the checkout. Agents keep git
+  worktrees of the app in `.claude/worktrees/`, and Metro's file watcher and resolver could
+  see those copies of the source tree. `metro.config.js` now adds a pattern to
+  `resolver.blockList` (the defaults stay) that is built from the checkout's own path
+  (`scripts/metro-block-list.js`), so a Metro started from inside such a worktree still sees
+  that worktree's files. No change to the app.
+
 ## Unreleased — price history screen (2026-10-11)
 
 Needs backend migration 48 (`get_item_price_history`), which is in backend

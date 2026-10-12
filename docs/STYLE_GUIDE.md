@@ -384,7 +384,8 @@ Rules:
 | Stock of an item someone wants to dispatch | 0 left | Negative | Out of stock |
 | GRN, GRN item | 0 left because everything was dispatched | Neutral | Fully dispatched |
 | GRN | not invoiced / invoiced | Critical / Positive | Not invoiced / Invoiced |
-| Invoice | `pending` / `paid` | Critical / Positive | Pending / Paid |
+| Invoice | `pending` / `paid`, as the facility answers | Critical / Positive | Pending / Paid |
+| Invoice (invoice history report) | a balance over ₹0.50 / nothing owed, worked out from the payments recorded | Critical / Positive | Pending / Paid. A part-paid invoice stays Pending: its card adds one footnote line under the cell, "Paid: ₹4.00 · Pending: ₹10.00" |
 | Dispatch (activity report) | has quantity / no quantity | Positive / Critical | Complete / Pending |
 | Stock age | 0–120 / 121–240 / 241–364 / over 364 days | Positive / Informative / Critical / Negative | 0–120 days … |
 | Sensor health | `healthy` / `warning` / `critical` | Positive / Critical / Negative | Healthy / Warning / Critical |
@@ -394,6 +395,7 @@ Rules:
 | Print job | `pending` / `printing` / `completed` / `failed` / `cancelled` | Neutral / Informative / Positive / Negative / Neutral | Waiting / Printing / Printed / Failed / Cancelled |
 | Image upload | `pending` / `uploading` / `completed` / `failed` | Neutral / Informative / Positive / Negative | Waiting / Uploading / Uploaded / Upload failed |
 | Facility access (enrollment) | requested / approved / rejected / revoked | Critical / Positive / Negative / Negative | Requested / Approved / Not approved / Revoked |
+| Facility on My facilities (central login) | `approved` / `requested` / `revoked` / `link_needed` / `unavailable` | Positive / Critical / Negative / Neutral / Neutral | Approved / Requested / Revoked / Confirm number / Unavailable |
 | Customer, item, user | active / inactive | no tag / Neutral | Inactive |
 | Operation result | `success` / `error` | Positive / Negative | — |
 
@@ -732,7 +734,7 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
 
-Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen.
+Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen. The initials are the first letter or digit of each of the first two words that have one, so a name that starts with an emoji or a symbol ("🧊 Ice Depot") gives "ID", never half of a character.
 
 ---
 
@@ -815,13 +817,13 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 
 | Component | Spec |
 |---|---|
-| `features/filters/components/FilterBarChip.tsx` | Pill, 36 px high with a 44 px touch target. Idle (a fast filter that is off): `surface.card`, 1 px `border.button`, `text.primary`, chevron when it opens a sheet. Active (a filter that is on): `brand.subtle`, `brand.tint` label in weight 600, and a separate `close` target labelled "Remove filter …". Action ("Filters" with its count badge, the sort chip). Text ("Clear all"). |
+| `features/filters/components/FilterBarChip.tsx` | Pill, 36 px high, drawn centred in a pressable that is `touchTarget` tall (44 iOS, 48 Android), not a hitSlop. Idle (a fast filter that is off): `surface.card`, 1 px `border.button`, `text.primary`, chevron when it opens a sheet. Active (a filter that is on): `brand.subtle`, `brand.tint` label in weight 600, and a separate `close` target labelled "Remove filter …". Action ("Filters" with its count badge, the sort chip). Text ("Clear all"). |
 | `features/filters/components/ChoiceChips.tsx` | A radio group of pills. Unselected: `surface.card`, 1 px `border.button`, `text.primary`. Selected: `brand.subtle`, `brand.tint`, check icon. |
 | `features/filters/components/FilterBar.tsx` | One row that scrolls sideways, in this order: Filters (opens the full page), the sort chip, active filters, unused fast filters, "Clear all". Its height never changes, so the list below does not jump. |
 | `common/overview-tab/InfoChip.tsx` | Neutral tag: `status.neutral.background`, `status.neutral.text`. |
 | `ui/StatusTag.tsx` | `status.*.background`, `status.*.text`, the standard icon from [3.5](#35-status-colours) at `iconSize.xs`, `radius.field`, `caption1` weight 600. Use it for every status; do not build local tags. |
 | `ui/Fab.tsx` | Floating create button for list reports, see 14.1. |
-| `ui/Avatar.tsx` | Initials (first letters of the first two words) on the avatar palette colour for the record id; sizes `sm` 32, `md` 44, `lg` 60. |
+| `ui/Avatar.tsx` | Initials (first letter or digit of each of the first two words that have one) on the avatar palette colour for the record id; sizes `sm` 32, `md` 44, `lg` 60. |
 | Count badge | A "needs action" count (tab bar items waiting for you) uses `destructive.fill` with `destructive.onFill`. Plain counts (section headers, detail tabs, active filters) use `brand.fill` with `brand.onFill`. Minimum 18 px, `caption2`. |
 | `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill and tag follow the single stock rule in [3.5](#35-status-colours) (in stock, low stock below 20%, out of stock); text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
 | `FioriLinearProgress.tsx` | Height 4 (default) or 8 (prominent), pill radius; track `brand.subtleStrong` or the status background with `coloredTrack`; fill `brand.fill` (`default`) or `status.*.element` (`success`, `warning`, `error`, `info`); percentage in `caption1`. Segmented progress uses chart colours in order. |
@@ -844,6 +846,8 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 Swipe actions on rows: each action is at least 72 wide and full row height, with an icon over a `caption1` weight 600 label. The primary action (Edit) and a reversible state action (Activate) use `brand.fill` with `brand.onFill`; others use `surface.cardActive` with `text.primary`; destructive ones (Delete, Deactivate) use `destructive.fill` with `destructive.onFill` and ask for confirmation. Each swipe action is also offered to screen readers as an accessibility action. Destructive and state-changing actions (delete, deactivate) live in swipe actions or on the object page, never as a one-tap icon in the row.
 
 A surcharge (a negative discount) shows with a plus sign in `text.primary`; a discount shows with a minus sign in `status.positive.text`.
+
+A pin is the exception to the one-tap rule: it changes nothing but the person's own view and is undone by the same tap, so a star may sit at the end of a row as a one-tap control. It is a separate target beside the row's own (not inside it), at least `touchTarget` square with 8 between the two, a button with `accessibilityState={{ selected }}` and a whole-sentence label ("Pin GRN activity to the top" / "Unpin GRN activity"). Pinned shows the filled `star` in `brand.tint`; not pinned shows `star-outline` in `icon.primary`, so the glyph, not colour alone, carries the state. Used by `reports/ReportHubRow.tsx` on the Reports tab.
 
 ### 13.7 Tables — `FioriDataTable.tsx`, `fiori/FioriDataTable.tsx`, `reports/FioriDataTable.tsx`, `grn-details/GRNItemDispatchTable.tsx`, `invoice/components/InvoiceItemsTable.tsx`
 
@@ -914,7 +918,7 @@ More rules:
 |---|---|
 | `reports/KPICard.tsx`, `reports/KPIGrid.tsx` | `surface.card`, `radius.card`, `shadow[2]`. Icon 32 in a 44 circle of `brand.subtle` with `brand.tint` glyph (`primary` and `accent`), status background and text for `success` and `warning`, neutral for `neutral` and `secondary`. Value `title3` tabular, unit `subhead` `text.secondary`, label `footnote` `text.secondary`. Trend: `arrow-up`/`arrow-down` icon plus value in positive or negative text; whether up is good is set per KPI, never assumed. |
 | `sensors/SensorHistoryChart.tsx` and other charts | Series colours from `tokens.chart` in order. Thresholds as dashed lines in `status.critical.element` and `status.negative.element` with labels. Axes and grid `border.divider`, axis labels `caption1` `text.secondary`. A text summary and a values table are available. |
-| `reports/PeriodSelector.tsx` | Segmented control per [13.4](#134-selection-controls), 36 tall with the touch area padded to `touchTarget`; a custom period is a separate chip. |
+| `reports/AgingBucketBar.tsx` | Stock-age buckets, youngest first. Each row: `StatusTag` for the bucket, then the share (`subhead` 600, tabular, right) and the quantity with its unit (`footnote` `text.secondary`, tabular, right) on a line that wraps. Below, a full-width track (`brand.subtleStrong`, `space.sm` high) filled with `status.*.element` to the bucket's share of the total, so the bars add up to 100%. The group is one accessible element with one sentence per bucket; an all-zero set says "No stock yet". |
 | `invoice/components/InvoiceCalculationSummary.tsx`, `invoice-details/InvoiceBreakdownTab.tsx` | Key-value rows, amounts right-aligned with tabular numbers; total in `headline`; discounts in `status.positive.text` with a minus sign; taxes listed separately. |
 
 More rules:
@@ -990,10 +994,12 @@ Every list with filters uses the parts in `src/features/filters` and one configu
 - **Header**: title row, search field, filter bar (`FilteredListHeader`). It is shown in every state of the list (loading, error, nothing found), so a search or filter can always be changed or cleared.
 - **Filter bar**: one row that scrolls sideways: "Filters" with the number applied, the sort chip, the filters that are on (each with its own remove target), the fast filters that are off, and "Clear all". It returns to its start when the filters change.
 - **One tap, one sheet**: a chip opens a short sheet for that filter only. A choice or the sort applies on the tap. Anything typed or picked is a draft until the button, which names the result: "Show 34 items", or "No items match". Never open a sheet from a sheet.
+- **A range that always has a value** (a report's period; `required` on the field): its chip comes after the sort chip, shows the range in effect and has no remove target. It is not counted in "Filters", and "Clear all" leaves it alone. Its quick ranges apply on the tap, like a choice (`applyPresetOnTap`); days chosen by hand are a draft until the button, which needs both days. Reports offer their own quick ranges (`REPORT_DATE_PRESETS`): the last 120, 240, 364 and 420 days, this month, last month and this financial year (April to March).
+- **No count**: a list that has nothing to count its results with leaves `fetchCount` out, and the button reads "Show results".
 - **Sort and filter page** (`app/list-filters.tsx`): every filter of the list on one page, for the filters that have no chip and for setting several at once. Nothing applies until its button. Customers and items are chosen inside the page.
 - **Sort**: give each sort option its `kind` (`date`, `number` or `text`) so the direction reads "Newest first", "Highest number first" or "A to Z". Changing the field keeps the direction. A list sorted by anything but date shows no date headings.
 - **A filter that is shown must work.** `toRequest` in the list's configuration is the only place a value becomes a request parameter, and `configs.test.ts` fails if a visible field does not change the request.
-- **Session only**: filters, search and sort last until the app is closed, and are cleared on sign-out and a facility switch. "Clear all" clears the current list only and keeps its sort.
+- **Session only**: filters, search and sort last until the app is closed, and are cleared on sign-out and a facility switch. "Clear all" clears the current list only and keeps its sort. A report keeps two of them longer: its period and its sort are remembered per facility and account and survive closing the app (one period for every report, a sort per report). Its search and other filters stay session-only, and "Clear all" leaves the period and the sort alone. The customer last opened in a report is remembered until sign-out or a facility switch.
 - Lists assembled in the app for customer accounts (dispatches, invoices) apply the same filters with the same meaning as the backend; their tests share the backend's cases.
 
 ### 14.6 Search
@@ -1014,11 +1020,12 @@ On tablets in landscape, list reports show the list on the left (360 wide) and t
 
 The app has one central sign-in that only proves who the user is, then facility selection, and each facility separately authorises data access.
 
-1. **Sign-in** (`app/login.tsx`): brand mark, app name, the title "Sign in", the subtitle "Enter your mobile number to get a one-time code.", a "MOBILE NUMBER" section with a fixed +91 prefix and 5 + 5 grouping, and the full-width primary "Send code". The facility row above shows the current facility and host with a "Change" link.
-2. **Code entry** (`app/otp.tsx`): six boxes or one field with `textContentType="oneTimeCode"` and `autoComplete="sms-otp"`, auto-submit on the sixth digit, a resend link with a countdown, and "Wrong number?" back.
-3. **Facility selection** (`app/operator-server.tsx`): association member facilities as object cells (name, town, status tag). Status: Approved (positive), Requested (critical), Not requested (neutral), Revoked (negative). "Request access" on facilities without access.
+1. **Sign-in** (`src/components/auth/PhoneSignInForm.tsx`, used by `app/central-login.tsx` and `app/login.tsx`): brand mark, app name, the title "Sign in", the subtitle "Enter your mobile number to get a one-time code.", a "MOBILE NUMBER" section with a fixed +91 prefix and 5 + 5 grouping, and the full-width primary "Send code". The central sign-in adds the line "One sign-in for every member cold storage." and, on a first sign-in, a terms checkbox per [13.4](#134-selection-controls); "Send code" is disabled until it is ticked. A facility's own sign-in shows the facility row above (facility and host with a "Change" link) instead.
+2. **Code entry** (`src/components/auth/CodeEntryForm.tsx`, used by `app/central-otp.tsx`, `app/otp.tsx` and `app/facility-link.tsx`): six boxes or one field with `textContentType="oneTimeCode"` and `autoComplete="sms-otp"`, auto-submit on the sixth digit, a resend link with a countdown, and "Wrong number?" back. The linking step gives it a heading that says why a code is asked for: "Confirm your number at <facility> once".
+3. **Facility selection** (`app/facilities.tsx`, "My facilities", with central login; `app/operator-server.tsx`, the server address, without): the person's facilities as object cells (name, town, status tag), newest-opened first. Status: Approved (positive), Requested (critical), Revoked (negative), Confirm number and Unavailable (neutral). One primary "Add facility" at the bottom opens the association's catalogue (`app/facility-catalogue.tsx`: search by name or town; loading, empty, no-match and error states with "Try again"), which also offers "Enter address". Opening a facility is how access is requested; there is no separate "Request access".
 4. **Waiting for approval** (`app/pending-enrollment.tsx`, `app/enrollment-review.tsx`): what was requested, from which facility, and what happens next. No data from the facility is shown until it approves.
 5. **Revoked or expired**: sign the user out of that facility, explain why in plain words, and return to facility selection. Never show a raw "401".
+6. **Inside a facility** (central login): Settings shows "Switch facility" with the facility's name; it asks first, then returns to My facilities. "Sign out" there leaves that facility only.
 
 ### 14.9 Offline
 
@@ -1028,9 +1035,15 @@ The app has one central sign-in that only proves who the user is, then facility 
 
 ### 14.10 Reports
 
-- Period selector, then KPI grid, then charts, then detail tables.
+- The Reports tab lists, each under a `ui/SectionHeader`: Pinned (the reports this account pinned, in pin order), Recent (up to three opened last, most recent first, none that is pinned), then Stock, Movement, Financial and Operations from each report's `category` in the registry, in registry order. A report stays in its category when it is also pinned or recent; a section with nothing to show is left out. Every report, including a stored pinned or recent id, passes its role gate when the tab is drawn. Pins and recents are kept per facility and account (`useReportPrefs`); opening a report from the tab notes it as recent.
+- Built with `ReportScaffold` (`src/components/reports`), which owns the layout and every state: first load, failed, failed with earlier rows still shown, nothing there, nothing matching. Top to bottom: header (title, whose data, at most one export action) → search → filter bar with sort, period and filters → figures → status line "dates · showing X of Y · last updated" → charts, if any → rows. The figures cover the whole period, not the rows a search leaves.
+- Whose data comes from `useReportScope`. A warehouse role starts on every customer and opens one as a route parameter (the same route pushed with `?customerId=`), so the phone's back button and the header's agree. A customer account with several customers chooses one first (`ReportCustomerPicker`) and can change it from the header. While no search is typed, the customers list offers the customer opened last as one row above it. The name under a report's title is the facility's own (`customerNames.ts`: the tapped row, the picker's list, the account's assigned customers, or one lookup by id); a route's `customerName` is never shown, and the title has no name until the facility has answered.
+- The period is the filter bar's period chip (§14.5). All eight reports use `ReportScaffold`.
+- Date headings between rows only while the rows are sorted by date, drawn by `ReportDateHeading`. A customer account with no customer linked sees `ReportNoCustomer`: the report's title over one wording ("No customer linked", "No customer is linked to your account. Ask your facility to link one.") on every report.
+- When a period report has nothing in its period, its empty state offers "Show last 420 days" (`longestPeriodAction`, which sets the period chip to that preset) until the longest period is chosen; then it offers nothing and no longer suggests a longer period.
+- A failure the facility did not refuse shows the screen's own words ("Couldn't load GRN activity. Check your connection and try again."), never the service's "Failed to fetch …".
 - Every number links to the list behind it where possible.
-- Export and print actions in the header.
+- The export action ("Share PDF", `useReportExport`, built by `exportHeaderActions`) is the header's one action, present on every report with a PDF (all but the operations dashboard, at both levels) and hidden when the facility's backend cannot make it.
 
 ### 14.11 Maintenance, forced update and errors
 

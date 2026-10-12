@@ -14,6 +14,7 @@ jest.mock('react-native', () => {
     View: element('View'), Text: element('Text'), TextInput: element('TextInput'),
     Modal: element('Modal'), ActivityIndicator: element('ActivityIndicator'),
     ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
+    Keyboard: { dismiss: jest.fn() },
     Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
     Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
   };
@@ -63,10 +64,16 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+// The mocked react-native components are plain strings in the tree, so the tag names are cast
+// to the element type findByType expects (the same cast the other component tests use).
+const tag = (name: string) => name as unknown as React.ElementType;
+const BUTTON = tag('Button');
+const TEXT_INPUT = tag('TextInput');
+const TEXT = tag('Text');
 const active = { origin: 'https://active.example.test', instanceId: 'instance-active', displayName: 'Active', companyName: 'Company' };
 let renderer: ReturnType<typeof create> | undefined;
-const buttons = () => renderer!.root.findAllByType('Button').map(button => button.props.children);
-const button = (label: string) => renderer!.root.findAllByType('Button').find(node => node.props.children === label);
+const buttons = () => renderer!.root.findAllByType(BUTTON).map(button => button.props.children);
+const button = (label: string) => renderer!.root.findAllByType(BUTTON).find(node => node.props.children === label);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -84,7 +91,7 @@ it('keeps only the latest server discovery after overlapping checks', async () =
     .mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
   await act(async () => { renderer = create(<OperatorServerSelection initial />); });
-  const input = () => renderer!.root.findByType('TextInput');
+  const input = () => renderer!.root.findByType(TEXT_INPUT);
   const check = () => button('Check server')!;
 
   await act(async () => { input().props.onChangeText('https://first.example.test'); check().props.onPress(); });
@@ -99,8 +106,8 @@ it('keeps only the latest server discovery after overlapping checks', async () =
   });
 
   expect(input().props.value).toBe('https://second.example.test');
-  expect(renderer!.root.findAllByType('Text').map(node => node.props.children)).toContain('Second');
-  expect(renderer!.root.findAllByType('Text').map(node => node.props.children)).not.toContain('First');
+  expect(renderer!.root.findAllByType(TEXT).map(node => node.props.children)).toContain('Second');
+  expect(renderer!.root.findAllByType(TEXT).map(node => node.props.children)).not.toContain('First');
 });
 
 it('offers no Back button on a first selection without a cancel handler', async () => {
@@ -112,7 +119,7 @@ it('leaves through Back without touching the active server, its session or any d
   jest.mocked(getActiveOperatorServer).mockReturnValue(active);
   const onCancel = jest.fn();
   await act(async () => { renderer = create(<OperatorServerSelection initial onCancel={onCancel} />); });
-  await act(async () => { renderer!.root.findByType('TextInput').props.onChangeText('https://other.example.test'); });
+  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText('https://other.example.test'); });
   await act(async () => { button('Back')!.props.onPress(); });
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(discoverOperator).not.toHaveBeenCalled();
@@ -129,7 +136,7 @@ it('re-selecting the active server while initial returns through onCancel instea
   jest.mocked(beginOperatorSwitch).mockReturnValue(true);
   const onCancel = jest.fn();
   await act(async () => { renderer = create(<OperatorServerSelection initial onCancel={onCancel} />); });
-  await act(async () => { renderer!.root.findByType('TextInput').props.onChangeText(active.origin); });
+  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText(active.origin); });
   await act(async () => { button('Check server')!.props.onPress(); });
   await act(async () => { button('Use this server')!.props.onPress(); });
   expect(onCancel).toHaveBeenCalledTimes(1);
@@ -145,7 +152,7 @@ it('re-selecting the active server from the settings route still goes back throu
   jest.mocked(beginOperatorSwitch).mockReturnValue(true);
   const onCancel = jest.fn();
   await act(async () => { renderer = create(<OperatorServerSelection onCancel={onCancel} />); });
-  await act(async () => { renderer!.root.findByType('TextInput').props.onChangeText(active.origin); });
+  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText(active.origin); });
   await act(async () => { button('Check server')!.props.onPress(); });
   await act(async () => { button('Use this server')!.props.onPress(); });
   expect(router.back).toHaveBeenCalledTimes(1);

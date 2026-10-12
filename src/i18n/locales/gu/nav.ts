@@ -23,6 +23,12 @@ export const nav: Translation<typeof source> = {
     facility: 'કોલ્ડ સ્ટોરેજ',
     enrollmentReview: 'અરજીની ચકાસણી',
     editGrn: 'આવક પાવતીમાં ફેરફાર કરો',
+    // Central login (docs/CENTRAL_LOGIN.md)
+    myFacilities: 'મારાં કોલ્ડ સ્ટોરેજ',
+    addFacility: 'કોલ્ડ સ્ટોરેજ ઉમેરો',
+    facilityAddress: 'કોલ્ડ સ્ટોરેજનું સરનામું',
+    account: 'એકાઉન્ટ',
+    confirmNumber: 'તમારો નંબર કન્ફર્મ કરો',
   },
   bootstrap: {
     unreachable: 'કોલ્ડ સ્ટોરેજના સર્વર સુધી પહોંચી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
@@ -34,8 +40,6 @@ export const nav: Translation<typeof source> = {
     subtitleStaff: 'કામગીરી અને વેપારીના અહેવાલ જુઓ',
     subtitleCustomer: 'તમારા સ્ટોકના અહેવાલ જુઓ',
     profileAndSettings: 'પ્રોફાઇલ અને સેટિંગ',
-    inventorySection: 'સ્ટોકના અહેવાલ',
-    operationsSection: 'કામગીરીના અહેવાલ',
     cardLabel: '{{title}}. {{description}}',
     descriptions: {
       customerActivity: 'વેપારીની બધી કામગીરી એક જગ્યાએ જુઓ',

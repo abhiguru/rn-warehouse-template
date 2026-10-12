@@ -1,7 +1,8 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { TextInput } from 'react-native';
-import { ListSearchField, SEARCH_DEBOUNCE_MS } from '../components/ListSearchField';
+import { Keyboard, StyleSheet, TextInput } from 'react-native';
+import { radius, touchTarget } from '@/theme/tokens';
+import { ListSearchField, SEARCH_DEBOUNCE_MS, rememberSearch } from '../components/ListSearchField';
 import { TextEditor, TextRangeEditor } from '../components/editors/RangeEditors';
 import { t } from '@/i18n';
 
@@ -65,6 +66,46 @@ describe('ListSearchField', () => {
   it('takes no more text than the server reads', () => {
     const renderer = render(<ListSearchField listKey="grn-list" value="" onSearch={jest.fn()} placeholder="Search" />);
     expect(renderer.root.findByType(TextInput).props.maxLength).toBe(120);
+  });
+
+  // The clear button empties the field and the search, and puts the keyboard away.
+  it('clears the text and the search and dismisses the keyboard once when the clear button is pressed', () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => undefined);
+    try {
+      const onSearch = jest.fn();
+      const renderer = render(<ListSearchField listKey="clear-test" value="" onSearch={onSearch} placeholder="Search" />);
+      type(renderer, 'garlic');
+      expect(renderer.root.findByType(TextInput).props.value).toBe('garlic');
+      expect(onSearch).toHaveBeenLastCalledWith('garlic');
+      expect(dismiss).not.toHaveBeenCalled();
+
+      const clear = renderer.root.find(node => node.props.accessibilityLabel === t('common.clearSearch') && typeof node.props.onPress === 'function');
+      act(() => clear.props.onPress());
+      expect(dismiss).toHaveBeenCalledTimes(1);
+      expect(renderer.root.findByType(TextInput).props.value).toBe('');
+      expect(onSearch).toHaveBeenLastCalledWith('');
+      // Nothing to clear any more: the button is gone.
+      expect(renderer.root.findAll(node => node.props.accessibilityLabel === t('common.clearSearch'))).toEqual([]);
+    } finally {
+      dismiss.mockRestore();
+    }
+  });
+
+  // §11.2: a recent search is a whole touch target, its 32 high pill drawn inside; no hitSlop.
+  it('offers each recent search as a whole touch target, and searches it again', () => {
+    rememberSearch('recent-target-test', 'garlic');
+    const onSearch = jest.fn();
+    const renderer = render(<ListSearchField listKey="recent-target-test" value="" onSearch={onSearch} placeholder="Search" />);
+    act(() => renderer.root.findByType(TextInput).props.onFocus());
+    const chip = renderer.root.find(
+      node => typeof node.type !== 'string' && node.props.accessibilityLabel === t('filters.search.searchAgain', { text: 'garlic' }) && typeof node.props.onPress === 'function'
+    );
+    expect(StyleSheet.flatten(chip.props.style).minHeight).toBe(touchTarget);
+    expect(chip.props.hitSlop).toBeUndefined();
+    const pill = chip.findAll(node => (node.type as unknown) === 'View' && StyleSheet.flatten(node.props.style)?.borderRadius === radius.pill);
+    expect(StyleSheet.flatten(pill[0].props.style).minHeight).toBe(32);
+    act(() => chip.props.onPress());
+    expect(onSearch).toHaveBeenCalledWith('garlic');
   });
 });
 

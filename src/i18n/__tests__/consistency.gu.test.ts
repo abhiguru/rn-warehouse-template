@@ -84,7 +84,6 @@ describe('one word per idea', () => {
       'from': 'start date and start number: glossary rule 4',
       'to': 'end date and end number: glossary rule 4',
       'dispatched': 'the label beside a count, an order status (જાવક થઈ) and a report column',
-      'custom': 'a price of its own and a period of chosen dates',
       'base': 'the base amount of an invoice line and the base band of a price',
       'remove {{name}}?': 'an item (feminine) and a person',
       'deactivate {{name}}?': 'an item (feminine) and a person',

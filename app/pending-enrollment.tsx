@@ -15,6 +15,9 @@ import {
   signOutPendingEnrollment,
 } from '@/config/supabaseConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { isCentralLoginConfigured } from '@/config/envConfig';
+import { setCentralState } from '@/config/centralState';
+import { returnToMyFacilities } from '@/navigation/myFacilities';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -70,11 +73,20 @@ export default function PendingEnrollmentScreen() {
     return () => { active = false; };
   }, [refresh]);
 
+  // Central login: there is no code to ask for again. The way on is My facilities,
+  // where opening this facility asks it once more.
+  const centralLogin = isCentralLoginConfigured();
+
   const leave = async () => {
     setLoading(true);
     try {
       await signOutPendingEnrollment();
-      router.replace('/login');
+      if (centralLogin) {
+        // Back to My facilities, not to this facility's own sign-in: to the one this screen
+        // was opened from, not a second one on top of it.
+        setCentralState({ facilitySmsOrigin: null });
+        returnToMyFacilities();
+      } else router.replace('/login');
     } catch {
       setLoading(false);
       showAlert(tr('auth.signOut.couldNotTitle'), tr('common.checkConnection'));
@@ -82,7 +94,7 @@ export default function PendingEnrollmentScreen() {
   };
 
   const message = status === 'approved'
-    ? tr('auth.enrollment.approvedMessage', { facility: facilityName })
+    ? tr(centralLogin ? 'central.pending.approvedMessage' : 'auth.enrollment.approvedMessage', { facility: facilityName })
     : status === 'rejected' || status === 'disabled'
       ? tr('auth.enrollment.noAccessMessage', { facility: facilityName })
       : tr('auth.enrollment.pendingMessage', { facility: facilityName });
@@ -127,7 +139,7 @@ export default function PendingEnrollmentScreen() {
                 <Button size="fullWidth" onPress={() => void refresh()}>{tr('auth.enrollment.checkStatus')}</Button>
               )}
               {status === 'approved' ? (
-                <Button size="fullWidth" onPress={() => void leave()}>{tr('auth.signIn')}</Button>
+                <Button size="fullWidth" onPress={() => void leave()}>{centralLogin ? tr('central.facilities.title') : tr('auth.signIn')}</Button>
               ) : (
                 <Button
                   size="fullWidth"
@@ -135,7 +147,7 @@ export default function PendingEnrollmentScreen() {
                   variant={status === 'pending' ? 'normal' : 'tint'}
                   onPress={() => void leave()}
                 >
-                  {tr('auth.signOut.action')}
+                  {centralLogin ? tr('central.facilities.title') : tr('auth.signOut.action')}
                 </Button>
               )}
             </View>

@@ -21,7 +21,11 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { logout, deleteAccount } from '@/store/slices/authSlice';
+import { logout, deleteAccount, isDeleteAccountRejection } from '@/store/slices/authSlice';
+import { leaveFacility } from '@/store/operatorSwitch';
+import { deleteFacilityAccount } from '@/store/centralSignOut';
+import { isCentralLoginConfigured } from '@/config/envConfig';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import { useTheme, useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { LANGUAGES, getLanguage, normalizeDigits, t, type LanguagePreference, type TranslationKey } from '@/i18n';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
@@ -97,9 +101,37 @@ const SettingsScreen: React.FC = () => {
     setShowLogoutModal(true);
   };
 
+  // Central login: this facility is one of several the person can open.
+  const centralLogin = isCentralLoginConfigured();
+  const facilityName = centralLogin ? getActiveOperatorServer()?.companyName ?? '' : '';
+
+  /**
+   * Central login: end this facility's session with the server-switch cleanup and
+   * return to My facilities (the route guard takes the person there). The central
+   * sign-in is not touched.
+   */
+  const leaveThisFacility = async (): Promise<boolean> => {
+    const outcome = await leaveFacility(dispatch);
+    if (outcome === 'busy') showAlert(t('auth.server.busyTitle'), t('central.switch.busyMessage'));
+    else if (outcome === 'failed') showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
+    return outcome === 'left';
+  };
+
+  const handleSwitchFacility = () => {
+    showAlert(t('central.switch.confirmTitle'), t('central.switch.confirmMessage', { facility: facilityName }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('central.switch.action'), onPress: () => { void leaveThisFacility(); } },
+    ]);
+  };
+
   const confirmLogout = async () => {
     setLoggingOut(true);
     try {
+      if (centralLogin) {
+        // "Sign out" inside a facility signs out of that facility only.
+        if (!(await leaveThisFacility())) setShowLogoutModal(false);
+        return;
+      }
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
@@ -148,15 +180,25 @@ const SettingsScreen: React.FC = () => {
     setDeleteError(null);
 
     try {
+      if (centralLogin) {
+        // The profile at this facility is deleted; the route guard returns to My facilities.
+        const outcome = await deleteFacilityAccount(dispatch);
+        setShowDeleteModal(false);
+        // 'reported': the failure was published on My facilities, where the person now is.
+        if (outcome === 'busy') showAlert(t('auth.server.busyTitle'), t('central.switch.busyMessage'));
+        else if (outcome === 'failed') showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
+        return;
+      }
       await dispatch(deleteAccount()).unwrap();
       setShowDeleteModal(false);
       router.replace('/login');
     } catch (error) {
       setDeleteError(
-        typeof error === 'string'
-          ? error
-          : t('settings.deleteAccount.failed')
-
+        isDeleteAccountRejection(error)
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : t('settings.deleteAccount.failed')
       );
     } finally {
       setDeletingAccount(false);
@@ -378,11 +420,21 @@ const SettingsScreen: React.FC = () => {
 
         {/* Account Section */}
         <SettingsSection title={t('settings.account.title')}>
-          <SettingsRow
-            icon="server"
-            label={t('auth.server.change')}
-            onPress={() => router.push('/operator-server')}
-          />
+          {centralLogin ? (
+            <SettingsRow
+              testID="settings-switch-facility"
+              icon="swap-horizontal"
+              label={t('central.switch.action')}
+              subtitle={facilityName || t('central.switch.subtitle')}
+              onPress={handleSwitchFacility}
+            />
+          ) : (
+            <SettingsRow
+              icon="server"
+              label={t('auth.server.change')}
+              onPress={() => router.push('/operator-server')}
+            />
+          )}
           <SettingsRow
             icon="logout"
             label={t('auth.signOut.action')}
@@ -468,7 +520,7 @@ const SettingsScreen: React.FC = () => {
               {t('auth.signOut.confirmTitle')}
             </Text>
             <Text style={styles.modalMessage}>
-              {t('auth.signOut.confirmMessage')}
+              {centralLogin ? t('central.facilitySignOut.confirmMessage') : t('auth.signOut.confirmMessage')}
             </Text>
 
             <View style={styles.modalActions}>

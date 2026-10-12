@@ -1,904 +1,547 @@
 /**
- * Stock Summary Report Screen (C1)
+ * Stock summary report (C1): today's stock, by customer and by item, with a
+ * stock PDF to share (generate-report-pdf, through useReportExport; one
+ * customer's PDF falls back to generate-customer-stock-pdf on an older backend).
  *
- * Displays current inventory at a glance with item-level breakdowns.
- * Styling follows docs/STYLE_GUIDE.md: report pattern (§14.10) with the PDF
- * share action in the header, object cells (§13.6) and status tags (§3.5,
- * out of stock is negative).
+ * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportScope says
+ * whose stock, useReportFilters holds the search and sort, useReportQuery the
+ * data, and ReportScaffold draws every state. The report has no period: it is
+ * the stock of today. A warehouse role sees every customer and opens one by
+ * pushing this route with `?customerId=`, so the phone's back button and the
+ * header's agree.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  RefreshControl,
-  LayoutAnimation,
-} from 'react-native';
+import React, { memo, useCallback, useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem, ReportCustomerScope, type ReportScope } from '@/components/reports';
-import { getCustomerStockSummary, getAllStockSummary } from '@/services/reporting';
-import { generateCustomerStockPDF } from '@/services/pdf-service';
-import { downloadAndSharePDF } from '@/utils/shareDocument';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  touchTarget,
-  typography,
-  type ThemeTokens,
-  trackedText,
-} from '@/theme/tokens';
-import type {
-  StockSummaryData,
-  StockItemSummary,
-  StockGRNDetail,
-  AllStockSummaryData,
-  CustomerStockRow,
-} from '@/types/report.types';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui';
-import { createLogger } from '@/utils/logger';
-
-import { showAlert } from '@/utils/alert';
+  ReportCustomerCard,
+  ReportCustomerPicker,
+  ReportLastCustomer,
+  ReportNoCustomer,
+  ReportScaffold,
+  StockItemCard,
+  animateExpand,
+  type KPIItem,
+  type ReportHeaderAction,
+  type StockGRNRowData,
+} from '@/components/reports';
+import { ListEmptyState, type ListEmptyStateProps } from '@/components/list/ListEmptyState';
+import { filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
+import { matchesAnyWord } from '@/features/filters/components/HighlightedText';
+import {
+  STOCK_SUMMARY_CUSTOMER,
+  STOCK_SUMMARY_CUSTOMERS,
+  stockSummaryCustomersView,
+  stockSummaryItemsView,
+} from '@/features/filters/configs/reports/stockSummary';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
+import { reportById } from '@/features/reports/reportRegistry';
+import { exportHeaderActions } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
+import { useReportFilters } from '@/features/reports/useReportFilters';
+import { useReportQuery } from '@/features/reports/useReportQuery';
+import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
-const logger = createLogger('StockSummary');
+import { generateCustomerStockPDF } from '@/services/pdf-service';
+import { getAllStockSummary, getCustomerStockSummary } from '@/services/reporting';
+import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import type { AllStockSummaryData, CustomerStockRow, StockItemSummary, StockSummaryData } from '@/types/report.types';
+import { formatCount, formatIndiaDate, formatNumber } from '@/utils/formatters';
 
-// Functions, not constants: the text follows the app language (docs/I18N.md rule 2).
-const loadError = () => tr('reports.stockSummary.loadError');
-const noCustomer = () => tr('reports.shared.noCustomer');
+const REPORT_ID = 'stock-summary';
 
-// ============================================================================
-// Styles
-// ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  // A card per row, spaced by its own bottom margin.
+  card: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+  },
+  cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
+  // The item card draws its own surface, shadow and match line; the list only spaces it.
+  itemCard: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
 
-const makeStyles = (t: ThemeTokens) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: t.background.base },
-    loadingContainer: { flex: 1 },
-    scrollView: { flex: 1 },
-    scrollContent: { paddingBottom: space.xxxl },
-
-    searchContainer: { marginTop: space.sm, paddingHorizontal: layout.marginCompact },
-
-    section: { marginTop: space.lg, paddingHorizontal: layout.marginCompact },
-    sectionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingTop: space.sm,
-      paddingBottom: space.xs,
-      minHeight: 32,
-    },
-    sectionHeaderText: {
-      ...typography.footnote,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: trackedText(0.5),
-      textTransform: 'uppercase',
-      color: t.text.secondary,
-    },
-    itemsList: { gap: space.sm },
-    oosList: { marginTop: space.sm },
-
-    card: {
-      backgroundColor: t.surface.card,
-      borderRadius: radius.card,
-      ...t.shadow[2],
-    },
-    cardClip: { borderRadius: radius.card, overflow: 'hidden' },
-    divider: {
-      height: StyleSheet.hairlineWidth,
-      marginLeft: layout.marginCompact + layout.avatar.md + space.md,
-      backgroundColor: t.border.divider,
-    },
-
-    // Object cell
-    objectCell: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      paddingVertical: space.md,
-      paddingHorizontal: space.lg,
-      gap: space.md,
-    },
-    rowPressed: { backgroundColor: t.surface.cardPressed },
-    cellImage: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.button,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: t.brand.subtle,
-    },
-    cellImageMuted: { backgroundColor: t.status.neutral.background },
-    cellContent: { flex: 1, justifyContent: 'center', gap: space.xxs },
-    cellTitle: { ...typography.headline, color: t.text.primary },
-    cellSubtitle: { ...typography.subhead, color: t.text.secondary },
-    cellValue: { alignItems: 'flex-end' },
-    cellValueText: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    cellValueLabel: { ...typography.caption1, color: t.text.secondary },
-
-    // Expanded GRN rows
-    cardBody: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-      backgroundColor: t.background.base,
-    },
-    grnRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: space.lg,
-      paddingVertical: space.md,
-      minHeight: layout.rowMinHeight + space.md,
-      gap: space.md,
-    },
-    grnRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
-    grnRowContent: { flex: 1, gap: space.xxs },
-    grnRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-    grnRowTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
-    grnRowLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
-    grnRowFootnote: { ...typography.footnote, color: t.text.secondary },
-    grnRowAttributes: { alignItems: 'flex-end' },
-    grnRowStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    grnRowStockMuted: { color: t.text.secondary },
-    grnRowSecondary: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-
-
-    // Collapsible out-of-stock header
-    collapsibleHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      minHeight: touchTarget,
-      paddingHorizontal: space.lg,
-      paddingVertical: space.md,
-      gap: space.sm,
-    },
-    collapsibleHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
-    collapsibleHeaderTitle: { ...typography.headline, color: t.text.primary },
-    collapsibleHeaderHint: { ...typography.footnote, color: t.text.secondary },
-    countBadge: {
-      minWidth: 18,
-      paddingHorizontal: space.s6,
-      paddingVertical: space.xxs,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      backgroundColor: t.brand.fill,
-    },
-    countBadgeText: {
-      ...typography.caption2,
-      fontWeight: fontWeight.semibold,
-      color: t.brand.onFill,
-      fontVariant: ['tabular-nums'],
-    },
-  });
-
-type Styles = ReturnType<typeof makeStyles>;
+  // The header row over the out-of-stock rows
+  section: { marginTop: space.lg },
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  sectionHeaderPressed: { backgroundColor: t.surface.cardPressed },
+  sectionHeaderLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, flexShrink: 1 },
+  sectionTitle: { ...typography.headline, color: t.text.primary },
+  sectionHint: { ...typography.footnote, color: t.text.secondary },
+  countBadge: {
+    minWidth: 18,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.fill,
+  },
+  countBadgeText: {
+    ...typography.caption2,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+    fontVariant: ['tabular-nums' as const],
+  },
+});
 
 // ============================================================================
-// Section Header
+// Whose stock
 // ============================================================================
-const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, styles }) => (
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionHeaderText} accessibilityRole="header">
-      {title}
-    </Text>
-  </View>
-);
 
-// ============================================================================
-// Object Cell - Item Card (Expandable)
-// ============================================================================
-interface ItemCardProps {
-  item: StockItemSummary;
-  isExpanded: boolean;
-  onToggle: () => void;
-  isOutOfStock?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
+export default function StockSummaryScreen() {
+  const scope = useReportScope(REPORT_ID);
+  const { level } = scope;
+  switch (level.kind) {
+    case 'none':
+      return <ReportNoCustomer title={tr('reports.titles.stockSummary')} />;
+    case 'choose':
+      return <ReportCustomerPicker title={tr('reports.titles.stockSummary')} onPick={scope.chooseCustomer} />;
+    case 'customers':
+      return <CustomersReport scope={scope} />;
+    case 'customer':
+      // Keyed by the customer, so nothing of one customer's view is carried into another's.
+      return (
+        <CustomerReport
+          key={level.customerId}
+          customerId={level.customerId}
+          customerName={level.customerName}
+          onChangeCustomer={scope.changeCustomer}
+        />
+      );
+  }
 }
 
-const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOfStock = false, styles, t }) => {
-  const grns = formatCount(item.grn_count, 'GRN');
+// ============================================================================
+// The stock PDF
+// ============================================================================
+
+/**
+ * The report is of today's stock: the PDF is asked for no dates. One
+ * customer's stock PDF existed before generate-report-pdf: on a server without
+ * it that older PDF is shared instead (in its own order), so the row share and
+ * the one-customer header stay. The all-customers PDF has no older one.
+ */
+const olderStockPdf = (customerId: string) => () => generateCustomerStockPDF(customerId);
+
+// ============================================================================
+// Every customer
+// ============================================================================
+
+const customerKey = (customer: CustomerStockRow) => customer.customer_id;
+
+function CustomersReport({ scope }: { scope: ReportScope }) {
+  const filters = useReportFilters(STOCK_SUMMARY_CUSTOMERS);
+  const { view } = filters.request;
+  const query = useReportQuery<AllStockSummaryData>({
+    key: [REPORT_ID, 'customers'],
+    fetch: () => getAllStockSummary(),
+    fallbackError: tr('reports.stockSummary.loadError'),
+  });
+  const { data } = query;
+  const rows = useMemo(() => stockSummaryCustomersView(data?.customers ?? [], view), [data, view]);
+  const kpis = useMemo<KPIItem[] | undefined>(
+    () =>
+      data && [
+        { icon: 'cube-outline', value: data.summary.total_items, label: tr('common.items'), variant: 'primary' },
+        { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary' },
+      ],
+    [data]
+  );
+
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+
+  const { openCustomer, lastCustomer } = scope;
+  const renderRow = useCallback(
+    (customer: CustomerStockRow) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
+    [view.words, openCustomer]
+  );
+
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.stockSummary')}
+      subtitle={tr('reports.shared.allCustomers')}
+      actions={actions}
+      filters={{ config: STOCK_SUMMARY_CUSTOMERS, state: filters }}
+      query={query}
+      kpis={kpis}
+      status={{ shown: rows.length, total: data?.customers.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={customerKey}
+      extraData={view.words}
+      noun="customers"
+      empty={{ icon: 'package-variant-closed', title: tr('reports.shared.noStockYet'), description: tr('reports.shared.noStockYetDescription') }}
+      errorTitle={tr('reports.stockSummary.errorTitle')}
+    >
+      {lastCustomer && !filters.search ? (
+        <ReportLastCustomer customer={lastCustomer} onPress={openCustomer} accessibilityHint={tr('reports.stockSummary.opensCustomerHint')} />
+      ) : null}
+    </ReportScaffold>
+  );
+}
+
+interface CustomerRowProps {
+  customer: CustomerStockRow;
+  words: string[];
+  onOpen: (customer: ReportCustomerRef) => void;
+}
+
+/**
+ * Keyed by the customer: a list cell drawn again for another customer gets a
+ * row of its own, so one customer's PDF on its way never shows as another's.
+ */
+const CustomerRow = memo(function CustomerRow(props: CustomerRowProps) {
+  return <CustomerStockRowCard key={props.customer.customer_id} {...props} />;
+});
+
+/**
+ * A customer's row and its share button. Each row has its own export, so each
+ * has its own busy state: a second tap while its PDF is on its way is ignored,
+ * and one export ending does not clear another's. The PDF is that customer's
+ * stock summary, in the PDF's own order.
+ */
+function CustomerStockRowCard({ customer, words, onOpen }: CustomerRowProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { customer_id: customerId, customer_name: customerName } = customer;
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => (customerId ? { report: REPORT_ID, customer_id: customerId } : null),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    fallback: olderStockPdf(customerId),
+  });
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
-        {/* Object Cell Header - Main touchable area */}
-        <Pressable
-          style={({ pressed }) => [styles.objectCell, pressed && styles.rowPressed]}
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isOutOfStock
-              ? tr('reports.stockSummary.itemA11yOutOfStock', { name: item.item_name, grns })
-              : tr('reports.stockSummary.itemA11y', { name: item.item_name, units: formatNumber(item.total_stock), grns })
-          }
-          accessibilityState={{ expanded: isExpanded }}
-          accessibilityHint={isExpanded ? tr('reports.shared.hidesGrnsHint') : tr('reports.stockSummary.showsGrnsHint')}
-        >
-          <View style={[styles.cellImage, isOutOfStock && styles.cellImageMuted]}>
-            <Icon
-              name={isOutOfStock ? 'cube-off-outline' : 'cube-outline'}
-              size={iconSize.lg}
-              color={isOutOfStock ? t.status.neutral.text : t.brand.tint}
-            />
-          </View>
-
-          <View style={styles.cellContent}>
-            <Text style={styles.cellTitle} numberOfLines={2}>
-              {item.item_name}
-            </Text>
-            <Text style={styles.cellSubtitle} numberOfLines={1}>
-              {isOutOfStock ? tr('reports.stockSummary.grnsDispatched', { grns }) : grns}
-            </Text>
-            {isOutOfStock && (
-              <StatusTag status="negative" label={tr('common.outOfStock')} />
-            )}
-          </View>
-
-          {!isOutOfStock && (
-            <View style={styles.cellValue}>
-              <Text style={styles.cellValueText}>{formatNumber(item.total_stock)}</Text>
-              <Text style={styles.cellValueLabel}>{tr('reports.shared.units')}</Text>
-            </View>
-          )}
-
-          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
-        </Pressable>
-
-        {/* Expandable GRN List */}
-        {isExpanded && item.grns.length > 0 && (
-          <View style={styles.cardBody}>
-            {item.grns.map((grn, index) => (
-              <GRNRow
-                key={`${grn.gr_no}-${index}`}
-                grn={grn}
-                isLast={index === item.grns.length - 1}
-                onPress={grn.grn_id ? () => router.push(`/grn-details/${grn.grn_id}`) : undefined}
-                isOutOfStock={isOutOfStock}
-                styles={styles}
-                t={t}
-              />
-            ))}
-          </View>
-        )}
+        <ReportCustomerCard
+          customerId={customer.customer_id}
+          title={customer.customer_name}
+          highlightWords={words}
+          subtitle={[formatCount(customer.item_count, 'item'), formatCount(customer.grn_count, 'GRN')]}
+          value={customer.total_stock}
+          valueLabel={tr('reports.shared.units', { count: customer.total_stock })}
+          onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
+          onShare={available ? () => void exportPdf() : undefined}
+          isSharing={busy}
+          accessibilityHint={tr('reports.stockSummary.opensCustomerHint')}
+        />
       </View>
     </View>
   );
-};
-
-// ============================================================================
-// GRN Row (nested within Item Card)
-// ============================================================================
-interface GRNRowProps {
-  grn: StockGRNDetail;
-  isLast?: boolean;
-  onPress?: () => void;
-  isOutOfStock?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
 }
 
-const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfStock = false, styles, t }) => {
-  const handlePress = () => {
-    if (grn.grn_id && onPress) {
-      onPress();
-    }
-  };
+// ============================================================================
+// One customer's items
+// ============================================================================
 
-  const isNavigable = !!grn.grn_id;
-  const received = tr('reports.shared.receivedOn', { date: formatDate(grn.date, 'short') });
-  const emptied = isOutOfStock && grn.emptied_date ? tr('reports.stockSummary.emptiedOn', { date: formatDate(grn.emptied_date, 'short') }) : null;
-  const extra = !emptied ? [grn.packaging, grn.rack ? tr('reports.shared.rack', { rack: String(grn.rack) }) : null].filter(Boolean).join(' · ') : '';
-  const stockText = grn.orig_qty > 0
-    ? tr('reports.stockSummary.stockOf', { stock: formatNumber(grn.stock), total: formatNumber(grn.orig_qty) })
-    : formatNumber(grn.stock);
-  const weight = tr('reports.stockSummary.weightEach', { weight: formatWeight(grn.item_weight || 0) });
+/**
+ * The rows of one customer's list, all in the one FlashList so that a long list
+ * of items that ran out is drawn only as it scrolls into view:
+ *
+ *   the items in stock (or, when none is shown, a message row in their place)
+ *   a header row "Out of stock", which opens and closes the rows under it
+ *   the items that ran out in the last 360 days, while the header is open
+ *
+ * The message row is needed because the list's own empty state shows only for a
+ * list with no rows at all.
+ */
+type CustomerListRow =
+  | { kind: 'item'; item: StockItemSummary }
+  | { kind: 'nothingInStock' }
+  | { kind: 'emptiedHeader'; count: number }
+  | { kind: 'emptied'; item: StockItemSummary };
 
-  const a11yLabel = [
-    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
-    grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
-    received,
-    emptied,
-    extra || null,
-    tr('reports.shared.unitsValue', { value: stockText }),
-    weight,
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  const content = (
-    <>
-      <View style={styles.grnRowContent}>
-        <View style={styles.grnRowTitleRow}>
-          <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-          </Text>
-          {grn.package_mark && (
-            <StatusTag status="neutral" label={grn.package_mark} icon={null} />
-          )}
-        </View>
-        <View style={styles.grnRowLine}>
-          <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.grnRowFootnote}>{received}</Text>
-        </View>
-        {emptied && (
-          <View style={styles.grnRowLine}>
-            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.grnRowFootnote}>{emptied}</Text>
-          </View>
-        )}
-        {extra ? <Text style={styles.grnRowFootnote}>{extra}</Text> : null}
-      </View>
-
-      <View style={styles.grnRowAttributes}>
-        <Text style={[styles.grnRowStock, isOutOfStock && styles.grnRowStockMuted]}>{stockText}</Text>
-        <Text style={styles.grnRowSecondary}>{weight}</Text>
-      </View>
-
-      {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
-    </>
-  );
-
-  if (isNavigable) {
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.grnRow, !isLast && styles.grnRowBorder, pressed && styles.rowPressed]}
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={tr('reports.shared.opensGrnHint')}
-      >
-        {content}
-      </Pressable>
-    );
+const rowKey = (row: CustomerListRow): string => {
+  switch (row.kind) {
+    case 'item':
+      return `item:${row.item.item_id}`;
+    case 'emptied':
+      return `emptied:${row.item.item_id}`;
+    default:
+      return row.kind;
   }
+};
+const rowType = (row: CustomerListRow): string => row.kind;
 
-  return (
-    <View style={[styles.grnRow, !isLast && styles.grnRowBorder]} accessible accessibilityLabel={a11yLabel}>
-      {content}
-    </View>
-  );
+const openGRN = (grnId: string) => {
+  if (grnId) router.push(`/grn-details/${grnId}`);
 };
 
-export default function StockSummaryScreen() {
-  return (
-    <ReportCustomerScope title={tr('reports.titles.stockSummary')}>
-      {(scope) => <StockSummaryReport scope={scope} />}
-    </ReportCustomerScope>
-  );
+/** Opens or closes one id in a set of open ids. */
+const toggled = (ids: ReadonlySet<string>, id: string): Set<string> => {
+  const next = new Set(ids);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+};
+
+interface CustomerReportProps {
+  customerId: string;
+  customerName: string;
+  onChangeCustomer?: () => void;
 }
 
-function StockSummaryReport({ scope }: { scope: ReportScope }) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-
-  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
-  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
-
-  // Single customer data (used for regular users OR staff drill-down)
-  const [data, setData] = useState<StockSummaryData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-
-  // Out-of-stock section state
-  const [outOfStockExpanded, setOutOfStockExpanded] = useState(false);
-  const [expandedOutOfStockItems, setExpandedOutOfStockItems] = useState<Set<string>>(new Set());
-
-  // For staff users - hierarchical view state
-  const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
-  const [allCustomersData, setAllCustomersData] = useState<AllStockSummaryData | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerStockRow | null>(null);
-
-  // PDF sharing state
-  const [sharingCustomerId, setSharingCustomerId] = useState<string | null>(null);
-
-  // Customer search state
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-
-  // Fetch all customers stock summary (staff sees all, regular users see filtered)
-  const fetchAllCustomersData = useCallback(async (showRefreshIndicator = false) => {
-
-    if (showRefreshIndicator) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-    setError(null);
-
-    try {
-      const response = await getAllStockSummary();
-
-      if (response.success && response.data) {
-        // Backend now filters by user permissions via auth.uid()
-        setAllCustomersData(response.data);
-      } else {
-        logger.warn('All-customer load failed', { error: response.error });
-        setError(response.message || loadError());
-      }
-    } catch (err) {
-      logger.error('Error fetching all customers data', err);
-      setError(loadError());
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Fetch single customer stock summary (for drill-down or regular users)
-  const fetchSingleCustomerData = useCallback(async (customerId: string, showRefreshIndicator = false) => {
-    logger.debug('fetchSingleCustomerData called', { customerId });
-
-    if (showRefreshIndicator) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-    setError(null);
-
-    try {
-      const response = await getCustomerStockSummary(customerId);
-
-      if (response.success && response.data) {
-        setData(response.data);
-      } else {
-        logger.warn('Customer load failed', { error: response.error });
-        setError(response.message || loadError());
-      }
-    } catch (err) {
-      logger.error('Error fetching single customer data', err);
-      setError(loadError());
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Initial data fetch
-  useEffect(() => {
-    if (shouldShowListView) {
-      // Staff users or regular users with multiple assigned customers start with list view
-      fetchAllCustomersData();
-    } else if (singleAssignedCustomerId) {
-      // Regular users with only one assigned customer go directly to that customer
-      fetchSingleCustomerData(singleAssignedCustomerId);
-    } else {
-      setError(noCustomer());
-      setIsLoading(false);
-    }
-  }, [shouldShowListView, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  // Handle refresh based on current view
-  const handleRefresh = useCallback(() => {
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData(true);
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id, true);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId, true);
-    }
-  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  // Filtered customers based on search query
-  const filteredCustomers = useMemo(() => {
-    if (!allCustomersData?.customers) return [];
-    if (!customerSearchQuery.trim()) return allCustomersData.customers;
-    const q = customerSearchQuery.toLowerCase();
-    return allCustomersData.customers.filter((c) =>
-      c.customer_name.toLowerCase().includes(q),
-    );
-  }, [allCustomersData?.customers, customerSearchQuery]);
-
-  // Handle search autocomplete selection
-  const handleSearchSelect = useCallback(
-    (customer: { id: string; name: string }) => {
-      setSelectedCustomer({
-        customer_id: customer.id,
-        customer_name: customer.name,
-      } as CustomerStockRow);
-      setViewMode('single');
-      setData(null);
-      setCustomerSearchQuery('');
-      fetchSingleCustomerData(customer.id);
-    },
-    [fetchSingleCustomerData],
+function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
+  const filters = useReportFilters(STOCK_SUMMARY_CUSTOMER);
+  const { view } = filters.request;
+  const query = useReportQuery<StockSummaryData>({
+    key: [REPORT_ID, 'customer', customerId],
+    fetch: () => getCustomerStockSummary(customerId),
+    fallbackError: tr('reports.stockSummary.loadError'),
+  });
+  const { data } = query;
+  // The search and the sort apply to the items in stock and to those that ran out alike.
+  const items = useMemo(() => stockSummaryItemsView(data?.items ?? [], view), [data, view]);
+  const emptied = useMemo(() => stockSummaryItemsView(data?.out_of_stock_items ?? [], view), [data, view]);
+  // The figures are today's whole stock, not what the search leaves. Nothing in stock: none (as before).
+  const kpis = useMemo<KPIItem[] | undefined>(
+    () =>
+      data && data.items.length > 0
+        ? [
+            // "Stock", as the item stock summary names the same figure.
+            { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary' },
+            { icon: 'package-down', value: data.summary.grn_count, label: tr('reports.stockSummary.grnsWithStock'), variant: 'primary' },
+          ]
+        : undefined,
+    [data]
   );
 
-  // Handle customer selection (staff drill-down)
-  const handleCustomerSelect = useCallback((customer: CustomerStockRow) => {
-    setSelectedCustomer(customer);
-    setViewMode('single');
-    setData(null); // Clear previous single-customer data
-    fetchSingleCustomerData(customer.customer_id);
-  }, [fetchSingleCustomerData]);
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleItem = useCallback((itemId: string) => setOpen(ids => toggled(ids, itemId)), []);
+  const [openEmptied, setOpenEmptied] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleEmptied = useCallback((itemId: string) => setOpenEmptied(ids => toggled(ids, itemId)), []);
 
-  // Handle back to all-customers view
-  const handleBackToAll = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setViewMode('all');
-    setSelectedCustomer(null);
-    setData(null);
-    setExpandedItems(new Set());
-    setOutOfStockExpanded(false);
-    setExpandedOutOfStockItems(new Set());
-  }, []);
+  // The out-of-stock rows are folded away until the header opens them. A search that finds
+  // nothing in stock but finds items that ran out opens them, so the matches are in view (§14.6);
+  // the header still closes them.
+  const onlyEmptiedMatch = view.words.length > 0 && items.length === 0 && emptied.length > 0;
+  const [sectionOpen, setSectionOpen] = useState(false);
+  const [openedForMatch, setOpenedForMatch] = useState(false);
+  if (onlyEmptiedMatch !== openedForMatch) {
+    setOpenedForMatch(onlyEmptiedMatch);
+    if (onlyEmptiedMatch) setSectionOpen(true);
+  }
+  const reduceMotion = useReducedMotion();
+  const toggleSection = useCallback(() => {
+    animateExpand(reduceMotion);
+    setSectionOpen(value => !value);
+  }, [reduceMotion]);
 
-  // Handle PDF share for customer stock
-  const handleShareCustomerStock = useCallback(async (customerId: string, customerName: string) => {
-    logger.debug('handleShareCustomerStock called', { customerId });
-    setSharingCustomerId(customerId);
-
-    try {
-      const result = await generateCustomerStockPDF(customerId);
-
-      if (result.success && result.pdfUrl) {
-        // Sanitize filename (remove special characters)
-        const sanitizedName = customerName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
-        const filename = `Stock_${sanitizedName}.pdf`;
-
-        const shareResult = await downloadAndSharePDF(result.pdfUrl, filename);
-        if (!shareResult.success) {
-          logger.debug('Share was cancelled or failed', { error: shareResult.error });
-        }
-      } else {
-        logger.warn('PDF generation failed', { error: result.error });
-        showAlert(tr('reports.stockSummary.pdfErrorTitle'), tr('common.checkConnection'));
-      }
-    } catch (error) {
-      logger.error('Error sharing customer stock PDF', error);
-      showAlert(tr('reports.stockSummary.pdfErrorTitle'), tr('common.checkConnection'));
-    } finally {
-      setSharingCustomerId(null);
-    }
-  }, []);
-
-  const toggleItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleOutOfStockSection = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOutOfStockExpanded((prev) => !prev);
-  }, []);
-
-  const toggleOutOfStockItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedOutOfStockItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  }, []);
-
-  // Build KPI items for all-customers view
-  const allCustomersKpiItems: KPIItem[] = useMemo(() => {
-    if (!allCustomersData?.summary) return [];
-
-    const summary = allCustomersData.summary;
+  const rows = useMemo<CustomerListRow[]>(() => {
+    const inStock = items.map(item => ({ kind: 'item' as const, item }));
+    if (emptied.length === 0) return inStock;
     return [
-      {
-        icon: 'cube-outline',
-        value: summary.total_items,
-        label: tr('common.items'),
-        variant: 'primary',
-      },
-      {
-        icon: 'warehouse',
-        value: summary.total_quantity,
-        label: tr('reports.stockSummary.unitsInStock'),
-        variant: 'primary',
-      },
+      ...(inStock.length > 0 ? inStock : [{ kind: 'nothingInStock' as const }]),
+      { kind: 'emptiedHeader' as const, count: emptied.length },
+      ...(sectionOpen ? emptied.map(item => ({ kind: 'emptied' as const, item })) : []),
     ];
-  }, [allCustomersData?.summary]);
+  }, [items, emptied, sectionOpen]);
 
-  // Build KPI items for single-customer view
-  const singleCustomerKpiItems: KPIItem[] = useMemo(() => {
-    if (!data?.summary) return [];
+  // The message in place of the in-stock rows when items ran out but none in stock is shown:
+  // nothing in stock at all, or a search that finds only items that ran out.
+  const search = filters.search.trim();
+  const nothingInStock = useMemo<ListEmptyStateProps>(
+    () =>
+      onlyEmptiedMatch
+        ? {
+            ...filteredEmptyProps(filters, 'items'),
+            filteredTitle: tr('reports.stockSummary.noStockMatch', { search }),
+            filteredSubtitle: tr('reports.stockSummary.emptiedMatchBelow', { count: emptied.length }),
+          }
+        : {
+            activeFilterCount: 0,
+            emptyIcon: 'package-variant-closed',
+            emptyTitle: tr('reports.shared.noStockForCustomer'),
+            emptySubtitle: tr('reports.shared.noStockForCustomerDescription'),
+          },
+    [onlyEmptiedMatch, filters, search, emptied.length]
+  );
 
-    const summary = data.summary;
-    return [
-      {
-        icon: 'warehouse',
-        value: summary.total_quantity,
-        label: tr('reports.stockSummary.unitsInStock'),
-        variant: 'primary',
-      },
-      {
-        icon: 'package-down',
-        value: summary.grn_count,
-        label: tr('reports.stockSummary.grnsWithStock'),
-        variant: 'primary',
-      },
-    ];
-  }, [data?.summary]);
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    fallback: olderStockPdf(customerId),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...exportHeaderActions({ exportPdf, busy, available }),
+    ],
+    [onChangeCustomer, exportPdf, busy, available]
+  );
+  const oldest = data?.summary.oldest_stock_date;
+  const subtitle = customerName || (oldest ? tr('reports.stockSummary.oldestStock', { date: formatIndiaDate(oldest) }) : undefined);
 
-  const getSubtitle = (): string => {
-    if (!data?.summary) return '';
-    const oldestDate = data.summary.oldest_stock_date;
-    if (oldestDate) {
-      return tr('reports.stockSummary.oldestStock', { date: formatDate(oldestDate) });
-    }
-    return '';
-  };
+  const renderRow = useCallback(
+    (row: CustomerListRow) => {
+      switch (row.kind) {
+        case 'item':
+          return <ItemRow item={row.item} words={view.words} isExpanded={open.has(row.item.item_id)} onToggle={toggleItem} />;
+        case 'emptied':
+          return (
+            <ItemRow item={row.item} words={view.words} isExpanded={openEmptied.has(row.item.item_id)} onToggle={toggleEmptied} outOfStock />
+          );
+        case 'emptiedHeader':
+          return <OutOfStockHeader count={row.count} isOpen={sectionOpen} onToggle={toggleSection} />;
+        case 'nothingInStock':
+          return <ListEmptyState {...nothingInStock} />;
+      }
+    },
+    [view.words, open, openEmptied, sectionOpen, nothingInStock, toggleItem, toggleEmptied, toggleSection]
+  );
+  const extraData = useMemo(
+    () => ({ words: view.words, open, openEmptied, sectionOpen, nothingInStock }),
+    [view.words, open, openEmptied, sectionOpen, nothingInStock]
+  );
 
-  // Determine which KPIs to show based on view mode
-  const isListView = shouldShowListView && viewMode === 'all';
-  const hasData = isListView ? allCustomersData : data;
-
-  // Subtitle for list view
-  const listViewSubtitle = isWarehouseUser ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers');
-
-  const refreshControl = (
-    <RefreshControl
-      refreshing={isRefreshing}
-      onRefresh={handleRefresh}
-      colors={[t.brand.tint]}
-      tintColor={t.brand.tint}
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.stockSummary')}
+      subtitle={subtitle}
+      actions={actions}
+      filters={{ config: STOCK_SUMMARY_CUSTOMER, state: filters }}
+      query={query}
+      kpis={kpis}
+      status={{ shown: items.length, total: data?.items.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={rowKey}
+      getRowType={rowType}
+      extraData={extraData}
+      noun="items"
+      empty={{
+        icon: 'package-variant-closed',
+        title: tr('reports.shared.noStockForCustomer'),
+        description: tr('reports.shared.noStockForCustomerDescription'),
+      }}
+      errorTitle={tr('reports.stockSummary.errorTitle')}
     />
   );
+}
 
-  const retry = () => {
-    if (shouldShowListView && viewMode === 'all') fetchAllCustomersData();
-    else if (selectedCustomer) fetchSingleCustomerData(selectedCustomer.customer_id);
-    else if (singleAssignedCustomerId) fetchSingleCustomerData(singleAssignedCustomerId);
-  };
+/** The GRNs of an item as the shared card draws them. */
+const grnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData[] =>
+  item.grns.map((grn, index) => {
+    const emptiedOn = outOfStock && grn.emptied_date ? grn.emptied_date : null;
+    return {
+      key: `${grn.gr_no}-${index}`,
+      grnId: grn.grn_id || null,
+      grNo: grn.gr_no,
+      packageMark: grn.package_mark || null,
+      receivedDate: grn.date,
+      emptiedDate: emptiedOn,
+      // An emptied GRN no longer holds a rack: its packaging and rack are not shown.
+      packaging: emptiedOn ? null : grn.packaging,
+      rack: emptiedOn ? null : grn.rack,
+      weightEach: grn.item_weight,
+      stock: grn.stock,
+      total: grn.orig_qty,
+    };
+  });
 
-  // Loading skeleton
-  if (isLoading && !hasData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockSummary')} onBack={scope.onChangeCustomer} />
-        <View style={styles.loadingContainer}>
-          <KPIGrid
-            items={[
-              { icon: 'warehouse', value: '-', label: tr('reports.stockSummary.unitsInStock'), variant: 'primary' },
-              { icon: 'package-down', value: '-', label: tr('reports.stockSummary.grnsWithStock'), variant: 'primary' },
-            ]}
-            isLoading={true}
-            compact
-          />
-        </View>
-      </View>
-    );
+/**
+ * The GRNs a search found on an item (§14.6): a closed card shows its name, not
+ * its GRN numbers, so it names them in its match line (the card draws the line
+ * only while closed). Only for words the name does not already show.
+ */
+function hiddenMatches(item: StockItemSummary, words: string[]): string[] {
+  const name = item.item_name.toLowerCase();
+  const unseen = words.filter(word => !name.includes(word));
+  if (unseen.length === 0) return [];
+  const found = new Set<string>();
+  for (const grn of item.grns) {
+    if (matchesAnyWord(String(grn.gr_no ?? ''), unseen)) found.add(tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }));
   }
+  return [...found].slice(0, 3);
+}
 
-  // Error state
-  if (error && !hasData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockSummary')} onBack={scope.onChangeCustomer} />
-        {error === noCustomer() ? (
-          <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
-        ) : (
-          <ReportEmptyState
-            icon="alert-circle-outline"
-            tone="error"
-            message={tr('reports.shared.errorTitle')}
-            description={error}
-            actionLabel={tr('common.retry')}
-            onAction={retry}
-          />
-        )}
-      </View>
-    );
-  }
+interface ItemRowProps {
+  item: StockItemSummary;
+  /** Lower-cased search words. */
+  words: string[];
+  isExpanded: boolean;
+  onToggle: (itemId: string) => void;
+  outOfStock?: boolean;
+}
 
-  // List View (Staff sees all customers, regular users see their assigned customers)
-  if (isListView && allCustomersData) {
-    const hasCustomers = allCustomersData.customers.length > 0;
-
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockSummary')} subtitle={listViewSubtitle} />
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={refreshControl}
-        >
-          {/* KPI Summary */}
-          <KPIGrid items={allCustomersKpiItems} isLoading={isLoading} compact />
-
-          {/* Customer Search */}
-          <View style={styles.searchContainer}>
-            <ReportCustomerSearch
-              searchQuery={customerSearchQuery}
-              onSearchChange={setCustomerSearchQuery}
-              onCustomerSelect={handleSearchSelect}
-              visibleCustomerIds={allCustomersData.customers.map((c) => c.customer_id)}
-            />
-          </View>
-
-          {/* Customers List */}
-          {filteredCustomers.length > 0 ? (
-            <View style={styles.section}>
-              <SectionHeader title={tr('reports.stockSummary.customersWithStock')} styles={styles} />
-              <View style={styles.card}>
-                <View style={styles.cardClip}>
-                  {filteredCustomers.map((customer, index) => (
-                    <React.Fragment key={customer.customer_id}>
-                      <ReportCustomerCard
-                        title={customer.customer_name}
-                        customerId={customer.customer_id}
-                        subtitle={[formatCount(customer.item_count, 'item'), formatCount(customer.grn_count, 'GRN')]}
-                        value={customer.total_stock}
-                        valueLabel={tr('reports.shared.units')}
-                        onPress={() => handleCustomerSelect(customer)}
-                        onShare={() => handleShareCustomerStock(customer.customer_id, customer.customer_name)}
-                        isSharing={sharingCustomerId === customer.customer_id}
-                        accessibilityHint={tr('reports.stockSummary.opensCustomerHint')}
-                      />
-                      {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
-                    </React.Fragment>
-                  ))}
-                </View>
-              </View>
-            </View>
-          ) : (
-            customerSearchQuery.trim() ? (
-              <ReportEmptyState
-                icon="magnify-close"
-                message={tr('reports.shared.noMatchingCustomers')}
-                description={tr('reports.shared.noCustomersMatch', { search: customerSearchQuery.trim() })}
-                actionLabel={tr('common.clearSearch')}
-                onAction={() => setCustomerSearchQuery('')}
-              />
-            ) : (
-              <ReportEmptyState
-                icon="package-variant-closed"
-                message={tr('reports.shared.noStockYet')}
-                description={tr('reports.shared.noStockYetDescription')}
-              />
-            )
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // Get current customer info for single customer view
-  const currentCustomerId = selectedCustomer?.customer_id || singleAssignedCustomerId;
-  const currentCustomerName = selectedCustomer?.customer_name || scope.customerName || 'Customer';
-  const pdfActions = currentCustomerId
-    ? [
-        {
-          icon: 'file-pdf-box',
-          label: tr('reports.stockSummary.sharePdf'),
-          busy: !!sharingCustomerId,
-          onPress: () => handleShareCustomerStock(currentCustomerId, currentCustomerName),
-        },
-      ]
-    : [];
-
-  // Single Customer View (for single-assigned users or drill-down from list view)
-  // Empty state
-  if (!data?.items || data.items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader
-          title={tr('reports.titles.stockSummary')}
-          subtitle={selectedCustomer?.customer_name || scope.customerName}
-          onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
-          actions={pdfActions}
-        />
-        <ReportEmptyState
-          icon="package-variant-closed"
-          message={tr('reports.shared.noStockForCustomer')}
-          description={tr('reports.shared.noStockForCustomerDescription')}
-        />
-      </View>
-    );
-  }
-
+const ItemRow = memo(function ItemRow({ item, words, isExpanded, onToggle, outOfStock = false }: ItemRowProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { item_id: itemId } = item;
+  const handleToggle = useCallback(() => onToggle(itemId), [onToggle, itemId]);
+  const grns = useMemo(() => ({ status: 'loaded' as const, rows: grnRows(item, outOfStock) }), [item, outOfStock]);
+  const matchLine = useMemo(() => hiddenMatches(item, words).join(' · ') || undefined, [item, words]);
   return (
-    <View style={styles.container}>
-      <ReportHeader
-        title={tr('reports.titles.stockSummary')}
-        subtitle={selectedCustomer?.customer_name || scope.customerName || getSubtitle()}
-        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
-        actions={pdfActions}
-      />
+    <StockItemCard
+      name={item.item_name}
+      grnCount={item.grn_count}
+      stock={item.total_stock}
+      outOfStock={outOfStock}
+      isExpanded={isExpanded}
+      onToggle={handleToggle}
+      grns={grns}
+      onOpenGRN={openGRN}
+      highlightWords={words}
+      matchLine={matchLine}
+      // An item with no GRN to list says so rather than opening onto nothing.
+      emptyGRNsText={outOfStock ? tr('reports.stockSummary.noGrnsToShow') : tr('reports.itemStockSummary.noGrnsInStock')}
+      style={styles.itemCard}
+    />
+  );
+});
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={refreshControl}
-      >
-        {/* KPI Summary */}
-        <KPIGrid items={singleCustomerKpiItems} isLoading={isLoading} compact />
+interface OutOfStockHeaderProps {
+  /** How many items ran out in the last 360 days, after the search. */
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
+}
 
-        {/* Items List */}
-        <View style={styles.section}>
-          <SectionHeader title={tr('reports.stockSummary.itemsInStorage')} styles={styles} />
-          <View style={styles.itemsList}>
-            {data.items.map((item) => (
-              <ItemCard
-                key={item.item_id}
-                item={item}
-                isExpanded={expandedItems.has(item.item_id)}
-                onToggle={() => toggleItem(item.item_id)}
-                styles={styles}
-                t={t}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* Out of Stock Section - Collapsible */}
-        {data.out_of_stock_items && data.out_of_stock_items.length > 0 && (
-          <View style={styles.section}>
-            {/* Collapsible Section Header */}
-            <View style={styles.card}>
-              <View style={styles.cardClip}>
-                <Pressable
-                  style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.rowPressed]}
-                  onPress={toggleOutOfStockSection}
-                  accessibilityRole="button"
-                  accessibilityLabel={tr('reports.stockSummary.outOfStockA11y', { items: formatCount(data.out_of_stock_items.length, 'item') })}
-                  accessibilityState={{ expanded: outOfStockExpanded }}
-                >
-                  <View style={styles.collapsibleHeaderLeft}>
-                    <Icon
-                      name={outOfStockExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={iconSize.md}
-                      color={t.icon.secondary}
-                    />
-                    <Text style={styles.collapsibleHeaderTitle} accessibilityRole="header">
-                      {tr('common.outOfStock')}
-                    </Text>
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText} maxFontSizeMultiplier={1.6}>
-                        {formatNumber(data.out_of_stock_items.length)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.collapsibleHeaderHint}>{tr('reports.stockSummary.last360Days')}</Text>
-                </Pressable>
+/** The header row over the items that ran out: one tap opens or closes them. */
+const OutOfStockHeader = memo(function OutOfStockHeader({ count, isOpen, onToggle }: OutOfStockHeaderProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.section}>
+      <View style={styles.card}>
+        <View style={styles.cardClip}>
+          <Pressable
+            style={({ pressed }) => [styles.sectionHeader, pressed && styles.sectionHeaderPressed]}
+            onPress={onToggle}
+            accessibilityRole="button"
+            accessibilityLabel={tr('reports.stockSummary.outOfStockA11y', { items: formatCount(count, 'item') })}
+            accessibilityState={{ expanded: isOpen }}
+          >
+            <View style={styles.sectionHeaderLeft}>
+              <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.sectionTitle}>{tr('common.outOfStock')}</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText} maxFontSizeMultiplier={1.6}>
+                  {formatNumber(count)}
+                </Text>
               </View>
             </View>
-
-            {/* Expanded Content */}
-            {outOfStockExpanded && (
-              <View style={[styles.itemsList, styles.oosList]}>
-                {data.out_of_stock_items.map((item) => (
-                  <ItemCard
-                    key={`oos-${item.item_id}`}
-                    item={item}
-                    isExpanded={expandedOutOfStockItems.has(item.item_id)}
-                    onToggle={() => toggleOutOfStockItem(item.item_id)}
-                    isOutOfStock
-                    styles={styles}
-                    t={t}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
+            <Text style={styles.sectionHint}>{tr('reports.stockSummary.last360Days')}</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
-}
+});

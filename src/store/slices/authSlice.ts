@@ -23,6 +23,8 @@ import ConfigService from '@/services/configService';
 import { getUserByIdDirect } from '@/services/user-core-service';
 import { fetchFullConfig, clearFullConfig } from './configSlice';
 import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
+import { isCentralLoginConfigured } from '@/config/envConfig';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -151,6 +153,14 @@ export const initializeAuth = createAsyncThunk(
     const result = await (async () => {
       try {
         await clearProtectedDetailCaches();
+
+        // Central login with no facility selected (docs/CENTRAL_LOGIN.md): the app shell
+        // runs before any facility backend is known, so there is no client to ask and no
+        // facility session to restore. That is how such a build normally starts, not a
+        // failure: asking for the client here would throw "Configuration must be loaded
+        // first", log it as an error and leave it in `auth.error`.
+        if (isCentralLoginConfigured() && getActiveOperatorServer() === null)
+          return { session: null, user: null, userProfile: null };
 
         // STEP 1: Ensure we have Supabase client (fallback to initialized one)
         const supabaseClient = getSupabaseClient();
@@ -468,16 +478,45 @@ export const logout = createAsyncThunk(
  * Apple App Store Requirement: Apps that allow account creation must provide
  * a way for users to delete their account and associated data from within the app.
  */
-export const deleteAccount = createAsyncThunk(
+/**
+ * Why `deleteAccount` was rejected, and above all whether the server deleted
+ * the account: `true` (it did; the session then changed or the sign-out
+ * failed), `false` (it answered and kept the account), `null` (no answer; it
+ * may have). `message` is what the screens showed before this payload existed.
+ */
+export interface DeleteAccountRejection {
+  code: 'REFUSED' | 'SESSION_CHANGED' | 'UNKNOWN';
+  serverDeleted: boolean | null;
+  message: string;
+}
+
+export const isDeleteAccountRejection = (value: unknown): value is DeleteAccountRejection =>
+  typeof value === 'object' && value !== null && typeof (value as DeleteAccountRejection).message === 'string' && 'serverDeleted' in value;
+
+export const deleteAccount = createAsyncThunk<void, void, { rejectValue: DeleteAccountRejection }>(
   'auth/deleteAccount',
   async (_, { rejectWithValue, dispatch }) => {
     const generation = getSessionGeneration();
     const result = await UserService.deleteAccount();
-    if (generation !== getSessionGeneration())
-      return rejectWithValue(t('errors.auth.sessionChanged'));
-    if (!result.success)
-      return rejectWithValue(serverText(result.error, t('errors.user.deleteAccountFailed')));
-    await dispatch(logout()).unwrap();
+    const sessionChanged = generation !== getSessionGeneration();
+    if (!result.success) {
+      // The server answered and kept the account, or no answer arrived. A
+      // session that changed meanwhile (an auth refusal forced a sign-out) is
+      // still a refusal: the account exists.
+      const unknown = result.outcome === 'unknown';
+      return rejectWithValue({
+        code: unknown ? 'UNKNOWN' : 'REFUSED',
+        serverDeleted: unknown ? null : false,
+        message: sessionChanged ? t('errors.auth.sessionChanged') : serverText(result.error, t('errors.user.deleteAccountFailed')),
+      });
+    }
+    if (sessionChanged)
+      return rejectWithValue({ code: 'SESSION_CHANGED', serverDeleted: true, message: t('errors.auth.sessionChanged') });
+    try {
+      await dispatch(logout()).unwrap();
+    } catch {
+      return rejectWithValue({ code: 'SESSION_CHANGED', serverDeleted: true, message: t('errors.auth.sessionChanged') });
+    }
   }
 );
 
@@ -764,7 +803,7 @@ const authSlice = createSlice({
         if (state.deleteRequest !== action.meta.requestId) return;
         state.deleteRequest = undefined;
         state.isLoading = false;
-        state.error = action.payload as string;
+        state.error = action.payload?.message ?? null;
       })
       // Force logout on invalid token (JWSInvalidSignature, etc.)
       .addCase(forceLogoutOnInvalidToken.pending, (state, action) => {

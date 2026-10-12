@@ -1,920 +1,537 @@
 /**
- * Stock Aging Report Screen (C5)
+ * Stock aging report (C5): how long each customer's stock has been in store.
  *
- * Displays stock age distribution with aging buckets and dispatch velocity info.
- * Items are grouped by name; each age bucket carries a status colour, its icon
- * and its label (docs/STYLE_GUIDE.md §3.5): 0–120 days positive, 121–240
- * informative, 241–364 critical and over 364 negative.
+ * Built on the report layer (docs/STYLE_GUIDE.md §14.10), like GRN activity:
+ * useReportScope says whose stock, useReportFilters holds the search, sort and
+ * bucket choice, useReportQuery the data, and ReportScaffold draws every state.
+ * The report is of today's stock, so it has no period. A warehouse role opens
+ * a customer by pushing this route with `?customerId=`.
+ *
+ * Each age bucket carries its status, icon and words (§3.5): 0–120 days
+ * positive, 121–240 informative, 241–364 critical and over 364 negative.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  RefreshControl,
-  LayoutAnimation,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import React, { memo, useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem, ReportCustomerScope, type ReportScope, } from '@/components/reports';
-import { Button } from '@/components/ui/Button';
-import { getCustomerStockAging, getAllStockAging } from '@/services/reporting/stock-aging-service';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  typography,
-  type ThemeTokens,
-  trackedText,
-} from '@/theme/tokens';
-import type {
-  StockAgingData,
-  StockAgingItem,
-  AgingBucketData,
-  AllStockAgingData,
-  CustomerAgingSummary,
-} from '@/types/report.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
-import { StatusTag, type StatusKind } from '@/components/ui';
-import { createLogger } from '@/utils/logger';
-import { t as tr, localizeDigits, type TranslationKey, formatIdentifier } from '@/i18n';
+  AGING_BUCKET_STATUS,
+  AgingBucketBar,
+  ReportCustomerCard,
+  ReportCustomerPicker,
+  ReportLastCustomer,
+  ReportNoCustomer,
+  ReportScaffold,
+  agingBucketLabel,
+  agingBucketsFrom,
+  animateExpand,
+  type AgingBucketId,
+  type KPIItem,
+  type ReportHeaderAction,
+} from '@/components/reports';
+import { KeyValueCell } from '@/components/fiori/KeyValueCell';
+import { StatusTag } from '@/components/ui';
+import { Button } from '@/components/ui/Button';
+import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
+import {
+  STOCK_AGING_CUSTOMER,
+  STOCK_AGING_CUSTOMERS,
+  bucketForDays,
+  groupStockAgingLines,
+  lineBucket,
+  stockAgingCustomersView,
+  stockAgingItemsView,
+  type StockAgingGroup,
+  type StockAgingLine,
+} from '@/features/filters/configs/reports/stockAging';
+import { reportById } from '@/features/reports/reportRegistry';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
+import { exportHeaderActions } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
+import { useReportFilters } from '@/features/reports/useReportFilters';
+import { useReportQuery } from '@/features/reports/useReportQuery';
+import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/stock-aging-service';
+import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
+import { fontWeight, iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import type { AgingBucketData, AllStockAgingData, CustomerAgingSummary, StockAgingData } from '@/types/report.types';
+import { formatCount, formatIndiaDate, formatNumber } from '@/utils/formatters';
 
-const logger = createLogger('StockAging');
+const REPORT_ID = 'stock-aging';
 
-// Functions, not constants: the text follows the app language (docs/I18N.md rule 2).
-const loadError = () => tr('reports.stockAging.loadError');
-const noCustomer = () => tr('reports.shared.noCustomer');
+const makeStyles = (t: ThemeTokens) => ({
+  // A card per row, spaced by its own bottom margin.
+  card: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+  },
+  cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
+  barCard: { padding: space.lg, marginTop: space.xs, marginBottom: space.md },
+  rowPressed: { backgroundColor: t.surface.cardPressed },
 
-// ============================================================================
-// Age buckets (status per guide §3.5)
-// ============================================================================
+  // An item
+  groupHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    gap: space.md,
+  },
+  groupIcon: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
+  },
+  cellContent: { flex: 1, gap: space.xxs, alignItems: 'flex-start' as const },
+  cellTitle: { ...typography.headline, color: t.text.primary },
+  cellSubtitle: { ...typography.subhead, color: t.text.secondary },
+  footnote: { ...typography.footnote, color: t.text.secondary },
+  stockInfo: { alignItems: 'flex-end' as const, flexShrink: 0 },
+  stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
+  stockLabel: { ...typography.caption1, color: t.text.secondary },
+  groupLines: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border.divider },
 
-const BUCKET_ORDER = ['0-120', '121-240', '241-364', '364+'];
+  // A GRN line under an item
+  lineDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
+  lineRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight + space.md,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    gap: space.md,
+  },
+  lineTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary },
+  lineSubtitle: { ...typography.footnote, color: t.text.secondary },
+  lineStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
+  lineDetails: { paddingBottom: space.md },
+  detailDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: space.lg, marginVertical: space.xs, backgroundColor: t.border.divider },
+  viewGrn: { marginTop: space.md, paddingHorizontal: space.lg },
+});
 
-// Holds keys, not text: the label is looked up when drawn (docs/I18N.md rule 2).
-const AGING_BUCKETS: Record<string, { kind: StatusKind; labelKey: TranslationKey }> = {
-  '0-120': { kind: 'positive', labelKey: 'reports.stockAging.bucket0to120' },
-  '121-240': { kind: 'informative', labelKey: 'reports.stockAging.bucket121to240' },
-  '241-364': { kind: 'critical', labelKey: 'reports.stockAging.bucket241to364' },
-  '364+': { kind: 'negative', labelKey: 'reports.stockAging.bucketOver364' },
-};
+const days = (count: number) => formatCount(count, 'day');
+/** "1 unit", "12 units" (Gujarati: "૧ નંગ", "૧૨ નંગ"). */
+const units = (count: number) => formatCount(count, 'unit');
 
-const bucketInfo = (bucket: string): { kind: StatusKind; label: string } => {
-  const info = AGING_BUCKETS[bucket] || AGING_BUCKETS['0-120'];
-  return { kind: info.kind, label: tr(info.labelKey) };
-};
-
-/** A percentage with one decimal, in the digits of the app language. */
-const onePlace = (value: number): string => localizeDigits(value.toFixed(1));
-
-const bucketForAge = (days: number): string =>
-  days <= 120 ? '0-120' : days <= 240 ? '121-240' : days <= 364 ? '241-364' : '364+';
-
-function days(n: number): string {
-  return formatCount(n, 'day');
+/**
+ * The figures over the rows. Two tiles count items, and the red bar of the bucket
+ * card shows bags: the bar still draws the server's quantities by age, while the
+ * "Items over 364 days" tile counts items. The RPC's items_over_365_days counts from
+ * 365 and is not shown.
+ *
+ * The server's counts are of stock lines (an item stored on two GRNs counts twice):
+ * `total_items`, and `by_bucket['364+'].item_count` too. So a customer's own screen
+ * passes `items`, the counts of its item cards: `count` is the "Items" tile, and
+ * `over364` the items that have at least one lot in the over-364 bucket, which is the
+ * tile "Items over 364 days". The all-customers level has no item list (its rows are
+ * customers) and shows the server's figures.
+ */
+function agingKpis(
+  summary: { total_items: number; average_age_days: number },
+  byBucket: Record<string, Pick<AgingBucketData, 'item_count'>>,
+  items?: { count: number; over364: number }
+): KPIItem[] {
+  return [
+    { icon: 'cube-outline', value: items?.count ?? summary.total_items, label: tr('common.items'), variant: 'primary' },
+    { icon: 'calendar-clock', value: summary.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
+    { icon: 'alert', value: items?.over364 ?? byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
+  ];
 }
 
-// ============================================================================
-// Styles
-// ============================================================================
-
-const makeStyles = (t: ThemeTokens) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: t.background.base },
-    loadingContainer: { flex: 1 },
-    scrollView: { flex: 1 },
-    scrollContent: { paddingBottom: space.xxxl },
-
-    section: { marginTop: space.lg, paddingHorizontal: layout.marginCompact },
-    sectionHeader: {
-      paddingTop: space.sm,
-      paddingBottom: space.xs,
-      minHeight: 32,
-      justifyContent: 'center',
-    },
-    sectionHeaderText: {
-      ...typography.footnote,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: trackedText(0.5),
-      textTransform: 'uppercase',
-      color: t.text.secondary,
-    },
-
-    card: {
-      backgroundColor: t.surface.card,
-      borderRadius: radius.card,
-      ...t.shadow[2],
-    },
-    cardClip: { borderRadius: radius.card, overflow: 'hidden' },
-    bucketsCard: { padding: space.lg, gap: space.md },
-
-    // Bucket bar
-    bucketRow: { gap: space.xs },
-    bucketTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    bucketLabel: { flex: 1 },
-    bucketValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    bucketCount: {
-      ...typography.footnote,
-      color: t.text.secondary,
-      fontVariant: ['tabular-nums'],
-      minWidth: 56,
-      textAlign: 'right',
-    },
-    bucketTrack: {
-      height: space.sm,
-      borderRadius: radius.pill,
-      overflow: 'hidden',
-      backgroundColor: t.brand.subtleStrong,
-    },
-    bucketFill: { height: '100%', borderRadius: radius.pill },
-
-    divider: {
-      height: StyleSheet.hairlineWidth,
-      marginLeft: layout.marginCompact + layout.avatar.md + space.md,
-      backgroundColor: t.border.divider,
-    },
-
-    // Item groups
-    itemsList: { gap: space.sm },
-    groupHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      paddingVertical: space.md,
-      paddingHorizontal: space.lg,
-      gap: space.md,
-    },
-    rowPressed: { backgroundColor: t.surface.cardPressed },
-    groupIconContainer: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.button,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: t.brand.subtle,
-    },
-    cellContent: { flex: 1, gap: space.xxs },
-    cellTitle: { ...typography.headline, color: t.text.primary },
-    cellSubtitle: { ...typography.subhead, color: t.text.secondary },
-    stockInfo: { alignItems: 'flex-end' },
-    stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    stockLabel: { ...typography.caption1, color: t.text.secondary },
-    groupEntries: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-      backgroundColor: t.background.base,
-    },
-
-    // Entry rows
-    entryDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
-    entryRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.rowMinHeight + space.md,
-      paddingVertical: space.md,
-      paddingHorizontal: space.lg,
-      gap: space.md,
-    },
-    entryContent: { flex: 1, gap: space.xxs },
-    entryTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary },
-    entrySubtitle: { ...typography.footnote, color: t.text.secondary },
-    entryStockValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    entryExpanded: {
-      paddingHorizontal: space.lg,
-      paddingBottom: space.md,
-      gap: space.xxs,
-    },
-    detailRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: space.md,
-      paddingVertical: space.s6,
-    },
-    detailLabel: { ...typography.subhead, color: t.text.secondary },
-    detailValue: { ...typography.subhead, color: t.text.primary, textAlign: 'right', flexShrink: 1, fontVariant: ['tabular-nums'] },
-    detailDivider: { height: StyleSheet.hairlineWidth, marginVertical: space.sm, backgroundColor: t.border.divider },
-    viewGrnButton: { marginTop: space.md },
-  });
-
-type Styles = ReturnType<typeof makeStyles>;
-
-// ============================================================================
-// Components
-// ============================================================================
-
-const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, styles }) => (
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionHeaderText} accessibilityRole="header">
-      {title}
-    </Text>
-  </View>
-);
-
-/** Status tag showing the age of a stock entry in its bucket's colour, icon and words. */
-const AgeTag: React.FC<{ bucket: string; ageDays: number }> = ({ bucket, ageDays }) => {
-  const info = bucketInfo(bucket);
-  return <StatusTag status={info.kind} label={tr('reports.stockAging.ageOld', { age: days(ageDays) })} />;
-};
-
-// Aging Bucket Bar Component
-interface AgingBucketBarProps {
-  bucket: string;
-  data: AgingBucketData | { item_count: number; total_quantity: number; percentage: number };
-  maxPercentage: number;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercentage, styles, t }) => {
-  const info = bucketInfo(bucket);
-  const tone = t.status[info.kind];
-  const barWidth = maxPercentage > 0 ? (data.percentage / maxPercentage) * 100 : 0;
-
+function BucketCard({ byBucket }: { byBucket: AllStockAgingData['by_bucket'] }) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <View
-      style={styles.bucketRow}
-      accessible
-      accessibilityLabel={tr('reports.stockAging.bucketA11y', {
-        label: info.label,
-        percent: onePlace(data.percentage),
-        units: formatNumber(data.total_quantity),
-      })}
-    >
-      <View style={styles.bucketTop}>
-        <View style={styles.bucketLabel}>
-          <StatusTag status={info.kind} label={info.label} />
-        </View>
-        <Text style={styles.bucketValue}>{`${onePlace(data.percentage)}%`}</Text>
-        <Text style={styles.bucketCount}>{formatNumber(data.total_quantity)}</Text>
-      </View>
-      <View style={styles.bucketTrack}>
-        <View style={[styles.bucketFill, { width: `${barWidth}%`, backgroundColor: tone.element }]} />
-      </View>
+    <View style={[styles.card, styles.barCard]}>
+      <AgingBucketBar title={tr('reports.stockAging.stockAge')} buckets={agingBucketsFrom(byBucket)} />
     </View>
   );
-};
-
-/** Status tag for a customer row: the bucket of the customer's average stock age. */
-const averageAgeStatus = (averageAgeDays: number): { status: StatusKind; label: string } => {
-  const info = bucketInfo(bucketForAge(averageAgeDays));
-  return { status: info.kind, label: info.label };
-};
-
-// ============================================================================
-// Item Grouping
-// ============================================================================
-
-interface GroupedItem {
-  item_name: string;
-  total_stock: number;
-  oldest_days: number;
-  aging_bucket: string;
-  entries: StockAgingItem[];
 }
 
-function groupItemsByName(items: StockAgingItem[]): GroupedItem[] {
-  const groups = new Map<string, StockAgingItem[]>();
+// ============================================================================
+// Whose stock
+// ============================================================================
 
-  items.forEach((item) => {
-    const existing = groups.get(item.item_name) || [];
-    existing.push(item);
-    groups.set(item.item_name, existing);
+export default function StockAgingScreen() {
+  const scope = useReportScope(REPORT_ID);
+  const { level } = scope;
+  switch (level.kind) {
+    case 'none':
+      return <ReportNoCustomer title={tr('reports.titles.stockAging')} />;
+    case 'choose':
+      return <ReportCustomerPicker title={tr('reports.titles.stockAging')} onPick={scope.chooseCustomer} />;
+    case 'customers':
+      return <CustomersReport scope={scope} />;
+    case 'customer':
+      // Keyed by the customer, so nothing of one customer's view is carried into another's.
+      return (
+        <CustomerReport
+          key={level.customerId}
+          customerId={level.customerId}
+          customerName={level.customerName}
+          onChangeCustomer={scope.changeCustomer}
+        />
+      );
+  }
+}
+
+// ============================================================================
+// Every customer
+// ============================================================================
+
+const customerKey = (customer: CustomerAgingSummary) => customer.customer_id;
+
+function CustomersReport({ scope }: { scope: ReportScope }) {
+  const filters = useReportFilters(STOCK_AGING_CUSTOMERS);
+  const { view } = filters.request;
+  const query = useReportQuery<AllStockAgingData>({
+    key: [REPORT_ID, 'customers'],
+    fetch: () => getAllStockAging(),
+    fallbackError: tr('reports.stockAging.loadError'),
   });
+  const { data } = query;
+  const rows = useMemo(() => stockAgingCustomersView(data?.by_customer ?? [], view), [data, view]);
+  const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket), [data]);
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
-  return Array.from(groups.entries())
-    .map(([item_name, entries]) => {
-      const total_stock = entries.reduce((sum, e) => sum + e.current_stock, 0);
-      const oldest_days = Math.max(...entries.map((e) => e.aging_days));
-      const oldestEntry = entries.find((e) => e.aging_days === oldest_days);
-      return {
-        item_name,
-        total_stock,
-        oldest_days,
-        aging_bucket: oldestEntry?.aging_bucket || '0-120',
-        entries: entries.sort((a, b) => b.aging_days - a.aging_days), // oldest first within group
-      };
-    })
-    .sort((a, b) => b.total_stock - a.total_stock); // highest stock first
+  const { openCustomer, lastCustomer } = scope;
+  const renderRow = useCallback(
+    (customer: CustomerAgingSummary) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
+    [view.words, openCustomer]
+  );
+
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.stockAging')}
+      subtitle={tr('reports.shared.allCustomers')}
+      actions={actions}
+      filters={{ config: STOCK_AGING_CUSTOMERS, state: filters }}
+      query={query}
+      kpis={kpis}
+      kpiPlaceholders={3}
+      status={{ shown: rows.length, total: data?.by_customer.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={customerKey}
+      extraData={view.words}
+      noun="customers"
+      empty={{ icon: 'package-variant-closed', title: tr('reports.shared.noStockYet'), description: tr('reports.shared.noStockYetDescription') }}
+      errorTitle={tr('reports.stockAging.errorTitle')}
+    >
+      {data && data.by_customer.length > 0 ? <BucketCard byBucket={data.by_bucket} /> : null}
+      {lastCustomer && !filters.search ? (
+        <ReportLastCustomer customer={lastCustomer} onPress={openCustomer} accessibilityHint={tr('reports.stockAging.opensCustomerHint')} />
+      ) : null}
+    </ReportScaffold>
+  );
 }
 
-// Item Group Card Component (accordion for grouped items)
-interface ItemGroupCardProps {
-  group: GroupedItem;
-  expandedEntries: Set<string>;
-  isGroupExpanded: boolean;
-  onToggleGroup: () => void;
-  onToggleEntry: (grnId: string) => void;
-  styles: Styles;
-  t: ThemeTokens;
+interface CustomerRowProps {
+  customer: CustomerAgingSummary;
+  words: string[];
+  onOpen: (customer: ReportCustomerRef) => void;
 }
 
-const ItemGroupCard: React.FC<ItemGroupCardProps> = ({
-  group,
-  expandedEntries,
-  isGroupExpanded,
-  onToggleGroup,
-  onToggleEntry,
-  styles,
-  t,
-}) => {
-  const entryCount = formatCount(group.entries.length, 'GRN');
+const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: CustomerRowProps) {
+  const styles = useThemedStyles(makeStyles);
+  const bucket = bucketForDays(customer.average_age_days);
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
-        {/* Group Header */}
-        <Pressable
-          style={({ pressed }) => [styles.groupHeader, pressed && styles.rowPressed]}
-          onPress={onToggleGroup}
-          accessibilityRole="button"
-          accessibilityLabel={tr('reports.stockAging.groupA11y', {
-            name: group.item_name,
-            grns: entryCount,
-            units: formatNumber(group.total_stock),
-            age: days(group.oldest_days),
-          })}
-          accessibilityState={{ expanded: isGroupExpanded }}
-        >
-          <View style={styles.groupIconContainer}>
-            <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
-          </View>
-          <View style={styles.cellContent}>
-            <Text style={styles.cellTitle} numberOfLines={2}>
-              {group.item_name}
-            </Text>
-            <Text style={styles.cellSubtitle}>{entryCount}</Text>
-            <AgeTag bucket={group.aging_bucket} ageDays={group.oldest_days} />
-          </View>
-          <View style={styles.stockInfo}>
-            <Text style={styles.stockValue}>{formatNumber(group.total_stock)}</Text>
-            <Text style={styles.stockLabel}>{tr('reports.shared.units')}</Text>
-          </View>
-          <Icon name={isGroupExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
-        </Pressable>
-
-        {/* Expanded Entries */}
-        {isGroupExpanded && (
-          <View style={styles.groupEntries}>
-            {group.entries.map((item, index) => (
-              <StockEntryRow
-                key={`${item.grn_id}-${index}`}
-                item={item}
-                isExpanded={expandedEntries.has(item.grn_id)}
-                onToggle={() => onToggleEntry(item.grn_id)}
-                isLast={index === group.entries.length - 1}
-                styles={styles}
-                t={t}
-              />
-            ))}
-          </View>
-        )}
+        <ReportCustomerCard
+          customerId={customer.customer_id}
+          title={customer.customer_name}
+          highlightWords={words}
+          // The average age only: the tag already gives its bucket. A long age ("Average age 245 days")
+          // wraps to a second line rather than being cut (§4).
+          subtitle={tr('reports.stockAging.averageAgeOf', { age: days(customer.average_age_days) })}
+          subtitleLines={2}
+          value={customer.total_stock}
+          valueLabel={tr('reports.shared.units', { count: customer.total_stock })}
+          // The tag is the bucket of the customer's average age, and says so.
+          status={{ status: AGING_BUCKET_STATUS[bucket], label: tr('reports.stockAging.averageBucket', { bucket: agingBucketLabel(bucket) }) }}
+          onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
+          accessibilityHint={tr('reports.stockAging.opensCustomerHint')}
+        />
       </View>
     </View>
   );
-};
+});
 
-// Stock Entry Row (nested within group)
-interface StockEntryRowProps {
-  item: StockAgingItem;
-  isExpanded: boolean;
-  onToggle: () => void;
-  isLast?: boolean;
-  styles: Styles;
-  t: ThemeTokens;
+// ============================================================================
+// One customer's items
+// ============================================================================
+
+const groupKey = (group: StockAgingGroup) => group.key;
+
+/** A set with one key added or taken out. */
+function toggled(set: ReadonlySet<string> | undefined, key: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
 }
 
-const DetailRow: React.FC<{ label: string; value: string; styles: Styles }> = ({ label, value, styles }) => (
-  <View style={styles.detailRow} accessible accessibilityLabel={tr('reports.shared.labelValue', { label, value })}>
-    <Text style={styles.detailLabel}>{label}</Text>
-    <Text style={styles.detailValue}>{value}</Text>
-  </View>
-);
+interface CustomerReportProps {
+  customerId: string;
+  customerName: string;
+  onChangeCustomer?: () => void;
+}
 
-const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggle, isLast = false, styles, t }) => {
-  const title = [
-    tr('reports.shared.grnNumber', { number: formatIdentifier(item.gr_no) }),
-    item.rack ? tr('reports.shared.rack', { rack: String(item.rack) }) : null,
-  ].filter(Boolean).join(' · ');
-  const dispatch = item.dispatch_info;
+function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
+  const filters = useReportFilters(STOCK_AGING_CUSTOMER);
+  const { view } = filters.request;
+  const query = useReportQuery<StockAgingData>({
+    key: [REPORT_ID, 'customer', customerId],
+    fetch: () => getCustomerStockAging({ customerId }),
+    fallbackError: tr('reports.stockAging.loadError'),
+  });
+  const { data } = query;
+  const groups = useMemo(() => groupStockAgingLines(data?.items ?? []), [data]);
+  const rows = useMemo(() => stockAgingItemsView(groups, view), [groups, view]);
+  // The figures are the whole stock's, not what the search or the bucket leaves. Both item tiles
+  // count item cards (`groups`, before any search or filter), not the server's stock lines: the
+  // oldest-stock tile counts the items with at least one lot over 364 days (the bar beside it
+  // shows the bags those lots hold).
+  const kpis = useMemo(
+    () =>
+      data &&
+      agingKpis(data.summary, data.by_bucket, { count: groups.length, over364: groups.filter(group => group.oldestBucket === 'over-364').length }),
+    [data, groups]
+  );
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...exportHeaderActions({ exportPdf, busy, available }),
+    ],
+    [onChangeCustomer, exportPdf, busy, available]
+  );
+
+  // Which items are open, and which lines of each: a line is one item on one GRN, so two
+  // lines of the same GRN open separately. Each item's open lines are their own set, so
+  // opening a line draws only its item again.
+  const reduceMotion = useReducedMotion();
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const [openLines, setOpenLines] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
+  const toggleGroup = useCallback(
+    (key: string) => {
+      animateExpand(reduceMotion);
+      setOpenGroups(previous => toggled(previous, key));
+    },
+    [reduceMotion]
+  );
+  const toggleLine = useCallback(
+    (group: string, line: string) => {
+      animateExpand(reduceMotion);
+      setOpenLines(previous => ({ ...previous, [group]: toggled(previous[group], line) }));
+    },
+    [reduceMotion]
+  );
+
+  const renderRow = useCallback(
+    (group: StockAgingGroup) => (
+      <ItemGroupRow
+        group={group}
+        words={view.words}
+        expanded={openGroups.has(group.key)}
+        openLines={openLines[group.key]}
+        onToggle={toggleGroup}
+        onToggleLine={toggleLine}
+      />
+    ),
+    [view.words, openGroups, openLines, toggleGroup, toggleLine]
+  );
+  const extraData = useMemo(() => ({ words: view.words, openGroups, openLines }), [view.words, openGroups, openLines]);
 
   return (
-    <View style={!isLast && styles.entryDivider}>
+    <ReportScaffold
+      title={tr('reports.titles.stockAging')}
+      subtitle={customerName || undefined}
+      actions={actions}
+      filters={{ config: STOCK_AGING_CUSTOMER, state: filters }}
+      query={query}
+      kpis={kpis}
+      kpiPlaceholders={3}
+      status={{ shown: rows.length, total: groups.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={groupKey}
+      extraData={extraData}
+      noun="items"
+      empty={{ icon: 'package-variant-closed', title: tr('reports.shared.noStockForCustomer'), description: tr('reports.shared.noStockForCustomerDescription') }}
+      errorTitle={tr('reports.stockAging.errorTitle')}
+    >
+      {data && data.items.length > 0 ? <BucketCard byBucket={data.by_bucket} /> : null}
+    </ReportScaffold>
+  );
+}
+
+/** Status tag with an age, in the colour, icon and words of the age's bucket. */
+function AgeTag({ bucket, label }: { bucket: AgingBucketId; label: string }) {
+  return <StatusTag status={AGING_BUCKET_STATUS[bucket]} label={label} />;
+}
+
+const grnTitle = (line: StockAgingLine) =>
+  [tr('reports.shared.grnNumber', { number: formatIdentifier(line.gr_no) }), line.rack ? tr('reports.shared.rack', { rack: String(line.rack) }) : null]
+    .filter(Boolean)
+    .join(' · ');
+
+interface ItemGroupRowProps {
+  group: StockAgingGroup;
+  /** Lower-cased search words, shown in bold. */
+  words: string[];
+  expanded: boolean;
+  openLines: ReadonlySet<string> | undefined;
+  onToggle: (groupKey: string) => void;
+  onToggleLine: (groupKey: string, lineKey: string) => void;
+}
+
+const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, openLines, onToggle, onToggleLine }: ItemGroupRowProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const grns = formatCount(group.lines.length, 'GRN');
+  const oldest = tr('reports.stockAging.oldestAge', { age: days(group.oldestDays) });
+  // A GRN number the search found inside a closed item is named on the card (§14.6).
+  const found = !expanded && words.length > 0
+    ? group.lines.map(line => tr('reports.shared.grnNumber', { number: formatIdentifier(line.gr_no) })).filter(text => matchesAnyWord(text, words)).slice(0, 3)
+    : [];
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardClip}>
+        <Pressable
+          style={({ pressed }) => [styles.groupHeader, pressed && styles.rowPressed]}
+          onPress={() => onToggle(group.key)}
+          accessibilityRole="button"
+          accessibilityLabel={[
+            tr('reports.stockAging.groupA11y', { name: group.itemName, grns, units: units(group.totalStock), age: days(group.oldestDays) }),
+            ...found,
+          ].join(', ')}
+          accessibilityState={{ expanded }}
+        >
+          <View style={styles.groupIcon}>
+            <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
+          </View>
+          <View style={styles.cellContent}>
+            <HighlightedText style={styles.cellTitle} numberOfLines={2} text={group.itemName} words={words} />
+            <Text style={styles.cellSubtitle}>{grns}</Text>
+            {found.length > 0 ? <HighlightedText style={styles.footnote} text={found.join(' · ')} words={words} /> : null}
+            <AgeTag bucket={group.oldestBucket} label={oldest} />
+          </View>
+          <View style={styles.stockInfo}>
+            <Text style={styles.stockValue}>{formatNumber(group.totalStock)}</Text>
+            <Text style={styles.stockLabel}>{tr('reports.shared.units', { count: group.totalStock })}</Text>
+          </View>
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+        </Pressable>
+
+        {expanded ? (
+          <View style={styles.groupLines}>
+            {group.lines.map((line, index) => (
+              <StockLineRow
+                key={line.lineKey}
+                line={line}
+                groupKey={group.key}
+                words={words}
+                expanded={openLines?.has(line.lineKey) ?? false}
+                isLast={index === group.lines.length - 1}
+                onToggle={onToggleLine}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+});
+
+interface StockLineRowProps {
+  line: StockAgingLine;
+  groupKey: string;
+  words: string[];
+  expanded: boolean;
+  isLast: boolean;
+  onToggle: (groupKey: string, lineKey: string) => void;
+}
+
+const openGrn = (grnId: string) => {
+  if (grnId) router.push(`/grn-details/${grnId}`);
+};
+
+const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expanded, isLast, onToggle }: StockLineRowProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const title = grnTitle(line);
+  const received = formatIndiaDate(line.grn_date, 'short');
+  const dispatch = line.dispatch_info;
+
+  return (
+    <View style={!isLast ? styles.lineDivider : undefined}>
       <Pressable
-        style={({ pressed }) => [styles.entryRow, pressed && styles.rowPressed]}
-        onPress={onToggle}
+        style={({ pressed }) => [styles.lineRow, pressed && styles.rowPressed]}
+        onPress={() => onToggle(groupKey, line.lineKey)}
         accessibilityRole="button"
-        accessibilityLabel={tr('reports.stockAging.entryA11y', {
-          title,
-          date: formatDate(item.grn_date, 'short'),
-          age: days(item.aging_days),
-          units: formatNumber(item.current_stock),
-        })}
-        accessibilityState={{ expanded: isExpanded }}
+        accessibilityLabel={tr('reports.stockAging.entryA11y', { title, date: received, age: days(line.aging_days), units: units(line.current_stock) })}
+        accessibilityState={{ expanded }}
       >
-        <View style={styles.entryContent}>
-          <Text style={styles.entryTitle} numberOfLines={2}>
-            {title}
-          </Text>
-          <Text style={styles.entrySubtitle}>{tr('reports.shared.receivedOn', { date: formatDate(item.grn_date, 'short') })}</Text>
-          <AgeTag bucket={item.aging_bucket} ageDays={item.aging_days} />
+        <View style={styles.cellContent}>
+          {/* A document number is never cut short (§4). */}
+          <HighlightedText style={styles.lineTitle} text={title} words={words} />
+          <Text style={styles.lineSubtitle}>{tr('reports.shared.receivedOn', { date: received })}</Text>
+          <AgeTag bucket={lineBucket(line)} label={tr('reports.stockAging.ageOld', { age: days(line.aging_days) })} />
         </View>
-        <Text style={styles.entryStockValue}>{formatNumber(item.current_stock)}</Text>
-        <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+        <Text style={styles.lineStock}>{formatNumber(line.current_stock)}</Text>
+        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
       </Pressable>
 
-      {/* Expanded Details */}
-      {isExpanded && (
-        <View style={styles.entryExpanded}>
-          <DetailRow label={tr('reports.stockAging.receivedQuantity')} value={formatNumber(item.original_qty)} styles={styles} />
-          <DetailRow label={tr('common.packageMark')} value={item.package_mark || '–'} styles={styles} />
-          {dispatch && (
+      {expanded ? (
+        <View style={styles.lineDetails}>
+          {/* Key-value cells stack the key over the value at large text (§11.4). */}
+          <KeyValueCell keyLabel={tr('reports.stockAging.receivedQuantity')} value={formatNumber(line.original_qty)} />
+          <KeyValueCell keyLabel={tr('common.packageMark')} value={line.package_mark || '—'} />
+          {dispatch ? (
             <>
               <View style={styles.detailDivider} />
-              <DetailRow
-                label={tr('reports.stockAging.dispatched')}
+              <KeyValueCell
+                keyLabel={tr('reports.stockAging.dispatched')}
                 value={tr('reports.stockAging.dispatchedIn', {
                   quantity: formatNumber(dispatch.total_dispatched),
                   dispatches: formatCount(dispatch.dispatch_count, 'dispatch', 'dispatches'),
                 })}
-                styles={styles}
               />
-              {dispatch.last_dispatch_date && (
-                <DetailRow label={tr('reports.stockAging.lastDispatch')} value={formatDate(dispatch.last_dispatch_date)} styles={styles} />
-              )}
+              {dispatch.last_dispatch_date ? (
+                <KeyValueCell keyLabel={tr('reports.stockAging.lastDispatch')} value={formatIndiaDate(dispatch.last_dispatch_date)} />
+              ) : null}
               {dispatch.avg_days_between_dispatches ? (
-                <DetailRow
-                  label={tr('reports.stockAging.averageBetweenDispatches')}
-                  value={days(Math.round(dispatch.avg_days_between_dispatches))}
-                  styles={styles}
-                />
+                <KeyValueCell keyLabel={tr('reports.stockAging.averageBetweenDispatches')} value={days(Math.round(dispatch.avg_days_between_dispatches))} />
               ) : null}
             </>
-          )}
-          <View style={styles.viewGrnButton}>
-            <Button type="secondary" size="fullWidth" onPress={() => router.push(`/grn-details/${item.grn_id}`)}>
-              {tr('reports.stockAging.viewGrn', { number: formatIdentifier(item.gr_no) })}
+          ) : null}
+          <View style={styles.viewGrn}>
+            <Button type="secondary" size="fullWidth" onPress={() => openGrn(line.grn_id)}>
+              {tr('reports.stockAging.viewGrn', { number: formatIdentifier(line.gr_no) })}
             </Button>
           </View>
         </View>
-      )}
+      ) : null}
     </View>
   );
-};
-
-// ============================================================================
-// Main Screen
-// ============================================================================
-
-export default function StockAgingScreen() {
-  return (
-    <ReportCustomerScope title={tr('reports.titles.stockAging')}>
-      {(scope) => <StockAgingReport scope={scope} />}
-    </ReportCustomerScope>
-  );
-}
-
-function StockAgingReport({ scope }: { scope: ReportScope }) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-
-  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
-  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
-
-  // Route params for direct navigation from customer activity
-  const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
-  const routeCustomerId = params.customerId;
-  const routeCustomerName = params.customerName;
-
-  // Track if we came from route params (for back button behavior)
-  const cameFromRouteParams = React.useRef(!!routeCustomerId);
-
-  const [data, setData] = useState<StockAgingData | null>(null);
-  const [allCustomersData, setAllCustomersData] = useState<AllStockAgingData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerAgingSummary | null>(null);
-
-  // Customer search state
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-
-  // Fetch all customers data
-  const fetchAllCustomersData = useCallback(async (showRefresh = false) => {
-    if (showRefresh) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await getAllStockAging();
-      if (response.success && response.data) {
-        // Backend now filters by user permissions via auth.uid()
-        setAllCustomersData(response.data);
-      } else {
-        logger.warn('All-customer load failed', { error: response.error });
-        setError(response.message || loadError());
-      }
-    } catch (err) {
-      logger.error('All-customer load exception', err);
-      setError(loadError());
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Fetch single customer data
-  const fetchSingleCustomerData = useCallback(async (customerId: string, showRefresh = false) => {
-    if (showRefresh) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await getCustomerStockAging({ customerId });
-      if (response.success && response.data) {
-        setData(response.data);
-      } else {
-        logger.warn('Customer load failed', { error: response.error });
-        setError(response.message || loadError());
-      }
-    } catch (err) {
-      logger.error('Customer load exception', err);
-      setError(loadError());
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Initial fetch
-  useEffect(() => {
-    // If we have route params, go directly to that customer (from Quick Access)
-    if (routeCustomerId) {
-      setViewMode('single');
-      setSelectedCustomer({
-        customer_id: routeCustomerId,
-        customer_name: routeCustomerName || '',
-        total_stock: 0,
-        average_age_days: 0,
-        oldest_stock_days: 0,
-        items_over_365_days: 0,
-        aging_distribution: {},
-      });
-      fetchSingleCustomerData(routeCustomerId);
-    } else if (shouldShowListView) {
-      fetchAllCustomersData();
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId);
-    } else {
-      setError(noCustomer());
-      setIsLoading(false);
-    }
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData(true);
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id, true);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId, true);
-    }
-  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  // Filtered customers based on search query
-  const filteredCustomers = useMemo(() => {
-    if (!allCustomersData?.by_customer) return [];
-    if (!customerSearchQuery.trim()) return allCustomersData.by_customer;
-    const q = customerSearchQuery.toLowerCase();
-    return allCustomersData.by_customer.filter((c) =>
-      c.customer_name.toLowerCase().includes(q),
-    );
-  }, [allCustomersData?.by_customer, customerSearchQuery]);
-
-  // Handle search autocomplete selection
-  const handleSearchSelect = useCallback(
-    (customer: { id: string; name: string }) => {
-      setSelectedCustomer({
-        customer_id: customer.id,
-        customer_name: customer.name,
-        total_stock: 0,
-        average_age_days: 0,
-        oldest_stock_days: 0,
-        items_over_365_days: 0,
-        aging_distribution: {},
-      } as CustomerAgingSummary);
-      setViewMode('single');
-      setData(null);
-      setExpandedItems(new Set());
-      setCustomerSearchQuery('');
-      fetchSingleCustomerData(customer.id);
-    },
-    [fetchSingleCustomerData],
-  );
-
-  const handleCustomerSelect = useCallback((customer: CustomerAgingSummary) => {
-    setSelectedCustomer(customer);
-    setViewMode('single');
-    setData(null);
-    setExpandedItems(new Set());
-    fetchSingleCustomerData(customer.customer_id);
-  }, [fetchSingleCustomerData]);
-
-  const handleBackToAll = useCallback(() => {
-    // If we came from route params (Quick Access), go back to previous screen
-    if (cameFromRouteParams.current) {
-      router.back();
-      return;
-    }
-    // Otherwise, go back to all-customers list view
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setViewMode('all');
-    setSelectedCustomer(null);
-    setData(null);
-    setExpandedItems(new Set());
-    setExpandedGroups(new Set());
-  }, []);
-
-  const toggleItem = useCallback((itemId: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
-    });
-  }, []);
-
-  const toggleGroup = useCallback((groupName: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupName)) next.delete(groupName);
-      else next.add(groupName);
-      return next;
-    });
-  }, []);
-
-  // Group items by item name for single customer view
-  const groupedItems = useMemo(() => {
-    if (!data?.items) return [];
-    return groupItemsByName(data.items);
-  }, [data?.items]);
-
-  // KPIs for all customers
-  const allCustomersKpis: KPIItem[] = useMemo(() => {
-    if (!allCustomersData?.summary) return [];
-    const s = allCustomersData.summary;
-    return [
-      { icon: 'cube-outline', value: s.total_items, label: tr('common.items'), variant: 'primary' },
-      { icon: 'calendar-clock', value: s.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
-      { icon: 'alert', value: s.items_over_365_days, label: tr('reports.stockAging.overOneYear'), variant: 'warning' },
-    ];
-  }, [allCustomersData?.summary]);
-
-  // KPIs for single customer
-  const singleCustomerKpis: KPIItem[] = useMemo(() => {
-    if (!data?.summary) return [];
-    const s = data.summary;
-    return [
-      { icon: 'cube-outline', value: s.total_items, label: tr('common.items'), variant: 'primary' },
-      { icon: 'calendar-clock', value: s.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
-      { icon: 'alert', value: s.items_over_365_days, label: tr('reports.stockAging.overOneYear'), variant: 'warning' },
-    ];
-  }, [data?.summary]);
-
-  // Get max percentage for bar scaling
-  const maxBucketPercentage = useMemo(() => {
-    const buckets = shouldShowListView && viewMode === 'all' ? allCustomersData?.by_bucket : data?.by_bucket;
-    if (!buckets) return 100;
-    return Math.max(...Object.values(buckets).map((b) => b.percentage), 1);
-  }, [shouldShowListView, viewMode, allCustomersData?.by_bucket, data?.by_bucket]);
-
-  const isListView = shouldShowListView && viewMode === 'all';
-  const hasData = isListView ? allCustomersData : data;
-
-  const retry = () => {
-    if (routeCustomerId) fetchSingleCustomerData(routeCustomerId);
-    else if (shouldShowListView && viewMode === 'all') fetchAllCustomersData();
-    else if (selectedCustomer) fetchSingleCustomerData(selectedCustomer.customer_id);
-    else if (singleAssignedCustomerId) fetchSingleCustomerData(singleAssignedCustomerId);
-  };
-
-  const refreshControl = (
-    <RefreshControl
-      refreshing={isRefreshing}
-      onRefresh={handleRefresh}
-      colors={[t.brand.tint]}
-      tintColor={t.brand.tint}
-    />
-  );
-
-  // Loading
-  if (isLoading && !hasData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockAging')} onBack={scope.onChangeCustomer} />
-        <View style={styles.loadingContainer}>
-          <KPIGrid
-            items={[
-              { icon: 'cube-outline', value: '-', label: tr('common.items'), variant: 'primary' },
-              { icon: 'calendar-clock', value: '-', label: tr('reports.stockAging.averageAge'), variant: 'neutral' },
-            ]}
-            isLoading={true}
-            compact
-          />
-        </View>
-      </View>
-    );
-  }
-
-  // Error
-  if (error && !hasData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockAging')} onBack={scope.onChangeCustomer} />
-        {error === noCustomer() ? (
-          <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
-        ) : (
-          <ReportEmptyState
-            icon="alert-circle-outline"
-            tone="error"
-            message={tr('reports.shared.errorTitle')}
-            description={error}
-            actionLabel={tr('common.retry')}
-            onAction={retry}
-          />
-        )}
-      </View>
-    );
-  }
-
-  // All Customers View
-  if (isListView && allCustomersData) {
-    const hasCustomers = allCustomersData.by_customer.length > 0;
-    const bucketOrder = BUCKET_ORDER;
-
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.stockAging')} subtitle={isWarehouseUser ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers')} />
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={refreshControl}
-        >
-          <KPIGrid items={allCustomersKpis} isLoading={isLoading} compact />
-
-          {/* Aging Distribution */}
-          {Object.keys(allCustomersData.by_bucket).length > 0 && (
-            <View style={styles.section}>
-              <SectionHeader title={tr('reports.stockAging.stockAge')} styles={styles} />
-              <View style={[styles.card, styles.bucketsCard]}>
-                {bucketOrder.map((key) => {
-                  const bucket = allCustomersData.by_bucket[key];
-                  if (!bucket) return null;
-                  return (
-                    <AgingBucketBar key={key} bucket={key} data={bucket} maxPercentage={maxBucketPercentage} styles={styles} t={t} />
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Customer Search */}
-          <View style={styles.section}>
-            <ReportCustomerSearch
-              searchQuery={customerSearchQuery}
-              onSearchChange={setCustomerSearchQuery}
-              onCustomerSelect={handleSearchSelect}
-              visibleCustomerIds={allCustomersData.by_customer.map((c) => c.customer_id)}
-            />
-          </View>
-
-          {/* Customers List */}
-          {filteredCustomers.length > 0 ? (
-            <View style={styles.section}>
-              <SectionHeader title={tr('reports.stockAging.customersByStockAge')} styles={styles} />
-              <View style={styles.card}>
-                <View style={styles.cardClip}>
-                  {filteredCustomers.map((customer, index) => (
-                    <React.Fragment key={customer.customer_id}>
-                      <ReportCustomerCard
-                        title={customer.customer_name}
-                        subtitle={[
-                          tr('reports.stockAging.averageAgeOf', { age: days(customer.average_age_days) }),
-                          tr('reports.stockAging.overOneYearCount', { over: formatNumber(customer.items_over_365_days) }),
-                        ]}
-                        value={customer.total_stock}
-                        valueLabel={tr('reports.shared.units')}
-                        onPress={() => handleCustomerSelect(customer)}
-                        customerId={customer.customer_id}
-                        status={averageAgeStatus(customer.average_age_days)}
-                        accessibilityHint={tr('reports.stockAging.opensCustomerHint')}
-                      />
-                      {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
-                    </React.Fragment>
-                  ))}
-                </View>
-              </View>
-            </View>
-          ) : (
-            customerSearchQuery.trim() ? (
-              <ReportEmptyState
-                icon="magnify-close"
-                message={tr('reports.shared.noMatchingCustomers')}
-                description={tr('reports.shared.noCustomersMatch', { search: customerSearchQuery.trim() })}
-                actionLabel={tr('common.clearSearch')}
-                onAction={() => setCustomerSearchQuery('')}
-              />
-            ) : (
-              <ReportEmptyState
-                icon="package-variant-closed"
-                message={tr('reports.shared.noStockYet')}
-                description={tr('reports.shared.noStockYetDescription')}
-              />
-            )
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // Single Customer View
-  if (!data?.items || data.items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader
-          title={tr('reports.titles.stockAging')}
-          subtitle={selectedCustomer?.customer_name || scope.customerName}
-          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
-        />
-        <ReportEmptyState
-          icon="package-variant-closed"
-          message={tr('reports.shared.noStockForCustomer')}
-          description={tr('reports.shared.noStockForCustomerDescription')}
-        />
-      </View>
-    );
-  }
-
-  const bucketOrder = BUCKET_ORDER;
-
-  return (
-    <View style={styles.container}>
-      <ReportHeader
-        title={tr('reports.titles.stockAging')}
-        subtitle={selectedCustomer?.customer_name || scope.customerName}
-        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
-      />
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={refreshControl}
-      >
-        <KPIGrid items={singleCustomerKpis} isLoading={isLoading} compact />
-
-        {/* Aging Distribution */}
-        {Object.keys(data.by_bucket).length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader title={tr('reports.stockAging.stockAge')} styles={styles} />
-            <View style={[styles.card, styles.bucketsCard]}>
-              {bucketOrder.map((key) => {
-                const bucket = data.by_bucket[key];
-                if (!bucket) return null;
-                return <AgingBucketBar key={key} bucket={key} data={bucket} maxPercentage={maxBucketPercentage} styles={styles} t={t} />;
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* Items List - Grouped by Item Name (sorted by highest stock) */}
-        <View style={styles.section}>
-          <SectionHeader title={tr('reports.stockAging.itemsHighestFirst')} styles={styles} />
-          <View style={styles.itemsList}>
-            {groupedItems.map((group) => (
-              <ItemGroupCard
-                key={group.item_name}
-                group={group}
-                expandedEntries={expandedItems}
-                isGroupExpanded={expandedGroups.has(group.item_name)}
-                onToggleGroup={() => toggleGroup(group.item_name)}
-                onToggleEntry={toggleItem}
-                styles={styles}
-                t={t}
-              />
-            ))}
-          </View>
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
+});

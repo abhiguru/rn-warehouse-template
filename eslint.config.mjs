@@ -43,10 +43,10 @@ const THEME_IMPORT_RULES = {
 export default [
   js.configs.recommended,
   {
-    files: ['app.config.js'],
+    files: ['app.config.js', 'scripts/metro-block-list.js'],
     languageOptions: {
       sourceType: 'commonjs',
-      globals: { module: 'readonly', process: 'readonly' },
+      globals: { module: 'readonly', process: 'readonly', require: 'readonly' },
     },
   },
   {
@@ -71,6 +71,8 @@ export default [
       'jest.setup.js',
       'jest.global-setup.js',
       'plugins/**/*.js',
+      // Git worktrees that agents work in (git ignores them through .git/info/exclude).
+      '.claude/**',
       'src/utils/logger.ts', // Logger utility legitimately uses console
     ],
   },

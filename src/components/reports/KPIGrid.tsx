@@ -3,7 +3,7 @@
  *
  * Per docs/STYLE_GUIDE.md §5.2 and §13.11, KPI tiles are cards (`shadow[2]`) laid
  * out two per row on phones and four per row on tablets. Compact mode shows three
- * per row on phones and no section header. The grid itself is not a card, so
+ * per row on phones (two when the text size is above 1.2) and no section header. The grid itself is not a card, so
  * cards never sit on cards.
  */
 
@@ -51,6 +51,8 @@ interface KPIGridProps {
 
 /** Width from which the grid uses the tablet layout (four tiles per row). */
 const TABLET_MIN_WIDTH = 600;
+/** Above this text size a phone shows compact tiles two across, not three. */
+export const LARGE_TEXT_SCALE = 1.2;
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -109,7 +111,7 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
 
   const toggleExpand = () => {
@@ -118,8 +120,11 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
     setIsExpanded(prev => !prev);
   };
 
-  // Four compact tiles on a phone make two rows of two, not three and one alone.
-  const itemsPerRow = width >= TABLET_MIN_WIDTH ? 4 : compact && items.length !== 4 ? 3 : 2;
+  // Four compact tiles on a phone make two rows of two, not three and one alone. With
+  // large text three across would shrink the values past their limit and cut them, so
+  // a phone shows two across (§11.4: layouts reflow at large sizes).
+  const threeAcross = compact && items.length !== 4 && fontScale <= LARGE_TEXT_SCALE;
+  const itemsPerRow = width >= TABLET_MIN_WIDTH ? 4 : threeAcross ? 3 : 2;
   const rows: KPIItem[][] = [];
   for (let i = 0; i < items.length; i += itemsPerRow) {
     rows.push(items.slice(i, i + itemsPerRow));

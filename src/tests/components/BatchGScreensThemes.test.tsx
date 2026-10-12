@@ -41,6 +41,7 @@ jest.mock('@/store/slices/authSlice', () => ({
   forceLogoutOnInvalidToken: jest.fn(),
   logout: Object.assign(jest.fn(), { fulfilled: { type: 'auth/logout/fulfilled', match: () => false } }),
   deleteAccount: jest.fn(),
+  isDeleteAccountRejection: () => false,
   setUserProfile: jest.fn(),
 }));
 const mockPrice = {

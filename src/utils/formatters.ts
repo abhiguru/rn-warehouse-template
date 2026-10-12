@@ -127,6 +127,25 @@ export const toDate = (date: string | Date | null | undefined): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+type DateFormat = 'short' | 'medium' | 'long' | 'compact';
+
+/** The numbers of a calendar day. The month counts from 0, as a Date's does. */
+interface CalendarDay {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/** A calendar day as `formatDate` writes it. `thisYear` is the year that `short` leaves out. */
+const writeDate = ({ year, month, day }: CalendarDay, format: DateFormat, thisYear: number): string => {
+  const dayText = localizeDigits(String(day));
+  const yearText = localizeDigits(String(year));
+  if (format === 'long') return `${dayText} ${words().monthsLong[month]} ${yearText}`;
+  const monthText = words().monthsShort[month];
+  if ((format === 'short' || format === 'compact') && year === thisYear) return `${dayText} ${monthText}`;
+  return `${dayText} ${monthText} ${yearText}`;
+};
+
 /**
  * Format a date for display (style guide §12.3). Month names are spelled out
  * here rather than taken from the device locale, so every phone shows the same
@@ -137,22 +156,20 @@ export const toDate = (date: string | Date | null | undefined): Date | null => {
  * - `long`: "9 October 2026"
  * - `compact`: same as `short`; kept for older callers
  *
+ * The current year is India's: the facility's year turns over at midnight
+ * there, whatever the clock zone of the phone. The day itself is read as
+ * before: a plain day as it is written, an instant in the phone's zone. A
+ * report prints an instant with `formatIndiaDate` instead.
+ *
  * Returns "—" when the date is missing or invalid.
  */
 export const formatDate = (
   date: string | Date | null | undefined,
-  format: 'short' | 'medium' | 'long' | 'compact' = 'medium'
+  format: DateFormat = 'medium'
 ): string => {
   const d = toDate(date);
   if (!d) return '—';
-  const day = localizeDigits(String(d.getDate()));
-  const year = localizeDigits(String(d.getFullYear()));
-  if (format === 'long') return `${day} ${words().monthsLong[d.getMonth()]} ${year}`;
-  const month = words().monthsShort[d.getMonth()];
-  if ((format === 'short' || format === 'compact') && d.getFullYear() === new Date().getFullYear()) {
-    return `${day} ${month}`;
-  }
-  return `${day} ${month} ${year}`;
+  return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() }, format, indiaYear());
 };
 
 /** Month titles (§12.3): "October 2026" (long, timelines), "Oct 2026" (short, report rows), "Oct" (narrow, chart axes). */
@@ -278,6 +295,73 @@ export const toCalendarDay = (value: string | Date): string => {
 export const IST_OFFSET = '+05:30';
 
 /**
+ * Today's calendar day in India, as a Date whose local year, month and day are
+ * that day. A report's period is counted from it, so the month and the
+ * financial year turn over with the facility's books and not with the clock
+ * zone of a phone that is abroad.
+ */
+export const todayInIST = (now: Date = new Date()): Date => {
+  const india = new Date(now.getTime() + (5 * 60 + 30) * 60_000);
+  return new Date(india.getUTCFullYear(), india.getUTCMonth(), india.getUTCDate());
+};
+
+/**
+ * The calendar day in India of a value from the server, as "YYYY-MM-DD".
+ *
+ * A plain "2026-10-12" is already a day and is returned as it is. An instant (an
+ * ISO string with a time, such as the "2026-09-30T20:00:00+00:00" of a timestamptz
+ * column, or a Date) is moved to India time (+05:30) and its year, month and day
+ * taken with the UTC getters, so the result does not depend on the zone of the
+ * phone: that instant is 1 Oct, not 30 Sep. Reports group by this day, as the
+ * facility's books do. A time written without a zone is read in the phone's zone.
+ * Empty or unreadable gives "".
+ */
+export const indiaDay = (value: string | Date | null | undefined): string => {
+  if (!value) return '';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const instant = typeof value === 'string' ? new Date(value) : value;
+  const time = instant.getTime();
+  if (Number.isNaN(time)) return '';
+  const india = new Date(time + (5 * 60 + 30) * 60_000);
+  const pad = (n: number, width = 2) => String(n).padStart(width, '0');
+  return `${pad(india.getUTCFullYear(), 4)}-${pad(india.getUTCMonth() + 1)}-${pad(india.getUTCDate())}`;
+};
+
+/** The year it is in India at a moment: the year `formatDate` leaves out of a short date. */
+const indiaYear = (now: Date = new Date()): number => Number(indiaDay(now).slice(0, 4));
+
+/**
+ * The numbers of a plain day ("2026-10-12"), taken from its text and from UTC
+ * arithmetic only, so the zone of the phone has no part in them. A day past the
+ * end of its month runs on into the next, as `new Date(year, month, day)` does.
+ */
+const calendarDay = (day: string): (CalendarDay & { weekday: number }) | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return null;
+  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return { year: utc.getUTCFullYear(), month: utc.getUTCMonth(), day: utc.getUTCDate(), weekday: utc.getUTCDay() };
+};
+
+/**
+ * A date of a report, written as `formatDate` writes one and read on India's
+ * calendar. A plain day is printed as it is; an instant (the timestamptz of an
+ * invoice or a GRN) is printed as the day it fell on in India (`indiaDay`), not
+ * in the zone of the phone, so a card names the same day as the heading above
+ * it and as the facility's books. `short` leaves out India's current year.
+ *
+ * `now` is the moment the current year is read at; a test passes its own.
+ * Returns "—" when the date is missing or unreadable.
+ */
+export const formatIndiaDate = (
+  value: string | Date | null | undefined,
+  format: DateFormat = 'medium',
+  now: Date = new Date()
+): string => {
+  const day = calendarDay(indiaDay(value));
+  return day ? writeDate(day, format, indiaYear(now)) : '—';
+};
+
+/**
  * The first and the last moment of a calendar day in India, for a range the
  * server reads as moments (timestamptz). The zone is written out, so the range
  * is the same day whatever the phone's or the database's clock zone is.
@@ -314,6 +398,11 @@ export const parseLocalISODate = (dateString: string): Date => {
 /**
  * Section header for date-grouped lists (§12.3): "Today", "Yesterday",
  * "Tue, 6 Oct", or "Tue, 6 Oct 2025" outside the current year.
+ *
+ * "Today" is the phone's own today, as it is in the requests of the GRN,
+ * dispatch and invoice lists, which count their "Today" and "Yesterday" filters
+ * from it (`toRequest`). The two change together or not at all. A report counts
+ * from India's today and uses `formatIndiaSectionDate`.
  */
 export const formatSectionDate = (dateString: string): string => {
   const date = toDate(dateString);
@@ -331,13 +420,38 @@ export const formatSectionDate = (dateString: string): string => {
   return `${words().weekdaysShort[date.getDay()]}, ${formatDate(date, 'short')}`;
 };
 
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * Section header over a day of a report, on India's calendar: "Today",
+ * "Yesterday", "Tue, 6 Oct", or "Tue, 6 Oct 2025" outside India's current year.
+ *
+ * The day is `indiaDay(value)` and today is the day it is in India at `now`, as
+ * the report's own request counts it (`todayInIST`): both sides of the
+ * comparison are India's, so a phone abroad shows what a phone at the facility
+ * shows. India has no summer time, so yesterday is the day 24 hours before.
+ */
+export const formatIndiaSectionDate = (value: string | Date | null | undefined, now: Date = new Date()): string => {
+  const day = indiaDay(value);
+  const date = calendarDay(day);
+  if (!date) return '—';
+  if (day === indiaDay(now)) return words().today;
+  if (day === indiaDay(new Date(now.getTime() - DAY_MS))) return words().yesterday;
+  return `${words().weekdaysShort[date.weekday]}, ${writeDate(date, 'short', indiaYear(now))}`;
+};
+
 /**
  * Format a date for relative time display (e.g., "2h ago", "Yesterday")
  *
  * @param dateString - ISO date string
+ * @param older - how a time a day or more ago is written. By default the date
+ *   in the phone's zone; a report passes India's (`formatIndiaDate`).
  * @returns Relative time string
  */
-export const formatRelativeTime = (dateString: string): string => {
+export const formatRelativeTime = (
+  dateString: string,
+  older: (date: Date) => string = date => formatDate(date, 'short')
+): string => {
   // Handle undefined/null/empty input
   if (!dateString) {
     return '—';
@@ -363,5 +477,5 @@ export const formatRelativeTime = (dateString: string): string => {
   if (diffMins < 1) return words().justNow;
   if (diffMins < 60) return words().minutesAgo.replace('{n}', localizeDigits(String(diffMins)));
   if (diffHours < 24) return words().hoursAgo.replace('{n}', localizeDigits(String(diffHours)));
-  return formatDate(date, 'short');
+  return older(date);
 };

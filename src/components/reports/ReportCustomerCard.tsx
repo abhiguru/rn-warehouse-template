@@ -3,10 +3,14 @@
  *
  * Follows the object cell spec in docs/STYLE_GUIDE.md §13.6:
  * - 44 avatar on the left (shared `Avatar`, keyed by the customer id)
- * - Title (`headline`, two lines) and subtitle (`subhead`)
- * - Optional share button (44 target, `brand.tint`)
- * - Value (`headline`, tabular) and its label on the right
+ * - Title (`headline`, two lines), subtitle (`subhead`, two lines) and, when there
+ *   is one, the status tag on a line of its own under them (left-aligned)
+ * - Value (`headline`, tabular) and its label on the right: that column is only as
+ *   wide as the value and its label, so a long tag never squeezes the name
  * - Chevron in `icon.secondary`; pressed row `surface.cardPressed`
+ * - Optional share button (`touchTarget` square, `brand.tint`): a target of its own
+ *   beside the row's, 8 apart, not inside it, so a screen reader reaches each
+ *   one with its own label (§11.2, §11.3, as the pin in §13.6)
  */
 
 import React from 'react';
@@ -23,6 +27,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
+import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { formatNumber as formatShared } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { FactLines, joinFacts } from './FactLines';
@@ -34,20 +39,28 @@ import { FactLines, joinFacts } from './FactLines';
 export interface ReportCustomerCardProps {
   /** Customer name (title) */
   title: string;
+  /** Lower-cased search words to show in bold in the name (docs/STYLE_GUIDE.md §14.6). */
+  highlightWords?: string[];
   /**
    * Subtitle (e.g., "3 dispatches"). Give several facts as a list: they share one
    * line in English and get a line each in Gujarati (see FactLines).
    */
   subtitle: string | string[];
+  /**
+   * Line limit of the subtitle in English (default 2, so a longer fact wraps
+   * rather than being cut, §4). Gujarati stacks the facts, two lines each,
+   * whatever this says.
+   */
+  subtitleLines?: number;
   /** Main numeric value to display */
   value: number | string;
-  /** Label for the value (default: "units") */
+  /** Label for the value (default: "units", in the app's language) */
   valueLabel?: string;
   /** Press handler for navigation */
   onPress: () => void;
   /** Customer id: keys the avatar colour so a customer looks the same on every screen. */
   customerId?: string | null;
-  /** Optional status tag under the value (at most one per row, guide §3.5). */
+  /** Optional status tag under the subtitle, on its own line (at most one per row, guide §3.5). */
   status?: { status: StatusKind; label: string };
   /** Optional share handler */
   onShare?: () => void;
@@ -87,6 +100,21 @@ const makeStyles = (t: ThemeTokens) =>
     cardPressed: {
       backgroundColor: t.surface.cardPressed,
     },
+    // With a share button: the row and the button side by side, the row's target full height.
+    withShare: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: space.sm,
+      backgroundColor: t.surface.card,
+    },
+    rowWithShare: {
+      flex: 1,
+      paddingRight: 0,
+    },
+    shareSlot: {
+      justifyContent: 'center',
+      paddingRight: space.sm,
+    },
     content: {
       flex: 1,
       justifyContent: 'center',
@@ -125,8 +153,11 @@ const makeStyles = (t: ThemeTokens) =>
       color: t.text.secondary,
       marginTop: space.xxs,
     },
+    // On its own line under the subtitle, left-aligned with the name. It never
+    // takes the value column's width, and never grows wider than the content column.
     status: {
-      alignSelf: 'flex-end',
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
       marginTop: space.xs,
     },
   });
@@ -137,9 +168,11 @@ const makeStyles = (t: ThemeTokens) =>
 
 export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   title,
+  highlightWords,
   subtitle,
+  subtitleLines = 2,
   value,
-  valueLabel = 'units',
+  valueLabel,
   onPress,
   customerId,
   status,
@@ -151,17 +184,19 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
+  // The word beside the figure: "unit" for 1, "units" otherwise, unless the screen names its own.
+  const label = valueLabel ?? tr('reports.shared.units', { count: value });
   const facts = Array.isArray(subtitle) ? subtitle : [subtitle];
   const subtitleText = joinFacts(facts);
 
   // Auto-generate accessibility label if not provided
   const a11yLabel =
     accessibilityLabel ??
-    [title, subtitleText, tr('reports.components.valueWithLabel', { value: formatNumber(value), label: valueLabel }), status?.label].filter(Boolean).join(', ');
+    [title, subtitleText, tr('reports.components.valueWithLabel', { value: formatNumber(value), label }), status?.label].filter(Boolean).join(', ');
 
-  return (
+  const row = (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [styles.card, onShare && styles.rowWithShare, pressed && styles.cardPressed]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
@@ -172,19 +207,31 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
 
       {/* B. Main Content */}
       <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
-        <FactLines facts={facts} style={styles.subtitle} numberOfLines={1} />
+        <HighlightedText style={styles.title} numberOfLines={2} text={title} words={highlightWords} />
+        <FactLines facts={facts} style={styles.subtitle} numberOfLines={subtitleLines} />
+        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
       </View>
 
-      {/* C. Share Button (optional) */}
-      {onShare && (
+      {/* C. Value */}
+      <View style={styles.valueContainer}>
+        <Text style={styles.value}>{formatNumber(value)}</Text>
+        <Text style={styles.valueLabel}>{label}</Text>
+      </View>
+
+      {/* D. Navigation Chevron */}
+      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+    </Pressable>
+  );
+
+  if (!onShare) return row;
+
+  // E. Share button: a sibling of the row, never nested in it.
+  return (
+    <View style={styles.withShare}>
+      {row}
+      <View style={styles.shareSlot}>
         <Pressable
-          onPress={e => {
-            e.stopPropagation();
-            onShare();
-          }}
+          onPress={onShare}
           style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
           disabled={isSharing}
           accessibilityRole="button"
@@ -197,18 +244,8 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
             <Icon name="file-pdf-box" size={iconSize.lg} color={t.brand.tint} />
           )}
         </Pressable>
-      )}
-
-      {/* D. Value */}
-      <View style={styles.valueContainer}>
-        <Text style={styles.value}>{formatNumber(value)}</Text>
-        <Text style={styles.valueLabel}>{valueLabel}</Text>
-        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
       </View>
-
-      {/* E. Navigation Chevron */}
-      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-    </Pressable>
+    </View>
   );
 };
 

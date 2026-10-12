@@ -223,6 +223,19 @@ export class UserService {
    *
    * @returns Success status and message
    */
+  /**
+   * True only for an error the database itself answered: a PostgREST or SQL
+   * error with its code (a SQLSTATE such as 42501 or P0001, or PGRSTnnn).
+   * postgrest-js gives `code: ""` for a lost connection and for a body that is
+   * not JSON (a gateway's HTML page), and nothing at all for "Session changed"
+   * thrown by the app's own fetch gate after the answer arrived. None of those
+   * says what the server did, so none of them counts as a refusal.
+   */
+  static isDatabaseAnswer(error: unknown): boolean {
+    const code = (error as { code?: unknown } | null)?.code;
+    return typeof code === 'string' && /^(PGRST\d{3}|[0-9A-Z]{5})$/.test(code);
+  }
+
   static async deleteAccount(): Promise<UserServiceResponse<void>> {
     try {
 
@@ -236,7 +249,11 @@ export class UserService {
         return {
           success: false,
           message: t('errors.user.deleteAccountFailed'),
-          error: error.message
+          error: error.message,
+          // Only the database's own answer says the account was kept; anything
+          // else (no connection, a gateway page, a session that changed after
+          // the answer) leaves open whether the deletion was committed.
+          outcome: UserService.isDatabaseAnswer(error) ? 'refused' : 'unknown',
         };
       }
 
@@ -250,15 +267,20 @@ export class UserService {
           success: false,
           message: t('errors.user.lastAdminDelete'),
           error: t('errors.user.lastAdminDelete'),
+          outcome: 'refused',
         };
       }
 
-      if (!rpcResponse?.success) {
+      if (rpcResponse?.success !== true) {
         log.error('Account deletion failed', loggableError(rpcResponse));
         return {
           success: false,
           message: serverText(rpcResponse?.error, t('errors.user.deleteAccountFailed')),
-          error: serverText(rpcResponse?.error, t('errors.general.unknown'))
+          error: serverText(rpcResponse?.error, t('errors.general.unknown')),
+          // Only the RPC's own `success: false` says the account was kept. An
+          // empty body or JSON without `success` (an intermediary answering
+          // 2xx) says nothing about what the database did.
+          outcome: rpcResponse?.success === false ? 'refused' : 'unknown',
         };
       }
 
@@ -272,6 +294,7 @@ export class UserService {
       return {
         success: false,
         message: t('errors.user.deleteAccountUnexpected'),
+        outcome: 'unknown',
         error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -10,12 +10,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppDispatch } from '@/store/hooks';
-import { logout } from '@/store/slices/authSlice';
-import { clearSessionScopedState } from '@/store/sessionScopedState';
-import ConfigService from '@/services/configService';
-import { queryClient } from '@/lib/queryClient';
-import { beginOperatorSwitch, clearPendingEnrollment, endOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment } from '@/config/supabaseConfig';
-import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, parseOperatorOrigin, stageOperatorServer } from '@/config/operatorServer';
+import { switchOperatorServer } from '@/store/operatorSwitch';
+import { discoverOperator, getActiveOperatorServer, parseOperatorOrigin } from '@/config/operatorServer';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
@@ -31,9 +27,15 @@ export interface OperatorServerSelectionProps {
    * the operator re-selects the already active server while `initial`.
    */
   onCancel?: () => void;
+  /**
+   * Central login ("Enter address" under Add facility): hand the checked
+   * server to the caller instead of switching to it here. The caller adds it
+   * to "My facilities" and opens it; nothing is signed out on this screen.
+   */
+  onChoose?: (discovery: Discovery) => void;
 }
 
-export function OperatorServerSelection({ initial = false, onCancel }: OperatorServerSelectionProps) {
+export function OperatorServerSelection({ initial = false, onCancel, onChoose }: OperatorServerSelectionProps) {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -53,6 +55,9 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
 
   const inspect = async (value: string) => {
     if (activating.current) return;
+    // The result card arrives below the field: close the keyboard so it is not behind it.
+    // Every start of a check comes through here (button, the field's submit key, a scanned code).
+    Keyboard.dismiss();
     const request = ++inspection.current;
     setBusy(true);
     setCandidate(null);
@@ -80,47 +85,29 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
     // A confirmation belongs to one discovery result. Editing the origin or
     // leaving this screen invalidates its callback before any session change.
     if (request !== inspection.current || busy || activating.current) return;
-    if (queryClient.isMutating() > 0) {
-      showAlert(tr('auth.server.busyTitle'), tr('auth.server.busyMessage'));
-      return;
-    }
-    if (!beginOperatorSwitch()) {
-      showAlert(tr('auth.server.busyTitle'), tr('auth.server.busyMessage'));
-      return;
-    }
-    activating.current = true;
-    setBusy(true);
-    let sessionCleared = false;
-    try {
-      const previous = getActiveOperatorServer();
-      if (previous?.origin === selected.server.origin && previous.instanceId === selected.server.instanceId) {
-        // Same server: nothing changes, so leave the way the caller expects.
-        if (initial) onCancel?.();
-        else router.back();
-        return;
-      }
-      await stageOperatorServer(selected.server);
-      sessionCleared = true;
-      const replacedAtSameOrigin = previous?.origin === selected.server.origin && previous.instanceId !== selected.server.instanceId;
-      await dispatch(logout(replacedAtSameOrigin ? { localOnly: true } : undefined)).unwrap();
-      if (await getPendingEnrollmentToken()) {
-        if (previous && !replacedAtSameOrigin) await signOutPendingEnrollment();
-        else await clearPendingEnrollment();
-      }
-      await clearSessionScopedState(dispatch);
-      await ConfigService.clearCache();
-      await commitStagedOperatorServer(selected.server);
-      if (!initial) router.replace('/login');
-    } catch {
-      showAlert(tr('auth.server.couldNotChangeTitle'), sessionCleared
+    // The sequence itself is shared with central login (src/store/operatorSwitch.ts).
+    const outcome = await switchOperatorServer(selected.server, dispatch, {
+      onBegin: () => { activating.current = true; setBusy(true); },
+      // Same server: nothing changes, so leave the way the caller expects.
+      onSame: () => { if (initial) onCancel?.(); else router.back(); },
+      onCommitted: () => { if (!initial) router.replace('/login'); },
+      onEnd: () => { activating.current = false; setBusy(false); },
+    });
+    if (outcome.kind === 'busy') showAlert(tr('auth.server.busyTitle'), tr('auth.server.busyMessage'));
+    else if (outcome.kind === 'failed') {
+      showAlert(tr('auth.server.couldNotChangeTitle'), outcome.sessionCleared
         ? tr('auth.server.sessionClearedMessage')
         : tr('auth.server.serverKeptMessage'));
-    } finally { endOperatorSwitch(); activating.current = false; setBusy(false); }
+    }
   };
 
   const chooseServer = () => {
     if (!candidate || busy || activating.current) return;
     const selected = candidate;
+    if (onChoose) {
+      onChoose(selected);
+      return;
+    }
     const request = inspection.current;
     const previous = getActiveOperatorServer();
     if (previous && (previous.origin !== selected.server.origin || previous.instanceId !== selected.server.instanceId)) {
@@ -141,7 +128,8 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
 
   return <SafeAreaView style={styles.screen}>
     {initial && <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />}
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    {/* Same as the sign-in screens (PhoneSignInForm, CodeEntryForm): padding on iOS, height on Android. */}
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.column}>
           <Text style={styles.title} accessibilityRole="header">{tr('auth.server.title')}</Text>

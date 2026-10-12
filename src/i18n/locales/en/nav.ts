@@ -22,6 +22,12 @@ export const nav = {
     facility: 'Facility',
     enrollmentReview: 'Enrollment review',
     editGrn: 'Edit GRN',
+    // Central login (docs/CENTRAL_LOGIN.md)
+    myFacilities: 'My facilities',
+    addFacility: 'Add facility',
+    facilityAddress: 'Facility address',
+    account: 'Account',
+    confirmNumber: 'Confirm your number',
   },
   // Starting the app against the chosen facility server
   bootstrap: {
@@ -35,8 +41,6 @@ export const nav = {
     subtitleStaff: 'View operations and customer reports',
     subtitleCustomer: 'View your inventory reports',
     profileAndSettings: 'Profile and settings',
-    inventorySection: 'Inventory reports',
-    operationsSection: 'Operations reports',
     cardLabel: '{{title}}. {{description}}',
     // The titles are the report screens' own (`reports.titles`).
     descriptions: {

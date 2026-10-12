@@ -22,6 +22,10 @@ import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { getActiveOperatorServer } from '@/config/operatorServer';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger('StockService');
 
 // M3 Fix: Removed duplicate categorizeError function - now using centralized version from serviceErrorHandler.ts
 
@@ -39,6 +43,10 @@ export interface GetCustomersWithStockOptions {
   offset?: number;
 }
 
+/** What get_item_wise_stock_list can sort by (backend migration 52). */
+export type ItemStockSortBy = 'item_name' | 'total_stock' | 'total_qty' | 'grn_count';
+export type ItemStockSortOrder = 'asc' | 'desc';
+
 export interface GetItemWiseStockListOptions {
   /** Filter by customer ID */
   customerId?: string;
@@ -48,6 +56,65 @@ export interface GetItemWiseStockListOptions {
   limit?: number;
   /** Number of items to skip (default: 0) */
   offset?: number;
+  /**
+   * The order the server pages the items in (backend migration 52). Left out,
+   * nothing is sent and the server keeps its own order, item name A to Z.
+   */
+  sortBy?: ItemStockSortBy;
+  sortOrder?: ItemStockSortOrder;
+}
+
+/** Totals over every item the customer and search leave, whatever page was asked for (migration 52). */
+export interface ItemStockSummary {
+  total_stock: number;
+  total_qty: number;
+  item_count: number;
+}
+
+/**
+ * The facilities whose get_item_wise_stock_list refused the two sort parameters
+ * (a backend older than migration 52), by origin and instance. Their later
+ * calls go without the parameters at once instead of failing first. Kept for
+ * the app's run: a facility that is upgraded is asked with them again after a
+ * restart.
+ */
+const facilitiesWithoutItemSort = new Set<string>();
+/**
+ * The facility in use, by its origin and its instance: what a capability of one
+ * facility is remembered under (here, and the report PDFs in useReportExport),
+ * so that an instance replacing another at the same origin is asked afresh.
+ * '' when no facility is chosen.
+ */
+export const facilityKey = (): string => {
+  const server = getActiveOperatorServer();
+  return server ? `${server.origin}|${server.instanceId}` : '';
+};
+/** Forget which facilities could not sort the item list (tests). */
+export const forgetItemSortSupport = (): void => facilitiesWithoutItemSort.clear();
+
+/**
+ * True when PostgREST found no get_item_wise_stock_list that takes the
+ * parameters sent: PGRST202 "Could not find the function ... in the schema
+ * cache" (the database itself says 42883 "function ... does not exist").
+ */
+function lacksSortParameters(result: { error?: string; errorCode?: string }): boolean {
+  const message = (result.error ?? '').toLowerCase();
+  if (result.errorCode === 'PGRST202' || message.includes('could not find the function')) return true;
+  return message.includes('get_item_wise_stock_list') && (result.errorCode === '42883' || message.includes('does not exist'));
+}
+
+const finiteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+/** The summary when the answer has a complete one; an older backend sends none. */
+function readItemStockSummary(value: unknown): ItemStockSummary | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const totalStock = finiteNumber(raw.total_stock);
+  const totalQty = finiteNumber(raw.total_qty);
+  const itemCount = finiteNumber(raw.item_count);
+  if (totalStock === undefined || totalQty === undefined || itemCount === undefined) return undefined;
+  return { total_stock: totalStock, total_qty: totalQty, item_count: itemCount };
 }
 
 export class StockService {
@@ -673,6 +740,15 @@ export class StockService {
    * M3 Fix: Demonstrates executeRPC usage pattern
    * PR20 Fix: Uses options object instead of positional parameters
    *
+   * With `sortBy`/`sortOrder` the server sorts before it pages and answers with
+   * `summary`, totals over the whole filtered list (backend migration 52). A
+   * backend without migration 52 refuses the two parameters (PGRST202): the
+   * call is then made again without them, `sortApplied` is false (the items
+   * are in item-name order) and there is no `summary`. That facility's later
+   * calls leave the parameters out at once. That refusal is how the app finds
+   * out, so it is one info line, not an error in the log; any other failure is
+   * logged as an error as it always was.
+   *
    * @param options - Options for fetching item-wise stock list
    */
   static async getItemWiseStockList(
@@ -693,9 +769,13 @@ export class StockService {
         limit: number;
         offset: number;
       };
+      /** Totals of the whole filtered list; missing from a backend without migration 52. */
+      summary?: ItemStockSummary;
+      /** False when a sort was asked for and the server could not apply it. */
+      sortApplied?: boolean;
     }>
   > {
-    const { customerId, searchQuery, limit = 50, offset = 0 } = options;
+    const { customerId, searchQuery, limit = 50, offset = 0, sortBy, sortOrder } = options;
 
     // M3 Fix: Using executeRPC wrapper for standardized error handling
     interface RawItemData {
@@ -708,22 +788,59 @@ export class StockService {
         grn_count: number;
       }>;
       total_count: number;
+      summary?: unknown;
     }
 
-    const result = await executeRPC<RawItemData>(
-      getAuthenticatedClient,
-      'get_item_wise_stock_list',
-      {
-        p_customer_id: customerId || null,
-        p_search_query: searchQuery || null,
-        p_limit: limit,
-        p_offset: offset,
-      },
-      {
+    const baseParams = {
+      p_customer_id: customerId || null,
+      p_search_query: searchQuery || null,
+      p_limit: limit,
+      p_offset: offset,
+    };
+    const call = (params: Record<string, unknown>, getClient: () => Promise<unknown> = getAuthenticatedClient) =>
+      executeRPC<RawItemData>(getClient, 'get_item_wise_stock_list', params, {
         context: 'StockService.getItemWiseStockList',
         errorMessage: t('errors.stock.itemWiseFailed'),
+      });
+
+    // The first call to a facility sends the sort parameters. A server without
+    // migration 52 refuses them (PGRST202), which is the expected way to find
+    // that out, not a fault: that one answer is taken off the client's reply
+    // before executeRPC can log it as an error. It still comes back as a failed
+    // result, so the retry below runs. Every other answer, and every exception,
+    // reaches executeRPC untouched and is logged there as before.
+    let serverHasNoSort = false;
+    const sortProbeClient = async () => {
+      const client = await getAuthenticatedClient();
+      return {
+        rpc: async (name: string, args: Record<string, unknown>) => {
+          const answer = await client.rpc(name, args);
+          if (answer.error && lacksSortParameters({ error: answer.error.message, errorCode: answer.error.code })) {
+            serverHasNoSort = true;
+            return { data: { success: false, error: answer.error.message }, error: null };
+          }
+          return answer;
+        },
+      };
+    };
+
+    const wantsSort = sortBy !== undefined || sortOrder !== undefined;
+    const facility = facilityKey();
+    let sortApplied = true;
+    let result: Awaited<ReturnType<typeof call>>;
+    if (wantsSort && !facilitiesWithoutItemSort.has(facility)) {
+      result = await call({ ...baseParams, p_sort_by: sortBy ?? 'item_name', p_sort_order: sortOrder ?? 'asc' }, sortProbeClient);
+      if (!result.success && (serverHasNoSort || lacksSortParameters(result))) {
+        facilitiesWithoutItemSort.add(facility);
+        // Once per facility per run: later calls to it leave the parameters out at once.
+        logger.info('[StockService.getItemWiseStockList] This server cannot sort the item list; asking again without the sort.');
+        result = await call(baseParams);
+        sortApplied = false;
       }
-    );
+    } else {
+      result = await call(baseParams);
+      sortApplied = !wantsSort;
+    }
 
     if (!result.success || !result.data) {
       return {
@@ -759,6 +876,8 @@ export class StockService {
           limit,
           offset,
         },
+        summary: readItemStockSummary(rawData.summary),
+        sortApplied,
       },
     };
   }

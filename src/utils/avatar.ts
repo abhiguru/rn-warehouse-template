@@ -4,11 +4,34 @@
  */
 import type { ThemeTokens } from '@/theme/tokens';
 
-/** Up to two initials from the first two words: "Sunrise Agro Foods" -> "SA". */
+/** The first letter or digit of a word, whole (a code point, not half of a surrogate pair). */
+const FIRST_LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+
+/**
+ * Up to two initials: the first letter or digit of each of the first two words
+ * that have one. "Sunrise Agro Foods" -> "SA"; "(A-One) Traders & Co." -> "AT";
+ * "🧊 Ice Depot" -> "ID" (a symbol in front of a name is not an initial).
+ *
+ * A name with no letter or digit at all keeps the plain rule: the first
+ * character of each of the first two words (whole characters, so an emoji is
+ * drawn whole), and "?" when there is nothing.
+ */
 export function avatarInitials(name: string | null | undefined): string {
   const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return '?';
-  const letters = words.slice(0, 2).map(w => w[0]);
+  const letters: string[] = [];
+  for (const word of words) {
+    const first = word.match(FIRST_LETTER_OR_DIGIT)?.[0];
+    if (first) letters.push(first);
+    if (letters.length === 2) break;
+  }
+  if (letters.length === 0) {
+    return words
+      .slice(0, 2)
+      .map(word => String.fromCodePoint(word.codePointAt(0) ?? 0x3f))
+      .join('')
+      .toUpperCase();
+  }
   return letters.join('').toUpperCase();
 }
 

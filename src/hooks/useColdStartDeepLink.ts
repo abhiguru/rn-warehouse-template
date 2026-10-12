@@ -74,7 +74,17 @@ export function parseDeepLinkUrl(url: string): string | null {
 }
 
 /** Screens of the sign-in flow: a warm link is ignored while one of them is focused. */
-const SIGN_IN_PATHS: readonly string[] = ['/login', '/otp', '/operator-server', '/pending-enrollment'];
+const SIGN_IN_PATHS: readonly string[] = [
+  '/login',
+  '/otp',
+  '/operator-server',
+  '/pending-enrollment',
+  // Central login (docs/CENTRAL_LOGIN.md): its sign-in, the address entry and the linking step.
+  '/central-login',
+  '/central-otp',
+  '/facility-address',
+  '/facility-link',
+];
 
 /**
  * Checks if a route requires authentication

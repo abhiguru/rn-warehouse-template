@@ -11,12 +11,22 @@ import { t as translate } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { DATE_PRESETS, resolveDateRange } from '../../datePresets';
-import type { DatePresetId, DateRangeValue } from '../../types';
+import type { DatePreset, DatePresetId, DateRangeValue } from '../../types';
 import { ChoiceChips } from '../ChoiceChips';
 
 export interface DateRangeEditorProps {
   value: DateRangeValue | undefined;
   onChange: (value: DateRangeValue | undefined) => void;
+  /** The quick ranges offered. Defaults to the lists' own. */
+  presets?: DatePreset[];
+  /** The range cannot be empty: tapping the chosen quick range again keeps it. */
+  required?: boolean;
+  /**
+   * Today, as a Date whose local year, month and day are that day (`DateRangeField.today`). The
+   * days of a quick range are counted from it, as the request of the same list counts them, so the
+   * two days shown here are the two the request sends. Defaults to the phone's own today.
+   */
+  today?: () => Date;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -42,11 +52,13 @@ const makeStyles = (t: ThemeTokens) => ({
 
 type End = 'from' | 'to';
 
-export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
+const phoneToday = () => new Date();
+
+export function DateRangeEditor({ value, onChange, presets = DATE_PRESETS, required = false, today = phoneToday }: DateRangeEditorProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [iosEnd, setIosEnd] = useState<End | null>(null);
-  const range = resolveDateRange(value);
+  const range = resolveDateRange(value, today());
 
   const setDay = (end: End, date: Date) => {
     const iso = toLocalISODate(date);
@@ -60,7 +72,7 @@ export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
   };
 
   const open = (end: End) => {
-    const current = range[end] ? parseLocalISODate(range[end] as string) : new Date();
+    const current = range[end] ? parseLocalISODate(range[end] as string) : today();
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         value: current,
@@ -99,9 +111,9 @@ export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
     <View style={styles.wrap}>
       <ChoiceChips<DatePresetId>
         accessibilityLabel={translate('filters.date.quickRanges')}
-        options={DATE_PRESETS.map(preset => ({ value: preset.id, label: preset.label }))}
+        options={presets.map(preset => ({ value: preset.id, label: preset.label }))}
         value={value?.preset}
-        onChange={preset => onChange(value?.preset === preset ? undefined : { preset })}
+        onChange={preset => onChange(value?.preset === preset && !required ? undefined : { preset })}
       />
       <View style={styles.row}>
         {dayButton('from')}
@@ -109,7 +121,7 @@ export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
       </View>
       {Platform.OS === 'ios' && iosEnd ? (
         <DateTimePicker
-          value={range[iosEnd] ? parseLocalISODate(range[iosEnd] as string) : new Date()}
+          value={range[iosEnd] ? parseLocalISODate(range[iosEnd] as string) : today()}
           mode="date"
           display="inline"
           onChange={(_event, date) => {

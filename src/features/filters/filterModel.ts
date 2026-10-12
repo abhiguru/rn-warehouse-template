@@ -5,7 +5,7 @@
  */
 import { formatIdentifier, localizeDigits, normalizeDigits, t } from '@/i18n';
 import { formatDate, formatNumber as formatQuantity, parseLocalISODate } from '@/utils/formatters';
-import { DATE_PRESETS, resolveDateRange } from './datePresets';
+import { presetLabel, resolveDateRange } from './datePresets';
 import { parseQuickSearch, type QuickSearchResult } from './parseQuickSearch';
 import {
   SEARCH_KEY,
@@ -51,6 +51,9 @@ export function isFieldActive(field: FilterFieldDef, value: FilterValue | undefi
     }
   }
 }
+
+/** A range that always has a value (a report's period): shown, but not a filter the user turned on. */
+export const isRequiredField = (field: FilterFieldDef): boolean => field.kind === 'dateRange' && field.required === true;
 
 /** The key every list gives its Customer picker. */
 const CUSTOMERS_KEY = 'customers';
@@ -106,7 +109,7 @@ export function readSearch(config: FilterListDefinition, values: FilterValues, t
 
 /** Number of filters on: each active field once, plus what the search recognised. */
 export function countActiveFilters(config: FilterListDefinition, values: FilterValues, ctx: FilterContext): number {
-  const fields = visibleFields(config, ctx).filter(field => isFieldActive(field, values[field.key])).length;
+  const fields = visibleFields(config, ctx).filter(field => !isRequiredField(field) && isFieldActive(field, values[field.key])).length;
   const search = readSearch(config, values);
   return fields + (search.date ? 1 : 0) + (search.range ? 1 : 0) + (search.financialYear !== undefined ? 1 : 0);
 }
@@ -152,7 +155,7 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
     }
     case 'dateRange': {
       const range = value as DateRangeValue;
-      if (range.preset) return DATE_PRESETS.find(preset => preset.id === range.preset)?.label ?? field.label;
+      if (range.preset) return presetLabel(range.preset) ?? field.label;
       return describeDateRange(resolveDateRange(range));
     }
     case 'numberRange': {
@@ -221,14 +224,18 @@ export function isDefaultSort(config: FilterListDefinition, sort: SortState | un
 export function describeSort(
   config: FilterListDefinition,
   sort: SortState | undefined
-): { label: string; direction: string; spoken: string } {
+): { label: string; spokenLabel: string; direction: string; spoken: string } {
   const active = currentSort(config, sort);
   const option = config.sort?.options.find(candidate => candidate.field === active?.field);
-  if (!active || !option) return { label: t('filters.sort.fallback'), direction: '', spoken: '' };
+  if (!active || !option) {
+    const fallback = t('filters.sort.fallback');
+    return { label: fallback, spokenLabel: fallback, direction: '', spoken: '' };
+  }
   const direction = SORT_DIRECTIONS[option.kind][active.order];
   // Inside a sentence the direction starts in lower case, except "A to Z" and "Z to A".
   const spoken = SORT_DIRECTIONS_SPOKEN[option.kind][active.order];
-  return { label: option.chipLabel ?? option.label, direction, spoken };
+  // The chip shows the short name ("GRN no."); a screen reader says the full one ("GRN number").
+  return { label: option.chipLabel ?? option.label, spokenLabel: option.label, direction, spoken };
 }
 
 /** Order-independent comparison of two sets of values, for "are there unsaved changes". */
