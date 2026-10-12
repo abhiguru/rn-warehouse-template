@@ -599,7 +599,7 @@ describe('stock summary, one customer', () => {
 
     await screen.press(section);
     expect(screen.control(section).props.accessibilityState).toEqual({ expanded: true });
-    expect(screen.items()).toEqual(['Fictional Onions', 'Example Mustard']);
+    expect(screen.items()).toEqual(['Example Mustard', 'Fictional Onions']);
 
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Item');
@@ -626,9 +626,9 @@ describe('stock summary, one customer', () => {
     await screen.press(section);
     expect(screen.control(section).props.accessibilityState).toEqual({ expanded: true });
     expect(screen.listRows()).toEqual([
-      'item item:i3', 'item item:i1', 'item item:i4', 'item item:i2', 'emptiedHeader emptiedHeader', 'emptied emptied:o1', 'emptied emptied:o2',
+      'item item:i3', 'item item:i1', 'item item:i4', 'item item:i2', 'emptiedHeader emptiedHeader', 'emptied emptied:o2', 'emptied emptied:o1',
     ]);
-    expect(screen.items()).toEqual([...ITEMS_BY_STOCK, 'Fictional Onions', 'Example Mustard']);
+    expect(screen.items()).toEqual([...ITEMS_BY_STOCK, 'Example Mustard', 'Fictional Onions']);
     expect(screen.footer()).toBeNull();
 
     // An item that ran out opens on its own, and says it was dispatched.
@@ -678,7 +678,7 @@ describe('stock summary, one customer', () => {
     expect(screen.items()).toEqual(['Fictional Onions']);
     await screen.press('Clear search and filters');
     expect(screen.searchValue()).toBe('');
-    expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Turmeric', 'Red chilli', 'Fictional Onions', 'Example Mustard']);
+    expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Turmeric', 'Red chilli', 'Example Mustard', 'Fictional Onions']);
   });
 
   it('with nothing in stock, a search that finds items that ran out counts them in the message', async () => {
@@ -688,7 +688,7 @@ describe('stock summary, one customer', () => {
     await screen.search('a000');
     expect(screen.texts()).toEqual(expect.arrayContaining(['No items in stock match "a000"', '2 emptied items match below.']));
     expect(screen.control('Out of stock, 2 items, last 360 days').props.accessibilityState).toEqual({ expanded: true });
-    expect(screen.items()).toEqual(['Fictional Onions', 'Example Mustard']);
+    expect(screen.items()).toEqual(['Example Mustard', 'Fictional Onions']);
   });
 
   it('an item with no GRN to list says so when opened, in stock and out of stock', async () => {

@@ -4,7 +4,7 @@
  * The store is a plain object; actions go through the real report-prefs reducer.
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import ReportsScreen from '../../../../app/(tabs)/reports';
 import { ReportHubRow } from '../ReportHubRow';
@@ -51,8 +51,11 @@ beforeEach(() => {
   mockServer = SERVER;
   mockPush.mockClear();
   mockDispatch.mockClear();
+  mockScrollTo.mockClear();
 });
 
+// The scroll view's ref is the jest mock's instance, whose scrollTo is one shared jest.fn (react-native's jest preset).
+const mockScrollTo = ScrollView.prototype.scrollTo as unknown as jest.Mock;
 function render() {
   let tree!: TestRenderer.ReactTestRenderer;
   act(() => {
@@ -271,6 +274,39 @@ describe('pressing', () => {
     } finally {
       now.mockRestore();
     }
+  });
+});
+
+describe('scrolling to a new section', () => {
+  it('goes to the top once when Recent appears on a tab that is already drawn, not on a draw with the same sections', () => {
+    signIn('staff');
+    const tree = render();
+    expect(sections(tree).map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
+    // Mounting is not a change.
+    expect(mockScrollTo).not.toHaveBeenCalled();
+
+    // A report is opened: Recent becomes the first section.
+    press(target(section(tree, 'movement'), 'GRN activity. Recent goods received with invoice status'));
+    rerender(tree);
+    expect(sections(tree)[0]).toEqual(['Recent', ['GRN activity']]);
+    expect(mockScrollTo.mock.calls).toEqual([[{ y: 0 }]]);
+
+    // Drawn again with the same sections (a re-focus, a theme change): no scroll.
+    rerender(tree);
+    rerender(tree);
+    expect(mockScrollTo).toHaveBeenCalledTimes(1);
+
+    // The first pin adds a Pinned section above Recent: a change, so one more scroll.
+    press(target(section(tree, 'stock'), 'Pin Stock aging to the top'));
+    rerender(tree);
+    expect(sections(tree)[0]).toEqual(['Pinned', ['Stock aging']]);
+    expect(mockScrollTo).toHaveBeenCalledTimes(2);
+
+    // A second pin changes neither the number of sections nor the first one: no scroll.
+    press(target(section(tree, 'stock'), 'Pin Stock summary to the top'));
+    rerender(tree);
+    expect(sections(tree)[0]).toEqual(['Pinned', ['Stock aging', 'Stock summary']]);
+    expect(mockScrollTo).toHaveBeenCalledTimes(2);
   });
 });
 
