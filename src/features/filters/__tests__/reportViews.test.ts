@@ -61,6 +61,38 @@ const stockLine = (over: Record<string, unknown>) => ({
   ...over,
 });
 
+const dispatch = (over: Record<string, unknown>) => ({
+  disp_id: 'd',
+  disp_no: 'DD0001',
+  disp_date: '2026-09-01',
+  supervisor_name: 'Asha Example',
+  total_qty: 0,
+  total_weight: 0,
+  items: [],
+  ...over,
+});
+
+const invoice = (over: Record<string, unknown>) => ({
+  invoice_id: 'i',
+  invoice_number: '2026/0001',
+  invoice_date: '2026-09-01',
+  financial_year: '2026-27',
+  grn_ref: '',
+  grn_id: '',
+  total: 0,
+  labour: 0,
+  discount: 0,
+  tax_amount: 0,
+  net_total: 0,
+  item_count: 1,
+  total_quantity: 0,
+  notes: null,
+  payment_status: { status: 'pending', paid_date: null, payment_ref: null },
+  line_items: [],
+  ...over,
+});
+const paid = { status: 'paid', paid_date: '2026-10-01', payment_ref: null };
+
 /**
  * Rows for each configuration, by list key, with the word a search must find in
  * exactly one of them. No two rows share a value in any sorted column, and no
@@ -95,6 +127,17 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
       { customer_id: 'c2', customer_name: 'Green Valley Traders', total_stock: 300, total_weight: 15000, item_count: 2, grn_count: 4 },
       { customer_id: 'c3', customer_name: 'Sunrise Agro Foods', total_stock: 120, total_weight: 6000, item_count: 5, grn_count: 2 },
       { customer_id: 'c4', customer_name: 'Hillside Growers', total_stock: 50, total_weight: 2500, item_count: 3, grn_count: 12 },
+    ],
+    search: 'riverbank',
+    found: ['c1'],
+    id: (row: { customer_id: string }) => row.customer_id,
+  },
+  'report-dispatch-activity': {
+    rows: [
+      { customer_id: 'c1', customer_name: 'Riverbank Produce', dispatch_count: 9, total_quantity: 80, total_weight: 4000 },
+      { customer_id: 'c2', customer_name: 'Green Valley Traders', dispatch_count: 2, total_quantity: 300, total_weight: 15000 },
+      { customer_id: 'c3', customer_name: 'Sunrise Agro Foods', dispatch_count: 4, total_quantity: 120, total_weight: 6000 },
+      { customer_id: 'c4', customer_name: 'Hillside Growers', dispatch_count: 12, total_quantity: 50, total_weight: 2500 },
     ],
     search: 'riverbank',
     found: ['c1'],
@@ -159,6 +202,39 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     search: 'red chilli',
     found: ['i2'],
     id: (row: { item_id: string }) => row.item_id,
+  },
+  'report-dispatch-activity-customer': {
+    rows: [
+      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, total_weight: 5000, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
+      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, total_weight: 900, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
+      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, total_weight: 6100, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
+      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, total_weight: 3000, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
+    ],
+    search: 'red chilli',
+    found: ['d2'],
+    id: (row: { disp_id: string }) => row.disp_id,
+  },
+  'report-invoice-history': {
+    rows: [
+      { customer_id: 'c1', customer_name: 'Riverbank Produce', invoice_count: 9, total_amount: 9000, net_amount: 8000, latest_invoice_date: '2026-08-11' },
+      { customer_id: 'c2', customer_name: 'Green Valley Traders', invoice_count: 2, total_amount: 33000, net_amount: 30000, latest_invoice_date: '2026-09-20' },
+      { customer_id: 'c3', customer_name: 'Sunrise Agro Foods', invoice_count: 4, total_amount: 13000, net_amount: 12000, latest_invoice_date: '2026-07-01' },
+      { customer_id: 'c4', customer_name: 'Hillside Growers', invoice_count: 12, total_amount: 5500, net_amount: 5000, latest_invoice_date: '2026-10-02' },
+    ],
+    search: 'riverbank',
+    found: ['c1'],
+    id: (row: { customer_id: string }) => row.customer_id,
+  },
+  'report-invoice-history-customer': {
+    rows: [
+      invoice({ invoice_id: 'i1', invoice_number: '2026/0010', invoice_date: '2026-09-05', grn_ref: 'A0010', net_total: 5000, payment_status: paid, line_items: [{ item_name: 'Garlic' }] }),
+      invoice({ invoice_id: 'i2', invoice_number: '2026/0009', invoice_date: '2026-10-01', grn_ref: 'A0009', net_total: 20000, line_items: [{ item_name: 'Red chilli' }] }),
+      invoice({ invoice_id: 'i3', invoice_number: '2026/0100', invoice_date: '2026-08-15', grn_ref: 'A0100', net_total: 12000, payment_status: paid, line_items: [{ item_name: 'Cumin' }] }),
+      invoice({ invoice_id: 'i4', invoice_number: '2026/0050', invoice_date: '2026-09-20', grn_ref: 'A0050', net_total: 2000, line_items: [{ item_name: 'Turmeric' }] }),
+    ],
+    search: 'red chilli',
+    found: ['i2'],
+    id: (row: { invoice_id: string }) => row.invoice_id,
   },
 };
 

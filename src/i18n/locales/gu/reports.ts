@@ -69,6 +69,7 @@ export const reports: Translation<typeof source> = {
   },
   filters: {
     invoicing: 'ઇન્વૉઇસ',
+    payment: 'ચુકવણી',
   },
   period: {
     label: 'સમયગાળો',
@@ -286,12 +287,8 @@ export const reports: Translation<typeof source> = {
     loadError: 'જાવકની કામગીરી લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     noCustomer: 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી ઉમેરવા કહો.',
     errorTitle: 'જાવકની કામગીરી લોડ કરી શકાઈ નથી',
-    dateRange: '{{from}}થી {{to}} સુધી',
     bagsDispatched: 'જાવકના નંગ',
-    customersWithDispatches: 'જાવકવાળા વેપારી',
     customerHint: 'આ વેપારીની જાવક બતાવે છે',
-    noMatch: '"{{search}}" સાથે મળતો કોઈ વેપારી નથી',
-    tryFewerLetters: 'ઓછા અક્ષરો લખી જુઓ.',
     emptyTitle: 'આ સમયગાળામાં કોઈ જાવક નથી',
     emptyDescription: 'વધુ જાવક જોવા લાંબો સમયગાળો પસંદ કરો.',
     emptyCustomerDescription: 'પસંદ કરેલા સમયગાળામાં આ વેપારીની કોઈ જાવક નથી. વધુ જોવા લાંબો સમયગાળો પસંદ કરો.',
@@ -302,7 +299,7 @@ export const reports: Translation<typeof source> = {
     bagUnit: { one: 'નંગ', other: 'નંગ' },
     openDispatch: 'જાવક {{number}} ખોલો',
     ofQuantity: 'કુલ {{quantity}}માંથી',
-    itemLabel: '{{item}}, {{bags}}, આવક પાવતી {{grn}}',
+    bagsOf: 'કુલ {{quantity}}માંથી {{bags}}',
     sourceGrnHint: 'જે આવક પાવતીમાંથી જાવક થઈ તે ખોલે છે',
     errors: {
       fetchFailed: 'જાવકની કામગીરી મેળવી શકાઈ નથી',
@@ -341,14 +338,12 @@ export const reports: Translation<typeof source> = {
     retrievedAll: 'બધા વેપારીના ઇન્વૉઇસનો ઇતિહાસ મળી ગયો',
     loadError: 'ઇન્વૉઇસનો ઇતિહાસ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     noCustomer: 'તમારા ખાતામાં હજુ કોઈ વેપારી સોંપાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી સોંપવા કહો.',
-    dateRange: '{{from}}થી {{to}} સુધી',
+    errorTitle: 'ઇન્વૉઇસનો ઇતિહાસ લોડ કરી શકાયો નથી',
     invoices: 'ઇન્વૉઇસ',
     netAmount: 'ચોખ્ખી રકમ',
     paidCount: 'ચૂકવેલ ({{count}})',
     pendingCount: 'બાકી ({{count}})',
     monthlyBreakdown: 'મહિના મુજબ વિગત',
-    noMatch: 'કોઈ વેપારી મળતો નથી',
-    noMatchDescription: 'ઓછા અક્ષરો અથવા બીજું નામ લખી જુઓ.',
     emptyTitle: 'આ સમયગાળામાં કોઈ ઇન્વૉઇસ નથી',
     emptyDescription: 'જૂના ઇન્વૉઇસ જોવા લાંબો સમયગાળો પસંદ કરો.',
     // Invoice and customer rows
@@ -356,7 +351,6 @@ export const reports: Translation<typeof source> = {
     openHint: 'ઇન્વૉઇસ ખોલે છે',
     customerHint: 'આ વેપારીના ઇન્વૉઇસ બતાવે છે',
     latestInvoice: 'છેલ્લું {{date}}',
-    latestDate: 'છેલ્લું {{date}}',
     errors: {
       fetchFailed: 'ઇન્વૉઇસનો ઇતિહાસ મેળવી શકાયો નથી',
       fetchAllFailed: 'બધા વેપારીના ઇન્વૉઇસનો ઇતિહાસ મેળવી શકાયો નથી',

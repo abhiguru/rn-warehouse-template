@@ -430,7 +430,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     const tree = await render(brand, mode, <DispatchActivityScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Dispatch activity', 'Bags dispatched', 'Customers with dispatches', 'Fictional Traders', '3 dispatches'])
+      expect.arrayContaining(['Dispatch activity', 'All customers', 'Bags dispatched', 'Fictional Traders', '3 dispatches'])
     );
     act(() => tree.unmount());
   });
@@ -446,7 +446,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     const tree = await render(brand, mode, <InvoiceHistoryScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Invoice history', 'Invoices', 'Net amount', '₹4,500', 'Customers', 'Fictional Traders'])
+      expect.arrayContaining(['Invoice history', 'All customers', 'Invoices', 'Net amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 1 Oct'])
     );
     act(() => tree.unmount());
   });
@@ -483,31 +483,33 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
 
 const [BRAND] = BRANDS;
 
+// One customer's figures, and its three loading tiles, are tested with a real store in
+// InvoiceHistoryFlow.test.tsx: opening a customer pushes a route there.
 describe('invoice history summary', () => {
-  it('shows the totals above the customers, and one customer\'s totals above its invoices', async () => {
+  it('shows the totals above the customers, with the amount on each customer', async () => {
     const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Invoices', '2', 'Net amount', '₹4,500']));
-    expect(loadingTiles(tree)).toEqual([]);
-
-    await press(tree, 'Fictional Traders');
     const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Paid (1)', '₹3,000', 'Pending (1)', '₹1,500', 'Invoice 2026-0042']));
-    expect(all).not.toContain('Net amount');
-    // The summary comes before the invoices (style guide 14.10).
-    expect(all.indexOf('Paid (1)')).toBeLessThan(all.indexOf('Invoice 2026-0042'));
+    expect(all).toEqual(expect.arrayContaining(['Invoices', '2', 'Net amount', '₹4,500']));
+    expect(loadingTiles(tree)).toEqual([]);
+    // The summary comes before the customers (style guide 14.10).
+    expect(all.indexOf('Net amount')).toBeLessThan(all.indexOf('Fictional Traders'));
+    expect(all.lastIndexOf('₹4,500')).toBeGreaterThan(all.indexOf('Fictional Traders'));
     act(() => tree.unmount());
   });
 
-  it('draws as many loading tiles as the view shows once loaded', async () => {
-    jest.mocked(invoiceHistory.getAllInvoiceHistory).mockImplementationOnce(() => pending().promise);
-    const waiting = await render(BRAND, 'light', <InvoiceHistoryScreen />);
-    expect(loadingTiles(waiting)).toEqual(['Invoices, loading', 'Net amount, loading']);
-    act(() => waiting.unmount());
-
+  it('draws as many loading tiles as the customers level shows once loaded', async () => {
+    const waiting = pending();
+    jest.mocked(invoiceHistory.getAllInvoiceHistory).mockImplementationOnce(() => waiting.promise);
     const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
-    jest.mocked(invoiceHistory.getCustomerInvoiceHistory).mockImplementationOnce(() => pending().promise);
-    await press(tree, 'Fictional Traders');
-    expect(loadingTiles(tree)).toEqual(['Invoices, loading', 'Paid, loading', 'Pending, loading']);
+    expect(loadingTiles(tree)).toHaveLength(2);
+    await act(async () => {
+      waiting.answer({
+        success: true,
+        data: { summary: { total_invoices: 0, total_customers: 0, total_amount: 0, total_tax: 0, net_amount: 0 }, by_customer: [], by_month: [] },
+      });
+      await settleQueries();
+    });
+    expect(loadingTiles(tree)).toEqual([]);
     act(() => tree.unmount());
   });
 });
@@ -565,33 +567,6 @@ describe('a report that could not be loaded', () => {
   });
 });
 
-// GRN activity searches through the store, which is a fixed stand-in here: its search is
-// tested with a real store in GRNActivityFlow.test.tsx.
-describe('a customer search that matches nothing', () => {
-  const SEARCHED: [string, React.ComponentType][] = [
-    ['dispatch activity', DispatchActivityScreen],
-    ['invoice history', InvoiceHistoryScreen],
-  ];
-
-  it.each(SEARCHED)('%s: offers "Clear search", which brings the customers back', async (_name, Screen) => {
-    const tree = await render(BRAND, 'light', <Screen />);
-    // The list scrolls with the keyboard open, and a tap on a row is not swallowed by it.
-    expect(tree.root.findAll(n => n.props.keyboardShouldPersistTaps === 'handled').length).toBeGreaterThan(0);
-
-    const search = tree.root.findAll(n => typeof n.props.onChangeText === 'function')[0];
-    await act(async () => {
-      search.props.onChangeText('zzz');
-    });
-    expect(texts(tree)).not.toContain('Fictional Traders');
-    const states = tree.root.findAllByType(ReportEmptyState);
-    expect(states).toHaveLength(1);
-    expect(states[0].props).toMatchObject({ icon: 'magnify-close', actionLabel: 'Clear search' });
-
-    await act(async () => {
-      states[0].props.onAction();
-    });
-    expect(tree.root.findAllByType(ReportEmptyState)).toHaveLength(0);
-    expect(texts(tree)).toContain('Fictional Traders');
-    act(() => tree.unmount());
-  });
-});
+// The reports on the shared layer search through the store, which is a fixed stand-in here:
+// their searches, also one that matches nothing, are tested with a real store in
+// GRNActivityFlow, DispatchActivityFlow and InvoiceHistoryFlow.test.tsx.

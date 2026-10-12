@@ -70,6 +70,7 @@ export const reports = {
   },
   filters: {
     invoicing: 'Invoicing',
+    payment: 'Payment',
   },
   period: {
     label: 'Period',
@@ -290,12 +291,8 @@ export const reports = {
     loadError: "Couldn't load dispatch activity. Check your connection and try again.",
     noCustomer: 'No customer is linked to your account. Ask your facility to add one.',
     errorTitle: "Couldn't load dispatch activity",
-    dateRange: '{{from}} – {{to}}',
     bagsDispatched: 'Bags dispatched',
-    customersWithDispatches: 'Customers with dispatches',
     customerHint: "Shows this customer's dispatches",
-    noMatch: 'No customers match "{{search}}"',
-    tryFewerLetters: 'Try fewer letters.',
     emptyTitle: 'No dispatches in this period',
     emptyDescription: 'Choose a longer period to see more dispatch activity.',
     emptyCustomerDescription: 'This customer has no dispatches in the selected period. Choose a longer period to see more.',
@@ -306,7 +303,8 @@ export const reports = {
     bagUnit: { one: 'bag', other: 'bags' },
     openDispatch: 'Open dispatch {{number}}',
     ofQuantity: 'of {{quantity}}',
-    itemLabel: '{{item}}, {{bags}}, GRN {{grn}}',
+    // An item row read aloud: "20 bags of 60"
+    bagsOf: '{{bags}} of {{quantity}}',
     sourceGrnHint: 'Opens the source GRN',
     errors: {
       fetchFailed: 'Failed to fetch dispatch activity',
@@ -345,14 +343,12 @@ export const reports = {
     retrievedAll: 'All-customers invoice history retrieved successfully',
     loadError: "Couldn't load the invoice history. Check your connection and try again.",
     noCustomer: 'Your account has no customer assigned yet. Ask your facility to assign one.',
-    dateRange: '{{from}} – {{to}}',
+    errorTitle: "Couldn't load the invoice history",
     invoices: 'Invoices',
     netAmount: 'Net amount',
     paidCount: 'Paid ({{count}})',
     pendingCount: 'Pending ({{count}})',
     monthlyBreakdown: 'Monthly breakdown',
-    noMatch: 'No customers match',
-    noMatchDescription: 'Try fewer letters or another name.',
     emptyTitle: 'No invoices in this period',
     emptyDescription: 'Choose a longer period to see older invoices.',
     // Invoice and customer rows
@@ -360,7 +356,6 @@ export const reports = {
     openHint: 'Opens the invoice',
     customerHint: "Shows this customer's invoices",
     latestInvoice: 'Latest {{date}}',
-    latestDate: 'latest {{date}}',
     errors: {
       fetchFailed: 'Failed to fetch invoice history',
       fetchAllFailed: 'Failed to fetch all-customers invoice history',

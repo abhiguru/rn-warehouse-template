@@ -1,19 +1,18 @@
 /**
  * How often a report asks the server, and which answer it shows.
  *
- *   dispatch activity    one request on opening, one more for each new period
  *   item stock summary   one request on opening; a page is asked for once, and a failed page
  *                        is asked for again only by its "Try again" (the search and sort, and
  *                        late answers to an older search: ItemStockFlow.test.tsx)
  *   GRNs of an item      a failed load is an error with "Try again", never "no GRNs"
- * The role hook is the real one; only the services are stand-ins.
+ * The role hook is the real one; only the services are stand-ins. The reports on the shared
+ * layer keep their period in the store, so their requests per period are tested with a real
+ * store (e.g. DispatchActivityFlow.test.tsx).
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import DispatchActivityScreen from '../../../../app/reports/dispatch-activity';
 import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
 import { Button } from '@/components/ui/Button';
-import * as reporting from '@/services/reporting';
 import { StockService } from '@/services/stock-service';
 import { getAllGRNItems } from '@/services/grn-service';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
@@ -39,7 +38,6 @@ jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
 });
-jest.mock('@/services/reporting', () => ({ getAllDispatchActivity: jest.fn(), getCustomerDispatchActivity: jest.fn() }));
 jest.mock('@/services/stock-service', () => ({ StockService: { getItemWiseStockList: jest.fn() } }));
 jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCustomerGRNItems: jest.fn() }));
 // The item stock summary is drawn by ReportScaffold (a FlashList) and keeps its sort per facility.
@@ -78,7 +76,7 @@ function pending<T>() {
 beforeEach(() => {
   jest.clearAllMocks();
   // Also the answers queued by a test that failed before it used them.
-  for (const service of [reporting.getAllDispatchActivity, reporting.getCustomerDispatchActivity, StockService.getItemWiseStockList, getAllGRNItems]) {
+  for (const service of [StockService.getItemWiseStockList, getAllGRNItems]) {
     jest.mocked(service).mockReset();
   }
   mockParams = {};
@@ -87,70 +85,6 @@ afterEach(async () => {
   jest.useRealTimers();
   if (tree) await act(async () => tree!.unmount());
   tree = undefined;
-});
-
-describe('dispatch activity', () => {
-  const all = jest.mocked(reporting.getAllDispatchActivity);
-  const one = jest.mocked(reporting.getCustomerDispatchActivity);
-  const range = (call: unknown[]) => call[0] as { fromDate: string; toDate: string };
-
-  beforeEach(() => {
-    all.mockResolvedValue({
-      success: true,
-      message: '',
-      data: {
-        summary: { total_dispatches: 3, total_quantity: 140, total_weight: 7000 },
-        by_customer: [{ customer_id: 'c1', customer_name: 'Fictional Traders', dispatch_count: 3, total_quantity: 140, total_weight: 7000 }],
-      },
-    } as never);
-    one.mockResolvedValue({
-      success: true,
-      message: '',
-      data: { summary: { total_dispatches: 0, total_quantity: 0, total_weight: 0 }, dispatches: [] },
-    } as never);
-  });
-
-  it('a warehouse account: one request on opening, one more when the period changes', async () => {
-    await open(DispatchActivityScreen);
-    expect(all).toHaveBeenCalledTimes(1);
-    expect(one).not.toHaveBeenCalled();
-
-    await press('Last 240 days');
-    expect(all).toHaveBeenCalledTimes(2);
-    // The second request is for the new period: it reaches further back, to the same day.
-    expect(range(all.mock.calls[1]).toDate).toBe(range(all.mock.calls[0]).toDate);
-    expect(range(all.mock.calls[1]).fromDate < range(all.mock.calls[0]).fromDate).toBe(true);
-
-    await press('Last 420 days');
-    expect(all).toHaveBeenCalledTimes(3);
-    expect(range(all.mock.calls[2]).fromDate < range(all.mock.calls[1]).fromDate).toBe(true);
-    expect(one).not.toHaveBeenCalled();
-  });
-
-  it('a customer account: one request for its customer on opening, one more when the period changes', async () => {
-    await open(DispatchActivityScreen, CUSTOMER);
-    expect(one).toHaveBeenCalledTimes(1);
-    expect(one.mock.calls[0][0]).toMatchObject({ customerId: 'c1' });
-
-    await press('Last 364 days');
-    expect(one).toHaveBeenCalledTimes(2);
-    expect(one.mock.calls[1][0]).toMatchObject({ customerId: 'c1' });
-    expect(range(one.mock.calls[1]).fromDate < range(one.mock.calls[0]).fromDate).toBe(true);
-    expect(all).not.toHaveBeenCalled();
-  });
-
-  it('opened for a named customer: one request for that customer, none for the list', async () => {
-    mockParams = { customerId: 'c7', customerName: 'Example Agro' };
-    await open(DispatchActivityScreen);
-    expect(one).toHaveBeenCalledTimes(1);
-    expect(one.mock.calls[0][0]).toMatchObject({ customerId: 'c7' });
-    expect(all).not.toHaveBeenCalled();
-
-    await press('Last 240 days');
-    expect(one).toHaveBeenCalledTimes(2);
-    expect(one.mock.calls[1][0]).toMatchObject({ customerId: 'c7' });
-    expect(all).not.toHaveBeenCalled();
-  });
 });
 
 describe('item stock summary', () => {

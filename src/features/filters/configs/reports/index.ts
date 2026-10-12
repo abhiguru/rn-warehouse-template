@@ -5,7 +5,9 @@
  */
 import type { FilterListConfig } from '../../types';
 import { CUSTOMER_ACTIVITY_CUSTOMERS, customerActivityCustomersView } from './customerActivity';
+import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMERS, dispatchCustomersView, dispatchRecordsView } from './dispatchActivity';
 import { GRN_ACTIVITY_CUSTOMER, GRN_ACTIVITY_CUSTOMERS, grnCustomersView, grnRecordsView } from './grnActivity';
+import { INVOICE_HISTORY_CUSTOMER, INVOICE_HISTORY_CUSTOMERS, invoiceCustomersView, invoiceRecordsView } from './invoiceHistory';
 import { ITEM_STOCK, itemStockFallbackView } from './itemStock';
 import type { ReportRequest } from './shared';
 import { STOCK_SUMMARY_CUSTOMER, STOCK_SUMMARY_CUSTOMERS, stockSummaryCustomersView, stockSummaryItemsView } from './stockSummary';
@@ -30,6 +32,10 @@ export const REPORT_VIEW_CONFIGS: ReportViewConfig[] = [
   pair(STOCK_AGING_CUSTOMER, stockAgingItemsView),
   pair(CUSTOMER_ACTIVITY_CUSTOMERS, customerActivityCustomersView),
   pair(ITEM_STOCK, itemStockFallbackView),
+  pair(DISPATCH_ACTIVITY_CUSTOMERS, dispatchCustomersView),
+  pair(DISPATCH_ACTIVITY_CUSTOMER, dispatchRecordsView),
+  pair(INVOICE_HISTORY_CUSTOMERS, invoiceCustomersView),
+  pair(INVOICE_HISTORY_CUSTOMER, invoiceRecordsView),
 ];
 
 export * from './grnActivity';

@@ -1,151 +1,78 @@
 /**
- * Dispatch Activity Report Screen (C3)
+ * Dispatch activity report (C3): the dispatches of a period, with the items
+ * on each and the GRN each item left from.
  *
- * Displays recent dispatch activity with item-level details.
- * Reports pattern (docs/STYLE_GUIDE.md §14.10): period selector, KPI grid,
- * then object cells grouped by date.
+ * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportScope says
+ * whose dispatches, useReportFilters holds the period, search and sort,
+ * useReportQuery the data, and ReportScaffold draws every state. A warehouse
+ * role sees every customer and opens one by pushing this route with
+ * `?customerId=`, so the phone's back button and the header's agree.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  RefreshControl,
-  LayoutAnimation,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import React, { memo, useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
-  ReportHeader,
-  KPIGrid,
-  PeriodSelector,
   ReportCustomerCard,
-  ReportCustomerSearch,
+  ReportCustomerPicker,
   ReportEmptyState,
-  getDateRangeForPeriod,
+  ReportHeader,
+  ReportLastCustomer,
+  ReportScaffold,
   type KPIItem,
-  ReportCustomerScope,
-  type ReportScope,
 } from '@/components/reports';
-import { getCustomerDispatchActivity, getAllDispatchActivity } from '@/services/reporting';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
+import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports';
 import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  touchTarget,
-  typography,
-  trackedText,
-} from '@/theme/tokens';
-import type { ThemeTokens } from '@/theme/tokens';
-import type {
-  DispatchActivityData,
-  DispatchActivityRecord,
-  DispatchItemDetail,
-  ReportPeriod,
-  AllDispatchActivityData,
-  CustomerDispatchRow,
-} from '@/types/report.types';
-import { formatNumber, formatWeight, formatDate, formatSectionDate, formatCount } from '@/utils/formatters';
-import { t as tr, type TranslationKey, formatIdentifier } from '@/i18n';
+  DISPATCH_ACTIVITY_CUSTOMER,
+  DISPATCH_ACTIVITY_CUSTOMERS,
+  dispatchCustomersView,
+  dispatchRecordsView,
+} from '@/features/filters/configs/reports/dispatchActivity';
+import { useReportFilters } from '@/features/reports/useReportFilters';
+import { useReportQuery } from '@/features/reports/useReportQuery';
+import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/reporting';
+import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
+import { formatCount, formatDate, formatNumber, formatSectionDate, formatWeight } from '@/utils/formatters';
 
-// Keys, not text: the text is looked up when it is drawn (docs/I18N.md rule 2).
-const LOAD_ERROR: TranslationKey = 'reports.dispatchActivity.loadError';
-const NO_CUSTOMER_ERROR: TranslationKey = 'reports.dispatchActivity.noCustomer';
+const REPORT_ID = 'dispatch-activity';
 
-const bagsLabel = (qty: number) => formatCount(qty, 'bag');
-
-// ============================================================================
-// Styles (tokens only)
-// ============================================================================
 const makeStyles = (t: ThemeTokens) => ({
-  container: {
-    flex: 1,
-    backgroundColor: t.background.base,
+  container: { flex: 1, backgroundColor: t.background.base },
+
+  // A card per row, spaced by its own bottom margin.
+  card: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
   },
-  loadingContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: space.xxxl,
-  },
-  periodInfo: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-  },
-  periodText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
-  // Section header (guide §13.6)
-  sectionHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingTop: space.sm,
+  cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
+
+  dateHeading: {
+    paddingTop: space.lg,
     paddingBottom: space.sm,
-    minHeight: 32,
+    paddingHorizontal: layout.marginCompact + space.xs,
   },
-  sectionHeaderText: {
+  dateHeadingText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
-  sectionHeaderButton: {
-    minWidth: touchTarget,
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  sectionHeaderAction: {
-    ...typography.subhead,
-    fontWeight: fontWeight.medium,
-    color: t.brand.tint,
-  },
-  section: {
-    marginTop: space.lg,
-    paddingHorizontal: layout.marginCompact,
-  },
-  dateGroup: {
-    marginBottom: space.xl,
-  },
-  dispatchList: {
-    gap: space.sm,
-  },
-  // Cards (guide §13.6)
-  card: {
-    backgroundColor: t.surface.card,
-    borderRadius: radius.card,
-    overflow: 'hidden' as const,
-    ...t.shadow[2],
-  },
-  cardBody: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-  },
-  listCard: {
-    backgroundColor: t.surface.card,
-    borderRadius: radius.card,
-    overflow: 'hidden' as const,
-    ...t.shadow[2],
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 72, // Inset past the 44 icon + padding
-    backgroundColor: t.border.divider,
-  },
-  objectCell: {
+
+  // The card's head: the part that shows the items, and beside it the control that opens the dispatch.
+  head: { flexDirection: 'row' as const, alignItems: 'stretch' as const },
+  toggle: {
+    flex: 1,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     minHeight: layout.objectCellMinHeight,
@@ -153,122 +80,51 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingLeft: space.lg,
     paddingRight: space.xs,
     gap: space.md,
-    backgroundColor: t.surface.card,
   },
-  objectCellPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-  objectCellImage: {
+  pressed: { backgroundColor: t.surface.cardPressed },
+  objectIcon: {
     width: layout.avatar.md,
     height: layout.avatar.md,
     borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
     backgroundColor: t.brand.subtle,
-  },
-  objectCellContent: {
-    flex: 1,
-    justifyContent: 'center' as const,
-  },
-  objectCellTitle: {
-    ...typography.headline,
-    color: t.text.primary,
-  },
-  objectCellSubtitle: {
-    ...typography.subhead,
-    color: t.text.secondary,
-  },
-  objectCellAttributes: {
-    alignItems: 'flex-end' as const,
-    justifyContent: 'center' as const,
-  },
-  objectCellAttributeValue: {
-    ...typography.headline,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  objectCellAttributeLabel: {
-    ...typography.caption1,
-    color: t.text.secondary,
-  },
-  objectCellAccessory: {
-    width: iconSize.lg,
-    height: iconSize.lg,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
-  navButton: {
+  objectContent: { flex: 1, gap: space.xxs },
+  title: { ...typography.headline, color: t.text.primary },
+  subtitle: { ...typography.subhead, color: t.text.secondary },
+  footnote: { ...typography.footnote, color: t.text.secondary },
+  figures: { alignItems: 'flex-end' as const },
+  figureValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
+  figureLabel: { ...typography.caption1, color: t.text.secondary },
+  openButton: {
     width: touchTarget,
-    height: touchTarget,
+    minHeight: touchTarget,
+    marginRight: space.xs,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    borderRadius: radius.pill,
   },
-  navButtonPressed: {
-    backgroundColor: t.surface.cardActive,
-  },
+
   // Item rows inside a dispatch card (no shadow: card on card)
+  items: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border.divider },
   itemRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    minHeight: touchTarget,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    minHeight: 56,
     gap: space.md,
     backgroundColor: t.background.base,
   },
-  itemRowPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-  itemRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  itemRowContent: {
-    flex: 1,
-  },
-  itemRowTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.sm,
-    flexWrap: 'wrap' as const,
-  },
-  itemRowTitle: {
-    ...typography.subhead,
-    fontWeight: fontWeight.medium,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  itemRowFootnote: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    marginTop: space.xxs,
-  },
-  itemRowAttributes: {
-    alignItems: 'flex-end' as const,
-  },
-  itemRowQtyRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'baseline' as const,
-    gap: space.xxs,
-  },
-  itemRowQty: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  itemRowOrigQty: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  itemRowWeight: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    marginTop: space.xxs,
-    fontVariant: ['tabular-nums' as const],
-  },
+  itemRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
+  itemContent: { flex: 1 },
+  itemTitleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, flexWrap: 'wrap' as const },
+  itemTitle: { ...typography.subhead, fontWeight: fontWeight.medium, color: t.text.primary, flexShrink: 1 },
+  itemFootnote: { ...typography.footnote, color: t.text.secondary, marginTop: space.xxs },
+  itemFigures: { alignItems: 'flex-end' as const },
+  itemQtyRow: { flexDirection: 'row' as const, alignItems: 'baseline' as const, gap: space.xxs },
+  itemQty: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  itemSecondary: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
   // Neutral tag for the package mark (guide §13.5 InfoChip)
   tag: {
     paddingHorizontal: space.sm,
@@ -277,765 +133,438 @@ const makeStyles = (t: ThemeTokens) => ({
     alignSelf: 'flex-start' as const,
     backgroundColor: t.status.neutral.background,
   },
-  tagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
-  },
+  tagText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.neutral.text },
 });
 
 // ============================================================================
-// Section Header Component
+// Whose dispatches
 // ============================================================================
-interface FioriSectionHeaderProps {
-  title: string;
-  action?: {
-    label?: string;
-    icon?: string;
-    onPress: () => void;
-  };
+
+export default function DispatchActivityScreen() {
+  const scope = useReportScope(REPORT_ID);
+  const { level } = scope;
+  switch (level.kind) {
+    case 'none':
+      return <NoCustomer />;
+    case 'choose':
+      return <ReportCustomerPicker title={tr('reports.titles.dispatchActivity')} onPick={scope.chooseCustomer} />;
+    case 'customers':
+      return <CustomersReport scope={scope} />;
+    case 'customer':
+      // Keyed by the customer, so nothing of one customer's view is carried into another's.
+      return (
+        <CustomerReport
+          key={level.customerId}
+          customerId={level.customerId}
+          customerName={level.customerName}
+          onChangeCustomer={scope.changeCustomer}
+        />
+      );
+  }
 }
 
-const FioriSectionHeader: React.FC<FioriSectionHeaderProps> = ({ title, action }) => {
+function NoCustomer() {
   const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-
   return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText} accessibilityRole="header">
-        {title}
-      </Text>
-      {action && (
-        action.icon ? (
-          <Pressable
-            onPress={action.onPress}
-            style={styles.sectionHeaderButton}
-            accessibilityRole="button"
-            accessibilityLabel={action.label || title}
-          >
-            <Icon name={action.icon} size={iconSize.md} color={t.brand.tint} />
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={action.onPress}
-            style={styles.sectionHeaderButton}
-            accessibilityRole="button"
-          >
-            <Text style={styles.sectionHeaderAction}>{action.label}</Text>
-          </Pressable>
-        )
-      )}
+    <View style={styles.container}>
+      <ReportHeader title={tr('reports.titles.dispatchActivity')} />
+      <ReportEmptyState
+        icon="alert-circle-outline"
+        message={tr('reports.shared.noCustomerLinked')}
+        description={tr('reports.dispatchActivity.noCustomer')}
+      />
     </View>
   );
-};
-
-// ============================================================================
-// Object Cell - Dispatch Card
-// ============================================================================
-interface DispatchCardProps {
-  dispatch: DispatchActivityRecord;
-  isExpanded: boolean;
-  onToggle: () => void;
 }
 
-const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onToggle }) => {
+/** "No dispatches in this period", and a longer period to try unless there is none. */
+const emptyState = (period: ReportPeriod, oneCustomer: boolean) => ({
+  icon: 'truck-delivery-outline',
+  title: tr('reports.dispatchActivity.emptyTitle'),
+  description: isLongestPeriod(period)
+    ? undefined
+    : tr(oneCustomer ? 'reports.dispatchActivity.emptyCustomerDescription' : 'reports.dispatchActivity.emptyDescription'),
+});
+
+// ============================================================================
+// Every customer
+// ============================================================================
+
+const customerKey = (customer: CustomerDispatchRow) => customer.customer_id;
+
+function CustomersReport({ scope }: { scope: ReportScope }) {
+  const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMERS);
+  const { period, view } = filters.request;
+  const query = useReportQuery<AllDispatchActivityData>({
+    key: [REPORT_ID, 'customers', period.from, period.to],
+    fetch: () => getAllDispatchActivity({ fromDate: period.from, toDate: period.to }),
+    fallbackError: tr('reports.dispatchActivity.loadError'),
+  });
+  const { data } = query;
+  const rows = useMemo(() => dispatchCustomersView(data?.by_customer ?? [], view), [data, view]);
+  const kpis = useMemo<KPIItem[] | undefined>(
+    () =>
+      data && [
+        { icon: 'truck-delivery-outline', value: data.summary.total_dispatches, label: tr('reports.customerActivity.dispatches'), variant: 'primary' },
+        { icon: 'package-variant', value: data.summary.total_quantity, label: tr('reports.dispatchActivity.bagsDispatched'), variant: 'secondary' },
+      ],
+    [data]
+  );
+
+  const { openCustomer, lastCustomer } = scope;
+  const renderRow = useCallback(
+    (customer: CustomerDispatchRow) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
+    [view.words, openCustomer]
+  );
+
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.dispatchActivity')}
+      subtitle={tr('reports.shared.allCustomers')}
+      filters={{ config: DISPATCH_ACTIVITY_CUSTOMERS, state: filters }}
+      query={query}
+      kpis={kpis}
+      status={{ range: period, shown: rows.length, total: data?.by_customer.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={customerKey}
+      extraData={view.words}
+      noun="customers"
+      empty={emptyState(period, false)}
+      errorTitle={tr('reports.dispatchActivity.errorTitle')}
+    >
+      {lastCustomer && !filters.search ? (
+        <ReportLastCustomer customer={lastCustomer} onPress={openCustomer} accessibilityHint={tr('reports.dispatchActivity.customerHint')} />
+      ) : null}
+    </ReportScaffold>
+  );
+}
+
+interface CustomerRowProps {
+  customer: CustomerDispatchRow;
+  words: string[];
+  onOpen: (customer: ReportCustomerRef) => void;
+}
+
+const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: CustomerRowProps) {
   const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardClip}>
+        <ReportCustomerCard
+          customerId={customer.customer_id}
+          title={customer.customer_name}
+          highlightWords={words}
+          subtitle={formatCount(customer.dispatch_count, 'dispatch', 'dispatches')}
+          value={customer.total_quantity}
+          valueLabel={tr('reports.dispatchActivity.bagUnit', { count: customer.total_quantity })}
+          onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
+          accessibilityHint={tr('reports.dispatchActivity.customerHint')}
+        />
+      </View>
+    </View>
+  );
+});
+
+// ============================================================================
+// One customer's dispatches
+// ============================================================================
+
+/** A dispatch card, or the date over the dispatches of that day (only while sorted by date). */
+type DispatchRow = { kind: 'date'; date: string } | { kind: 'dispatch'; dispatch: DispatchActivityRecord; key: string };
+
+const dayOf = (dispatch: DispatchActivityRecord) => (dispatch.disp_date ?? '').slice(0, 10);
+/** A dispatch's own id; the number and date for a row the server sent without one. */
+const dispatchKey = (dispatch: DispatchActivityRecord) => dispatch.disp_id || `${dispatch.disp_no}-${dispatch.disp_date}`;
+
+function withDateHeadings(dispatches: DispatchActivityRecord[]): DispatchRow[] {
+  const rows: DispatchRow[] = [];
+  dispatches.forEach((dispatch, index) => {
+    if (index === 0 || dayOf(dispatches[index - 1]) !== dayOf(dispatch)) rows.push({ kind: 'date', date: dayOf(dispatch) });
+    rows.push({ kind: 'dispatch', dispatch, key: dispatchKey(dispatch) });
+  });
+  return rows;
+}
+
+const dispatchRowKey = (row: DispatchRow) => (row.kind === 'date' ? `date-${row.date}` : `dispatch-${row.key}`);
+const dispatchRowType = (row: DispatchRow) => row.kind;
+const openDispatch = (dispatchId: string) => {
+  if (dispatchId) router.push(`/dispatch-details/${dispatchId}`);
+};
+const openGrn = (grnId: string) => {
+  if (grnId) router.push(`/grn-details/${grnId}`);
+};
+
+interface CustomerReportProps {
+  customerId: string;
+  customerName: string;
+  onChangeCustomer?: () => void;
+}
+
+function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
+  const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMER);
+  const { period, view } = filters.request;
+  const query = useReportQuery<DispatchActivityData>({
+    key: [REPORT_ID, 'customer', customerId, period.from, period.to],
+    fetch: () => getCustomerDispatchActivity({ customerId, fromDate: period.from, toDate: period.to }),
+    fallbackError: tr('reports.dispatchActivity.loadError'),
+  });
+  const { data } = query;
+  const dispatches = useMemo(() => dispatchRecordsView(data?.dispatches ?? [], view), [data, view]);
+  // Headings by day only make sense while the dispatches are in date order (§14.5).
+  const byDate = view.sort?.field === 'date';
+  const rows = useMemo<DispatchRow[]>(
+    () => (byDate ? withDateHeadings(dispatches) : dispatches.map(dispatch => ({ kind: 'dispatch', dispatch, key: dispatchKey(dispatch) }))),
+    [dispatches, byDate]
+  );
+  // The figures are the whole period's, not what the search leaves.
+  const kpis = useMemo<KPIItem[] | undefined>(
+    () =>
+      data && [
+        { icon: 'truck-delivery-outline', value: data.summary.total_dispatches, label: tr('reports.customerActivity.dispatches'), variant: 'secondary' },
+        { icon: 'package-variant', value: data.summary.total_quantity, label: tr('reports.dispatchActivity.bagsDispatched'), variant: 'primary' },
+      ],
+    [data]
+  );
+  const actions = useMemo(
+    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
+    [onChangeCustomer]
+  );
+
+  // Which cards show their items. It stays with this screen, so a new sort or search keeps it.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = useCallback((key: string) => {
+    setExpanded(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const renderRow = useCallback(
+    (row: DispatchRow) =>
+      row.kind === 'date' ? (
+        <DateHeading date={row.date} />
+      ) : (
+        <DispatchCard
+          dispatch={row.dispatch}
+          rowKey={row.key}
+          words={view.words}
+          showDate={!byDate}
+          expanded={expanded.has(row.key)}
+          onToggle={toggle}
+          onOpen={openDispatch}
+          onOpenGrn={openGrn}
+        />
+      ),
+    [view.words, byDate, expanded, toggle]
+  );
+  const extraData = useMemo(() => [view.words, expanded], [view.words, expanded]);
+
+  return (
+    <ReportScaffold
+      title={tr('reports.titles.dispatchActivity')}
+      subtitle={customerName || undefined}
+      actions={actions}
+      filters={{ config: DISPATCH_ACTIVITY_CUSTOMER, state: filters }}
+      query={query}
+      kpis={kpis}
+      status={{ range: period, shown: dispatches.length, total: data?.dispatches.length }}
+      rows={rows}
+      renderRow={renderRow}
+      keyExtractor={dispatchRowKey}
+      getRowType={dispatchRowType}
+      extraData={extraData}
+      noun="dispatches"
+      empty={emptyState(period, true)}
+      errorTitle={tr('reports.dispatchActivity.errorTitle')}
+    />
+  );
+}
+
+const DateHeading = memo(function DateHeading({ date }: { date: string }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.dateHeading}>
+      <Text style={styles.dateHeadingText} accessibilityRole="header">
+        {formatSectionDate(date)}
+      </Text>
+    </View>
+  );
+});
+
+/**
+ * The items a search found on a dispatch whose items are not shown: only for
+ * words the card's own text does not already show (§14.6).
+ */
+function hiddenMatches(dispatch: DispatchActivityRecord, words: string[], shown: string[]): string[] {
+  const unseen = words.filter(word => !shown.some(text => text.toLowerCase().includes(word)));
+  if (unseen.length === 0) return [];
+  const found = new Set<string>();
+  for (const item of dispatch.items ?? []) {
+    if (item.item_name && matchesAnyWord(item.item_name, unseen)) found.add(item.item_name);
+  }
+  return [...found].slice(0, 3);
+}
+
+interface DispatchCardProps {
+  dispatch: DispatchActivityRecord;
+  rowKey: string;
+  /** Lower-cased search words, shown in bold. */
+  words: string[];
+  /** The date is on the card when no heading above it gives it. */
+  showDate: boolean;
+  expanded: boolean;
+  onToggle: (rowKey: string) => void;
+  onOpen: (dispatchId: string) => void;
+  onOpenGrn: (grnId: string) => void;
+}
+
+const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showDate, expanded, onToggle, onOpen, onOpenGrn }: DispatchCardProps) {
   const t = useTokens();
-
-  const handleNavigateToDetails = () => {
-    if (dispatch.disp_id) {
-      router.push(`/dispatch-details/${dispatch.disp_id}`);
-    }
-  };
-
-  const dateLabel = formatDate(dispatch.disp_date, 'short');
+  const styles = useThemedStyles(makeStyles);
+  const title = tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.disp_no) });
+  const supervisor = dispatch.supervisor_name || '—';
+  const items = dispatch.items ?? [];
+  // With the items open, the search's words show in them; closed, the card names the items it found.
+  const matched = expanded ? [] : hiddenMatches(dispatch, words, [title, supervisor]);
+  const label = [
+    tr('reports.dispatchActivity.cardLabel', {
+      number: formatIdentifier(dispatch.disp_no),
+      date: formatDate(dispatch.disp_date),
+      supervisor,
+      bags: formatCount(dispatch.total_qty, 'bag'),
+    }),
+    ...matched,
+  ].join(', ');
 
   return (
     <View style={styles.card}>
-      {/* Object cell header - toggles the item list */}
-      <Pressable
-        style={({ pressed }) => [styles.objectCell, pressed && styles.objectCellPressed]}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityLabel={tr('reports.dispatchActivity.cardLabel', {
-          number: formatIdentifier(dispatch.disp_no),
-          date: dateLabel,
-          supervisor: dispatch.supervisor_name,
-          bags: bagsLabel(dispatch.total_qty),
-        })}
-        accessibilityHint={tr(isExpanded ? 'reports.dispatchActivity.hideItemsHint' : 'reports.dispatchActivity.showItemsHint')}
-        accessibilityState={{ expanded: isExpanded }}
-      >
-        <View style={styles.objectCellImage}>
-          <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
-        </View>
-
-        <View style={styles.objectCellContent}>
-          <Text style={styles.objectCellTitle} numberOfLines={2}>
-            {tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.disp_no) })}
-          </Text>
-          <Text style={styles.objectCellSubtitle} numberOfLines={1}>
-            {dateLabel} · {dispatch.supervisor_name}
-          </Text>
-        </View>
-
-        <View style={styles.objectCellAttributes}>
-          <Text style={styles.objectCellAttributeValue}>
-            {formatNumber(dispatch.total_qty)}
-          </Text>
-          <Text style={styles.objectCellAttributeLabel}>
-            {tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}
-          </Text>
-        </View>
-
-        <View style={styles.objectCellAccessory}>
-          <Icon
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={iconSize.md}
-            color={t.icon.secondary}
-          />
-        </View>
-
-        {dispatch.disp_id && (
+      <View style={styles.cardClip}>
+        {/* Two targets side by side, never one inside the other: the head shows the items, the chevron opens the dispatch. */}
+        <View style={styles.head}>
           <Pressable
-            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-            onPress={handleNavigateToDetails}
+            style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
+            onPress={() => onToggle(rowKey)}
             accessibilityRole="button"
-            accessibilityLabel={tr('reports.dispatchActivity.openDispatch', { number: formatIdentifier(dispatch.disp_no) })}
+            // One element for a screen reader, the date included: a heading above the card is not read with it.
+            accessibilityLabel={label}
+            accessibilityHint={tr(expanded ? 'reports.dispatchActivity.hideItemsHint' : 'reports.dispatchActivity.showItemsHint')}
+            accessibilityState={{ expanded }}
           >
-            <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+            <View style={styles.objectIcon}>
+              <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
+            </View>
+            <View style={styles.objectContent}>
+              {/* A document number is never cut short (§4). */}
+              <HighlightedText style={styles.title} text={title} words={words} />
+              <HighlightedText style={styles.subtitle} numberOfLines={2} text={supervisor} words={words} />
+              {showDate ? <Text style={styles.footnote}>{formatDate(dispatch.disp_date, 'short')}</Text> : null}
+              {matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
+            </View>
+            <View style={styles.figures}>
+              <Text style={styles.figureValue}>{formatNumber(dispatch.total_qty)}</Text>
+              <Text style={styles.figureLabel}>{tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}</Text>
+            </View>
+            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
-        )}
-      </Pressable>
-
-      {/* Expandable item list */}
-      {isExpanded && dispatch.items.length > 0 && (
-        <View style={styles.cardBody}>
-          {dispatch.items.map((item, index) => (
-            <ItemRow
-              key={`${dispatch.disp_id || 'item'}-${index}`}
-              item={item}
-              isLast={index === dispatch.items.length - 1}
-            />
-          ))}
+          {dispatch.disp_id ? (
+            <Pressable
+              style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}
+              onPress={() => onOpen(dispatch.disp_id)}
+              accessibilityRole="button"
+              accessibilityLabel={tr('reports.dispatchActivity.openDispatch', { number: formatIdentifier(dispatch.disp_no) })}
+            >
+              <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+            </Pressable>
+          ) : null}
         </View>
-      )}
+
+        {expanded && items.length > 0 ? (
+          <View style={styles.items}>
+            {items.map((item, index) => (
+              <ItemRow key={`${rowKey}-${index}`} item={item} words={words} isLast={index === items.length - 1} onOpenGrn={onOpenGrn} />
+            ))}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
-};
+});
 
-// ============================================================================
-// Item Row (nested within dispatch card)
-// ============================================================================
 interface ItemRowProps {
   item: DispatchItemDetail;
-  isLast?: boolean;
+  words: string[];
+  isLast: boolean;
+  onOpenGrn: (grnId: string) => void;
 }
 
-const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
-  const styles = useThemedStyles(makeStyles);
+function ItemRow({ item, words, isLast, onOpenGrn }: ItemRowProps) {
   const t = useTokens();
-
-  const handlePress = () => {
-    if (item.source_grn_id) {
-      router.push(`/grn-details/${item.source_grn_id}`);
-    }
-  };
-
-  const isNavigable = !!item.source_grn_id;
+  const styles = useThemedStyles(makeStyles);
+  const grn = tr('reports.shared.grnNumber', { number: formatIdentifier(item.source_grn) });
+  // Numbers are compared, never used as the left side of &&: 0 would be drawn as text.
+  const ofQuantity = Number(item.orig_qty) > 0 && item.orig_qty !== item.qty ? formatNumber(item.orig_qty) : null;
+  const weight = Number(item.weight) > 0 ? formatWeight(item.weight) : null;
+  const bags = formatCount(item.qty, 'bag');
+  // Everything the row shows, in the order it shows it.
+  const label = [
+    item.item_name,
+    ofQuantity ? tr('reports.dispatchActivity.bagsOf', { bags, quantity: ofQuantity }) : bags,
+    weight,
+    grn,
+    item.rack ? tr('reports.shared.rack', { rack: item.rack }) : null,
+    item.package_mark ? tr('reports.shared.markA11y', { mark: item.package_mark }) : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const content = (
     <>
-      <View style={styles.itemRowContent}>
-        <View style={styles.itemRowTitleRow}>
-          <Text style={styles.itemRowTitle} numberOfLines={2}>
-            {item.item_name}
-          </Text>
-          {item.package_mark && (
+      <View style={styles.itemContent}>
+        <View style={styles.itemTitleRow}>
+          <HighlightedText style={styles.itemTitle} numberOfLines={2} text={item.item_name} words={words} />
+          {item.package_mark ? (
             <View style={styles.tag}>
-              <Text style={styles.tagText} maxFontSizeMultiplier={1.6}>{item.package_mark}</Text>
+              <Text style={styles.tagText} maxFontSizeMultiplier={1.6}>
+                {item.package_mark}
+              </Text>
             </View>
-          )}
-        </View>
-        <Text style={styles.itemRowFootnote} numberOfLines={1}>
-          {[tr('reports.customerActivity.grnNumber', { number: formatIdentifier(item.source_grn) }), item.rack].filter(Boolean).join(' · ')}
-        </Text>
-      </View>
-
-      <View style={styles.itemRowAttributes}>
-        <View style={styles.itemRowQtyRow}>
-          <Text style={styles.itemRowQty}>{formatNumber(item.qty)}</Text>
-          {/* Numbers are compared, never used as the left side of &&: 0 would be rendered as text. */}
-          {Number(item.orig_qty) > 0 && item.orig_qty !== item.qty ? (
-            <Text style={styles.itemRowOrigQty}>{tr('reports.dispatchActivity.ofQuantity', { quantity: formatNumber(item.orig_qty) })}</Text>
           ) : null}
         </View>
-        {Number(item.weight) > 0 ? (
-          <Text style={styles.itemRowWeight}>{formatWeight(item.weight)}</Text>
-        ) : null}
+        <Text style={styles.itemFootnote} numberOfLines={1}>
+          {[grn, item.rack].filter(Boolean).join(' · ')}
+        </Text>
       </View>
-
-      {isNavigable && (
-        <Icon name="chevron-right" size={iconSize.sm} color={t.icon.secondary} />
-      )}
+      <View style={styles.itemFigures}>
+        <View style={styles.itemQtyRow}>
+          <Text style={styles.itemQty}>{formatNumber(item.qty)}</Text>
+          {ofQuantity ? <Text style={styles.itemSecondary}>{tr('reports.dispatchActivity.ofQuantity', { quantity: ofQuantity })}</Text> : null}
+        </View>
+        {weight ? <Text style={styles.itemSecondary}>{weight}</Text> : null}
+      </View>
+      {item.source_grn_id ? <Icon name="chevron-right" size={iconSize.sm} color={t.icon.secondary} /> : null}
     </>
   );
 
-  if (isNavigable) {
+  if (item.source_grn_id) {
+    const grnId = item.source_grn_id;
     return (
       <Pressable
-        style={({ pressed }) => [
-          styles.itemRow,
-          !isLast && styles.itemRowBorder,
-          pressed && styles.itemRowPressed,
-        ]}
-        onPress={handlePress}
+        style={({ pressed }) => [styles.itemRow, !isLast && styles.itemRowBorder, pressed && styles.pressed]}
+        onPress={() => onOpenGrn(grnId)}
         accessibilityRole="button"
-        accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: formatIdentifier(item.source_grn) })}
+        accessibilityLabel={label}
         accessibilityHint={tr('reports.dispatchActivity.sourceGrnHint')}
       >
         {content}
       </Pressable>
     );
   }
-
   return (
-    <View
-      style={[styles.itemRow, !isLast && styles.itemRowBorder]}
-      accessible
-      accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: formatIdentifier(item.source_grn) })}
-    >
+    <View style={[styles.itemRow, !isLast && styles.itemRowBorder]} accessible accessibilityLabel={label}>
       {content}
-    </View>
-  );
-};
-
-// Group dispatches by date for sectioned display
-function groupDispatchesByDate(dispatches: DispatchActivityRecord[]): Map<string, DispatchActivityRecord[]> {
-  const groups = new Map<string, DispatchActivityRecord[]>();
-
-  dispatches.forEach((dispatch) => {
-    const dateKey = dispatch.disp_date.split('T')[0]; // Get just the date part
-    const existing = groups.get(dateKey) || [];
-    existing.push(dispatch);
-    groups.set(dateKey, existing);
-  });
-
-  return groups;
-}
-
-// CustomerCard moved to @/components/reports/ReportCustomerCard (J14 fix)
-
-export default function DispatchActivityScreen() {
-  return (
-    <ReportCustomerScope title={tr('reports.titles.dispatchActivity')}>
-      {(scope) => <DispatchActivityReport scope={scope} />}
-    </ReportCustomerScope>
-  );
-}
-
-function DispatchActivityReport({ scope }: { scope: ReportScope }) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-
-  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
-  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
-
-  // Route params for direct navigation from customer activity
-  const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
-  const routeCustomerId = params.customerId;
-  const routeCustomerName = params.customerName;
-
-  // Track if we came from route params (for back button behavior)
-  const cameFromRouteParams = React.useRef(!!routeCustomerId);
-
-  // Single customer data (used for regular users OR drill-down)
-  const [data, setData] = useState<DispatchActivityData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<TranslationKey | null>(null);
-  // The reason the server gave for refusing the report, already in the app's language.
-  const [errorReason, setErrorReason] = useState<string | null>(null);
-  const [expandedDispatches, setExpandedDispatches] = useState<Set<string>>(new Set());
-  const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
-  const [dateRange, setDateRange] = useState(() => getDateRangeForPeriod('last120days'));
-
-  // For hierarchical view state
-  const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
-  const [allCustomersData, setAllCustomersData] = useState<AllDispatchActivityData | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDispatchRow | null>(null);
-
-  // Customer search state
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-
-  // Fetch all customers dispatch activity (staff sees all, regular users see filtered)
-  const fetchAllCustomersData = useCallback(async (showRefreshIndicator = false) => {
-
-    if (showRefreshIndicator) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-    setError(null);
-    setErrorReason(null);
-
-    try {
-      const response = await getAllDispatchActivity({
-        fromDate: dateRange.from,
-        toDate: dateRange.to,
-      });
-
-      if (response.success && response.data) {
-        // Backend now filters by user permissions via auth.uid()
-        setAllCustomersData(response.data);
-      } else {
-        setErrorReason(response.message ?? null);
-        setError(LOAD_ERROR);
-      }
-    } catch (err) {
-      console.error('[DispatchActivity] Error fetching all customers data:', err);
-      setError(LOAD_ERROR);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [dateRange]);
-
-  // Fetch single customer dispatch activity (for drill-down or regular users)
-  const fetchSingleCustomerData = useCallback(async (customerId: string, showRefreshIndicator = false) => {
-
-    if (showRefreshIndicator) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-    setError(null);
-    setErrorReason(null);
-
-    try {
-      const response = await getCustomerDispatchActivity({
-        customerId,
-        fromDate: dateRange.from,
-        toDate: dateRange.to,
-      });
-
-      if (response.success && response.data) {
-        setData(response.data);
-      } else {
-        setErrorReason(response.message ?? null);
-        setError(LOAD_ERROR);
-      }
-    } catch (err) {
-      console.error('[DispatchActivity] Error fetching single customer data:', err);
-      setError(LOAD_ERROR);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [dateRange]);
-
-  // Initial data fetch
-  useEffect(() => {
-    // If we have route params, go directly to that customer (from Quick Access)
-    if (routeCustomerId) {
-      setViewMode('single');
-      setSelectedCustomer({
-        customer_id: routeCustomerId,
-        customer_name: routeCustomerName || '',
-        dispatch_count: 0,
-        total_quantity: 0,
-        total_weight: 0,
-      });
-      fetchSingleCustomerData(routeCustomerId);
-    } else if (shouldShowListView) {
-      // Staff users or regular users with multiple assigned customers start with list view
-      fetchAllCustomersData();
-    } else if (singleAssignedCustomerId) {
-      // Regular users with only one assigned customer go directly to that customer
-      fetchSingleCustomerData(singleAssignedCustomerId);
-    } else {
-      setError(NO_CUSTOMER_ERROR);
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Handle refresh based on current view
-  const handleRefresh = useCallback(() => {
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData(true);
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id, true);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId, true);
-    }
-  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  // Filtered customers based on search query
-  const filteredCustomers = useMemo(() => {
-    if (!allCustomersData?.by_customer) return [];
-    if (!customerSearchQuery.trim()) return allCustomersData.by_customer;
-    const q = customerSearchQuery.toLowerCase();
-    return allCustomersData.by_customer.filter((c) =>
-      c.customer_name.toLowerCase().includes(q),
-    );
-  }, [allCustomersData?.by_customer, customerSearchQuery]);
-
-  // Handle search autocomplete selection
-  const handleSearchSelect = useCallback(
-    (customer: { id: string; name: string }) => {
-      setSelectedCustomer({
-        customer_id: customer.id,
-        customer_name: customer.name,
-        dispatch_count: 0,
-        total_quantity: 0,
-        total_weight: 0,
-      } as CustomerDispatchRow);
-      setViewMode('single');
-      setData(null);
-      setCustomerSearchQuery('');
-      fetchSingleCustomerData(customer.id);
-    },
-    [fetchSingleCustomerData],
-  );
-
-  // Handle customer selection (drill-down)
-  const handleCustomerSelect = useCallback((customer: CustomerDispatchRow) => {
-    setSelectedCustomer(customer);
-    setViewMode('single');
-    setData(null); // Clear previous single-customer data
-    fetchSingleCustomerData(customer.customer_id);
-  }, [fetchSingleCustomerData]);
-
-  // Handle back to all-customers view
-  const handleBackToAll = useCallback(() => {
-    // If we came from route params (Quick Access), go back to previous screen
-    if (cameFromRouteParams.current) {
-      router.back();
-      return;
-    }
-    // Otherwise, go back to all-customers list view
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setViewMode('all');
-    setSelectedCustomer(null);
-    setData(null);
-    setExpandedDispatches(new Set());
-  }, []);
-
-  // Handle period change - refetch data with new date range
-  const handlePeriodChange = useCallback((period: ReportPeriod, range: { from: string; to: string }) => {
-    setSelectedPeriod(period);
-    setDateRange(range);
-  }, []);
-
-  // Refetch when the date range changes. The range the screen opened with is
-  // fetched by the effect above, so this one waits for another range.
-  const fetchedRange = React.useRef(dateRange);
-  useEffect(() => {
-    if (fetchedRange.current === dateRange) return;
-    fetchedRange.current = dateRange;
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData();
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId);
-    }
-  }, [dateRange]);
-
-  // Generate unique key for dispatch (disp_id may be undefined)
-  const getDispatchKey = useCallback((dispatch: DispatchActivityRecord, dateKey: string, index: number): string => {
-    return dispatch.disp_id || `${dispatch.disp_no}_${dateKey}_${index}`;
-  }, []);
-
-  const toggleDispatch = useCallback((dispatchKey: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedDispatches((prev) => {
-      const next = new Set(prev);
-      if (next.has(dispatchKey)) {
-        next.delete(dispatchKey);
-      } else {
-        next.add(dispatchKey);
-      }
-      return next;
-    });
-  }, []);
-
-  // Build KPI items for all-customers view
-  const allCustomersKpiItems: KPIItem[] = useMemo(() => {
-    if (!allCustomersData?.summary) return [];
-
-    const summary = allCustomersData.summary;
-    return [
-      {
-        icon: 'truck-delivery-outline',
-        value: summary.total_dispatches,
-        label: tr('reports.customerActivity.dispatches'),
-        variant: 'primary',
-      },
-      {
-        icon: 'package-variant',
-        value: summary.total_quantity,
-        label: tr('reports.dispatchActivity.bagsDispatched'),
-        variant: 'secondary',
-      },
-    ];
-  }, [allCustomersData?.summary]);
-
-  // Build KPI items for single-customer view
-  const singleCustomerKpiItems: KPIItem[] = useMemo(() => {
-    if (!data?.summary) return [];
-
-    const summary = data.summary;
-    return [
-      {
-        icon: 'truck-delivery-outline',
-        value: summary.total_dispatches,
-        label: tr('reports.customerActivity.dispatches'),
-        variant: 'secondary',
-      },
-      {
-        icon: 'package-variant',
-        value: summary.total_quantity,
-        label: tr('reports.dispatchActivity.bagsDispatched'),
-        variant: 'primary',
-      },
-    ];
-  }, [data?.summary]);
-
-  // Group dispatches by date
-  const groupedDispatches = useMemo(() => {
-    if (!data?.dispatches) return new Map();
-    return groupDispatchesByDate(data.dispatches);
-  }, [data?.dispatches]);
-
-  const getDateRangeSubtitle = (): string => {
-    return tr('reports.dispatchActivity.dateRange', {
-      from: formatDate(dateRange.from, 'medium'),
-      to: formatDate(dateRange.to, 'medium'),
-    });
-  };
-
-  // Retry after a failed load (same fetch as the current view, with the full loading state)
-  const handleRetry = useCallback(() => {
-    if (shouldShowListView && viewMode === 'all') {
-      fetchAllCustomersData();
-    } else if (selectedCustomer) {
-      fetchSingleCustomerData(selectedCustomer.customer_id);
-    } else if (singleAssignedCustomerId) {
-      fetchSingleCustomerData(singleAssignedCustomerId);
-    }
-  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
-
-  // Determine which view to show
-  const isListView = shouldShowListView && viewMode === 'all';
-  const hasData = isListView ? allCustomersData : data;
-
-  // Subtitle for list view
-  const listViewSubtitle = tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers');
-
-  const refreshControl = (
-    <RefreshControl
-      refreshing={isRefreshing}
-      onRefresh={handleRefresh}
-      colors={[t.brand.tint]}
-      tintColor={t.brand.tint}
-      progressBackgroundColor={t.surface.card}
-    />
-  );
-
-  // Loading skeleton
-  if (isLoading && !hasData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} onBack={scope.onChangeCustomer} />
-        <PeriodSelector
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={handlePeriodChange}
-        />
-        <View style={styles.loadingContainer}>
-          <KPIGrid
-            items={[
-              { icon: 'truck-delivery-outline', value: '-', label: tr('reports.customerActivity.dispatches'), variant: 'secondary' },
-              { icon: 'package-variant', value: '-', label: tr('reports.dispatchActivity.bagsDispatched'), variant: 'primary' },
-            ]}
-            isLoading={true}
-            compact
-          />
-        </View>
-      </View>
-    );
-  }
-
-  // Error state
-  if (error && !hasData) {
-    const canRetry = Boolean(
-      (shouldShowListView && viewMode === 'all') || selectedCustomer || singleAssignedCustomerId
-    );
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} onBack={scope.onChangeCustomer} />
-        <PeriodSelector
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={handlePeriodChange}
-        />
-        <ReportEmptyState
-          icon="alert-circle-outline"
-          tone="error"
-          message={tr('reports.dispatchActivity.errorTitle')}
-          description={errorReason ?? tr(error)}
-          actionLabel={canRetry ? tr('common.retry') : undefined}
-          onAction={canRetry ? handleRetry : undefined}
-        />
-      </View>
-    );
-  }
-
-  // List View (Staff sees all customers, regular users see their assigned customers)
-  if (isListView && allCustomersData) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} subtitle={listViewSubtitle} />
-
-        <PeriodSelector
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={handlePeriodChange}
-        />
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={refreshControl}
-        >
-          {/* KPI Summary */}
-          <KPIGrid items={allCustomersKpiItems} isLoading={isLoading} compact />
-
-          {/* Period Info */}
-          <View style={styles.periodInfo}>
-            <Text style={styles.periodText}>{getDateRangeSubtitle()}</Text>
-          </View>
-
-          {/* Customer Search */}
-          <View style={styles.section}>
-            <ReportCustomerSearch
-              searchQuery={customerSearchQuery}
-              onSearchChange={setCustomerSearchQuery}
-              onCustomerSelect={handleSearchSelect}
-              visibleCustomerIds={allCustomersData.by_customer.map((c) => c.customer_id)}
-            />
-          </View>
-
-          {/* Customers List */}
-          {filteredCustomers.length > 0 ? (
-            <View style={styles.section}>
-              <FioriSectionHeader title={tr('reports.dispatchActivity.customersWithDispatches')} />
-              <View style={styles.listCard}>
-                {filteredCustomers.map((customer, index) => (
-                  <React.Fragment key={customer.customer_id}>
-                    <ReportCustomerCard
-                      customerId={customer.customer_id}
-                      title={customer.customer_name}
-                      subtitle={formatCount(customer.dispatch_count, 'dispatch', 'dispatches')}
-                      value={customer.total_quantity}
-                      valueLabel={tr('reports.dispatchActivity.bagUnit', { count: customer.total_quantity })}
-                      onPress={() => handleCustomerSelect(customer)}
-                      accessibilityHint={tr('reports.dispatchActivity.customerHint')}
-                    />
-                    {index < filteredCustomers.length - 1 && (
-                      <View style={styles.divider} />
-                    )}
-                  </React.Fragment>
-                ))}
-              </View>
-            </View>
-          ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
-            <ReportEmptyState
-              icon="magnify-close"
-              message={tr('reports.dispatchActivity.noMatch', { search: customerSearchQuery.trim() })}
-              description={tr('reports.dispatchActivity.tryFewerLetters')}
-              actionLabel={tr('common.clearSearch')}
-              onAction={() => setCustomerSearchQuery('')}
-            />
-          ) : (
-            <ReportEmptyState
-              icon="truck-delivery-outline"
-              message={tr('reports.dispatchActivity.emptyTitle')}
-              description={tr('reports.dispatchActivity.emptyDescription')}
-            />
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // Single Customer View (for single-assigned users or drill-down from list view)
-  // Empty state
-  if (!data?.dispatches || data.dispatches.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ReportHeader
-          title={tr('reports.titles.dispatchActivity')}
-          subtitle={selectedCustomer?.customer_name || scope.customerName}
-          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
-        />
-        <PeriodSelector
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={handlePeriodChange}
-        />
-        <ReportEmptyState
-          icon="truck-delivery-outline"
-          message={tr('reports.dispatchActivity.emptyTitle')}
-          description={tr('reports.dispatchActivity.emptyCustomerDescription')}
-        />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <ReportHeader
-        title={tr('reports.titles.dispatchActivity')}
-        subtitle={selectedCustomer?.customer_name || scope.customerName || getDateRangeSubtitle()}
-        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
-      />
-
-      <PeriodSelector
-        selectedPeriod={selectedPeriod}
-        onPeriodChange={handlePeriodChange}
-      />
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={refreshControl}
-      >
-        {/* KPI Summary */}
-        <KPIGrid items={singleCustomerKpiItems} isLoading={isLoading} compact />
-
-        {/* Dispatches list, grouped by date */}
-        <View style={styles.section}>
-          {Array.from(groupedDispatches.entries()).map(([date, dispatches]) => (
-            <View key={date} style={styles.dateGroup}>
-              <FioriSectionHeader title={formatSectionDate(date)} />
-              <View style={styles.dispatchList}>
-                {dispatches.map((dispatch: DispatchActivityRecord, index: number) => {
-                  const dispatchKey = getDispatchKey(dispatch, date, index);
-                  return (
-                    <DispatchCard
-                      key={dispatchKey}
-                      dispatch={dispatch}
-                      isExpanded={expandedDispatches.has(dispatchKey)}
-                      onToggle={() => toggleDispatch(dispatchKey)}
-                    />
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
     </View>
   );
 }
