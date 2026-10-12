@@ -286,7 +286,14 @@ export async function beginFacilitySmsSignIn(origin: string, name: string): Prom
   return { kind: 'sms_offer' };
 }
 
-/** The answer of the last open has been shown (or acted on) by a screen. */
-export function consumeOpenOutcome(id: number): void {
-  if (getCentralState().outcome?.id === id) setCentralState({ outcome: null });
+/**
+ * A screen takes the answer of the last open to show it or act on it. True for the one
+ * caller that gets it; false when another screen has taken it already. Two My facilities
+ * can be mounted at once (one under the other in the stack) and both see the same answer
+ * in the same render: only the first to ask may navigate or show the message.
+ */
+export function consumeOpenOutcome(id: number): boolean {
+  if (getCentralState().outcome?.id !== id) return false;
+  setCentralState({ outcome: null });
+  return true;
 }

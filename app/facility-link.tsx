@@ -10,6 +10,7 @@ import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
 import { cancelFacilityLink, completeFacilityLink, resendFacilityLinkCode } from '@/config/openFacility';
+import { returnToMyFacilities } from '@/navigation/myFacilities';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { localizeDigits, t as tr } from '@/i18n';
@@ -28,8 +29,15 @@ export default function FacilityLinkScreen() {
 
   useEffect(() => {
     // Nothing to confirm (the screen was opened by a link): back to the list.
-    if (!hasLink && !finished.current) router.replace('/facilities');
+    if (!hasLink && !finished.current) returnToMyFacilities();
   }, [hasLink]);
+
+  // The hardware Back button, or anything else that takes this screen away before the
+  // facility has answered with a session or a waiting request, gives the linking step up
+  // exactly as the "My facilities" control below does: nothing is left to confirm.
+  useEffect(() => () => {
+    if (!finished.current) cancelFacilityLink();
+  }, []);
 
   const verify = async (code: string) => {
     if (verifying) return;
@@ -64,7 +72,8 @@ export default function FacilityLinkScreen() {
   const leave = () => {
     finished.current = true;
     cancelFacilityLink();
-    router.replace('/facilities');
+    // To the My facilities this step was opened from, not a second one on top of it.
+    returnToMyFacilities();
   };
 
   return (

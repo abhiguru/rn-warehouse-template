@@ -60,7 +60,8 @@ jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => nul
 jest.mock('@/config/openFacility', () => ({
   openFacility: jest.fn(async () => ({ kind: 'login' })),
   beginFacilitySmsSignIn: jest.fn(async () => ({ kind: 'sms_offer' })),
-  consumeOpenOutcome: jest.fn(),
+  // This My facilities is the one that takes the answer.
+  consumeOpenOutcome: jest.fn(() => true),
   completeFacilityLink: jest.fn(),
   resendFacilityLinkCode: jest.fn(),
   cancelFacilityLink: jest.fn(),
@@ -666,13 +667,16 @@ describe('the linking step', () => {
     await render(<FacilityLinkScreen />);
     expect(texts()).not.toContain('Wrong number?');
     await press(button('Back to My facilities'));
-    expect(router.replace).toHaveBeenCalledWith('/facilities');
+    // Back to the My facilities under this step, not a second one in its place.
+    expect(router.dismissTo).toHaveBeenCalledWith('/facilities');
+    expect(router.replace).not.toHaveBeenCalled();
   });
 
   it('with nothing to confirm it returns to My facilities', async () => {
     setCentralState({ pendingLink: null });
     await render(<FacilityLinkScreen />);
-    expect(router.replace).toHaveBeenCalledWith('/facilities');
+    expect(router.dismissTo).toHaveBeenCalledWith('/facilities');
+    expect(router.replace).not.toHaveBeenCalled();
     expect(resendFacilityLinkCode).not.toHaveBeenCalled();
   });
 });

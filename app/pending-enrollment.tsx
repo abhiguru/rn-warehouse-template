@@ -17,6 +17,7 @@ import {
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { setCentralState } from '@/config/centralState';
+import { returnToMyFacilities } from '@/navigation/myFacilities';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -81,9 +82,10 @@ export default function PendingEnrollmentScreen() {
     try {
       await signOutPendingEnrollment();
       if (centralLogin) {
-        // Back to My facilities, not to this facility's own sign-in.
+        // Back to My facilities, not to this facility's own sign-in: to the one this screen
+        // was opened from, not a second one on top of it.
         setCentralState({ facilitySmsOrigin: null });
-        router.replace('/facilities');
+        returnToMyFacilities();
       } else router.replace('/login');
     } catch {
       setLoading(false);

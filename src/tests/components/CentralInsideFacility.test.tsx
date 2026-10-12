@@ -30,7 +30,7 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), dismissTo: jest.fn() } }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
 jest.mock('@/config/operatorServer', () => ({
@@ -218,8 +218,9 @@ describe('the waiting screen once the facility has approved', () => {
     await act(async () => { setCentralState({ facilitySmsOrigin: 'https://north-cold.example.test' }); });
     await press('My facilities');
     expect(signOutPendingEnrollment).toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/facilities');
-    expect(router.replace).not.toHaveBeenCalledWith('/login');
+    // Back to the My facilities under this screen when there is one; never a second one on top.
+    expect(router.dismissTo).toHaveBeenCalledWith('/facilities');
+    expect(router.replace).not.toHaveBeenCalled();
     // Otherwise the guard would turn My facilities back into that facility's sign-in.
     expect(getCentralState().facilitySmsOrigin).toBeNull();
   });
@@ -229,5 +230,14 @@ describe('the waiting screen once the facility has approved', () => {
     await render(<PendingEnrollmentScreen />);
     expect(texts()).toContain('North Cold Store approved your access. Sign in again with a new code to continue.');
     expect(texts()).toContain('Sign in');
+  });
+
+  it('central login off: "Sign in" replaces the waiting screen with the facility sign-in, as before', async () => {
+    mockCentralOn = false;
+    await render(<PendingEnrollmentScreen />);
+    await press('Sign in');
+    expect(signOutPendingEnrollment).toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/login');
+    expect(router.dismissTo).not.toHaveBeenCalled();
   });
 });

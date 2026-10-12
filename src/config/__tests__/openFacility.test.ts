@@ -468,3 +468,25 @@ it('never throws: an unexpected error is a plain message too', async () => {
   });
   expect(getCentralState().opening).toBeNull();
 });
+
+describe('taking the answer of an open', () => {
+  it('only one screen gets it: the first to ask, and nobody after', async () => {
+    await openFacility(ORIGIN, NAME);
+    const published = getCentralState().outcome!;
+    // Two My facilities mounted at once ask in the same render, with the same answer.
+    expect(consumeOpenOutcome(published.id)).toBe(true);
+    expect(getCentralState().outcome).toBeNull();
+    expect(consumeOpenOutcome(published.id)).toBe(false);
+  });
+
+  it('an answer that has been replaced by a newer one is not taken, and the newer one stays', async () => {
+    await openFacility(ORIGIN, NAME);
+    const first = getCentralState().outcome!;
+    await openFacility(ORIGIN, NAME);
+    const second = getCentralState().outcome!;
+    expect(second.id).not.toBe(first.id);
+    expect(consumeOpenOutcome(first.id)).toBe(false);
+    expect(getCentralState().outcome).toBe(second);
+    expect(consumeOpenOutcome(second.id)).toBe(true);
+  });
+});

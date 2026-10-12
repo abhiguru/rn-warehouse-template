@@ -1,25 +1,36 @@
 /**
- * The root guard when useSegments() is behind the navigator (after a server change
- * rebuilt the navigation tree): with central login it goes by the route the navigator
- * really shows; without central login nothing changes.
+ * The root guard and the navigator's own state.
+ *
+ * useSegments() can be a render behind the navigator (after a server change rebuilt the
+ * navigation tree): with central login the guard goes by the route the navigator really
+ * shows. Entering a facility from a central screen takes the central screens off the
+ * stack. Without central login the navigator's state is not consulted and nothing changes.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { liveRootRoute, useRootRouteGuard } from '../RouteGuard';
+import { centralScreenBelow, liveRootRoute, myFacilitiesBelow, ROUTER_ROOT, useRootRouteGuard } from '../RouteGuard';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
 
 const mockReplace = jest.fn();
+const mockDismissAll = jest.fn();
+/** The router calls in the order the guard made them. */
+let mockCalls: string[] = [];
 let mockSegments: string[] = [];
 let mockRootState: unknown;
 let mockCentralOn = true;
+let mockAuth: { userProfile: unknown; session: unknown; user: unknown } = { userProfile: null, session: null, user: null };
 
 jest.mock('expo-router', () => {
-  const router = { replace: (...args: unknown[]) => mockReplace(...args) };
+  const router = {
+    replace: (href: string) => { mockCalls.push(`replace ${href}`); mockReplace(href); },
+    dismissAll: () => { mockCalls.push('dismissAll'); mockDismissAll(); },
+    dismissTo: (href: string) => { mockCalls.push(`dismissTo ${href}`); },
+  };
   const navigationRef = { isReady: () => true, addListener: () => () => undefined, getRootState: () => mockRootState };
   return { useRouter: () => router, useSegments: () => mockSegments, useNavigationContainerRef: () => navigationRef };
 });
 jest.mock('@/store/hooks', () => ({
-  useAppSelector: (select: (state: unknown) => unknown) => select({ auth: { userProfile: null, session: null, user: null } }),
+  useAppSelector: (select: (state: unknown) => unknown) => select({ auth: mockAuth }),
 }));
 jest.mock('@/hooks/useTheme', () => ({ useTokens: () => ({ background: { base: 'bg' }, brand: { tint: 'tint' } }) }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
@@ -31,6 +42,9 @@ const rootState = (...names: string[]) => ({
   routes: [{ name: '__root', state: { index: names.length - 1, routes: names.map(name => ({ name })) } }],
 });
 
+const STAFF = { id: 'profile-1', role: 'staff' };
+const CUSTOMER = { id: 'profile-1', role: 'customer' };
+
 function Root() {
   useRootRouteGuard(true);
   return null;
@@ -39,16 +53,32 @@ let renderer: ReactTestRenderer | undefined;
 const render = async () => {
   await act(async () => { renderer = create(<Root />); });
 };
+const rerender = async () => {
+  await act(async () => { renderer!.update(<Root />); });
+};
 
 beforeEach(() => {
   mockReplace.mockReset();
+  mockDismissAll.mockReset();
+  mockCalls = [];
   mockCentralOn = true;
+  mockAuth = { userProfile: null, session: null, user: null };
+  mockRootState = undefined;
   resetCentralStateForTests();
   setCentralState({ status: 'signedIn', user: USER });
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer!.unmount());
   renderer = undefined;
+});
+
+describe("expo-router's wrapper route", () => {
+  it('is still named as the guard expects (a change in expo-router must be followed in RouteGuard.tsx)', () => {
+    // Read from the package itself, not from the mock above.
+    const { INTERNAL_SLOT_NAME } = jest.requireActual('expo-router/build/constants');
+    expect(typeof INTERNAL_SLOT_NAME).toBe('string');
+    expect(ROUTER_ROOT).toBe(INTERNAL_SLOT_NAME);
+  });
 });
 
 describe('liveRootRoute', () => {
@@ -99,5 +129,123 @@ describe('segments behind the navigator', () => {
     mockRootState = rootState('login');
     await render();
     expect(mockReplace).toHaveBeenCalledWith('/login');
+  });
+});
+
+describe('centralScreenBelow', () => {
+  it('is true when My facilities or central sign-in lies under the route that is shown', () => {
+    expect(centralScreenBelow(rootState('facilities', 'facility-link') as never)).toBe(true);
+    expect(centralScreenBelow(rootState('central-login', 'facilities') as never)).toBe(true);
+    expect(centralScreenBelow(rootState('facilities', '(tabs)') as never)).toBe(true);
+  });
+  it('is false for a single route, for facility screens only, and when nothing can be read', () => {
+    expect(centralScreenBelow(rootState('facilities') as never)).toBe(false);
+    expect(centralScreenBelow(rootState('(tabs)', 'settings', 'grn-details/[id]') as never)).toBe(false);
+    expect(centralScreenBelow(rootState('login', 'otp') as never)).toBe(false);
+    expect(centralScreenBelow(undefined)).toBe(false);
+  });
+});
+
+describe('a refused screen on top of My facilities', () => {
+  it('myFacilitiesBelow: true only when My facilities lies under the route that is shown', () => {
+    expect(myFacilitiesBelow(rootState('facilities', 'login') as never)).toBe(true);
+    expect(myFacilitiesBelow(rootState('facilities') as never)).toBe(false);
+    expect(myFacilitiesBelow(rootState('login', 'facilities') as never)).toBe(false);
+    expect(myFacilitiesBelow(undefined)).toBe(false);
+  });
+
+  it("the facility's sign-in over My facilities: back to that My facilities, not a second one", async () => {
+    mockSegments = ['login'];
+    mockRootState = rootState('facilities', 'login');
+    await render();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
+  it('with no My facilities under the refused screen it is replaced, as before', async () => {
+    mockSegments = ['login'];
+    mockRootState = rootState('login');
+    await render();
+    expect(mockCalls).toEqual(['replace /facilities']);
+  });
+});
+
+describe('a facility session and the central screens', () => {
+  it('a facility session while the navigator shows My facilities: the facility is entered', async () => {
+    mockAuth = { userProfile: STAFF, session: null, user: null };
+    mockSegments = ['facilities'];
+    mockRootState = rootState('facilities');
+    await render();
+    // My facilities alone in the stack: replacing it is all it takes.
+    expect(mockCalls).toEqual(['replace /']);
+  });
+
+  it('a facility session on the code step: the central screens under it are left first, then the facility is entered', async () => {
+    mockAuth = { userProfile: STAFF, session: null, user: null };
+    mockSegments = ['facility-link'];
+    mockRootState = rootState('facilities', 'facility-link');
+    await render();
+    expect(mockCalls).toEqual(['dismissAll', 'replace /']);
+  });
+
+  it('inside a facility a refused screen is replaced by home, and nothing else is taken off the stack', async () => {
+    mockAuth = { userProfile: CUSTOMER, session: null, user: null };
+    mockSegments = ['users'];
+    mockRootState = rootState('(tabs)', 'settings', 'users');
+    await render();
+    expect(mockCalls).toEqual(['replace /']);
+  });
+
+  it('a central sign-out while the navigator shows a facility route: central sign-in', async () => {
+    mockAuth = { userProfile: STAFF, session: null, user: null };
+    mockSegments = ['(tabs)'];
+    mockRootState = rootState('(tabs)');
+    await render();
+    expect(mockCalls).toEqual([]);
+
+    // Signing out centrally also ends the facility session.
+    mockAuth = { userProfile: null, session: null, user: null };
+    await act(async () => { setCentralState({ status: 'signedOut', user: null }); });
+    expect(mockCalls).toEqual(['replace /central-login']);
+  });
+});
+
+describe('when the guard acts', () => {
+  // The effect runs on a new decision, a new path or readiness, and on nothing else: a
+  // profile that changes while the decision and the path stay the same asks for nothing new.
+  it('central login off: a changed role with the same decision and path does not replace again', async () => {
+    mockCentralOn = false;
+    mockAuth = { userProfile: CUSTOMER, session: null, user: null };
+    mockSegments = ['users'];
+    mockRootState = rootState('(tabs)', 'users');
+    await render();
+    expect(mockCalls).toEqual(['replace /']);
+
+    // Still a role that is not offered the screen: the decision is "home" as before.
+    mockAuth = { userProfile: { id: 'profile-1', role: 'staff' }, session: null, user: null };
+    await rerender();
+    expect(mockCalls).toEqual(['replace /']);
+    expect(mockDismissAll).not.toHaveBeenCalled();
+  });
+
+  it('central login off: entering after sign-in replaces the sign-in screen only, as before', async () => {
+    mockCentralOn = false;
+    mockAuth = { userProfile: STAFF, session: null, user: null };
+    mockSegments = ['login'];
+    // Even a state that names central screens is not read without central login.
+    mockRootState = rootState('facilities', 'login');
+    await render();
+    expect(mockCalls).toEqual(['replace /']);
+  });
+
+  it('central login on: a changed role with the same decision and path does not replace again either', async () => {
+    mockAuth = { userProfile: CUSTOMER, session: null, user: null };
+    mockSegments = ['users'];
+    mockRootState = rootState('(tabs)', 'users');
+    await render();
+    expect(mockCalls).toEqual(['replace /']);
+
+    mockAuth = { userProfile: { id: 'profile-1', role: 'staff' }, session: null, user: null };
+    await rerender();
+    expect(mockCalls).toEqual(['replace /']);
   });
 });

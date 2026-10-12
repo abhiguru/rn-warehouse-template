@@ -76,8 +76,8 @@ export default function FacilitiesScreen() {
   // rebuilds the navigation tree and the screen that started it may be gone.
   const outcome = central.outcome;
   useEffect(() => {
-    if (!outcome) return;
-    consumeOpenOutcome(outcome.id);
+    // Taken by one screen only: a second My facilities in the stack sees the same answer.
+    if (!outcome || !consumeOpenOutcome(outcome.id)) return;
     const { origin, name } = outcome;
     const result = outcome.outcome;
     // `login` needs nothing here: the profile is in the store and the route guard enters the facility.

@@ -219,6 +219,25 @@ list and is opened.
 
 Every refusal is a message on My facilities; the person is never left on a raw error.
 
+**The ways back.** The waiting screen and the code step are opened on top of My facilities,
+and every way back returns to that same My facilities:
+
+| From | Hardware Back | The screen's "My facilities" |
+|---|---|---|
+| Waiting for approval | My facilities, tag Requested. Nothing is sent; the waiting-screen token stays until the next open or facility change deals with it | The same My facilities, tag Requested; the waiting-screen token is signed out at the facility first, as before |
+| The code step | My facilities, tag Confirm number; the pending link is forgotten | The same, by the same steps |
+| The facility's home | Nothing central is under it, after a correct code as after a plain open: the root stack holds the facility only | |
+
+Both controls go back to the My facilities under the screen (`returnToMyFacilities` in
+`src/navigation/myFacilities.ts`); replacing the screen would leave two, both mounted. Where
+none is under the screen (the waiting screen after a facility's own SMS sign-in, with that
+facility's sign-in under it) My facilities takes the screen's place. The route guard does
+the same for a refused screen on top of My facilities, and when a facility session arrives
+on the code step it takes the central screens off the stack before entering the facility.
+An answer of an open is taken by exactly one screen (`consumeOpenOutcome` answers true
+once), so a second My facilities, however it came about, cannot open a second waiting
+screen or repeat a message.
+
 **Inside a facility.** Settings shows "Switch facility" with the facility's name in place of
 "Change warehouse server"; it asks first and then leaves through the same cleanup, ending
 with no selected server. "Sign out" in Settings signs out of that facility only and returns
@@ -274,8 +293,8 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   guard therefore goes by the navigator's own route before it replaces anything, so it does
   not undo the waiting screen or the linking step that My facilities has just opened
   (phone report 2026-10-12). `src/tests/navigation/CentralOpenRemount.test.tsx` runs that
-  hand-over through the real router, route guard and screens; it has not been re-run on a
-  device since the fix.
+  hand-over through the real router, route guard and screens, and the ways back from the
+  waiting screen and the code step; none of it has been re-run on a device since the fixes.
 - The Gujarati text is a draft for the owner's wording review.
 
 ## Open questions

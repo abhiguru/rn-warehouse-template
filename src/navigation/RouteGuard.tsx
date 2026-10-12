@@ -14,7 +14,7 @@
  * `GuardedScreen` keeps its spinner in place of the refused screen.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useNavigationContainerRef, useRouter, useSegments } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
@@ -22,27 +22,63 @@ import { useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { useCentralState } from '@/hooks/useCentralState';
-import { decideRoute, isPublicRoute, type RouteAuthState, type RouteDecision } from './routeAccess';
+import {
+  CENTRAL_ROUTES,
+  CENTRAL_SIGN_IN_ROUTES,
+  decideRoute,
+  isPublicRoute,
+  routeParts,
+  type RouteAuthState,
+  type RouteDecision,
+} from './routeAccess';
 
 /** A navigation state as far as the guard reads it. */
 type RootState = { index?: number; routes: ReadonlyArray<{ name: string; state?: RootState }> };
 
-/** expo-router's own wrapper route around the root layout (INTERNAL_SLOT_NAME in expo-router). */
-const ROUTER_ROOT = '__root';
+/**
+ * expo-router's own wrapper route around the root layout (INTERNAL_SLOT_NAME in
+ * expo-router/build/constants). Written out here so that the app does not import from the
+ * package's build folder; RouteGuardLiveRoute.test.tsx fails when the two differ.
+ */
+export const ROUTER_ROOT = '__root';
 
 /**
- * The route the root stack shows right now, read from the navigator itself: "facilities",
- * "(tabs)", "grn-details/[id]". Undefined when it cannot be read.
+ * The app's root stack as the navigator holds it right now: its route names, bottom first
+ * ("facilities", "(tabs)", "grn-details/[id]"), and which one is shown. Undefined when it
+ * cannot be read.
  */
-export function liveRootRoute(state: RootState | undefined): string | undefined {
+function liveRootStack(state: RootState | undefined): { names: string[]; index: number } | undefined {
   let current = state;
   while (current && current.routes.length > 0) {
-    const route = current.routes[current.index ?? current.routes.length - 1];
+    const index = current.index ?? current.routes.length - 1;
+    const route = current.routes[index];
     if (!route) return undefined;
-    if (route.name !== ROUTER_ROOT) return route.name;
+    if (route.name !== ROUTER_ROOT) return { names: current.routes.map((entry) => entry.name), index };
     current = route.state;
   }
   return undefined;
+}
+
+/** The route the root stack shows right now, read from the navigator itself. */
+export function liveRootRoute(state: RootState | undefined): string | undefined {
+  const stack = liveRootStack(state);
+  return stack?.names[stack.index];
+}
+
+/** True when a central login screen lies in the root stack under the route that is shown. */
+export function centralScreenBelow(state: RootState | undefined): boolean {
+  const stack = liveRootStack(state);
+  if (!stack) return false;
+  return stack.names.slice(0, stack.index).some((name) => {
+    const [first] = routeParts(name);
+    return first !== undefined && (CENTRAL_ROUTES.includes(first) || CENTRAL_SIGN_IN_ROUTES.includes(first));
+  });
+}
+
+/** True when My facilities lies in the root stack under the route that is shown. */
+export function myFacilitiesBelow(state: RootState | undefined): boolean {
+  const stack = liveRootStack(state);
+  return stack !== undefined && stack.names.slice(0, stack.index).includes('facilities');
 }
 
 export function useRouteAuthState(): RouteAuthState {
@@ -104,29 +140,59 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
       })
     : 'allow';
 
+  // What the effect below reads besides its dependencies: the navigator, and the sign-in
+  // state of this render. Held in a ref so that the effect runs exactly when it always has
+  // (a new decision, a new path, the navigator becoming ready), with or without central login.
+  const live = useRef({ navigationRef, isSignedIn, role, centralSignedIn, facilitySms });
   useEffect(() => {
-    if (!navigationReady) return;
-    if (decision === 'allow') return;
-    // Central login: a server change rebuilds the navigation tree, and the guard's first
-    // replace then brings in My facilities while useSegments() still names the route the
-    // stack started on. Replacing again from that stale name would throw away what the new
-    // screen has just asked for (the waiting screen, the linking step). The navigator's own
-    // route is what is shown: when that one is allowed, the segments are only behind and
-    // this effect runs again once they catch up.
-    if (centralSignedIn !== undefined) {
-      const live = liveRootRoute(navigationRef.getRootState?.() as RootState | undefined);
+    live.current = { navigationRef, isSignedIn, role, centralSignedIn, facilitySms };
+  });
+
+  useEffect(() => {
+    if (!navigationReady || decision === 'allow') return;
+    const now = live.current;
+    // Without central login the navigator's state is not consulted: the lines below this
+    // block are all there is, as before.
+    let leaveCentralScreens = false;
+    let backToMyFacilities = false;
+    if (now.centralSignedIn !== undefined) {
+      const rootState = now.navigationRef.getRootState?.() as RootState | undefined;
+      // A server change rebuilds the navigation tree, and the guard's first replace then
+      // brings in My facilities while useSegments() still names the route the stack started
+      // on. Replacing again from that stale name would throw away what the new screen has
+      // just asked for (the waiting screen, the linking step). The navigator's own route is
+      // what is shown: when that one is allowed, the segments are only behind and this
+      // effect runs again once they catch up.
+      const shown = liveRootRoute(rootState);
       if (
-        live !== undefined &&
-        decideRoute(live, { isSignedIn, role, central: { signedIn: centralSignedIn, facilitySms: Boolean(facilitySms) } }) === 'allow'
+        shown !== undefined &&
+        decideRoute(shown, {
+          isSignedIn: now.isSignedIn,
+          role: now.role,
+          central: { signedIn: now.centralSignedIn, facilitySms: Boolean(now.facilitySms) },
+        }) === 'allow'
       )
         return;
+      // A facility session has arrived on a central screen (the code step after a correct
+      // code): replacing only that screen would leave My facilities under the facility's
+      // home, where Back would show a spinner and then home again.
+      leaveCentralScreens = decision === 'home' && centralScreenBelow(rootState);
+      // A refused screen on top of My facilities (the waiting screen that found no request
+      // to wait for and left for the facility's sign-in): go back to the My facilities
+      // under it. Replacing would put a second one on top, both mounted.
+      backToMyFacilities = decision === 'facilities' && myFacilitiesBelow(rootState);
     }
     if (decision === 'login') router.replace('/login');
-    else if (decision === 'home') router.replace('/');
-    else if (decision === 'centralLogin') router.replace('/central-login');
-    else if (decision === 'facilities') router.replace('/facilities');
+    else if (decision === 'home') {
+      if (leaveCentralScreens) router.dismissAll();
+      router.replace('/');
+    } else if (decision === 'centralLogin') router.replace('/central-login');
+    else if (decision === 'facilities') {
+      if (backToMyFacilities) router.dismissTo('/facilities');
+      else router.replace('/facilities');
+    }
     // `path` is listed so a second refused route is replaced as well.
-  }, [decision, path, router, navigationReady, navigationRef, isSignedIn, role, centralSignedIn, facilitySms]);
+  }, [decision, path, router, navigationReady]);
 
   return decision;
 }
