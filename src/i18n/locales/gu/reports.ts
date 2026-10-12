@@ -50,6 +50,15 @@ export const reports: Translation<typeof source> = {
     lastOpened: 'છેલ્લે ખોલેલ',
     lastOpenedCustomer: 'છેલ્લે ખોલેલ: {{name}}',
   },
+  hub: {
+    pinned: 'પિન કરેલા',
+    recent: 'તાજેતરના',
+    movement: 'આવક-જાવક',
+    financial: 'નાણાકીય',
+    operations: 'કામગીરી',
+    pin: '{{title}} ઉપર પિન કરો',
+    unpin: '{{title}} અનપિન કરો',
+  },
   sort: {
     grns: 'આવક પાવતી',
     latestGrn: 'છેલ્લી આવક પાવતી',

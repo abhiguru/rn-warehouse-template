@@ -49,6 +49,16 @@ export const reports = {
     lastOpened: 'Last opened',
     lastOpenedCustomer: 'Last opened: {{name}}',
   },
+  // The Reports tab (app/(tabs)/reports.tsx). The Stock section is `common.stock`.
+  hub: {
+    pinned: 'Pinned',
+    recent: 'Recent',
+    movement: 'Movement',
+    financial: 'Financial',
+    operations: 'Operations',
+    pin: 'Pin {{title}} to the top',
+    unpin: 'Unpin {{title}}',
+  },
   // Sort options and filters of the report screens (src/features/filters/configs/reports)
   sort: {
     grns: 'GRNs',

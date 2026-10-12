@@ -16,6 +16,16 @@ export { PeriodSelector, getDateRangeForPeriod } from './PeriodSelector';
 export { ReportScaffold, type ReportScaffoldProps } from './ReportScaffold';
 export { ReportStatusLine, type ReportStatusLineProps } from './ReportStatusLine';
 
+// The Reports tab
+export { ReportHubRow, type ReportHubRowProps } from './ReportHubRow';
+export {
+  reportHubSections,
+  mayOpenReport,
+  HUB_RECENT_LIMIT,
+  type ReportHubSection,
+  type ReportHubSectionId,
+} from './reportHubSections';
+
 // States
 export { ReportEmptyState } from './ReportEmptyState';
 
