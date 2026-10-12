@@ -535,7 +535,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
 
     const a11y = carriesLabel
       ? { accessible: true, accessibilityLabel: rowSummary(row) }
-      : { accessible: false, importantForAccessibility: 'no-hide-descendants' as const };
+      : { accessible: false, importantForAccessibility: 'no-hide-descendants' as const, accessibilityElementsHidden: true };
 
     if (selectable || onRowPress) {
       return (
@@ -570,7 +570,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
       ? undefined
       : carriesLabel
         ? { accessible: true, accessibilityLabel: summary }
-        : { accessible: false, importantForAccessibility: 'no-hide-descendants' as const };
+        : { accessible: false, importantForAccessibility: 'no-hide-descendants' as const, accessibilityElementsHidden: true };
     return (
       <View style={[styles.totalsRow, { height: rowHeight }]} {...a11y}>
         {pinned && selectable && <View style={styles.controlCell} />}
@@ -622,7 +622,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
     ) : null;
 
   const fade = showFade ? (
-    <View style={styles.fade} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants">
+    <View style={styles.fade} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       {FADE_STEPS.map(opacity => (
         <View key={opacity} style={[styles.fadeStep, { opacity }]} />
       ))}

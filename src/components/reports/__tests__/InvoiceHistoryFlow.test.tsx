@@ -1399,6 +1399,52 @@ describe('invoice history: Paid is the money received and Pending is what is sti
   });
 });
 
+// A server before backend migration 61 counts an invoice once per payment in its summary (an invoice paid in
+// two parts is 2 in `total_invoices`). The service gives the screen one row per invoice (the service module is
+// a stand-in here, tested in invoiceHistoryService.test.ts), and the Invoices tile of one customer counts that
+// list, never the summary. The all-customers level keeps the server's aggregate.
+describe('invoice history, one customer: the Invoices tile counts the invoices listed', () => {
+  const withSummaryCount = (count: number) =>
+    ({ ...answerInvoices, data: { ...answerInvoices.data, summary: { ...answerInvoices.data.summary, total_invoices: count } } }) as never;
+
+  it('shows the 4 invoices of the list, not the 6 the server\'s summary counts', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(withSummaryCount(6));
+    const screen = await open(makeStore());
+    expect(tiles(screen)).toEqual(['Invoices: 4', 'Paid (2): ₹17,000', 'Pending (2): ₹22,000']);
+    expect(screen.texts()).not.toContain('6');
+    expect(screen.invoiceRows()).toEqual(BY_DATE);
+  });
+
+  it('shows the 4 invoices of the list when the server\'s summary counts fewer', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(withSummaryCount(1));
+    const screen = await open(makeStore());
+    expect(tiles(screen)[0]).toBe('Invoices: 4');
+  });
+
+  it('keeps counting every invoice of the period when the Payment choice or the search narrows the list', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(withSummaryCount(6));
+    const screen = await open(makeStore());
+
+    await screen.press('Filter by payment');
+    await screen.press('Paid');
+    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
+    expect(tiles(screen)[0]).toBe('Invoices: 4');
+
+    await screen.press('Clear all filters and the search');
+    await screen.search('0050');
+    expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0050']);
+    expect(tiles(screen)[0]).toBe('Invoices: 4');
+  });
+
+  it('leaves the all-customers level to the server\'s aggregate: 27 invoices, as it counts them', async () => {
+    const screen = await open(makeStore());
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Invoices', '27']));
+  });
+});
+
 const MODES: Mode[] = ['light', 'dark'];
 // ---------------------------------------------------------------------------
 // The report PDF

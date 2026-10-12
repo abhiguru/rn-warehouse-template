@@ -15,12 +15,17 @@
  * `available` turns false once the facility's server has answered that it has
  * no generate-report-pdf (a backend older than the release with migrations
  * 52-53), so the screen can hide its export action instead of failing on every
- * tap. That answer is remembered per facility server in a module-level Set, in
- * memory only. A later successful export does not clear it within a run: once it
- * is set the action is hidden, and an export with a fallback goes straight to the
- * fallback (see `makePdf`), so no report PDF request reaches that server again.
- * Only a relaunch of the app empties the Set, and a facility that updates its
- * server is offered the export again then.
+ * tap. That answer is remembered per facility, by its origin and its instance
+ * (`facilityKey`, as the item list's sort is), in a module-level Set, in memory
+ * only: an instance that replaces another at the same origin is asked afresh.
+ * A later successful export does not clear it within a run: once it is set the
+ * action is hidden, and an export with a fallback goes straight to the fallback
+ * (see `makePdf`), so no report PDF request reaches that instance again. Only a
+ * relaunch of the app empties the Set, and a facility that updates its server
+ * without changing its instance is offered the export again then.
+ *
+ * The file is named after the customer as the function names it in its answer
+ * (`document.customer`, the name printed in the PDF), else as the screen does.
  *
  * A screen whose report the facility could already share before
  * generate-report-pdf (one customer's stock summary, generate-customer-stock-pdf)
@@ -29,9 +34,9 @@
  * action stays `available`; actions without a fallback are still left out.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { getCurrentConfig } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
 import { generateReportPDF, isPeriodReport, type ReportPdfDocument, type ReportPdfRequest } from '@/services/pdf-service';
+import { facilityKey } from '@/services/stock-service';
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
@@ -41,24 +46,25 @@ import { reportById } from './reportRegistry';
 const log = createLogger('reportExport');
 
 // ---------------------------------------------------------------------------
-// Servers without generate-report-pdf, for this run of the app.
+// Facilities without generate-report-pdf, for this run of the app.
 // ---------------------------------------------------------------------------
 
-const outdatedServers = new Set<string>();
+const outdatedFacilities = new Set<string>();
 const listeners = new Set<() => void>();
 
-function currentServer(): string {
+/** The facility in use, by origin and instance; '' when it cannot be told. */
+function currentFacility(): string {
   try {
-    return getCurrentConfig().url;
+    return facilityKey();
   } catch {
     return '';
   }
 }
 
-function noteServer(server: string, outdated: boolean): void {
-  if (outdated === outdatedServers.has(server)) return;
-  if (outdated) outdatedServers.add(server);
-  else outdatedServers.delete(server);
+function noteFacility(facility: string, outdated: boolean): void {
+  if (outdated === outdatedFacilities.has(facility)) return;
+  if (outdated) outdatedFacilities.add(facility);
+  else outdatedFacilities.delete(facility);
   listeners.forEach(listener => listener());
 }
 
@@ -69,11 +75,11 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-const exportAvailable = () => !outdatedServers.has(currentServer());
+const exportAvailable = () => !outdatedFacilities.has(currentFacility());
 
-/** For tests: forget every server remembered as outdated, as an app restart does. */
+/** For tests: forget every facility remembered as outdated, as an app restart does. */
 export function resetReportExportAvailability(): void {
-  outdatedServers.clear();
+  outdatedFacilities.clear();
   listeners.forEach(listener => listener());
 }
 
@@ -103,7 +109,10 @@ export function reportFilenamePart(text: string | null | undefined): string {
 export interface ReportExportNameParts {
   /** The report's title as the screen shows it; the report's own title when absent. */
   title?: string;
-  /** The customer's name as the screen shows it; not used at the all-customers level. */
+  /**
+   * The customer's name as the screen shows it, which is the facility's (useReportScope) and
+   * never a route's; not used at the all-customers level.
+   */
   customerName?: string | null;
 }
 
@@ -128,6 +137,15 @@ export function reportPdfFilename(request: ReportPdfRequest, parts: ReportExport
   return `${pieces.join('_')}.pdf`;
 }
 
+/**
+ * The names for the file of a PDF that was made: the customer as the function
+ * named it in its answer when that gives the file name a part, else as the
+ * screen names it. (A fallback PDF comes with no answer of this kind.)
+ */
+function namePartsOf(document: ReportPdfDocument | undefined, parts: ReportExportNameParts = {}): ReportExportNameParts {
+  return reportFilenamePart(document?.customer) ? { ...parts, customerName: document?.customer } : parts;
+}
+
 // ---------------------------------------------------------------------------
 // Making the PDF
 // ---------------------------------------------------------------------------
@@ -140,25 +158,25 @@ interface MadePdf {
 
 /**
  * The PDF made, or undefined after the failure has been shown.
- * On a server known to lack generate-report-pdf an export with a fallback goes
- * straight to it; a server that answers so now is remembered (actions without a
+ * On a facility known to lack generate-report-pdf an export with a fallback goes
+ * straight to it; a facility that answers so now is remembered (actions without a
  * fallback are then left out) and the fallback is asked instead.
  */
 async function makePdf(
   request: ReportPdfRequest,
-  server: string,
+  facility: string,
   fallback: (() => Promise<ReportExportFallbackResult>) | undefined
 ): Promise<MadePdf | undefined> {
-  if (fallback && outdatedServers.has(server)) return fallbackPdf(request, fallback);
+  if (fallback && outdatedFacilities.has(facility)) return fallbackPdf(request, fallback);
   const result = await generateReportPDF(request);
   if (result.success && result.pdfUrl) {
-    noteServer(server, false);
+    noteFacility(facility, false);
     return { pdfUrl: result.pdfUrl, document: result.document };
   }
   // The reason only: never the customer, the URL or the server's text.
   log.warn('Report PDF not created', { report: request.report, reason: result.reason });
   if (result.reason === 'server-outdated') {
-    noteServer(server, true);
+    noteFacility(facility, true);
     if (fallback) return fallbackPdf(request, fallback);
   }
   showAlert(t('reports.export.failedTitle'), result.error ?? t('common.checkConnection'));
@@ -262,11 +280,11 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
     if (!request) return;
     running.current = true;
     setBusy(true);
-    const server = currentServer();
+    const facility = currentFacility();
     try {
-      const made = await makePdf(request, server, fallback);
+      const made = await makePdf(request, facility, fallback);
       if (!made) return;
-      const filename = reportPdfFilename(request, latest.current.filenameParts?.());
+      const filename = reportPdfFilename(request, namePartsOf(made.document, latest.current.filenameParts?.()));
       noteTruncated(made.document);
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
       if (!shared.success) {

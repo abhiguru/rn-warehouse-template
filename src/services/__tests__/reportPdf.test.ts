@@ -251,93 +251,74 @@ describe("the payment status of one customer's invoice history", () => {
 
 describe('a server that does not know the payment status', () => {
   const withStatus: ReportPdfRequest = { ...invoiceRequest, status: 'paid' };
-  const document = { type: 'report', report: 'invoice-history', rows_count: 4, rows_total: 4, truncated: false, sort: { field: 'date', order: 'desc' } };
+  const FILTER_NEEDS_UPDATE =
+    "This facility's server can't filter the PDF by payment yet. Remove the Payment filter to share all the invoices, or ask for a server update.";
 
-  it('is asked again once without it, and the PDF of all the invoices is returned, not marked as an outdated server', async () => {
+  it('is refused with its own reason and message after one request, and no PDF of all the invoices is asked for', async () => {
+    // A second answer is ready, as the old retry would have found it: the new code must not use it.
     jest
       .mocked(fetch)
       .mockResolvedValueOnce(refusal(UNKNOWN_FIELD))
-      .mockResolvedValueOnce(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600, document }));
+      .mockResolvedValueOnce(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
     const result = await generateReportPDF(withStatus);
 
-    expect(result).toEqual({ success: true, pdfUrl: SIGNED_URL, expiresIn: 3600, document });
-    expect(result.reason).toBeUndefined();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ success: false, reason: 'filter-unsupported', error: FILTER_NEEDS_UPDATE });
+    expect(result.pdfUrl).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(bodyOf(0)).toMatchObject({ status: 'paid' });
-    // The second request is the first without `status`, field for field.
-    const { status, ...first } = bodyOf(0);
-    expect(status).toBe('paid');
-    expect(bodyOf(1)).toEqual(first);
-    expect(bodyOf(1)).not.toHaveProperty('status');
-    expect(jest.mocked(fetch).mock.calls[1][0]).toBe('https://warehouse.example.test/functions/v1/generate-report-pdf');
-    expect(jest.mocked(fetch).mock.calls[1][1]).toMatchObject({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fictional-access-credential' },
-    });
   });
 
-  it("logs one line for it, with nothing of the request, the customer or the server's text", async () => {
-    jest.mocked(fetch).mockResolvedValueOnce(refusal(UNKNOWN_FIELD)).mockResolvedValueOnce(answer(200, { success: true, pdf_url: SIGNED_URL }));
-    await generateReportPDF(withStatus);
-    const logged = logs.flatMap(log => log.mock.calls);
-    expect(logged).toHaveLength(1);
-    const line = JSON.stringify(logged);
-    expect(line).toContain('payment status');
-    for (const secret of [CUSTOMER_ID, 'fictional-access-credential', 'fictional-private-link', UNKNOWN_FIELD, '2026-09-01']) {
-      expect(line).not.toContain(secret);
-    }
-  });
-
-  it('fails as it does now when the second answer is the same refusal, and does not ask a third time', async () => {
+  it.each(['paid', 'pending'] as const)('is refused the same way for the "%s" choice', async status => {
     jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
-    expect(await generateReportPDF(withStatus)).toEqual({
-      success: false,
-      reason: 'not-accepted',
-      error: "The server didn't accept this request. Update the app and try again.",
-    });
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(bodyOf(1)).not.toHaveProperty('status');
-    // Only the retry is logged.
-    expect(logs.flatMap(log => log.mock.calls)).toHaveLength(1);
+    expect((await generateReportPDF({ ...invoiceRequest, status })).reason).toBe('filter-unsupported');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).toHaveProperty('status', status);
   });
 
-  it.each([
-    [401, 'Invalid or expired access token', 'session'],
-    [403, 'Report not available to this account', 'forbidden'],
-    [404, 'Customer unavailable', 'customer-unavailable'],
-    [400, 'The period must not be longer than 450 days', 'period-too-long'],
-    [503, 'Document storage unavailable', 'server-unavailable'],
-  ] as const)('shows the normal failure when the second answer is %i "%s"', async (status, message, reason) => {
-    jest.mocked(fetch).mockResolvedValueOnce(refusal(UNKNOWN_FIELD)).mockResolvedValueOnce(refusal(message, status));
-    expect((await generateReportPDF(withStatus)).reason).toBe(reason);
-    expect(fetch).toHaveBeenCalledTimes(2);
+  it('is not the outdated-server reason, so the other exports are not hidden', async () => {
+    jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
+    const result = await generateReportPDF(withStatus);
+    expect(result.reason).not.toBe('server-outdated');
+    expect(result.error).not.toBe("This facility's server needs an update before reports can be shared as PDF.");
   });
 
-  it('says the connection failed when the second request gets no answer', async () => {
-    jest.mocked(fetch).mockResolvedValueOnce(refusal(UNKNOWN_FIELD)).mockRejectedValueOnce(new TypeError('Network request failed'));
-    expect(await generateReportPDF(withStatus)).toEqual({ success: false, reason: 'network', error: 'Check your connection and try again.' });
-    expect(fetch).toHaveBeenCalledTimes(2);
+  it('gives the message in Gujarati in Gujarati', async () => {
+    setLanguage('gu');
+    jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
+    const result = await generateReportPDF(withStatus);
+    expect(result.reason).toBe('filter-unsupported');
+    expect(result.error).toBe(
+      'આ કોલ્ડ સ્ટોરેજનું સર્વર હજુ PDFને ચુકવણી મુજબ ફિલ્ટર કરી શકતું નથી. બધા ઇન્વૉઇસ શેર કરવા ચુકવણી ફિલ્ટર કાઢી નાખો, અથવા સર્વર અપડેટ કરવાનું કહો.'
+    );
   });
 
-  it.each([
-    ['another 400 message', refusal('Invalid request')],
-    ['a 400 about the period', refusal('The period must not be longer than 450 days')],
-    ['the message with other words around it', refusal(`${UNKNOWN_FIELD}: status`)],
-    ['the message in other letters', refusal('unknown field in report request')],
-    ['the message under status 500', refusal(UNKNOWN_FIELD, 500)],
-    ['the message under status 403', refusal(UNKNOWN_FIELD, 403)],
-    ['a 400 without a message', answer(400, { success: false })],
-    ["a 400 that is not the function's envelope", answer(400, { error: UNKNOWN_FIELD })],
-    ['a 400 page that is not JSON', answer(400, UNKNOWN_FIELD, 'text/plain')],
-  ])('is not asked again for %s', async (_name, refused) => {
-    jest.mocked(fetch).mockResolvedValue(refused);
+  it("logs nothing at all: no retry line, and nothing of the request, the customer or the server's text", async () => {
+    jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
     await generateReportPDF(withStatus);
+    nothingLogged();
+  });
+
+  it.each([
+    ['another 400 message', refusal('Invalid request'), 'not-accepted'],
+    ['a 400 about the period', refusal('The period must not be longer than 450 days'), 'period-too-long'],
+    ['the message with other words around it', refusal(`${UNKNOWN_FIELD}: status`), 'not-accepted'],
+    ['the message in other letters', refusal('unknown field in report request'), 'not-accepted'],
+    ['the message under status 500', refusal(UNKNOWN_FIELD, 500), 'server-unavailable'],
+    ['the message under status 403', refusal(UNKNOWN_FIELD, 403), 'forbidden'],
+    ['a 400 without a message', answer(400, { success: false }), 'not-accepted'],
+    ["a 400 that is not the function's envelope", answer(400, { error: UNKNOWN_FIELD }), 'server-unavailable'],
+    ['a 400 page that is not JSON', answer(400, UNKNOWN_FIELD, 'text/plain'), 'server-unavailable'],
+  ] as const)('is the normal failure, after one request, for %s', async (_name, refused, reason) => {
+    jest.mocked(fetch).mockResolvedValue(refused);
+    const result = await generateReportPDF(withStatus);
+    expect(result.reason).toBe(reason);
+    expect(result.reason).not.toBe('filter-unsupported');
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(bodyOf(0)).toMatchObject({ status: 'paid' });
     nothingLogged();
   });
 
-  it('is not asked again when the request carried no status, and the refusal is the normal failure', async () => {
+  it('is the normal failure when the request carried no status, after one request', async () => {
     jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
     expect(await generateReportPDF(invoiceRequest)).toEqual({
       success: false,
@@ -348,11 +329,27 @@ describe('a server that does not know the payment status', () => {
     nothingLogged();
   });
 
-  it('is not asked again for a report that cannot carry a status, whatever a caller slips in', async () => {
+  it('is the normal failure for a report that cannot carry a status, whatever a caller slips in', async () => {
     jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
     const smuggled = { ...periodRequest, status: 'paid' } as ReportPdfRequest;
     expect((await generateReportPDF(smuggled)).reason).toBe('not-accepted');
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).not.toHaveProperty('status');
+  });
+
+  it("is the normal failure at the all-customers level, where `status` is never sent", async () => {
+    jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
+    const allCustomers = { report: 'invoice-history', from: '2026-09-01', to: '2026-09-30', status: 'paid' } as ReportPdfRequest;
+    expect((await generateReportPDF(allCustomers)).reason).toBe('not-accepted');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).not.toHaveProperty('status');
+  });
+
+  it('still succeeds when the server takes the status', async () => {
+    jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
+    expect(await generateReportPDF(withStatus)).toMatchObject({ success: true, pdfUrl: SIGNED_URL });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).toHaveProperty('status', 'paid');
   });
 });
 

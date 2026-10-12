@@ -7,12 +7,13 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSessionIdentity } from '@/config/supabaseConfig';
+import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { queryClient } from '@/lib/queryClient';
 import { ACCESS_REFUSED_CODE } from '@/utils/rpcRefusal';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries as settle } from '@/tests/helpers/reportQueries';
-import { useReportQuery, type ReportQuery, type ReportServiceResult } from '../useReportQuery';
-import { readReportCache, writeReportCache } from '../reportCache';
+import { notedRefusals, useReportQuery, type ReportQuery, type ReportServiceResult } from '../useReportQuery';
+import { readReportCache, removeReportCache, writeReportCache } from '../reportCache';
 
 // Without a session (the default here) nothing is kept on the phone; the cases at the end sign in.
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn(async () => null) }));
@@ -85,6 +86,8 @@ function holdNextRead() {
   });
   return {
     release: () => act(async () => { open(); await settle(); }),
+    /** As `release`, without the `act`: for a test that lets something else arrive in the same one. */
+    open,
     heldKey: () => read.mock.calls[0]?.[0],
   };
 }
@@ -284,6 +287,8 @@ describe('a refusal', () => {
   const refusedByCode: ReportServiceResult<Rows> = { success: false, message: 'Could not load the report', error: '42501' };
   const storedKeys = async () => [...(await AsyncStorage.getAllKeys())].filter(stored => stored.includes('["test",'));
   const indexed = async () => JSON.parse((await AsyncStorage.getItem(`${CACHE_PREFIXES.REPORT}_index`)) ?? '[]') as unknown[];
+  // The phone's writes and removals run one at a time: whatever was sent before this one has landed when it has.
+  const phoneSettled = () => removeReportCache(['nothing is kept under this']);
 
   it('takes the kept answer off the screen and off the phone', async () => {
     signIn();
@@ -317,6 +322,88 @@ describe('a refusal', () => {
     // The phone read the entry before it was removed, and answers only now.
     await phone.release();
     expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, updatedAt: undefined, error: 'Could not load the report' });
+    expect(await storedKeys()).toEqual([]);
+  });
+
+  it('is not covered by a kept answer that the phone gives in the same moment', async () => {
+    signIn();
+    await keep();
+    const phone = holdNextRead();
+    const probe = setup('a');
+    await probe.run(() => {});
+    expect(phone.heldKey()).toContain('["test","a"]');
+    // Both arrive together. The refusal is recorded on the query a few steps after the kept answer
+    // is dropped; in between the query is asking again, with no error to tell the phone's answer by.
+    await act(async () => {
+      phone.open();
+      probe.pending[0].resolve(refusedByCode);
+      await settle();
+    });
+    expect(probe.query()).toMatchObject({
+      phase: 'error',
+      data: undefined,
+      updatedAt: undefined,
+      error: 'Could not load the report',
+      isKeptCopy: false,
+    });
+    expect(await storedKeys()).toEqual([]);
+  });
+
+  // Two arrivals in one moment, in every order near "at once". How many steps of the promise queue
+  // lie between an arrival and what it does to the query is the query library's business, and the
+  // phone's: each order is tried, so that an upgrade cannot move a gap out from under its test.
+  const count = (steps: number) => `${steps} ${steps === 1 ? 'step' : 'steps'}`;
+  const orders = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map(
+    steps => [steps < 0 ? `${count(-steps)} before` : steps > 0 ? `${count(steps)} after` : 'in the same step as', steps] as const
+  );
+  /** The refusal and `other` in one `act`: `other` comes `steps` steps after the refusal, before it when negative. */
+  const together = (refuse: () => void, other: () => void, steps: number) =>
+    act(async () => {
+      (steps < 0 ? other : refuse)();
+      for (let step = 0; step < Math.abs(steps); step++) await Promise.resolve();
+      (steps < 0 ? refuse : other)();
+      await settle();
+    });
+
+  it.each(orders)('is not covered by a kept answer that the phone gives %s the refusal', async (_when, steps) => {
+    signIn();
+    await keep();
+    const phone = holdNextRead();
+    const probe = setup('a');
+    await probe.run(() => {});
+    expect(phone.heldKey()).toContain('["test","a"]');
+    await together(() => probe.pending[0].resolve(refusedByCode), phone.open, steps);
+    expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, updatedAt: undefined, error: 'Could not load the report' });
+    expect(await storedKeys()).toEqual([]);
+  });
+
+  // The person pulled to refresh while the first request was out: two requests for one key, and the
+  // facility refuses the first. Whichever arrives first, the second was asked before the refusal:
+  // its answer is not shown and not kept, and the screen is not left loading with nothing out.
+  it.each(orders)('stops the answer to a pull to refresh that arrives %s the refusal of the request before it', async (_when, steps) => {
+    signIn();
+    await keep();
+    const probe = setup('a');
+    await probe.run(() => {});
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, isKeptCopy: true, isFetching: true });
+    await probe.run(() => {
+      void probe.query().refresh();
+    });
+    expect(probe.pending).toHaveLength(2);
+    await together(
+      () => probe.pending[0].resolve(refusedByCode),
+      () => probe.pending[1].resolve(rows('GRN A0010 asked before the refusal')),
+      steps
+    );
+    expect(probe.query()).toMatchObject({
+      phase: 'error',
+      data: undefined,
+      updatedAt: undefined,
+      error: 'Could not load the report',
+      isFetching: false,
+      isRefreshing: false,
+    });
+    await phoneSettled();
     expect(await storedKeys()).toEqual([]);
   });
 
@@ -392,6 +479,8 @@ describe('a refusal', () => {
     const period = (customer: string, days: string) => ['grn-activity', 'customer', customer, days];
     const keepPeriod = (customer: string, days: string, data: Rows = kept) => writeReportCache(period(customer, days), { data, updatedAt: keptAt });
     const keptKeys = async () => [...(await AsyncStorage.getAllKeys())].filter(stored => stored.includes('["grn-activity",'));
+    // A probe is shown "customer|period".
+    const shown = (picked: string) => period(...(picked.split('|') as [string, string]));
 
     it('also forgets that customer\'s other periods, on the phone and in memory, and leaves another customer\'s', async () => {
       signIn();
@@ -400,7 +489,7 @@ describe('a refusal', () => {
       await keepPeriod('c2', '120', other);
       await keepPeriod('c2', 'month', other);
       // "This month" for c1 is held in memory, answered earlier in the session; the screen then moves to 120 days.
-      const probe = setup('c1|month', { keyOf: picked => period(...(picked.split('|') as [string, string])) });
+      const probe = setup('c1|month', { keyOf: shown });
       await probe.answer(0, rows('GRN A0010 this month'));
       probe.show('c1|120');
       await probe.run(() => {});
@@ -434,6 +523,225 @@ describe('a refusal', () => {
       await probe.run(() => {});
       await probe.answer(0, refusedBySentence);
       expect(await readReportCache(['test', 'b'])).toEqual({ data: kept, updatedAt: keptAt });
+    });
+
+    it('stops the kept answer that the phone gives afterwards for another period still being asked', async () => {
+      signIn();
+      await keepPeriod('c1', '120');
+      const probe = setup('c1|month', { keyOf: shown });
+      await probe.run(() => {});
+      // 120 days: the facility and the phone are both asked, and the phone is slow.
+      const phone = holdNextRead();
+      probe.show('c1|120');
+      await probe.run(() => {});
+      expect(phone.heldKey()).toContain('"c1","120"]');
+      expect(probe.pending.map(request => request.key)).toEqual(['c1|month', 'c1|120']);
+      // "This month", asked first, is refused meanwhile.
+      await probe.answer(0, refusedBySentence);
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+      // The phone read the 120 days entry before it was removed, and answers only now.
+      await phone.release();
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, updatedAt: undefined, isFetching: true });
+      expect(await keptKeys()).toEqual([]);
+      await probe.answer(1, refusedByCode);
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Could not load the report' });
+    });
+
+    it('stops that kept answer also when the other period\'s own request has failed meanwhile', async () => {
+      signIn();
+      await keepPeriod('c1', '120');
+      const probe = setup('c1|month', { keyOf: shown });
+      await probe.run(() => {});
+      const phone = holdNextRead();
+      probe.show('c1|120');
+      await probe.run(() => {});
+      expect(phone.heldKey()).toContain('"c1","120"]');
+      await probe.answer(0, refusedBySentence);
+      // The phone went offline: a failure, which by itself would let the kept figures show as not updated.
+      await probe.fail(1);
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Could not load' });
+      await phone.release();
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, updatedAt: undefined, error: 'Could not load', isKeptCopy: false });
+    });
+
+    it('stops the answer to another period that was asked before it: the refusal shows, and nothing is kept', async () => {
+      signIn();
+      const probe = setup('c1|month', { keyOf: shown });
+      probe.show('c1|120');
+      expect(probe.pending.map(request => request.key)).toEqual(['c1|month', 'c1|120']);
+      await probe.answer(0, refusedBySentence);
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+      // 120 days was asked before the customer was refused; its answer arrives after.
+      await probe.answer(1, rows('GRN A0010 asked before the refusal'));
+      expect(probe.query()).toMatchObject({
+        phase: 'error',
+        data: undefined,
+        updatedAt: undefined,
+        error: 'Access denied: customer not assigned',
+        isFetching: false,
+      });
+      expect(queryClient.getQueryData(['report', ...period('c1', '120')])).toBeUndefined();
+      await phoneSettled();
+      expect(await keptKeys()).toEqual([]);
+      expect(await indexed()).toEqual([]);
+    });
+
+    it('stops the answer to a period that no screen shows any more from being kept', async () => {
+      signIn();
+      const probe = setup('c1|month', { keyOf: shown });
+      probe.show('c1|120');
+      const unshown = queryClient.getQueryCache().find({ queryKey: ['report', ...period('c1', 'month')] });
+      // 120 days, on screen, is refused while "This month" is still out.
+      await probe.answer(1, refusedBySentence);
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined });
+      await probe.answer(0, rows('GRN A0010 asked before the refusal'));
+      await phoneSettled();
+      expect(await keptKeys()).toEqual([]);
+      expect(queryClient.getQueryData(['report', ...period('c1', 'month')])).toBeUndefined();
+      // Back on "This month": asked again, with nothing to show meanwhile.
+      probe.show('c1|month');
+      await probe.run(() => {});
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+      await probe.answer(2, refusedBySentence);
+      // The library gives a query that was removed while asking a 30-minute timer, which would hold Jest open.
+      unshown?.destroy();
+    });
+
+    it('is over once access is given back: a request sent after it is shown and kept again', async () => {
+      signIn();
+      await keepPeriod('c1', 'month');
+      const probe = setup('c1|month', { keyOf: shown });
+      await probe.run(() => {});
+      await probe.answer(0, refusedBySentence);
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined });
+      expect(await keptKeys()).toEqual([]);
+      // The facility gives the customer back, and the person tries again.
+      await probe.run(() => probe.query().retry());
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, error: null });
+      await probe.answer(1, rows('GRN A0011 this month'));
+      expect(probe.query()).toMatchObject({ phase: 'ready', data: { rows: ['GRN A0011 this month'] }, error: null, isKeptCopy: false });
+      expect((await readReportCache(period('c1', 'month')))?.data).toEqual({ rows: ['GRN A0011 this month'] });
+      // Another period of the same report, asked for the first time after the refusal, as well.
+      probe.show('c1|120');
+      await probe.answer(2, rows('GRN A0011 in 120 days'));
+      expect(probe.query()).toMatchObject({ phase: 'ready', data: { rows: ['GRN A0011 in 120 days'] }, error: null });
+      expect((await readReportCache(period('c1', '120')))?.data).toEqual({ rows: ['GRN A0011 in 120 days'] });
+      // And the next time the app starts, the kept answer shows while the facility is asked.
+      act(() => mounted.splice(0).forEach(renderer => renderer.unmount()));
+      forgetQueries();
+      const reopened = setup('c1|month', { keyOf: shown });
+      await reopened.run(() => {});
+      expect(reopened.query()).toMatchObject({ phase: 'ready', data: { rows: ['GRN A0011 this month'] }, isKeptCopy: true, isFetching: true });
+      await reopened.answer(0, rows('GRN A0012 this month'));
+      expect(reopened.query()).toMatchObject({ phase: 'ready', data: { rows: ['GRN A0012 this month'] }, isKeptCopy: false });
+    });
+
+    it('leaves alone another customer\'s report, and another report of the same customer, that were being asked', async () => {
+      signIn();
+      const other = { rows: ['kept GRN B0020'] };
+      await keepPeriod('c2', 'month', other);
+      // c2's GRNs are asking the facility and the phone, and c1's dispatches the facility, when c1's GRNs are refused.
+      const phone = holdNextRead();
+      const theirs = setup('c2|month', { keyOf: shown });
+      await theirs.run(() => {});
+      expect(phone.heldKey()).toContain('"c2","month"]');
+      const dispatches = (days: string) => ['dispatch-activity', 'customer', 'c1', days];
+      const otherReport = setup('month', { keyOf: dispatches });
+      const refusedOne = setup('c1|month', { keyOf: shown });
+      await refusedOne.answer(0, refusedBySentence);
+      expect(refusedOne.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Access denied: customer not assigned' });
+
+      await phone.release();
+      expect(theirs.query()).toMatchObject({ phase: 'ready', data: other, updatedAt: keptAt, isKeptCopy: true, isFetching: true, error: null });
+      await theirs.answer(0, rows('fresh GRN B0021'));
+      expect(theirs.query()).toMatchObject({ phase: 'ready', data: { rows: ['fresh GRN B0021'] }, isKeptCopy: false, error: null });
+      expect((await readReportCache(period('c2', 'month')))?.data).toEqual({ rows: ['fresh GRN B0021'] });
+
+      await otherReport.answer(0, rows('DD0003'));
+      expect(otherReport.query()).toMatchObject({ phase: 'ready', data: { rows: ['DD0003'] }, error: null });
+      expect((await readReportCache(dispatches('month')))?.data).toEqual({ rows: ['DD0003'] });
+    });
+
+    // The answer to another period and the refusal in one moment. An answer a step ahead of the
+    // refusal has been accepted, and is recorded on its query only after the refusal cleared it.
+    it.each(orders)('stops the answer to another period that arrives %s the refusal', async (_when, steps) => {
+      signIn();
+      const probe = setup('c1|month', { keyOf: shown });
+      probe.show('c1|120');
+      expect(probe.pending.map(request => request.key)).toEqual(['c1|month', 'c1|120']);
+      await together(
+        () => probe.pending[0].resolve(refusedBySentence),
+        () => probe.pending[1].resolve(rows('GRN A0010 asked before the refusal')),
+        steps
+      );
+      expect(probe.query()).toMatchObject({
+        phase: 'error',
+        data: undefined,
+        updatedAt: undefined,
+        error: 'Access denied: customer not assigned',
+        isFetching: false,
+      });
+      expect(queryClient.getQueryData(['report', ...period('c1', '120')])).toBeUndefined();
+      await phoneSettled();
+      expect(await keptKeys()).toEqual([]);
+    });
+
+    it('does not ask the phone again before it has forgotten: requests sent straight after it show nothing kept', async () => {
+      signIn();
+      await keepPeriod('c1', 'month');
+      await keepPeriod('c1', '120');
+      const probe = setup('c1|month', { keyOf: shown });
+      await probe.run(() => {});
+      expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, isKeptCopy: true });
+      // The phone is slow to remove: it has not listed its entries yet when the next requests go out.
+      const list = jest.mocked(AsyncStorage.getAllKeys);
+      const realList = list.getMockImplementation()!;
+      let letGo!: () => void;
+      const gate = new Promise<void>(resolve => { letGo = resolve; });
+      list.mockImplementationOnce(async () => {
+        await gate;
+        return realList();
+      });
+      try {
+        await probe.answer(0, refusedBySentence);
+        expect(probe.query()).toMatchObject({ phase: 'error', data: undefined });
+        // Tried again at once, and then another period opened: both entries are still on the phone.
+        await probe.run(() => probe.query().retry());
+        expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+        probe.show('c1|120');
+        await probe.run(() => {});
+        expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+        expect(probe.pending.map(request => request.key)).toEqual(['c1|month', 'c1|month', 'c1|120']);
+      } finally {
+        // Also after a failed expectation: a removal left waiting would hold up every later write in this file.
+        await act(async () => {
+          letGo();
+          await settle();
+        });
+      }
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+      expect(await keptKeys()).toEqual([]);
+      // Access was given back meanwhile: the answers show and are kept, as after any refusal.
+      await probe.answer(2, rows('GRN A0011 in 120 days'));
+      expect(probe.query()).toMatchObject({ phase: 'ready', data: { rows: ['GRN A0011 in 120 days'] }, isKeptCopy: false, error: null });
+      await probe.answer(1, rows('GRN A0011 this month'));
+      await phoneSettled();
+      expect(await keptKeys()).toHaveLength(2);
+    });
+
+    it('is noted for one session only', async () => {
+      signIn();
+      const probe = setup('c1|month', { keyOf: shown });
+      probe.show('c1|120');
+      await probe.answer(0, refusedBySentence);
+      expect(notedRefusals()).toBeGreaterThan(0);
+      // Sign-out, sign-in or another server: what the last account was refused is not this one's.
+      advanceSessionGeneration();
+      expect(notedRefusals()).toBe(0);
+      // Nor is a refusal that answers a request of the session before.
+      await probe.answer(1, refusedBySentence);
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined });
+      expect(notedRefusals()).toBe(0);
     });
   });
 });

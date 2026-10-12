@@ -1,7 +1,8 @@
 /**
  * useReportExport: busy from the tap until the share has finished, a second tap
- * ignored, the file name in any script, failures shown with showAlert in the
- * app's words, and the export offered no longer once the server has said it has
+ * ignored, the file name in any script and with the customer as the function
+ * names it, failures shown with showAlert in the app's words, and the export
+ * offered no longer once the facility (its origin and instance) has said it has
  * no generate-report-pdf.
  */
 import React from 'react';
@@ -20,11 +21,15 @@ import {
   type ReportExportNameParts,
 } from '../useReportExport';
 
-let mockConfigUrl = 'https://warehouse.example.test';
+// The facility in use: the requests go to its origin, and what it cannot do is remembered
+// under its origin and its instance.
+const FACILITY = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
+let mockFacility = FACILITY;
 jest.mock('@/config/supabaseConfig', () => ({
-  getCurrentConfig: () => ({ url: mockConfigUrl }),
+  getCurrentConfig: () => ({ url: mockFacility.origin }),
   createAuthenticatedFetch: () => (...args: Parameters<typeof fetch>) => global.fetch(...args),
 }));
+jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockFacility }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -56,7 +61,7 @@ const originalFetch = global.fetch;
 let logs: jest.SpyInstance[];
 const mounted: TestRenderer.ReactTestRenderer[] = [];
 beforeEach(() => {
-  mockConfigUrl = 'https://warehouse.example.test';
+  mockFacility = FACILITY;
   resetReportExportAvailability();
   jest.mocked(getAuthTokenString).mockResolvedValue('fictional-access-credential');
   jest.mocked(showAlert).mockClear();
@@ -281,6 +286,53 @@ describe('the file name', () => {
   });
 });
 
+describe("the customer's name in the file name", () => {
+  // The function prints the customer's name from its own database and gives it in its answer.
+  const made = (customer: unknown, report: ReportPdfRequest['report'] = 'grn-activity') =>
+    answer(200, {
+      success: true,
+      pdf_url: SIGNED_URL,
+      expires_in: 3600,
+      document: { type: 'report', report, customer, rows_count: 3, rows_total: 3, truncated: false, sort: { field: 'date', order: 'desc' } },
+    });
+  const sharedAs = () => jest.mocked(downloadAndSharePDF).mock.calls.map(([, filename]) => filename);
+
+  it("is the function's own name for the customer, not the screen's", async () => {
+    jest.mocked(fetch).mockResolvedValue(made('Riverbank Produce'));
+    await setup(periodRequest, { title: 'GRN activity', customerName: 'Other Company' }).run();
+    expect(sharedAs()).toEqual(['GRN_activity_Riverbank_Produce_2026_09_01_to_2026_09_30.pdf']);
+  });
+
+  it("is the function's name when the screen holds none, instead of the start of the id", async () => {
+    jest.mocked(fetch).mockResolvedValue(made('રમેશ ટ્રેડર્સ'));
+    await setup(periodRequest, { title: 'GRN activity', customerName: '' }).run();
+    expect(sharedAs()).toEqual(['GRN_activity_રમેશ_ટ્રેડર્સ_2026_09_01_to_2026_09_30.pdf']);
+  });
+
+  it.each([
+    ['no name', undefined],
+    ['an empty name', ''],
+    ['a name with no letter or digit', ' — '],
+    ['a name that is not text', { name: 'Riverbank Produce' }],
+  ])("is the screen's name when the answer has %s", async (_what, customer) => {
+    jest.mocked(fetch).mockResolvedValue(made(customer));
+    await setup().run();
+    expect(sharedAs()).toEqual(['GRN_activity_Fictional_Traders_2026_09_01_to_2026_09_30.pdf']);
+  });
+
+  it('is the start of the customer id when neither the answer nor the screen has a name', async () => {
+    jest.mocked(fetch).mockResolvedValue(made(undefined));
+    await setup(periodRequest, { title: 'GRN activity', customerName: '' }).run();
+    expect(sharedAs()).toEqual(['GRN_activity_1275b249_2026_09_01_to_2026_09_30.pdf']);
+  });
+
+  it('stays "All customers" for a report of every customer, whatever the answer names', async () => {
+    jest.mocked(fetch).mockResolvedValue(made('Riverbank Produce', 'stock-aging'));
+    await setup({ report: 'stock-aging' }, { title: 'Stock aging' }).run();
+    expect(sharedAs()).toEqual(['Stock_aging_All_customers.pdf']);
+  });
+});
+
 describe('failure', () => {
   it.each([
     [403, 'This report is not available to your account as a PDF.'],
@@ -334,11 +386,33 @@ describe('available', () => {
     expect(probe.current().busy).toBe(false);
   });
 
-  it('is remembered for that facility server only', async () => {
+  it('is remembered for that facility only', async () => {
     jest.mocked(fetch).mockResolvedValue(oldServer());
     await setup().run();
-    mockConfigUrl = 'https://other-facility.example.test';
+    expect(setup().current().available).toBe(false);
+    mockFacility = { origin: 'https://other-facility.example.test', instanceId: 'instance-a' };
     expect(setup().current().available).toBe(true);
+  });
+
+  it('is offered again when another instance replaces the facility at the same origin', async () => {
+    jest.mocked(fetch).mockResolvedValue(oldServer());
+    await setup().run();
+    expect(setup().current().available).toBe(false);
+
+    // The same address now serves an instance that makes report PDFs.
+    mockFacility = { origin: FACILITY.origin, instanceId: 'instance-b' };
+    jest.mocked(fetch).mockClear();
+    jest.mocked(fetch).mockResolvedValue(success());
+    const replaced = setup();
+    expect(replaced.current().available).toBe(true);
+    await replaced.run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+    expect(replaced.current().available).toBe(true);
+
+    // What the first instance answered is still remembered for it.
+    mockFacility = FACILITY;
+    expect(setup().current().available).toBe(false);
   });
 
   // Only for an export started by calling exportPdf: the screen hides the action while the flag is set,
@@ -377,43 +451,85 @@ describe("a payment status on one customer's invoice history", () => {
     expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, FILE);
   });
 
-  it('shares the PDF of all the invoices from an older server, which refused the field once, and the export stays offered', async () => {
+  const FILTER_NEEDS_UPDATE =
+    "This facility's server can't filter the PDF by payment yet. Remove the Payment filter to share all the invoices, or ask for a server update.";
+
+  it('refuses the export on an older server that does not know the field: one request, one alert with the new message, nothing shared, the export stays offered', async () => {
+    // A success is queued behind the refusal, as the old retry would have found it: it must stay unused.
     jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
     const probe = setup(invoiceRequest, parts);
     await probe.run();
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(bodyOf(0)).toHaveProperty('status', 'pending');
-    expect(bodyOf(1)).not.toHaveProperty('status');
-    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
-    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, FILE);
-    expect(showAlert).not.toHaveBeenCalled();
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", FILTER_NEEDS_UPDATE);
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
     // Not taken as a server without report PDFs: the action stays, on this screen and on another.
     expect(probe.current().available).toBe(true);
     expect(setup({ report: 'stock-aging' }).current().available).toBe(true);
     expect(probe.current().busy).toBe(false);
   });
 
-  it('asks the older server again at the next tap (the status is sent first each time)', async () => {
-    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success()).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
-    const probe = setup(invoiceRequest, parts);
-    await probe.run();
-    await probe.run();
-    expect(fetch).toHaveBeenCalledTimes(4);
-    expect(bodyOf(2)).toHaveProperty('status', 'pending');
-    expect(bodyOf(3)).not.toHaveProperty('status');
+  it('shares normally at the next tap once the Payment filter is removed: the server is not marked outdated', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
+    const { status: _status, ...withoutStatus } = invoiceRequest;
+    let request: ReportPdfRequest = invoiceRequest;
+    let latest!: ReportExport;
+    function Probe() {
+      latest = useReportExport({ buildRequest: () => request, filenameParts: () => parts });
+      return null;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<Probe />);
+    });
+    mounted.push(renderer);
+
+    await act(async () => { await latest.exportPdf(); });
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
+    expect(latest.available).toBe(true);
+
+    // The person removes the Payment filter and taps again.
+    request = withoutStatus as ReportPdfRequest;
+    await act(async () => { await latest.exportPdf(); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(bodyOf(1)).not.toHaveProperty('status');
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, FILE);
+    // The refusal's alert is the only one.
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(latest.available).toBe(true);
   });
 
-  it('shows the normal failure, once, when the second answer is a refusal too', async () => {
+  it('sends the filter again at the next tap and is refused again each time: the older server is never answered with the unfiltered PDF', async () => {
     jest.mocked(fetch).mockResolvedValue(unknownField());
     const probe = setup(invoiceRequest, parts);
     await probe.run();
+    await probe.run();
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", "The server didn't accept this request. Update the app and try again.");
+    expect(bodyOf(0)).toHaveProperty('status', 'pending');
+    expect(bodyOf(1)).toHaveProperty('status', 'pending');
+    expect(showAlert).toHaveBeenCalledTimes(2);
     expect(downloadAndSharePDF).not.toHaveBeenCalled();
     expect(probe.current().available).toBe(true);
-    expect(probe.current().busy).toBe(false);
+  });
+
+  it('shows the message in Gujarati in Gujarati', async () => {
+    jest.mocked(fetch).mockResolvedValue(unknownField());
+    try {
+      setLanguage('gu');
+      const probe = setup(invoiceRequest, parts);
+      await probe.run();
+      expect(showAlert).toHaveBeenCalledTimes(1);
+      const [title, message] = jest.mocked(showAlert).mock.calls[0];
+      expect(title).toBe(t('reports.export.failedTitle'));
+      expect(message).toBe(t('reports.export.filterNeedsUpdate'));
+      expect(message).not.toBe(FILTER_NEEDS_UPDATE);
+      expect(message).toContain('ચુકવણી');
+    } finally {
+      setLanguage('en');
+    }
   });
 
   it('does not ask again for another 400, and shows its normal failure', async () => {
@@ -479,6 +595,20 @@ describe('fallback', () => {
     expect(fallback).toHaveBeenCalledTimes(1);
     expect(downloadAndSharePDF).toHaveBeenCalledWith(OLD_URL, 'Stock_summary_Fictional_Traders.pdf');
     expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('asks for the report PDF again, not the fallback, once another instance serves the same origin', async () => {
+    jest.mocked(fetch).mockResolvedValue(oldServer());
+    await setup().run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    mockFacility = { origin: FACILITY.origin, instanceId: 'instance-b' };
+    jest.mocked(fetch).mockResolvedValue(success());
+    const fallback = jest.fn().mockResolvedValue({ success: true, pdfUrl: OLD_URL });
+    await setup(stockRequest, stockParts, fallback).run();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fallback).not.toHaveBeenCalled();
+    expect(downloadAndSharePDF).toHaveBeenLastCalledWith(SIGNED_URL, 'Stock_summary_Fictional_Traders.pdf');
   });
 
   it('is not used on a server that makes report PDFs, nor for its other failures', async () => {

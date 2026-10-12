@@ -26,6 +26,12 @@
  * the role or the customer) removes the key's entry (`removeReportCache`), or
  * every entry of that customer's report (`removeReportCachePrefix`); any other
  * failure leaves it.
+ *
+ * A removal waits its turn behind the writes already sent, so none of those
+ * can put an entry back. What comes later is useReportQuery's to hold back: it
+ * counts refusals, never sends a write for the answer to a request that was
+ * sent before the refusal, and does not read again until the removal has
+ * landed (a read does not wait its turn here).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hashKey } from '@tanstack/react-query';
@@ -153,7 +159,8 @@ async function write<T>(key: readonly unknown[], entry: ReportCacheEntry<T>, gen
  * may no longer read those figures. Queued with the writes, so a write that was
  * sent earlier cannot put the entry back. `generation` is the session generation
  * when the request was sent: after a change of session the teardown has already
- * removed every entry. Never rejects; the returned promise is for tests.
+ * removed every entry. Never rejects. The returned promise settles once the
+ * removal has landed: useReportQuery reads the key again only after that.
  */
 export function removeReportCache(key: readonly unknown[], generation: number = getSessionGeneration()): Promise<void> {
   writes = writes.then(() => remove(key, generation));
@@ -182,7 +189,8 @@ async function remove(key: readonly unknown[], generation: number): Promise<void
  * Forget every answer whose key starts with `prefix` (the key itself and every
  * longer key, element for element): the facility refused one customer's
  * report, so none of that customer's kept figures for it may show, whatever
- * the period. Queued with the writes, like `removeReportCache`. Never rejects.
+ * the period. Queued with the writes, and its promise used, like
+ * `removeReportCache`'s. Never rejects.
  */
 export function removeReportCachePrefix(prefix: readonly unknown[], generation: number = getSessionGeneration()): Promise<void> {
   writes = writes.then(() => removePrefix(prefix, generation));

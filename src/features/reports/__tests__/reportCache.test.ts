@@ -181,6 +181,12 @@ it('forgets after a write sent before it, and not across a change of session', a
   // Sent together, the write first: the removal still wins.
   await Promise.all([writeReportCache(key, { data: answer, updatedAt: Date.now() }), removeReportCache(key)]);
   expect(await readReportCache(key)).toBeNull();
+  // So does the removal of the customer's whole report. Its promise settles when the entry is
+  // gone, the earlier write included: useReportQuery reads again only after it.
+  void writeReportCache(key, { data: answer, updatedAt: Date.now() });
+  await removeReportCachePrefix(key.slice(0, 3));
+  expect(await readReportCache(key)).toBeNull();
+  expect((await reportKeys()).filter(stored => stored.includes('customer-1'))).toEqual([]);
 
   await writeReportCache(key, { data: answer, updatedAt: Date.now() });
   const before = advanceSessionGeneration();

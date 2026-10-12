@@ -125,24 +125,27 @@ const days = (count: number) => formatCount(count, 'day');
 const units = (count: number) => formatCount(count, 'unit');
 
 /**
- * The figures over the rows. The KPI for the oldest stock counts the items of the
- * bar's own over-364 bucket and says so ("Items over 364 days"), so it and the
- * red bar always agree. The RPC's items_over_365_days counts from 365 and is not shown.
+ * The figures over the rows. Two tiles count items, and the red bar of the bucket
+ * card shows bags: the bar still draws the server's quantities by age, while the
+ * "Items over 364 days" tile counts items. The RPC's items_over_365_days counts from
+ * 365 and is not shown.
  *
- * `itemCount` is the number of "Items" the first tile shows. The server's
- * `total_items` counts stock lines (an item stored on two GRNs counts twice), so a
- * customer's own screen passes the number of item cards instead; the all-customers
- * level has no item list to count and shows the server's figure.
+ * The server's counts are of stock lines (an item stored on two GRNs counts twice):
+ * `total_items`, and `by_bucket['364+'].item_count` too. So a customer's own screen
+ * passes `items`, the counts of its item cards: `count` is the "Items" tile, and
+ * `over364` the items that have at least one lot in the over-364 bucket, which is the
+ * tile "Items over 364 days". The all-customers level has no item list (its rows are
+ * customers) and shows the server's figures.
  */
 function agingKpis(
   summary: { total_items: number; average_age_days: number },
   byBucket: Record<string, Pick<AgingBucketData, 'item_count'>>,
-  itemCount: number = summary.total_items
+  items?: { count: number; over364: number }
 ): KPIItem[] {
   return [
-    { icon: 'cube-outline', value: itemCount, label: tr('common.items'), variant: 'primary' },
+    { icon: 'cube-outline', value: items?.count ?? summary.total_items, label: tr('common.items'), variant: 'primary' },
     { icon: 'calendar-clock', value: summary.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
-    { icon: 'alert', value: byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
+    { icon: 'alert', value: items?.over364 ?? byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
   ];
 }
 
@@ -300,9 +303,16 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const { data } = query;
   const groups = useMemo(() => groupStockAgingLines(data?.items ?? []), [data]);
   const rows = useMemo(() => stockAgingItemsView(groups, view), [groups, view]);
-  // The figures are the whole stock's, not what the search or the bucket leaves. The Items tile
-  // counts the item cards (`groups`, before any search or filter), not the server's stock lines.
-  const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket, groups.length), [data, groups]);
+  // The figures are the whole stock's, not what the search or the bucket leaves. Both item tiles
+  // count item cards (`groups`, before any search or filter), not the server's stock lines: the
+  // oldest-stock tile counts the items with at least one lot over 364 days (the bar beside it
+  // shows the bags those lots hold).
+  const kpis = useMemo(
+    () =>
+      data &&
+      agingKpis(data.summary, data.by_bucket, { count: groups.length, over364: groups.filter(group => group.oldestBucket === 'over-364').length }),
+    [data, groups]
+  );
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),

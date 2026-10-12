@@ -25,15 +25,23 @@
  * ...]`) that goes for every key of that customer's report, whatever its
  * period. Any other failure keeps the last answer on screen beside it.
  *
+ * A refusal also stops what was already on its way. Refusals are counted, and
+ * the count is noted for the customer's report (or for the key, when it names
+ * no customer) the moment it is refused, before anything is cleared. A request
+ * sent before that count was reached brings nothing back: the kept answer it
+ * asked the phone for is not shown, and its own answer is neither shown nor
+ * kept, so the query shows the refusal. A request sent afterwards is an
+ * ordinary one, and the report comes back when access does.
+ *
  * What is shown as the reason: the service's message for a refusal (in the
  * app's language), and the caller's `fallbackError` for any other failure. A
  * service's message for a failure ("Failed to fetch ...") and a thrown error's
  * text ("Network request failed") are not for people (docs/STYLE_GUIDE.md §12.1).
  */
 import { useCallback, useState } from 'react';
-import { useQuery, type Query } from '@tanstack/react-query';
+import { hashKey, useQuery, type Query } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
-import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 import { isAccessRefusal } from '@/utils/rpcRefusal';
 import { readReportCache, removeReportCache, removeReportCachePrefix, writeReportCache } from './reportCache';
 
@@ -124,15 +132,58 @@ function customerPrefix(key: readonly unknown[]): readonly unknown[] | undefined
   return key.length >= 3 && key[1] === 'customer' && key[2] !== undefined && key[2] !== null ? key.slice(0, 3) : undefined;
 }
 
+/** The last refusal of one customer's report, or of one key that names no customer. */
+interface NotedRefusal {
+  /** What the count of refusals stood at once this one was counted. */
+  count: number;
+  refusal: ReportLoadError;
+  /** Settles when the phone no longer holds what it kept before the refusal: the removal is queued, not done at once. */
+  forgotten?: Promise<void>;
+}
+
+/**
+ * Refusals in this session, counted, and the last one of each customer's report
+ * (or of a key that names no customer, under the key itself). A request sent
+ * when the count was lower than that refusal's was sent before it: neither the
+ * kept answer it asked the phone for nor its own answer may show or be kept.
+ * The count never goes back, so a request sent after the refusal is not held
+ * to it.
+ */
+let refusalCount = 0;
+const lastRefusals = new Map<string, NotedRefusal>();
+// A refusal was given to one account on one server.
+onSessionChange(() => lastRefusals.clear());
+
+/** How many customers' reports (or keys) have a refusal noted. For tests: a change of session leaves none. */
+export const notedRefusals = (): number => lastRefusals.size;
+
+/** What a refusal of `key` covers, as the map names it: the customer's report, or the key itself. */
+const refusalScope = (key: readonly unknown[]): string => hashKey(customerPrefix(key) ?? key);
+
+/** The refusal that `key`'s customer report (or `key`) was given after the count stood at `sentAt`, or undefined. */
+function refusedSince(key: readonly unknown[], sentAt: number): ReportLoadError | undefined {
+  const last = lastRefusals.get(refusalScope(key));
+  return last && last.count > sentAt ? last.refusal : undefined;
+}
+
 /**
  * A key with nothing in memory: show the answer kept on the phone. The phone
  * answers after this returns, so whatever reached the query first wins: the
  * request's answer, a refusal, or a teardown that emptied the query client.
+ * `sentAt` is the refusal count when the request was sent.
  */
-function showKeptAnswer<T>(query: Query<T, Error>, key: readonly unknown[]): void {
+function showKeptAnswer<T>(query: Query<T, Error>, key: readonly unknown[], sentAt: number): void {
   if (query.state.data !== undefined) return;
-  void readReportCache<T>(key).then(kept => {
+  // After a refusal the phone is asked only once it has forgotten: the removal waits its turn
+  // behind the phone's writes, and a read sent meanwhile would find the entry still there.
+  const forgotten = lastRefusals.get(refusalScope(key))?.forgotten;
+  const read = () => readReportCache<T>(key);
+  void (forgotten ? forgotten.then(read) : read()).then(kept => {
     if (!kept || queryClient.getQueryCache().get(query.queryHash) !== query || query.state.data !== undefined) return;
+    // Refused since the phone was asked, under this key or another of the same customer's report. The
+    // query may not say so yet (its own refusal is recorded a moment after it is thrown; another
+    // period's request is still out): the count does.
+    if (refusedSince(key, sentAt)) return;
     const failure = query.state.status === 'error' ? query.state.error : null;
     // The facility refused this account the key: the kept figures are not its to read.
     if (isRefusedError(failure)) return;
@@ -145,12 +196,19 @@ function showKeptAnswer<T>(query: Query<T, Error>, key: readonly unknown[]): voi
 
 /**
  * The facility refused `query`'s key: forget what it gave before, on the phone
- * and in memory, so that the refusal shows alone. The query is still fetching;
- * the error that follows keeps `data` as it finds it, now empty.
+ * and in memory, so that the refusal shows alone. As a rule the query is still
+ * waiting for the refused request, and the error that follows keeps `data` as
+ * it finds it, now empty.
  *
  * A key that names a customer takes every key of that customer's report with
  * it: a query no screen shows is removed, one on screen loses its data (shown
  * loading while its own request is out, else refused).
+ *
+ * First of all the refusal is counted and noted (`lastRefusals`), so that what
+ * was sent before it cannot bring the figures back after they are cleared here.
+ * Two things the count cannot see are seen to here: an answer the library was
+ * about to record when the refusal landed, and a query with no request out to
+ * record the refusal on.
  */
 function forgetAnswer<T>(
   query: Query<T, Error> | undefined,
@@ -158,20 +216,56 @@ function forgetAnswer<T>(
   generation: number,
   refusal: ReportLoadError
 ): void {
-  const prefix = customerPrefix(key);
-  if (prefix) {
-    void removeReportCachePrefix(prefix, generation);
-    for (const other of queryClient.getQueryCache().findAll({ queryKey: ['report', ...prefix] })) {
-      if (other === query) continue;
-      if (other.getObserversCount() === 0) queryClient.getQueryCache().remove(other);
-      else if (other.state.fetchStatus === 'fetching') other.setState({ data: undefined, dataUpdatedAt: 0, status: 'pending' });
-      else other.setState({ data: undefined, dataUpdatedAt: 0, status: 'error', error: refusal, errorUpdatedAt: Date.now() });
-    }
-  } else {
-    void removeReportCache(key, generation);
+  let noted: NotedRefusal | undefined;
+  // A refusal answered to an earlier session says nothing about this one's requests.
+  if (generation === getSessionGeneration()) {
+    refusalCount += 1;
+    noted = { count: refusalCount, refusal };
+    lastRefusals.set(refusalScope(key), noted);
   }
-  if (!query || queryClient.getQueryCache().get(query.queryHash) !== query || query.state.data === undefined) return;
-  query.setState({ data: undefined, dataUpdatedAt: 0, status: 'pending' });
+  const cache = queryClient.getQueryCache();
+  const prefix = customerPrefix(key);
+  const forgotten = prefix ? removeReportCachePrefix(prefix, generation) : removeReportCache(key, generation);
+  if (noted) noted.forgotten = forgotten;
+
+  // Nothing is out for it that would say so: the refusal is put in place of what it held.
+  const showRefusal = <D>(held: Query<D, Error>): void => {
+    if (cache.get(held.queryHash) !== held) return;
+    held.setState({ data: undefined, dataUpdatedAt: 0, status: 'error', error: refusal, errorUpdatedAt: Date.now() });
+  };
+  // A request is out for it. Its answer may have passed the check in `queryFn` a step before this
+  // refusal landed and be on its way into the query, where the library records it after this
+  // returns: taken back as soon as it is. The library has waited on this promise since it sent
+  // the request, so it records first. (An answer that has not got that far is refused by the
+  // check, and a failure or a newer request leaves this with nothing to do.)
+  const takeBackAnswer = <D>(held: Query<D, Error>): void => {
+    void held.promise?.then(
+      () => showRefusal(held),
+      () => {}
+    );
+  };
+
+  for (const other of prefix ? cache.findAll({ queryKey: ['report', ...prefix] }) : []) {
+    if (other === query) continue;
+    if (other.getObserversCount() === 0) {
+      cache.remove(other);
+    } else if (other.state.fetchStatus === 'fetching') {
+      other.setState({ data: undefined, dataUpdatedAt: 0, status: 'pending' });
+      takeBackAnswer(other);
+    } else {
+      showRefusal(other);
+    }
+  }
+  if (!query || cache.get(query.queryHash) !== query) return;
+  if (query.state.fetchStatus === 'fetching') {
+    if (query.state.data !== undefined) query.setState({ data: undefined, dataUpdatedAt: 0, status: 'pending' });
+    // The request it waits for may be a newer one than the refused (the person pulled to refresh).
+    takeBackAnswer(query);
+  } else {
+    // That newer request has answered already, so no error follows: left as it is, the query
+    // would show loading, with nothing out, for good.
+    showRefusal(query);
+  }
 }
 
 /**
@@ -191,8 +285,9 @@ export function useReportQuery<T>({ key, fetch, fallbackError, enabled = true, p
       queryKey,
       queryFn: async () => {
         const generation = getSessionGeneration();
+        const sentAt = refusalCount;
         const current = queryClient.getQueryCache().find<T, Error>({ queryKey, exact: true });
-        if (current && persist) showKeptAnswer<T>(current, key);
+        if (current && persist) showKeptAnswer<T>(current, key, sentAt);
         const result = await fetch();
         if (!result.success || result.data === undefined || result.data === null) {
           const refused = !result.success && isRefusal(result);
@@ -200,6 +295,10 @@ export function useReportQuery<T>({ key, fetch, fallbackError, enabled = true, p
           if (refused) forgetAnswer<T>(current, key, generation, failure);
           throw failure;
         }
+        // The customer's report was refused while this request was out (under this key or another
+        // period's): the answer is from before the refusal. Not shown and, below, not kept.
+        const refusal = refusedSince(key, sentAt);
+        if (refusal) throw refusal;
         // The kept copy on screen is now confirmed or replaced (the library keeps the old object when equal).
         if (current && isObject(current.state.data)) keptAnswers.delete(current.state.data);
         // Not awaited. A failed request (thrown above) keeps the last good copy; a refused one removed it.

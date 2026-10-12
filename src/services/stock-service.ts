@@ -79,7 +79,13 @@ export interface ItemStockSummary {
  * restart.
  */
 const facilitiesWithoutItemSort = new Set<string>();
-const facilityKey = (): string => {
+/**
+ * The facility in use, by its origin and its instance: what a capability of one
+ * facility is remembered under (here, and the report PDFs in useReportExport),
+ * so that an instance replacing another at the same origin is asked afresh.
+ * '' when no facility is chosen.
+ */
+export const facilityKey = (): string => {
   const server = getActiveOperatorServer();
   return server ? `${server.origin}|${server.instanceId}` : '';
 };

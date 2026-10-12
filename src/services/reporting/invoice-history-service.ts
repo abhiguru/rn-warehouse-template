@@ -19,11 +19,97 @@ import type {
 } from '@/types/report.types';
 
 import { t } from '@/i18n';
+import { toPaise, toRupees } from '@/features/filters/configs/reports/invoicePayment';
 import { getDateDaysAgo, getToday } from './reportDates';
 import { createLogger } from '@/utils/logger';
 import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
 
 const logger = createLogger('Reports');
+
+// ---------------------------------------------------------------------------
+// An older server lists an invoice once per payment
+// ---------------------------------------------------------------------------
+
+/**
+ * The invoice's id as a key to merge by; '' for a row that has none (missing, empty or blank), which is
+ * never merged with another.
+ */
+function invoiceKey(id: unknown): string {
+  if (typeof id === 'string') return id.trim() === '' ? '' : id;
+  return typeof id === 'number' && Number.isFinite(id) ? String(id) : '';
+}
+
+/** A payment amount that can be read: a finite number, or a number written as text (as `invoicePayment` reads it). */
+function isUsableAmount(amount: unknown): boolean {
+  if (typeof amount === 'number') return Number.isFinite(amount);
+  return typeof amount === 'string' && amount.trim() !== '' && Number.isFinite(Number(amount));
+}
+
+/** When the row was paid, as a time; NaN for a row with no date that can be read. */
+function paidTime(row: InvoiceHistoryRecord): number {
+  const date = row.payment_status.paid_date;
+  return typeof date === 'string' && date.trim() !== '' ? Date.parse(date) : Number.NaN;
+}
+
+/**
+ * One invoice from the several rows an older server sent for it (one per payment):
+ * - the first row's fields, and its place in the list;
+ * - `payment_status.amount` is the sum of the rows' amounts, added in whole paise (a row without a readable
+ *   amount adds nothing; with none readable, the first row's stays as it was);
+ * - `payment_status.status` is "paid" when any row says so, else the first row's: the money decides on the
+ *   screen (`invoicePayment`), the word only when an answer says "paid" and carries no amount;
+ * - the payment's date, reference and mode are those of the row paid last (a row with no date loses to one
+ *   with a date; on the same date the earlier row wins).
+ */
+function mergeRowsOfOneInvoice(rows: InvoiceHistoryRecord[]): InvoiceHistoryRecord {
+  const [first] = rows;
+  let latest = first;
+  for (const row of rows) {
+    const time = paidTime(row);
+    if (!Number.isNaN(time) && (Number.isNaN(paidTime(latest)) || time > paidTime(latest))) latest = row;
+  }
+  const readable = rows.filter(row => isUsableAmount(row.payment_status.amount));
+  const paid = rows.some(row => row.payment_status.status === 'paid');
+  return {
+    ...first,
+    payment_status: {
+      status: paid ? 'paid' : first.payment_status.status,
+      paid_date: latest.payment_status.paid_date,
+      payment_ref: latest.payment_status.payment_ref,
+      amount:
+        readable.length > 0
+          ? toRupees(readable.reduce((sum, row) => sum + toPaise(row.payment_status.amount), 0))
+          : first.payment_status.amount,
+      payment_mode: latest.payment_status.payment_mode,
+    },
+  };
+}
+
+/**
+ * A server before backend migration 61 joins an invoice to its payments row by row, so an invoice paid in two
+ * parts (4.00 and 10.00 of 14.00) arrives twice with the same `invoice_id` and `total`: counted twice by every
+ * figure of the screen (Amount 28, Pending 14 instead of Amount 14, Pending 0). From migration 61 the server
+ * sends one row with the summed amount, and this returns the answer as it came: the same array, the same
+ * objects. Rows with no `invoice_id` are never merged. The order is that of first appearance.
+ */
+function oneRowPerInvoice(rows: InvoiceHistoryRecord[]): InvoiceHistoryRecord[] {
+  const groups: InvoiceHistoryRecord[][] = [];
+  const byId = new Map<string, InvoiceHistoryRecord[]>();
+  for (const row of rows) {
+    const key = invoiceKey(row.invoice_id);
+    const group = key ? byId.get(key) : undefined;
+    if (group) {
+      group.push(row);
+    } else {
+      const created = [row];
+      groups.push(created);
+      if (key) byId.set(key, created);
+    }
+  }
+  if (groups.length === rows.length) return rows;
+  return groups.map(group => (group.length === 1 ? group[0] : mergeRowsOfOneInvoice(group)));
+}
+
 /**
  * Default empty response for error cases
  */
@@ -152,7 +238,7 @@ export async function getCustomerInvoiceHistory(
       pending_amount: responseData?.summary?.pending_amount ?? 0,
     };
 
-    const invoices: InvoiceHistoryRecord[] = (responseData?.invoices ?? []).map(
+    const invoiceRows: InvoiceHistoryRecord[] = (responseData?.invoices ?? []).map(
       (inv: any) => ({
         invoice_id: inv.invoice_id,
         invoice_number: inv.invoice_number,
@@ -196,6 +282,9 @@ export async function getCustomerInvoiceHistory(
         })),
       })
     );
+
+    // One row per invoice, whatever the server's version: every figure and list of the screen reads this.
+    const invoices = oneRowPerInvoice(invoiceRows);
 
     const byMonth: InvoiceMonthlyBreakdown[] = (
       responseData?.by_month ?? []

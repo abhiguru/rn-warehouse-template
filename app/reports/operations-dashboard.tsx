@@ -5,7 +5,8 @@
  * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportFilters
  * holds the period (the filter bar's period chip, shared by every report),
  * useReportQuery the data, and ReportScaffold draws every state. Under the
- * figures: the period's daily averages, then the recent GRNs and dispatches.
+ * figures: the period's daily averages (its total over every day of it that has
+ * happened, quiet days included), then the recent GRNs and dispatches.
  * There is no search, sort or customer. The server answers a role it refuses
  * in the body of its answer; that shows as the failed state with the reason.
  */
@@ -15,6 +16,7 @@ import { Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportEmptyState, ReportHeader, ReportScaffold, type KPIItem } from '@/components/reports';
 import { OPERATIONS_DASHBOARD } from '@/features/filters/configs/reports/operationsDashboard';
+import { periodDays } from '@/features/filters/configs/reports/shared';
 import { longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
@@ -24,7 +26,7 @@ import { t as tr, formatIdentifier, localizeDigits } from '@/i18n';
 import { getOperationsDashboard } from '@/services/reporting';
 import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
 import type { OperationsDashboardData, RecentActivityItem } from '@/types/report.types';
-import { formatIndiaDate, formatNumber, formatRelativeTime } from '@/utils/formatters';
+import { formatIndiaDate, formatNumber, formatRelativeTime, todayInIST } from '@/utils/formatters';
 
 const REPORT_ID = 'operations-dashboard';
 
@@ -126,9 +128,20 @@ function StaffOnly() {
 // The dashboard
 // ============================================================================
 
-/** The average of a day's counts over the period, to one decimal. */
-const average = (points: { count: number }[]) =>
-  localizeDigits(points.length > 0 ? oneDecimal.format(points.reduce((sum, point) => sum + point.count, 0) / points.length) : '0');
+/**
+ * A day's average over the period, to one decimal: the sum of the daily counts over
+ * `days`, every day of the period that has happened (`periodDays`). The server sends
+ * only the days that had events, so the number of points is not the number of days:
+ * seven GRNs on one day of a week are 1 a day, not 7.
+ *
+ * An average that is not zero but too small for one decimal reads "<0.1", never "0":
+ * five GRNs in 120 days are not none.
+ */
+const average = (points: { count: number }[], days: number) => {
+  const value = points.reduce((sum, point) => sum + point.count, 0) / days;
+  const shown = oneDecimal.format(value);
+  return localizeDigits(value > 0 && shown === '0' ? `<${oneDecimal.format(0.1)}` : shown);
+};
 
 const activityKey = (activity: RecentActivityItem, index: number) => `${activity.type}-${activity.ref}-${index}`;
 
@@ -184,7 +197,7 @@ function OperationsDashboardReport() {
     >
       {data ? (
         <>
-          <PeriodAverages grnDaily={data.trends.grn_daily} dispatchDaily={data.trends.dispatch_daily} />
+          <PeriodAverages grnDaily={data.trends.grn_daily} dispatchDaily={data.trends.dispatch_daily} days={periodDays(period, todayInIST())} />
           <SectionHeading title={tr('reports.operations.recentActivity')} />
         </>
       ) : null}
@@ -192,12 +205,12 @@ function OperationsDashboardReport() {
   );
 }
 
-function PeriodAverages({ grnDaily, dispatchDaily }: { grnDaily: { count: number }[]; dispatchDaily: { count: number }[] }) {
+function PeriodAverages({ grnDaily, dispatchDaily, days }: { grnDaily: { count: number }[]; dispatchDaily: { count: number }[]; days: number }) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const figures = [
-    { label: tr('reports.operations.grnsPerDay'), value: average(grnDaily) },
-    { label: tr('reports.operations.dispatchesPerDay'), value: average(dispatchDaily) },
+    { label: tr('reports.operations.grnsPerDay'), value: average(grnDaily, days) },
+    { label: tr('reports.operations.dispatchesPerDay'), value: average(dispatchDaily, days) },
   ];
   return (
     <View style={[styles.card, styles.averagesCard]}>

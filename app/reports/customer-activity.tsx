@@ -39,6 +39,7 @@ import {
   customerActivityCustomersView,
 } from '@/features/filters/configs/reports/customerActivity';
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports/shared';
+import { trustCustomerName } from '@/features/reports/customerNames';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
@@ -299,7 +300,8 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
     fallbackError: tr('reports.customerActivity.detailError'),
   });
   const { data } = query;
-  const name = customerName || data?.customer_name || '';
+  // The facility's name for the customer: this answer's own when it has one, else the one the app holds.
+  const name = data?.customer_name || customerName;
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
       data && [
@@ -323,11 +325,13 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   );
 
   // A quick-access card opens its report for this customer, as a customers list opens one:
-  // the same route with the customer, remembered as the customer last opened there.
+  // the same route with the customer, remembered as the customer last opened there. The name
+  // is the facility's, so the report that opens shows it at once.
   const navigation = useRouter();
   const { setCustomer } = useReportPrefs();
   const openReport = useCallback(
     (report: QuickReport) => {
+      trustCustomerName(customerId, name);
       setCustomer(report, { id: customerId, name });
       navigation.push({ pathname: `/reports/${report}`, params: { customerId, customerName: name } } as never);
     },

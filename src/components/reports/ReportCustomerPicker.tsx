@@ -15,7 +15,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { Avatar } from '@/components/ui';
 import { t as tr } from '@/i18n';
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { readCustomerNames } from '@/features/reports/customerNames';
 import { ReportEmptyState } from './ReportEmptyState';
 import { ReportHeader } from './ReportHeader';
 
@@ -23,20 +23,6 @@ type NameLoad =
   | { state: 'loading' }
   | { state: 'failed' }
   | { state: 'loaded'; names: Record<string, string> };
-
-/**
- * Names of the account's own customers. The profile a sign-in stores carries
- * the assigned ids only, so the names are read from `customers`; row-level
- * security gives a customer account its own rows and no others.
- */
-async function readCustomerNames(ids: string[]): Promise<Record<string, string>> {
-  const client = await getAuthenticatedClient();
-  const { data, error } = await client.from('customers').select('id, name').in('id', ids);
-  if (error) throw error;
-  const names: Record<string, string> = {};
-  for (const row of (data ?? []) as { id: string; name: string | null }[]) names[row.id] = row.name ?? '';
-  return names;
-}
 
 export interface ReportCustomerPickerProps {
   /** The report's title, shown above the picker */
@@ -77,7 +63,8 @@ export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ titl
   const insets = useSafeAreaInsets();
   const { assignedCustomers, assignedCustomerIds } = useRoleBasedAccess();
 
-  // Ids the profile gives no name for. Empty for a profile that carries names.
+  // Ids the profile gives no name for. Empty for a profile that carries names. The profile a
+  // sign-in stores carries the assigned ids only, so their names are read from the facility.
   const unnamedKey = assignedCustomerIds
     .filter((id) => !assignedCustomers.find((customer) => customer.id === id)?.name)
     .join(',');

@@ -418,7 +418,9 @@ describe('stock aging, one customer', () => {
     expect(screen.status()).toBe('Last updated 10:00 am');
     // The server's total_items says 6, which counts stock lines (Garlic and Turmeric are on two
     // lines each). The tile counts what the cards below show: 4 items.
-    // by_bucket['364+'].item_count is 1; items_over_365_days says 7.
+    // "Items over 364 days" counts the items with a lot in that bucket: Garlic alone (its 400-day
+    // line). The server's by_bucket['364+'].item_count (1) counts lines and happens to agree here;
+    // items_over_365_days says 7. The test below has an item with two such lots.
     expect(screen.items()).toHaveLength(4);
     expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
     expect(screen.labels()).not.toContain('Items: 6');
@@ -614,6 +616,42 @@ describe('stock aging, units and the Items tile', () => {
     await screen.press('0–120 days');
     expect(screen.items()).toEqual(['Garlic', 'Red chilli']);
     expect(screen.labels()).toContain('Items: 4');
+  });
+
+  it('one customer: "Items over 364 days" counts items, so an item with two lots over 364 days counts once, whatever the search or the filter leaves', async () => {
+    openGreenValley();
+    // Garlic is on two lots over 364 days (400 and 420 days) and one of 90 days; Turmeric, Cumin and
+    // Red chilli have none. The server counts lines: 2 in the 364+ bucket.
+    const lots = [
+      line('g1', 'A0010', 'Garlic', 30, 400, '364+'),
+      line('g6', 'A0012', 'Garlic', 25, 420, '364+'),
+      line('g4', 'A0011', 'Garlic', 20, 90, '0-120'),
+      line('g3', 'A0030', 'Turmeric', 10, 300, '241-364'),
+      line('g2', 'A0020', 'Cumin', 200, 150, '121-240'),
+      line('g5', 'A0040', 'Red chilli', 120, 30, '0-120'),
+    ];
+    customerAging.mockResolvedValue({
+      ...answerLines,
+      data: { ...answerLines.data, by_bucket: { ...answerLines.data.by_bucket, '364+': { item_count: 2, total_quantity: 55, total_weight: 0, percentage: 12 } }, items: lots },
+    } as never);
+    const screen = await open(makeStore());
+    expect(screen.items()).toEqual(['Garlic', 'Turmeric', 'Cumin', 'Red chilli']);
+    // A broken screen shows the server's 2 (lines).
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
+    expect(screen.labels()).not.toContain('Items over 364 days: 2');
+
+    // A search that hides Garlic: the tile is the whole stock's, not what is left (a broken one would say 0).
+    await screen.search('cumin');
+    expect(screen.items()).toEqual(['Cumin']);
+    expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
+    expect(screen.labels()).toContain('Items over 364 days: 1');
+
+    // So is the stock age filter: 121–240 days leaves Cumin only.
+    await screen.press('Clear all filters and the search');
+    await screen.press('Filter by stock age');
+    await screen.press('121–240 days');
+    expect(screen.items()).toEqual(['Cumin']);
+    expect(screen.labels()).toContain('Items over 364 days: 1');
   });
 
   it('every customer: the Items tile is still the server\'s figure, as the list has customers and no items to count', async () => {

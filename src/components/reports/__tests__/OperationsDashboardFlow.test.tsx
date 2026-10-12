@@ -8,7 +8,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import { getOperationsDashboard } from '@/services/reporting';
 import listFilterReducer from '@/store/slices/listFilterSlice';
-import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
+import reportPrefsReducer, { setReportPeriod } from '@/store/slices/reportPrefsSlice';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 import OperationsDashboardScreen from '../../../../app/reports/operations-dashboard';
 
@@ -49,12 +49,14 @@ jest.mock('@/services/reporting', () => ({ getOperationsDashboard: jest.fn() }))
 const dashboard = jest.mocked(getOperationsDashboard);
 const ADMIN = { userProfile: { id: 'user-a', name: 'Asha Example', role: 'admin' } };
 
-const answer = (recent: unknown[]) => ({
+// The server sends only the days that had events: here GRNs on two days (2 and 3, 5 in all) and a dispatch on one day (1).
+const DAILY = { grn_daily: [{ date: '2026-10-01', count: 2 }, { date: '2026-10-02', count: 3 }], dispatch_daily: [{ date: '2026-10-01', count: 1 }] };
+const answer = (recent: unknown[], trends: { grn_daily: { date: string; count: number }[]; dispatch_daily: { date: string; count: number }[] } = DAILY) => ({
   success: true,
   message: '',
   data: {
     kpis: { total_grns: 12, total_dispatches: 7, pending_orders: 3, active_customers: 5, total_stock_qty: 1200, total_stock_weight: 5400.5 },
-    trends: { grn_daily: [{ date: '2026-10-01', count: 2 }, { date: '2026-10-02', count: 3 }], dispatch_daily: [{ date: '2026-10-01', count: 1 }] },
+    trends,
     recent_activity: recent,
   },
 });
@@ -121,6 +123,11 @@ async function open(store: Store = makeStore()) {
     texts,
     run,
     press: (label: string) => run(() => control(label).props.onPress()),
+    // The two figures of "Period averages", as they are read out: "GRNs per day: 0.4".
+    averages: () =>
+      tree.root
+        .findAll(node => typeof node.type === 'string' && node.props.accessible === true && /^(GRNs|Dispatches) per day: /.test(node.props.accessibilityLabel ?? ''))
+        .map(node => node.props.accessibilityLabel as string),
     status: () => texts().find(text => text.includes('Last updated')),
   };
 }
@@ -142,8 +149,12 @@ describe('the period', () => {
   it('shows the six figures, the daily averages and the recent activity of the answer', async () => {
     const screen = await open();
     expect(screen.texts()).toEqual(
-      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Total weight', '5,400.50', 'Period averages', '2.5', '1', 'Recent activity'])
+      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Total weight', '5,400.50', 'Period averages', 'Recent activity'])
     );
+    // Over the 120 days of 15 Jun to 12 Oct, not over the 2 days (GRNs) and 1 day (dispatches) that had events:
+    // 5 GRNs / 120 = 0.04 and 1 dispatch / 120 = 0.008: not zero, and too small for one decimal, so "<0.1" and
+    // never "0" (the active-day figures were 2.5 and 1).
+    expect(screen.averages()).toEqual(['GRNs per day: <0.1', 'Dispatches per day: <0.1']);
     // generate-report-pdf has no operations dashboard: the header offers no PDF.
     expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Share PDF')).toEqual([]);
     expect(screen.tree.root.findAll(node => node.props.name === 'file-pdf-box')).toEqual([]);
@@ -165,6 +176,48 @@ describe('the period', () => {
     expect(dashboard.mock.calls).toEqual([[days('2026-06-15')], [days('2025-08-19')]]);
     expect(screen.status()).toBe('19 Aug 2025 – 12 Oct · Last updated 10:00 am');
     expect(button()).toEqual([]);
+  });
+});
+
+describe('the daily averages', () => {
+  const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
+  const week = () => {
+    const store = makeStore();
+    store.dispatch(setReportPeriod({ scope: SCOPE, period: { from: '2026-10-05', to: '2026-10-11' } }));
+    return store;
+  };
+
+  it('divide by every day of the period: seven GRNs on one day of a week are 1 a day, not 7', async () => {
+    dashboard.mockResolvedValue(
+      answer([], { grn_daily: [{ date: '2026-10-07', count: 7 }], dispatch_daily: [{ date: '2026-10-06', count: 2 }, { date: '2026-10-09', count: 1 }] }) as never
+    );
+    const screen = await open(week());
+    expect(dashboard.mock.calls).toEqual([[{ fromDate: '2026-10-05', toDate: '2026-10-11' }]]);
+    // 7 / 7 days = 1 (by active days it was 7 / 1 = 7); 3 / 7 days = 0.43 (it was 3 / 2 = 1.5).
+    expect(screen.averages()).toEqual(['GRNs per day: 1', 'Dispatches per day: 0.4']);
+  });
+
+  it('are 0 only for a period with no event on any day', async () => {
+    dashboard.mockResolvedValue(answer([], { grn_daily: [], dispatch_daily: [] }) as never);
+    const screen = await open(week());
+    expect(screen.averages()).toEqual(['GRNs per day: 0', 'Dispatches per day: 0']);
+  });
+
+  it('count only the days that have come when the period runs past today, and every day of a past month', async () => {
+    const screen = await open();
+    expect(screen.averages()).toEqual(['GRNs per day: <0.1', 'Dispatches per day: <0.1']);
+
+    // This month is 1 to 31 Oct, but today is 12 Oct: 12 days. 5 / 12 = 0.42, 1 / 12 = 0.08 (not 5 / 31 = 0.16).
+    await screen.press('Period: Last 120 days. Change');
+    await screen.press('This month');
+    expect(dashboard.mock.calls.at(-1)).toEqual([{ fromDate: '2026-10-01', toDate: '2026-10-31' }]);
+    expect(screen.averages()).toEqual(['GRNs per day: 0.4', 'Dispatches per day: 0.1']);
+
+    // Last month is all 30 days of September: 5 / 30 = 0.17, 1 / 30 = 0.03 (not zero: "<0.1").
+    await screen.press('Period: This month. Change');
+    await screen.press('Last month');
+    expect(dashboard.mock.calls.at(-1)).toEqual([{ fromDate: '2026-09-01', toDate: '2026-09-30' }]);
+    expect(screen.averages()).toEqual(['GRNs per day: 0.2', 'Dispatches per day: <0.1']);
   });
 });
 

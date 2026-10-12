@@ -120,8 +120,11 @@ const SORT_KEYS: Record<string, (row: Item) => string | number> = {
   grn_count: row => row.grn_count,
 };
 
-/** What a facility answers for a page of `items`. */
-function facility(items: Item[], { sorts }: { sorts: boolean }) {
+/**
+ * What a facility answers for a page of `items`. The totals of its summary are constant (the count
+ * follows the items); `stock` and `qty` say other whole-list totals, for a list whose stock moved.
+ */
+function facility(items: Item[], { sorts, stock = 4321, qty = 9876 }: { sorts: boolean; stock?: number; qty?: number }) {
   return (params: Params): Answer => {
     if (!sorts && ('p_sort_by' in params || 'p_sort_order' in params)) {
       return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.get_item_wise_stock_list in the schema cache' } };
@@ -136,7 +139,7 @@ function facility(items: Item[], { sorts }: { sorts: boolean }) {
       return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * sign;
     });
     const page = ordered.slice(params.p_offset, params.p_offset + params.p_limit);
-    const summary = { total_stock: 4321, total_qty: 9876, item_count: found.length };
+    const summary = { total_stock: stock, total_qty: qty, item_count: found.length };
     return { data: { success: true, data: { items: page, total_count: found.length, ...(sorts ? { summary } : {}) } }, error: null };
   };
 }
@@ -439,6 +442,199 @@ describe('the next page (backend with migration 52)', () => {
     expect(screen.texts()).not.toContain('Loading more items');
     expect(screen.texts()).not.toContain('Show more items');
     expect(rpc).toHaveBeenCalledTimes(3);
+  });
+
+  it('adds every page of a list that did not change, page after page, and asks for nothing else', async () => {
+    serve(facility(MANY, { sorts: true }));
+    const screen = await open();
+    await screen.endReached();
+    await screen.endReached();
+    expect(calls().map(params => params.p_offset)).toEqual([0, 50, 100]);
+    expect(screen.items()).toEqual(MANY.map(row => row.item_name));
+    expect(screen.status()).toBe('Last updated 10:00 am');
+    await screen.run(() => undefined);
+    expect(rpc).toHaveBeenCalledTimes(3);
+  });
+
+  describe('when the list changed between two pages', () => {
+    const offsets = () => calls().map(params => params.p_offset);
+
+    it('an item that left the list: page two is not added, page one is read again and has the live item 051 in place of the removed 025', async () => {
+      // The reviewer's reproduction: page one is items 001 to 050 of 100; item 025 is removed before page two.
+      let dataset = MANY.slice(0, 100);
+      serve(params => facility(dataset, { sorts: true })(params));
+      const screen = await open();
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.items()).toContain('Example Item 025');
+      expect(screen.items()).not.toContain('Example Item 051');
+      expect(screen.status()).toBe('Showing 50 of 100 · Last updated 10:00 am');
+
+      dataset = dataset.filter(row => row.item_id !== 'm25');
+      await screen.endReached();
+      await screen.run(() => undefined);
+      // Page two (offset 50) said 99 items against page one's 100: it was not added, page one was asked for again.
+      // A broken screen adds it: 99 rows with 051 missing and 025 kept (offsets 0, 50 and nothing more).
+      expect(offsets()).toEqual([0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.items()).toContain('Example Item 051');
+      expect(screen.items()).not.toContain('Example Item 025');
+      expect(screen.status()).toBe('Showing 50 of 99 · Last updated 10:00 am');
+      expect(screen.texts()).not.toContain('Loading more items');
+
+      // The next scroll to the end asks for page two of the list as it is now, and nothing is missing or twice.
+      await screen.endReached();
+      expect(offsets()).toEqual([0, 50, 0, 50]);
+      expect(screen.items()).toEqual(dataset.map(row => row.item_name));
+      expect(screen.status()).toBe('Last updated 10:00 am');
+    });
+
+    it('the count the same but the Stock figure moved: page two is not added either, and the new Stock shows', async () => {
+      let stock = 4321;
+      serve(params => facility(MANY.slice(0, 100), { sorts: true, stock })(params));
+      const screen = await open();
+      expect(screen.figure('Stock')).toBe('Stock: 4,321');
+
+      stock = 4000;
+      await screen.endReached();
+      await screen.run(() => undefined);
+      // A broken screen adds page two (100 rows, offsets 0 and 50) and still says 4,321.
+      expect(offsets()).toEqual([0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.figure('Stock')).toBe('Stock: 4,000');
+
+      await screen.endReached();
+      expect(offsets()).toEqual([0, 50, 0, 50]);
+      expect(screen.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
+    });
+
+    it('the Total quantity moved with the count and the Stock the same: page two is not added', async () => {
+      let qty = 9876;
+      serve(params => facility(MANY.slice(0, 100), { sorts: true, qty })(params));
+      const screen = await open();
+      qty = 9000;
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+    });
+
+    it('a server without migration 52 has no summary: the count alone says it changed, and an equal count adds the page', async () => {
+      let dataset = MANY.slice(0, 100);
+      serve(params => facility(dataset, { sorts: false })(params));
+      const screen = await open();
+      // The sort is refused once (offset 0 twice); the offsets of the calls that carry no sort are the pages.
+      const pages = () => calls().filter(params => !('p_sort_by' in params)).map(params => params.p_offset);
+      expect(pages()).toEqual([0]);
+
+      dataset = dataset.filter(row => row.item_id !== 'm25');
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(pages()).toEqual([0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.items()).toContain('Example Item 051');
+
+      // Nothing changes now: the equal count is no sign of a change, and page two is added.
+      await screen.endReached();
+      expect(pages()).toEqual([0, 50, 0, 50]);
+      expect(screen.items()).toEqual(dataset.map(row => row.item_name));
+    });
+
+    it('starts over twice at most for one list: the third change in a row is added, and nothing is asked for again', async () => {
+      // Every time page two is asked for, the stock has moved once more since page one.
+      let stock = 4000;
+      serve(params => {
+        if (params.p_offset > 0) stock += 1;
+        return facility(MANY.slice(0, 100), { sorts: true, stock })(params);
+      });
+      const screen = await open();
+      expect(screen.figure('Stock')).toBe('Stock: 4,000');
+
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.figure('Stock')).toBe('Stock: 4,001');
+
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.figure('Stock')).toBe('Stock: 4,002');
+
+      // The third time the page differs from page one again (4,003 against 4,002): it is added all the same.
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0, 50, 0, 50]);
+      expect(screen.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
+      expect(screen.status()).toBe('Last updated 10:00 am');
+      expect(rpc).toHaveBeenCalledTimes(6);
+    });
+
+    it('a pull to refresh gives the list its two restarts again', async () => {
+      let stock = 4000;
+      serve(params => {
+        if (params.p_offset > 0) stock += 1;
+        return facility(MANY.slice(0, 100), { sorts: true, stock })(params);
+      });
+      const screen = await open();
+      await screen.endReached();
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0, 50, 0]);
+
+      await screen.refresh();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0, 50, 0, 0]);
+      // Two restarts are allowed again: the page that differs is not added, the first page is asked for again.
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0, 50, 0, 0, 50, 0]);
+      expect(screen.items()).toHaveLength(50);
+    });
+
+    it('the restarts are counted again after a page that fits is added', async () => {
+      let stock = 4000;
+      serve(params => facility(MANY, { sorts: true, stock })(params));
+      const screen = await open();
+      stock = 4001;
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0]);
+
+      // Nothing moves now: page two fits the new page one and is added.
+      await screen.endReached();
+      expect(offsets()).toEqual([0, 50, 0, 50]);
+      expect(screen.items()).toHaveLength(100);
+
+      // Page three finds the stock moved again: it is not added, though a restart has been made already.
+      stock = 4002;
+      await screen.endReached();
+      await screen.run(() => undefined);
+      expect(offsets()).toEqual([0, 50, 0, 50, 100, 0]);
+      expect(screen.items()).toHaveLength(50);
+    });
+
+    it('when the first page cannot be read again, the footer does not stay on "loading", and the pages on screen stay', async () => {
+      let dataset = MANY.slice(0, 100);
+      const held = holdCalls(params => facility(dataset, { sorts: true })(params));
+      const screen = await open();
+      await screen.run(() => held[0].release());
+      dataset = dataset.filter(row => row.item_id !== 'm25');
+      await screen.endReached();
+      expect(screen.texts()).toContain('Loading more items');
+
+      await screen.run(() => held[1].release());
+      // Page two said the list changed: page one is being asked for again, and nothing waits for page two.
+      expect(offsets()).toEqual([0, 50, 0]);
+      expect(screen.texts()).not.toContain('Loading more items');
+
+      await screen.run(() => held[2].release(FAILED));
+      expect(screen.texts()).not.toContain('Loading more items');
+      expect(screen.texts()).toContain("Couldn't update. These figures were loaded earlier.");
+      // The page one that was read stays, and page two can be asked for again.
+      expect(screen.items()).toHaveLength(50);
+      expect(screen.texts()).toContain('Show more items');
+    });
   });
 });
 

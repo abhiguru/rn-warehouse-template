@@ -10,7 +10,7 @@
  * prove nothing for work done in the app.
  */
 import { t } from '@/i18n';
-import { todayInIST } from '@/utils/formatters';
+import { toLocalISODate, todayInIST } from '@/utils/formatters';
 import { REPORT_DATE_PRESETS, presetRange, resolveDateRange } from '../../datePresets';
 import { readSearch } from '../../filterModel';
 import { searchTerms } from '../../searchMatch';
@@ -62,6 +62,28 @@ export function reportPeriod(values: FilterValues, today: Date): ReportPeriod {
 export function isLongestPeriod(period: ReportPeriod, today: Date = todayInIST()): boolean {
   const earliest = REPORT_DATE_PRESETS.map(preset => presetRange(preset.id, today).from).sort()[0];
   return period.from <= earliest;
+}
+
+const MS_PER_DAY = 86_400_000;
+/** A "YYYY-MM-DD" day as a UTC midnight, so the difference of two is a whole number of days in any time zone. */
+const utcMidnight = (day: string) => Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+
+/**
+ * How many calendar days of a period have happened: from `period.from` to the
+ * earlier of `period.to` and India's today, both ends counted, and never fewer
+ * than 1 (a period that starts after today, or ends before it starts, counts
+ * one). "This month" runs past today, and days that have not come are not days
+ * to divide by. A daily average is a total over this number of days: the server
+ * names only the days that had events, so the number of those would overstate it.
+ *
+ * Plain arithmetic on the two "YYYY-MM-DD" strings (UTC midnights), so the zone
+ * of the phone cannot move a day. `today` is the day in India, as `todayInIST` gives it.
+ */
+export function periodDays(period: ReportPeriod, today: Date = todayInIST()): number {
+  const todayDay = toLocalISODate(today);
+  const last = period.to < todayDay ? period.to : todayDay;
+  const days = (utcMidnight(last) - utcMidnight(period.from)) / MS_PER_DAY + 1;
+  return Number.isFinite(days) ? Math.max(1, days) : 1;
 }
 
 export function reportView(config: FilterListDefinition, values: FilterValues, sort: SortState | undefined): ReportView {

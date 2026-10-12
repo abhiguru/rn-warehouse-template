@@ -4,7 +4,7 @@
  * little: every field, the search and every sort must change the rows that
  * are shown or their order, on rows made for the purpose.
  */
-import { REPORT_VIEW_CONFIGS, isLongestPeriod, reportPeriod, sortRows, type ReportRequest } from '../configs/reports';
+import { REPORT_VIEW_CONFIGS, isLongestPeriod, periodDays, reportPeriod, sortRows, type ReportRequest } from '../configs/reports';
 import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT, dispatchRecordsView, hasDispatchWeights } from '../configs/reports/dispatchActivity';
 import {
   INVOICE_HISTORY_CUSTOMER,
@@ -516,5 +516,51 @@ describe('the days a report asks for', () => {
     // Days chosen by hand from further back than 420 days are longer still.
     expect(isLongestPeriod({ from: '2025-01-01', to: '2025-12-31' }, today)).toBe(true);
     expect(isLongestPeriod({ from: '2025-08-20', to: '2026-10-12' }, today)).toBe(false);
+  });
+});
+
+describe('the days a daily average is divided by', () => {
+  const days = (from: string, to: string, now: Date = today) => periodDays({ from, to }, now);
+  it('counts both ends of the period: one day is 1, a week is 7', () => {
+    expect(days('2026-10-05', '2026-10-05')).toBe(1);
+    expect(days('2026-09-01', '2026-09-07')).toBe(7);
+    expect(days('2026-10-06', '2026-10-12')).toBe(7);
+  });
+  it('counts a whole month, whatever its length, and the year change', () => {
+    expect(days('2026-09-01', '2026-09-30')).toBe(30);
+    expect(days('2026-08-01', '2026-08-31')).toBe(31);
+    expect(days('2026-03-01', '2026-03-31')).toBe(31);
+    expect(days('2025-12-25', '2026-01-03')).toBe(10);
+  });
+  it('counts the leap day only in a leap year', () => {
+    const later = new Date(2028, 2, 10);
+    expect(days('2028-02-01', '2028-02-29', later)).toBe(29);
+    expect(days('2028-02-28', '2028-03-01', later)).toBe(3);
+    expect(days('2027-02-28', '2027-03-01', later)).toBe(2);
+  });
+  it('stops at today when the period runs past it: the days that have not come are not counted', () => {
+    expect(days('2026-10-01', '2026-10-31')).toBe(12);
+    expect(days('2026-04-01', '2027-03-31')).toBe(195);
+    expect(days('2026-10-12', '2026-10-31')).toBe(1);
+  });
+  it('is 1 for a period that starts after today, or that ends before it starts', () => {
+    expect(days('2026-11-01', '2026-11-30')).toBe(1);
+    expect(days('2026-10-13', '2026-10-13')).toBe(1);
+    expect(days('2026-10-10', '2026-10-05')).toBe(1);
+  });
+  it('is the length of a quick range counted from today: 120 days for "Last 120 days", 12 for "This month"', () => {
+    const range = (preset: string) => periodDays(reportPeriod({ period: { preset } as never }, today), today);
+    expect(range('last120')).toBe(120);
+    expect(range('last420')).toBe(420);
+    expect(range('thisMonth')).toBe(12);
+    expect(range('lastMonth')).toBe(30);
+  });
+  it('reads today as India does when no day is given: 20:00 UTC on 12 Oct is already 13 Oct in India', () => {
+    jest.useFakeTimers({ now: new Date('2026-10-12T20:00:00Z') });
+    try {
+      expect(periodDays({ from: '2026-10-06', to: '2026-10-31' })).toBe(8);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

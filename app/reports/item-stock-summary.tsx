@@ -18,6 +18,20 @@
  * asking again for; a pull to refresh keeps the later pages until the new first
  * page has come, and keeps them when it fails.
  *
+ * Pages are asked for by offset, so an item that leaves stock (or enters it)
+ * between two pages moves every later row by one: the next page would skip a live
+ * item or repeat one. Every page carries the whole list's figures (the count, and
+ * the Stock and Total quantity sums when the server sends them), so a later page
+ * whose figures differ from the first page's shows that the list changed. It is
+ * then not added: the first page is asked for again as a pull to refresh does,
+ * and the list shows page one again once it has come (the pages after it are
+ * dropped; the next scroll to the end asks for page two of the new list). The
+ * restart is made at most twice for one list (the same customer, search and sort)
+ * until the person pulls to refresh or a page arrives unchanged; after that a page
+ * is added as it comes, so a facility that changes all the time cannot keep the
+ * list restarting. An equal count with other Stock or Total quantity is a change
+ * too; a swap that leaves all three figures as they were cannot be seen.
+ *
  * The figures cover every item of the customer (§14.10): with a search typed
  * they are those of the first page without the search, when it is in memory.
  *
@@ -110,8 +124,25 @@ interface LaterPages {
   pages: ItemPage[];
   /** The offset being asked for, or null when no further page is out. */
   next: number | null;
+  /** How many times in a row the list was started over because a page showed it had changed. */
+  restarts: number;
 }
-const noLaterPages = (listId: string): LaterPages => ({ listId, pages: [], next: null });
+const noLaterPages = (listId: string, restarts = 0): LaterPages => ({ listId, pages: [], next: null, restarts });
+
+/** A list is started over this many times in a row; after that the pages that arrive are added as they come. */
+const MAX_AUTOMATIC_RESTARTS = 2;
+
+/**
+ * Whether the list changed between the first page and a later one. Every page carries
+ * the figures of the whole list: its count and, from a server with migration 52, the
+ * Stock and Total quantity sums (an older server sends no summary: the count alone).
+ */
+function listChanged(first: ItemPage, later: ItemPage): boolean {
+  if (first.pagination.totalCount !== later.pagination.totalCount) return true;
+  const { summary: before } = first;
+  const { summary: after } = later;
+  return !!before && !!after && (before.total_stock !== after.total_stock || before.total_qty !== after.total_qty);
+}
 
 /** Each item once: a stock that changed between two pages can move an item onto the next page too. */
 function uniqueItems(pages: ItemPage[]): ItemWiseStockItem[] {
@@ -167,6 +198,24 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const current = useMemo(() => (later.listId === listId ? later : noLaterPages(listId)), [later, listId]);
   const nextOffset = current.next;
 
+  // The GRNs of an opened item. A new search or a refresh closes the cards and reads them again.
+  const [drillGeneration, setDrillGeneration] = useState(0);
+
+  // The first page read again, and the list started over from it once it has come; until then, and
+  // when it fails, the pages after it stay where they are. A pull to refresh is this with a fresh
+  // count of restarts; a list that changed under the person is this with the count carried on.
+  const { refresh: refreshFirst } = first;
+  const reload = useCallback(
+    (restartsSoFar: number) => {
+      setDrillGeneration(generation => generation + 1);
+      return refreshFirst().then(fresh => {
+        if (fresh) setLater(prev => (prev.listId === listId ? noLaterPages(listId, restartsSoFar) : prev));
+        return fresh;
+      });
+    },
+    [listId, refreshFirst]
+  );
+
   const more = useReportQuery<ItemPage>({
     key: [...listKey, nextOffset ?? 'none'],
     fetch: () => askPage(nextOffset ?? 0),
@@ -178,10 +227,29 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   });
   // A page is added once its own request has answered: not a copy kept from earlier.
   const arrived = nextOffset !== null && !more.isFetching && !more.error ? more.data : undefined;
+  // The page this effect last dealt with. The query hands back the same object when a page is asked for
+  // again and comes back equal, so it is forgotten as soon as no page is waiting.
+  const dealtWith = useRef<ItemPage | undefined>(undefined);
+  const firstPage = first.data;
+  const restarts = current.restarts;
   useEffect(() => {
-    if (!arrived) return;
-    setLater(prev => (prev.listId === listId && prev.next === nextOffset ? { listId, pages: [...prev.pages, arrived], next: null } : prev));
-  }, [arrived, listId, nextOffset]);
+    if (!arrived) {
+      dealtWith.current = undefined;
+      return;
+    }
+    if (dealtWith.current === arrived) return;
+    dealtWith.current = arrived;
+    // The list changed since the first page: its offsets no longer line up with this page. Adding it
+    // would skip a live item or keep one that has left. Not added; the first page is read again.
+    if (firstPage && restarts < MAX_AUTOMATIC_RESTARTS && listChanged(firstPage, arrived)) {
+      // Nothing is waiting for a page now, whether or not the new first page comes: the footer cannot stay on "loading".
+      setLater(prev => (prev.listId === listId && prev.next === nextOffset ? { ...prev, next: null, restarts: restarts + 1 } : prev));
+      void reload(restarts + 1);
+      return;
+    }
+    // A page that fits the first one: the count of restarts starts again.
+    setLater(prev => (prev.listId === listId && prev.next === nextOffset ? { listId, pages: [...prev.pages, arrived], next: null, restarts: 0 } : prev));
+  }, [arrived, firstPage, listId, nextOffset, restarts, reload]);
 
   const pages = useMemo(() => (first.data ? [first.data, ...current.pages] : []), [first.data, current.pages]);
   const loaded = useMemo(() => uniqueItems(pages), [pages]);
@@ -232,20 +300,10 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const footerState: ReportLoadMoreState =
     nextOffset !== null ? (more.error ? 'failed' : 'loading') : canLoadMore ? 'more' : 'none';
 
-  // The GRNs of an opened item. A new search or a refresh closes the cards and reads them again.
-  const [drillGeneration, setDrillGeneration] = useState(0);
   const drill = useItemGRNs(customerId, `${searchQuery ?? ''}|${drillGeneration}`);
 
-  // A pull to refresh reads the first page again and starts the list over from it once it has
-  // come; until then, and when it fails, the pages after it stay where they are.
-  const { refresh: refreshFirst } = first;
-  const refresh = useCallback(() => {
-    setDrillGeneration(generation => generation + 1);
-    return refreshFirst().then(fresh => {
-      if (fresh) setLater(prev => (prev.listId === listId ? noLaterPages(listId) : prev));
-      return fresh;
-    });
-  }, [listId, refreshFirst]);
+  // A pull to refresh reads the first page again and starts the list over from it (`reload`).
+  const refresh = useCallback(() => reload(0), [reload]);
   const query = { ...first, refresh };
   const extraData = useMemo(() => ({ drill, words: view.words }), [drill, view.words]);
 

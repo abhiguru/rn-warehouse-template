@@ -320,8 +320,10 @@ After the seed-data check (2026-10-12):
   period's invoices), the all-customers amount, the customer rows and the sorts
   by amount now use the invoice total. It is the same figure as the invoice
   list, the invoice screen and the invoice PDF. The label is "Amount", no longer
-  "Net amount". This is right on servers with or without backend migration 61.
-  The customer activity report's invoiced amounts and the report PDFs follow the
+  "Net amount". The amount of each invoice is right on servers with or without
+  backend migration 61; such a server also lists an invoice once per payment,
+  which "Fixes after the independent review" below repairs for one customer's
+  screen. The customer activity report's invoiced amounts and the report PDFs follow the
   server and are right from backend migration 61. The Monthly breakdown is
   described above.
 - **Invoice history, Monthly breakdown: paise.** When any amount in the table
@@ -333,9 +335,12 @@ After the seed-data check (2026-10-12):
   Paid or Pending chosen, the PDF holds only the paid, or only the pending,
   invoices of the period. The search does not narrow it. **Needs the backend
   release with migrations 59 to 61**, where `generate-report-pdf` accepts the
-  optional `status` field. On a server without it the app asks once more
-  without the filter and shares the PDF of all the period's invoices, with no
-  error.
+  optional `status` field. On a server without it nothing is shared: the app
+  says that the facility's server can't filter the PDF by payment yet, and to
+  remove the Payment filter or ask for a server update. Exports without the
+  filter still work there. (At first the app asked once more without the filter
+  and shared the PDF of all the period's invoices with no warning; changed
+  after the independent review, below.)
 - **Every report date follows India's calendar.** This extends "Report days
   follow India's calendar (Invoice history, GRN activity)" above to all the
   reports, on a phone in any time zone: card dates, "Latest" dates, "Active
@@ -402,6 +407,67 @@ After device run 5 (2026-10-12):
   note that only loaded items are sorted, "એકાઉન્ટ" and "લાઇન" in the PDF
   messages. The owner's own check of the Gujarati is still open.
 
+Fixes after the independent review (2026-10-12):
+
+- **A refused report no longer shows earlier figures.** After a facility
+  refuses an account a customer's report, figures from before the refusal could
+  stay on screen or come back: a copy kept on the phone that was still being
+  read, or the answer to a request sent before the refusal (another period, or
+  a pull to refresh). Neither is shown or kept now; the report shows the
+  refusal. A request sent after the refusal is treated as usual, so the report
+  comes back when access is given back. A report also no longer stays on
+  "loading" when the refused request was not the last one sent for it.
+- **A report names its customer as the facility does, not as a link does.** A
+  link can open a customer's report with any name written in it
+  (`...?customerId=...&customerName=...`), and the report showed that name over
+  the customer's real figures; the shared PDF's file carried it too. The name
+  in a link is no longer read. A report shows the facility's own name: the row
+  that was tapped, the customer picker's list, the account's assigned
+  customers, or one lookup by id; until the facility has answered it shows no
+  name. The PDF's file is named after the customer as the PDF itself names
+  them. "Last opened" keeps the facility's name, and a name kept by an earlier
+  version is corrected the first time that customer is opened. A customer
+  account with one customer now sees that customer's name under the report
+  title. Nothing about access changes: the id is still what the server judges.
+- **"Share PDF" is offered again for a replaced facility server.** The note
+  that a facility's server cannot make report PDFs was kept per address; it is
+  now kept per address and instance, so a server replaced by a new instance at
+  the same address offers the export without restarting the app.
+- **Invoice history, one customer: an invoice paid in several parts is one
+  invoice.** A server before backend migration 61 lists an invoice once per
+  payment. The app now merges those rows: the list, the Invoices tile, the
+  Monthly breakdown, the Paid and Pending tiles and the cards count the invoice
+  once, with its payments added up (an invoice of 14 paid as 4 and 10 is 1
+  invoice, Paid 14, Pending 0; it showed as 2 invoices, Amount 28, Pending 14).
+  The Invoices tile counts the invoices listed, not the server's own count.
+  Still server-dependent before migration 61: the all-customers level (its
+  figures are the server's totals), the customer activity report and the PDF.
+- **Invoice history, one customer: a filtered PDF is never shared unfiltered.**
+  See "Share PDF follows the Payment filter" above: on a server whose PDF
+  function does not know the Payment filter the app now refuses with a clear
+  message and shares nothing.
+- **Operations dashboard: daily averages over the whole period.** "GRNs per
+  day" and "Dispatches per day" divide by every day of the period that has
+  happened, not only by the days that had events: seven GRNs on one day of a
+  week read 1 a day, not 7. A period that runs past today, such as "This
+  month", is counted up to today in India. An average that is not zero but too
+  small for one decimal reads "<0.1", never "0". "Recent activity" still shows
+  the latest events whatever the period.
+- **Item stock summary: the list starts again when it changed.** If the list
+  changes while you scroll (an item leaves stock, or the total stock or
+  quantity moves), the next page is no longer added to the old pages. The list
+  loads again from its first page, at most twice in a row, so no item in stock
+  is skipped and no removed one stays on screen. Needs backend migration 52 for
+  the totals; without them the item count alone decides.
+- **Stock aging, one customer: "Items over 364 days" counts items.** It counts
+  the items with at least one lot over 364 days, not stock lines: an item with
+  two such lots counts once, like the Items figure beside it. The bar still
+  shows the server's quantities, and the all-customers level and the PDF keep
+  the server's count.
+- **Data tables on iOS.** The scrolling half of each row and of the totals row
+  is now hidden from VoiceOver as it already was from Android's screen reader,
+  so a row's figures are not read twice. Not checked on an iPhone.
+
 Backend migrations this release of the reports work relates to: 52 (server
 sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
 function (report PDFs), 54–56 (a period includes its last day; report days
@@ -410,16 +476,19 @@ follow India's calendar), 57 (the dispatch id), 58 (the dispatch weight), 59
 reports cut their days on India's calendar), 61 (invoice amounts in the
 reports are the invoice total; the customer activity report and the report PDFs
 are right from it) and 62 (Paid and Pending follow the money in the invoice
-reports and their PDF), and the optional `status` field of
+reports and their PDF) and 63 (the GRN activity of one customer lists a GRN
+once whatever its number of invoices), and the optional `status` field of
 `generate-report-pdf` (the Payment filter of one customer's invoice history
 PDF), which comes with the release of 59 to 61. The app works against a backend
 without them, with the fallbacks described in the entries above, and nothing in
 the app needs migrations 54–56. Without them these figures are wrong or
 missing: the customer activity report's invoiced amounts are overstated before
 61, the stock summary's GRN days are cut in UTC before 60, the PDF of one
-customer's invoice history is not filtered by payment without `status`, and,
-without 62, the customer activity report's recent invoices and the PDF still
-treat any payment as paid in full.
+customer's invoice history is not made with a Payment filter without `status`
+(the app refuses instead), without 62 the customer activity report's recent
+invoices and the PDF still treat any payment as paid in full, and without 63 a
+GRN with two old invoices is listed and counted twice in one customer's GRN
+activity.
 
 ## Unreleased — central login in the app (2026-10-12)
 

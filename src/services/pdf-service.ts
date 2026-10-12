@@ -1,10 +1,7 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { getLanguage, t, type AppLanguage } from '@/i18n';
-import { createLogger } from '@/utils/logger';
 import { serverText } from '@/utils/serverText';
-
-const log = createLogger('reportPdf');
 
 /**
  * Fix private development origins returned by backend Edge Functions. Docker
@@ -381,7 +378,8 @@ interface ReportPdfRequestBase {
   /**
    * Only the invoices with this payment status. The server accepts it with
    * `report: 'invoice-history'` and a `customer_id` only; the body leaves it out
-   * for anything else. A server that predates it refuses the field (see generateReportPDF).
+   * for anything else. A server that predates it refuses the field, and then no PDF is made at all
+   * (see generateReportPDF): a filtered export never becomes an unfiltered one.
    */
   status?: ReportPdfStatus;
   /** Language of the PDF's labels; the app's current language when absent. */
@@ -412,6 +410,10 @@ export interface ReportPdfDocument {
 /**
  * Why a report PDF was not made. `server-outdated`: the facility's backend has
  * no generate-report-pdf (older than the release with migrations 52-53).
+ * `filter-unsupported`: the backend has it but not the `status` field, so it
+ * cannot make the PDF of the Paid or the Pending invoices only; nothing is made
+ * (the PDF of all the invoices would not be what the screen asked for), and the
+ * server is not outdated for the exports without a filter.
  */
 export type ReportPdfFailure =
   | 'session'
@@ -421,6 +423,7 @@ export type ReportPdfFailure =
   | 'customer-unavailable'
   | 'period-too-long'
   | 'not-accepted'
+  | 'filter-unsupported'
   | 'server-unavailable'
   | 'insecure-link';
 
@@ -460,7 +463,7 @@ const isFunctionEnvelope = (data: unknown): data is { success: boolean; error?: 
 
 const reportFailure = (reason: ReportPdfFailure, error: string): ReportPdfResult => ({ success: false, error, reason });
 
-/** What a server that predates the `status` field answers (HTTP 400) to a request that carries it. */
+/** What a server that predates the `status` field answers (HTTP 400) to a request that carries it. It is the only message read. */
 const UNKNOWN_FIELD_MESSAGE = 'Unknown field in report request';
 
 /** One POST to generate-report-pdf; null when no answer came. */
@@ -507,32 +510,26 @@ async function readReportPdfAnswer(response: Response): Promise<unknown> {
  * - no answer at all (offline, timed out): check the connection.
  *
  * A request with `status` (the Payment choice of one customer's invoice history)
- * is asked again, once and without `status`, when the server answers HTTP 400
- * "Unknown field in report request": a server older than the field then makes
- * the PDF of all the period's invoices, as it did before, and is not taken as
- * outdated. Any other 400, and a second 400, are failures as above.
+ * that the server answers with HTTP 400 "Unknown field in report request" is a
+ * failure with the reason `filter-unsupported`: the server is older than the
+ * field and cannot filter. It is asked once and never again without `status`,
+ * because the PDF of all the invoices is not the PDF that was asked for; the
+ * person is told to remove the Payment filter or have the server updated. That
+ * server is not outdated: a request without `status` is made as usual. Any other
+ * 400, and the same message to a request without `status`, are failures as above.
  *
- * Nothing is logged but that one retry, in a line with no request, customer,
- * link or server text in it (src/services/__tests__/reportPdf.test.ts).
+ * Nothing is logged: no request, customer, link or server text
+ * (src/services/__tests__/reportPdf.test.ts).
  */
 export async function generateReportPDF(request: ReportPdfRequest): Promise<ReportPdfResult> {
   const authToken = await getAuthToken();
   if (!authToken) return reportFailure('session', t('errors.auth.loginAgain'));
 
   const body = reportPdfRequestBody(request);
-  let response = await postReportPdf(authToken, body);
+  const response = await postReportPdf(authToken, body);
   // No answer: offline, timed out, or the session changed while waiting.
   if (!response) return reportFailure('network', t('common.checkConnection'));
-  let data = await readReportPdfAnswer(response);
-
-  if ('status' in body && response.status === 400 && isFunctionEnvelope(data) && data.error === UNKNOWN_FIELD_MESSAGE) {
-    log.info('The server does not take a payment status for the PDF; asked again without it');
-    const withoutStatus = { ...body };
-    delete withoutStatus.status;
-    response = await postReportPdf(authToken, withoutStatus);
-    if (!response) return reportFailure('network', t('common.checkConnection'));
-    data = await readReportPdfAnswer(response);
-  }
+  const data = await readReportPdfAnswer(response);
 
   if (!isFunctionEnvelope(data)) {
     const code = typeof data === 'object' && data !== null ? (data as { code?: unknown }).code : undefined;
@@ -551,6 +548,11 @@ export async function generateReportPDF(request: ReportPdfRequest): Promise<Repo
       case 404:
         return reportFailure('customer-unavailable', t('reports.export.customerUnavailable'));
       case 400:
+        // A server older than the `status` field cannot filter. The request is not made again without
+        // the filter: that would share every invoice, as if nothing had been chosen.
+        if ('status' in body && data.error === UNKNOWN_FIELD_MESSAGE) {
+          return reportFailure('filter-unsupported', t('reports.export.filterNeedsUpdate'));
+        }
         // The server's refusals are fixed English sentences; only this one is the person's to fix.
         return typeof data.error === 'string' && /period must not be longer/i.test(data.error)
           ? reportFailure('period-too-long', t('reports.export.periodTooLong', { days: REPORT_PDF_MAX_PERIOD_DAYS }))

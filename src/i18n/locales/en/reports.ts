@@ -365,5 +365,8 @@ export const reports = {
     notAccepted: "The server didn't accept this request. Update the app and try again.",
     // Shown before the share sheet when the server cut the PDF short.
     truncated: 'This PDF shows the first {{shown}} of {{total}} rows.',
+    // Shown instead of a PDF of all the invoices when the facility's server cannot filter the PDF by payment.
+    filterNeedsUpdate:
+      "This facility's server can't filter the PDF by payment yet. Remove the Payment filter to share all the invoices, or ask for a server update.",
   },
 };

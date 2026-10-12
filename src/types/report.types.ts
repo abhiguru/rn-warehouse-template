@@ -494,10 +494,11 @@ export type AllGRNActivityResponse = ServiceResponse<AllGRNActivityData>;
 // ============================================================
 
 /**
- * Invoice history summary KPIs. The screen shows only `total_invoices` from here:
- * `net_amount` and the paid and pending sums are built from `net_total`, which counts
- * labour and tax twice before backend migration 61, so the Paid and Pending tiles are
- * worked out from the invoices' `total` instead.
+ * Invoice history summary KPIs. One customer's screen shows none of them: `net_amount` and the paid and
+ * pending sums are built from `net_total`, which counts labour and tax twice before backend migration 61,
+ * and `total_invoices` counts an invoice once per payment before 61, so the tiles are worked out from the
+ * invoices instead (the Invoices tile is the length of the list, the Paid and Pending tiles come from each
+ * invoice's `total`). The all-customers level still shows the server's `total_invoices`.
  */
 export interface InvoiceHistoryKPIs {
   total_invoices: number;
@@ -526,7 +527,9 @@ export interface InvoicePaymentStatus {
   payment_ref: string | null;
   /**
    * The payments recorded against the invoice: from backend migration 61 the sum of its payment rows
-   * (before, the amount of one row). Not sent for an invoice with no payment.
+   * (before, the amount of one row, and the invoice was listed once per payment: the service merges
+   * those rows and adds their amounts, so here it is the sum on any server). Not sent for an invoice
+   * with no payment.
    */
   amount?: number;
   payment_mode?: string;

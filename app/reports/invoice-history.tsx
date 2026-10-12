@@ -319,7 +319,10 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
       data && [
-        { icon: 'file-document-outline', value: data.summary.total_invoices, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+        // The count of the list, one invoice per row (the service merges the rows an older server sends per
+        // payment), not the server's `summary.total_invoices`, which that server counts once per payment.
+        // Every invoice of the period, not the ones the search or the Payment choice leaves.
+        { icon: 'file-document-outline', value: data.invoices.length, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
         {
           icon: 'check-circle',
           value: formatSummaryAmount(totals.paidAmount),
@@ -337,8 +340,9 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   );
   // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period, which
   // the server tells apart by the same rule) but not the search, which is the screen's own. "All" sends no
-  // status. A server that predates the field makes the PDF of all the period's invoices (generateReportPDF
-  // asks again without it).
+  // status. A server that predates the field refuses it, and generateReportPDF then fails with
+  // 'filter-unsupported': the export alert says to remove the Payment filter or update the server, and
+  // nothing is shared (the choice is never dropped to share all the invoices).
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({
       report: REPORT_ID,

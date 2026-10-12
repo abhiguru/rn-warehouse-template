@@ -20,6 +20,10 @@ import {
   type InvoiceMonth,
   type MonthlyInvoice,
 } from '../configs/reports/invoiceMonths';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { getCustomerInvoiceHistory } from '@/services/reporting/invoice-history-service';
+
+jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 
 /**
  * An invoice of `total`. Its `net_total` is what a server without migration 61 sends for an invoice with
@@ -343,5 +347,91 @@ describe('invoiceMonthsHavePaise', () => {
 
   it('reads an unreadable amount as zero, like the sums do', () => {
     expect(invoiceMonthsHavePaise([month(Number.NaN, undefined as unknown as number, null as unknown as number)])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A server before backend migration 61 lists an invoice once per payment. The service merges those rows
+// (invoiceHistoryService.test.ts); here the figures of the screen are built from its real output.
+// ---------------------------------------------------------------------------
+
+describe('the figures of an older server that lists an invoice once per payment, through the real service', () => {
+  const rpc = jest.fn();
+  const paidRow = (id: string, total: number, amount: number, date = '2026-10-05') => ({
+    invoice_id: id,
+    invoice_number: `2026/${id}`,
+    invoice_date: date,
+    total,
+    net_total: total + 3.5,
+    payment_status: { status: 'paid', paid_date: '2026-10-06', payment_ref: `PAY-${id}-${amount}`, amount, payment_mode: 'cash' },
+  });
+  const unpaidRow = (id: string, total: number) => ({
+    invoice_id: id,
+    invoice_number: `2026/${id}`,
+    invoice_date: '2026-10-05',
+    total,
+    net_total: total + 3.5,
+    payment_status: { status: 'pending', paid_date: null, payment_ref: null },
+  });
+  /** The invoices the service gives the screen for an answer made of these rows. */
+  const listed = async (rows: unknown[]) => {
+    rpc.mockResolvedValue({ data: { success: true, data: { summary: { total_invoices: rows.length }, invoices: rows, by_month: [] } }, error: null });
+    const result = await getCustomerInvoiceHistory({ customerId: 'cccccccc-1111-4222-8333-444444444444', fromDate: '2026-10-01', toDate: '2026-10-11' });
+    if (!result.data) throw new Error('The service returned no data');
+    return result.data.invoices;
+  };
+
+  beforeEach(() => {
+    rpc.mockReset();
+    jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('is 1 invoice, Amount 14, Paid 14, Pending 0, Paid, for 14 paid as 4 and 10 (not 2 invoices, 28, 14, 14)', async () => {
+    const invoices = await listed([paidRow('i14', 14, 4), paidRow('i14', 14, 10)]);
+    expect(invoices).toHaveLength(1);
+    const months = invoiceMonths(invoices);
+    expect(months).toEqual([{ month: '2026-10', invoiceCount: 1, amount: 14, paidAmount: 14, pendingAmount: 0, paidCount: 1, pendingCount: 0 }]);
+    expect(invoiceMonthTotals(months)).toEqual({ invoiceCount: 1, amount: 14, paidAmount: 14, pendingAmount: 0, paidCount: 1, pendingCount: 0 });
+    expect(invoiceMonthsHavePaise(months)).toBe(false);
+  });
+
+  it('is the same table as the one row a server with migration 61 sends for it', async () => {
+    const olderServer = invoiceMonths(await listed([paidRow('i14', 14, 4), paidRow('i14', 14, 10)]));
+    const server61 = invoiceMonths(await listed([paidRow('i14', 14, 14)]));
+    expect(olderServer).toEqual(server61);
+  });
+
+  it('is 5 invoices, Amount 389, Paid 288.99, Pending 100.01, for the staged pre-61 database (6 rows; not 6, 500, 288.99, 211.01)', async () => {
+    // staged-pre61.txt: 2026-6203 (111) is paid in two parts, 51.00 and 60.00, and arrives as two rows.
+    const invoices = await listed([
+      paidRow('6201', 14, 4),
+      unpaidRow('6202', 89),
+      paidRow('6203', 111, 51),
+      paidRow('6203', 111, 60),
+      paidRow('6204', 109, 108.5),
+      paidRow('6205', 66, 65.49),
+    ]);
+    expect(invoices.map(row => row.invoice_id)).toEqual(['6201', '6202', '6203', '6204', '6205']);
+    const months = invoiceMonths(invoices);
+    expect(months).toEqual([{ month: '2026-10', invoiceCount: 5, amount: 389, paidAmount: 288.99, pendingAmount: 100.01, paidCount: 2, pendingCount: 3 }]);
+    expect(invoiceMonthTotals(months)).toEqual({ invoiceCount: 5, amount: 389, paidAmount: 288.99, pendingAmount: 100.01, paidCount: 2, pendingCount: 3 });
+    expect(invoiceMonthsHavePaise(months)).toBe(true);
+  });
+
+  it('puts each merged invoice in the month of its own date: Paid + Pending is the Amount in every month', async () => {
+    // 30 Sep 18:29 UTC is still September in India; 30 Sep 18:30 UTC is 1 October.
+    const invoices = await listed([
+      paidRow('sep', 20, 5, '2026-09-30T18:29:00+00:00'),
+      paidRow('oct', 14, 4, '2026-09-30T18:30:00+00:00'),
+      paidRow('sep', 20, 15, '2026-09-30T18:29:00+00:00'),
+      paidRow('oct', 14, 6, '2026-09-30T18:30:00+00:00'),
+    ]);
+    const months = invoiceMonths(invoices);
+    expect(months).toEqual([
+      { month: '2026-10', invoiceCount: 1, amount: 14, paidAmount: 10, pendingAmount: 4, paidCount: 0, pendingCount: 1 },
+      { month: '2026-09', invoiceCount: 1, amount: 20, paidAmount: 20, pendingAmount: 0, paidCount: 1, pendingCount: 0 },
+    ]);
+    for (const row of months) expect(row.paidAmount + row.pendingAmount).toBe(row.amount);
   });
 });
