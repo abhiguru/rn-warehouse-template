@@ -42,7 +42,7 @@ it('keeps one list per central person under central_facilities_v1:<id>', async (
   expect((await loadMyFacilities('asha')).map(entry => entry.origin)).toEqual([NORTH.origin]);
   expect((await loadMyFacilities('bhavin')).map(entry => entry.origin)).toEqual([SOUTH.origin]);
   expect(await loadMyFacilities('nobody')).toEqual([]);
-  expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['central_facilities_v1:asha', 'central_facilities_v1:bhavin']);
+  expect([...(await AsyncStorage.getAllKeys())].sort()).toEqual(['central_facilities_v1:asha', 'central_facilities_v1:bhavin']);
 });
 
 it('stores the address, instance, name, city, status and last opening, and no token', async () => {
