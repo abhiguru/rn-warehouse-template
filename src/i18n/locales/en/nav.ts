@@ -22,6 +22,12 @@ export const nav = {
     facility: 'Facility',
     enrollmentReview: 'Enrollment review',
     editGrn: 'Edit GRN',
+    // Central login (docs/CENTRAL_LOGIN.md)
+    myFacilities: 'My facilities',
+    addFacility: 'Add facility',
+    facilityAddress: 'Facility address',
+    account: 'Account',
+    confirmNumber: 'Confirm your number',
   },
   // Starting the app against the chosen facility server
   bootstrap: {

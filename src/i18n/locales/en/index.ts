@@ -1,5 +1,6 @@
 import { common } from './common';
 import { auth } from './auth';
+import { central } from './central';
 import { nav } from './nav';
 import { filters } from './filters';
 import { grn } from './grn';
@@ -22,6 +23,7 @@ import { components } from './components';
 export const en = {
   common,
   auth,
+  central,
   nav,
   filters,
   grn,
