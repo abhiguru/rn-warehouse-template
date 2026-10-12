@@ -1,6 +1,8 @@
 /**
  * Avatar: initials on a stable palette colour (style guide §3.2). The same
  * person or customer gets the same initials and colour on every screen.
+ * The colour is keyed by the id (or the name when there is none), as ever; the
+ * initials come from the name's letters and digits, not from a leading symbol.
  */
 import React from 'react';
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native';

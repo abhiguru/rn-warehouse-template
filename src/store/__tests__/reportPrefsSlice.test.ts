@@ -15,7 +15,11 @@ import reducer, {
   type ReportPrefsState,
 } from '../slices/reportPrefsSlice';
 
-jest.mock('../slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled', match: () => false } } }));
+// The slice must not import authSlice (that closes a require cycle through sessionScopedState): it
+// matches the sign-out action by its type string. Loading authSlice here fails the whole file.
+jest.mock('../slices/authSlice', () => {
+  throw new Error('reportPrefsSlice must not import authSlice');
+});
 
 const A = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 const B = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-b']);

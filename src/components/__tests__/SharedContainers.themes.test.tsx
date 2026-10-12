@@ -259,6 +259,32 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     act(() => empty.unmount());
   });
 
+  it('draws every header on one line that shrinks a little before it is cut, in all three table paths', () => {
+    const headers = [
+      { key: 'name', label: 'Invoices' },
+      { key: 'bags', label: 'Bags', dataType: 'number' as const, sortable: true },
+      { key: 'amount', label: 'Pending amount', dataType: 'currency' as const, width: 120 },
+    ];
+    for (const Table of [RootTable, FioriPathTable, ReportsPathTable]) {
+      const tree = render(<Table columns={headers} data={tableData} onSort={jest.fn()} />);
+      const cells = tree.root.findAll(
+        node => typeof node.type === 'string' && node.props.accessibilityRole !== undefined && ['Invoices', 'Pending amount'].includes(String(node.props.accessibilityLabel))
+      );
+      expect(cells).toHaveLength(2);
+      const headerTexts = tree.root.findAll(node => (node.type as unknown) === 'Text' && ['Invoices', 'Bags', 'Pending amount'].includes(([] as unknown[]).concat(node.props.children).join('')));
+      // The plain, the sortable (with its icon beside it) and the wide column: each is one line.
+      expect(headerTexts).toHaveLength(3);
+      for (const header of headerTexts) {
+        expect(header.props.numberOfLines).toBe(1);
+        expect(header.props.adjustsFontSizeToFit).toBe(true);
+        expect(header.props.minimumFontScale).toBeGreaterThanOrEqual(0.8);
+        expect(header.props.minimumFontScale).toBeLessThanOrEqual(0.9);
+        expect(flatStyle(header.props.style).color).toBe(t.text.secondary);
+      }
+      act(() => tree.unmount());
+    }
+  });
+
   it('list states and skeletons use tokens', () => {
     const emptyFiltered = render(<ListEmptyState activeFilterCount={2} onClearFilters={jest.fn()} />);
     expect(texts(emptyFiltered)).toContain('Clear filters');

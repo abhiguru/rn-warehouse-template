@@ -23,6 +23,9 @@ import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger('StockService');
 
 // M3 Fix: Removed duplicate categorizeError function - now using centralized version from serviceErrorHandler.ts
 
@@ -736,7 +739,9 @@ export class StockService {
    * backend without migration 52 refuses the two parameters (PGRST202): the
    * call is then made again without them, `sortApplied` is false (the items
    * are in item-name order) and there is no `summary`. That facility's later
-   * calls leave the parameters out at once.
+   * calls leave the parameters out at once. That refusal is how the app finds
+   * out, so it is one info line, not an error in the log; any other failure is
+   * logged as an error as it always was.
    *
    * @param options - Options for fetching item-wise stock list
    */
@@ -786,20 +791,43 @@ export class StockService {
       p_limit: limit,
       p_offset: offset,
     };
-    const call = (params: Record<string, unknown>) =>
-      executeRPC<RawItemData>(getAuthenticatedClient, 'get_item_wise_stock_list', params, {
+    const call = (params: Record<string, unknown>, getClient: () => Promise<unknown> = getAuthenticatedClient) =>
+      executeRPC<RawItemData>(getClient, 'get_item_wise_stock_list', params, {
         context: 'StockService.getItemWiseStockList',
         errorMessage: t('errors.stock.itemWiseFailed'),
       });
+
+    // The first call to a facility sends the sort parameters. A server without
+    // migration 52 refuses them (PGRST202), which is the expected way to find
+    // that out, not a fault: that one answer is taken off the client's reply
+    // before executeRPC can log it as an error. It still comes back as a failed
+    // result, so the retry below runs. Every other answer, and every exception,
+    // reaches executeRPC untouched and is logged there as before.
+    let serverHasNoSort = false;
+    const sortProbeClient = async () => {
+      const client = await getAuthenticatedClient();
+      return {
+        rpc: async (name: string, args: Record<string, unknown>) => {
+          const answer = await client.rpc(name, args);
+          if (answer.error && lacksSortParameters({ error: answer.error.message, errorCode: answer.error.code })) {
+            serverHasNoSort = true;
+            return { data: { success: false, error: answer.error.message }, error: null };
+          }
+          return answer;
+        },
+      };
+    };
 
     const wantsSort = sortBy !== undefined || sortOrder !== undefined;
     const facility = facilityKey();
     let sortApplied = true;
     let result: Awaited<ReturnType<typeof call>>;
     if (wantsSort && !facilitiesWithoutItemSort.has(facility)) {
-      result = await call({ ...baseParams, p_sort_by: sortBy ?? 'item_name', p_sort_order: sortOrder ?? 'asc' });
-      if (!result.success && lacksSortParameters(result)) {
+      result = await call({ ...baseParams, p_sort_by: sortBy ?? 'item_name', p_sort_order: sortOrder ?? 'asc' }, sortProbeClient);
+      if (!result.success && (serverHasNoSort || lacksSortParameters(result))) {
         facilitiesWithoutItemSort.add(facility);
+        // Once per facility per run: later calls to it leave the parameters out at once.
+        logger.info('[StockService.getItemWiseStockList] This server cannot sort the item list; asking again without the sort.');
         result = await call(baseParams);
         sortApplied = false;
       }

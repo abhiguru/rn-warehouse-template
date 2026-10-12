@@ -733,7 +733,7 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
 
-Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen.
+Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen. The initials are the first letter or digit of each of the first two words that have one, so a name that starts with an emoji or a symbol ("🧊 Ice Depot") gives "ID", never half of a character.
 
 ---
 
@@ -822,7 +822,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 | `common/overview-tab/InfoChip.tsx` | Neutral tag: `status.neutral.background`, `status.neutral.text`. |
 | `ui/StatusTag.tsx` | `status.*.background`, `status.*.text`, the standard icon from [3.5](#35-status-colours) at `iconSize.xs`, `radius.field`, `caption1` weight 600. Use it for every status; do not build local tags. |
 | `ui/Fab.tsx` | Floating create button for list reports, see 14.1. |
-| `ui/Avatar.tsx` | Initials (first letters of the first two words) on the avatar palette colour for the record id; sizes `sm` 32, `md` 44, `lg` 60. |
+| `ui/Avatar.tsx` | Initials (first letter or digit of each of the first two words that have one) on the avatar palette colour for the record id; sizes `sm` 32, `md` 44, `lg` 60. |
 | Count badge | A "needs action" count (tab bar items waiting for you) uses `destructive.fill` with `destructive.onFill`. Plain counts (section headers, detail tabs, active filters) use `brand.fill` with `brand.onFill`. Minimum 18 px, `caption2`. |
 | `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill and tag follow the single stock rule in [3.5](#35-status-colours) (in stock, low stock below 20%, out of stock); text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
 | `FioriLinearProgress.tsx` | Height 4 (default) or 8 (prominent), pill radius; track `brand.subtleStrong` or the status background with `coloredTrack`; fill `brand.fill` (`default`) or `status.*.element` (`success`, `warning`, `error`, `info`); percentage in `caption1`. Segmented progress uses chart colours in order. |

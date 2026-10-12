@@ -7,7 +7,7 @@
  * pins and recent reports are kept per facility and account (useReportPrefs).
  */
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
@@ -118,6 +118,18 @@ export default function ReportsScreen() {
   // Every id, from the registry and from what was stored, passes the role's gate here.
   const sections = reportHubSections(role, prefs.pinned, prefs.recent);
 
+  // A section that appears or changes at the top (Recent after the first report opened, Pinned
+  // after the first pin) would be out of sight on a tab scrolled down: go back to the top. Only a
+  // change in the number of sections or the first one's id counts, not a draw or a re-focus.
+  const scrollRef = useRef<ScrollView>(null);
+  const shownSections = useRef<string | null>(null);
+  const sectionsKey = `${sections.length}:${sections[0]?.id ?? ''}`;
+  useEffect(() => {
+    const before = shownSections.current;
+    shownSections.current = sectionsKey;
+    if (before !== null && before !== sectionsKey) scrollRef.current?.scrollTo({ y: 0 });
+  }, [sectionsKey]);
+
   // A double tap on a row would push the report twice, and back would then show it again.
   const lastPushAt = useRef(0);
   const openReport = (report: ReportDefinition) => {
@@ -158,6 +170,7 @@ export default function ReportsScreen() {
 
       {/* Report List */}
       <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}

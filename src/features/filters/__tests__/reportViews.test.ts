@@ -203,12 +203,14 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     found: ['i2'],
     id: (row: { item_id: string }) => row.item_id,
   },
+  // The server returns no weight for a dispatch (the service maps it to 0), so none is set here:
+  // a sort by weight would give the written order and fail below.
   'report-dispatch-activity-customer': {
     rows: [
-      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, total_weight: 5000, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
-      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, total_weight: 900, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
-      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, total_weight: 6100, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
-      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, total_weight: 3000, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
+      dispatch({ disp_id: 'd1', disp_no: 'DD0010', disp_date: '2026-09-05', total_qty: 50, items: [{ item_name: 'Garlic', qty: 50, source_grn: 'A0010' }] }),
+      dispatch({ disp_id: 'd2', disp_no: 'DD0009', disp_date: '2026-10-01', total_qty: 200, supervisor_name: 'Ravi Example', items: [{ item_name: 'Red chilli', qty: 200, source_grn: 'A0009' }] }),
+      dispatch({ disp_id: 'd3', disp_no: 'DD0100', disp_date: '2026-08-15', total_qty: 120, items: [{ item_name: 'Cumin', qty: 120, source_grn: 'A0100' }] }),
+      dispatch({ disp_id: 'd4', disp_no: 'DD0050', disp_date: '2026-09-20', total_qty: 20, items: [{ item_name: 'Turmeric', qty: 20, source_grn: 'A0050' }] }),
     ],
     search: 'red chilli',
     found: ['d2'],
@@ -338,7 +340,7 @@ describe('the order of rows', () => {
     expect(ids({ field: 'n', order: 'asc' })).toEqual(['b', 'd', 'a', 'c']);
     expect(ids({ field: 'text', order: 'asc' })).toEqual(['a', 'd', 'b', 'c']);
   });
-  it('puts a row with no value last in either direction, and keeps ties in the order they came', () => {
+  it('puts a row with no value last in either direction, and keeps ties that have no name in the order they came', () => {
     expect(ids({ field: 'n', order: 'desc' })).toEqual(['a', 'b', 'd', 'c']);
     expect(ids({ field: 'text', order: 'desc' })).toEqual(['b', 'a', 'd', 'c']);
   });
@@ -346,6 +348,54 @@ describe('the order of rows', () => {
     expect(ids(undefined)).toEqual(['a', 'b', 'c', 'd']);
     expect(ids({ field: 'unknown', order: 'asc' })).toEqual(['a', 'b', 'c', 'd']);
     expect(rows.map(row => row.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('rows that tie', () => {
+  type Customer = { customer_name: string; bags: number | null };
+  const customers: Customer[] = [
+    { customer_name: 'Mehta', bags: 100 },
+    { customer_name: 'anand', bags: 100 },
+    { customer_name: 'Zaveri', bags: 100 },
+    { customer_name: 'Bhatt 10', bags: 100 },
+    { customer_name: 'Bhatt 9', bags: 100 },
+    { customer_name: 'Zzz', bags: 250 },
+    { customer_name: 'Aaa', bags: null },
+  ];
+  const by = { bags: (row: Customer) => row.bags };
+  const names = (order: 'asc' | 'desc', tieBreak?: (row: Customer) => string) =>
+    sortRows(customers, { field: 'bags', order }, by, tieBreak).map(row => row.customer_name);
+
+  it('are ordered by name, A to Z, in both directions, with a row with no value last', () => {
+    expect(names('asc')).toEqual(['anand', 'Bhatt 9', 'Bhatt 10', 'Mehta', 'Zaveri', 'Zzz', 'Aaa']);
+    expect(names('desc')).toEqual(['Zzz', 'anand', 'Bhatt 9', 'Bhatt 10', 'Mehta', 'Zaveri', 'Aaa']);
+  });
+  it('are ordered by the first of the default name keys the row has as a string', () => {
+    const rows: Record<string, unknown>[] = [
+      { item_name: 'Potato', gr_no: 'A0', n: 1 },
+      { gr_no: 'A10', n: 1 },
+      { gr_no: 'A9', n: 1 },
+      { disp_no: 'D1', n: 1 },
+      { invoice_number: 'INV1', n: 1 },
+      { name: 'Name', n: 1 },
+      { title: 'Chips', n: 1 },
+      { key: 'Beet', n: 1 },
+      { customer_name: 7, name: 'Zed', n: 1 },
+    ];
+    const order = sortRows(rows, { field: 'n', order: 'asc' }, { n: row => row.n as number });
+    // item_name wins over gr_no ("Potato", not "A0"); a customer_name that is not a string is skipped (name "Zed").
+    expect(order.map(row => row.item_name ?? row.gr_no ?? row.disp_no ?? row.invoice_number ?? row.name ?? row.title ?? row.key)).toEqual([
+      'A9', 'A10', 'Beet', 'Chips', 'D1', 'INV1', 'Name', 'Potato', 'Zed',
+    ]);
+  });
+  it('are ordered by the tie-break the caller gives, in both directions', () => {
+    const byLength = (row: Customer) => String(row.customer_name.length).padStart(2, '0');
+    expect(names('asc', byLength)).toEqual(['Mehta', 'anand', 'Zaveri', 'Bhatt 9', 'Bhatt 10', 'Zzz', 'Aaa']);
+    expect(names('desc', byLength)).toEqual(['Zzz', 'Mehta', 'anand', 'Zaveri', 'Bhatt 9', 'Bhatt 10', 'Aaa']);
+  });
+  it('keep the order they came in when the name is the same too', () => {
+    const rows = [{ name: 'X', n: 1, i: 1 }, { name: 'x', n: 1, i: 2 }, { name: 'X', n: 1, i: 3 }];
+    expect(sortRows(rows, { field: 'n', order: 'desc' }, { n: row => row.n }).map(row => row.i)).toEqual([1, 2, 3]);
   });
 });
 

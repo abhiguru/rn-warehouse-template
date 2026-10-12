@@ -2,11 +2,11 @@
  * Search field at the top of a list (docs/STYLE_GUIDE.md §13.8, §14.6).
  *
  * Searches as the user types: after 300 ms and at least two characters.
- * Shows a spinner while the list loads, a clear button, and the last searches
- * of this session when the field is focused and empty.
+ * Shows a spinner while the list loads, a clear button (which also closes the
+ * keyboard), and the last searches of this session when the field is focused and empty.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
@@ -152,6 +152,8 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
             onPress={() => {
               setText('');
               commit('');
+              // Cleared means done with the field: put the keyboard away (the list is behind it).
+              Keyboard.dismiss();
             }}
             accessibilityRole="button"
             accessibilityLabel={translate('common.clearSearch')}

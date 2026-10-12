@@ -14,7 +14,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { DATE_PRESETS, REPORT_DATE_PRESETS } from '@/features/filters/datePresets';
 import type { DatePresetId, DateRangeValue, SortState } from '@/features/filters/types';
-import { logout } from './authSlice';
 
 export interface ReportCustomerRef {
   id: string;
@@ -114,7 +113,10 @@ const reportPrefsSlice = createSlice({
     },
   },
   extraReducers: builder => {
-    builder.addCase(logout.fulfilled, state => {
+    // Matched by type string, not by importing the `logout` thunk from the auth slice: that import
+    // closes a require cycle (this slice -> auth slice -> sessionScopedState -> this slice).
+    // Must equal `logout.fulfilled.type`: the thunk's 'auth/logout' prefix plus '/fulfilled'.
+    builder.addCase('auth/logout/fulfilled', state => {
       forgetCustomers(state);
     });
   },

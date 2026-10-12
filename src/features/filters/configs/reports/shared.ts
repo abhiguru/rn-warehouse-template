@@ -69,26 +69,55 @@ export function reportView(config: FilterListDefinition, values: FilterValues, s
 type SortValue = string | number | null | undefined;
 const isEmpty = (value: SortValue) => value === null || value === undefined || value === '';
 
+/** The keys a row's display name is read from; the first one present as a string wins (see `sortRows`). */
+const NAME_KEYS = ['customer_name', 'item_name', 'gr_no', 'disp_no', 'invoice_number', 'name', 'title', 'key'] as const;
+
+/** The default tie-break: the first of `NAME_KEYS` that the row has with a string value, else ''. */
+function displayName(row: unknown): string {
+  if (typeof row !== 'object' || row === null) return '';
+  const record = row as Record<string, unknown>;
+  for (const key of NAME_KEYS) {
+    const value = record[key];
+    if (typeof value === 'string') return value;
+  }
+  return '';
+}
+
 /**
  * Rows in the order a sort asks for. Numbers sort as numbers and text as people
  * read it ("A9" before "A10", whatever its case). A row with no value comes
- * last in either direction, and rows that tie keep the order they came in.
+ * last in either direction.
+ *
+ * Rows whose sort values are equal (six customers with 100 bags) are put in a
+ * fixed order: by display name, A to Z, in BOTH directions, so the order does
+ * not depend on how the server happened to return them. This also holds among
+ * rows with no value. The name is `tieBreak(row)` when given; otherwise the
+ * first of `customer_name`, `item_name`, `gr_no`, `disp_no`, `invoice_number`,
+ * `name`, `title`, `key` that the row has as a string. Rows with the same name,
+ * or with none, keep the order they came in.
  */
-export function sortRows<T>(rows: readonly T[], sort: SortState | undefined, by: Record<string, (row: T) => SortValue>): T[] {
+export function sortRows<T>(
+  rows: readonly T[],
+  sort: SortState | undefined,
+  by: Record<string, (row: T) => SortValue>,
+  tieBreak: (row: T) => string = displayName
+): T[] {
   const pick = sort ? by[sort.field] : undefined;
   if (!sort || !pick) return [...rows];
   const sign = sort.order === 'asc' ? 1 : -1;
+  const byName = (left: { row: T; index: number }, right: { row: T; index: number }) =>
+    tieBreak(left.row).localeCompare(tieBreak(right.row), undefined, { numeric: true, sensitivity: 'base' }) || left.index - right.index;
   return rows
     .map((row, index) => ({ row, index, value: pick(row) }))
     .sort((left, right) => {
       const a = left.value;
       const b = right.value;
-      if (isEmpty(a) || isEmpty(b)) return isEmpty(a) === isEmpty(b) ? left.index - right.index : isEmpty(a) ? 1 : -1;
+      if (isEmpty(a) || isEmpty(b)) return isEmpty(a) === isEmpty(b) ? byName(left, right) : isEmpty(a) ? 1 : -1;
       const order =
         typeof a === 'number' && typeof b === 'number'
           ? a - b
           : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-      return order === 0 ? left.index - right.index : sign * order;
+      return order === 0 ? byName(left, right) : sign * order;
     })
     .map(entry => entry.row);
 }

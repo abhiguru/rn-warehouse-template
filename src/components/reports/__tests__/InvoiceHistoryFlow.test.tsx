@@ -637,4 +637,52 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     const totalsRow = one.tree.root.findAll(node => typeof node.type === 'string' && flat(node).borderTopColor === t.border.separator && flat(node).borderTopWidth === 1);
     expect(totalsRow.length).toBeGreaterThan(0);
   });
+
+  it('draws each header of the monthly table on one line that shrinks before it is cut, with room for "Invoices"', async () => {
+    mockParams = GREEN;
+    const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    await screen.press('Monthly breakdown');
+
+    // The five header cells of the table (not the KPI tile that is also called "Invoices").
+    const headers = Object.fromEntries(
+      ['Month', 'Invoices', 'Amount', 'Paid', 'Pending'].map(label => {
+        const cells = screen.tree.root.findAll(
+          node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessibilityLabel === label && flat(node).width !== undefined
+        );
+        expect(cells).toHaveLength(1);
+        return [label, cells[0]];
+      })
+    );
+    const word = (cell: ReactTestInstance) => cell.findAll(node => (node.type as unknown) === 'Text')[0];
+
+    for (const [label, cell] of Object.entries(headers)) {
+      const text = word(cell);
+      expect(textOf(text)).toBe(label);
+      // One line, and a smaller size before an ellipsis: a word is never broken ("Invoice" / "s").
+      expect(text.props.numberOfLines).toBe(1);
+      expect(text.props.adjustsFontSizeToFit).toBe(true);
+      expect(text.props.minimumFontScale).toBeGreaterThanOrEqual(0.8);
+      expect(text.props.minimumFontScale).toBeLessThanOrEqual(0.9);
+      expect(flat(text).color).toBe(t.text.secondary);
+    }
+
+    // The count column is wider than the table's default 80, which broke the word at 1.3 times text size.
+    expect(flat(headers.Invoices).width).toBeGreaterThanOrEqual(100);
+    expect(flat(headers.Amount).width).toBe(120);
+    expect(flat(headers.Paid).width).toBe(120);
+    expect(flat(headers.Pending).width).toBe(120);
+    // Figures stay at the right of their columns, the month at the left, and the month is not in the scrolling part.
+    for (const label of ['Invoices', 'Amount', 'Paid', 'Pending']) expect(flat(headers[label]).justifyContent).toBe('flex-end');
+    expect(flat(headers.Month).justifyContent).toBe('flex-start');
+    const scrolls = (cell: ReactTestInstance) => {
+      for (let node = cell.parent; node; node = node.parent) if (node.props.horizontal === true) return true;
+      return false;
+    };
+    expect(scrolls(headers.Month)).toBe(false);
+    expect(scrolls(headers.Invoices)).toBe(true);
+    expect(scrolls(headers.Pending)).toBe(true);
+    // The count in the rows sits in a column as wide as its header.
+    const counts = screen.tree.root.findAll(node => typeof node.type === 'string' && flat(node).width === flat(headers.Invoices).width && node.props.accessibilityRole !== 'header');
+    expect(counts.length).toBeGreaterThan(0);
+  });
 });

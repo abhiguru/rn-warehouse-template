@@ -133,9 +133,9 @@ The other report screens on the shared layer, and the work they build on:
 - **Report PDFs.** Every report except the operations dashboard can be shared
   as a PDF with "Share PDF" in its header, for all customers and for one
   customer; the PDF follows the period and the sort on screen (a sort the PDF
-  has no column for, such as a dispatch's weight, leaves the PDF in its own
-  order). `generateReportPDF` in `src/services/pdf-service.ts` calls the
-  backend's `generate-report-pdf`; `useReportExport` runs the export and
+  has no column for leaves the PDF in its own order). `generateReportPDF` in
+  `src/services/pdf-service.ts` calls the backend's `generate-report-pdf`;
+  `useReportExport` runs the export and
   `reportPdfSort` (`src/features/reports/reportPdfSort.ts`) holds the one table
   of sort names. Failures are shown in a dialog in the app's language; a share
   that fails gives the share sheet's own reason (for example "Sharing is not
@@ -235,6 +235,50 @@ Review fixes (2026-10-12):
   the date heading over a day's rows and the header's "Share PDF" are one
   shared part each (`ReportNoCustomer`, `ReportDateHeading`,
   `exportHeaderActions`) instead of a copy in each screen.
+
+After the device runs (2026-10-12):
+
+- **Rows that tie.** Rows with equal sort values (for example several
+  customers with the same bags) appear A to Z by name in both directions
+  instead of in server order.
+- **Reports tab.** When Recent or Pinned appears at the top, the tab scrolls
+  up so it is visible.
+- **Search fields (lists and reports).** Pressing the clear (×) button also
+  closes the keyboard.
+- **Report customer cards (stock aging and the other customer reports).** The
+  status tag, such as "Average: 121–240 days", sits on its own line under the
+  subtitle instead of in the value column, so names and subtitles no longer
+  shrink to a sliver at large text sizes; a subtitle may use two lines.
+- **Status tags.** A tag's label can no longer draw wider than its box in a
+  narrow column.
+- **Avatars (everywhere).** Initials come from the first letter or digit of
+  the first two words that have one, so a name that starts with an emoji or a
+  symbol, such as "🧊 Ice Depot", shows "ID" instead of a broken character.
+  Other names and all colours are unchanged; the customers list and the
+  profile use the same rule.
+- **Item stock summary.** A facility whose server has no item sort is noted
+  as one info line in the log instead of an error; the report works as
+  before.
+- **Invoice history (Monthly breakdown).** Table headers stay on one line and
+  shrink slightly before they are cut, and the Invoices column is wider, so
+  "Invoices" no longer breaks as "Invoice / s" at large text.
+- **Dispatch activity, one customer.** The Weight sort is removed, because the
+  server sends no weight for a dispatch and the sort changed nothing; a Weight
+  sort remembered from before opens on date, newest first.
+- **Dispatch activity: opening a dispatch.** The control that opens a dispatch
+  from its card appears only when the server sends the dispatch's id, which
+  **needs backend migration 57**; against an older backend the cards open and
+  close as before and have no such control.
+- **Start-up.** `reportPrefsSlice` no longer imports `authSlice`, which
+  removes one require-cycle warning at start-up (the same cycle through
+  `listFilterSlice` remains).
+
+Backend migrations this release of the reports work relates to: 52 (server
+sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
+function (report PDFs), 54–56 (a period includes its last day; report days
+follow India's calendar) and 57 (the dispatch id). The app works against a
+backend without them, with the fallbacks described in the entries above, and
+nothing in the app needs migrations 54–56.
 
 ## Unreleased — central login in the app (2026-10-12)
 
