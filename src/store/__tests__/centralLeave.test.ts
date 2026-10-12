@@ -87,10 +87,14 @@ const dispatch = jest.fn((action: { type: string }) => ({
       return;
     }
     // The real logout empties the profile in the store the moment it starts.
-    if (action.type === 'test/logout') mockAuth = { userProfile: null };
+    if (action.type === 'test/logout') {
+      mockAuth = { userProfile: null };
+      if (mockLogoutFails) throw new Error('logout failed');
+    }
     mockEvents.push(action.type === 'test/logout' ? 'logout' : action.type);
   },
 }));
+let mockLogoutFails = false;
 let mockDeleteFails = false;
 const facility = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
 
@@ -106,6 +110,7 @@ beforeEach(async () => {
   jest.mocked(getPendingEnrollmentToken).mockResolvedValue(null);
   mockDeleteFails = false;
   mockDeletion = 'ok';
+  mockLogoutFails = false;
   mockAuth = { userProfile: { id: 'profile-1' } };
   mockSeenAtDeletion = undefined;
 });
@@ -316,6 +321,17 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     expect(getCentralState().outcome).toBeNull();
     expect((await loadMyFacilities('asha')).find(item => item.origin === facility.origin)?.status).toBe('unavailable');
     expect(mockActive).toBe(facility);
+  });
+
+  it('no answer from the server and a cleanup that failed part-way: the store is already empty, so the deletion message is still told', async () => {
+    mockDeletion = 'unknown';
+    // The real logout empties the profile the moment it starts, then fails.
+    mockLogoutFails = true;
+    expect(await deleteFacilityAccount(dispatch)).toBe('reported');
+    expect(getCentralState().outcome).toMatchObject({
+      outcome: { kind: 'failed', reason: 'account_deletion', message: 'An unexpected error occurred while deleting account' },
+    });
+    expect((await loadMyFacilities('asha')).find(item => item.origin === facility.origin)?.status).toBe('unavailable');
   });
 
   it('a report that finds an answer already waiting on the list is shown directly instead of replacing it', async () => {

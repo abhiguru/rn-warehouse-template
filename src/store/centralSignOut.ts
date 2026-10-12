@@ -182,10 +182,11 @@ export function deleteFacilityAccount(dispatch: Dispatch): Promise<DeleteFacilit
     // `unavailable` so no start can open it on its own.
     const outcome = await leaveWithRetry(dispatch, { localOnly: true });
     // Not known what the server did: the person is told, unless the cleanup
-    // itself did not finish; then they are still inside the facility and the
-    // cleanup's own message is the one that matters (the entry stays
-    // Unavailable either way).
-    if (serverDeleted === null && server && outcome === 'left') return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
+    // was refused as busy; then they are still inside the facility and that
+    // is the message that matters. A cleanup that failed part-way has already
+    // emptied the store (Settings is gone), so the deletion message is still
+    // the one to show. The entry stays Unavailable either way.
+    if (serverDeleted === null && server && outcome !== 'busy') return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
     return outcome;
   });
 }

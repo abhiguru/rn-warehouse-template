@@ -271,13 +271,16 @@ export class UserService {
         };
       }
 
-      if (!rpcResponse?.success) {
+      if (rpcResponse?.success !== true) {
         log.error('Account deletion failed', loggableError(rpcResponse));
         return {
           success: false,
           message: serverText(rpcResponse?.error, t('errors.user.deleteAccountFailed')),
           error: serverText(rpcResponse?.error, t('errors.general.unknown')),
-          outcome: 'refused',
+          // Only the RPC's own `success: false` says the account was kept. An
+          // empty body or JSON without `success` (an intermediary answering
+          // 2xx) says nothing about what the database did.
+          outcome: rpcResponse?.success === false ? 'refused' : 'unknown',
         };
       }
 

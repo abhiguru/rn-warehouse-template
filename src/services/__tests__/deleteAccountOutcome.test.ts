@@ -59,6 +59,15 @@ describe('unknown: nothing says what the server did', () => {
     expect(result).toMatchObject({ success: false, outcome: 'unknown', message: t('errors.user.deleteAccountFailed') });
   });
 
+  it.each([
+    ['an empty body', null],
+    ['an empty object', {}],
+    ['JSON without a success field', { foo: 1 }],
+  ])('a 2xx answer that is not the RPC\'s own: %s', async (_name, data) => {
+    rpc.mockResolvedValue({ data, error: null });
+    expect(await UserService.deleteAccount()).toMatchObject({ success: false, outcome: 'unknown', message: t('errors.user.deleteAccountFailed') });
+  });
+
   it('an exception before or during the call', async () => {
     rpc.mockRejectedValue(new Error('Session changed'));
     expect(await UserService.deleteAccount()).toMatchObject({ success: false, outcome: 'unknown', message: t('errors.user.deleteAccountUnexpected') });
