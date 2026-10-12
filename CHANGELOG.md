@@ -288,6 +288,13 @@ phone against a real central service.
   token and Hermes has no ES256. The app checks its type, issuer and expiry and relies on TLS
   to the configured origin. Access is decided by each facility, which verifies its own
   tokens, so a forged catalogue could show a wrong address but could not open anyone's data.
+- **Server address screen and the keyboard** (`src/components/OperatorServerSelection.tsx`,
+  used for the first server choice, "Change warehouse server" and, with central login,
+  "Enter address"). Tapping "Check server", or the keyboard's Go key, now closes the keyboard,
+  so the result card and "Use this server" are no longer hidden behind it until you close it
+  by hand. On Android the screen now shrinks above the keyboard the way the sign-in screens
+  do, so you can scroll to the card with the keyboard open and tap "Use this server" once.
+  Nothing else on the screen changes. Not yet run on a phone.
 - Shared code, no change in behaviour without central login: the server-switch sequence
   moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
   `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used

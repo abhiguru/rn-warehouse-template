@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -55,6 +55,9 @@ export function OperatorServerSelection({ initial = false, onCancel, onChoose }:
 
   const inspect = async (value: string) => {
     if (activating.current) return;
+    // The result card arrives below the field: close the keyboard so it is not behind it.
+    // Every start of a check comes through here (button, the field's submit key, a scanned code).
+    Keyboard.dismiss();
     const request = ++inspection.current;
     setBusy(true);
     setCandidate(null);
@@ -125,7 +128,8 @@ export function OperatorServerSelection({ initial = false, onCancel, onChoose }:
 
   return <SafeAreaView style={styles.screen}>
     {initial && <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />}
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    {/* Same as the sign-in screens (PhoneSignInForm, CodeEntryForm): padding on iOS, height on Android. */}
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.column}>
           <Text style={styles.title} accessibilityRole="header">{tr('auth.server.title')}</Text>

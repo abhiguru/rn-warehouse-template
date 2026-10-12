@@ -26,6 +26,7 @@ jest.mock('react-native', () => {
     View: element('View'), Text: element('Text'), TextInput: element('TextInput'),
     Modal: element('Modal'), ActivityIndicator: element('ActivityIndicator'),
     ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
+    Keyboard: { dismiss: jest.fn() },
     Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
     Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
   };
