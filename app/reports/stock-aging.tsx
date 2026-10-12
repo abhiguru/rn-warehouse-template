@@ -20,6 +20,13 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportHeader, KPIGrid, ReportEmptyState, ReportCustomerCard, ReportCustomerSearch, type KPIItem, ReportCustomerScope, type ReportScope, } from '@/components/reports';
+import {
+  AgingBucketBar,
+  AGING_BUCKET_STATUS,
+  agingBucketIdFromKey,
+  agingBucketLabel,
+  agingBucketsFrom,
+} from '@/components/reports/AgingBucketBar';
 import { Button } from '@/components/ui/Button';
 import { getCustomerStockAging, getAllStockAging } from '@/services/reporting/stock-aging-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -36,14 +43,13 @@ import {
 import type {
   StockAgingData,
   StockAgingItem,
-  AgingBucketData,
   AllStockAgingData,
   CustomerAgingSummary,
 } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
-import { t as tr, localizeDigits, type TranslationKey, formatIdentifier } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 const logger = createLogger('StockAging');
 
@@ -55,23 +61,11 @@ const noCustomer = () => tr('reports.shared.noCustomer');
 // Age buckets (status per guide §3.5)
 // ============================================================================
 
-const BUCKET_ORDER = ['0-120', '121-240', '241-364', '364+'];
-
-// Holds keys, not text: the label is looked up when drawn (docs/I18N.md rule 2).
-const AGING_BUCKETS: Record<string, { kind: StatusKind; labelKey: TranslationKey }> = {
-  '0-120': { kind: 'positive', labelKey: 'reports.stockAging.bucket0to120' },
-  '121-240': { kind: 'informative', labelKey: 'reports.stockAging.bucket121to240' },
-  '241-364': { kind: 'critical', labelKey: 'reports.stockAging.bucket241to364' },
-  '364+': { kind: 'negative', labelKey: 'reports.stockAging.bucketOver364' },
-};
-
+// One source for the bucket status and words: src/components/reports/AgingBucketBar.tsx.
 const bucketInfo = (bucket: string): { kind: StatusKind; label: string } => {
-  const info = AGING_BUCKETS[bucket] || AGING_BUCKETS['0-120'];
-  return { kind: info.kind, label: tr(info.labelKey) };
+  const id = agingBucketIdFromKey(bucket) ?? '0-120';
+  return { kind: AGING_BUCKET_STATUS[id], label: agingBucketLabel(id) };
 };
-
-/** A percentage with one decimal, in the digits of the app language. */
-const onePlace = (value: number): string => localizeDigits(value.toFixed(1));
 
 const bucketForAge = (days: number): string =>
   days <= 120 ? '0-120' : days <= 240 ? '121-240' : days <= 364 ? '241-364' : '364+';
@@ -112,27 +106,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...t.shadow[2],
     },
     cardClip: { borderRadius: radius.card, overflow: 'hidden' },
-    bucketsCard: { padding: space.lg, gap: space.md },
-
-    // Bucket bar
-    bucketRow: { gap: space.xs },
-    bucketTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    bucketLabel: { flex: 1 },
-    bucketValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    bucketCount: {
-      ...typography.footnote,
-      color: t.text.secondary,
-      fontVariant: ['tabular-nums'],
-      minWidth: 56,
-      textAlign: 'right',
-    },
-    bucketTrack: {
-      height: space.sm,
-      borderRadius: radius.pill,
-      overflow: 'hidden',
-      backgroundColor: t.brand.subtleStrong,
-    },
-    bucketFill: { height: '100%', borderRadius: radius.pill },
+    bucketsCard: { padding: space.lg },
 
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -220,44 +194,6 @@ const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, sty
 const AgeTag: React.FC<{ bucket: string; ageDays: number }> = ({ bucket, ageDays }) => {
   const info = bucketInfo(bucket);
   return <StatusTag status={info.kind} label={tr('reports.stockAging.ageOld', { age: days(ageDays) })} />;
-};
-
-// Aging Bucket Bar Component
-interface AgingBucketBarProps {
-  bucket: string;
-  data: AgingBucketData | { item_count: number; total_quantity: number; percentage: number };
-  maxPercentage: number;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercentage, styles, t }) => {
-  const info = bucketInfo(bucket);
-  const tone = t.status[info.kind];
-  const barWidth = maxPercentage > 0 ? (data.percentage / maxPercentage) * 100 : 0;
-
-  return (
-    <View
-      style={styles.bucketRow}
-      accessible
-      accessibilityLabel={tr('reports.stockAging.bucketA11y', {
-        label: info.label,
-        percent: onePlace(data.percentage),
-        units: formatNumber(data.total_quantity),
-      })}
-    >
-      <View style={styles.bucketTop}>
-        <View style={styles.bucketLabel}>
-          <StatusTag status={info.kind} label={info.label} />
-        </View>
-        <Text style={styles.bucketValue}>{`${onePlace(data.percentage)}%`}</Text>
-        <Text style={styles.bucketCount}>{formatNumber(data.total_quantity)}</Text>
-      </View>
-      <View style={styles.bucketTrack}>
-        <View style={[styles.bucketFill, { width: `${barWidth}%`, backgroundColor: tone.element }]} />
-      </View>
-    </View>
-  );
 };
 
 /** Status tag for a customer row: the bucket of the customer's average stock age. */
@@ -690,13 +626,6 @@ function StockAgingReport({ scope }: { scope: ReportScope }) {
     ];
   }, [data?.summary]);
 
-  // Get max percentage for bar scaling
-  const maxBucketPercentage = useMemo(() => {
-    const buckets = shouldShowListView && viewMode === 'all' ? allCustomersData?.by_bucket : data?.by_bucket;
-    if (!buckets) return 100;
-    return Math.max(...Object.values(buckets).map((b) => b.percentage), 1);
-  }, [shouldShowListView, viewMode, allCustomersData?.by_bucket, data?.by_bucket]);
-
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;
 
@@ -759,7 +688,6 @@ function StockAgingReport({ scope }: { scope: ReportScope }) {
   // All Customers View
   if (isListView && allCustomersData) {
     const hasCustomers = allCustomersData.by_customer.length > 0;
-    const bucketOrder = BUCKET_ORDER;
 
     return (
       <View style={styles.container}>
@@ -777,13 +705,7 @@ function StockAgingReport({ scope }: { scope: ReportScope }) {
             <View style={styles.section}>
               <SectionHeader title={tr('reports.stockAging.stockAge')} styles={styles} />
               <View style={[styles.card, styles.bucketsCard]}>
-                {bucketOrder.map((key) => {
-                  const bucket = allCustomersData.by_bucket[key];
-                  if (!bucket) return null;
-                  return (
-                    <AgingBucketBar key={key} bucket={key} data={bucket} maxPercentage={maxBucketPercentage} styles={styles} t={t} />
-                  );
-                })}
+                <AgingBucketBar buckets={agingBucketsFrom(allCustomersData.by_bucket)} />
               </View>
             </View>
           )}
@@ -865,8 +787,6 @@ function StockAgingReport({ scope }: { scope: ReportScope }) {
     );
   }
 
-  const bucketOrder = BUCKET_ORDER;
-
   return (
     <View style={styles.container}>
       <ReportHeader
@@ -887,11 +807,7 @@ function StockAgingReport({ scope }: { scope: ReportScope }) {
           <View style={styles.section}>
             <SectionHeader title={tr('reports.stockAging.stockAge')} styles={styles} />
             <View style={[styles.card, styles.bucketsCard]}>
-              {bucketOrder.map((key) => {
-                const bucket = data.by_bucket[key];
-                if (!bucket) return null;
-                return <AgingBucketBar key={key} bucket={key} data={bucket} maxPercentage={maxBucketPercentage} styles={styles} t={t} />;
-              })}
+              <AgingBucketBar buckets={agingBucketsFrom(data.by_bucket)} />
             </View>
           </View>
         )}

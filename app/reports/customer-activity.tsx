@@ -39,6 +39,7 @@ import {
   ReportCustomerScope,
   type ReportScope,
 } from '@/components/reports';
+import { AgingBucketBar, agingBucketsFrom } from '@/components/reports/AgingBucketBar';
 import {
   getAllCustomerActivity,
   getCustomerActivityDetail,
@@ -82,21 +83,6 @@ interface StatusInfo {
   kind: StatusKind;
   label: string;
 }
-
-/** Stock age buckets, as in the stock aging report: positive, informative, critical, negative. */
-const AGING_STATUS: Record<string, StatusKind> = {
-  '0-120': 'positive',
-  '121-240': 'informative',
-  '241-364': 'critical',
-  '364+': 'negative',
-};
-
-const AGING_LABEL: Record<string, TranslationKey> = {
-  '0-120': 'reports.customerActivity.aging.days0to120',
-  '121-240': 'reports.customerActivity.aging.days121to240',
-  '241-364': 'reports.customerActivity.aging.days241to364',
-  '364+': 'reports.customerActivity.aging.over364',
-};
 
 /** Invoice status: pending → critical, paid → positive. */
 function invoiceStatus(status: string): StatusInfo {
@@ -322,20 +308,6 @@ const makeStyles = (t: ThemeTokens) =>
     summaryItem: { alignItems: 'center' },
     summaryLabel: { ...typography.footnote, color: t.text.secondary, marginBottom: space.xs },
     summaryValue: { ...typography.title3, color: t.text.primary, fontVariant: ['tabular-nums'] },
-
-    // Aging buckets
-    bucketRow: { gap: space.xs },
-    bucketTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    bucketLabel: { flex: 1 },
-    bucketValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    bucketCount: { ...typography.footnote, color: t.text.secondary, fontVariant: ['tabular-nums'], minWidth: 56, textAlign: 'right' },
-    bucketTrack: {
-      height: space.sm,
-      borderRadius: radius.pill,
-      overflow: 'hidden',
-      backgroundColor: t.brand.subtleStrong,
-    },
-    bucketFill: { height: '100%', borderRadius: radius.pill },
 
     // Quick access
     quickAccessGrid: { gap: space.sm },
@@ -763,46 +735,6 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
         </View>
       </Modal>
     </>
-  );
-};
-
-// Aging Bucket Bar Component
-interface AgingBucketBarProps {
-  bucket: string;
-  data: { item_count: number; total_quantity: number; percentage: number };
-  maxPercentage: number;
-  styles: Styles;
-  t: ThemeTokens;
-}
-
-const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercentage, styles, t }) => {
-  const kind = AGING_STATUS[bucket] ?? 'neutral';
-  const tone = t.status[kind];
-  const percentage = data.percentage ?? 0;
-  const quantity = data.total_quantity ?? 0;
-  const barWidth = maxPercentage > 0 ? (percentage / maxPercentage) * 100 : 0;
-  const label = AGING_LABEL[bucket]
-    ? tr(AGING_LABEL[bucket])
-    : tr('reports.customerActivity.aging.other', { bucket: localizeDigits(bucket) });
-  const percent = localizeDigits(percentage.toFixed(1));
-
-  return (
-    <View
-      style={styles.bucketRow}
-      accessible
-      accessibilityLabel={tr('reports.customerActivity.aging.label', { label, percent, quantity: formatNumber(quantity) })}
-    >
-      <View style={styles.bucketTop}>
-        <View style={styles.bucketLabel}>
-          <StatusTag status={kind} label={label} />
-        </View>
-        <Text style={styles.bucketValue}>{tr('reports.customerActivity.aging.percent', { percent })}</Text>
-        <Text style={styles.bucketCount}>{formatNumber(quantity)}</Text>
-      </View>
-      <View style={styles.bucketTrack}>
-        <View style={[styles.bucketFill, { width: `${barWidth}%`, backgroundColor: tone.element }]} />
-      </View>
-    </View>
   );
 };
 
@@ -1239,26 +1171,7 @@ function CustomerActivityReport({ scope }: { scope: ReportScope }) {
             <View style={styles.section}>
               <SectionHeader title={tr('reports.customerActivity.stockAge')} styles={styles} t={t} />
               <View style={[styles.card, styles.cardPadded]}>
-                {(() => {
-                  const maxPercentage = Math.max(
-                    ...Object.values(detailData.by_bucket).map((b) => b.percentage ?? 0),
-                    1
-                  );
-                  return ['0-120', '121-240', '241-364', '364+'].map((key) => {
-                    const bucket = detailData.by_bucket[key];
-                    if (!bucket) return null;
-                    return (
-                      <AgingBucketBar
-                        key={key}
-                        bucket={key}
-                        data={bucket}
-                        maxPercentage={maxPercentage}
-                        styles={styles}
-                        t={t}
-                      />
-                    );
-                  });
-                })()}
+                <AgingBucketBar buckets={agingBucketsFrom(detailData.by_bucket)} />
               </View>
             </View>
           )}

@@ -140,6 +140,7 @@ export const reports: Translation<typeof source> = {
     bucketOver364: '૩૬૪ દિવસથી વધુ',
     ageOld: '{{age}}થી પડ્યો છે',
     bucketA11y: '{{label}}: {{percent}}%, {{units}} નંગ',
+    bucketShareA11y: '{{label}}: કુલ સ્ટોકના {{share}}, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}} નંગ, સૌથી જૂનો માલ {{age}}થી',
     entryA11y: '{{title}}, આવક તા. {{date}}, {{age}}થી પડ્યો છે, {{units}} નંગ',
     receivedQuantity: 'આવકના નંગ',

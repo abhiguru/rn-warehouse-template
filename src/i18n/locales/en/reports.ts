@@ -141,6 +141,7 @@ export const reports = {
     bucketOver364: 'Over 364 days',
     ageOld: '{{age}} old',
     bucketA11y: '{{label}}: {{percent}}%, {{units}} units',
+    bucketShareA11y: '{{label}}: {{share}} of all stock, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}} units, oldest {{age}}',
     entryA11y: '{{title}}, received {{date}}, {{age}} in storage, {{units}} units',
     receivedQuantity: 'Received quantity',
