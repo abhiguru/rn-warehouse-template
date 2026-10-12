@@ -4,11 +4,6 @@
  *
  *   [Filters n] [sort] [period ▾] [active filters ×] [fast filters ▾] [Clear all]
  *
- * The chips scroll; "Clear all" is the row's last element but sits outside the
- * scrolling part, so at large text, when the chips do not all fit, it is still
- * on screen without a swipe. The chips give way to it (they shrink and scroll),
- * and when everything fits it follows the last chip as before.
- *
  * It is both the quick way in and the display of what is applied, and its
  * height never changes, so the list below does not jump.
  */
@@ -48,20 +43,6 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: layout.marginCompact,
     paddingVertical: space.sm - CHIP_INSET,
   },
-  // The scrolling chips and the pinned "Clear all" share one line.
-  line: { flexDirection: 'row' as const, alignItems: 'center' as const },
-  // Takes only the room its chips need and gives up the rest to "Clear all" (the default for a
-  // horizontal ScrollView is to grow, which is no use beside a pinned button).
-  scroll: { flexGrow: 0, flexShrink: 1 },
-  // With "Clear all" after it, the row ends `space.sm` from it, as the gap between chips does.
-  rowBeforePinned: { paddingRight: space.sm },
-  // Same height as the row, so the bar does not change height when "Clear all" comes or goes.
-  pinned: {
-    justifyContent: 'center' as const,
-    minHeight: CHIP_HEIGHT + space.sm * 2,
-    paddingVertical: space.sm - CHIP_INSET,
-    paddingRight: layout.marginCompact,
-  },
 });
 
 const opensSheet = (field: FilterFieldDef) => field.kind !== 'toggle';
@@ -94,117 +75,113 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
 
   return (
     <View style={styles.bar}>
-      <View style={styles.line}>
-        <ScrollView ref={rowRef} horizontal style={styles.scroll} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={filters.hasAny ? [styles.row, styles.rowBeforePinned] : styles.row}>
-            {onOpenAll ? (
-              <FilterBarChip
-                variant="action"
-                icon="tune-variant"
-                label={translate('filters.bar.filters')}
-                count={activeCount}
-                onPress={onOpenAll}
-                accessibilityLabel={activeCount > 0 ? translate('filters.bar.openAllApplied', { count: activeCount }) : translate('filters.bar.openAll')}
-              />
-            ) : null}
-            {config.sort && sort ? (
-              <FilterBarChip
-                variant="action"
-                icon={sort.order === 'desc' ? 'arrow-down' : 'arrow-up'}
-                label={sortText.label}
-                chevron
-                onPress={() => setOpen({ type: 'sort' })}
-                accessibilityLabel={translate('filters.bar.sortedBy', { label: sortText.spokenLabel, direction: sortText.spoken })}
-              />
-            ) : null}
-            {required.map(field => {
-              const value = describeValue(field, values[field.key]);
-              return (
-                <FilterBarChip
-                  key={field.key}
-                  variant="action"
-                  icon={field.icon}
-                  label={value}
-                  chevron
-                  onPress={() => press(field)}
-                  accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value })}
-                />
-              );
-            })}
-            {active.map(field => {
-              const value = describeValue(field, values[field.key]);
-              return (
-                <FilterBarChip
-                  key={field.key}
-                  variant="active"
-                  label={value}
-                  onPress={() => press(field)}
-                  onRemove={() => filters.setField(field.key, undefined)}
-                  // A switch has no value to name: "With items, on", not "With items: With items".
-                  accessibilityLabel={
-                    opensSheet(field)
-                      ? translate('filters.bar.activeChip', { label: field.label, value })
-                      : translate('filters.bar.toggleOn', { label: field.label })
-                  }
-                  removeAccessibilityLabel={
-                    opensSheet(field)
-                      ? translate('filters.bar.removeFilterValue', { label: field.label, value })
-                      : translate('filters.bar.removeFilter', { name: field.label })
-                  }
-                />
-              );
-            })}
-            {recognised.date ? (
-              <FilterBarChip
-                variant="active"
-                icon="magnify"
-                label={describeDateRange(recognised.date)}
-                onPress={filters.searchAsText}
-                onRemove={filters.searchAsText}
-                accessibilityLabel={translate('filters.bar.searchDate', { date: describeDateRange(recognised.date) })}
-                removeAccessibilityLabel={translate('filters.bar.removeSearchDate', { date: describeDateRange(recognised.date) })}
-              />
-            ) : null}
-            {recognised.range ? (
-              <FilterBarChip
-                variant="active"
-                icon="magnify"
-                label={translate('filters.chip.textBetween', { from: recognised.range.from, to: recognised.range.to })}
-                onPress={filters.searchAsText}
-                onRemove={filters.searchAsText}
-                accessibilityLabel={translate('filters.bar.searchRange', { from: recognised.range.from, to: recognised.range.to })}
-                removeAccessibilityLabel={translate('filters.bar.removeSearchRange', { from: recognised.range.from, to: recognised.range.to })}
-              />
-            ) : null}
-            {recognised.financialYear !== undefined ? (
-              <FilterBarChip
-                variant="active"
-                icon="magnify"
-                label={financialYearLabel(recognised.financialYear)}
-                onPress={filters.searchAsText}
-                onRemove={filters.searchAsText}
-                accessibilityLabel={translate('filters.bar.searchYear', { year: financialYearLabel(recognised.financialYear) })}
-                removeAccessibilityLabel={translate('filters.bar.removeSearchYear', { year: financialYearLabel(recognised.financialYear) })}
-              />
-            ) : null}
-            {idleFast.map(field => (
+      <ScrollView ref={rowRef} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={styles.row}>
+          {onOpenAll ? (
+            <FilterBarChip
+              variant="action"
+              icon="tune-variant"
+              label={translate('filters.bar.filters')}
+              count={activeCount}
+              onPress={onOpenAll}
+              accessibilityLabel={activeCount > 0 ? translate('filters.bar.openAllApplied', { count: activeCount }) : translate('filters.bar.openAll')}
+            />
+          ) : null}
+          {config.sort && sort ? (
+            <FilterBarChip
+              variant="action"
+              icon={sort.order === 'desc' ? 'arrow-down' : 'arrow-up'}
+              label={sortText.label}
+              chevron
+              onPress={() => setOpen({ type: 'sort' })}
+              accessibilityLabel={translate('filters.bar.sortedBy', { label: sortText.spokenLabel, direction: sortText.spoken })}
+            />
+          ) : null}
+          {required.map(field => {
+            const value = describeValue(field, values[field.key]);
+            return (
               <FilterBarChip
                 key={field.key}
-                label={field.label}
-                chevron={opensSheet(field)}
+                variant="action"
+                icon={field.icon}
+                label={value}
+                chevron
                 onPress={() => press(field)}
-                accessibilityLabel={opensSheet(field) ? translate('filters.bar.filterBy', { label: field.label.toLowerCase() }) : field.label}
-                selected={opensSheet(field) ? undefined : false}
+                accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value })}
               />
-            ))}
-          </View>
-        </ScrollView>
-        {filters.hasAny ? (
-          <View style={styles.pinned}>
+            );
+          })}
+          {active.map(field => {
+            const value = describeValue(field, values[field.key]);
+            return (
+              <FilterBarChip
+                key={field.key}
+                variant="active"
+                label={value}
+                onPress={() => press(field)}
+                onRemove={() => filters.setField(field.key, undefined)}
+                // A switch has no value to name: "With items, on", not "With items: With items".
+                accessibilityLabel={
+                  opensSheet(field)
+                    ? translate('filters.bar.activeChip', { label: field.label, value })
+                    : translate('filters.bar.toggleOn', { label: field.label })
+                }
+                removeAccessibilityLabel={
+                  opensSheet(field)
+                    ? translate('filters.bar.removeFilterValue', { label: field.label, value })
+                    : translate('filters.bar.removeFilter', { name: field.label })
+                }
+              />
+            );
+          })}
+          {recognised.date ? (
+            <FilterBarChip
+              variant="active"
+              icon="magnify"
+              label={describeDateRange(recognised.date)}
+              onPress={filters.searchAsText}
+              onRemove={filters.searchAsText}
+              accessibilityLabel={translate('filters.bar.searchDate', { date: describeDateRange(recognised.date) })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchDate', { date: describeDateRange(recognised.date) })}
+            />
+          ) : null}
+          {recognised.range ? (
+            <FilterBarChip
+              variant="active"
+              icon="magnify"
+              label={translate('filters.chip.textBetween', { from: recognised.range.from, to: recognised.range.to })}
+              onPress={filters.searchAsText}
+              onRemove={filters.searchAsText}
+              accessibilityLabel={translate('filters.bar.searchRange', { from: recognised.range.from, to: recognised.range.to })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchRange', { from: recognised.range.from, to: recognised.range.to })}
+            />
+          ) : null}
+          {recognised.financialYear !== undefined ? (
+            <FilterBarChip
+              variant="active"
+              icon="magnify"
+              label={financialYearLabel(recognised.financialYear)}
+              onPress={filters.searchAsText}
+              onRemove={filters.searchAsText}
+              accessibilityLabel={translate('filters.bar.searchYear', { year: financialYearLabel(recognised.financialYear) })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchYear', { year: financialYearLabel(recognised.financialYear) })}
+            />
+          ) : null}
+          {idleFast.map(field => (
+            <FilterBarChip
+              key={field.key}
+              label={field.label}
+              chevron={opensSheet(field)}
+              onPress={() => press(field)}
+              accessibilityLabel={opensSheet(field) ? translate('filters.bar.filterBy', { label: field.label.toLowerCase() }) : field.label}
+              selected={opensSheet(field) ? undefined : false}
+            />
+          ))}
+          {filters.hasAny ? (
             <FilterBarChip variant="text" label={translate('common.clearAll')} onPress={filters.clear} accessibilityLabel={translate('filters.bar.clearAllLabel')} />
-          </View>
-        ) : null}
-      </View>
+          ) : null}
+        </View>
+      </ScrollView>
       <SingleFilterSheet config={config} filters={filters} open={open} onClose={() => setOpen(null)} />
     </View>
   );

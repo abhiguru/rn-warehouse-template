@@ -392,10 +392,11 @@ After device run 5 (2026-10-12):
   items shown as cards, not the stock lines (a customer with one item in two
   lots read one more than its cards). The all-customers level keeps the
   server's count.
-- **Filter bar: "Clear all" stays on screen.** At large text sizes "Clear all"
-  scrolled away with the chips. It is now pinned at the end of the row on every
-  screen that has the filter bar (the reports and the GRN, dispatch, invoice,
-  order and pricing lists).
+- **Filter bar: "Clear all" at large text, not changed.** At large text sizes
+  "Clear all" sits past the end of the filter row until the row is swiped.
+  Pinning it at the end of the row was tried and taken back the same day: on
+  the phone it left too little room for the chips, so the active filter chip
+  and its remove button were cut off. The row is as it was.
 - **Gujarati wording.** Five report texts were reworded after the wording
   review: "દેખાય છે" for how many rows show, "દિવસ" for the age sort, a plainer
   note that only loaded items are sorted, "એકાઉન્ટ" and "લાઇન" in the PDF
