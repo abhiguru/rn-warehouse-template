@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
+import { t } from '@/i18n';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -15,6 +16,7 @@ import {
   resetReportExportAvailability,
   useReportExport,
   type ReportExport,
+  type ReportExportFallbackResult,
   type ReportExportNameParts,
 } from '../useReportExport';
 
@@ -74,11 +76,12 @@ const settle = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 function setup(
   request: ReportPdfRequest | null = periodRequest,
-  parts: ReportExportNameParts = { title: 'GRN activity', customerName: CUSTOMER_NAME }
+  parts: ReportExportNameParts = { title: 'GRN activity', customerName: CUSTOMER_NAME },
+  fallback?: () => Promise<ReportExportFallbackResult>
 ) {
   let latest!: ReportExport;
   function Probe() {
-    latest = useReportExport({ buildRequest: () => request, filenameParts: () => parts });
+    latest = useReportExport({ buildRequest: () => request, filenameParts: () => parts, fallback });
     return null;
   }
   let renderer!: TestRenderer.ReactTestRenderer;
@@ -155,9 +158,18 @@ describe('share', () => {
     );
   });
 
-  it('says so when the share did not work', async () => {
+  it("shows the share helper's own reason when it gives one", async () => {
     jest.mocked(fetch).mockResolvedValue(success());
-    jest.mocked(downloadAndSharePDF).mockResolvedValue({ success: false, error: 'Failed to download PDF' });
+    jest.mocked(downloadAndSharePDF).mockResolvedValue({ success: false, error: t('errors.pdf.sharingUnavailable') });
+    const probe = setup();
+    await probe.run();
+    expect(showAlert).toHaveBeenCalledWith("Couldn't share the PDF", 'Sharing is not available on this device');
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('shows the connection words when the share helper gives no reason', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    jest.mocked(downloadAndSharePDF).mockResolvedValue({ success: false });
     const probe = setup();
     await probe.run();
     expect(showAlert).toHaveBeenCalledWith("Couldn't share the PDF", 'Check your connection and try again.');
@@ -261,5 +273,68 @@ describe('available', () => {
     jest.mocked(fetch).mockResolvedValue(success());
     await probe.run();
     expect(probe.current().available).toBe(true);
+  });
+});
+
+describe('fallback', () => {
+  const stockRequest: ReportPdfRequest = { report: 'stock-summary', customer_id: CUSTOMER_ID };
+  const stockParts: ReportExportNameParts = { title: 'Stock summary', customerName: CUSTOMER_NAME };
+  const OLD_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/stock/old.pdf?token=fictional';
+
+  it('makes the PDF with the fallback on a server without report PDFs, with no alert, and stays available', async () => {
+    jest.mocked(fetch).mockResolvedValue(oldServer());
+    const fallback = jest.fn().mockResolvedValue({ success: true, pdfUrl: OLD_URL });
+    const probe = setup(stockRequest, stockParts, fallback);
+    const withoutFallback = setup();
+
+    await probe.run();
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(OLD_URL, 'Stock_summary_Fictional_Traders.pdf');
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(probe.current().available).toBe(true);
+    // The server is remembered: an export without a fallback is left out.
+    expect(withoutFallback.current().available).toBe(false);
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('goes straight to the fallback once the server is known to lack report PDFs', async () => {
+    jest.mocked(fetch).mockResolvedValue(oldServer());
+    await setup().run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    jest.mocked(showAlert).mockClear();
+
+    const fallback = jest.fn().mockResolvedValue({ success: true, pdfUrl: OLD_URL });
+    const probe = setup(stockRequest, stockParts, fallback);
+    expect(probe.current().available).toBe(true);
+    await probe.run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(OLD_URL, 'Stock_summary_Fictional_Traders.pdf');
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('is not used on a server that makes report PDFs, nor for its other failures', async () => {
+    const fallback = jest.fn().mockResolvedValue({ success: true, pdfUrl: OLD_URL });
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(stockRequest, stockParts, fallback);
+    await probe.run();
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, 'Stock_summary_Fictional_Traders.pdf');
+
+    jest.mocked(fetch).mockResolvedValue(answer(403, { success: false }));
+    await probe.run();
+    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", 'This report is not available to your account as a PDF.');
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it("shows the connection words when the fallback fails, never the server's text", async () => {
+    jest.mocked(fetch).mockResolvedValue(oldServer());
+    const fallback = jest.fn().mockResolvedValue({ success: false, error: 'server words' });
+    const probe = setup(stockRequest, stockParts, fallback);
+    await probe.run();
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", 'Check your connection and try again.');
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
+    expect(probe.current().available).toBe(true);
+    expect(probe.current().busy).toBe(false);
   });
 });

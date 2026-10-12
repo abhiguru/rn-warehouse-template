@@ -47,15 +47,14 @@ import {
   type StockAgingGroup,
   type StockAgingLine,
 } from '@/features/filters/configs/reports/stockAging';
-import type { SortState } from '@/features/filters/types';
 import { reportById } from '@/features/reports/reportRegistry';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
-import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/stock-aging-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -67,19 +66,6 @@ const REPORT_ID = 'stock-aging';
 // ============================================================================
 // The PDF (generate-report-pdf)
 // ============================================================================
-
-/**
- * The PDF's column for each sort of the screen (backend report-definitions.ts).
- * A sort the PDF has no column for is not sent: the PDF keeps its own order.
- * The report is of today's stock: the PDF is asked for no dates.
- */
-const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = { age: 'average_age', stock: 'stock', name: 'customer' };
-const PDF_SORT_ITEMS: Readonly<Record<string, string>> = { age: 'age', stock: 'stock', item: 'item' };
-
-function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
-  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
-  return { field: columns[sort.field], order: sort.order };
-}
 
 /** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
 const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
@@ -219,7 +205,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const rows = useMemo(() => stockAgingCustomersView(data?.by_customer ?? [], view), [data, view]);
   const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket), [data]);
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
   const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
@@ -322,7 +308,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   // The figures are the whole stock's, not what the search or the bucket leaves.
   const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket), [data]);
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: pdfSort(view.sort, PDF_SORT_ITEMS) }),
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
   });
   const actions = useMemo<ReportHeaderAction[]>(

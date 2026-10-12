@@ -1039,7 +1039,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 - The period is the filter bar's period chip (§14.5). All eight reports use `ReportScaffold`. `PeriodSelector`, `ReportCustomerSearch` and `ReportCustomerScope` are no longer used by any screen and are removed by the cleanup commit.
 - Date headings between rows only while the rows are sorted by date.
 - Every number links to the list behind it where possible.
-- Export and print actions in the header.
+- The export action ("Share PDF", `useReportExport`) is the header's one action, present on every report with a PDF (all but the operations dashboard, at both levels) and hidden when the facility's backend cannot make it.
 
 ### 14.11 Maintenance, forced update and errors
 

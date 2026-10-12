@@ -40,8 +40,8 @@ import {
   customerActivityCustomersView,
 } from '@/features/filters/configs/reports/customerActivity';
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports/shared';
-import type { SortState } from '@/features/filters/types';
 import { reportById } from '@/features/reports/reportRegistry';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
@@ -49,7 +49,6 @@ import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier, type TranslationKey } from '@/i18n';
-import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllCustomerActivity, getCustomerActivityDetail } from '@/services/reporting/customer-activity-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -61,23 +60,6 @@ const REPORT_ID = 'customer-activity';
 // ============================================================================
 // The PDF (generate-report-pdf)
 // ============================================================================
-
-/**
- * The PDF's column for each sort of the customers list (backend
- * report-definitions.ts). A sort the PDF has no column for is not sent: the
- * PDF keeps its own order. One customer's dashboard has no sort.
- */
-const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = {
-  lastActive: 'last_activity',
-  stock: 'stock',
-  invoiced: 'amount',
-  name: 'customer',
-};
-
-function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
-  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
-  return { field: columns[sort.field], order: sort.order };
-}
 
 /** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
 const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
@@ -218,7 +200,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   );
 
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
   const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);

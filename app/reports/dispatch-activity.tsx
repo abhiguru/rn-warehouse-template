@@ -21,6 +21,7 @@ import {
   ReportLastCustomer,
   ReportScaffold,
   type KPIItem,
+  type ReportHeaderAction,
 } from '@/components/reports';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports';
@@ -30,6 +31,9 @@ import {
   dispatchCustomersView,
   dispatchRecordsView,
 } from '@/features/filters/configs/reports/dispatchActivity';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
+import { reportById } from '@/features/reports/reportRegistry';
+import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
@@ -187,6 +191,14 @@ const emptyState = (period: ReportPeriod, oneCustomer: boolean) => ({
 });
 
 // ============================================================================
+// The PDF (generate-report-pdf)
+// ============================================================================
+
+/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
+const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
+  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
+
+// ============================================================================
 // Every customer
 // ============================================================================
 
@@ -211,6 +223,12 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     [data]
   );
 
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+  });
+  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
     (customer: CustomerDispatchRow) => <CustomerRow customer={customer} words={view.words} onOpen={openCustomer} />,
@@ -221,6 +239,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     <ReportScaffold
       title={tr('reports.titles.dispatchActivity')}
       subtitle={tr('reports.shared.allCustomers')}
+      actions={actions}
       filters={{ config: DISPATCH_ACTIVITY_CUSTOMERS, state: filters }}
       query={query}
       kpis={kpis}
@@ -326,9 +345,22 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       ],
     [data]
   );
-  const actions = useMemo(
-    () => (onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : undefined),
-    [onChangeCustomer]
+  const { exportPdf, busy, available } = useReportExport({
+    buildRequest: () => ({
+      report: REPORT_ID,
+      customer_id: customerId,
+      from: period.from,
+      to: period.to,
+      sort: reportPdfSort(REPORT_ID, 'customer', view.sort),
+    }),
+    filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+  });
+  const actions = useMemo<ReportHeaderAction[]>(
+    () => [
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...exportActions({ exportPdf, busy, available }),
+    ],
+    [onChangeCustomer, exportPdf, busy, available]
   );
 
   // Which cards show their items. It stays with this screen, so a new sort or search keeps it.

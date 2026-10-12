@@ -101,8 +101,6 @@ export const reports: Translation<typeof source> = {
     emptiedOn: 'ખાલી થયું તા. {{date}}',
     stockOf: '{{total}}માંથી {{stock}}',
     weightEach: 'દરેક {{weight}}',
-    pdfErrorTitle: 'સ્ટોકની PDF બનાવી શકાઈ નથી',
-    shareErrorTitle: 'સ્ટોકની PDF શેર કરી શકાઈ નથી',
     errorTitle: 'સ્ટોકનો સારાંશ લોડ કરી શકાયો નથી',
     searchItems: 'આઇટમ અથવા આવક પાવતી શોધો',
     unitsInStock: 'સ્ટોકમાં નંગ',

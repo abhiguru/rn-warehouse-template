@@ -2,19 +2,25 @@
  * The dispatch activity report with a real store: the period, sort, search and
  * "Clear all" are worked through the filter bar and the search field as a
  * person would, and what the report remembers is read back from the store,
- * also by a new screen after a restart. Only the services and the router are
- * stand-ins. The rows are made so that every change gives an order of its own.
+ * also by a new screen after a restart. The report PDF is shared from the
+ * header at both levels. Only the services, the share sheet, the alert and the
+ * router are stand-ins. The rows are made so that every change gives an order
+ * of its own.
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
+import { resetReportExportAvailability } from '@/features/reports/useReportExport';
+import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/reporting';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
 import { BRANDS, fontWeight, getTokens, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { showAlert } from '@/utils/alert';
+import { downloadAndSharePDF } from '@/utils/shareDocument';
 import DispatchActivityScreen from '../../../../app/reports/dispatch-activity';
 
 const mockPush = jest.fn();
@@ -56,9 +62,19 @@ jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(),
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } } }));
 jest.mock('@/services/reporting', () => ({ getAllDispatchActivity: jest.fn(), getCustomerDispatchActivity: jest.fn() }));
+jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
+jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/logger', () => {
+  const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+  return { createLogger: () => log };
+});
 
 const allActivity = jest.mocked(getAllDispatchActivity);
 const customerActivity = jest.mocked(getCustomerDispatchActivity);
+const makePdf = jest.mocked(generateReportPDF);
+const sharePdf = jest.mocked(downloadAndSharePDF);
+const alert = jest.mocked(showAlert);
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 const STAFF = { userProfile: { id: 'user-a', name: 'Asha Example', role: 'staff' } };
 
@@ -149,6 +165,8 @@ beforeEach(() => {
   mockParams = {};
   allActivity.mockImplementation(async ({ fromDate }) => answerCustomers(fromDate < '2026-06-15' ? [...CUSTOMERS, OLD_MILL] : CUSTOMERS) as never);
   customerActivity.mockResolvedValue(answerDispatches as never);
+  resetReportExportAvailability();
+  sharePdf.mockResolvedValue({ success: true });
 });
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
@@ -468,6 +486,91 @@ describe('dispatch activity, one customer', () => {
 });
 
 const MODES: Mode[] = ['light', 'dark'];
+// ---------------------------------------------------------------------------
+// The report PDF
+// ---------------------------------------------------------------------------
+
+const PDF_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/report/r.pdf?token=fictional';
+const NOT_AVAILABLE = 'This report is not available to your account as a PDF.';
+const NEEDS_UPDATE = "This facility's server needs an update before reports can be shared as PDF.";
+
+/**
+ * The header's export action sends exactly `request` (a field it leaves out is
+ * not sent at all) and is busy until the file is shared under `filename`; a
+ * 403 is said in an alert and the action stays; a server without report PDFs
+ * is said once and the action goes.
+ */
+async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+  let answer!: (result: ReportPdfResult) => void;
+  makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+  await screen.press(label);
+  expect(makePdf.mock.calls).toEqual([[request]]);
+  for (const field of ['customer_id', 'from', 'to', 'sort']) {
+    if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
+  }
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(sharePdf).not.toHaveBeenCalled();
+  await act(async () => {
+    answer({ success: true, pdfUrl: PDF_URL });
+    await settleQueries();
+  });
+  expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
+  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(alert).not.toHaveBeenCalled();
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
+  await screen.press(label);
+  expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
+  expect(sharePdf).toHaveBeenCalledTimes(1);
+  expect(screen.has(label)).toBe(true);
+
+  makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
+  await screen.press(label);
+  expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
+  expect(screen.has(label)).toBe(false);
+}
+
+describe('dispatch activity, the report PDF', () => {
+  it('every customer: shares the period and the sort on screen as the PDF names them, with no customer', async () => {
+    const screen = await open(makeStore());
+    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Dispatches');
+    await screen.press('Done');
+    expect(screen.has('Sorted by Dispatches, highest first. Change sort')).toBe(true);
+    await sharesThePdf(
+      screen,
+      { report: 'dispatch-activity', from: '2026-06-15', to: '2026-10-12', sort: { field: 'dispatches', order: 'desc' } },
+      'Dispatch_activity_All_2026_06_15_to_2026_10_12.pdf'
+    );
+  });
+
+  it('one customer: shares that customer, the period and the sort on screen', async () => {
+    mockParams = GREEN;
+    const screen = await open(makeStore());
+    await screen.press('Sorted by Date, newest first. Change sort');
+    await screen.press('Dispatch number');
+    await screen.press('Done');
+    expect(screen.has('Sorted by Number, highest number first. Change sort')).toBe(true);
+    await sharesThePdf(
+      screen,
+      { report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'disp_no', order: 'desc' } },
+      'Dispatch_activity_Green_Valley_Traders_2026_06_15_to_2026_10_12.pdf'
+    );
+  });
+
+  it('one customer sorted by weight: the PDF has no weight column, so no sort is sent', async () => {
+    mockParams = GREEN;
+    const screen = await open(makeStore());
+    await screen.press('Sorted by Date, newest first. Change sort');
+    await screen.press('Weight');
+    await screen.press('Done');
+    expect(screen.has('Sorted by Weight, highest first. Change sort')).toBe(true);
+    makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[{ report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: undefined }]]);
+  });
+});
+
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('dispatch activity in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
   const flat = (node: ReactTestInstance) =>

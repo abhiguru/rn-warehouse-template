@@ -3,9 +3,10 @@
  * are worked through the filter bar and the search field as a person would,
  * and what the report remembers is read back from the store, also by a new
  * screen after a restart. The stock PDF (generate-report-pdf) is shared from a
- * customer's row and from the header at both levels. Only the services, the
- * share sheet, the alert and the router are stand-ins. The rows are made so that every change gives an order
- * of its own.
+ * customer's row and from the header at both levels; on an older backend one
+ * customer's PDF comes from generate-customer-stock-pdf instead. Only the
+ * services, the share sheet, the alert and the router are stand-ins. The rows
+ * are made so that every change gives an order of its own.
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
@@ -15,7 +16,7 @@ import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { StockItemCard } from '@/components/reports/StockItemCard';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
-import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
+import { generateCustomerStockPDF, generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { getAllStockSummary, getCustomerStockSummary } from '@/services/reporting';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
@@ -63,7 +64,11 @@ jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(),
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } } }));
 jest.mock('@/services/reporting', () => ({ getAllStockSummary: jest.fn(), getCustomerStockSummary: jest.fn() }));
-jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
+jest.mock('@/services/pdf-service', () => ({
+  ...jest.requireActual('@/services/pdf-service'),
+  generateReportPDF: jest.fn(),
+  generateCustomerStockPDF: jest.fn(),
+}));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/logger', () => {
@@ -74,6 +79,7 @@ jest.mock('@/utils/logger', () => {
 const allStock = jest.mocked(getAllStockSummary);
 const customerStock = jest.mocked(getCustomerStockSummary);
 const makePdf = jest.mocked(generateReportPDF);
+const olderStockPdf = jest.mocked(generateCustomerStockPDF);
 const sharePdf = jest.mocked(downloadAndSharePDF);
 const alert = jest.mocked(showAlert);
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
@@ -184,6 +190,7 @@ beforeEach(() => {
   allStock.mockResolvedValue(answerCustomers(CUSTOMERS) as never);
   customerStock.mockResolvedValue(answerItems(ITEMS) as never);
   makePdf.mockResolvedValue({ success: true, pdfUrl: 'https://warehouse.example.test/stock.pdf' });
+  olderStockPdf.mockImplementation(async customerId => ({ success: true, pdfUrl: `https://warehouse.example.test/older-${customerId}.pdf` }));
   sharePdf.mockResolvedValue({ success: true });
   resetReportExportAvailability();
 });
@@ -399,9 +406,10 @@ describe('stock summary, the stock PDF', () => {
     expect(sharePdf).not.toHaveBeenCalled();
     expect(busy(screen, 'Sunrise Agro Foods')).toEqual({ busy: false, disabled: false });
 
+    // The share helper's own reason, in the app's words.
     sharePdf.mockResolvedValueOnce({ success: false, error: 'Sharing is not available on this device' });
     await screen.press('Share PDF for Sunrise Agro Foods');
-    expect(alert.mock.calls[1]).toEqual(["Couldn't share the PDF", 'Check your connection and try again.']);
+    expect(alert.mock.calls[1]).toEqual(["Couldn't share the PDF", 'Sharing is not available on this device']);
 
     sharePdf.mockRejectedValueOnce(new Error('native failure'));
     await screen.press('Share PDF for Sunrise Agro Foods');
@@ -409,18 +417,51 @@ describe('stock summary, the stock PDF', () => {
     expect(busy(screen, 'Sunrise Agro Foods')).toEqual({ busy: false, disabled: false });
   });
 
-  it('takes the share buttons off the rows and the header once the server says it cannot make report PDFs', async () => {
+  it('on a server without report PDFs, a row still shares the older stock PDF with no alert, and the all-customers header goes', async () => {
     const screen = await open(makeStore());
     const needsUpdate = "This facility's server needs an update before reports can be shared as PDF.";
     expect(screen.has('Share stock PDF')).toBe(true);
     makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: needsUpdate });
     await screen.press('Share PDF for Sunrise Agro Foods');
-    expect(alert.mock.calls).toEqual([["Couldn't create the PDF", needsUpdate]]);
-    expect(screen.has('Share PDF for Sunrise Agro Foods')).toBe(false);
-    expect(screen.has('Share PDF for Riverbank Produce')).toBe(false);
+    expect(makePdf.mock.calls).toEqual([[{ report: 'stock-summary', customer_id: 'c3' }]]);
+    expect(olderStockPdf.mock.calls).toEqual([['c3']]);
+    expect(sharePdf.mock.calls).toEqual([['https://warehouse.example.test/older-c3.pdf', 'Stock_summary_Sunrise_Agro_Foods.pdf']]);
+    expect(alert).not.toHaveBeenCalled();
+    expect(busy(screen, 'Sunrise Agro Foods')).toEqual({ busy: false, disabled: false });
+    // The rows keep their share buttons; the all-customers PDF has no older one.
+    expect(screen.has('Share PDF for Sunrise Agro Foods')).toBe(true);
+    expect(screen.has('Share PDF for Riverbank Produce')).toBe(true);
     expect(screen.has('Share stock PDF')).toBe(false);
-    // The rows themselves stay.
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
+
+    // The next row goes straight to the older PDF.
+    await screen.press('Share PDF for Riverbank Produce');
+    expect(makePdf).toHaveBeenCalledTimes(1);
+    expect(olderStockPdf.mock.calls).toEqual([['c3'], ['c1']]);
+    expect(sharePdf).toHaveBeenLastCalledWith('https://warehouse.example.test/older-c1.pdf', 'Stock_summary_Riverbank_Produce.pdf');
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('on a server without report PDFs, one customer\'s header shares the older stock PDF with no alert and stays', async () => {
+    openCustomerC2();
+    const screen = await open(makeStore());
+    makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: 'needs an update' });
+    await screen.press('Share stock PDF');
+    expect(olderStockPdf.mock.calls).toEqual([['c2']]);
+    expect(sharePdf.mock.calls).toEqual([['https://warehouse.example.test/older-c2.pdf', 'Stock_summary_Green_Valley_Traders.pdf']]);
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.has('Share stock PDF')).toBe(true);
+    expect(screen.control('Share stock PDF').props.accessibilityState).toMatchObject({ busy: false });
+  });
+
+  it('says so with the connection words when the older stock PDF cannot be made either', async () => {
+    const screen = await open(makeStore());
+    makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: 'needs an update' });
+    olderStockPdf.mockResolvedValueOnce({ success: false, error: 'Customer not found' });
+    await screen.press('Share PDF for Sunrise Agro Foods');
+    expect(alert.mock.calls).toEqual([["Couldn't create the PDF", 'Check your connection and try again.']]);
+    expect(sharePdf).not.toHaveBeenCalled();
+    expect(screen.has('Share PDF for Sunrise Agro Foods')).toBe(true);
   });
 
   it('names the file after the customer in any script, and after the customer id when no letter is left', async () => {
@@ -462,7 +503,8 @@ describe('stock summary, the stock PDF', () => {
       screen,
       { report: 'stock-summary', customer_id: 'c2', sort: { field: 'item', order: 'desc' } },
       'Stock_summary_Green_Valley_Traders.pdf',
-      'Share stock PDF'
+      'Share stock PDF',
+      'c2'
     );
   });
 });
@@ -610,9 +652,16 @@ const NEEDS_UPDATE = "This facility's server needs an update before reports can 
  * The header's export action sends exactly `request` (a field it leaves out is
  * not sent at all) and is busy until the file is shared under `filename`; a
  * 403 is said in an alert and the action stays; a server without report PDFs
- * is said once and the action goes.
+ * is said once and the action goes, unless the action has the older stock PDF
+ * of `olderPdfCustomer` to share instead (no alert, the action stays).
  */
-async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+async function sharesThePdf(
+  screen: Awaited<ReturnType<typeof open>>,
+  request: Record<string, unknown>,
+  filename: string,
+  label = 'Share PDF',
+  olderPdfCustomer?: string
+) {
   let answer!: (result: ReportPdfResult) => void;
   makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
   await screen.press(label);
@@ -638,6 +687,14 @@ async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: R
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
   await screen.press(label);
+  if (olderPdfCustomer) {
+    expect(olderStockPdf.mock.calls).toEqual([[olderPdfCustomer]]);
+    expect(sharePdf).toHaveBeenLastCalledWith(`https://warehouse.example.test/older-${olderPdfCustomer}.pdf`, filename);
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(screen.has(label)).toBe(true);
+    return;
+  }
+  expect(olderStockPdf).not.toHaveBeenCalled();
   expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
   expect(screen.has(label)).toBe(false);
 }

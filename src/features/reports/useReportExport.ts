@@ -14,6 +14,12 @@
  * tap. That answer is remembered per facility server in memory only: it lasts
  * until the app is restarted (or until an export to that server succeeds), so
  * a facility that updates its server is offered the export again after a restart.
+ *
+ * A screen whose report the facility could already share before
+ * generate-report-pdf (one customer's stock summary, generate-customer-stock-pdf)
+ * passes that older export as `fallback`. On a server without the new function
+ * the fallback makes the PDF instead: no "server needs an update" alert, and that
+ * action stays `available`; actions without a fallback are still left out.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { getCurrentConfig } from '@/config/supabaseConfig';
@@ -114,6 +120,49 @@ export function reportPdfFilename(request: ReportPdfRequest, parts: ReportExport
 }
 
 // ---------------------------------------------------------------------------
+// Making the PDF
+// ---------------------------------------------------------------------------
+
+/**
+ * The signed link to the PDF, or undefined after the failure has been shown.
+ * On a server known to lack generate-report-pdf an export with a fallback goes
+ * straight to it; a server that answers so now is remembered (actions without a
+ * fallback are then left out) and the fallback is asked instead.
+ */
+async function makePdf(
+  request: ReportPdfRequest,
+  server: string,
+  fallback: (() => Promise<ReportExportFallbackResult>) | undefined
+): Promise<string | undefined> {
+  if (fallback && outdatedServers.has(server)) return fallbackPdf(request, fallback);
+  const result = await generateReportPDF(request);
+  if (result.success && result.pdfUrl) {
+    noteServer(server, false);
+    return result.pdfUrl;
+  }
+  // The reason only: never the customer, the URL or the server's text.
+  log.warn('Report PDF not created', { report: request.report, reason: result.reason });
+  if (result.reason === 'server-outdated') {
+    noteServer(server, true);
+    if (fallback) return fallbackPdf(request, fallback);
+  }
+  showAlert(t('reports.export.failedTitle'), result.error ?? t('common.checkConnection'));
+  return undefined;
+}
+
+async function fallbackPdf(
+  request: ReportPdfRequest,
+  fallback: () => Promise<ReportExportFallbackResult>
+): Promise<string | undefined> {
+  const result = await fallback();
+  if (result.success && result.pdfUrl) return result.pdfUrl;
+  // As the older export always did: its server text is not shown.
+  log.warn('Fallback PDF not created', { report: request.report });
+  showAlert(t('reports.export.failedTitle'), t('common.checkConnection'));
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // The hook
 // ---------------------------------------------------------------------------
 
@@ -122,6 +171,18 @@ export interface UseReportExportOptions {
   buildRequest: () => ReportPdfRequest | null;
   /** The names for the file, as the screen shows them. */
   filenameParts?: () => ReportExportNameParts;
+  /**
+   * The facility's older PDF of the same report, used when its server has no
+   * generate-report-pdf. Its answer has the shape of the document PDFs'
+   * (`generateCustomerStockPDF`); the file is named as the report's would be.
+   */
+  fallback?: () => Promise<ReportExportFallbackResult>;
+}
+
+/** What a fallback export gives: a signed link to the PDF, or a failure. */
+export interface ReportExportFallbackResult {
+  success: boolean;
+  pdfUrl?: string;
 }
 
 export interface ReportExport {
@@ -129,7 +190,10 @@ export interface ReportExport {
   exportPdf: () => Promise<void>;
   /** True from the tap until the export has finished or failed. */
   busy: boolean;
-  /** False once this facility's server has answered that it cannot make report PDFs. */
+  /**
+   * False once this facility's server has answered that it cannot make report
+   * PDFs; always true for an export with a fallback.
+   */
   available: boolean;
 }
 
@@ -150,26 +214,21 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
 
   const exportPdf = useCallback(async () => {
     if (running.current) return;
-    const request = latest.current.buildRequest();
+    const { buildRequest, fallback } = latest.current;
+    const request = buildRequest();
     if (!request) return;
     running.current = true;
     setBusy(true);
     const server = currentServer();
     try {
-      const result = await generateReportPDF(request);
-      if (!result.success || !result.pdfUrl) {
-        // The reason only: never the customer, the URL or the server's text.
-        log.warn('Report PDF not created', { report: request.report, reason: result.reason });
-        if (result.reason === 'server-outdated') noteServer(server, true);
-        showAlert(t('reports.export.failedTitle'), result.error ?? t('common.checkConnection'));
-        return;
-      }
-      noteServer(server, false);
+      const pdfUrl = await makePdf(request, server, fallback);
+      if (!pdfUrl) return;
       const filename = reportPdfFilename(request, latest.current.filenameParts?.());
-      const shared = await downloadAndSharePDF(result.pdfUrl, filename);
+      const shared = await downloadAndSharePDF(pdfUrl, filename);
       if (!shared.success) {
         log.warn('Report PDF not shared', { report: request.report });
-        showAlert(t('reports.export.shareFailedTitle'), t('common.checkConnection'));
+        // The share helper's reasons are already in the app's language.
+        showAlert(t('reports.export.shareFailedTitle'), shared.error || t('common.checkConnection'));
       }
     } catch {
       log.warn('Report PDF export failed', { report: request.report });
@@ -180,5 +239,5 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
     }
   }, []);
 
-  return { exportPdf, busy, available };
+  return { exportPdf, busy, available: available || Boolean(options.fallback) };
 }

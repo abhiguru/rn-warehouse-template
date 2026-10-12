@@ -102,8 +102,6 @@ export const reports = {
     emptiedOn: 'Emptied {{date}}',
     stockOf: '{{stock}} of {{total}}',
     weightEach: '{{weight}} each',
-    pdfErrorTitle: "Couldn't create the stock PDF",
-    shareErrorTitle: "Couldn't share the stock PDF",
     errorTitle: "Couldn't load the stock summary",
     searchItems: 'Search items or GRNs',
     unitsInStock: 'Units in stock',

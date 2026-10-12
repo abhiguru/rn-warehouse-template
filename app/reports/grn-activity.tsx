@@ -33,7 +33,7 @@ import {
   isLongestPeriod,
   type ReportPeriod,
 } from '@/features/filters/configs/reports';
-import type { SortState } from '@/features/filters/types';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
@@ -41,7 +41,6 @@ import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
-import type { ReportPdfSort } from '@/services/pdf-service';
 import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/grn-activity-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
@@ -53,18 +52,6 @@ const REPORT_ID = 'grn-activity';
 // ============================================================================
 // The PDF (generate-report-pdf)
 // ============================================================================
-
-/**
- * The PDF's column for each sort of the screen (backend report-definitions.ts).
- * A sort the PDF has no column for is not sent: the PDF keeps its own order.
- */
-const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = { bags: 'quantity', grns: 'grns', latest: 'latest', name: 'customer' };
-const PDF_SORT_GRNS: Readonly<Record<string, string>> = { date: 'date', number: 'gr_no', bags: 'quantity', stock: 'stock' };
-
-function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
-  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
-  return { field: columns[sort.field], order: sort.order };
-}
 
 /** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
 const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
@@ -208,7 +195,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   );
 
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
   const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
@@ -340,7 +327,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       customer_id: customerId,
       from: period.from,
       to: period.to,
-      sort: pdfSort(view.sort, PDF_SORT_GRNS),
+      sort: reportPdfSort(REPORT_ID, 'customer', view.sort),
     }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
   });

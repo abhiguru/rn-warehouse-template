@@ -130,17 +130,30 @@ The other report screens on the shared layer, and the work they build on:
   until opened; a payment status other than paid or pending shows as "Unknown"
   instead of "Pending"; opening a customer from a link no longer shows two
   placeholder tiles before the three real ones. No backend change.
-- **Report PDFs, app side (no screen uses it yet).** `generateReportPDF` in
-  `src/services/pdf-service.ts` calls the backend's `generate-report-pdf`, and
-  `useReportExport` gives a report screen `{ exportPdf, busy, available }`.
-  Failures are shown in a dialog in the app's language. File names keep
-  letters of any script (shared PDF file names now keep letters, vowel signs
-  and digits of any script, capped at 100 characters and 200 bytes), and a
-  name with none falls back to the start of the customer id. **Needs the
-  backend release with migrations 52–53 and the `generate-report-pdf`
-  function.** With an older backend the first export shows "This facility's
-  server needs an update before reports can be shared as PDF." and the export
-  action is hidden for that facility until the app is restarted.
+- **Report PDFs.** Every report except the operations dashboard can be shared
+  as a PDF with "Share PDF" in its header, for all customers and for one
+  customer; the PDF follows the period and the sort on screen (a sort the PDF
+  has no column for, such as a dispatch's weight, leaves the PDF in its own
+  order). `generateReportPDF` in `src/services/pdf-service.ts` calls the
+  backend's `generate-report-pdf`; `useReportExport` runs the export and
+  `reportPdfSort` (`src/features/reports/reportPdfSort.ts`) holds the one table
+  of sort names. Failures are shown in a dialog in the app's language; a share
+  that fails gives the share sheet's own reason (for example "Sharing is not
+  available on this device"). File names keep letters of any script (shared PDF
+  file names now keep letters, vowel signs and digits of any script, capped at
+  100 characters and 200 bytes), and a name with none falls back to the start
+  of the customer id. **Needs the backend release with migrations 52–53 and the
+  `generate-report-pdf` function.** With an older backend the first export
+  shows "This facility's server needs an update before reports can be shared
+  as PDF." and the export action is hidden for that facility until the app is
+  restarted; the stock summary instead falls back to the facility's existing
+  stock PDF (`generate-customer-stock-pdf`) for a customer's row and for one
+  customer's header, with no message, and hides only the all-customers PDF,
+  which has no older version.
+- **Refusals in any language.** Every report refusal carries a machine code
+  (the server's 42501, else `ACCESS_REFUSED`), and the operations dashboard's
+  `STAFF_ONLY` is recognised as a refusal too, so a refusal shown in Gujarati
+  without a server code is still treated as one.
 - **Last figures kept on the phone.** Reports opened after the app was closed
   show their last figures at once, with the time they were given, and refresh
   behind them; if the refresh fails the figures stay with the "not updated"

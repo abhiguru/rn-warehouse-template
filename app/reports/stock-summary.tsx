@@ -1,6 +1,7 @@
 /**
  * Stock summary report (C1): today's stock, by customer and by item, with a
- * stock PDF to share (generate-report-pdf, through useReportExport).
+ * stock PDF to share (generate-report-pdf, through useReportExport; one
+ * customer's PDF falls back to generate-customer-stock-pdf on an older backend).
  *
  * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportScope says
  * whose stock, useReportFilters holds the search and sort, useReportQuery the
@@ -35,7 +36,7 @@ import {
   stockSummaryCustomersView,
   stockSummaryItemsView,
 } from '@/features/filters/configs/reports/stockSummary';
-import type { SortState } from '@/features/filters/types';
+import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
@@ -43,7 +44,7 @@ import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
-import type { ReportPdfSort } from '@/services/pdf-service';
+import { generateCustomerStockPDF } from '@/services/pdf-service';
 import { getAllStockSummary, getCustomerStockSummary } from '@/services/reporting';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -145,17 +146,12 @@ function NoCustomer() {
 // ============================================================================
 
 /**
- * The PDF's column for each sort of the screen (backend report-definitions.ts).
- * A sort the PDF has no column for is not sent: the PDF keeps its own order.
- * The report is of today's stock: the PDF is asked for no dates.
+ * The report is of today's stock: the PDF is asked for no dates. One
+ * customer's stock PDF existed before generate-report-pdf: on a server without
+ * it that older PDF is shared instead (in its own order), so the row share and
+ * the one-customer header stay. The all-customers PDF has no older one.
  */
-const PDF_SORT_CUSTOMERS: Readonly<Record<string, string>> = { stock: 'stock', items: 'items', grns: 'grns', name: 'customer' };
-const PDF_SORT_ITEMS: Readonly<Record<string, string>> = { stock: 'stock', name: 'item' };
-
-function pdfSort(sort: SortState | undefined, columns: Readonly<Record<string, string>>): ReportPdfSort | undefined {
-  if (!sort || !Object.prototype.hasOwnProperty.call(columns, sort.field)) return undefined;
-  return { field: columns[sort.field], order: sort.order };
-}
+const olderStockPdf = (customerId: string) => () => generateCustomerStockPDF(customerId);
 
 /** The header's stock PDF action, left out once the facility's server has said it cannot make report PDFs. */
 const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
@@ -187,7 +183,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   );
 
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, sort: pdfSort(view.sort, PDF_SORT_CUSTOMERS) }),
+    buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
   const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
@@ -248,6 +244,7 @@ function CustomerStockRowCard({ customer, words, onOpen }: CustomerRowProps) {
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => (customerId ? { report: REPORT_ID, customer_id: customerId } : null),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    fallback: olderStockPdf(customerId),
   });
   return (
     <View style={styles.card}>
@@ -320,8 +317,9 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const toggleItem = useCallback((itemId: string) => setOpen(ids => toggled(ids, itemId)), []);
 
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: pdfSort(view.sort, PDF_SORT_ITEMS) }),
+    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    fallback: olderStockPdf(customerId),
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
