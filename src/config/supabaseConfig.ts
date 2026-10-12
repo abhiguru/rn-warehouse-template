@@ -516,16 +516,21 @@ function otpLimit(status: number, serverError: unknown, retryAfterSeconds: numbe
   return { errorCode: 'otp_rate_limited', error: t('errors.auth.otpTooMany') };
 }
 
-async function operatorOtpRequest(
-  action: 'request' | 'verify' | 'status' | 'signout',
-  body: Record<string, unknown>
-): Promise<OperatorEnvelope> {
-  const generation = getSessionGeneration();
+/**
+ * POST to one of the facility's public sign-in functions (the caller has only
+ * the anon key). A facility call: it goes through the gated fetch.
+ */
+async function operatorFunctionPost(
+  path: string,
+  body: Record<string, unknown>,
+  gate: { mutation: boolean; honorSwitch: boolean },
+  generation = getSessionGeneration()
+): Promise<{ response: Response; result: OperatorEnvelope & { code?: unknown } }> {
   const { url, anonKey } = getCurrentConfig();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const request = `${url}/functions/v1/operator-otp/${action}`;
+    const request = `${url}/functions/v1/${path}`;
     const options: RequestInit = {
       method: 'POST',
       signal: controller.signal,
@@ -536,23 +541,30 @@ async function operatorOtpRequest(
       },
       body: JSON.stringify(body),
     };
-    // Enrollment signout is part of a server switch, so it may run during one.
-    const response = await gatedFetch(request, options, {
-      generation,
-      mutation: action !== 'status',
-      honorSwitch: action !== 'signout',
-    });
-    const result = (await response.json()) as OperatorEnvelope;
-    if (!response.ok || result.success !== true) {
-      const retryAfterSeconds = retryAfterSecondsOf(response, result);
-      const limit = otpLimit(response.status, result.error || result.message, retryAfterSeconds);
-      if (limit) return { success: false, ...limit, retryAfterSeconds };
-      return { success: false, error: serverText(result.error || result.message, t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
-    }
-    return result;
+    const response = await gatedFetch(request, options, { generation, ...gate });
+    const result = (await response.json()) as OperatorEnvelope & { code?: unknown };
+    return { response, result };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function operatorOtpRequest(
+  action: 'request' | 'verify' | 'status' | 'signout',
+  body: Record<string, unknown>
+): Promise<OperatorEnvelope> {
+  // Enrollment signout is part of a server switch, so it may run during one.
+  const { response, result } = await operatorFunctionPost(`operator-otp/${action}`, body, {
+    mutation: action !== 'status',
+    honorSwitch: action !== 'signout',
+  });
+  if (!response.ok || result.success !== true) {
+    const retryAfterSeconds = retryAfterSecondsOf(response, result);
+    const limit = otpLimit(response.status, result.error || result.message, retryAfterSeconds);
+    if (limit) return { success: false, ...limit, retryAfterSeconds };
+    return { success: false, error: serverText(result.error || result.message, t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
+  }
+  return result;
 }
 
 export const getPendingEnrollmentToken = () =>
@@ -770,6 +782,119 @@ export function deviceExpiry(
 // ============================================================================
 
 /**
+ * The start of every sign-in at a facility. A session that is still stored
+ * (the sign-in screen opened by a link while signed in) is ended on the server
+ * too, not only forgotten by this device.
+ */
+async function startNewSession(): Promise<number> {
+  const previous = serializeCredentials(readStoredToken);
+  const generation = advanceSessionGeneration();
+  await serializeCredentials(clearStoredTokensRaw);
+  const replaced = (await previous).refreshToken;
+  if (replaced) void revokeSession(replaced);
+  return generation;
+}
+
+/**
+ * What a facility's successful sign-in answer leads to, whichever way the
+ * person proved who they are (the facility's SMS code in `operator-otp/verify`,
+ * or the association's identity token in `central-exchange`):
+ * `action: "pending"` keeps the enrollment token for the waiting screen;
+ * `action: "login"` stores the session and caches the profile.
+ */
+async function completeOperatorSignIn(data: Record<string, unknown>, generation: number): Promise<AuthResult> {
+  if (data.action === 'pending') {
+    const enrollmentToken = data.enrollment_token;
+    if (typeof enrollmentToken !== 'string' || !enrollmentToken)
+      return { success: false, error: t('errors.auth.enrollmentInvalidResponse') };
+    await SecureStore.setItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN, enrollmentToken);
+    return { success: true, data: { action: 'pending', pendingEnrollment: true, userProfile: null } };
+  }
+  if (data.action !== 'login')
+    return { success: false, error: t('errors.auth.invalidResponse') };
+
+  // Extract standardized response structure:
+  // { success: true, message: "...", data: { user: {...}, session: {...}, action: "..." } }
+  const responseData = data as unknown as {
+    user: UserProfile;
+    session: {
+      access_token: string;
+      refresh_token: string;
+      expires_at: string;
+      expires_in: number;
+      token_type: string;
+    };
+    action: string;
+  };
+
+  // =========================================================================
+  // AUTH: Extract JWT tokens from session object
+  // =========================================================================
+  const { session, user } = responseData;
+
+  if (!session?.access_token || !session?.refresh_token) {
+    console.error('[Auth] No JWT tokens in session object');
+    return { success: false, error: t('errors.auth.noTokens') };
+  }
+
+  const accessTokenStr = String(session.access_token);
+  const refreshTokenStr = String(session.refresh_token);
+
+  // Validate JWT structure and expiration
+  const validation = validateJWTToken(accessTokenStr);
+  if (!validation.valid) {
+    console.error('[Auth] ❌ Invalid JWT token received from backend');
+    return { success: false, error: t('errors.auth.invalidToken') };
+  }
+
+  // Expiry on the device clock
+  const expiresAt = deviceExpiry(validation, session);
+
+  // Store the JWT tokens
+  await storeTokens(accessTokenStr, refreshTokenStr, expiresAt, generation);
+  lastIssued = { token: accessTokenStr, at: Date.now() };
+  await clearPendingEnrollment();
+
+  // Clear cached authenticated client so it picks up the new token
+  clearAuthenticatedClientCache();
+
+  // Fetch customer assignments and cache profile with them
+  let userProfileWithCustomers = user;
+  if (user) {
+    try {
+      const authClient = await getAuthenticatedClient();
+      const { data: customerIds, error: rpcError } = await authClient.rpc(
+        'user_accessible_customers'
+      );
+
+      if (!rpcError && customerIds) {
+        userProfileWithCustomers = {
+          ...user,
+          assignedCustomerIds: customerIds,
+        };
+      }
+    } catch (err) {
+      console.warn('[Auth] Failed to fetch customer assignments:');
+    }
+    await cacheUserProfile(userProfileWithCustomers, generation);
+  }
+
+  if (generation !== getSessionGeneration())
+    return { success: false, error: t('errors.auth.sessionChanged') };
+  return {
+    success: true,
+    data: {
+      session: null,
+      user: null,
+      userProfile: userProfileWithCustomers,
+      action: 'login',
+      customAuth: true,
+      accessToken: accessTokenStr,
+    },
+  };
+}
+
+/**
  * OTP verification through the operator authentication edge function.
  *
  * Standardized backend response format:
@@ -792,13 +917,7 @@ export const verifyOTP = async (
   token: string,
   userName?: string
 ): Promise<AuthResult> => {
-  // A session that is still stored (the sign-in screen opened by a link while
-  // signed in) is ended on the server too, not only forgotten by this device.
-  const previous = serializeCredentials(readStoredToken);
-  const generation = advanceSessionGeneration();
-  await serializeCredentials(clearStoredTokensRaw);
-  const replaced = (await previous).refreshToken;
-  if (replaced) void revokeSession(replaced);
+  const generation = await startNewSession();
   try {
     const formattedPhone = formatPhoneNumber(phone);
 
@@ -824,98 +943,91 @@ export const verifyOTP = async (
       return { success: false, error: errorMsg };
     }
 
-    if (rpcResponse.data.action === 'pending') {
-      const enrollmentToken = rpcResponse.data.enrollment_token;
-      if (typeof enrollmentToken !== 'string' || !enrollmentToken)
-        return { success: false, error: t('errors.auth.enrollmentInvalidResponse') };
-      await SecureStore.setItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN, enrollmentToken);
-      return { success: true, data: { action: 'pending', pendingEnrollment: true, userProfile: null } };
-    }
-    if (rpcResponse.data.action !== 'login')
-      return { success: false, error: t('errors.auth.invalidResponse') };
-
-    // Extract standardized response structure:
-    // { success: true, message: "...", data: { user: {...}, session: {...}, action: "..." } }
-    const responseData = rpcResponse.data as unknown as {
-      user: UserProfile;
-      session: {
-        access_token: string;
-        refresh_token: string;
-        expires_at: string;
-        expires_in: number;
-        token_type: string;
-      };
-      action: string;
-    };
-
-    // =========================================================================
-    // AUTH: Extract JWT tokens from session object
-    // =========================================================================
-    const { session, user } = responseData;
-
-    if (!session?.access_token || !session?.refresh_token) {
-      console.error('[Auth] No JWT tokens in session object');
-      return { success: false, error: t('errors.auth.noTokens') };
-    }
-
-    const accessTokenStr = String(session.access_token);
-    const refreshTokenStr = String(session.refresh_token);
-
-    // Validate JWT structure and expiration
-    const validation = validateJWTToken(accessTokenStr);
-    if (!validation.valid) {
-      console.error('[Auth] ❌ Invalid JWT token received from backend');
-      return { success: false, error: t('errors.auth.invalidToken') };
-    }
-
-    // Expiry on the device clock
-    const expiresAt = deviceExpiry(validation, session);
-
-    // Store the JWT tokens
-    await storeTokens(accessTokenStr, refreshTokenStr, expiresAt, generation);
-    lastIssued = { token: accessTokenStr, at: Date.now() };
-    await clearPendingEnrollment();
-
-    // Clear cached authenticated client so it picks up the new token
-    clearAuthenticatedClientCache();
-
-    // Fetch customer assignments and cache profile with them
-    let userProfileWithCustomers = user;
-    if (user) {
-      try {
-        const authClient = await getAuthenticatedClient();
-        const { data: customerIds, error: rpcError } = await authClient.rpc(
-          'user_accessible_customers'
-        );
-
-        if (!rpcError && customerIds) {
-          userProfileWithCustomers = {
-            ...user,
-            assignedCustomerIds: customerIds,
-          };
-        }
-      } catch (err) {
-        console.warn('[Auth] Failed to fetch customer assignments:');
-      }
-      await cacheUserProfile(userProfileWithCustomers, generation);
-    }
-
-    if (generation !== getSessionGeneration())
-      return { success: false, error: t('errors.auth.sessionChanged') };
-    return {
-      success: true,
-      data: {
-        session: null,
-        user: null,
-        userProfile: userProfileWithCustomers,
-        action: 'login',
-        customAuth: true,
-        accessToken: accessTokenStr,
-      },
-    };
+    return await completeOperatorSignIn(rpcResponse.data, generation);
   } catch (error) {
     console.error('[Auth] OTP verification exception:');
     return { success: false, error: t('errors.auth.otpVerificationFailed') };
+  }
+};
+
+/** The `code` of a `central-exchange` refusal (backend docs/CENTRAL_LOGIN.md), and the app's own for no answer. */
+export type CentralExchangeCode =
+  | 'central_unavailable'
+  | 'invalid_identity_token'
+  | 'identity_token_used'
+  | 'account_unavailable'
+  | 'link_required'
+  | 'invalid_otp'
+  | 'rate_limited'
+  | 'identity_conflict'
+  | 'enrollment_limited'
+  | 'central_keys_unavailable'
+  | 'invalid_request'
+  | 'unavailable'
+  /** No answer from the facility: no connection, or the app gave up waiting. */
+  | 'network'
+  /** The session was replaced while the answer was on its way. */
+  | 'session_changed'
+  /** An answer the app cannot use. */
+  | 'failed';
+
+const CENTRAL_EXCHANGE_CODES: readonly string[] = [
+  'central_unavailable', 'invalid_identity_token', 'identity_token_used', 'account_unavailable', 'link_required',
+  'invalid_otp', 'rate_limited', 'identity_conflict', 'enrollment_limited', 'central_keys_unavailable',
+  'invalid_request', 'unavailable',
+];
+
+export interface CentralExchangeFailure {
+  success: false;
+  code: CentralExchangeCode;
+  /** The wait the facility named with a 429. */
+  retryAfterSeconds?: number;
+}
+
+export type CentralExchangeResult = AuthSuccessResult | AuthPendingResult | CentralExchangeFailure;
+
+/**
+ * Hands the association's identity token for THIS facility to the facility
+ * (`POST /functions/v1/central-exchange`, backend migration 49). The answer has
+ * the shape of `operator-otp/verify` and is handled by the same code:
+ * a session for an approved profile, an enrollment token for a request that
+ * waits. `otpCode` is the facility's own SMS code, sent only to link a profile
+ * that existed here before (the answer to `link_required`).
+ *
+ * Every token is spent by the call, whatever the answer: the caller asks the
+ * central service for a fresh one each time. The token is never logged.
+ */
+export const exchangeCentralIdentity = async (
+  identityToken: string,
+  options?: { otpCode?: string }
+): Promise<CentralExchangeResult> => {
+  const generation = await startNewSession();
+  try {
+    const { response, result } = await operatorFunctionPost(
+      'central-exchange',
+      { identity_token: identityToken, ...(options?.otpCode ? { otp_code: options.otpCode } : {}) },
+      { mutation: true, honorSwitch: true },
+      generation
+    );
+    if (generation !== getSessionGeneration()) {
+      const refresh = (result?.data?.session as { refresh_token?: unknown } | undefined)?.refresh_token;
+      if (typeof refresh === 'string') await revokeSession(refresh);
+      return { success: false, code: 'session_changed' };
+    }
+    if (!response.ok || result?.success !== true || !result.data) {
+      const code = typeof result?.code === 'string' && CENTRAL_EXCHANGE_CODES.includes(result.code)
+        ? (result.code as CentralExchangeCode)
+        : response.status === 429 ? 'rate_limited' : 'failed';
+      const retryAfterSeconds = response.status === 429 ? retryAfterSecondsOf(response, result) : undefined;
+      return { success: false, code, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) };
+    }
+    // A session that could not be stored is not a lost connection.
+    const completed = await completeOperatorSignIn(result.data, generation).catch(() => null);
+    if (completed?.success) return completed;
+    return { success: false, code: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
+  } catch (error) {
+    if (isGateSignal(error) || getAppErrorCode(error) === 'SESSION_CHANGED') return { success: false, code: 'session_changed' };
+    return { success: false, code: 'network' };
   }
 };
 

@@ -37,6 +37,11 @@ export interface PublicConfig {
   supportedApiVersions: string[];
   minimumClientVersion: string;
   capabilities: Record<string, unknown>;
+  /**
+   * The association issuer this facility trusts for central login, or null /
+   * absent when it does not accept association sign-in (backend migration 49).
+   */
+  centralLogin?: { issuer: string } | null;
   urls: {
     publicConfig: string;
     fullConfig: string;

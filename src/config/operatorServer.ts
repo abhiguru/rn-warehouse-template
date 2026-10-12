@@ -122,3 +122,13 @@ export async function commitStagedOperatorServer(server: OperatorServer): Promis
   await saveOperatorServer(server);
   await AsyncStorage.removeItem(STAGED_KEY).catch(() => {});
 }
+
+/**
+ * Forget the selected server (central login: leaving a facility for "My
+ * facilities"). The caller has ended that facility's session first.
+ */
+export async function clearOperatorServer(): Promise<void> {
+  await AsyncStorage.multiRemove([STORAGE_KEY, STAGED_KEY]);
+  activeServer = null;
+  for (const listener of listeners) listener();
+}
