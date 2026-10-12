@@ -352,4 +352,16 @@ export const reports = {
       noData: 'No invoice history found',
     },
   },
+  // Report PDFs (generateReportPDF in src/services/pdf-service.ts, useReportExport).
+  // Connection: common.checkConnection; session ended: errors.code.sessionExpired.
+  export: {
+    failedTitle: "Couldn't create the PDF",
+    shareFailedTitle: "Couldn't share the PDF",
+    notAvailable: 'This report is not available to your account as a PDF.',
+    customerUnavailable: 'This customer is not available. Choose another customer and try again.',
+    serverBusy: "The server couldn't make the PDF right now. Try again in a moment.",
+    serverNeedsUpdate: "This facility's server needs an update before reports can be shared as PDF.",
+    periodTooLong: 'A PDF can cover at most {{days}} days. Choose a shorter period.',
+    notAccepted: "The server didn't accept this request. Update the app and try again.",
+  },
 };

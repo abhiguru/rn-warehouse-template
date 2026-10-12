@@ -351,4 +351,14 @@ export const reports: Translation<typeof source> = {
       noData: 'ઇન્વૉઇસનો કોઈ ઇતિહાસ મળ્યો નથી',
     },
   },
+  export: {
+    failedTitle: 'PDF બનાવી શકાઈ નથી',
+    shareFailedTitle: 'PDF શેર કરી શકાઈ નથી',
+    notAvailable: 'આ અહેવાલની PDF તમારા ખાતા માટે ઉપલબ્ધ નથી.',
+    customerUnavailable: 'આ વેપારી ઉપલબ્ધ નથી. બીજો વેપારી પસંદ કરો અને ફરી પ્રયાસ કરો.',
+    serverBusy: 'સર્વર અત્યારે PDF બનાવી શક્યું નથી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
+    serverNeedsUpdate: 'અહેવાલની PDF શેર કરવા માટે આ કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ કરવું જરૂરી છે.',
+    periodTooLong: 'એક PDFમાં વધુમાં વધુ {{days}} દિવસ આવી શકે છે. ટૂંકો સમયગાળો પસંદ કરો.',
+    notAccepted: 'સર્વરે આ વિનંતી સ્વીકારી નથી. ઍપ અપડેટ કરો અને ફરી પ્રયાસ કરો.',
+  },
 };
