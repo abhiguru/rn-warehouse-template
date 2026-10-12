@@ -137,3 +137,23 @@ describe('the image cache', () => {
     expect(await AsyncStorage.getAllKeys()).toEqual([]);
   });
 });
+
+// The report screens remember the customer last opened; that names a customer of the facility just left.
+it('forgets the customer last opened in a report, for every account, and keeps the other report choices', async () => {
+  const { default: reportPrefsReducer, setReportCustomer, setReportPeriod, toggleReportPin } =
+    jest.requireActual<typeof import('../slices/reportPrefsSlice')>('../slices/reportPrefsSlice');
+  const store = configureStore({ reducer: { reportPrefs: reportPrefsReducer } });
+  for (const scope of ['scope-a', 'scope-b']) {
+    store.dispatch(setReportCustomer({ scope, reportId: 'grn-activity', customer: { id: 'c1', name: 'Fictional Traders' } }));
+  }
+  store.dispatch(setReportPeriod({ scope: 'scope-a', period: { preset: 'last240' } }));
+  store.dispatch(toggleReportPin({ scope: 'scope-a', reportId: 'stock-summary' }));
+
+  await clearSessionScopedState(store.dispatch);
+
+  const { byScope } = store.getState().reportPrefs;
+  expect(byScope['scope-a'].lastCustomer).toEqual({});
+  expect(byScope['scope-b'].lastCustomer).toEqual({});
+  expect(byScope['scope-a'].period).toEqual({ preset: 'last240' });
+  expect(byScope['scope-a'].pinned).toEqual(['stock-summary']);
+});

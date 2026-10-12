@@ -12,6 +12,7 @@ import dispatchFormReducer from './slices/dispatchFormSlice';
 import invoiceFormReducer from './slices/invoiceFormSlice';
 import customerFormReducer from './slices/customerFormSlice';
 import listFilterReducer from './slices/listFilterSlice';
+import reportPrefsReducer from './slices/reportPrefsSlice';
 import themeReducer from './slices/themeSlice';
 
 // Import middleware
@@ -26,6 +27,8 @@ const rootReducer = combineReducers({
   customerForm: customerFormReducer,
   // Session only: not in the persist whitelist below.
   listFilters: listFilterReducer,
+  // Persisted: what was last chosen on the report screens, per facility and account.
+  reportPrefs: reportPrefsReducer,
   theme: themeReducer,
 });
 
@@ -36,7 +39,9 @@ const persistConfig = {
   // - Form slices: Reset on app restart (user expectation)
   // - config: Fetched fresh after auth initialization
   // Auth is restored only from the complete SecureStore session.
-  whitelist: ['theme'],
+  // - reportPrefs: choices on the report screens; its one piece of facility data
+  //   (the last customer) is cleared with the session (sessionScopedState.ts).
+  whitelist: ['theme', 'reportPrefs'],
   migrate: restorePreferences,
 };
 
