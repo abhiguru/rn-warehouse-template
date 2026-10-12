@@ -162,6 +162,12 @@ The other report screens on the shared layer, and the work they build on:
   at sign-out and facility switch. A refusal from the facility (the account
   lost its role or the customer) removes the kept answer and drops the figures
   on screen, so the report shows only the refusal.
+- **Cleanup.** Removed the report components no screen used after the rebuild
+  (`PeriodSelector` with `getDateRangeForPeriod`, `ReportCustomerSearch`,
+  `ReportCustomerScope`), the old `ReportPeriod`/`CustomerActivityPeriod`/
+  `ReportDefinition`/`ReportCategory` types in `src/types/report.types.ts`, and
+  the English and Gujarati texts only they used. The report registry test now
+  renders the root stack instead of matching its source text.
 
 ## Unreleased — price history screen (2026-10-11)
 
