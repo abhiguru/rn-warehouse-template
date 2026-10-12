@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { isMain } from './is-main.mjs';
 
 // Reviewed @expo/cli release and the SHA-256 of its unpatched runServer-fork.js.
-const reviewedVersion = '57.0.28';
+// 57.0.29 (with expo 57.0.28) ships the file byte-identical to 57.0.28's; the hash is the same.
+const reviewedVersion = '57.0.29';
 const reviewedHash = '72177ad9dc279383f6970348550ec0f380bb2d5cf14b96dec690b2efcc2fc4e2';
 const oldBinding = 'httpServer.listen(config.server.port, host, ()=>{';
 const usbBinding = "httpServer.listen(config.server.port, process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host, ()=>{";
