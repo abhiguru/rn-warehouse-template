@@ -845,6 +845,8 @@ Swipe actions on rows: each action is at least 72 wide and full row height, with
 
 A surcharge (a negative discount) shows with a plus sign in `text.primary`; a discount shows with a minus sign in `status.positive.text`.
 
+A pin is the exception to the one-tap rule: it changes nothing but the person's own view and is undone by the same tap, so a star may sit at the end of a row as a one-tap control. It is a separate target beside the row's own (not inside it), at least `touchTarget` square with 8 between the two, a button with `accessibilityState={{ selected }}` and a whole-sentence label ("Pin GRN activity to the top" / "Unpin GRN activity"). Pinned shows the filled `star` in `brand.tint`; not pinned shows `star-outline` in `icon.primary`, so the glyph, not colour alone, carries the state. Used by `reports/ReportHubRow.tsx` on the Reports tab.
+
 ### 13.7 Tables — `FioriDataTable.tsx`, `fiori/FioriDataTable.tsx`, `reports/FioriDataTable.tsx`, `grn-details/GRNItemDispatchTable.tsx`, `invoice/components/InvoiceItemsTable.tsx`
 
 The three `FioriDataTable` copies follow one spec and are merged during migration.
@@ -915,6 +917,7 @@ More rules:
 | `reports/KPICard.tsx`, `reports/KPIGrid.tsx` | `surface.card`, `radius.card`, `shadow[2]`. Icon 32 in a 44 circle of `brand.subtle` with `brand.tint` glyph (`primary` and `accent`), status background and text for `success` and `warning`, neutral for `neutral` and `secondary`. Value `title3` tabular, unit `subhead` `text.secondary`, label `footnote` `text.secondary`. Trend: `arrow-up`/`arrow-down` icon plus value in positive or negative text; whether up is good is set per KPI, never assumed. |
 | `sensors/SensorHistoryChart.tsx` and other charts | Series colours from `tokens.chart` in order. Thresholds as dashed lines in `status.critical.element` and `status.negative.element` with labels. Axes and grid `border.divider`, axis labels `caption1` `text.secondary`. A text summary and a values table are available. |
 | `reports/PeriodSelector.tsx` | Segmented control per [13.4](#134-selection-controls), 36 tall with the touch area padded to `touchTarget`; a custom period is a separate chip. Reports built with `ReportScaffold` use the period chip of the filter bar instead ([14.5](#145-filter-and-sort), [14.10](#1410-reports)). |
+| `reports/AgingBucketBar.tsx` | Stock-age buckets, youngest first. Each row: `StatusTag` for the bucket, then the share (`subhead` 600, tabular, right) and the quantity with its unit (`footnote` `text.secondary`, tabular, right) on a line that wraps. Below, a full-width track (`brand.subtleStrong`, `space.sm` high) filled with `status.*.element` to the bucket's share of the total, so the bars add up to 100%. The group is one accessible element with one sentence per bucket; an all-zero set says "No stock yet". |
 | `invoice/components/InvoiceCalculationSummary.tsx`, `invoice-details/InvoiceBreakdownTab.tsx` | Key-value rows, amounts right-aligned with tabular numbers; total in `headline`; discounts in `status.positive.text` with a minus sign; taxes listed separately. |
 
 More rules:
@@ -1030,6 +1033,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 
 ### 14.10 Reports
 
+- The Reports tab lists, each under a `ui/SectionHeader`: Pinned (the reports this account pinned, in pin order), Recent (up to three opened last, most recent first, none that is pinned), then Stock, Movement, Financial and Operations from each report's `category` in the registry, in registry order. A report stays in its category when it is also pinned or recent; a section with nothing to show is left out. Every report, including a stored pinned or recent id, passes its role gate when the tab is drawn. Pins and recents are kept per facility and account (`useReportPrefs`); opening a report from the tab notes it as recent.
 - Built with `ReportScaffold` (`src/components/reports`), which owns the layout and every state: first load, failed, failed with earlier rows still shown, nothing there, nothing matching. Top to bottom: header (title, whose data, at most one export action) → search → filter bar with sort, period and filters → figures → status line "dates · showing X of Y · last updated" → charts, if any → rows. The figures cover the whole period, not the rows a search leaves.
 - Whose data comes from `useReportScope`. A warehouse role starts on every customer and opens one as a route parameter (the same route pushed with `?customerId=`), so the phone's back button and the header's agree. A customer account with several customers chooses one first (`ReportCustomerPicker`) and can change it from the header. While no search is typed, the customers list offers the customer opened last as one row above it.
 - The period is the filter bar's period chip (§14.5). Reports that have not moved to `ReportScaffold` yet still use `PeriodSelector`.

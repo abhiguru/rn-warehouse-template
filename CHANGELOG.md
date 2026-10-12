@@ -4,6 +4,33 @@
 
 No backend change is needed for the entries below.
 
+- **Reports tab: pinned, recent and categories.** The tab now shows the reports
+  you pinned (in the order you pinned them), up to three you opened last, then
+  every report you may open under Stock, Movement, Financial and Operations. A
+  star at the end of each row pins or unpins the report (filled when pinned;
+  the screen reader says "Pin … to the top" / "Unpin …" and whether it is
+  selected). Pins and recent reports are kept per facility and account. A
+  pinned or recent report that the account's role may not open, such as the
+  operations dashboard for staff and customer accounts, is never shown.
+- **Stock age bars (stock aging, customer activity).** Both reports draw the
+  stock-age buckets with one shared component, `AgingBucketBar`. Each bar shows
+  its bucket's share of all stock, so the four bars add up to 100%, instead of
+  its share of the largest bucket. The share is worked out from quantities on
+  both screens: the stock aging report used to show the backend's share of
+  stock entries, so its percentages change. Every quantity shows its unit, a
+  screen reader reads the group as one summary with a sentence per bucket, and
+  a customer with no stock sees "No stock yet". The "Over 1 year" KPI is
+  unchanged for now: its backend count uses more than 365 days while the last
+  bucket is over 364 days; the stock aging rebuild aligns it.
+- **Stock reports share one item card.** The stock summary and the item stock
+  summary draw their items with `StockItemCard` instead of two copies. GRN
+  numbers are shown in full and wrap instead of being cut off. Opening an item
+  animates for 200 ms instead of 300 ms, and not at all with Reduce Motion on.
+  The item header tells screen readers whether it is open; a GRN row that opens
+  the GRN reads as one button with the hint "Opens the GRN", and a row that
+  cannot open has no chevron. In the item stock summary the item's packaging
+  and GRN count share one line, and "Low stock" is the only tag.
+
 Fixes on the report screens:
 
 - **Invoice history** now shows its figures (invoices and net amount for all

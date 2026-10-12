@@ -44,3 +44,8 @@ export { ReportCustomerSearch, type ReportCustomerSearchProps } from './ReportCu
 // Whose data a report shows (role and assigned customers)
 export { ReportCustomerScope, type ReportScope, type ReportCustomerScopeProps } from './ReportCustomerScope';
 export { ReportCustomerPicker, type ReportCustomerPickerProps } from './ReportCustomerPicker';
+
+// Shared rows of the stock reports
+export { AgingBucketBar, agingBucketsFrom, agingBucketIdFromKey, agingBucketLabel, AGING_BUCKET_IDS, AGING_BUCKET_STATUS, type AgingBucket, type AgingBucketId, type AgingBucketBarProps } from './AgingBucketBar';
+export { StockItemCard, StockGRNRow, isLowStock, LOW_STOCK_PERCENT, EXPAND_ANIMATION, animateExpand } from './StockItemCard';
+export type { StockItemCardProps, StockGRNRowData, StockGRNRowProps, StockGRNState } from './StockItemCard';
