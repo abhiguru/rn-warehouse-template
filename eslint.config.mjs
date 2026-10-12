@@ -43,10 +43,10 @@ const THEME_IMPORT_RULES = {
 export default [
   js.configs.recommended,
   {
-    files: ['app.config.js'],
+    files: ['app.config.js', 'scripts/metro-block-list.js'],
     languageOptions: {
       sourceType: 'commonjs',
-      globals: { module: 'readonly', process: 'readonly' },
+      globals: { module: 'readonly', process: 'readonly', require: 'readonly' },
     },
   },
   {

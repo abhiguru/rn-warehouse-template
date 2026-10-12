@@ -348,6 +348,12 @@ phone against a real central service.
   Gujarati is a draft for the owner's wording review.
 - Still open: passcode and biometrics, SMS auto-read, passkeys, shared devices, removing a
   facility from the list, a header that shows the facility's name inside it.
+- Development setup: Metro no longer watches `.claude/` in the checkout. Agents keep git
+  worktrees of the app in `.claude/worktrees/`, and Metro's file watcher and resolver could
+  see those copies of the source tree. `metro.config.js` now adds a pattern to
+  `resolver.blockList` (the defaults stay) that is built from the checkout's own path
+  (`scripts/metro-block-list.js`), so a Metro started from inside such a worktree still sees
+  that worktree's files. No change to the app.
 
 ## Unreleased — price history screen (2026-10-11)
 
