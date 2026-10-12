@@ -4,9 +4,11 @@
  * Follows the object cell spec in docs/STYLE_GUIDE.md §13.6:
  * - 44 avatar on the left (shared `Avatar`, keyed by the customer id)
  * - Title (`headline`, two lines) and subtitle (`subhead`)
- * - Optional share button (44 target, `brand.tint`)
  * - Value (`headline`, tabular) and its label on the right
  * - Chevron in `icon.secondary`; pressed row `surface.cardPressed`
+ * - Optional share button (`touchTarget` square, `brand.tint`): a target of its own
+ *   beside the row's, 8 apart, not inside it, so a screen reader reaches each
+ *   one with its own label (§11.2, §11.3, as the pin in §13.6)
  */
 
 import React from 'react';
@@ -90,6 +92,21 @@ const makeStyles = (t: ThemeTokens) =>
     cardPressed: {
       backgroundColor: t.surface.cardPressed,
     },
+    // With a share button: the row and the button side by side, the row's target full height.
+    withShare: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: space.sm,
+      backgroundColor: t.surface.card,
+    },
+    rowWithShare: {
+      flex: 1,
+      paddingRight: 0,
+    },
+    shareSlot: {
+      justifyContent: 'center',
+      paddingRight: space.sm,
+    },
     content: {
       flex: 1,
       justifyContent: 'center',
@@ -163,9 +180,9 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
     accessibilityLabel ??
     [title, subtitleText, tr('reports.components.valueWithLabel', { value: formatNumber(value), label: valueLabel }), status?.label].filter(Boolean).join(', ');
 
-  return (
+  const row = (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [styles.card, onShare && styles.rowWithShare, pressed && styles.cardPressed]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
@@ -180,13 +197,27 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
         <FactLines facts={facts} style={styles.subtitle} numberOfLines={1} />
       </View>
 
-      {/* C. Share Button (optional) */}
-      {onShare && (
+      {/* C. Value */}
+      <View style={styles.valueContainer}>
+        <Text style={styles.value}>{formatNumber(value)}</Text>
+        <Text style={styles.valueLabel}>{valueLabel}</Text>
+        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
+      </View>
+
+      {/* D. Navigation Chevron */}
+      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+    </Pressable>
+  );
+
+  if (!onShare) return row;
+
+  // E. Share button: a sibling of the row, never nested in it.
+  return (
+    <View style={styles.withShare}>
+      {row}
+      <View style={styles.shareSlot}>
         <Pressable
-          onPress={e => {
-            e.stopPropagation();
-            onShare();
-          }}
+          onPress={onShare}
           style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
           disabled={isSharing}
           accessibilityRole="button"
@@ -199,18 +230,8 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
             <Icon name="file-pdf-box" size={iconSize.lg} color={t.brand.tint} />
           )}
         </Pressable>
-      )}
-
-      {/* D. Value */}
-      <View style={styles.valueContainer}>
-        <Text style={styles.value}>{formatNumber(value)}</Text>
-        <Text style={styles.valueLabel}>{valueLabel}</Text>
-        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
       </View>
-
-      {/* E. Navigation Chevron */}
-      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-    </Pressable>
+    </View>
   );
 };
 

@@ -34,6 +34,15 @@ const grn = (over: Record<string, unknown>) => ({
   ...over,
 });
 
+const stockItem = (id: string, name: string, stock: number, grns: string[]) => ({
+  item_id: id,
+  item_name: name,
+  total_stock: stock,
+  total_weight: stock * 50,
+  grn_count: grns.length,
+  grns: grns.map((gr_no, index) => ({ grn_id: `${id}-g${index}`, gr_no, date: '2026-09-01', orig_qty: stock, stock, item_weight: 50, rack: '', packaging: 'Bag' })),
+});
+
 /**
  * Rows for each configuration, by list key, with the word a search must find in
  * exactly one of them. No two rows share a value in any sorted column, and no
@@ -61,6 +70,29 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     search: 'red chilli',
     found: ['g2'],
     id: (row: { grn_id: string }) => row.grn_id,
+  },
+  'report-stock-summary': {
+    rows: [
+      { customer_id: 'c1', customer_name: 'Riverbank Produce', total_stock: 80, total_weight: 4000, item_count: 7, grn_count: 9 },
+      { customer_id: 'c2', customer_name: 'Green Valley Traders', total_stock: 300, total_weight: 15000, item_count: 2, grn_count: 4 },
+      { customer_id: 'c3', customer_name: 'Sunrise Agro Foods', total_stock: 120, total_weight: 6000, item_count: 5, grn_count: 2 },
+      { customer_id: 'c4', customer_name: 'Hillside Growers', total_stock: 50, total_weight: 2500, item_count: 3, grn_count: 12 },
+    ],
+    search: 'riverbank',
+    found: ['c1'],
+    id: (row: { customer_id: string }) => row.customer_id,
+  },
+  'report-stock-summary-customer': {
+    rows: [
+      stockItem('i1', 'Garlic', 60, ['A0010']),
+      stockItem('i2', 'Red chilli', 5, ['A0009', 'A0042']),
+      stockItem('i3', 'Cumin', 90, ['A0100']),
+      stockItem('i4', 'Turmeric', 40, ['A0050']),
+    ],
+    // A GRN number, which the item's card does not show until it is opened.
+    search: 'a0042',
+    found: ['i2'],
+    id: (row: { item_id: string }) => row.item_id,
   },
 };
 
@@ -101,8 +133,19 @@ describe.each(REPORT_VIEW_CONFIGS.map(entry => [entry.config.listKey, entry] as 
     expect(all().slice().sort()).toEqual(fixture.rows.map(row => fixture.id(row as never)).sort());
   });
 
+  it('asks for a period exactly when it has a period field (a report of today has neither)', () => {
+    const hasPeriod = config.fields.some(isRequiredField);
+    expect(request({}).period === undefined).toBe(!hasPeriod);
+    if (!hasPeriod) expect(Object.keys(request({ search: fixture.search }, config.sort?.default))).toEqual(['view']);
+  });
+
   describe.each([['staff', staff], ['a customer account', customer]] as const)('for %s', (_name, ctx) => {
     const fields = visibleFields(config, ctx).map(field => [field.key, field] as const);
+    // A report with no fields (today's stock: no period, no choices) has nothing to check here.
+    if (fields.length === 0) {
+      it('has no fields to check', () => expect(config.fields).toEqual([]));
+      return;
+    }
     it.each(fields)('the "%s" field changes what is asked for or what is shown', (_key, field) => {
       const value = sample(field);
       expect(isFieldActive(field, value)).toBe(true);

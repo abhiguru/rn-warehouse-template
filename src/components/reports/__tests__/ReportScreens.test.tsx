@@ -391,8 +391,11 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
 
   it('stock summary list', async () => {
     const tree = await render(brand, mode, <StockSummaryScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.surface.field]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Stock summary', 'Customers with stock', 'Patel Traders']));
+    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(tree.root.findAll(n => (n.type as unknown) === 'Icon' && n.props.name === 'file-pdf-box').map(n => n.props.color)).toEqual([t.brand.tint]);
+    // On the shared report layer: no period, the sort chip, and one card per customer with its share button.
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Stock summary', 'All customers', 'Stock', 'Patel Traders', '2 items · 1 GRN', '300']));
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Share PDF for Patel Traders' && typeof n.props.onPress === 'function')).not.toHaveLength(0);
     act(() => tree.unmount());
   });
 
@@ -506,45 +509,8 @@ describe('invoice history summary', () => {
   });
 });
 
-describe('stock summary of one customer', () => {
-  const summary = { total_items: 0, total_quantity: 0, total_weight_kg: 0, oldest_stock_date: null, grn_count: 0, grn_count_empty: 1 };
-  const onions = { item_id: 'i9', item_name: 'Example Onions', total_stock: 0, total_weight: 0, grn_count: 1, grns: [] };
-  const potatoes = { item_id: 'i1', item_name: 'Example Potatoes', total_stock: 40, total_weight: 2000, grn_count: 1, grns: [] };
-  const openCustomer = async (data: unknown) => {
-    jest.mocked(reporting.getCustomerStockSummary).mockResolvedValueOnce({ success: true, message: '', data } as never);
-    const tree = await render(BRAND, 'light', <StockSummaryScreen />);
-    await press(tree, 'Patel Traders');
-    return tree;
-  };
-
-  it('with nothing in stock still offers the out-of-stock items, under the empty message', async () => {
-    const tree = await openCustomer({ summary, items: [], out_of_stock_items: [onions] });
-    const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['No stock for this customer', 'Out of stock', 'Last 360 days']));
-    expect(all).not.toContain('Items in storage');
-    expect(all).not.toContain('Example Onions');
-
-    await press(tree, 'Out of stock, 1 item');
-    expect(texts(tree)).toContain('Example Onions');
-    act(() => tree.unmount());
-  });
-
-  it('with no items at all shows the empty message only', async () => {
-    const tree = await openCustomer({ summary, items: [], out_of_stock_items: [] });
-    const all = texts(tree);
-    expect(all).toContain('No stock for this customer');
-    expect(all).not.toContain('Out of stock');
-    act(() => tree.unmount());
-  });
-
-  it('with stock shows the items and the out-of-stock section, and no empty message', async () => {
-    const tree = await openCustomer({ summary: { ...summary, total_items: 1, total_quantity: 40 }, items: [potatoes], out_of_stock_items: [onions] });
-    const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Items in storage', 'Example Potatoes', 'Out of stock']));
-    expect(all).not.toContain('No stock for this customer');
-    act(() => tree.unmount());
-  });
-});
+// One customer's stock (items, the out-of-stock section, the PDF) is opened as a route and
+// tested with a real store in StockSummaryFlow.test.tsx.
 
 describe('a report that could not be loaded', () => {
   const FAILED: [string, React.ComponentType, jest.Mock, string][] = [
@@ -552,6 +518,7 @@ describe('a report that could not be loaded', () => {
     ['GRN activity', GRNActivityScreen, grnActivity.getAllGRNActivity as jest.Mock, 'No GRNs in this period'],
     ['invoice history', InvoiceHistoryScreen, invoiceHistory.getAllInvoiceHistory as jest.Mock, 'No invoices in this period'],
     ['customer activity', CustomerActivityScreen, customerActivity.getAllCustomerActivity as jest.Mock, 'No customer activity'],
+    ['stock summary', StockSummaryScreen, reporting.getAllStockSummary as jest.Mock, 'No stock yet'],
   ];
   const refused = { success: false, message: 'The facility refused this report.' };
 

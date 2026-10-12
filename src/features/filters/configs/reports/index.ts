@@ -6,6 +6,7 @@
 import type { FilterListConfig } from '../../types';
 import { GRN_ACTIVITY_CUSTOMER, GRN_ACTIVITY_CUSTOMERS, grnCustomersView, grnRecordsView } from './grnActivity';
 import type { ReportRequest } from './shared';
+import { STOCK_SUMMARY_CUSTOMER, STOCK_SUMMARY_CUSTOMERS, stockSummaryCustomersView, stockSummaryItemsView } from './stockSummary';
 
 export interface ReportViewConfig {
   config: FilterListConfig<ReportRequest<object>>;
@@ -20,6 +21,8 @@ const pair = <TRow, TRequest extends ReportRequest<object>>(
 export const REPORT_VIEW_CONFIGS: ReportViewConfig[] = [
   pair(GRN_ACTIVITY_CUSTOMERS, grnCustomersView),
   pair(GRN_ACTIVITY_CUSTOMER, grnRecordsView),
+  pair(STOCK_SUMMARY_CUSTOMERS, stockSummaryCustomersView),
+  pair(STOCK_SUMMARY_CUSTOMER, stockSummaryItemsView),
 ];
 
 export * from './grnActivity';
