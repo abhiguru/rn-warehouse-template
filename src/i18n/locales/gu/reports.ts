@@ -129,6 +129,7 @@ export const reports: Translation<typeof source> = {
     errorTitle: 'આઇટમ મુજબ સ્ટોકનો સારાંશ લોડ કરી શકાયો નથી',
     loadMore: 'વધુ આઇટમ બતાવો',
     loadMoreError: 'વધુ આઇટમ લોડ કરી શકાઈ નથી.',
+    sortedAmongLoaded: 'લોડ થયેલી {{count}} આઇટમ વચ્ચે જ સૉર્ટ કરેલું છે',
   },
   stockAging: {
     loadError: 'માલ કેટલા દિવસથી પડ્યો છે તે લોડ કરી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
@@ -351,5 +352,6 @@ export const reports: Translation<typeof source> = {
     serverNeedsUpdate: 'અહેવાલની PDF શેર કરવા માટે આ કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ કરવું જરૂરી છે.',
     periodTooLong: 'એક PDFમાં વધુમાં વધુ {{days}} દિવસ આવી શકે છે. ટૂંકો સમયગાળો પસંદ કરો.',
     notAccepted: 'સર્વરે આ વિનંતી સ્વીકારી નથી. ઍપ અપડેટ કરો અને ફરી પ્રયાસ કરો.',
+    truncated: 'આ PDFમાં {{total}}માંથી પહેલી {{shown}} હરોળ જ છે.',
   },
 };

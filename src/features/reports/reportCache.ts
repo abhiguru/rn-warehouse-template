@@ -21,9 +21,11 @@
  * Storage errors are swallowed: the cache only ever saves a wait. Values are
  * never logged.
  *
- * An answer is written only when the facility gave it. A refusal (the account
- * lost the role or the customer) removes the key's entry (`removeReportCache`);
- * any other failure leaves it.
+ * An answer is written only when the facility gave it, and only for a key the
+ * caller asks to keep (useReportQuery's `persist`). A refusal (the account lost
+ * the role or the customer) removes the key's entry (`removeReportCache`), or
+ * every entry of that customer's report (`removeReportCachePrefix`); any other
+ * failure leaves it.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hashKey } from '@tanstack/react-query';
@@ -169,6 +171,41 @@ async function remove(key: readonly unknown[], generation: number): Promise<void
     if (generation !== getSessionGeneration()) return;
     await Promise.all([
       AsyncStorage.removeItem(own),
+      kept.length !== rows.length ? AsyncStorage.setItem(INDEX_KEY, JSON.stringify(kept)) : undefined,
+    ]);
+  } catch {
+    // The read side refuses to show a refused key's entry anyway (useReportQuery).
+  }
+}
+
+/**
+ * Forget every answer whose key starts with `prefix` (the key itself and every
+ * longer key, element for element): the facility refused one customer's
+ * report, so none of that customer's kept figures for it may show, whatever
+ * the period. Queued with the writes, like `removeReportCache`. Never rejects.
+ */
+export function removeReportCachePrefix(prefix: readonly unknown[], generation: number = getSessionGeneration()): Promise<void> {
+  writes = writes.then(() => removePrefix(prefix, generation));
+  return writes;
+}
+
+async function removePrefix(prefix: readonly unknown[], generation: number): Promise<void> {
+  try {
+    if (generation !== getSessionGeneration()) return;
+    const scope = await getSessionCacheScope();
+    if (!scope || generation !== getSessionGeneration()) return;
+    // The stored key ends with the query client's hash of the key, a JSON array: a longer key
+    // with the same first elements starts with the prefix's hash less its "]", then a comma.
+    const exact = entryKey(scope, prefix);
+    const longer = `${exact.slice(0, -1)},`;
+    const matches = (stored: string) => stored === exact || stored.startsWith(longer);
+    const [allKeys, rawIndex] = await Promise.all([AsyncStorage.getAllKeys(), AsyncStorage.getItem(INDEX_KEY)]);
+    const doomed = allKeys.filter(matches);
+    const rows = readIndex(rawIndex);
+    const kept = rows.filter(([stored]) => !matches(stored));
+    if (generation !== getSessionGeneration()) return;
+    await Promise.all([
+      doomed.length > 0 ? AsyncStorage.multiRemove(doomed) : undefined,
       kept.length !== rows.length ? AsyncStorage.setItem(INDEX_KEY, JSON.stringify(kept)) : undefined,
     ]);
   } catch {

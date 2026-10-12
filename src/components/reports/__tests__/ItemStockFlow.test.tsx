@@ -14,9 +14,12 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureStore } from '@reduxjs/toolkit';
 import { StockItemCard } from '@/components/reports/StockItemCard';
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { getAuthenticatedClient, getSessionIdentity } from '@/config/supabaseConfig';
+import { CACHE_PREFIXES } from '@/config/cacheConfig';
+import { readReportCache, writeReportCache } from '@/features/reports/reportCache';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { getAllGRNItems } from '@/services/grn-service';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
@@ -60,7 +63,8 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSele
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
 }));
-jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
+// Without a session (the default) nothing is kept on the phone; the tests of the phone's copy sign in.
+jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn(), getSessionIdentity: jest.fn(async () => null) }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } }, forceLogoutOnInvalidToken: jest.fn() }));
 jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCustomerGRNItems: jest.fn() }));
@@ -142,17 +146,19 @@ const calls = () => rpc.mock.calls.map(([, params]) => params);
 /** Answers every call at once from `answer`. */
 const serve = (answer: (params: Params) => Answer) => rpc.mockImplementation(async (_name, params) => answer(params));
 
-/** Calls that wait until the test answers them, in the order they were made. */
+/** Calls that wait until the test answers them, in the order they were made; `release(other)` answers with `other`. */
 function holdCalls(answer: (params: Params) => Answer) {
-  const held: { params: Params; release: () => void }[] = [];
+  const held: { params: Params; release: (other?: Answer) => void }[] = [];
   rpc.mockImplementation(
     (_name, params) =>
       new Promise<Answer>(resolve => {
-        held.push({ params, release: () => resolve(answer(params)) });
+        held.push({ params, release: (other?: Answer) => resolve(other ?? answer(params)) });
       })
   );
   return held;
 }
+/** A failure that is not a refusal: the facility could not answer. */
+const FAILED: Answer = { data: null, error: { code: 'XX000', message: 'fictional internal failure' } };
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -178,7 +184,8 @@ beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
 });
 afterAll(() => restoreQueries());
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
   // Only the calendar is fixed (Monday 12 October 2026, 10:00): the search waits its real 300 ms.
   jest.useFakeTimers({
     now: new Date(2026, 9, 12, 10, 0),
@@ -192,6 +199,7 @@ beforeEach(() => {
   sharePdf.mockResolvedValue({ success: true });
   rpc.mockReset();
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
+  jest.mocked(getSessionIdentity).mockResolvedValue(null);
 });
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
@@ -241,6 +249,10 @@ async function open(store: Store = makeStore()) {
     type: (...steps: string[]) => run(() => steps.forEach(text => searchField().props.onChangeText(text))),
     waitForSearch: () => run(pause),
     endReached: () => run(() => tree.root.findByType('FlashList' as never).props.onEndReached()),
+    /** Pull to refresh; the test settles, it does not wait for the answer. */
+    refresh: () => run(() => void tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
+    /** The card of the item named so. */
+    card: (name: string) => tree.root.findAllByType(StockItemCard).find(found => found.props.name === name),
     run,
   };
 }
@@ -273,8 +285,40 @@ describe('the search (backend with migration 52)', () => {
     // The answer to "ga" arrives last, and changes nothing.
     await screen.run(() => held[1].release());
     expect(screen.items()).toEqual(['Example Onions']);
-    expect(screen.figure('Items')).toBe('Items: 1');
+    // The figures cover every item, not the one the search leaves (§14.10).
+    expect(screen.figure('Items')).toBe('Items: 3');
     expect(rpc).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('the figures with a search typed (backend with migration 52)', () => {
+  /** A facility whose totals follow the search, as the real one's do. */
+  const totalling = (items: Item[]) => (params: Params): Answer => {
+    const answer = facility(items, { sorts: true })(params) as { data: { data: { items: Item[]; total_count: number } } };
+    const search = params.p_search_query?.toLowerCase();
+    const found = items.filter(row => !search || row.item_name.toLowerCase().includes(search));
+    const summary = { total_stock: found.reduce((sum, row) => sum + row.total_stock, 0), total_qty: 0, item_count: found.length };
+    return { data: { success: true, data: { ...answer.data.data, summary } }, error: null };
+  };
+
+  it('are those of the whole list, from its first page already read; without it in memory, the searched ones, and nothing more is asked', async () => {
+    serve(totalling(FEW));
+    const screen = await open();
+    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 3', 'Stock: 130']);
+
+    await screen.type('oni');
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual(['Example Onions']);
+    // A broken screen would show the searched list's figures: Items 1, Stock 90.
+    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 3', 'Stock: 130']);
+    expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' })]);
+
+    // Sorted otherwise with the search still typed: that sort's list without the search was never read.
+    await screen.press('Sorted by Item, A to Z. Change sort');
+    await screen.press('Stock');
+    await screen.press('Done');
+    expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' }), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
+    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 1', 'Stock: 90']);
   });
 });
 
@@ -319,6 +363,9 @@ describe('a backend without migration 52', () => {
     // 73 items are not loaded: their stock is not known here.
     expect(screen.figure('Stock')).toBe('Stock: —');
     expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
+    // In name order the server's own order holds for the whole list: no note. No PDF on this backend.
+    expect(screen.texts().filter(text => text.startsWith('Sorted among'))).toEqual([]);
+    expect(screen.has('Share PDF')).toBe(false);
 
     await screen.press('Sorted by Item, A to Z. Change sort');
     await screen.press('Stock');
@@ -331,11 +378,13 @@ describe('a backend without migration 52', () => {
     ]);
     const firstFifty = MANY.slice(0, 50).sort((a, b) => b.total_stock - a.total_stock).map(row => row.item_name);
     expect(screen.items()).toEqual(firstFifty);
+    expect(screen.texts()).toContain('Sorted among the 50 items loaded');
 
     await screen.endReached();
     await screen.endReached();
     await screen.endReached();
     expect(calls().slice(4).map(params => params.p_offset)).toEqual([50, 100]);
+    expect(screen.texts().filter(text => text.startsWith('Sorted among'))).toEqual([]);
     expect(calls().slice(4).every(params => !('p_sort_by' in params))).toBe(true);
     expect(screen.items()).toEqual([...MANY].sort((a, b) => b.total_stock - a.total_stock).map(row => row.item_name));
     expect(screen.status()).toBe('Last updated 10:00 am');
@@ -387,6 +436,107 @@ describe('the next page (backend with migration 52)', () => {
   });
 });
 
+describe('a pull to refresh with later pages loaded (backend with migration 52)', () => {
+  it('keeps the later pages until the new first page has come, asks for no next page meanwhile, and starts over from it', async () => {
+    const held = holdCalls(facility(MANY, { sorts: true }));
+    const screen = await open();
+    await screen.run(() => held[0].release());
+    await screen.endReached();
+    await screen.run(() => held[1].release());
+    expect(screen.items()).toHaveLength(100);
+
+    await screen.refresh();
+    expect(calls()[2]).toEqual(page0());
+    // A broken screen empties the list to 50 at once.
+    expect(screen.items()).toHaveLength(100);
+    // The first page is being asked for again: no next page is asked against it.
+    await screen.endReached();
+    expect(rpc).toHaveBeenCalledTimes(3);
+    expect(screen.texts()).not.toContain('Show more items');
+
+    await screen.run(() => held[2].release());
+    expect(screen.items()).toHaveLength(50);
+    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
+    await screen.endReached();
+    expect(calls()[3]).toEqual(page0({ p_offset: 50 }));
+    // Nothing left out: a request still out at the end would hold Jest open.
+    await screen.run(() => held[3].release());
+  });
+
+  it('keeps every page loaded when the refresh fails, and says the figures are not current', async () => {
+    const held = holdCalls(facility(MANY, { sorts: true }));
+    const screen = await open();
+    await screen.run(() => held[0].release());
+    await screen.endReached();
+    await screen.run(() => held[1].release());
+    expect(screen.items()).toHaveLength(100);
+
+    await screen.refresh();
+    await screen.run(() => held[2].release(FAILED));
+    expect(screen.items()).toHaveLength(100);
+    expect(screen.texts()).toEqual(
+      expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load items. Check your connection and try again."])
+    );
+    // The developer text of the server's failure is not shown.
+    expect(screen.texts().some(text => text.includes('fictional internal failure'))).toBe(false);
+    // The pages on screen came from the facility in this run: the next one may still be asked for.
+    await screen.endReached();
+    expect(calls()[3]).toEqual(page0({ p_offset: 100 }));
+    await screen.run(() => held[3].release());
+  });
+});
+
+describe('the copy kept on the phone (backend with migration 52)', () => {
+  const account = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', subject: 'user-a' };
+  const FIRST_KEY = ['item-stock-summary', 'customers', '', 'item_name', 'asc', 0];
+
+  it('asks for no next page against the first page kept on the phone, only once the facility has given it', async () => {
+    jest.mocked(getSessionIdentity).mockResolvedValue(account);
+    const keptPage = {
+      items: MANY.slice(0, 50),
+      pagination: { totalCount: 123, hasMore: true, limit: 50, offset: 0 },
+      summary: { total_stock: 4321, total_qty: 9876, item_count: 123 },
+      sortApplied: true,
+    };
+    await writeReportCache(FIRST_KEY, { data: keptPage, updatedAt: new Date(2026, 9, 12, 8, 0).getTime() });
+    const held = holdCalls(facility(MANY, { sorts: true }));
+    const screen = await open();
+    await screen.run(() => undefined);
+    // The phone's copy is on screen while the facility is asked.
+    expect(screen.items()).toHaveLength(50);
+    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 8:00 am');
+    await screen.endReached();
+    // A broken screen asks for offset 50 here, against a first page that may have changed.
+    expect(calls()).toEqual([page0()]);
+    expect(screen.texts()).not.toContain('Show more items');
+
+    await screen.run(() => held[0].release());
+    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
+    await screen.endReached();
+    expect(calls()).toEqual([page0(), page0({ p_offset: 50 })]);
+    await screen.run(() => held[1].release());
+  });
+
+  it('keeps only the first page without a search: no later page and no searched list is written', async () => {
+    jest.mocked(getSessionIdentity).mockResolvedValue(account);
+    serve(facility(MANY, { sorts: true }));
+    const screen = await open();
+    await screen.endReached();
+    expect(screen.items()).toHaveLength(100);
+    await screen.type('item 01');
+    await screen.waitForSearch();
+    expect(screen.items()).toHaveLength(10);
+    await screen.run(() => undefined);
+    expect(calls().map(params => [params.p_search_query, params.p_offset])).toEqual([[null, 0], [null, 50], ['item 01', 0]]);
+
+    expect(await readReportCache(FIRST_KEY)).not.toBeNull();
+    expect(await readReportCache(['item-stock-summary', 'customers', '', 'item_name', 'asc', 50])).toBeNull();
+    expect(await readReportCache(['item-stock-summary', 'customers', 'item 01', 'item_name', 'asc', 0])).toBeNull();
+    const index = JSON.parse((await AsyncStorage.getItem(`${CACHE_PREFIXES.REPORT}_index`)) ?? '[]') as unknown[];
+    expect(index).toHaveLength(1);
+  });
+});
+
 describe('the GRNs of an item', () => {
   const GRN = { id: 'gi-1', grn_id: 'g1', gr_no: '311', customer_name: 'Fictional Traders', date: '2026-10-01', stock: 30, qty: 200 };
 
@@ -408,6 +558,81 @@ describe('the GRNs of an item', () => {
     expect(grnItems).toHaveBeenCalledTimes(2);
     expect(screen.texts()).toContain('GRN 311');
     expect(screen.texts()).not.toContain("Couldn't load the GRNs for this item.");
+  });
+
+  /** The GRNs of an item, as the drill-down answers: `count` rows, `total` in all. */
+  const grnPage = (count: number, total?: number) => ({
+    success: true,
+    message: '',
+    data: {
+      items: Array.from({ length: count }, (_, index) => ({ ...GRN, id: `gi-${index}`, grn_id: `g${index}`, gr_no: String(400 + index) })),
+      ...(total === undefined ? {} : { pagination: { total_count: total, limit: 100, offset: 0, has_more: total > count } }),
+    },
+  });
+  const footnotes = (screen: Awaited<ReturnType<typeof open>>) => screen.texts().filter(text => text.startsWith('Showing') && !text.includes('Last updated'));
+
+  it('says under the rows how many there are in all when the item has more than were read', async () => {
+    serve(facility(FEW, { sorts: true }));
+    grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
+    expect(footnotes(screen)).toEqual(['Showing 100 of 240']);
+
+    // Every row read (3 of 3): no note.
+    grnItems.mockResolvedValueOnce(grnPage(3, 3) as never);
+    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
+    expect(screen.card('Example Onions')!.props.grns.rows).toHaveLength(3);
+    expect(screen.card('Example Onions')!.props.grnsFooter).toBeUndefined();
+    expect(footnotes(screen)).toEqual(['Showing 100 of 240']);
+
+    // No total in the answer: the item's own GRN count (Example Cumin: 3) says how many there are.
+    grnItems.mockResolvedValueOnce(grnPage(2) as never);
+    await screen.run(() => screen.card('Example Cumin')!.props.onToggle());
+    // Cumin's card is drawn above Garlic's (A to Z).
+    expect(footnotes(screen)).toEqual(['Showing 2 of 3', 'Showing 100 of 240']);
+  });
+
+  it('a late answer for a search that has gone leaves the cards opened since alone', async () => {
+    serve(facility(FEW, { sorts: true }));
+    let answerGarlic!: (value: unknown) => void;
+    grnItems.mockImplementationOnce(() => new Promise(resolve => (answerGarlic = resolve)) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(true);
+
+    await screen.type('oni');
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual(['Example Onions']);
+    grnItems.mockResolvedValueOnce({ success: true, message: '', data: { items: [{ ...GRN, gr_no: '312' }] } } as never);
+    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
+    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
+    expect(screen.texts()).toContain('GRN 312');
+
+    // Garlic's GRNs answer now, for the search before. A broken screen closes Onions here.
+    await screen.run(() => answerGarlic({ success: true, message: '', data: { items: [GRN] } }));
+    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
+    expect(screen.texts()).toContain('GRN 312');
+    expect(screen.texts()).not.toContain('GRN 311');
+  });
+
+  it('a late answer from before a pull to refresh leaves the cards opened since alone', async () => {
+    serve(facility(FEW, { sorts: true }));
+    let answerGarlic!: (value: unknown) => void;
+    grnItems.mockImplementationOnce(() => new Promise(resolve => (answerGarlic = resolve)) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    await screen.refresh();
+    // The refresh closed the cards.
+    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(false);
+    grnItems.mockResolvedValueOnce({ success: true, message: '', data: { items: [{ ...GRN, gr_no: '312' }] } } as never);
+    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
+    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
+
+    await screen.run(() => answerGarlic({ success: true, message: '', data: { items: [GRN] } }));
+    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
+    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(false);
+    expect(screen.texts()).toContain('GRN 312');
   });
 });
 
@@ -477,7 +702,7 @@ describe('the report PDF (backend with migration 52)', () => {
     await screen.press('Highest first');
     await screen.press('Done');
     expect(screen.has('Sorted by Received quantity, highest first. Change sort')).toBe(true);
-    await sharesThePdf(screen, { report: 'item-stock-summary', sort: { field: 'received', order: 'desc' } }, 'Item_stock_summary_All.pdf');
+    await sharesThePdf(screen, { report: 'item-stock-summary', sort: { field: 'received', order: 'desc' } }, 'Item_stock_summary_All_customers.pdf');
   });
 
   it('one customer: shares that customer and the sort on screen, with no dates', async () => {

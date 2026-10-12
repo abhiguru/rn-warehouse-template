@@ -376,7 +376,8 @@ describe('invoice history, every customer', () => {
     await screen.refresh();
     expect(allHistory).toHaveBeenCalledTimes(2);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Could not reach the facility']));
+    // The service's own words for a failure are not shown; the screen's are (useReportQuery).
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load the invoice history. Check your connection and try again."]));
   });
 });
 
@@ -529,7 +530,9 @@ describe('invoice history, one customer', () => {
     forgetQueries();
     customerHistory.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
     const failed = await open(makeStore());
-    expect(failed.texts()).toEqual(expect.arrayContaining(["Couldn't load the invoice history", 'The facility refused this report.', 'Try again']));
+    // Not an access refusal: the screen's own words, not the service's.
+    expect(failed.texts()).toEqual(expect.arrayContaining(["Couldn't load the invoice history", "Couldn't load the invoice history. Check your connection and try again.", 'Try again']));
+    expect(failed.texts()).not.toContain('The facility refused this report.');
   });
 });
 
@@ -588,7 +591,7 @@ describe('invoice history, the report PDF', () => {
     await sharesThePdf(
       screen,
       { report: 'invoice-history', from: '2026-06-15', to: '2026-10-12', sort: { field: 'invoices', order: 'desc' } },
-      'Invoice_history_All_2026_06_15_to_2026_10_12.pdf'
+      'Invoice_history_All_customers_2026_06_15_to_2026_10_12.pdf'
     );
   });
 

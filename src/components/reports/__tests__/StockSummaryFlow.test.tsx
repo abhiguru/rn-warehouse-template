@@ -354,7 +354,8 @@ describe('stock summary, every customer', () => {
     await screen.refresh();
     expect(allStock).toHaveBeenCalledTimes(2);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Could not reach the facility']));
+    // The service's own words for a failure are not shown; the screen's are (useReportQuery).
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load the stock summary. Check your connection and try again."]));
   });
 
   it('puts the share button beside the row, as a target of its own with its own label', async () => {
@@ -498,7 +499,7 @@ describe('stock summary, the stock PDF', () => {
     await screen.press('Items');
     await screen.press('Done');
     expect(screen.has('Sorted by Items, highest first. Change sort')).toBe(true);
-    await sharesThePdf(screen, { report: 'stock-summary', sort: { field: 'items', order: 'desc' } }, 'Stock_summary_All.pdf');
+    await sharesThePdf(screen, { report: 'stock-summary', sort: { field: 'items', order: 'desc' } }, 'Stock_summary_All_customers.pdf');
   });
 
   it('one customer: the header shares that customer and the sort on screen, with no dates', async () => {

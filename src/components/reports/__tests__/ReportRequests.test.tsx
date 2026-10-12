@@ -160,7 +160,9 @@ describe('item stock summary', () => {
       expect(footerButtons('Show more items')).toHaveLength(1);
       await run(() => rows().props.onEndReached());
       expect(list).toHaveBeenCalledTimes(2);
-      expect(texts()).toEqual(expect.arrayContaining(["Couldn't load more items.", 'The facility is busy.']));
+      // What failed and what to do; the service's own words are not shown.
+      expect(texts()).toEqual(expect.arrayContaining(["Couldn't load more items.", 'Check your connection and try again.']));
+      expect(texts()).not.toContain('The facility is busy.');
       expect(itemNames()).toEqual(['Example Potatoes']);
 
       await run(() => rows().props.onEndReached());

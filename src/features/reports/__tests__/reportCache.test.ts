@@ -13,6 +13,7 @@ import {
   MAX_TOTAL_CHARS,
   readReportCache,
   removeReportCache,
+  removeReportCachePrefix,
   writeReportCache,
 } from '../reportCache';
 
@@ -148,6 +149,32 @@ it('forgets one answer, and only that one, when asked to', async () => {
   // Forgetting what is not kept changes nothing.
   await removeReportCache(key);
   expect(await reportKeys()).toHaveLength(2);
+});
+
+it('forgets every answer under a prefix, element for element, and nothing else', async () => {
+  const month = ['dispatch-activity', 'customer', 'customer-1', '2026-10-01', '2026-10-12'];
+  // Starts with the same letters, but is another customer.
+  const longerId = ['dispatch-activity', 'customer', 'customer-10', '2026-01-01', '2026-10-12'];
+  const otherReport = ['grn-activity', 'customer', 'customer-1', '2026-01-01', '2026-10-12'];
+  for (const kept of [key, month, longerId, otherReport]) await writeReportCache(kept, { data: answer, updatedAt: Date.now() });
+  expect(await reportKeys()).toHaveLength(5);
+  await removeReportCachePrefix(['dispatch-activity', 'customer', 'customer-1']);
+  expect(await readReportCache(key)).toBeNull();
+  expect(await readReportCache(month)).toBeNull();
+  expect(await readReportCache(longerId)).not.toBeNull();
+  expect(await readReportCache(otherReport)).not.toBeNull();
+  const index = JSON.parse((await AsyncStorage.getItem(`${CACHE_PREFIXES.REPORT}_index`)) ?? '[]') as [string][];
+  expect(index).toHaveLength(2);
+  expect(await reportKeys()).toHaveLength(3);
+  // Not across a change of session, and not without one.
+  const before = advanceSessionGeneration();
+  advanceSessionGeneration();
+  await removeReportCachePrefix(['dispatch-activity', 'customer', 'customer-10'], before);
+  expect(await readReportCache(longerId)).not.toBeNull();
+  signIn(null);
+  await removeReportCachePrefix(['dispatch-activity', 'customer', 'customer-10']);
+  signIn(accountA);
+  expect(await readReportCache(longerId)).not.toBeNull();
 });
 
 it('forgets after a write sent before it, and not across a change of session', async () => {

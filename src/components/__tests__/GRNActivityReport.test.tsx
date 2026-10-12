@@ -271,6 +271,8 @@ describe('nothing to show', () => {
     customerActivity.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
     signIn(STAFF);
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(["Couldn't load GRN activity", 'The facility refused this report.', 'Try again']));
+    // Not an access refusal: the screen's own words (its fallbackError), not the service's.
+    expect(texts()).toEqual(expect.arrayContaining(["Couldn't load GRN activity", 'Failed to fetch GRN activity', 'Try again']));
+    expect(texts()).not.toContain('The facility refused this report.');
   });
 });

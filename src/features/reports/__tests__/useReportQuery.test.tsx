@@ -37,7 +37,7 @@ afterEach(() => {
   act(() => mounted.splice(0).forEach(renderer => renderer.unmount()));
 });
 
-function setup(first: string) {
+function setup(first: string, { keyOf = (customer: string): unknown[] => ['test', customer], persist }: { keyOf?: (customer: string) => unknown[]; persist?: boolean } = {}) {
   const pending: Pending[] = [];
   const fetch = jest.fn(
     (key: string) =>
@@ -47,7 +47,7 @@ function setup(first: string) {
   );
   let latest!: ReportQuery<Rows>;
   function Probe({ customer }: { customer: string }) {
-    latest = useReportQuery<Rows>({ key: ['test', customer], fetch: () => fetch(customer), fallbackError: 'Could not load' });
+    latest = useReportQuery<Rows>({ key: keyOf(customer), fetch: () => fetch(customer), fallbackError: 'Could not load', persist });
     return null;
   }
   let renderer!: TestRenderer.ReactTestRenderer;
@@ -131,25 +131,47 @@ describe('report query', () => {
     expect(probe.query()).toMatchObject({ phase: 'error', error: 'Could not load' });
     await probe.run(() => probe.query().retry());
     await probe.fail(2);
-    expect(probe.query()).toMatchObject({ phase: 'error', error: 'Network request failed' });
+    // A thrown error's own text ("Network request failed") is not for people: the caller's words are shown.
+    expect(probe.query()).toMatchObject({ phase: 'error', error: 'Could not load' });
     await probe.run(() => probe.query().retry());
     await probe.answer(3, rows('GRN A0010'));
     expect(probe.query()).toMatchObject({ phase: 'ready', error: null });
     expect(probe.fetch).toHaveBeenCalledTimes(4);
   });
 
-  it('keeps the rows and says so when a refresh fails', async () => {
+  it('keeps the rows and says so when a refresh fails, in the caller\'s words, and the refresh says it brought nothing new', async () => {
     const probe = setup('a');
     await probe.answer(0, rows('GRN A0010'));
-    await probe.run(() => probe.query().refresh());
+    let outcome: Promise<boolean> | undefined;
+    await probe.run(() => {
+      outcome = probe.query().refresh();
+    });
     expect(probe.query()).toMatchObject({ isRefreshing: true, phase: 'ready' });
-    await probe.answer(1, { success: false, message: 'Could not reach the facility' });
+    // A failure that is not a refusal: the service's own sentence is developer text and is not shown.
+    await probe.answer(1, { success: false, message: 'Failed to fetch all-customers GRN activity' });
     expect(probe.query()).toMatchObject({
       phase: 'ready',
       data: { rows: ['GRN A0010'] },
-      error: 'Could not reach the facility',
+      error: 'Could not load',
       isRefreshing: false,
     });
+    await expect(outcome).resolves.toBe(false);
+
+    await probe.run(() => {
+      outcome = probe.query().refresh();
+    });
+    await probe.answer(2, rows('GRN A0011'));
+    await expect(outcome).resolves.toBe(true);
+    expect(probe.query()).toMatchObject({ data: { rows: ['GRN A0011'] }, error: null });
+  });
+
+  it('shows the service\'s message for a refusal only', async () => {
+    const probe = setup('a');
+    await probe.answer(0, { success: false, message: 'Failed to fetch all-customers GRN activity', error: '503' });
+    expect(probe.query()).toMatchObject({ phase: 'error', error: 'Could not load' });
+    await probe.run(() => probe.query().retry());
+    await probe.answer(1, { success: false, message: 'તમને આ કામ કરવાની પરવાનગી નથી.', error: ACCESS_REFUSED_CODE });
+    expect(probe.query()).toMatchObject({ phase: 'error', error: 'તમને આ કામ કરવાની પરવાનગી નથી.' });
   });
 });
 
@@ -180,11 +202,11 @@ describe('the answer kept on the phone', () => {
     const probe = setup('a');
     await probe.run(() => {});
     await probe.fail(0);
-    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Network request failed', isFetching: false });
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Could not load', isFetching: false });
     // A failure the service answered that is not a refusal (here a 503) is a failure too.
     await probe.run(() => probe.query().retry());
     await probe.answer(1, { success: false, message: 'Could not reach the facility', error: '503 Service Unavailable' });
-    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Could not reach the facility' });
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Could not load' });
     expect(await readReportCache(['test', 'a'])).toEqual({ data: kept, updatedAt: keptAt });
   });
 
@@ -196,9 +218,9 @@ describe('the answer kept on the phone', () => {
     await probe.run(() => {});
     expect(phone.heldKey()).toContain('["test","a"]');
     await probe.fail(0);
-    expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Network request failed' });
+    expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Could not load' });
     await phone.release();
-    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Network request failed' });
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Could not load', isKeptCopy: true });
   });
 
   it('never replaces an answer from the facility with the older kept one', async () => {
@@ -360,8 +382,113 @@ describe('a refusal', () => {
     const probe = setup('a');
     await probe.run(() => {});
     await probe.answer(0, { success: false, message: 'Could not load the report', error: 'Request failed with status 503' });
-    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Could not load the report' });
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: kept, updatedAt: keptAt, error: 'Could not load' });
     expect(await readReportCache(['test', 'a'])).toEqual({ data: kept, updatedAt: keptAt });
     expect(await storedKeys()).toHaveLength(1);
+  });
+
+  describe('of one customer', () => {
+    // As the reports key one customer's report: [report, 'customer', customerId, ...period].
+    const period = (customer: string, days: string) => ['grn-activity', 'customer', customer, days];
+    const keepPeriod = (customer: string, days: string, data: Rows = kept) => writeReportCache(period(customer, days), { data, updatedAt: keptAt });
+    const keptKeys = async () => [...(await AsyncStorage.getAllKeys())].filter(stored => stored.includes('["grn-activity",'));
+
+    it('also forgets that customer\'s other periods, on the phone and in memory, and leaves another customer\'s', async () => {
+      signIn();
+      const other = { rows: ['kept GRN B0020'] };
+      await keepPeriod('c1', 'month');
+      await keepPeriod('c2', '120', other);
+      await keepPeriod('c2', 'month', other);
+      // "This month" for c1 is held in memory, answered earlier in the session; the screen then moves to 120 days.
+      const probe = setup('c1|month', { keyOf: picked => period(...(picked.split('|') as [string, string])) });
+      await probe.answer(0, rows('GRN A0010 this month'));
+      probe.show('c1|120');
+      await probe.run(() => {});
+      expect(queryClient.getQueryData(['report', ...period('c1', 'month')])).toEqual({ rows: ['GRN A0010 this month'] });
+      expect(await keptKeys()).toHaveLength(3);
+
+      await probe.answer(1, refusedBySentence);
+      expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Access denied: customer not assigned' });
+      // c1: nothing kept for any period, nothing held in memory.
+      expect(await readReportCache(period('c1', '120'))).toBeNull();
+      expect(await readReportCache(period('c1', 'month'))).toBeNull();
+      expect(queryClient.getQueryData(['report', ...period('c1', 'month')])).toBeUndefined();
+      // c2: both periods kept.
+      expect(await readReportCache(period('c2', '120'))).toEqual({ data: other, updatedAt: keptAt });
+      expect(await readReportCache(period('c2', 'month'))).toEqual({ data: other, updatedAt: keptAt });
+      expect(await keptKeys()).toHaveLength(2);
+      expect(await indexed()).toHaveLength(2);
+
+      // Back on "This month": loading, not the figures shown before the refusal.
+      probe.show('c1|month');
+      await probe.run(() => {});
+      expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isFetching: true });
+      await probe.answer(2, refusedBySentence);
+    });
+
+    it('a key that names no customer forgets only itself', async () => {
+      signIn();
+      await keep('a');
+      await keep('b');
+      const probe = setup('a');
+      await probe.run(() => {});
+      await probe.answer(0, refusedBySentence);
+      expect(await readReportCache(['test', 'b'])).toEqual({ data: kept, updatedAt: keptAt });
+    });
+  });
+});
+
+describe('a key that is not kept on the phone (persist: false)', () => {
+  const account = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', subject: 'user-a' };
+  const signIn = () => jest.mocked(getSessionIdentity).mockResolvedValue(account);
+  const keptAt = Date.now() - 2 * 60 * 60 * 1000;
+
+  it('writes nothing for its answers, and shows nothing kept for it', async () => {
+    signIn();
+    await writeReportCache(['test', 'a'], { data: { rows: ['kept GRN A0010'] }, updatedAt: keptAt });
+    const before = [...(await AsyncStorage.getAllKeys())].sort();
+    const index = await AsyncStorage.getItem(`${CACHE_PREFIXES.REPORT}_index`);
+    jest.mocked(AsyncStorage.getItem).mockClear();
+    const probe = setup('a', { persist: false });
+    await probe.run(() => {});
+    // The kept answer for the key is not read, so not shown.
+    expect(probe.query()).toMatchObject({ phase: 'loading', data: undefined, isKeptCopy: false });
+    expect(AsyncStorage.getItem).not.toHaveBeenCalledWith(expect.stringContaining('["test","a"]'));
+    await probe.answer(0, rows('fresh GRN A0011'));
+    probe.show('b');
+    await probe.answer(1, rows('fresh GRN B0021'));
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: { rows: ['fresh GRN B0021'] } });
+    // Nothing written: the stored keys, the index and the old entry are as they were.
+    expect([...(await AsyncStorage.getAllKeys())].sort()).toEqual(before);
+    expect(await AsyncStorage.getItem(`${CACHE_PREFIXES.REPORT}_index`)).toBe(index);
+    expect((await readReportCache(['test', 'a']))?.data).toEqual({ rows: ['kept GRN A0010'] });
+    expect(await readReportCache(['test', 'b'])).toBeNull();
+  });
+});
+
+describe('isKeptCopy', () => {
+  const account = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', subject: 'user-a' };
+  const signIn = () => jest.mocked(getSessionIdentity).mockResolvedValue(account);
+  const keptAt = Date.now() - 2 * 60 * 60 * 1000;
+  const kept = { rows: ['kept GRN A0010'] };
+
+  it('is true while the phone\'s copy is shown, and false once the facility answers, also with the same rows', async () => {
+    signIn();
+    await writeReportCache(['test', 'a'], { data: kept, updatedAt: keptAt });
+    const probe = setup('a');
+    await probe.run(() => {});
+    expect(probe.query()).toMatchObject({ data: kept, isKeptCopy: true, isFetching: true });
+    // The facility answers with the same rows: the library may keep the same object, it is no longer the phone's.
+    await probe.answer(0, rows('kept GRN A0010'));
+    expect(probe.query()).toMatchObject({ data: kept, isKeptCopy: false, isFetching: false });
+  });
+
+  it('stays true when the request fails', async () => {
+    signIn();
+    await writeReportCache(['test', 'a'], { data: kept, updatedAt: keptAt });
+    const probe = setup('a');
+    await probe.run(() => {});
+    await probe.fail(0);
+    expect(probe.query()).toMatchObject({ data: kept, isKeptCopy: true, error: 'Could not load' });
   });
 });

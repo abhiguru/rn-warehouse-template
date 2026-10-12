@@ -6,7 +6,11 @@
  * request for what it shows now (report, customer, resolved period, sort), one
  * gives the names for the file. `exportPdf` generates, downloads and shares;
  * `busy` is true from the tap until that has finished, and a tap while busy is
- * ignored. A failure is shown with showAlert in the app's words.
+ * ignored. A failure is shown with showAlert in the app's words: a reason the
+ * share helper gave in the app's language is shown as it is, anything else (a
+ * native error's text such as "Network request failed") as "Check your
+ * connection and try again." A PDF the server cut short (`document.truncated`)
+ * is still shared, after a notice that says how many of the rows it holds.
  *
  * `available` turns false once the facility's server has answered that it has
  * no generate-report-pdf (a backend older than the release with migrations
@@ -24,8 +28,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { getCurrentConfig } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
-import { generateReportPDF, isPeriodReport, type ReportPdfRequest } from '@/services/pdf-service';
+import { generateReportPDF, isPeriodReport, type ReportPdfDocument, type ReportPdfRequest } from '@/services/pdf-service';
 import { showAlert } from '@/utils/alert';
+import { formatNumber } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { reportById } from './reportRegistry';
@@ -100,10 +105,11 @@ export interface ReportExportNameParts {
 }
 
 /**
- * `<ReportTitle>_<customer or All>_<from>_to_<to>.pdf`, without the dates for a
- * report that has no period. A title that has no letter or digit left becomes
- * the report's id; a customer name that has none becomes the first 8
- * characters of the customer id, so a name in any script never leaves an empty part.
+ * `<ReportTitle>_<customer or All customers>_<from>_to_<to>.pdf`, without the
+ * dates for a report that has no period; "All customers" is in the app's
+ * language. A title that has no letter or digit left becomes the report's id; a
+ * customer name that has none becomes the first 8 characters of the customer
+ * id, so a name in any script never leaves an empty part.
  */
 export function reportPdfFilename(request: ReportPdfRequest, parts: ReportExportNameParts = {}): string {
   const title =
@@ -111,7 +117,7 @@ export function reportPdfFilename(request: ReportPdfRequest, parts: ReportExport
   const customerId = typeof request.customer_id === 'string' ? request.customer_id : '';
   const customer = customerId
     ? reportFilenamePart(parts.customerName) || reportFilenamePart(customerId.slice(0, 8))
-    : 'All';
+    : reportFilenamePart(t('reports.shared.allCustomers')) || 'All';
   const pieces = [title, customer];
   if (isPeriodReport(request.report)) {
     pieces.push(reportFilenamePart(request.from), 'to', reportFilenamePart(request.to));
@@ -123,8 +129,14 @@ export function reportPdfFilename(request: ReportPdfRequest, parts: ReportExport
 // Making the PDF
 // ---------------------------------------------------------------------------
 
+/** A made PDF: its signed link, and what the server says it holds (none from a fallback). */
+interface MadePdf {
+  pdfUrl: string;
+  document?: ReportPdfDocument;
+}
+
 /**
- * The signed link to the PDF, or undefined after the failure has been shown.
+ * The PDF made, or undefined after the failure has been shown.
  * On a server known to lack generate-report-pdf an export with a fallback goes
  * straight to it; a server that answers so now is remembered (actions without a
  * fallback are then left out) and the fallback is asked instead.
@@ -133,12 +145,12 @@ async function makePdf(
   request: ReportPdfRequest,
   server: string,
   fallback: (() => Promise<ReportExportFallbackResult>) | undefined
-): Promise<string | undefined> {
+): Promise<MadePdf | undefined> {
   if (fallback && outdatedServers.has(server)) return fallbackPdf(request, fallback);
   const result = await generateReportPDF(request);
   if (result.success && result.pdfUrl) {
     noteServer(server, false);
-    return result.pdfUrl;
+    return { pdfUrl: result.pdfUrl, document: result.document };
   }
   // The reason only: never the customer, the URL or the server's text.
   log.warn('Report PDF not created', { report: request.report, reason: result.reason });
@@ -153,13 +165,41 @@ async function makePdf(
 async function fallbackPdf(
   request: ReportPdfRequest,
   fallback: () => Promise<ReportExportFallbackResult>
-): Promise<string | undefined> {
+): Promise<MadePdf | undefined> {
   const result = await fallback();
-  if (result.success && result.pdfUrl) return result.pdfUrl;
+  if (result.success && result.pdfUrl) return { pdfUrl: result.pdfUrl };
   // As the older export always did: its server text is not shown.
   log.warn('Fallback PDF not created', { report: request.report });
   showAlert(t('reports.export.failedTitle'), t('common.checkConnection'));
   return undefined;
+}
+
+/**
+ * The share helper's reason when it is one the app wrote for people (in the
+ * app's language), else "Check your connection and try again.". Its other
+ * reasons are a native error's own text ("Network request failed", "Session
+ * changed") or carry an HTTP status, which are not for people (§12.1).
+ */
+function shareFailureText(reason: string | undefined): string {
+  const shown = [
+    t('errors.pdf.sharingUnavailable'),
+    t('errors.pdf.tooLarge'),
+    t('errors.pdf.downloadFailed'),
+    t('errors.pdf.shareFailed'),
+    t('errors.network.noInternet'),
+    t('errors.network.notReachable'),
+    t('errors.network.requestTimedOut'),
+  ];
+  return reason && shown.includes(reason) ? reason : t('common.checkConnection');
+}
+
+/** A PDF the server cut short: say how many of the rows it holds. The alert does not wait; the share sheet follows. */
+function noteTruncated(document: ReportPdfDocument | undefined): void {
+  if (!document?.truncated) return;
+  showAlert(
+    t('reports.export.sharePdf'),
+    t('reports.export.truncated', { shown: formatNumber(document.rows_count), total: formatNumber(document.rows_total) })
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -221,14 +261,14 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
     setBusy(true);
     const server = currentServer();
     try {
-      const pdfUrl = await makePdf(request, server, fallback);
-      if (!pdfUrl) return;
+      const made = await makePdf(request, server, fallback);
+      if (!made) return;
       const filename = reportPdfFilename(request, latest.current.filenameParts?.());
-      const shared = await downloadAndSharePDF(pdfUrl, filename);
+      noteTruncated(made.document);
+      const shared = await downloadAndSharePDF(made.pdfUrl, filename);
       if (!shared.success) {
         log.warn('Report PDF not shared', { report: request.report });
-        // The share helper's reasons are already in the app's language.
-        showAlert(t('reports.export.shareFailedTitle'), shared.error || t('common.checkConnection'));
+        showAlert(t('reports.export.shareFailedTitle'), shareFailureText(shared.error));
       }
     } catch {
       log.warn('Report PDF export failed', { report: request.report });

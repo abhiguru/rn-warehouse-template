@@ -325,7 +325,8 @@ describe('GRN activity, every customer', () => {
     await screen.refresh();
     expect(allActivity).toHaveBeenCalledTimes(2);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Could not reach the facility']));
+    // The service's own words for a failure are not shown; the screen's are (useReportQuery).
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Failed to fetch GRN activity']));
   });
 });
 
@@ -430,7 +431,7 @@ describe('GRN activity, the report PDF', () => {
     await sharesThePdf(
       screen,
       { report: 'grn-activity', from: '2026-06-15', to: '2026-10-12', sort: { field: 'latest', order: 'desc' } },
-      'GRN_activity_All_2026_06_15_to_2026_10_12.pdf'
+      'GRN_activity_All_customers_2026_06_15_to_2026_10_12.pdf'
     );
   });
 

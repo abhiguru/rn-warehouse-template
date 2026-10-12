@@ -13,12 +13,22 @@
  * under its own key (customer, search, sort, offset), so an answer to an
  * earlier search or sort is filed under that key and never added to the list
  * on screen; the pages after the first are kept here, for the list they belong
- * to. A backend without migration 52 cannot sort: the items loaded so far are
- * then sorted here, and the Stock figure is shown once every item is loaded.
+ * to. Only the first page without a search is kept on the phone. A next page is
+ * asked for only against a first page the facility gave in this run and is not
+ * asking again for; a pull to refresh keeps the later pages until the new first
+ * page has come, and keeps them when it fails.
+ *
+ * The figures cover every item of the customer (§14.10): with a search typed
+ * they are those of the first page without the search, when it is in memory.
+ *
+ * A backend without migration 52 cannot sort: the items loaded so far are then
+ * sorted here and a note says so while more remain, the Stock figure is shown
+ * once every item is loaded, and the PDF is not offered (that backend has no
+ * generate-report-pdf either).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 import { router } from 'expo-router';
 import {
   ReportCustomerPicker,
@@ -38,14 +48,15 @@ import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
-import { useReportQuery } from '@/features/reports/useReportQuery';
+import { peekReportAnswer, useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { getAllGRNItems, getCustomerGRNItems, type GRNItem } from '@/services/grn-service';
 import { StockService } from '@/services/stock-service';
-import { layout, space, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemWiseStockItem } from '@/types/stock.types';
+import { formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'item-stock-summary';
 /** Items per page; the server allows more, the style guide asks for 25 to 50 (§13.6). */
@@ -57,6 +68,8 @@ const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
   // A card per row, spaced by its own bottom margin; the list has no side padding of its own.
   card: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
+  // Under the status line, in its words' size and colour.
+  note: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: layout.marginCompact, paddingBottom: space.sm },
 });
 
 // ============================================================================
@@ -141,9 +154,10 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const filters = useReportFilters(ITEM_STOCK);
   const { view, server } = filters.request;
   const { searchQuery, sortBy, sortOrder } = server;
-  const scopeKey = customerId ?? 'all';
+  // Whose items, named as every report names it: a refusal of one customer drops all its keys.
+  const scopeKey = useMemo(() => (customerId ? [REPORT_ID, 'customer', customerId] : [REPORT_ID, 'customers']), [customerId]);
   // Everything the rows depend on: a page of one list is never added to another.
-  const listKey = useMemo(() => [REPORT_ID, scopeKey, searchQuery ?? '', sortBy, sortOrder] as const, [scopeKey, searchQuery, sortBy, sortOrder]);
+  const listKey = useMemo(() => [...scopeKey, searchQuery ?? '', sortBy, sortOrder], [scopeKey, searchQuery, sortBy, sortOrder]);
   const listId = JSON.stringify(listKey);
 
   const askPage = (offset: number) =>
@@ -153,6 +167,8 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
     key: [...listKey, 0],
     fetch: () => askPage(0),
     fallbackError: tr('reports.itemStockSummary.loadError'),
+    // A searched list is never shown from the phone, and would push other reports' answers out.
+    persist: !searchQuery,
   });
 
   // The later pages of the list on screen. Kept with the list they belong to, so a new search
@@ -165,8 +181,11 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const more = useReportQuery<ItemPage>({
     key: [...listKey, nextOffset ?? 'none'],
     fetch: () => askPage(nextOffset ?? 0),
-    fallbackError: tr('reports.itemStockSummary.loadMoreError'),
+    // The footer already says "Couldn't load more items."; this is what to do.
+    fallbackError: tr('common.checkConnection'),
     enabled: nextOffset !== null,
+    // A later page is shown only after its own request has answered: never from the phone.
+    persist: false,
   });
   // A page is added once its own request has answered: not a copy kept from earlier.
   const arrived = nextOffset !== null && !more.isFetching && !more.error ? more.data : undefined;
@@ -187,18 +206,31 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const serverSorted = first.data?.sortApplied !== false;
   const rows = useMemo(() => (serverSorted ? loaded : itemStockFallbackView(loaded, view)), [serverSorted, loaded, view]);
 
+  // With a search typed, the figures are those of every item: the first page of the same list
+  // without the search, already asked for when the report opened. Not asked for when not in memory.
+  const whole = searchQuery ? peekReportAnswer<ItemPage>([...scopeKey, '', sortBy, sortOrder, 0]) : undefined;
+
   const kpis = useMemo<KPIItem[] | undefined>(() => {
     const data = first.data;
     if (!data) return undefined;
+    const sum = (items: ItemWiseStockItem[]) => items.reduce((total, item) => total + item.total_stock, 0);
     // The whole list's stock: from the server, or added up here once nothing is left to load.
-    const stock = data.summary ? data.summary.total_stock : hasMore ? '—' : loaded.reduce((sum, item) => sum + item.total_stock, 0);
+    const stock = whole
+      ? (whole.summary?.total_stock ?? (whole.items.length >= whole.pagination.totalCount ? sum(whole.items) : '—'))
+      : data.summary
+        ? data.summary.total_stock
+        : hasMore
+          ? '—'
+          : sum(loaded);
     return [
-      { icon: 'cube-outline', value: data.pagination.totalCount, label: tr('common.items'), variant: 'primary' },
+      { icon: 'cube-outline', value: (whole ?? data).pagination.totalCount, label: tr('common.items'), variant: 'primary' },
       { icon: 'warehouse', value: stock, label: tr('common.stock'), variant: 'primary' },
     ];
-  }, [first.data, hasMore, loaded]);
+  }, [first.data, whole, hasMore, loaded]);
 
-  const canLoadMore = first.phase === 'ready' && hasMore && nextOffset === null;
+  // The next page continues the first page the facility gave now: not the phone's copy, and
+  // not while that page is being asked for again (it may come back different).
+  const canLoadMore = first.phase === 'ready' && !first.isFetching && !first.isKeptCopy && hasMore && nextOffset === null;
   const loadMore = useCallback(() => {
     if (!canLoadMore) return;
     // The list may report its end twice before this is drawn: the page is asked for once.
@@ -215,36 +247,53 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const [drillGeneration, setDrillGeneration] = useState(0);
   const drill = useItemGRNs(customerId, `${searchQuery ?? ''}|${drillGeneration}`);
 
-  // A pull to refresh reads the first page again and starts the list over from it.
+  // A pull to refresh reads the first page again and starts the list over from it once it has
+  // come; until then, and when it fails, the pages after it stay where they are.
   const { refresh: refreshFirst } = first;
   const refresh = useCallback(() => {
-    setLater(noLaterPages(listId));
     setDrillGeneration(generation => generation + 1);
-    refreshFirst();
+    return refreshFirst().then(fresh => {
+      if (fresh) setLater(prev => (prev.listId === listId ? noLaterPages(listId) : prev));
+      return fresh;
+    });
   }, [listId, refreshFirst]);
   const query = { ...first, refresh };
   const extraData = useMemo(() => ({ drill, words: view.words }), [drill, view.words]);
 
   const renderRow = useCallback(
-    (item: ItemWiseStockItem) => (
-      <StockItemCard
-        name={item.item_name}
-        packaging={item.packaging}
-        grnCount={item.grn_count}
-        stock={item.total_stock}
-        total={item.total_qty}
-        lowStock={isLowStock(item.total_stock, item.total_qty)}
-        isExpanded={drill.isOpen(item.item_id)}
-        onToggle={() => drill.toggle(item.item_id)}
-        grns={drill.state(item.item_id)}
-        emptyGRNsText={tr('reports.itemStockSummary.noGrnsInStock')}
-        onOpenGRN={openGRN}
-        highlightWords={view.words}
-        style={styles.card}
-      />
-    ),
+    (item: ItemWiseStockItem) => {
+      const grns = drill.state(item.item_id);
+      // The drill-down reads at most GRN_LIMIT rows: say so when the item has more.
+      const inAll = drill.total(item.item_id) ?? item.grn_count;
+      const grnsFooter =
+        grns.status === 'loaded' && inAll > grns.rows.length
+          ? tr('reports.scaffold.showing', { shown: formatNumber(grns.rows.length), total: formatNumber(inAll) })
+          : undefined;
+      return (
+        <StockItemCard
+          name={item.item_name}
+          packaging={item.packaging}
+          grnCount={item.grn_count}
+          stock={item.total_stock}
+          total={item.total_qty}
+          lowStock={isLowStock(item.total_stock, item.total_qty)}
+          isExpanded={drill.isOpen(item.item_id)}
+          onToggle={() => drill.toggle(item.item_id)}
+          grns={grns}
+          emptyGRNsText={tr('reports.itemStockSummary.noGrnsInStock')}
+          grnsFooter={grnsFooter}
+          onOpenGRN={openGRN}
+          highlightWords={view.words}
+          style={styles.card}
+        />
+      );
+    },
     [drill, styles, view.words]
   );
+
+  // Sorted here among the items loaded, while more remain: say so. The name order A to Z is the
+  // order the server pages in, so it is true of the whole list.
+  const sortedHere = !serverSorted && hasMore && !!view.sort && !(view.sort.field === 'item_name' && view.sort.order === 'asc');
 
   // The PDF is of the whole list in the chosen order (the server does not search it).
   const { exportPdf, busy, available } = useReportExport({
@@ -254,10 +303,11 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      // Left out once the facility's server has said it cannot make report PDFs.
-      ...(available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : []),
+      // Left out once the facility's server has said it cannot make report PDFs, and for a server
+      // that cannot sort the list (older than migration 52, so without generate-report-pdf too).
+      ...(available && serverSorted ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : []),
     ],
-    [onChangeCustomer, available, busy, exportPdf]
+    [onChangeCustomer, available, serverSorted, busy, exportPdf]
   );
 
   return (
@@ -288,7 +338,11 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
       noun="items"
       empty={{ icon: 'cube-outline', title: tr('reports.shared.noStockYet'), description: tr('reports.itemStockSummary.itemsAppear') }}
       errorTitle={tr('reports.itemStockSummary.errorTitle')}
-    />
+    >
+      {sortedHere ? (
+        <Text style={styles.note}>{tr('reports.itemStockSummary.sortedAmongLoaded', { count: formatNumber(loaded.length) })}</Text>
+      ) : null}
+    </ReportScaffold>
   );
 }
 
@@ -313,7 +367,11 @@ const grnRows = (grns: GRNItem[]): StockGRNRowData[] =>
 
 const openGRN = (grnId: string) => router.push(`/grn-details/${grnId}`);
 
-type GRNLoad = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; rows: StockGRNRowData[] };
+/** GRN rows read for one item; the card says when the item has more. */
+const GRN_LIMIT = 100;
+
+/** `total`: the rows the drill-down has in all, when the server said. */
+type GRNLoad = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; rows: StockGRNRowData[]; total?: number };
 interface DrillState {
   /** The search and refresh the opened cards belong to: a new one closes them and reads again. */
   key: string;
@@ -330,6 +388,9 @@ const closedDrill = (key: string): DrillState => ({ key, open: new Set(), grns: 
 function useItemGRNs(customerId: string | undefined, key: string) {
   const [stored, setStored] = useState<DrillState>(() => closedDrill(key));
   const drill = useMemo(() => (stored.key === key ? stored : closedDrill(key)), [stored, key]);
+  // The search and refresh on screen now, for a load that answers after they have changed.
+  const currentKey = useRef(key);
+  currentKey.current = key;
   const live = useRef(true);
   useEffect(() => {
     live.current = true;
@@ -338,19 +399,29 @@ function useItemGRNs(customerId: string | undefined, key: string) {
     };
   }, []);
 
+  // A change made for `key`. Once the search or a refresh has moved on, a change for the old key
+  // (a GRN load answering late) changes nothing: the cards opened since stay as they are.
   const update = useCallback(
-    (change: (state: DrillState) => DrillState) => setStored(prev => change(prev.key === key ? prev : closedDrill(key))),
+    (change: (state: DrillState) => DrillState) =>
+      setStored(prev => {
+        if (prev.key === key) return change(prev);
+        return key === currentKey.current ? change(closedDrill(key)) : prev;
+      }),
     [key]
   );
 
   const read = useCallback(
     async (itemId: string) => {
       update(state => ({ ...state, grns: { ...state.grns, [itemId]: { status: 'loading' } } }));
-      const drillDown = { p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const }, p_limit: 100 };
+      const drillDown = { p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const }, p_limit: GRN_LIMIT };
       let answer: GRNLoad;
       try {
         const response = customerId ? await getCustomerGRNItems(customerId, drillDown) : await getAllGRNItems(drillDown);
-        answer = response.success && response.data?.items ? { status: 'loaded', rows: grnRows(response.data.items) } : { status: 'failed' };
+        const total = response.data?.pagination?.total_count;
+        answer =
+          response.success && response.data?.items
+            ? { status: 'loaded', rows: grnRows(response.data.items), total: typeof total === 'number' && total > 0 ? total : undefined }
+            : { status: 'failed' };
       } catch {
         answer = { status: 'failed' };
       }
@@ -378,6 +449,11 @@ function useItemGRNs(customerId: string | undefined, key: string) {
         if (!known || known.status === 'loading') return { status: 'loading' };
         if (known.status === 'failed') return { status: 'failed', onRetry: () => void read(itemId) };
         return { status: 'loaded', rows: known.rows };
+      },
+      /** The GRN rows the item has in all, when the drill-down's answer said. */
+      total: (itemId: string): number | undefined => {
+        const known = drill.grns[itemId];
+        return known?.status === 'loaded' ? known.total : undefined;
       },
     }),
     [drill, update, read]

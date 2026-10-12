@@ -106,6 +106,8 @@ export interface StockItemCardProps {
   grns: StockGRNState;
   /** Shown when the GRNs are loaded and there are none. Without it nothing is shown. */
   emptyGRNsText?: string;
+  /** A footnote under the loaded GRN rows, such as "Showing 100 of 240" when not all were read. */
+  grnsFooter?: string;
   /** Opens a GRN; rows with a GRN id become buttons only when this is given. */
   onOpenGRN?: (grnId: string) => void;
   /**
@@ -217,6 +219,7 @@ const makeStyles = (t: ThemeTokens) =>
     },
     error: { alignItems: 'center', paddingVertical: space.lg, paddingHorizontal: space.lg, gap: space.sm },
     errorText: { ...typography.footnote, color: t.status.negative.text, textAlign: 'center' },
+    grnsFooter: { ...typography.footnote, color: t.text.secondary, paddingVertical: space.md, paddingHorizontal: space.lg },
 
     // GRN row
     row: {
@@ -392,6 +395,7 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
   onToggle,
   grns,
   emptyGRNsText,
+  grnsFooter,
   onOpenGRN,
   highlightWords,
   matchLine,
@@ -503,6 +507,7 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
             ) : (
               <Text style={styles.empty}>{emptyGRNsText}</Text>
             )}
+            {grnsFooter && rows.length > 0 ? <Text style={styles.grnsFooter}>{grnsFooter}</Text> : null}
           </View>
         ) : null}
       </View>

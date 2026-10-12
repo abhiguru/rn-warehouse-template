@@ -134,6 +134,8 @@ export const reports = {
     errorTitle: "Couldn't load the item stock summary",
     loadMore: 'Show more items',
     loadMoreError: "Couldn't load more items.",
+    // A backend that cannot sort: the order on screen covers only the items loaded so far.
+    sortedAmongLoaded: 'Sorted among the {{count}} items loaded',
   },
   stockAging: {
     loadError: "Couldn't load stock aging. Check your connection and try again.",
@@ -364,5 +366,7 @@ export const reports = {
     serverNeedsUpdate: "This facility's server needs an update before reports can be shared as PDF.",
     periodTooLong: 'A PDF can cover at most {{days}} days. Choose a shorter period.',
     notAccepted: "The server didn't accept this request. Update the app and try again.",
+    // Shown before the share sheet when the server cut the PDF short.
+    truncated: 'This PDF shows the first {{shown}} of {{total}} rows.',
   },
 };

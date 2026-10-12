@@ -186,10 +186,13 @@ describe('a refused dashboard', () => {
     expect(screen.texts()).toContain('This report is for staff only');
   });
 
-  it('another refusal shows the server\'s own reason', async () => {
+  it('another failure shows the screen\'s own words, not the server\'s', async () => {
     dashboard.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
     const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load the operations dashboard", 'The facility refused this report.']));
+    expect(screen.texts()).toEqual(
+      expect.arrayContaining(["Couldn't load the operations dashboard", "Couldn't load the operations dashboard. Check your connection and try again."])
+    );
+    expect(screen.texts()).not.toContain('The facility refused this report.');
   });
 
   it('a staff account is not offered it, and nothing is asked', async () => {

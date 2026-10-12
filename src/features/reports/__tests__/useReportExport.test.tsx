@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { t } from '@/i18n';
+import { setLanguage, t } from '@/i18n';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -175,6 +175,73 @@ describe('share', () => {
     expect(showAlert).toHaveBeenCalledWith("Couldn't share the PDF", 'Check your connection and try again.');
     expect(probe.current().busy).toBe(false);
   });
+
+  it.each([
+    ['a native error', 'Network request failed'],
+    ['the gated fetch', 'Session changed'],
+    ['a download with an HTTP status', 'Failed to download PDF (status: 500)'],
+  ])("shows the connection words, never the text of %s", async (_from, raw) => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    jest.mocked(downloadAndSharePDF).mockResolvedValue({ success: false, error: raw });
+    const probe = setup();
+    await probe.run();
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't share the PDF", 'Check your connection and try again.');
+  });
+
+  it("keeps the share helper's own reasons in the app's language", async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup();
+    for (const reason of [t('errors.pdf.tooLarge'), t('errors.network.noInternet')]) {
+      jest.mocked(downloadAndSharePDF).mockResolvedValueOnce({ success: false, error: reason });
+      await probe.run();
+      expect(showAlert).toHaveBeenLastCalledWith("Couldn't share the PDF", reason);
+    }
+  });
+});
+
+describe('a PDF the server cut short', () => {
+  const cutShort = (truncated: boolean) =>
+    answer(200, {
+      success: true,
+      pdf_url: SIGNED_URL,
+      expires_in: 3600,
+      document: { type: 'report', report: 'grn-activity', rows_count: 5000, rows_total: 12345, truncated, sort: { field: 'date', order: 'desc' } },
+    });
+
+  it('says how many rows it holds, then shares it all the same', async () => {
+    jest.mocked(fetch).mockResolvedValue(cutShort(true));
+    const order: string[] = [];
+    jest.mocked(showAlert).mockImplementation(() => void order.push('notice'));
+    jest.mocked(downloadAndSharePDF).mockImplementation(async () => {
+      order.push('share');
+      return { success: true };
+    });
+    const probe = setup();
+    await probe.run();
+    expect(showAlert).toHaveBeenCalledWith('Share PDF', 'This PDF shows the first 5,000 of 12,345 rows.');
+    expect(order).toEqual(['notice', 'share']);
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, 'GRN_activity_Fictional_Traders_2026_09_01_to_2026_09_30.pdf');
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('says it in Gujarati', async () => {
+    jest.mocked(fetch).mockResolvedValue(cutShort(true));
+    setLanguage('gu');
+    try {
+      await setup().run();
+      expect(showAlert).toHaveBeenCalledWith('PDF શેર કરો', 'આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ હરોળ જ છે.');
+    } finally {
+      setLanguage('en');
+    }
+  });
+
+  it('says nothing for a whole PDF', async () => {
+    jest.mocked(fetch).mockResolvedValue(cutShort(false));
+    await setup().run();
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('the file name', () => {
@@ -199,9 +266,18 @@ describe('the file name', () => {
     );
   });
 
-  it("has no dates for a stock report, All for every customer, and the report's own title by default", () => {
-    expect(reportPdfFilename({ report: 'stock-aging' })).toBe('Stock_aging_All.pdf');
-    expect(reportPdfFilename({ report: 'item-stock-summary' }, { title: '***' })).toBe('item_stock_summary_All.pdf');
+  it("has no dates for a stock report, all customers for every customer, and the report's own title by default", () => {
+    expect(reportPdfFilename({ report: 'stock-aging' })).toBe('Stock_aging_All_customers.pdf');
+    expect(reportPdfFilename({ report: 'item-stock-summary' }, { title: '***' })).toBe('item_stock_summary_All_customers.pdf');
+  });
+
+  it('names every customer in Gujarati in a Gujarati file name', () => {
+    setLanguage('gu');
+    try {
+      expect(reportPdfFilename({ report: 'stock-aging' }, { title: 'માલ કેટલા દિવસથી પડ્યો છે' })).toBe('માલ_કેટલા_દિવસથી_પડ્યો_છે_બધા_વેપારી.pdf');
+    } finally {
+      setLanguage('en');
+    }
   });
 });
 

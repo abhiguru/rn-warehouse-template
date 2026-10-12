@@ -393,13 +393,16 @@ describe('stock aging, every customer', () => {
     await screen.refresh();
     expect(allAging).toHaveBeenCalledTimes(2);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Could not reach the facility']));
+    // The service's own words for a failure are not shown; the screen's are (useReportQuery).
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load stock aging. Check your connection and try again."]));
   });
 
   it('says what failed and why when the report could not be read', async () => {
     allAging.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
     const screen = await open(makeStore());
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load stock aging", 'The facility refused this report.', 'Try again']));
+    // Not an access refusal: the screen's own words, not the service's.
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load stock aging", "Couldn't load stock aging. Check your connection and try again.", 'Try again']));
+    expect(screen.texts()).not.toContain('The facility refused this report.');
   });
 });
 
@@ -598,7 +601,7 @@ describe('stock aging, the report PDF', () => {
     await screen.press('Customer');
     await screen.press('Done');
     expect(screen.has('Sorted by Customer, Z to A. Change sort')).toBe(true);
-    await sharesThePdf(screen, { report: 'stock-aging', sort: { field: 'customer', order: 'desc' } }, 'Stock_aging_All.pdf');
+    await sharesThePdf(screen, { report: 'stock-aging', sort: { field: 'customer', order: 'desc' } }, 'Stock_aging_All_customers.pdf');
   });
 
   it('one customer: shares that customer and the sort on screen, with no dates', async () => {

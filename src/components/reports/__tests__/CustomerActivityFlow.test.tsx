@@ -331,7 +331,8 @@ describe('customer activity, every customer', () => {
     allActivity.mockResolvedValueOnce({ success: false, message: 'Could not reach the facility' } as never);
     await screen.refresh();
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Could not reach the facility']));
+    // The service's own words for a failure are not shown; the screen's are (useReportQuery).
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load customer activity. Check your connection and try again."]));
   });
 });
 
@@ -451,7 +452,9 @@ describe('customer activity, one customer', () => {
     openGreenValley();
     detail.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
     const screen = await open(makeStore());
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load customer activity", 'The facility refused this report.', 'Try again']));
+    // Not an access refusal: the screen's own words, not the service's.
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load customer activity", "Couldn't load this customer's activity. Check your connection and try again.", 'Try again']));
+    expect(screen.texts()).not.toContain('The facility refused this report.');
   });
 
   it('asks nothing for a customer account whose route names a customer it is not assigned', async () => {
@@ -541,7 +544,7 @@ describe('customer activity, the report PDF', () => {
     await sharesThePdf(
       screen,
       { report: 'customer-activity', from: '2026-06-15', to: '2026-10-12', sort: { field: 'last_activity', order: 'desc' } },
-      'Customer_activity_All_2026_06_15_to_2026_10_12.pdf'
+      'Customer_activity_All_customers_2026_06_15_to_2026_10_12.pdf'
     );
   });
 
