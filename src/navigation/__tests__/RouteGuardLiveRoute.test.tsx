@@ -304,6 +304,29 @@ describe('returnToMyFacilities, which reads the navigator through the mounted gu
     expect(mockCalls).toEqual(['dismissTo /facilities']);
   });
 
+  it('a state that is readable but holds no root stack of the app: dismissTo, not a dismissAll and a replace', async () => {
+    await onWaitingScreen('login', 'pending-enrollment');
+    // expo-router's wrapper route without the app's stack inside it: nothing is known to be shown.
+    mockRootState = { index: 0, routes: [{ name: '__root' }] };
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
+  it('with My facilities itself the route that is shown (a Back came first): dismissTo, which changes nothing; never a replace', async () => {
+    await onWaitingScreen('facilities', 'pending-enrollment');
+    // The person pressed Back before this call: the waiting screen is gone and My facilities is alone.
+    mockRootState = rootState('facilities');
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
+  it('with My facilities shown over another screen: dismissTo as well', async () => {
+    await onWaitingScreen('login', 'pending-enrollment');
+    mockRootState = rootState('login', 'facilities');
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
   it('with no guard mounted: dismissTo, as before', () => {
     mockRootState = rootState('login', 'pending-enrollment');
     returnToMyFacilities();

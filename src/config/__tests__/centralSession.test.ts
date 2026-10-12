@@ -41,14 +41,22 @@ const fetchMock = jest.fn();
 
 const b64url = (value: unknown) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
 const nowSeconds = () => Math.floor(Date.now() / 1000);
+/**
+ * When every access token of this file was issued, read from the clock once. Tokens are
+ * compared as strings: the one the service stand-in mints against the one a later call must
+ * send, which the assertion builds again. A clock read at each of those two moments gives
+ * different strings when a second boundary falls between them. (centralSession.ts takes only
+ * `exp - iat` from a token, the same for any issue time.)
+ */
+const ISSUED_AT = nowSeconds();
 /** An access token as the service issues it: 15 minutes from `issuedAt`. */
-const accessToken = (label: string, issuedAt = nowSeconds()) =>
+const accessToken = (label: string, issuedAt = ISSUED_AT) =>
   `${b64url({ alg: 'ES256', typ: 'central-access+jwt', kid: 'k1' })}.${b64url({ iss: ORIGIN, aud: ORIGIN, sub: 'user-1', sid: 'family-1', iat: issuedAt, exp: issuedAt + 900, label })}.signature`;
 const refreshToken = (digit: string) => digit.repeat(64);
 const user = { id: 'user-1', phone_number: '919000000001', name: null, created_at: '2026-10-12T06:00:12.000Z' };
-const session = (label: string, refresh: string, issuedAt?: number) => ({
+const session = (label: string, refresh: string, issuedAt = ISSUED_AT) => ({
   access_token: accessToken(label, issuedAt),
-  access_expires_at: new Date(((issuedAt ?? nowSeconds()) + 900) * 1000).toISOString(),
+  access_expires_at: new Date((issuedAt + 900) * 1000).toISOString(),
   refresh_token: refreshToken(refresh),
   refresh_expires_at: '2026-12-11T06:00:12.000Z',
 });

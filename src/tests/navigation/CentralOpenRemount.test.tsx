@@ -55,7 +55,7 @@ import FacilityLinkScreen from '../../../app/facility-link';
 import CentralOtpScreen from '../../../app/central-otp';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
 import { getCentralState, nextOutcomeId, resetCentralStateForTests, setCentralState, type OpenOutcome } from '@/config/centralState';
-import { addMyFacility, loadMyFacilities, noteFacilitySmsSignIn } from '@/config/centralFacilities';
+import { addMyFacility, loadMyFacilities, noteFacilitySmsSignIn, updateMyFacility } from '@/config/centralFacilities';
 import { hasAcceptedTerms } from '@/config/centralTerms';
 import { discoverOperator, onOperatorServerChange, saveOperatorServer } from '@/config/operatorServer';
 import { requestFacilityToken, verifyCentralCode } from '@/config/centralSession';
@@ -212,13 +212,23 @@ let tree: ReactTestRenderer | undefined;
 let navigations: Array<[string, string]> = [];
 const originalAdd = routingQueue.add;
 
-type NavState = { routes: Array<{ name: string; state?: NavState }> };
+type NavState = { routes: Array<{ name: string; key?: string; state?: NavState }> };
 const pathname = () => routerStore.getRouteInfo().pathname;
 /** The routes of the app's root stack, bottom first, below expo-router's own wrapper route. */
 const rootRoutes = (): string[] => {
   let state = routerStore.navigationRef.current?.getRootState() as NavState | undefined;
   while (state && state.routes.length === 1 && state.routes[0].name === '__root') state = state.routes[0].state;
   return state ? state.routes.map(route => route.name) : [];
+};
+/**
+ * The navigator's key of each route of the root stack, bottom first. A route that was
+ * replaced gets a new key, and so a new mount of its screen; a pop to the route that is
+ * already shown leaves the key as it was.
+ */
+const rootKeys = (): string[] => {
+  let state = routerStore.navigationRef.current?.getRootState() as NavState | undefined;
+  while (state && state.routes.length === 1 && state.routes[0].name === '__root') state = state.routes[0].state;
+  return state ? state.routes.map(route => String(route.key)) : [];
 };
 const mountedFacilities = () => tree!.root.findAllByType(FacilitiesScreen).length;
 const texts = () =>
@@ -284,6 +294,8 @@ beforeEach(async () => {
   jest.mocked(requestFacilityToken).mockResolvedValue({ ok: true, identityToken: 'identity-token' } as never);
   jest.mocked(signInWithPhone).mockResolvedValue({ success: true, data: {} } as never);
   jest.mocked(getPendingEnrollmentToken).mockResolvedValue(null);
+  // A test that holds the facility sign-out back replaces this; the next one starts with it returning at once.
+  jest.mocked(signOutPendingEnrollment).mockImplementation(async () => undefined);
   navigations = [];
   routingQueue.add = (action: { type: string; payload?: { href?: unknown; options?: { event?: string } } }) => {
     navigations.push([String(action.payload?.options?.event ?? action.type), String(action.payload?.href ?? '')]);
@@ -450,6 +462,40 @@ describe('back from the waiting screen (reached from My facilities)', () => {
     expect(signOutPendingEnrollment).toHaveBeenCalledTimes(1);
     expect(pathname()).toBe('/facilities');
     expect(rootRoutes()).toEqual(['facilities']);
+    expect(mountedFacilities()).toBe(1);
+    expect(texts()).toContain('Requested');
+    expect(router.canGoBack()).toBe(false);
+  });
+
+  it('"My facilities", then hardware Back before the facility sign-out returns: the late return leaves the one My facilities as it is', async () => {
+    await openToWaiting();
+    // The waiting screen signs out at the facility first and goes back only when that returns.
+    let finishSignOut: () => void = () => undefined;
+    jest.mocked(signOutPendingEnrollment).mockImplementation(
+      () => new Promise<void>(resolve => { finishSignOut = () => resolve(); })
+    );
+    const controls = tree!.root.findAllByType(Button).filter(node => node.props.children === 'My facilities');
+    await act(async () => { controls[controls.length - 1].props.onPress(); });
+    await wait(STEP_MS);
+    expect(signOutPendingEnrollment).toHaveBeenCalledTimes(1);
+    // Nothing has left the waiting screen yet.
+    expect(rootRoutes()).toEqual(['facilities', 'pending-enrollment']);
+
+    await pressBack();
+    expect(rootRoutes()).toEqual(['facilities']);
+    const keysBefore = rootKeys();
+    navigations = [];
+
+    // The sign-out returns now: `returnToMyFacilities` runs with My facilities already shown, alone.
+    await act(async () => { finishSignOut(); });
+    await wait(300);
+
+    // A replace would give the route a new key and mount a second My facilities after the first
+    // was thrown away. Going to the route that is shown changes nothing.
+    expect(rootRoutes()).toEqual(['facilities']);
+    expect(rootKeys()).toEqual(keysBefore);
+    expect(navigations.filter(([kind]) => kind === 'REPLACE')).toEqual([]);
+    expect(pathname()).toBe('/facilities');
     expect(mountedFacilities()).toBe(1);
     expect(texts()).toContain('Requested');
     expect(router.canGoBack()).toBe(false);
@@ -839,6 +885,50 @@ describe('central sign-in', () => {
       expect(showAlert).not.toHaveBeenCalled();
     });
 
+    it('then the code step is opened again, and the first check succeeds: My facilities alone, once', async () => {
+      await checkThenBack(true);
+      // "Send the code again" from central sign-in: a new code step, with a new check not yet made.
+      await go(() => router.push('/central-otp'));
+      expect(rootRoutes()).toEqual(['central-login', 'central-otp']);
+      expect(verifyCentralCode).toHaveBeenCalledTimes(1);
+      navigations = [];
+
+      // The first check was made on the code step that is gone; the guard allows the new code
+      // step to a person who is signed in, so nothing else would take them off it.
+      await act(async () => { answer({ ok: true }); });
+      await wait(500);
+
+      expect(getCentralState().status).toBe('signedIn');
+      expect(rootRoutes()).toEqual(['facilities']);
+      expect(pathname()).toBe('/facilities');
+      expect(mountedFacilities()).toBe(1);
+      expect(texts()).not.toContain('central sign-in');
+      expect(router.canGoBack()).toBe(false);
+      expect(showAlert).not.toHaveBeenCalled();
+    });
+
+    it('with one approved facility, then a correct code: the facility opens by itself, once', async () => {
+      await updateMyFacility('asha', ORIGIN, { status: 'approved', opened: true });
+      answerWith(LOGIN, DURING_SPLASH);
+      await checkThenBack(true);
+      // Nothing has been opened yet.
+      expect(discoverOperator).not.toHaveBeenCalled();
+      expect(exchangeCentralIdentity).not.toHaveBeenCalled();
+
+      // The code step that is gone set the start-up skip free before it stopped there: the
+      // person signed in just now, so the one approved facility is opened without the list.
+      await act(async () => { answer({ ok: true }); });
+      await wait(BOOTSTRAP_MS + 2000);
+
+      expect(discoverOperator).toHaveBeenCalledTimes(1);
+      expect(exchangeCentralIdentity).toHaveBeenCalledTimes(1);
+      expect(rootRoutes()).toEqual(['(tabs)']);
+      expect(mountedHomes()).toBe(1);
+      expect(mountedFacilities()).toBe(0);
+      expect(router.canGoBack()).toBe(false);
+      expect(showAlert).not.toHaveBeenCalled();
+    });
+
     it('then a wrong code: nothing is said over the screen that is shown now', async () => {
       await checkThenBack(true);
       await act(async () => { answer({ ok: false, message: WRONG }); });
@@ -963,6 +1053,59 @@ describe('the facility session ends after the central session has ended (no rebu
 
     expect(rootRoutes()).toEqual(['central-login']);
     expect(navigations).toEqual([['REPLACE', '/central-login']]);
+  });
+});
+
+describe('sign-in is a start, also from a screen that has a stack of its own', () => {
+  /** On the second step of a form that has its own stack, pushed over the facility's home. */
+  const onSecondStepOfForm = async () => {
+    mockAuthStore.set(PROFILE);
+    await start('/');
+    await go(() => router.push('/grn-form/step1'));
+    await go(() => router.push('/grn-form/step2'));
+    expect(rootRoutes()).toEqual(['(tabs)', 'grn-form']);
+    expect(texts()).toContain('form step 2');
+  };
+
+  it('both sessions end: central sign-in alone, and Back has nothing to go back to', async () => {
+    await onSecondStepOfForm();
+    // The central session ends first (a refused signed call); the facility's session stays.
+    await act(async () => { setCentralState({ status: 'signedOut', user: null, endedMessage: null }); });
+    await wait(STEP_MS);
+    expect(rootRoutes()).toEqual(['(tabs)', 'grn-form']);
+    navigations = [];
+
+    await act(async () => { mockAuthStore.set(null); });
+    await wait(STEP_MS);
+
+    // Not [(tabs), central-login]: one Back from there showed a spinner and then central sign-in again.
+    expect(pathname()).toBe('/central-login');
+    expect(rootRoutes()).toEqual(['central-login']);
+    expect(texts()).toContain('central sign-in');
+    expect(texts().some(text => text.startsWith('form step'))).toBe(false);
+    expect(mountedHomes()).toBe(0);
+    expect(router.canGoBack()).toBe(false);
+    expect(navigations.map(([kind]) => kind)).toEqual(['POP_TO_TOP', 'REPLACE']);
+  });
+
+  it("the facility's own sign-in is in use: the facility's sign-in alone, and Back has nothing to go back to", async () => {
+    await onSecondStepOfForm();
+    // The person got in through the facility's own SMS sign-in, and the facility ends the session.
+    await act(async () => { setCentralState({ facilitySmsOrigin: ORIGIN }); });
+    await wait(STEP_MS);
+    expect(rootRoutes()).toEqual(['(tabs)', 'grn-form']);
+    navigations = [];
+
+    await act(async () => { mockAuthStore.set(null); });
+    await wait(STEP_MS);
+
+    expect(pathname()).toBe('/login');
+    expect(rootRoutes()).toEqual(['login']);
+    expect(texts()).toContain('facility sign-in');
+    expect(texts().some(text => text.startsWith('form step'))).toBe(false);
+    expect(mountedHomes()).toBe(0);
+    expect(router.canGoBack()).toBe(false);
+    expect(navigations.map(([kind]) => kind)).toEqual(['POP_TO_TOP', 'REPLACE']);
   });
 });
 

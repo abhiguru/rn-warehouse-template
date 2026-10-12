@@ -14,6 +14,7 @@ import { requestCentralCode, verifyCentralCode } from '@/config/centralSession';
 import { TERMS_VERSION } from '@/config/envConfig';
 import { recordTermsAccepted } from '@/config/centralTerms';
 import { startAtMyFacilities } from '@/navigation/myFacilities';
+import { currentRootState, liveRootRoute } from '@/navigation/RouteGuard';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { localizeDigits, t as tr } from '@/i18n';
@@ -57,7 +58,12 @@ export default function CentralOtpScreen() {
         // The person left while the code was being checked. The session is stored, so the
         // route guard shows My facilities in place of the sign-in screen that is shown now;
         // starting again from this screen would put a second My facilities on top of it.
-        if (removed.current) return;
+        // The one exception is another code step: the guard allows that screen to a person
+        // who is signed in, so nothing else would take them off it.
+        if (removed.current) {
+          if (liveRootRoute(currentRootState()) === 'central-otp') startAtMyFacilities();
+          return;
+        }
         // Alone in the stack: central sign-in must not stay under it.
         startAtMyFacilities();
       } else if (!removed.current) {

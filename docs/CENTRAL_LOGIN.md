@@ -232,7 +232,11 @@ Both controls go back to the My facilities under the screen (`returnToMyFaciliti
 `src/navigation/myFacilities.ts`); replacing the screen would leave two, both mounted. Where
 none is under the screen (the waiting screen after a facility's own SMS sign-in, with that
 facility's sign-in under it) the stack is taken down and My facilities replaces the screen,
-so it is alone. An answer of an open is
+so it is alone. The waiting screen's control goes back only after the sign-out at the facility
+has returned, so Back may have come first: when My facilities is already the screen that is
+shown (or the navigator's state cannot be read, or holds no stack of the app), the return is
+`dismissTo` and changes nothing; it never replaces a My facilities that is shown, which would
+mount it a second time. An answer of an open is
 taken by exactly one screen (`consumeOpenOutcome` answers true once), so a second My
 facilities, however it came about, cannot open a second waiting screen or repeat a message.
 
@@ -248,7 +252,7 @@ under one another:
 | A forced sign-out after that sign-in (`facilitySmsOrigin` is cleared when it finishes) | My facilities alone |
 | "My facilities" on the waiting screen after a facility's own SMS sign-in | My facilities alone: that facility's sign-in is taken off the stack, so Back has nothing to go back to |
 | The facility session ends on a screen pushed over its home after the central session has ended | Central sign-in alone (and the same for the facility's own sign-in, where the person is sent to it) |
-| Hardware Back while the central code is being checked, then a correct code | My facilities alone, once: the session is stored and the guard shows My facilities in place of central sign-in; the removed code step does not navigate again. A wrong code is not said over the screen that is shown by then |
+| Hardware Back while the central code is being checked, then a correct code | My facilities alone, once: the session is stored and the guard shows My facilities in place of central sign-in; the removed code step does not navigate again. A wrong code is not said over the screen that is shown by then. If the person asked for a code again meanwhile, so that another code step is shown, the guard leaves that screen alone for a person who is signed in, so the first check's correct answer takes the stack down to My facilities alone itself |
 
 The route guard does this (`src/navigation/RouteGuard.tsx`, central login only): a refused
 screen on top of My facilities goes back to that My facilities; a session that ends on a

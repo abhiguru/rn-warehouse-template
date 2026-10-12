@@ -350,6 +350,18 @@ phone against a real central service.
   the first), nor does a wrong code speak over the screen shown by then. The real-router tests
   now cover the guard's "entering a facility takes the stack down" rule and a facility's own
   SMS sign-in that clears its marker as the app does.
+- **Two more fixes from the same review (central login only).** The waiting screen's "My
+  facilities", followed by hardware Back before the facility's sign-out returned, replaced the
+  My facilities that was already shown and mounted it a second time; when My facilities is the
+  route shown (or the stack cannot be read) the return now changes nothing. And Back during the
+  central code check, then a new code step, then a correct answer of the first check, left the
+  person signed in on the new code step; that answer now takes the stack down to My facilities
+  alone. Tests added for both, for a single approved facility opening by itself after Back
+  during the code check, and for sign-in taking the stack down from a form with its own stack.
+  Test only: several tests in `centralSession.test.ts` failed whenever a second boundary fell
+  between two readings of the clock that built the same access token (one when the service
+  stand-in issued it, one when the assertion built it again); all tokens there now share one
+  issue time.
 - Shared code, no change in behaviour without central login: the server-switch sequence
   moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
   `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used
