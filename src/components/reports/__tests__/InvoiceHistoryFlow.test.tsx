@@ -108,14 +108,15 @@ const answerCustomers = (rows: ReturnType<typeof customer>[]) => ({
   },
 });
 
-const invoice = (id: string, number: string, date: string, net: number, status: string, grn: string, itemName: string) => ({
+const invoice = (id: string, number: string, date: string, net: number, status: string, grn: string, itemName: string, gross = net) => ({
   invoice_id: id,
   invoice_number: number,
   invoice_date: date,
   financial_year: '2026-27',
   grn_ref: grn,
   grn_id: `g-${grn}`,
-  total: net,
+  // The total before labour, tax and discount: the net total unless the test says otherwise.
+  total: gross,
   labour: 0,
   discount: 0,
   tax_amount: 0,
@@ -145,6 +146,36 @@ const answerInvoices = {
     by_month: [
       { month: '2026-10', invoice_count: 3, total_amount: 37000, paid_amount: 17000, pending_amount: 20000 },
       { month: '2026-09', invoice_count: 1, total_amount: 2000, paid_amount: 0, pending_amount: 0 },
+    ],
+  },
+};
+
+// Six invoices over three months with a status the app does not know and net totals unlike the
+// totals before labour, tax and discount (the last argument). The server's by_month is as the
+// server makes it: `total_amount` is that gross sum, `paid_amount` and `pending_amount` are net
+// sums, so a table read from it cannot add up. The table must not take its figures from there.
+const MONTHLY_INVOICES = [
+  invoice('inv-m1', '2026/0120', '2026-10-12', 5400, 'paid', 'A0120', 'Garlic', 5000),
+  invoice('inv-m2', '2026/0119', '2026-10-11', 21500, 'pending', 'A0119', 'Red chilli', 20000),
+  // A full ISO date, as the server sends a timestamp.
+  invoice('inv-m3', '2026/0110', '2026-10-01T09:15:00+00:00', 12600, 'paid', 'A0110', 'Cumin', 12000),
+  invoice('inv-m4', '2026/0099', '2026-09-30', 1800, 'partly_paid', 'A0099', 'Turmeric', 2000),
+  invoice('inv-m5', '2026/0090', '2026-09-20', 7350, 'pending', 'A0090', 'Ginger', 7000),
+  invoice('inv-m6', '2026/0070', '2026-08-18', 3540, 'paid', 'A0070', 'Coriander', 3000),
+];
+const answerMonthly = {
+  success: true,
+  message: '',
+  data: {
+    summary: {
+      total_invoices: 6, total_amount: 49000, total_labour: 0, total_tax: 0, total_discount: 0, net_amount: 52190,
+      paid_count: 3, pending_count: 2, paid_amount: 21540, pending_amount: 28850,
+    },
+    invoices: MONTHLY_INVOICES,
+    by_month: [
+      { month: '2026-10', invoice_count: 3, total_amount: 37000, paid_amount: 18000, pending_amount: 21500 },
+      { month: '2026-09', invoice_count: 2, total_amount: 9000, paid_amount: 0, pending_amount: 7350 },
+      { month: '2026-08', invoice_count: 1, total_amount: 3000, paid_amount: 3540, pending_amount: 0 },
     ],
   },
 };
@@ -238,6 +269,32 @@ async function open(store: Store) {
         // Not the screen's title, nor the heading of the sort sheet while it is open.
         .filter(text => text !== 'Invoice history' && text !== 'Sort by'),
     status: () => texts().find(text => text.includes('Last updated')),
+    /**
+     * The monthly table as drawn: its headers, each row's cells (the pinned month, then the
+     * scrolling figures), each row's spoken summary, and the totals row. Empty while it is shut.
+     */
+    monthTable: () => {
+      const table = tree.root.findAll(
+        node => typeof node.type === 'string' && node.props.accessibilityLabel === 'Monthly breakdown' && node.props.accessibilityRole === undefined
+      )[0];
+      if (!table) return undefined;
+      const hostViews = table.findAll(node => (node.type as unknown) === 'View');
+      const cellsOf = (view: ReactTestInstance) => view.findAll(node => (node.type as unknown) === 'Text').map(textOf);
+      // Pinned half: the month of each row, and the row's spoken summary. Scrolling half: the figures.
+      const pinnedRows = hostViews.filter(node => node.props.accessible === true);
+      const scrollRows = hostViews.filter(node => node.props.accessible === false && node.props.importantForAccessibility === 'no-hide-descendants');
+      const totalRows = hostViews.filter(node => {
+        const style = StyleSheet.flatten(node.props.style) as Record<string, unknown> | undefined;
+        return style?.borderTopWidth === 1 && style?.borderTopColor === LIGHT.border.separator;
+      });
+      return {
+        headers: hostViews.filter(node => node.props.accessibilityRole === 'header').map(node => node.props.accessibilityLabel as string),
+        rows: pinnedRows.map((pinned, index) => [...cellsOf(pinned), ...cellsOf(scrollRows[index])]),
+        summaries: pinnedRows.map(node => node.props.accessibilityLabel as string),
+        scrollRowCount: scrollRows.length,
+        totals: totalRows.flatMap(cellsOf),
+      };
+    },
     search: async (text: string) => {
       const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
       await run(() => field.props.onChangeText(text));
@@ -256,6 +313,7 @@ async function open(store: Store) {
   };
 }
 
+const LIGHT = getTokens('orange', 'light');
 const DEFAULT_ORDER = ['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co'];
 const BY_DATE = ['Today', 'Invoice 2026/0010', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', 'Sun, 20 Sep', 'Invoice 2026/0050'];
 const days = (fromDate: string) => ({ fromDate, toDate: '2026-10-12' });
@@ -467,16 +525,151 @@ describe('invoice history, one customer', () => {
     const screen = await open(makeStore());
     expect(screen.control('Monthly breakdown').props.accessibilityState).toEqual({ expanded: false });
     expect(screen.texts()).not.toContain('Oct 2026');
+    expect(screen.monthTable()).toBeUndefined();
 
     await screen.press('Monthly breakdown');
     expect(screen.control('Monthly breakdown').props.accessibilityState).toEqual({ expanded: true });
     const all = screen.texts();
-    expect(all).toEqual(expect.arrayContaining(['Month', 'Amount', 'Oct 2026', 'Sep 2026', '₹37,000', '₹2,000', 'Total', '₹39,000']));
+    expect(all).toEqual(expect.arrayContaining(['Month', 'Net amount', 'Oct 2026', 'Sep 2026', '₹37,000', '₹2,000', 'Total', '₹39,000']));
+    expect(all).not.toContain('Amount');
     expect(all.indexOf('Total')).toBeLessThan(all.indexOf('Invoice 2026/0010'));
     expect(all.indexOf('Monthly breakdown')).toBeLessThan(all.indexOf('Invoice 2026/0010'));
 
     await screen.press('Monthly breakdown');
     expect(screen.texts()).not.toContain('Oct 2026');
+    expect(screen.monthTable()).toBeUndefined();
+  });
+
+  describe('the month by month table, built from the net totals of the invoices', () => {
+    // Per month: the invoices are 5400 + 21500 + 12600 (Oct), 1800 + 7350 (Sep), 3540 (Aug);
+    // their totals before labour, tax and discount are 37000, 9000 and 3000, which is what
+    // the server's by_month calls the amount and what this table must not show.
+    const ROWS = [
+      ['Oct 2026', '3', '₹39,500', '₹18,000', '₹21,500'],
+      ['Sep 2026', '2', '₹9,150', '₹0', '₹7,350'],
+      ['Aug 2026', '1', '₹3,540', '₹3,540', '₹0'],
+    ];
+    const TOTALS = ['Total', '6', '₹52,190', '₹21,540', '₹28,850'];
+
+    it('shows each month\'s count, net amount, paid and pending, newest first, and the totals of those rows', async () => {
+      mockParams = GREEN;
+      customerHistory.mockResolvedValue(answerMonthly as never);
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+
+      const table = screen.monthTable()!;
+      expect(table.headers).toEqual(['Month', 'Invoices', 'Net amount', 'Paid', 'Pending']);
+      expect(table.rows).toEqual(ROWS);
+      expect(table.summaries).toEqual([
+        'Month Oct 2026, Invoices 3, Net amount ₹39,500, Paid ₹18,000, Pending ₹21,500',
+        'Month Sep 2026, Invoices 2, Net amount ₹9,150, Paid ₹0, Pending ₹7,350',
+        'Month Aug 2026, Invoices 1, Net amount ₹3,540, Paid ₹3,540, Pending ₹0',
+      ]);
+      expect(table.totals).toEqual(TOTALS);
+
+      // Nothing of the server's gross sums: 37,000, 9,000 and 3,000 are not on the table.
+      const figures = table.rows.flat().concat(table.totals);
+      for (const gross of ['₹37,000', '₹9,000', '₹3,000', '₹49,000']) expect(figures).not.toContain(gross);
+
+      // The table agrees with the figures above it: its totals are the tiles' count, Paid and Pending.
+      const tiles = screen.texts();
+      expect(tiles).toEqual(expect.arrayContaining(['Invoices', '6', 'Paid (3)', '₹21,540', 'Pending (2)', '₹28,850']));
+      expect(table.totals.slice(1)).toEqual([String(answerMonthly.data.summary.total_invoices), '₹52,190', '₹21,540', '₹28,850']);
+      // Only September has an invoice of a status the app does not know (1,800): in that row, and in the
+      // totals, Paid + Pending falls short of the Net amount by exactly that invoice; the other rows add up.
+      const rupees = (text: string) => Number(text.replace(/[₹,]/g, ''));
+      const gap = (cells: string[]) => rupees(cells[2]) - rupees(cells[3]) - rupees(cells[4]);
+      expect(table.rows.map(gap)).toEqual([0, 1800, 0]);
+      expect(gap(table.totals)).toBe(1800);
+    });
+
+    it('adds Paid and Pending up to the Net amount in every row and in the totals when each invoice is paid or pending', async () => {
+      mockParams = GREEN;
+      const paidOrPending = MONTHLY_INVOICES.filter(row => row.payment_status.status !== 'partly_paid');
+      customerHistory.mockResolvedValue({ ...answerMonthly, data: { ...answerMonthly.data, invoices: paidOrPending } } as never);
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      const table = screen.monthTable()!;
+      expect(table.rows).toEqual([
+        ['Oct 2026', '3', '₹39,500', '₹18,000', '₹21,500'],
+        ['Sep 2026', '1', '₹7,350', '₹0', '₹7,350'],
+        ['Aug 2026', '1', '₹3,540', '₹3,540', '₹0'],
+      ]);
+      expect(table.totals).toEqual(['Total', '5', '₹50,390', '₹21,540', '₹28,850']);
+      const rupees = (text: string) => Number(text.replace(/[₹,]/g, ''));
+      for (const cells of [...table.rows, table.totals]) expect(rupees(cells[3]) + rupees(cells[4])).toBe(rupees(cells[2]));
+    });
+
+    it('does not read the server\'s by_month: without it the table is the same', async () => {
+      mockParams = GREEN;
+      customerHistory.mockResolvedValue({ ...answerMonthly, data: { ...answerMonthly.data, by_month: [] } } as never);
+      const screen = await open(makeStore());
+      expect(screen.has('Monthly breakdown')).toBe(true);
+      await screen.press('Monthly breakdown');
+      const table = screen.monthTable()!;
+      expect(table.rows).toEqual(ROWS);
+      expect(table.totals).toEqual(TOTALS);
+    });
+
+    it('is unchanged by a search and by the Paid and Pending choices, which narrow only the invoices', async () => {
+      mockParams = GREEN;
+      customerHistory.mockResolvedValue(answerMonthly as never);
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      expect(screen.monthTable()!.rows).toEqual(ROWS);
+      const count = () => screen.invoiceRows().filter(row => row.startsWith('Invoice ')).length;
+      expect(count()).toBe(6);
+
+      await screen.search('chilli');
+      expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0119']);
+      expect(screen.status()).toContain('Showing 1 of 6');
+      expect(screen.monthTable()!.rows).toEqual(ROWS);
+      expect(screen.monthTable()!.totals).toEqual(TOTALS);
+
+      await screen.press('Clear all filters and the search');
+      await screen.press('Filter by payment');
+      await screen.press('Paid');
+      expect(count()).toBe(3);
+      expect(screen.status()).toContain('Showing 3 of 6');
+      expect(screen.monthTable()!.rows).toEqual(ROWS);
+      expect(screen.monthTable()!.totals).toEqual(TOTALS);
+
+      await screen.press('Payment: Paid. Change');
+      await screen.press('Pending');
+      expect(count()).toBe(2);
+      expect(screen.monthTable()!.rows).toEqual(ROWS);
+      expect(screen.monthTable()!.totals).toEqual(TOTALS);
+
+      // A search that finds nothing leaves the table too; the invoices are asked for once.
+      await screen.search('zzzz');
+      expect(count()).toBe(0);
+      expect(screen.monthTable()!.rows).toEqual(ROWS);
+      expect(customerHistory).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('puts an invoice under the day, and in the month, it fell on in India when the date is an instant', async () => {
+    mockParams = GREEN;
+    // A timestamptz comes in UTC. 11 Oct 20:00 is 12 Oct 01:30 in India (the 12 Oct heading, not 11 Oct);
+    // 30 Sep 20:00 is 1 Oct 01:30 (October, not September); 30 Sep 18:00 is still 30 Sep, 23:30.
+    const instants = [
+      invoice('inv-t1', '2026/0129', '2026-10-12T04:00:00+00:00', 2000, 'pending', 'A0129', 'Garlic'),
+      invoice('inv-t2', '2026/0130', '2026-10-11T20:00:00+00:00', 1000, 'paid', 'A0130', 'Cumin'),
+      invoice('inv-t3', '2026/0128', '2026-09-30T20:00:00+00:00', 400, 'paid', 'A0128', 'Ginger'),
+      invoice('inv-t4', '2026/0127', '2026-09-30T18:00:00+00:00', 50, 'pending', 'A0127', 'Turmeric'),
+    ];
+    customerHistory.mockResolvedValue({ ...answerMonthly, data: { ...answerMonthly.data, invoices: instants } } as never);
+    const screen = await open(makeStore());
+    expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0129', 'Invoice 2026/0130', 'Thu, 1 Oct', 'Invoice 2026/0128', 'Wed, 30 Sep', 'Invoice 2026/0127']);
+    // The card of the October invoice gives the same day as its heading, in the phone's India time.
+    expect(screen.controls(label => label.startsWith('Invoice 2026/0128,'))[0].props.accessibilityLabel).toContain('1 Oct 2026');
+
+    // The table agrees: the 1 Oct invoice is in October, with the other two of that month.
+    await screen.press('Monthly breakdown');
+    expect(screen.monthTable()!.rows).toEqual([
+      ['Oct 2026', '3', '₹3,400', '₹1,400', '₹2,000'],
+      ['Sep 2026', '1', '₹50', '₹0', '₹50'],
+    ]);
   });
 
   it('draws as many loading tiles as the level shows once loaded', async () => {
@@ -645,7 +838,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
 
     // The five header cells of the table (not the KPI tile that is also called "Invoices").
     const headers = Object.fromEntries(
-      ['Month', 'Invoices', 'Amount', 'Paid', 'Pending'].map(label => {
+      ['Month', 'Invoices', 'Net amount', 'Paid', 'Pending'].map(label => {
         const cells = screen.tree.root.findAll(
           node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessibilityLabel === label && flat(node).width !== undefined
         );
@@ -668,11 +861,11 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
 
     // The count column is wider than the table's default 80, which broke the word at 1.3 times text size.
     expect(flat(headers.Invoices).width).toBeGreaterThanOrEqual(100);
-    expect(flat(headers.Amount).width).toBe(120);
+    expect(flat(headers['Net amount']).width).toBe(120);
     expect(flat(headers.Paid).width).toBe(120);
     expect(flat(headers.Pending).width).toBe(120);
     // Figures stay at the right of their columns, the month at the left, and the month is not in the scrolling part.
-    for (const label of ['Invoices', 'Amount', 'Paid', 'Pending']) expect(flat(headers[label]).justifyContent).toBe('flex-end');
+    for (const label of ['Invoices', 'Net amount', 'Paid', 'Pending']) expect(flat(headers[label]).justifyContent).toBe('flex-end');
     expect(flat(headers.Month).justifyContent).toBe('flex-start');
     const scrolls = (cell: ReactTestInstance) => {
       for (let node = cell.parent; node; node = node.parent) if (node.props.horizontal === true) return true;
