@@ -226,17 +226,31 @@ and every way back returns to that same My facilities:
 |---|---|---|
 | Waiting for approval | My facilities, tag Requested. Nothing is sent; the waiting-screen token stays until the next open or facility change deals with it | The same My facilities, tag Requested; the waiting-screen token is signed out at the facility first, as before |
 | The code step | My facilities, tag Confirm number; the pending link is forgotten | The same, by the same steps |
-| The facility's home | Nothing central is under it, after a correct code as after a plain open: the root stack holds the facility only | |
+| The code step, while a code is being checked | My facilities at once, the pending link forgotten. The answer then changes only the tag (a wrong code: Confirm number, with no message; a waiting request: Requested, with no waiting screen); a session enters the facility | |
 
 Both controls go back to the My facilities under the screen (`returnToMyFacilities` in
 `src/navigation/myFacilities.ts`); replacing the screen would leave two, both mounted. Where
 none is under the screen (the waiting screen after a facility's own SMS sign-in, with that
-facility's sign-in under it) My facilities takes the screen's place. The route guard does
-the same for a refused screen on top of My facilities, and when a facility session arrives
-on the code step it takes the central screens off the stack before entering the facility.
-An answer of an open is taken by exactly one screen (`consumeOpenOutcome` answers true
-once), so a second My facilities, however it came about, cannot open a second waiting
-screen or repeat a message.
+facility's sign-in under it) My facilities takes the screen's place. An answer of an open is
+taken by exactly one screen (`consumeOpenOutcome` answers true once), so a second My
+facilities, however it came about, cannot open a second waiting screen or repeat a message.
+
+**What is in the root stack.** The central screens and a facility's screens do not stay
+under one another:
+
+| After | Root stack |
+|---|---|
+| Central sign-in (`startAtMyFacilities`), also after a central session that ended on a central screen | My facilities alone; Back has nothing to go back to |
+| An open that the facility answers with a session, and a correct code on the code step | The facility's home alone |
+| A forced sign-out on a facility screen while the facility stays selected (nothing rebuilds the tree) | My facilities alone; opening the facility again gives its home alone |
+| A facility's own SMS sign-in | That facility's sign-in under the code step and then under the home, as in a build without central login |
+| "My facilities" on the waiting screen after a facility's own SMS sign-in | My facilities over that facility's hidden sign-in; one Back passes it and leaves My facilities alone |
+
+The route guard does this (`src/navigation/RouteGuard.tsx`, central login only): a refused
+screen on top of My facilities goes back to that My facilities; a session that ends on a
+screen pushed over the facility's home takes the whole stack down before My facilities
+replaces it; and a facility session that arrives while a central screen is shown or lies
+underneath takes the stack down before the home replaces it.
 
 **Inside a facility.** Settings shows "Switch facility" with the facility's name in place of
 "Change warehouse server"; it asks first and then leaves through the same cleanup, ending

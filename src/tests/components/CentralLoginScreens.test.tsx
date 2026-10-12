@@ -34,9 +34,17 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('expo-router', () => ({
-  router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), dismissTo: jest.fn() },
-}));
+jest.mock('expo-router', () => {
+  // The code step listens for its own removal from the stack; nothing removes it here.
+  const navigation = { addListener: jest.fn(() => () => undefined) };
+  return {
+    router: {
+      back: jest.fn(), push: jest.fn(), replace: jest.fn(), dismissTo: jest.fn(),
+      canDismiss: jest.fn(() => false), dismissAll: jest.fn(),
+    },
+    useNavigation: () => navigation,
+  };
+});
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({
   getCentralLoginConfig: () => ({ origin: 'https://identity.example.test', issuer: 'https://identity.example.test' }),

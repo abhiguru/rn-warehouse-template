@@ -5,7 +5,7 @@
  * central account. The existing code screen with a heading that says why.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
@@ -26,18 +26,27 @@ export default function FacilityLinkScreen() {
 
   // Set once the facility has answered with a session or a waiting request: this screen is done.
   const finished = useRef(false);
+  // Set when this screen is taken off the stack: by the hardware Back button, by the
+  // "My facilities" control, or by the screen that follows it.
+  const removed = useRef(false);
+  const navigation = useNavigation();
+
+  useEffect(
+    () =>
+      // Leaving gives the linking step up, by Back exactly as by the "My facilities" control
+      // below. After a session or a waiting request nothing is left to give up: settle() in
+      // openFacility.ts has cleared the link already.
+      navigation.addListener('beforeRemove', () => {
+        removed.current = true;
+        cancelFacilityLink();
+      }),
+    [navigation]
+  );
 
   useEffect(() => {
     // Nothing to confirm (the screen was opened by a link): back to the list.
     if (!hasLink && !finished.current) returnToMyFacilities();
   }, [hasLink]);
-
-  // The hardware Back button, or anything else that takes this screen away before the
-  // facility has answered with a session or a waiting request, gives the linking step up
-  // exactly as the "My facilities" control below does: nothing is left to confirm.
-  useEffect(() => () => {
-    if (!finished.current) cancelFacilityLink();
-  }, []);
 
   const verify = async (code: string) => {
     if (verifying) return;
@@ -46,6 +55,10 @@ export default function FacilityLinkScreen() {
       finished.current = true;
       const outcome = await completeFacilityLink(code);
       finished.current = outcome.kind === 'login' || outcome.kind === 'pending';
+      // The person left while the code was being checked. My facilities shows what came of
+      // it (the tag, or the facility itself once the guard enters it); this screen is gone
+      // and must not put the waiting screen in My facilities' place or speak over it.
+      if (removed.current) return;
       // `login`: the profile is in the store and the route guard enters the facility.
       if (outcome.kind === 'pending') router.replace('/pending-enrollment');
       else if (outcome.kind === 'failed') showAlert(tr('auth.otp.couldNotVerifyTitle'), outcome.message);

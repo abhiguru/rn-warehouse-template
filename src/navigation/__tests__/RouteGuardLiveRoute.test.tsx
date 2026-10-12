@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { centralScreenBelow, liveRootRoute, myFacilitiesBelow, ROUTER_ROOT, useRootRouteGuard } from '../RouteGuard';
+import { anythingBelow, centralScreensInTheWay, liveRootRoute, myFacilitiesBelow, ROUTER_ROOT, useRootRouteGuard } from '../RouteGuard';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
 
 const mockReplace = jest.fn();
@@ -132,17 +132,29 @@ describe('segments behind the navigator', () => {
   });
 });
 
-describe('centralScreenBelow', () => {
+describe('centralScreensInTheWay', () => {
   it('is true when My facilities or central sign-in lies under the route that is shown', () => {
-    expect(centralScreenBelow(rootState('facilities', 'facility-link') as never)).toBe(true);
-    expect(centralScreenBelow(rootState('central-login', 'facilities') as never)).toBe(true);
-    expect(centralScreenBelow(rootState('facilities', '(tabs)') as never)).toBe(true);
+    expect(centralScreensInTheWay(rootState('facilities', 'facility-link') as never)).toBe(true);
+    expect(centralScreensInTheWay(rootState('central-login', 'facilities') as never)).toBe(true);
+    expect(centralScreensInTheWay(rootState('facilities', '(tabs)') as never)).toBe(true);
+  });
+  it('is true when a central screen is shown with anything under it', () => {
+    expect(centralScreensInTheWay(rootState('(tabs)', 'facilities') as never)).toBe(true);
+    expect(centralScreensInTheWay(rootState('login', 'facilities') as never)).toBe(true);
   });
   it('is false for a single route, for facility screens only, and when nothing can be read', () => {
-    expect(centralScreenBelow(rootState('facilities') as never)).toBe(false);
-    expect(centralScreenBelow(rootState('(tabs)', 'settings', 'grn-details/[id]') as never)).toBe(false);
-    expect(centralScreenBelow(rootState('login', 'otp') as never)).toBe(false);
-    expect(centralScreenBelow(undefined)).toBe(false);
+    expect(centralScreensInTheWay(rootState('facilities') as never)).toBe(false);
+    expect(centralScreensInTheWay(rootState('(tabs)', 'settings', 'grn-details/[id]') as never)).toBe(false);
+    expect(centralScreensInTheWay(rootState('login', 'otp') as never)).toBe(false);
+    expect(centralScreensInTheWay(undefined)).toBe(false);
+  });
+});
+
+describe('anythingBelow', () => {
+  it('is true only when the route that is shown has a route under it', () => {
+    expect(anythingBelow(rootState('(tabs)', 'settings') as never)).toBe(true);
+    expect(anythingBelow(rootState('(tabs)') as never)).toBe(false);
+    expect(anythingBelow(undefined)).toBe(false);
   });
 });
 
@@ -169,6 +181,30 @@ describe('a refused screen on top of My facilities', () => {
   });
 });
 
+describe('a facility session that ends on a screen pushed over the home (no rebuild)', () => {
+  it('My facilities takes the place of the whole stack, not of that one screen', async () => {
+    mockSegments = ['settings'];
+    mockRootState = rootState('(tabs)', 'settings');
+    await render();
+    expect(mockCalls).toEqual(['dismissAll', 'replace /facilities']);
+  });
+
+  it('on the home itself there is nothing to take off: it is replaced, as before', async () => {
+    mockSegments = ['(tabs)'];
+    mockRootState = rootState('(tabs)');
+    await render();
+    expect(mockCalls).toEqual(['replace /facilities']);
+  });
+
+  it('central login off: the screen is replaced by sign-in and the stack is left alone, as before', async () => {
+    mockCentralOn = false;
+    mockSegments = ['settings'];
+    mockRootState = rootState('(tabs)', 'settings');
+    await render();
+    expect(mockCalls).toEqual(['replace /login']);
+  });
+});
+
 describe('a facility session and the central screens', () => {
   it('a facility session while the navigator shows My facilities: the facility is entered', async () => {
     mockAuth = { userProfile: STAFF, session: null, user: null };
@@ -183,6 +219,14 @@ describe('a facility session and the central screens', () => {
     mockAuth = { userProfile: STAFF, session: null, user: null };
     mockSegments = ['facility-link'];
     mockRootState = rootState('facilities', 'facility-link');
+    await render();
+    expect(mockCalls).toEqual(['dismissAll', 'replace /']);
+  });
+
+  it('a facility session while My facilities lies over a hidden home: the stack is taken down first, so there is one home', async () => {
+    mockAuth = { userProfile: STAFF, session: null, user: null };
+    mockSegments = ['facilities'];
+    mockRootState = rootState('(tabs)', 'facilities');
     await render();
     expect(mockCalls).toEqual(['dismissAll', 'replace /']);
   });

@@ -65,20 +65,33 @@ export function liveRootRoute(state: RootState | undefined): string | undefined 
   return stack?.names[stack.index];
 }
 
-/** True when a central login screen lies in the root stack under the route that is shown. */
-export function centralScreenBelow(state: RootState | undefined): boolean {
+const isCentralScreen = (name: string): boolean => {
+  const [first] = routeParts(name);
+  return first !== undefined && (CENTRAL_ROUTES.includes(first) || CENTRAL_SIGN_IN_ROUTES.includes(first));
+};
+
+/**
+ * True when entering a facility must first take the root stack down to one route: a
+ * central login screen lies under the route that is shown, or the route that is shown is a
+ * central one with anything under it (My facilities over the hidden home of a facility whose
+ * session was ended while it stayed selected).
+ */
+export function centralScreensInTheWay(state: RootState | undefined): boolean {
   const stack = liveRootStack(state);
-  if (!stack) return false;
-  return stack.names.slice(0, stack.index).some((name) => {
-    const [first] = routeParts(name);
-    return first !== undefined && (CENTRAL_ROUTES.includes(first) || CENTRAL_SIGN_IN_ROUTES.includes(first));
-  });
+  if (!stack || stack.index === 0) return false;
+  return isCentralScreen(stack.names[stack.index]) || stack.names.slice(0, stack.index).some(isCentralScreen);
 }
 
 /** True when My facilities lies in the root stack under the route that is shown. */
 export function myFacilitiesBelow(state: RootState | undefined): boolean {
   const stack = liveRootStack(state);
   return stack !== undefined && stack.names.slice(0, stack.index).includes('facilities');
+}
+
+/** True when the route that is shown has anything under it in the root stack. */
+export function anythingBelow(state: RootState | undefined): boolean {
+  const stack = liveRootStack(state);
+  return stack !== undefined && stack.index > 0;
 }
 
 export function useRouteAuthState(): RouteAuthState {
@@ -155,6 +168,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     // block are all there is, as before.
     let leaveCentralScreens = false;
     let backToMyFacilities = false;
+    let leaveFacilityScreens = false;
     if (now.centralSignedIn !== undefined) {
       const rootState = now.navigationRef.getRootState?.() as RootState | undefined;
       // A server change rebuilds the navigation tree, and the guard's first replace then
@@ -174,14 +188,23 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
       )
         return;
       // A facility session has arrived on a central screen (the code step after a correct
-      // code): replacing only that screen would leave My facilities under the facility's
-      // home, where Back would show a spinner and then home again.
-      leaveCentralScreens = decision === 'home' && centralScreenBelow(rootState);
+      // code; My facilities over a facility's hidden home): replacing only that screen would
+      // leave My facilities under the facility's home, or a second home on the first.
+      leaveCentralScreens = decision === 'home' && centralScreensInTheWay(rootState);
       // A refused screen on top of My facilities (the waiting screen that found no request
       // to wait for and left for the facility's sign-in): go back to the My facilities
       // under it. Replacing would put a second one on top, both mounted.
       backToMyFacilities = decision === 'facilities' && myFacilitiesBelow(rootState);
+      // The facility ended the session on a screen pushed over its home, and it stays the
+      // selected server, so nothing rebuilds the tree: My facilities takes the place of the
+      // whole stack, not of that one screen, or the home would wait hidden under it.
+      leaveFacilityScreens = decision === 'facilities' && !backToMyFacilities && anythingBelow(rootState);
     }
+    // dismissAll has no target: POP_TO_TOP goes to the focused navigator first. That is the
+    // root stack here, because GuardedScreen has already unmounted the refused screen, and
+    // with it any stack layout of its own (a form past its first step). A refused route that
+    // stayed mounted with its own stack would pop that stack instead, and would need an
+    // action aimed at the root stack.
     if (decision === 'login') router.replace('/login');
     else if (decision === 'home') {
       if (leaveCentralScreens) router.dismissAll();
@@ -189,7 +212,10 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     } else if (decision === 'centralLogin') router.replace('/central-login');
     else if (decision === 'facilities') {
       if (backToMyFacilities) router.dismissTo('/facilities');
-      else router.replace('/facilities');
+      else {
+        if (leaveFacilityScreens) router.dismissAll();
+        router.replace('/facilities');
+      }
     }
     // `path` is listed so a second refused route is replaced as well.
   }, [decision, path, router, navigationReady]);

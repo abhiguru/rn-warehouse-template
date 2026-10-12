@@ -13,6 +13,7 @@ import { setCentralState } from '@/config/centralState';
 import { requestCentralCode, verifyCentralCode } from '@/config/centralSession';
 import { TERMS_VERSION } from '@/config/envConfig';
 import { recordTermsAccepted } from '@/config/centralTerms';
+import { startAtMyFacilities } from '@/navigation/myFacilities';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { localizeDigits, t as tr } from '@/i18n';
@@ -41,7 +42,8 @@ export default function CentralOtpScreen() {
         await recordTermsAccepted(phoneNumber);
         // A new sign-in is a start: one approved facility is opened without showing the list.
         setCentralState({ autoOpenSpent: false });
-        router.replace('/facilities');
+        // Alone in the stack: central sign-in must not stay under it.
+        startAtMyFacilities();
       } else {
         showAlert(tr('auth.otp.couldNotVerifyTitle'), result.message);
       }

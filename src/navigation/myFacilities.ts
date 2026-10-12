@@ -16,3 +16,15 @@ import { router } from 'expo-router';
 export function returnToMyFacilities(): void {
   router.dismissTo('/facilities');
 }
+
+/**
+ * To My facilities after central sign-in, as the only screen in the stack. The code step
+ * sits on central sign-in (and that, after a central session that ended on a central
+ * screen, on an earlier My facilities): replacing only the code step would leave those
+ * under the new My facilities, hidden until the person is signed in again and then mounted
+ * a second time.
+ */
+export function startAtMyFacilities(): void {
+  if (router.canDismiss()) router.dismissAll();
+  router.replace('/facilities');
+}
