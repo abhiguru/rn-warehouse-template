@@ -35,6 +35,7 @@ import {
   invoiceCustomersView,
   invoiceRecordsView,
 } from '@/features/filters/configs/reports/invoiceHistory';
+import { invoiceMonths, invoiceMonthTotals, type InvoiceMonth } from '@/features/filters/configs/reports/invoiceMonths';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
@@ -52,9 +53,8 @@ import type {
   CustomerInvoiceSummary,
   InvoiceHistoryData,
   InvoiceHistoryRecord,
-  InvoiceMonthlyBreakdown,
 } from '@/types/report.types';
-import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, indiaDay } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 const REPORT_ID = 'invoice-history';
@@ -254,7 +254,8 @@ const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: Custo
 /** An invoice card, or the date over the invoices of that day (only while sorted by date). */
 type InvoiceRow = { kind: 'date'; date: string } | { kind: 'invoice'; invoice: InvoiceHistoryRecord };
 
-const dayOf = (invoice: InvoiceHistoryRecord) => (invoice.invoice_date ?? '').slice(0, 10);
+/** The invoice date is an instant: its heading is the day it fell on in India, as the monthly table counts it. */
+const dayOf = (invoice: InvoiceHistoryRecord) => indiaDay(invoice.invoice_date);
 
 function withDateHeadings(invoices: InvoiceHistoryRecord[]): InvoiceRow[] {
   const rows: InvoiceRow[] = [];
@@ -342,7 +343,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     [view.words, byDate]
   );
 
-  const months = data?.by_month ?? [];
+  // The table is built from every invoice of the period, not the ones the search or the choice leaves.
+  const months = useMemo(() => invoiceMonths(data?.invoices ?? []), [data]);
   return (
     <ReportScaffold
       title={tr('reports.titles.invoiceHistory')}
@@ -377,7 +379,7 @@ type MonthRow = {
   id: string;
   month: string;
   invoices: string;
-  amount: string;
+  netAmount: string;
   paid: string;
   pending: string;
 };
@@ -396,38 +398,42 @@ const COUNT_COLUMN_WIDTH = 104;
 const monthColumns = (): DataTableColumn[] => [
   { key: 'month', label: tr('reports.customerActivity.trend.month') },
   { key: 'invoices', label: tr('reports.invoiceHistory.invoices'), dataType: 'number', width: COUNT_COLUMN_WIDTH },
-  { key: 'amount', label: tr('common.amount'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
+  { key: 'netAmount', label: tr('reports.invoiceHistory.netAmount'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
   { key: 'paid', label: tr('reports.customerActivity.paid'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
   { key: 'pending', label: tr('common.pending'), dataType: 'number', width: AMOUNT_COLUMN_WIDTH },
 ];
 
 const monthKey = (row: Record<string, unknown>) => String(row.id);
 
-/** The period month by month, with a totals row: shut until asked for, as it always was. */
-function MonthlyBreakdown({ months }: { months: InvoiceMonthlyBreakdown[] }) {
+/**
+ * The period month by month, with a totals row: shut until asked for, as it always was.
+ * Every figure is on the net basis (after labour, tax and discount), like the figures above it.
+ */
+function MonthlyBreakdown({ months }: { months: InvoiceMonth[] }) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [open, setOpen] = useState(false);
   const rows = useMemo<MonthRow[]>(
     () =>
       months.map(month => ({
-        id: month.month,
-        month: formatMonth(`${month.month.slice(0, 7)}-01`, 'short'),
-        invoices: formatNumber(month.invoice_count),
-        amount: formatSummaryAmount(month.total_amount),
-        paid: formatSummaryAmount(month.paid_amount),
-        pending: formatSummaryAmount(month.pending_amount),
+        id: month.month || 'undated',
+        // An invoice with no readable date shows "—" for its month.
+        month: formatMonth(month.month ? `${month.month}-01` : null, 'short'),
+        invoices: formatNumber(month.invoiceCount),
+        netAmount: formatSummaryAmount(month.netAmount),
+        paid: formatSummaryAmount(month.paidAmount),
+        pending: formatSummaryAmount(month.pendingAmount),
       })),
     [months]
   );
   const totals = useMemo(() => {
-    const sum = (pick: (month: InvoiceMonthlyBreakdown) => number) => months.reduce((total, month) => total + (Number(pick(month)) || 0), 0);
+    const sums = invoiceMonthTotals(months);
     return {
       month: tr('common.total'),
-      invoices: formatNumber(sum(month => month.invoice_count)),
-      amount: formatSummaryAmount(sum(month => month.total_amount)),
-      paid: formatSummaryAmount(sum(month => month.paid_amount)),
-      pending: formatSummaryAmount(sum(month => month.pending_amount)),
+      invoices: formatNumber(sums.invoiceCount),
+      netAmount: formatSummaryAmount(sums.netAmount),
+      paid: formatSummaryAmount(sums.paidAmount),
+      pending: formatSummaryAmount(sums.pendingAmount),
     };
   }, [months]);
   const title = tr('reports.invoiceHistory.monthlyBreakdown');

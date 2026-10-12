@@ -27,9 +27,12 @@ import { HighlightedText, matchesAnyWord } from '@/features/filters/components/H
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports';
 import {
   DISPATCH_ACTIVITY_CUSTOMER,
+  DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT,
   DISPATCH_ACTIVITY_CUSTOMERS,
   dispatchCustomersView,
   dispatchRecordsView,
+  dispatchWeight,
+  hasDispatchWeights,
 } from '@/features/filters/configs/reports/dispatchActivity';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
@@ -42,7 +45,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/reporting';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 
@@ -87,6 +90,8 @@ const makeStyles = (t: ThemeTokens) => ({
   figures: { alignItems: 'flex-end' as const },
   figureValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   figureLabel: { ...typography.caption1, color: t.text.secondary },
+  // The dispatch's weight, under its bags, only when it has one.
+  figureWeight: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   openButton: {
     width: touchTarget,
     minHeight: touchTarget,
@@ -285,7 +290,13 @@ interface CustomerReportProps {
 }
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
-  const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMER);
+  // Weight is a sort only while the dispatches have weights (an older server sends none, and a sort over
+  // zeros orders nothing). The answer decides, but it is asked for with the period the filters hold, so the
+  // choice between the two configurations (one list key: the stored search and sort carry over) is state,
+  // updated during the render that first sees the answer so that no frame is drawn with the wrong sort.
+  const [offerWeight, setOfferWeight] = useState(false);
+  const config = offerWeight ? DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT : DISPATCH_ACTIVITY_CUSTOMER;
+  const filters = useReportFilters(config);
   const { period, view } = filters.request;
   const query = useReportQuery<DispatchActivityData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
@@ -293,6 +304,9 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     fallbackError: tr('reports.dispatchActivity.loadError'),
   });
   const { data } = query;
+  // With no answer (the first load, or a new period's) the choice stays as it was: the sort chip must not flicker.
+  const answeredWithWeights = data ? hasDispatchWeights(data.dispatches) : offerWeight;
+  if (answeredWithWeights !== offerWeight) setOfferWeight(answeredWithWeights);
   const dispatches = useMemo(() => dispatchRecordsView(data?.dispatches ?? [], view), [data, view]);
   // Headings by day only make sense while the dispatches are in date order (§14.5).
   const byDate = view.sort?.field === 'date';
@@ -363,7 +377,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       title={tr('reports.titles.dispatchActivity')}
       subtitle={customerName || undefined}
       actions={actions}
-      filters={{ config: DISPATCH_ACTIVITY_CUSTOMER, state: filters }}
+      filters={{ config, state: filters }}
       query={query}
       kpis={kpis}
       status={{ range: period, shown: dispatches.length, total: data?.dispatches.length }}
@@ -412,6 +426,9 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
   const title = tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.disp_no) });
   const supervisor = dispatch.supervisor_name || '—';
   const items = dispatch.items ?? [];
+  // The weight when the server gave one (above zero); a card without one shows and reads as it always did.
+  const weightKg = dispatchWeight(dispatch);
+  const weight = weightKg === null ? null : formatWeight(weightKg);
   // With the items open, the search's words show in them; closed, the card names the items it found.
   const matched = expanded ? [] : hiddenMatches(dispatch, words, [title, supervisor]);
   const label = [
@@ -421,8 +438,11 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
       supervisor,
       bags: formatCount(dispatch.total_qty, 'bag'),
     }),
+    weight,
     ...matched,
-  ].join(', ');
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <View style={styles.card}>
@@ -451,6 +471,11 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
             <View style={styles.figures}>
               <Text style={styles.figureValue}>{formatNumber(dispatch.total_qty)}</Text>
               <Text style={styles.figureLabel}>{tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}</Text>
+              {weight ? (
+                <Text style={styles.figureWeight} {...singleLineText()}>
+                  {weight}
+                </Text>
+              ) : null}
             </View>
             <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
           </Pressable>

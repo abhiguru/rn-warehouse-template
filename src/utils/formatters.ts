@@ -289,6 +289,28 @@ export const todayInIST = (now: Date = new Date()): Date => {
 };
 
 /**
+ * The calendar day in India of a value from the server, as "YYYY-MM-DD".
+ *
+ * A plain "2026-10-12" is already a day and is returned as it is. An instant (an
+ * ISO string with a time, such as the "2026-09-30T20:00:00+00:00" of a timestamptz
+ * column, or a Date) is moved to India time (+05:30) and its year, month and day
+ * taken with the UTC getters, so the result does not depend on the zone of the
+ * phone: that instant is 1 Oct, not 30 Sep. Reports group by this day, as the
+ * facility's books do. A time written without a zone is read in the phone's zone.
+ * Empty or unreadable gives "".
+ */
+export const indiaDay = (value: string | Date | null | undefined): string => {
+  if (!value) return '';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const instant = typeof value === 'string' ? new Date(value) : value;
+  const time = instant.getTime();
+  if (Number.isNaN(time)) return '';
+  const india = new Date(time + (5 * 60 + 30) * 60_000);
+  const pad = (n: number, width = 2) => String(n).padStart(width, '0');
+  return `${pad(india.getUTCFullYear(), 4)}-${pad(india.getUTCMonth() + 1)}-${pad(india.getUTCDate())}`;
+};
+
+/**
  * The first and the last moment of a calendar day in India, for a range the
  * server reads as moments (timestamptz). The zone is written out, so the range
  * is the same day whatever the phone's or the database's clock zone is.

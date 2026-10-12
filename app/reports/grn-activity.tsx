@@ -46,7 +46,7 @@ import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivityRecord } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, indiaDay } from '@/utils/formatters';
 
 const REPORT_ID = 'grn-activity';
 
@@ -233,7 +233,9 @@ type GRNRow = { kind: 'date'; date: string } | { kind: 'grn'; grn: GRNActivityRe
 function withDateHeadings(grns: GRNActivityRecord[]): GRNRow[] {
   const rows: GRNRow[] = [];
   grns.forEach((grn, index) => {
-    if (index === 0 || grns[index - 1].grn_date !== grn.grn_date) rows.push({ kind: 'date', date: grn.grn_date });
+    // grn_date is an instant (timestamptz): a heading is the day it fell on in India, one per day, not per moment.
+    const day = indiaDay(grn.grn_date);
+    if (index === 0 || indiaDay(grns[index - 1].grn_date) !== day) rows.push({ kind: 'date', date: day });
     rows.push({ kind: 'grn', grn });
   });
   return rows;

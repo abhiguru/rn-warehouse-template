@@ -3,7 +3,7 @@
 ## Unreleased — reports (2026-10-12)
 
 No backend change is needed for the entries below unless an entry says so
-(item stock summary, report PDFs).
+(item stock summary, report PDFs, dispatch weights).
 
 - **Reports tab: pinned, recent and categories.** The tab now shows the reports
   you pinned (in the order you pinned them), up to three you opened last, then
@@ -37,6 +37,23 @@ Fixes on the report screens:
 - **Invoice history** now shows its figures (invoices and net amount for all
   customers; invoices, paid and pending for one customer). They were worked
   out but only ever drawn as a loading placeholder.
+- **Invoice history, one customer: the Monthly breakdown now adds up.** The
+  table took its Amount from the server's monthly total before labour, tax and
+  discount, next to a Paid and a Pending that are after them, so the columns did
+  not add up (for example Amount 699 against Pending 818 with Paid 0). The table
+  is now built in the app from the period's invoices, on the net basis (after
+  labour, tax and discount), with the columns Month, Invoices, Net amount, Paid
+  and Pending. Paid plus Pending is the Net amount when every invoice is paid or
+  pending; an invoice with any other status counts in Invoices and Net amount
+  only. The table covers every invoice of the period: the search and the Paid or
+  Pending choice do not narrow it. No backend change.
+- **Report days follow India's calendar (Invoice history, GRN activity).** The
+  months in the Monthly breakdown, and the date headings in the invoice history
+  and GRN activity reports, now use the calendar day in India. An invoice or a
+  GRN made between midnight and 5:30 am India time sits under its own day and
+  month, whatever the phone's time zone. GRN activity also drew one heading per
+  moment when two GRNs of a day had different times; it now draws one heading
+  per day.
 - **Stock summary**: a customer with nothing in stock can see their
   out-of-stock items. The "no stock" message used to replace the whole screen.
 - **Item stock summary**: a search typed while a load was in flight is no
@@ -116,11 +133,13 @@ The other report screens on the shared layer, and the work they build on:
   warehouse role opens a customer as its own page, and the customer opened last
   is one tap away; customers sort by bags, dispatches or name; a customer's
   dispatches search by number, supervisor and item names (a closed card names
-  the item it matched) and sort by date, number, bags or weight, with date
-  headings only under the date sort; opening a dispatch is its own target
-  beside the card, not a button inside it; an item row is read with its weight,
-  the "of N" quantity, rack and mark; an empty report no longer suggests a
-  longer period when the longest is chosen. No backend change.
+  the item it matched) and sort by date, number and bags, and by weight when
+  the server sends weights (backend migration 58; see "Dispatch activity:
+  weights"), with date headings only under the date sort; opening a dispatch is
+  its own target beside the card, not a button inside it; an item row is read
+  with its weight, the "of N" quantity, rack and mark; an empty report no longer
+  suggests a longer period when the longest is chosen. No backend change,
+  except for weights (migration 58).
 - **Invoice history** is built on the shared report layer: each customer row
   shows its net amount, and customers sort by net amount, invoices or name; a
   customer's invoices search by invoice number, GRN and item names, sort by
@@ -264,11 +283,25 @@ After the device runs (2026-10-12):
   "Invoices" no longer breaks as "Invoice / s" at large text.
 - **Dispatch activity, one customer.** The Weight sort is removed, because the
   server sends no weight for a dispatch and the sort changed nothing; a Weight
-  sort remembered from before opens on date, newest first.
+  sort remembered from before opens on date, newest first. Since changed: the
+  Weight sort is offered again when the server sends weights (see "Dispatch
+  activity: weights" below).
 - **Dispatch activity: opening a dispatch.** The control that opens a dispatch
   from its card appears only when the server sends the dispatch's id, which
   **needs backend migration 57**; against an older backend the cards open and
   close as before and have no such control.
+- **Dispatch activity: weights.** When the facility's server sends dispatch
+  weights, each dispatch card of one customer shows the dispatch's weight (kg)
+  under its bag count, a screen reader hears it with the card, and the sort
+  sheet offers Weight. This **needs backend migration 58**:
+  `get_customer_dispatch_activity` then returns `total_weight` (kg) for each
+  dispatch and `weight` for each item line. Deploy the backend first. Weight is
+  offered while a dispatch of the period has a weight above zero. On an older
+  backend nothing changes: no weight on the cards, the sort options are Date,
+  Dispatch number and Bags, and a Weight sort remembered from before opens on
+  date, newest first (the remembered choice is kept and comes back once weights
+  are sent). The report PDF has no weight column, so a PDF shared while sorted
+  by Weight is in its own order.
 - **Start-up.** `reportPrefsSlice` no longer imports `authSlice`, which
   removes one require-cycle warning at start-up (the same cycle through
   `listFilterSlice` remains).
@@ -276,9 +309,9 @@ After the device runs (2026-10-12):
 Backend migrations this release of the reports work relates to: 52 (server
 sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
 function (report PDFs), 54–56 (a period includes its last day; report days
-follow India's calendar) and 57 (the dispatch id). The app works against a
-backend without them, with the fallbacks described in the entries above, and
-nothing in the app needs migrations 54–56.
+follow India's calendar), 57 (the dispatch id) and 58 (the dispatch weight).
+The app works against a backend without them, with the fallbacks described in
+the entries above, and nothing in the app needs migrations 54–56.
 
 ## Unreleased — central login in the app (2026-10-12)
 

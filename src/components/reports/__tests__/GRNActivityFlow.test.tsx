@@ -352,6 +352,21 @@ describe('GRN activity, one customer', () => {
     expect(screen.grnRows()).toEqual(['Sun, 20 Sep', 'GRN A0050', 'Yesterday', 'GRN A0009', 'GRN A0100', 'Today', 'GRN A0010']);
   });
 
+  it('puts a GRN under the day it fell on in India, one heading per day, when the date is an instant', async () => {
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    // A timestamptz comes in UTC: the first two are both 12 Oct in India (09:30 and 01:30), the third is
+    // 11 Oct 01:30. By the first ten characters the second would be 11 Oct, and by the whole string every
+    // GRN would have a heading of its own.
+    const instants = [
+      grn('g5', 'A0120', '2026-10-12T04:00:00+00:00', 10, 10, false),
+      grn('g6', 'A0119', '2026-10-11T20:00:00+00:00', 20, 20, false),
+      grn('g7', 'A0118', '2026-10-10T20:00:00+00:00', 30, 30, false),
+    ];
+    customerActivity.mockResolvedValue({ ...answerGrns, data: { ...answerGrns.data, grns: instants } } as never);
+    const screen = await open(makeStore());
+    expect(screen.grnRows()).toEqual(['Today', 'GRN A0120', 'GRN A0119', 'Yesterday', 'GRN A0118']);
+  });
+
   it('narrows to the GRNs not invoiced, and Clear all brings the others back', async () => {
     mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
     const screen = await open(makeStore());

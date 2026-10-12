@@ -8,7 +8,6 @@
  */
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { FilterValue, FilterValues, SortState } from '@/features/filters/types';
-import { logout } from './authSlice';
 
 export interface ListFilterEntry {
   values: FilterValues;
@@ -51,7 +50,10 @@ const listFilterSlice = createSlice({
     },
   },
   extraReducers: builder => {
-    builder.addCase(logout.fulfilled, () => initialState);
+    // Matched by type string, not by importing the `logout` thunk from the auth slice: that import
+    // closes a require cycle (this slice -> auth slice -> sessionScopedState -> this slice).
+    // Must equal `logout.fulfilled.type`: the thunk's 'auth/logout' prefix plus '/fulfilled'.
+    builder.addCase('auth/logout/fulfilled', () => initialState);
   },
 });
 
