@@ -71,10 +71,19 @@ const found: Discovery = {
   server: { origin: 'https://found.example.test', instanceId: 'instance-found', displayName: 'Fictional Found', companyName: 'Fictional Company' },
   config: {} as never,
 };
+// The mocked react-native components are plain strings in the tree, so the tag names are cast
+// to the element type findByType expects (the same cast the other component tests use).
+const tag = (name: string) => name as unknown as React.ElementType;
+const TEXT_INPUT = tag('TextInput');
+const BUTTON = tag('Button');
+const TEXT = tag('Text');
+const SCROLL_VIEW = tag('ScrollView');
+const KEYBOARD_AVOIDING_VIEW = tag('KeyboardAvoidingView');
+
 let renderer: ReturnType<typeof create> | undefined;
-const input = () => renderer!.root.findByType('TextInput');
-const button = (label: string) => renderer!.root.findAllByType('Button').find(node => node.props.children === label);
-const texts = () => renderer!.root.findAllByType('Text').map(node => node.props.children);
+const input = () => renderer!.root.findByType(TEXT_INPUT);
+const button = (label: string) => renderer!.root.findAllByType(BUTTON).find(node => node.props.children === label);
+const texts = () => renderer!.root.findAllByType(TEXT).map(node => node.props.children);
 const render = async (props: React.ComponentProps<typeof OperatorServerSelection> = { initial: true }) => {
   await act(async () => { renderer = create(<OperatorServerSelection {...props} />); });
 };
@@ -164,21 +173,21 @@ describe('scrolling with the keyboard open', () => {
     await render({ onCancel: jest.fn(), onChoose: jest.fn() });
     await act(async () => { input().props.onChangeText('https://found.example.test'); });
     await act(async () => { button('Check server')!.props.onPress(); });
-    expect(renderer!.root.findByType('ScrollView').props.keyboardShouldPersistTaps).toBe('handled');
+    expect(renderer!.root.findByType(SCROLL_VIEW).props.keyboardShouldPersistTaps).toBe('handled');
   });
 
   it('moves the content above the keyboard with padding on iOS', async () => {
     await render();
-    const avoiding = renderer!.root.findByType('KeyboardAvoidingView');
+    const avoiding = renderer!.root.findByType(KEYBOARD_AVOIDING_VIEW);
     expect(avoiding.props.behavior).toBe('padding');
-    expect(avoiding.findAllByType('ScrollView')).toHaveLength(1);
+    expect(avoiding.findAllByType(SCROLL_VIEW)).toHaveLength(1);
   });
 
   it('shrinks the content above the keyboard on Android, as the sign-in screens do', async () => {
     (Platform as { OS: string }).OS = 'android';
     await render();
-    const avoiding = renderer!.root.findByType('KeyboardAvoidingView');
+    const avoiding = renderer!.root.findByType(KEYBOARD_AVOIDING_VIEW);
     expect(avoiding.props.behavior).toBe('height');
-    expect(avoiding.findAllByType('ScrollView')).toHaveLength(1);
+    expect(avoiding.findAllByType(SCROLL_VIEW)).toHaveLength(1);
   });
 });
