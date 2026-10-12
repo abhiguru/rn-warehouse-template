@@ -32,6 +32,13 @@
  * central screen); Back from the code step while a code is being checked; and
  * a forced sign-out on a facility screen, which left the facility's home under
  * My facilities and a second home on it after the next open.
+ *
+ * From the review after that: the guard's own "entering a facility" rule, through the real
+ * router; a facility's own SMS sign-in that clears `facilitySmsOrigin` as the app does; a
+ * facility session that ends after the central one (the guard replaced only the top route
+ * with central sign-in, leaving the home under it); Back during the central code check; and
+ * the waiting screen after a facility's own SMS sign-in (it left that sign-in under My
+ * facilities).
  */
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text } from 'react-native';
@@ -48,7 +55,8 @@ import FacilityLinkScreen from '../../../app/facility-link';
 import CentralOtpScreen from '../../../app/central-otp';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
 import { getCentralState, nextOutcomeId, resetCentralStateForTests, setCentralState, type OpenOutcome } from '@/config/centralState';
-import { addMyFacility, loadMyFacilities } from '@/config/centralFacilities';
+import { addMyFacility, loadMyFacilities, noteFacilitySmsSignIn } from '@/config/centralFacilities';
+import { hasAcceptedTerms } from '@/config/centralTerms';
 import { discoverOperator, onOperatorServerChange, saveOperatorServer } from '@/config/operatorServer';
 import { requestFacilityToken, verifyCentralCode } from '@/config/centralSession';
 import { exchangeCentralIdentity, getPendingEnrollmentToken, signInWithPhone, signOutPendingEnrollment } from '@/config/supabaseConfig';
@@ -614,7 +622,7 @@ describe('back from the code step', () => {
 });
 
 describe("the waiting screen after a facility's own SMS sign-in (reached by replace: no My facilities under it)", () => {
-  it('"My facilities" leaves exactly one My facilities', async () => {
+  it('"My facilities" leaves My facilities alone: the facility\'s sign-in does not stay under it', async () => {
     // As after beginFacilitySmsSignIn and the code screen: the facility's sign-in is at the
     // bottom of the stack and the waiting screen has taken the code screen's place.
     jest.mocked(getPendingEnrollmentToken).mockResolvedValue('enrollment-token');
@@ -625,27 +633,33 @@ describe("the waiting screen after a facility's own SMS sign-in (reached by repl
     await act(async () => { router.push('/pending-enrollment'); });
     await wait(STEP_MS);
     expect(rootRoutes()).toEqual(['login', 'pending-enrollment']);
+    navigations = [];
 
     await pressButton('My facilities');
     expect(getCentralState().facilitySmsOrigin).toBeNull();
-    expect(pathname()).toBe('/facilities');
-    expect(rootRoutes().filter(name => name === 'facilities')).toHaveLength(1);
-    expect(mountedFacilities()).toBe(1);
-    // The facility's sign-in is not shown to a person who belongs on My facilities.
-    expect(texts()).not.toContain('facility sign-in');
-    expect(rootRoutes()).toEqual(['login', 'facilities']);
-
-    // Back passes the hidden sign-in route under it once; the guard brings My facilities back, alone.
-    await pressBack();
+    // The facility's sign-in is taken off the stack: My facilities alone, so Back has nothing
+    // to go back to (before, [login, facilities]: one Back showed a spinner and the guard
+    // brought My facilities back).
     expect(pathname()).toBe('/facilities');
     expect(rootRoutes()).toEqual(['facilities']);
     expect(mountedFacilities()).toBe(1);
+    expect(router.canGoBack()).toBe(false);
     expect(texts()).not.toContain('facility sign-in');
+    expect(texts()).not.toContain('Waiting for approval');
+    // The guard added nothing to the control's own navigation: the stack is taken down and
+    // My facilities replaces the sign-in, and that is all.
+    expect(navigations.map(([kind]) => kind)).toEqual(['POP_TO_TOP', 'REPLACE']);
+    expect(navigations[1][1]).toBe('/facilities');
   });
 });
 
 describe("a facility's own SMS sign-in that ends in a session", () => {
-  it('is left as in a build without central login: the home over that sign-in, nothing taken off the stack', async () => {
+  /**
+   * As the app does it: app/otp.tsx stores the profile and replaces the code screen by the
+   * home, and `noteFacilitySmsSignIn` (centralFacilities.ts) clears `facilitySmsOrigin` a
+   * moment later, once the list is written. The real function is called, not a copy of it.
+   */
+  const signInWithOwnSms = async () => {
     await start();
     await act(async () => { setCentralState({ facilitySmsOrigin: ORIGIN }); });
     await wait(STEP_MS);
@@ -653,13 +667,33 @@ describe("a facility's own SMS sign-in that ends in a session", () => {
     expect(rootRoutes()).toEqual(['login', 'otp']);
     navigations = [];
 
-    // As app/otp.tsx after a correct code: the profile, then its own replace.
     await act(async () => { mockAuthStore.set(PROFILE); router.replace('/'); });
     await wait(STEP_MS);
+    await act(async () => { await noteFacilitySmsSignIn('approved'); });
+    await wait(STEP_MS);
+    expect(getCentralState().facilitySmsOrigin).toBeNull();
+  };
+
+  it('is left as in a build without central login: the home over that sign-in, nothing taken off the stack', async () => {
+    await signInWithOwnSms();
     expect(rootRoutes()).toEqual(['login', '(tabs)']);
     expect(mountedHomes()).toBe(1);
     // The guard adds nothing to the code screen's own navigation.
     expect(navigations).toEqual([['REPLACE', '/']]);
+  });
+
+  it('then a forced sign-out ends on My facilities alone, not on the facility\'s sign-in', async () => {
+    await signInWithOwnSms();
+    expect(rootRoutes()).toEqual(['login', '(tabs)']);
+
+    await act(async () => { mockAuthStore.set(null); });
+    await wait(STEP_MS);
+    expect(pathname()).toBe('/facilities');
+    expect(rootRoutes()).toEqual(['facilities']);
+    expect(mountedFacilities()).toBe(1);
+    expect(mountedHomes()).toBe(0);
+    expect(texts()).not.toContain('facility sign-in');
+    expect(router.canGoBack()).toBe(false);
   });
 });
 
@@ -754,6 +788,78 @@ describe('central sign-in', () => {
     expect(mountedFacilities()).toBe(1);
     expect(router.canGoBack()).toBe(false);
   });
+
+  describe('Back while the code is being checked', () => {
+    /** The central service answers when the test says so. */
+    let answer: (result: { ok: true } | { ok: false; message: string }) => void;
+    const WRONG = 'That code is wrong or has expired.';
+    const checkThenBack = async (back: boolean) => {
+      setCentralState({ status: 'signedOut', user: null });
+      await start('/central-login');
+      jest.mocked(verifyCentralCode).mockImplementation(
+        () =>
+          new Promise(resolve => {
+            answer = result => {
+              // As the real one: the session is stored, and the central state says who is signed in.
+              if (result.ok) setCentralState({ status: 'signedIn', user: USER, endedMessage: null });
+              resolve({ ...result, user: USER } as never);
+            };
+          })
+      );
+      await act(async () => { setCentralState({ signInPhone: PHONE }); });
+      await go(() => router.push('/central-otp'));
+      await enterCode('482913');
+      // The service has not answered yet.
+      expect(verifyCentralCode).toHaveBeenCalledTimes(1);
+      expect(rootRoutes()).toEqual(['central-login', 'central-otp']);
+      if (back) {
+        await pressBack();
+        expect(pathname()).toBe('/central-login');
+        expect(rootRoutes()).toEqual(['central-login']);
+      }
+      jest.mocked(showAlert).mockClear();
+      navigations = [];
+    };
+
+    it('then a correct code: My facilities alone, once; the removed code step does not navigate again', async () => {
+      await checkThenBack(true);
+      await act(async () => { answer({ ok: true }); });
+      await wait(500);
+
+      expect(pathname()).toBe('/facilities');
+      expect(rootRoutes()).toEqual(['facilities']);
+      expect(mountedFacilities()).toBe(1);
+      // The guard's own redirect (central sign-in is shown to a person who is signed in now) is
+      // the only navigation: the code step, already removed, adds none.
+      expect(navigations).toEqual([['REPLACE', '/facilities']]);
+      expect(router.canGoBack()).toBe(false);
+      // The sign-in itself is complete: the session is stored, and the terms tick is remembered.
+      expect(getCentralState().status).toBe('signedIn');
+      expect(await hasAcceptedTerms(PHONE)).toBe(true);
+      expect(showAlert).not.toHaveBeenCalled();
+    });
+
+    it('then a wrong code: nothing is said over the screen that is shown now', async () => {
+      await checkThenBack(true);
+      await act(async () => { answer({ ok: false, message: WRONG }); });
+      await wait(500);
+
+      expect(showAlert).not.toHaveBeenCalled();
+      expect(pathname()).toBe('/central-login');
+      expect(rootRoutes()).toEqual(['central-login']);
+      expect(navigations).toEqual([]);
+    });
+
+    it('without Back, a wrong code is said once on the code step (the control for the case above)', async () => {
+      await checkThenBack(false);
+      await act(async () => { answer({ ok: false, message: WRONG }); });
+      await wait(500);
+
+      expect(showAlert).toHaveBeenCalledTimes(1);
+      expect(showAlert).toHaveBeenCalledWith(expect.any(String), WRONG);
+      expect(rootRoutes()).toEqual(['central-login', 'central-otp']);
+    });
+  });
 });
 
 describe('a forced sign-out on a facility screen (the facility stays selected: no rebuild)', () => {
@@ -809,5 +915,113 @@ describe('a forced sign-out on a facility screen (the facility stays selected: n
     expect(mountedHomes()).toBe(1);
     expect(mountedFacilities()).toBe(0);
     expect(router.canGoBack()).toBe(false);
+  });
+});
+
+describe('the facility session ends after the central session has ended (no rebuild)', () => {
+  /** Inside the facility on a screen pushed over its home; the central session ended on its own. */
+  const insideWithoutCentralSession = async () => {
+    mockAuthStore.set(PROFILE);
+    await start('/');
+    await go(() => router.push('/settings'));
+    expect(rootRoutes()).toEqual(['(tabs)', 'settings']);
+    // A signed central call was refused (endLocally in centralSession.ts); the facility keeps its session.
+    await act(async () => {
+      setCentralState({
+        status: 'signedOut', user: null, signInPhone: null, endedMessage: 'Your sign-in has ended. Sign in again.',
+        facilitySmsOrigin: null, opening: null, outcome: null, pendingLink: null,
+      });
+    });
+    await wait(STEP_MS);
+    expect(rootRoutes()).toEqual(['(tabs)', 'settings']);
+    navigations = [];
+  };
+
+  it('then the facility session ends on that screen: central sign-in alone, and Back has nothing to go back to', async () => {
+    await insideWithoutCentralSession();
+    await act(async () => { mockAuthStore.set(null); });
+    await wait(STEP_MS);
+
+    expect(pathname()).toBe('/central-login');
+    // Not [(tabs), central-login]: one Back from there showed a spinner and then central sign-in again.
+    expect(rootRoutes()).toEqual(['central-login']);
+    expect(texts()).toContain('central sign-in');
+    expect(mountedHomes()).toBe(0);
+    expect(router.canGoBack()).toBe(false);
+    expect(navigations.map(([kind]) => kind)).toEqual(['POP_TO_TOP', 'REPLACE']);
+    expect(navigations[1][1]).toBe('/central-login');
+  });
+
+  it('on the home itself there is nothing to take off: central sign-in replaces it, as before', async () => {
+    mockAuthStore.set(PROFILE);
+    await start('/');
+    await act(async () => { setCentralState({ status: 'signedOut', user: null, endedMessage: null }); });
+    await wait(STEP_MS);
+    navigations = [];
+    await act(async () => { mockAuthStore.set(null); });
+    await wait(STEP_MS);
+
+    expect(rootRoutes()).toEqual(['central-login']);
+    expect(navigations).toEqual([['REPLACE', '/central-login']]);
+  });
+});
+
+describe("My facilities reached while the facility's own sign-in is in use", () => {
+  it('a route that sends the person to the facility\'s sign-in takes the stack down first: one sign-in', async () => {
+    await start();
+    await act(async () => { setCentralState({ facilitySmsOrigin: ORIGIN }); });
+    await wait(STEP_MS);
+    expect(rootRoutes()).toEqual(['login']);
+
+    // A central route over the facility's sign-in (the origin still names a facility that is signed into by SMS).
+    await go(() => router.push('/facilities'));
+    expect(rootRoutes()).toEqual(['login']);
+    expect(texts().filter(text => text === 'facility sign-in')).toHaveLength(1);
+    expect(router.canGoBack()).toBe(false);
+  });
+});
+
+describe('a facility session that arrives while a central screen is shown with anything under it', () => {
+  it('My facilities pushed over the home of the facility the person is inside: the home alone, once', async () => {
+    mockAuthStore.set(PROFILE);
+    await start('/');
+    expect(rootRoutes()).toEqual(['(tabs)']);
+    expect(mountedHomes()).toBe(1);
+    navigations = [];
+
+    await go(() => router.push('/facilities'));
+    // Not [(tabs), (tabs)]: replacing only My facilities put a second home on the first.
+    expect(pathname()).toBe('/');
+    expect(rootRoutes()).toEqual(['(tabs)']);
+    expect(mountedHomes()).toBe(1);
+    expect(mountedFacilities()).toBe(0);
+    expect(router.canGoBack()).toBe(false);
+    expect(navigations.map(([kind]) => kind)).toEqual(['PUSH', 'POP_TO_TOP', 'REPLACE']);
+  });
+
+  it('My facilities over a facility sign-in, and then a facility session: the home alone, not on top of the sign-in', async () => {
+    jest.mocked(getPendingEnrollmentToken).mockResolvedValue('enrollment-token');
+    await start();
+    await act(async () => { setCentralState({ facilitySmsOrigin: ORIGIN }); });
+    await wait(STEP_MS);
+    await go(() => router.push('/pending-enrollment'));
+    expect(rootRoutes()).toEqual(['login', 'pending-enrollment']);
+    // The way the waiting screen's control used to leave it: the sign-in under My facilities.
+    // (The waiting screen is allowed with or without the facility's sign-in in use, so the guard
+    // does not act between the two steps.)
+    await act(async () => { setCentralState({ facilitySmsOrigin: null }); router.replace('/facilities'); });
+    await wait(STEP_MS);
+    expect(rootRoutes()).toEqual(['login', 'facilities']);
+    expect(mountedFacilities()).toBe(1);
+    navigations = [];
+
+    await act(async () => { mockAuthStore.set(PROFILE); });
+    await wait(STEP_MS);
+    expect(pathname()).toBe('/');
+    expect(rootRoutes()).toEqual(['(tabs)']);
+    expect(mountedHomes()).toBe(1);
+    expect(mountedFacilities()).toBe(0);
+    expect(router.canGoBack()).toBe(false);
+    expect(navigations.map(([kind]) => kind)).toEqual(['POP_TO_TOP', 'REPLACE']);
   });
 });

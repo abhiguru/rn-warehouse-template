@@ -231,7 +231,8 @@ and every way back returns to that same My facilities:
 Both controls go back to the My facilities under the screen (`returnToMyFacilities` in
 `src/navigation/myFacilities.ts`); replacing the screen would leave two, both mounted. Where
 none is under the screen (the waiting screen after a facility's own SMS sign-in, with that
-facility's sign-in under it) My facilities takes the screen's place. An answer of an open is
+facility's sign-in under it) the stack is taken down and My facilities replaces the screen,
+so it is alone. An answer of an open is
 taken by exactly one screen (`consumeOpenOutcome` answers true once), so a second My
 facilities, however it came about, cannot open a second waiting screen or repeat a message.
 
@@ -244,13 +245,18 @@ under one another:
 | An open that the facility answers with a session, and a correct code on the code step | The facility's home alone |
 | A forced sign-out on a facility screen while the facility stays selected (nothing rebuilds the tree) | My facilities alone; opening the facility again gives its home alone |
 | A facility's own SMS sign-in | That facility's sign-in under the code step and then under the home, as in a build without central login |
-| "My facilities" on the waiting screen after a facility's own SMS sign-in | My facilities over that facility's hidden sign-in; one Back passes it and leaves My facilities alone |
+| A forced sign-out after that sign-in (`facilitySmsOrigin` is cleared when it finishes) | My facilities alone |
+| "My facilities" on the waiting screen after a facility's own SMS sign-in | My facilities alone: that facility's sign-in is taken off the stack, so Back has nothing to go back to |
+| The facility session ends on a screen pushed over its home after the central session has ended | Central sign-in alone (and the same for the facility's own sign-in, where the person is sent to it) |
+| Hardware Back while the central code is being checked, then a correct code | My facilities alone, once: the session is stored and the guard shows My facilities in place of central sign-in; the removed code step does not navigate again. A wrong code is not said over the screen that is shown by then |
 
 The route guard does this (`src/navigation/RouteGuard.tsx`, central login only): a refused
 screen on top of My facilities goes back to that My facilities; a session that ends on a
 screen pushed over the facility's home takes the whole stack down before My facilities
-replaces it; and a facility session that arrives while a central screen is shown or lies
-underneath takes the stack down before the home replaces it.
+replaces it; a facility session that arrives while a central screen is shown with anything
+under it, or lies underneath, takes the stack down before the home replaces it; and a refused
+screen with anything under it that sends the person to central sign-in or to the facility's
+own sign-in takes the stack down first, so neither is left over a facility's hidden home.
 
 **Inside a facility.** Settings shows "Switch facility" with the facility's name in place of
 "Change warehouse server"; it asks first and then leaves through the same cleanup, ending

@@ -3,6 +3,7 @@
  * was opened on top of it, the waiting screen and the code step.
  */
 import { router } from 'expo-router';
+import { currentRootState, myFacilitiesBelow } from './RouteGuard';
 
 /**
  * Back to the My facilities that is already in the stack. `replace` would put a second one
@@ -10,11 +11,20 @@ import { router } from 'expo-router';
  * no longer leaves in one press.
  *
  * When there is none below (the waiting screen after a facility's own SMS sign-in is
- * reached by `replace`, with that facility's sign-in under it), `dismissTo` puts My
- * facilities in the place of the focused screen, as `replace` did.
+ * reached by `replace`, with that facility's sign-in under it), the stack is taken down
+ * and My facilities replaces the screen: alone, as after central sign-in. `dismissTo` would
+ * leave [login, facilities], and one Back from there shows a spinner while the guard
+ * brings My facilities back. When the navigator's state cannot be read, `dismissTo` is all
+ * there is.
  */
 export function returnToMyFacilities(): void {
-  router.dismissTo('/facilities');
+  const rootState = currentRootState();
+  if (rootState === undefined || myFacilitiesBelow(rootState)) {
+    router.dismissTo('/facilities');
+    return;
+  }
+  if (router.canDismiss()) router.dismissAll();
+  router.replace('/facilities');
 }
 
 /**

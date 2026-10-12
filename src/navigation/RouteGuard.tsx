@@ -94,6 +94,18 @@ export function anythingBelow(state: RootState | undefined): boolean {
   return stack !== undefined && stack.index > 0;
 }
 
+/**
+ * The root navigator, for code that is neither a component nor a hook (myFacilities.ts):
+ * set while the guard below is mounted, which is whenever the app's screens are.
+ */
+let rootNavigation: { isReady?: () => boolean; getRootState?: () => unknown } | undefined;
+
+/** The root navigator's state right now; undefined when no guard is mounted or it cannot be read. */
+export function currentRootState(): RootState | undefined {
+  if (!rootNavigation?.isReady?.()) return undefined;
+  return rootNavigation.getRootState?.() as RootState | undefined;
+}
+
 export function useRouteAuthState(): RouteAuthState {
   const { userProfile, session, user } = useAppSelector((state) => state.auth);
   const central = useCentralState();
@@ -160,6 +172,12 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
   useEffect(() => {
     live.current = { navigationRef, isSignedIn, role, centralSignedIn, facilitySms };
   });
+  useEffect(() => {
+    rootNavigation = navigationRef;
+    return () => {
+      if (rootNavigation === navigationRef) rootNavigation = undefined;
+    };
+  }, [navigationRef]);
 
   useEffect(() => {
     if (!navigationReady || decision === 'allow') return;
@@ -169,6 +187,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     let leaveCentralScreens = false;
     let backToMyFacilities = false;
     let leaveFacilityScreens = false;
+    let leaveForSignIn = false;
     if (now.centralSignedIn !== undefined) {
       const rootState = now.navigationRef.getRootState?.() as RootState | undefined;
       // A server change rebuilds the navigation tree, and the guard's first replace then
@@ -199,18 +218,27 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
       // selected server, so nothing rebuilds the tree: My facilities takes the place of the
       // whole stack, not of that one screen, or the home would wait hidden under it.
       leaveFacilityScreens = decision === 'facilities' && !backToMyFacilities && anythingBelow(rootState);
+      // Sign-in, central or the facility's own, is a start: nothing stays under it. The
+      // facility session that ends on a screen pushed over the home, after the central session
+      // has ended, would otherwise leave [(tabs), central-login], and Back from there shows a
+      // spinner and then central sign-in again.
+      leaveForSignIn = (decision === 'login' || decision === 'centralLogin') && anythingBelow(rootState);
     }
     // dismissAll has no target: POP_TO_TOP goes to the focused navigator first. That is the
     // root stack here, because GuardedScreen has already unmounted the refused screen, and
     // with it any stack layout of its own (a form past its first step). A refused route that
     // stayed mounted with its own stack would pop that stack instead, and would need an
     // action aimed at the root stack.
-    if (decision === 'login') router.replace('/login');
-    else if (decision === 'home') {
+    if (decision === 'login') {
+      if (leaveForSignIn) router.dismissAll();
+      router.replace('/login');
+    } else if (decision === 'home') {
       if (leaveCentralScreens) router.dismissAll();
       router.replace('/');
-    } else if (decision === 'centralLogin') router.replace('/central-login');
-    else if (decision === 'facilities') {
+    } else if (decision === 'centralLogin') {
+      if (leaveForSignIn) router.dismissAll();
+      router.replace('/central-login');
+    } else if (decision === 'facilities') {
       if (backToMyFacilities) router.dismissTo('/facilities');
       else {
         if (leaveFacilityScreens) router.dismissAll();

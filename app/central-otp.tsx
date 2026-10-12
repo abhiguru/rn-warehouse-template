@@ -4,8 +4,8 @@
  * stored and the person goes to My facilities. The layout is the facility
  * sign-in's: src/components/auth/CodeEntryForm.tsx.
  */
-import React, { useEffect, useState } from 'react';
-import { router } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { router, useNavigation } from 'expo-router';
 import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
@@ -27,6 +27,18 @@ export default function CentralOtpScreen() {
   // A countdown is a number: ૦-૯ in Gujarati.
   const countdown = localizeDigits(countdownText);
 
+  // Set when this screen is taken off the stack: by the hardware Back button, by the back
+  // arrow, or by the navigation that follows a correct code. The check may still be running.
+  const removed = useRef(false);
+  const navigation = useNavigation();
+  useEffect(
+    () =>
+      navigation.addListener('beforeRemove', () => {
+        removed.current = true;
+      }),
+    [navigation]
+  );
+
   useEffect(() => {
     if (!phoneNumber) router.replace('/central-login');
   }, [phoneNumber]);
@@ -42,9 +54,14 @@ export default function CentralOtpScreen() {
         await recordTermsAccepted(phoneNumber);
         // A new sign-in is a start: one approved facility is opened without showing the list.
         setCentralState({ autoOpenSpent: false });
+        // The person left while the code was being checked. The session is stored, so the
+        // route guard shows My facilities in place of the sign-in screen that is shown now;
+        // starting again from this screen would put a second My facilities on top of it.
+        if (removed.current) return;
         // Alone in the stack: central sign-in must not stay under it.
         startAtMyFacilities();
-      } else {
+      } else if (!removed.current) {
+        // Not over the screen the person has gone back to.
         showAlert(tr('auth.otp.couldNotVerifyTitle'), result.message);
       }
     } finally {

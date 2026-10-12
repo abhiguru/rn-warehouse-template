@@ -5,10 +5,12 @@
  * navigation tree): with central login the guard goes by the route the navigator really
  * shows. Entering a facility from a central screen takes the central screens off the
  * stack. Without central login the navigator's state is not consulted and nothing changes.
+ * `returnToMyFacilities` reads the same navigator through the mounted guard.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { anythingBelow, centralScreensInTheWay, liveRootRoute, myFacilitiesBelow, ROUTER_ROOT, useRootRouteGuard } from '../RouteGuard';
+import { returnToMyFacilities } from '../myFacilities';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
 
 const mockReplace = jest.fn();
@@ -18,6 +20,7 @@ let mockCalls: string[] = [];
 let mockSegments: string[] = [];
 let mockRootState: unknown;
 let mockCentralOn = true;
+let mockCanDismiss = true;
 let mockAuth: { userProfile: unknown; session: unknown; user: unknown } = { userProfile: null, session: null, user: null };
 
 jest.mock('expo-router', () => {
@@ -27,7 +30,14 @@ jest.mock('expo-router', () => {
     dismissTo: (href: string) => { mockCalls.push(`dismissTo ${href}`); },
   };
   const navigationRef = { isReady: () => true, addListener: () => () => undefined, getRootState: () => mockRootState };
-  return { useRouter: () => router, useSegments: () => mockSegments, useNavigationContainerRef: () => navigationRef };
+  // The imperative router of myFacilities.ts is the same object as the hook's.
+  const imperative = { ...router, canDismiss: () => mockCanDismiss };
+  return {
+    useRouter: () => router,
+    router: imperative,
+    useSegments: () => mockSegments,
+    useNavigationContainerRef: () => navigationRef,
+  };
 });
 jest.mock('@/store/hooks', () => ({
   useAppSelector: (select: (state: unknown) => unknown) => select({ auth: mockAuth }),
@@ -62,6 +72,7 @@ beforeEach(() => {
   mockDismissAll.mockReset();
   mockCalls = [];
   mockCentralOn = true;
+  mockCanDismiss = true;
   mockAuth = { userProfile: null, session: null, user: null };
   mockRootState = undefined;
   resetCentralStateForTests();
@@ -202,6 +213,109 @@ describe('a facility session that ends on a screen pushed over the home (no rebu
     mockRootState = rootState('(tabs)', 'settings');
     await render();
     expect(mockCalls).toEqual(['replace /login']);
+  });
+});
+
+describe('sign-in is a start: nothing stays under it (central login only)', () => {
+  const signedOutEverywhere = () => setCentralState({ status: 'signedOut', user: null });
+
+  it('central sign-in, on a screen pushed over the home: the stack is taken down first', async () => {
+    signedOutEverywhere();
+    mockSegments = ['settings'];
+    mockRootState = rootState('(tabs)', 'settings');
+    await render();
+    expect(mockCalls).toEqual(['dismissAll', 'replace /central-login']);
+  });
+
+  it('central sign-in, on the first route: nothing to take off, it is replaced', async () => {
+    signedOutEverywhere();
+    mockSegments = ['(tabs)'];
+    mockRootState = rootState('(tabs)');
+    await render();
+    expect(mockCalls).toEqual(['replace /central-login']);
+  });
+
+  it("the facility's own sign-in, on a screen pushed over the home: the stack is taken down first", async () => {
+    setCentralState({ facilitySmsOrigin: 'https://dev-cold.example.test' });
+    mockSegments = ['settings'];
+    mockRootState = rootState('(tabs)', 'settings');
+    await render();
+    expect(mockCalls).toEqual(['dismissAll', 'replace /login']);
+  });
+
+  it("the facility's own sign-in, on the first route: it is replaced", async () => {
+    setCentralState({ facilitySmsOrigin: 'https://dev-cold.example.test' });
+    mockSegments = ['(tabs)'];
+    mockRootState = rootState('(tabs)');
+    await render();
+    expect(mockCalls).toEqual(['replace /login']);
+  });
+
+  it('with no navigator state to read, the refused screen is replaced as before', async () => {
+    signedOutEverywhere();
+    mockSegments = ['settings'];
+    mockRootState = undefined;
+    await render();
+    expect(mockCalls).toEqual(['replace /central-login']);
+  });
+
+  it('central login off: sign-in replaces the refused screen only, whatever lies under it, as before', async () => {
+    mockCentralOn = false;
+    mockSegments = ['settings'];
+    mockRootState = rootState('(tabs)', 'settings');
+    await render();
+    expect(mockCalls).toEqual(['replace /login']);
+    expect(mockDismissAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('returnToMyFacilities, which reads the navigator through the mounted guard', () => {
+  // The waiting screen is allowed with or without central sign-in: the guard itself does nothing.
+  const onWaitingScreen = async (...names: string[]) => {
+    mockSegments = ['pending-enrollment'];
+    mockRootState = rootState(...names);
+    await render();
+    expect(mockCalls).toEqual([]);
+  };
+
+  it('with My facilities under the screen: back to that one, nothing else', async () => {
+    await onWaitingScreen('facilities', 'pending-enrollment');
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
+  it("with none under it (the facility's sign-in is): the stack is taken down, then My facilities replaces the screen", async () => {
+    await onWaitingScreen('login', 'pending-enrollment');
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissAll', 'replace /facilities']);
+  });
+
+  it('with none under it and nothing to dismiss: only the replace', async () => {
+    mockCanDismiss = false;
+    await onWaitingScreen('pending-enrollment');
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['replace /facilities']);
+  });
+
+  it('when the navigator\'s state cannot be read: dismissTo, as before', async () => {
+    await onWaitingScreen('login', 'pending-enrollment');
+    mockRootState = undefined;
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
+  it('with no guard mounted: dismissTo, as before', () => {
+    mockRootState = rootState('login', 'pending-enrollment');
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
+  });
+
+  it('after the guard has unmounted it no longer reads the navigator', async () => {
+    await onWaitingScreen('login', 'pending-enrollment');
+    await act(async () => renderer!.unmount());
+    renderer = undefined;
+    returnToMyFacilities();
+    expect(mockCalls).toEqual(['dismissTo /facilities']);
   });
 });
 

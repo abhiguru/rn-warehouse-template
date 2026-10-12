@@ -339,6 +339,17 @@ phone against a real central service.
   by hand. On Android the screen now shrinks above the keyboard the way the sign-in screens
   do, so you can scroll to the card with the keyboard open and tap "Use this server" once.
   Nothing else on the screen changes. Not yet run on a phone.
+- **Central screens and a facility's screens no longer stay under one another (review
+  fixes).** Central login only; a build without it behaves as before. A facility session that
+  ends on a pushed screen after the central session has ended now leaves central sign-in
+  alone (it left `[home, central-login]`, and Back showed a spinner), and the same for the
+  facility's own sign-in; the waiting screen's "My facilities" after a facility's own SMS
+  sign-in leaves My facilities alone, with that sign-in taken off the stack (it left
+  `[login, facilities]`); and Back during the central code check, followed by a correct code,
+  no longer navigates from the removed code step (it put a second My facilities in place of
+  the first), nor does a wrong code speak over the screen shown by then. The real-router tests
+  now cover the guard's "entering a facility takes the stack down" rule and a facility's own
+  SMS sign-in that clears its marker as the app does.
 - Shared code, no change in behaviour without central login: the server-switch sequence
   moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
   `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used
