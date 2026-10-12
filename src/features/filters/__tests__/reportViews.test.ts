@@ -147,6 +147,19 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     found: ['a1'],
     id: (row: { customer_id: string }) => row.customer_id,
   },
+  // The server searches, sorts and pages this one; the rows here are what the app does itself
+  // when a backend without migration 52 could not sort them (itemStockFallbackView).
+  'report-item-stock': {
+    rows: [
+      { item_id: 'i1', item_name: 'Garlic', packaging: 'Bag', total_stock: 30, total_qty: 200, grn_count: 5 },
+      { item_id: 'i2', item_name: 'Red chilli', packaging: 'Crate', total_stock: 90, total_qty: 120, grn_count: 1 },
+      { item_id: 'i3', item_name: 'Cumin', packaging: 'Bag', total_stock: 10, total_qty: 300, grn_count: 3 },
+      { item_id: 'i4', item_name: 'Turmeric', packaging: 'Bag', total_stock: 50, total_qty: 80, grn_count: 7 },
+    ],
+    search: 'red chilli',
+    found: ['i2'],
+    id: (row: { item_id: string }) => row.item_id,
+  },
 };
 
 /** A value that turns the field on, whatever its kind. */
@@ -189,12 +202,15 @@ describe.each(REPORT_VIEW_CONFIGS.map(entry => [entry.config.listKey, entry] as 
   it('asks for a period exactly when it has a period field (a report of today has neither)', () => {
     const hasPeriod = config.fields.some(isRequiredField);
     expect(request({}).period === undefined).toBe(!hasPeriod);
-    if (!hasPeriod) expect(Object.keys(request({ search: fixture.search }, config.sort?.default))).toEqual(['view']);
+    // Besides the view, only the one paged report (item stock) carries a `server` part: the search
+    // and sort it sends to the server. No report without a period field sends a period.
+    if (!hasPeriod) expect(Object.keys(request({ search: fixture.search }, config.sort?.default)).filter(key => key !== 'server')).toEqual(['view']);
   });
 
   describe.each([['staff', staff], ['a customer account', customer]] as const)('for %s', (_name, ctx) => {
     const fields = visibleFields(config, ctx).map(field => [field.key, field] as const);
-    // A report with no fields (today's stock: no period, no choices) has nothing to check here.
+    // A report with no fields (today's stock: no period, no choices; item stock: a search and a
+    // sort only) has nothing to check here.
     if (fields.length === 0) {
       it('has no fields to check', () => expect(config.fields).toEqual([]));
       return;

@@ -129,10 +129,10 @@ export const reports = {
     grnsLoadError: "Couldn't load the GRNs for this item.",
     searchItems: 'Search items',
     loadingMore: 'Loading more items',
-    loadingItems: 'Loading items',
-    noMatchingItems: 'No matching items',
-    noItemsMatch: 'No items match "{{search}}". Try fewer letters.',
     itemsAppear: 'Items appear here once goods are received.',
+    errorTitle: "Couldn't load the item stock summary",
+    loadMore: 'Show more items',
+    loadMoreError: "Couldn't load more items.",
   },
   stockAging: {
     loadError: "Couldn't load stock aging. Check your connection and try again.",
@@ -193,6 +193,7 @@ export const reports = {
     dispatchesPerDay: 'Dispatches per day',
     recentActivity: 'Recent activity',
     noActivity: 'No GRNs or dispatches in this period. New activity appears here.',
+    errorTitle: "Couldn't load the operations dashboard",
     service: {
       accessDenied: 'Access denied. This report is for staff only.',
       fetchFailed: 'Failed to fetch operations dashboard',

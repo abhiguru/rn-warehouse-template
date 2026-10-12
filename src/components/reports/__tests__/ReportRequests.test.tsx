@@ -2,13 +2,13 @@
  * How often a report asks the server, and which answer it shows.
  *
  *   dispatch activity    one request on opening, one more for each new period
- *   item stock summary   the newest search is always asked for and is the one shown; a late
- *                        answer to an older search is dropped; a page is asked for once
+ *   item stock summary   one request on opening; a page is asked for once, and a failed page
+ *                        is asked for again only by its "Try again" (the search and sort, and
+ *                        late answers to an older search: ItemStockFlow.test.tsx)
  *   GRNs of an item      a failed load is an error with "Try again", never "no GRNs"
  * The role hook is the real one; only the services are stand-ins.
  */
 import React from 'react';
-import { FlatList } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import DispatchActivityScreen from '../../../../app/reports/dispatch-activity';
 import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button';
 import * as reporting from '@/services/reporting';
 import { StockService } from '@/services/stock-service';
 import { getAllGRNItems } from '@/services/grn-service';
+import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 
 let mockState: Record<string, unknown> = {};
 let mockParams: Record<string, string> = {};
@@ -41,6 +42,11 @@ jest.mock('@/utils/logger', () => {
 jest.mock('@/services/reporting', () => ({ getAllDispatchActivity: jest.fn(), getCustomerDispatchActivity: jest.fn() }));
 jest.mock('@/services/stock-service', () => ({ StockService: { getItemWiseStockList: jest.fn() } }));
 jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCustomerGRNItems: jest.fn() }));
+// The item stock summary is drawn by ReportScaffold (a FlashList) and keeps its sort per facility.
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+jest.mock('@/config/operatorServer', () => ({
+  getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+}));
 
 const ADMIN = { id: 'p1', role: 'admin', assignedCustomerIds: [] };
 const CUSTOMER = { id: 'p2', role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [{ id: 'c1', name: 'Fictional Traders', active: true }] };
@@ -148,149 +154,90 @@ describe('dispatch activity', () => {
 });
 
 describe('item stock summary', () => {
+  // The search and the sort go through the store, which is a fixed stand-in here: they are
+  // tested with a real store in ItemStockFlow.test.tsx. These cases need neither.
   const list = jest.mocked(StockService.getItemWiseStockList);
   const grns = jest.mocked(getAllGRNItems);
   type Page = Awaited<ReturnType<typeof StockService.getItemWiseStockList>>;
 
   const POTATOES = { item_id: 'item-1', item_name: 'Example Potatoes', total_qty: 100, total_stock: 60, grn_count: 1 };
   const ONIONS = { item_id: 'item-2', item_name: 'Example Onions', total_qty: 80, total_stock: 40, grn_count: 2 };
-  const CARROTS = { item_id: 'item-3', item_name: 'Example Carrots', total_qty: 50, total_stock: 50, grn_count: 1 };
-  const page = (items: object[], hasMore = false): Page =>
-    ({ success: true, message: '', data: { items, pagination: { totalCount: items.length, hasMore, limit: 50, offset: 0 } } }) as never;
+  const page = (items: object[], totalCount = items.length): Page =>
+    ({ success: true, message: '', data: { items, pagination: { totalCount, hasMore: items.length < totalCount, limit: 50, offset: 0 } } }) as never;
   const itemNames = () => texts().filter((text) => text.startsWith('Example '));
-  const search = async (text: string) => {
-    const input = tree!.root.findAll((node) => node.props.accessibilityLabel === 'Search items' && typeof node.props.onChangeText === 'function')[0];
+  const rows = () => tree!.root.findByType('FlashList' as never);
+  const footerButtons = (label: string) => tree!.root.findAllByType(Button).filter((button) => button.props.children === label);
+
+  let restoreQueries: () => void;
+  beforeAll(() => {
+    restoreQueries = makeQueryUpdatesImmediate();
+  });
+  afterAll(() => restoreQueries());
+  beforeEach(forgetQueries);
+
+  async function openItems(profile: object = ADMIN) {
+    mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: profile }, listFilters: { lists: {} }, reportPrefs: { byScope: {} } };
     await act(async () => {
-      input.props.onChangeText(text);
+      tree = create(<ItemStockSummaryScreen />);
+      await settleQueries();
     });
-    // The search waits 300 ms for more typing before it asks.
-    await act(async () => {
-      jest.advanceTimersByTime(300);
-    });
-  };
-  const isLoading = () => tree!.root.findAll((node) => node.props.accessibilityLabel === 'Loading items').length > 0;
-
-  describe('search during a load', () => {
-    it('asks for the newer search at once, and a late answer to the older one does not replace its results', async () => {
-      jest.useFakeTimers();
-      const first = pending<Page>();
-      const second = pending<Page>();
-      list.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
-
-      await open(ItemStockSummaryScreen);
-      expect(list).toHaveBeenCalledTimes(1);
-      expect(list.mock.calls[0][0]).toMatchObject({ searchQuery: undefined, offset: 0 });
-
-      // Typed while the first request is still waiting: it is not dropped.
-      await search('oni');
-      expect(list).toHaveBeenCalledTimes(2);
-      expect(list.mock.calls[1][0]).toMatchObject({ searchQuery: 'oni', offset: 0 });
-
-      await act(async () => {
-        second.answer(page([ONIONS]));
-      });
-      expect(itemNames()).toEqual(['Example Onions']);
-      expect(isLoading()).toBe(false);
-
-      // The answer to the older question arrives last.
-      await act(async () => {
-        first.answer(page([POTATOES, ONIONS, CARROTS]));
-      });
-      expect(itemNames()).toEqual(['Example Onions']);
-      expect(list).toHaveBeenCalledTimes(2);
+  }
+  const run = (callback: () => void) =>
+    act(async () => {
+      callback();
+      await settleQueries();
     });
 
-    it('keeps loading when the older answer arrives first, then shows the newer results', async () => {
-      jest.useFakeTimers();
-      const first = pending<Page>();
-      const second = pending<Page>();
-      list.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
-
-      await open(ItemStockSummaryScreen);
-      await search('oni');
-      expect(list).toHaveBeenCalledTimes(2);
-
-      await act(async () => {
-        first.answer(page([POTATOES, ONIONS, CARROTS]));
-      });
-      expect(itemNames()).toEqual([]);
-      expect(isLoading()).toBe(true);
-
-      await act(async () => {
-        second.answer(page([ONIONS]));
-      });
-      expect(itemNames()).toEqual(['Example Onions']);
-      expect(isLoading()).toBe(false);
-    });
-
-    it('a failed older request does not show its error over the newer search', async () => {
-      jest.useFakeTimers();
-      const first = pending<Page>();
-      const second = pending<Page>();
-      list.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
-
-      await open(ItemStockSummaryScreen);
-      await search('oni');
-      await act(async () => {
-        first.answer({ success: false, message: 'refused' } as never);
-      });
-      expect(texts()).not.toContain('Something went wrong');
-      expect(isLoading()).toBe(true);
-
-      await act(async () => {
-        second.answer(page([ONIONS]));
-      });
-      expect(itemNames()).toEqual(['Example Onions']);
-    });
+  it('asks once on opening, for every customer, with the default sort', async () => {
+    list.mockResolvedValue(page([POTATOES]));
+    await openItems();
+    expect(list.mock.calls).toEqual([[{ customerId: undefined, searchQuery: undefined, limit: 50, offset: 0, sortBy: 'item_name', sortOrder: 'asc' }]]);
+    expect(itemNames()).toEqual(['Example Potatoes']);
   });
 
   describe('next page', () => {
     it('is asked for once per offset, and its rows are added', async () => {
       const next = pending<Page>();
-      list.mockResolvedValueOnce(page([POTATOES], true)).mockImplementationOnce(() => next.promise);
-      await open(ItemStockSummaryScreen);
+      list.mockResolvedValueOnce(page([POTATOES], 2)).mockImplementationOnce(() => next.promise);
+      await openItems();
       expect(itemNames()).toEqual(['Example Potatoes']);
 
       // The list reports its end twice before the first report has changed anything.
-      const rows = tree!.root.findByType(FlatList);
-      await act(async () => {
-        rows.props.onEndReached();
-        rows.props.onEndReached();
+      await run(() => {
+        rows().props.onEndReached();
+        rows().props.onEndReached();
       });
       expect(list).toHaveBeenCalledTimes(2);
       expect(list.mock.calls[1][0]).toMatchObject({ offset: 1 });
+      expect(texts()).toContain('Loading more items');
 
-      await act(async () => {
-        next.answer(page([ONIONS]));
-      });
+      await run(() => next.answer(page([ONIONS], 2)));
       expect(itemNames()).toEqual(['Example Potatoes', 'Example Onions']);
+      expect(texts()).not.toContain('Loading more items');
+      // Everything is loaded: no more to ask for, at the end or with the button.
+      await run(() => rows().props.onEndReached());
       expect(list).toHaveBeenCalledTimes(2);
+      expect(footerButtons('Show more items')).toHaveLength(0);
     });
 
-    it('a search typed while the next page loads replaces the list; the late page is not added to it', async () => {
-      jest.useFakeTimers();
-      const next = pending<Page>();
-      const found = pending<Page>();
-      list
-        .mockResolvedValueOnce(page([POTATOES], true))
-        .mockImplementationOnce(() => next.promise)
-        .mockImplementationOnce(() => found.promise);
-      await open(ItemStockSummaryScreen);
-      await act(async () => {
-        tree!.root.findByType(FlatList).props.onEndReached();
-      });
+    it('a failed page shows "Try again" under the rows; reaching the end does not ask again, the button does', async () => {
+      list.mockResolvedValueOnce(page([POTATOES], 2)).mockResolvedValueOnce({ success: false, message: 'The facility is busy.' } as never);
+      await openItems();
+      expect(footerButtons('Show more items')).toHaveLength(1);
+      await run(() => rows().props.onEndReached());
+      expect(list).toHaveBeenCalledTimes(2);
+      expect(texts()).toEqual(expect.arrayContaining(["Couldn't load more items.", 'The facility is busy.']));
+      expect(itemNames()).toEqual(['Example Potatoes']);
+
+      await run(() => rows().props.onEndReached());
       expect(list).toHaveBeenCalledTimes(2);
 
-      await search('car');
+      list.mockResolvedValueOnce(page([ONIONS], 2));
+      await run(() => footerButtons('Try again')[0].props.onPress());
       expect(list).toHaveBeenCalledTimes(3);
-      expect(list.mock.calls[2][0]).toMatchObject({ searchQuery: 'car', offset: 0 });
-      await act(async () => {
-        found.answer(page([CARROTS]));
-      });
-      await act(async () => {
-        next.answer(page([ONIONS]));
-      });
-      expect(itemNames()).toEqual(['Example Carrots']);
+      expect(list.mock.calls[2][0]).toMatchObject({ offset: 1 });
+      expect(itemNames()).toEqual(['Example Potatoes', 'Example Onions']);
+      expect(texts()).not.toContain("Couldn't load more items.");
     });
   });
 
@@ -298,7 +245,7 @@ describe('item stock summary', () => {
     const GRN = { id: 'gi-1', grn_id: 'g1', gr_no: '311', customer_name: 'Fictional Traders', date: '2026-10-01', stock: 60, qty: 100 };
     const ERROR = "Couldn't load the GRNs for this item.";
     const NONE = 'No GRNs with this item in stock.';
-    const retryButtons = () => tree!.root.findAllByType(Button).filter((button) => button.props.children === 'Try again');
+    const retryButtons = () => footerButtons('Try again');
 
     beforeEach(() => {
       list.mockResolvedValue(page([POTATOES]));
@@ -306,7 +253,7 @@ describe('item stock summary', () => {
 
     it('a refused load shows an error with "Try again"; "Try again" reads the GRNs once more', async () => {
       grns.mockResolvedValueOnce({ success: false, message: 'refused' } as never);
-      await open(ItemStockSummaryScreen);
+      await openItems();
       await press('Example Potatoes');
       expect(grns).toHaveBeenCalledTimes(1);
       expect(texts()).toContain(ERROR);
@@ -334,7 +281,7 @@ describe('item stock summary', () => {
 
     it('a load that throws is not kept as "no GRNs": opening the item again reads them again', async () => {
       grns.mockRejectedValueOnce(new Error('offline'));
-      await open(ItemStockSummaryScreen);
+      await openItems();
       await press('Example Potatoes');
       expect(texts()).toContain(ERROR);
       expect(texts()).not.toContain(NONE);

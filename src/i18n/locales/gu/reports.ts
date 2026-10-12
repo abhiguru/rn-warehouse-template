@@ -128,10 +128,10 @@ export const reports: Translation<typeof source> = {
     grnsLoadError: 'આ આઇટમની આવક પાવતી લોડ કરી શકાઈ નથી.',
     searchItems: 'આઇટમ શોધો',
     loadingMore: 'વધુ આઇટમ લોડ થઈ રહી છે',
-    loadingItems: 'આઇટમ લોડ થઈ રહી છે',
-    noMatchingItems: 'કોઈ આઇટમ મળતી નથી',
-    noItemsMatch: '"{{search}}" સાથે મળતી કોઈ આઇટમ નથી. ઓછા અક્ષરો લખી જુઓ.',
     itemsAppear: 'માલની આવક થશે એટલે આઇટમ અહીં દેખાશે.',
+    errorTitle: 'આઇટમ મુજબ સ્ટોકનો સારાંશ લોડ કરી શકાયો નથી',
+    loadMore: 'વધુ આઇટમ બતાવો',
+    loadMoreError: 'વધુ આઇટમ લોડ કરી શકાઈ નથી.',
   },
   stockAging: {
     loadError: 'માલ કેટલા દિવસથી પડ્યો છે તે લોડ કરી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
@@ -190,6 +190,7 @@ export const reports: Translation<typeof source> = {
     dispatchesPerDay: 'રોજની જાવક',
     recentActivity: 'તાજેતરની કામગીરી',
     noActivity: 'આ સમયગાળામાં કોઈ આવક પાવતી કે જાવક નથી. નવી કામગીરી અહીં દેખાશે.',
+    errorTitle: 'કામગીરીની ઝલક લોડ કરી શકાઈ નથી',
     service: {
       accessDenied: 'પરવાનગી નથી. આ અહેવાલ ફક્ત સ્ટાફ માટે છે.',
       fetchFailed: 'કામગીરીની ઝલક મેળવી શકાઈ નથી',

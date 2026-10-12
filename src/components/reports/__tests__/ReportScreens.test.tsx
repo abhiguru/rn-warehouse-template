@@ -384,8 +384,9 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
 
   it('operations dashboard', async () => {
     const tree = await render(brand, mode, <OperationsDashboardScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.fill]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Operations dashboard', 'GRNs', 'Recent activity', 'A0001']));
+    // The period is the filter bar's chip now, not a segmented control in brand.fill.
+    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.neutral.background]));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Operations dashboard', 'GRNs', 'Total weight', 'Period averages', 'Recent activity', 'A0001']));
     act(() => tree.unmount());
   });
 
