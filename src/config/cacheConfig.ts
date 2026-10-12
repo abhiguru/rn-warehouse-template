@@ -36,6 +36,15 @@ export const CACHE_DURATION_MEDIUM_MS = 10 * 60 * 1000; // 10 minutes
  */
 export const CACHE_DURATION_LONG_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/**
+ * The last answer of a report, shown with its time when the report is opened
+ * after the app was closed (src/features/reports/reportCache.ts). Three days
+ * covers a weekend or a holiday and the morning after; older stock figures
+ * mislead more than they help, and a customer taken off an account stays
+ * readable on the phone no longer than this.
+ */
+export const CACHE_DURATION_REPORT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
 // =============================================================================
 // CACHE KEYS AND PREFIXES
 // =============================================================================
@@ -59,6 +68,10 @@ export const CACHE_PREFIXES = {
   RECENT_CUSTOMERS: 'recent_customers',
   RECENT_SENDERS: 'recent_senders_',
   SESSION_RECENT_ITEMS: 'session_recent_items_',
+  // The last answer of each report: customer names and document data of one
+  // facility for one account. Keyed by the session scope, and removed with
+  // the list caches whenever a session ends.
+  REPORT: 'report_cache',
 } as const;
 
 // =============================================================================
