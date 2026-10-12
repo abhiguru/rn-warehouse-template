@@ -182,8 +182,10 @@ const SettingsScreen: React.FC = () => {
     try {
       if (centralLogin) {
         // The profile at this facility is deleted; the route guard returns to My facilities.
-        await deleteFacilityAccount(dispatch);
+        const outcome = await deleteFacilityAccount(dispatch);
         setShowDeleteModal(false);
+        if (outcome === 'busy') showAlert(t('auth.server.busyTitle'), t('central.switch.busyMessage'));
+        else if (outcome === 'failed') showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
         return;
       }
       await dispatch(deleteAccount()).unwrap();

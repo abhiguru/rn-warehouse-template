@@ -11,6 +11,7 @@ import LoginScreen from '../../../app/login';
 import PendingEnrollmentScreen from '../../../app/pending-enrollment';
 import { leaveFacility } from '@/store/operatorSwitch';
 import { deleteFacilityAccount } from '@/store/centralSignOut';
+import type { LeaveFacilityOutcome } from '@/store/operatorSwitch';
 import { deleteAccount, logout } from '@/store/slices/authSlice';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '@/config/centralState';
 import { getEnrollmentStatus, signOutPendingEnrollment } from '@/config/supabaseConfig';
@@ -47,7 +48,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   signInWithPhone: jest.fn(),
 }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
-jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(async () => {}) }));
+jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(async () => 'left') }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
   deleteAccount: jest.fn(),
@@ -136,6 +137,20 @@ describe('Settings with central login on', () => {
     expect(deleteFacilityAccount).toHaveBeenCalledWith(mockDispatch);
     expect(deleteAccount).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+    expect(alerts()).toHaveLength(0);
+  });
+
+  it('says so when the final cleanup after the deletion was held back by a write in flight', async () => {
+    jest.mocked(deleteFacilityAccount).mockResolvedValue('busy');
+    await render(<SettingsScreen />);
+    await press('Delete account, Permanently delete your account and data');
+    const proceed = tree!.root.findAll(node => node.props.accessibilityLabel === 'Continue' && typeof node.props.onPress === 'function').pop();
+    if (proceed) await act(async () => { await proceed.props.onPress(); });
+    const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
+    await act(async () => { field.props.onChangeText('9000000001'); });
+    const confirm = tree!.root.findAll(node => node.props.accessibilityLabel === 'Delete account' && typeof node.props.onPress === 'function').pop()!;
+    await act(async () => { await confirm.props.onPress(); });
+    expect(alerts()[0]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
   });
 
   it('"Sign out" signs out of this facility only and returns to My facilities', async () => {

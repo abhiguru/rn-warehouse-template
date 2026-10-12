@@ -30,6 +30,10 @@ export const CENTRAL_SECURE_KEYS = {
 export const CENTRAL_REQUEST_TIMEOUT_MS = 15000;
 /** The access token (15 minutes) is replaced this long before it expires. */
 const RENEW_AHEAD_MS = 60 * 1000;
+/** A failed refresh is repeated only this soon after it was sent (the service's grace is 10 s). */
+export const REFRESH_REPEAT_WINDOW_MS = 8000;
+/** A secure store that did not answer at start is read again this much later. */
+export const RESTORE_RETRY_MS = 2000;
 /** The catalogue may be reused for this long (the service says `max-age=600`). */
 const CATALOGUE_CACHE_MS = 10 * 60 * 1000;
 /** The longest wait the app will name; anything longer is not a wait the service sends. */
@@ -362,10 +366,27 @@ function readStoredUser(text: string | null): CentralUser | null {
  * replaced when the first call needs it. A session with a refresh token counts
  * as signed in; the service has the last word on the first call.
  */
+let restoreRetry: ReturnType<typeof setTimeout> | undefined;
+let restorePending = false;
+
+/**
+ * A start whose secure-store read failed is tried again once shortly after,
+ * and once more when the app next comes to the foreground, before a sign-in is
+ * asked for: one keystore hiccup must not cost a new sign-in and an SMS.
+ */
+export async function retryCentralRestoreIfNeeded(): Promise<void> {
+  if (!restorePending) return;
+  await restoreCentralSession();
+}
+
 export async function restoreCentralSession(): Promise<void> {
   if (!getCentralLoginConfig()) {
     setCentralState({ status: 'signedOut', user: null });
     return;
+  }
+  if (restoreRetry) {
+    clearTimeout(restoreRetry);
+    restoreRetry = undefined;
   }
   const started = epoch;
   const [session, userText] = await serialize(
@@ -378,10 +399,21 @@ export async function restoreCentralSession(): Promise<void> {
   if (session === UNREADABLE || userText === UNREADABLE) {
     // The store did not answer: nothing stored is touched, and a session already
     // in memory is kept. Until something is known the guard treats the person
-    // as signed out; the next call reads again.
+    // as signed out; the store is read again shortly, on the next foreground,
+    // and on the next call.
     if (getCentralState().status === 'unknown') setCentralState({ status: 'signedOut', user: null });
+    if (getCentralState().status !== 'signedIn') {
+      restorePending = true;
+      restoreRetry = setTimeout(() => {
+        restoreRetry = undefined;
+        void restoreCentralSession();
+      }, RESTORE_RETRY_MS);
+      // Under Node (tests) a waiting retry must not keep the process alive.
+      (restoreRetry as { unref?: () => void }).unref?.();
+    }
     return;
   }
+  restorePending = false;
   const user = readStoredUser(userText);
   if (session && user) setCentralState({ status: 'signedIn', user });
   else {
@@ -479,13 +511,17 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
   }
   const send = () =>
     centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', { body: { refresh_token: stored.refreshToken } });
+  const sentAt = Date.now();
   let answer = await send();
   // A connection failure gets one immediate repeat of the same token: the
   // service may have rotated it and lost the answer, and it answers a repeat
-  // with a new session only within 10 seconds of the first use. A request the
-  // app gave up waiting for (15 seconds) is already outside that window, so a
-  // repeat would count as reuse and revoke the family: it is not repeated.
-  if (answer.kind === 'transport' && answer.code === 'network' && started === epoch) answer = await send();
+  // with a new session only within 10 seconds of the first use. The repeat is
+  // sent only while the first send is clearly inside that window; a request
+  // the app gave up waiting for, or a connection that was reset late, is
+  // already outside it, and a repeat would count as reuse and revoke the
+  // family.
+  if (answer.kind === 'transport' && answer.code === 'network' && Date.now() - sentAt < REFRESH_REPEAT_WINDOW_MS && started === epoch)
+    answer = await send();
   if (started !== epoch) return { kind: 'unavailable', failure: failure('session_ended') };
   if (answer.kind === 'transport') return { kind: 'unavailable', failure: failureOf(answer) };
   if (answer.kind === 'error') {
@@ -712,4 +748,7 @@ export function resetCentralSessionForTests(): void {
   refreshInFlight = null;
   catalogueCache = null;
   writes = Promise.resolve();
+  restorePending = false;
+  if (restoreRetry) clearTimeout(restoreRetry);
+  restoreRetry = undefined;
 }

@@ -276,6 +276,23 @@ describe('central sign-in', () => {
     expect(tickShown()).toBe(false);
   });
 
+  it('a change from an accepted number to a new one shows the tick before the store has answered', async () => {
+    await AsyncStorage.setItem('central_terms_accepted_v1:919000000001', '2025-12');
+    await render(<CentralLoginScreen />);
+    await type('9000000001');
+    expect(tickShown()).toBe(false);
+    expect(button('Send code').props.disabled).toBe(false);
+    // The read for the new number never answers in this test (one call; the module
+    // mock's own implementation stays in place for every later read).
+    jest.mocked(AsyncStorage.getItem).mockImplementationOnce(() => new Promise(() => undefined));
+    await type('9000000002');
+    expect(tickShown()).toBe(true);
+    expect(button('Send code').props.disabled).toBe(true);
+    jest.mocked(requestCentralCode).mockResolvedValue({ ok: true, resendAfterSeconds: 60, expiresAt: null });
+    await press(button('Send code'));
+    expect(requestCentralCode).not.toHaveBeenCalled();
+  });
+
   it('asks again when the terms version has changed', async () => {
     await AsyncStorage.setItem('central_terms_accepted_v1:919000000001', '2024-01');
     await render(<CentralLoginScreen />);

@@ -50,8 +50,10 @@ jest.mock('../supabaseConfig', () => ({
   exchangeCentralIdentity: jest.fn(),
   signInWithPhone: jest.fn(),
 }));
+let mockAuth: Record<string, unknown> = {};
 jest.mock('@/store', () => ({
   store: {
+    getState: () => ({ auth: mockAuth }),
     dispatch: jest.fn((action: { type: string }) => {
       if (action.type === 'test/logout') return { unwrap: async () => { mockEvents.push('logout'); } };
       mockEvents.push(action.type);
@@ -108,6 +110,7 @@ beforeEach(async () => {
   jest.mocked(signInWithPhone).mockResolvedValue({ success: true, data: {} } as never);
   jest.mocked(beginOperatorSwitch).mockImplementation(() => { mockEvents.push('begin switch'); return true; });
   jest.mocked(queryClient.isMutating).mockReturnValue(0);
+  mockAuth = {};
 });
 afterEach(() => setLanguage('en'));
 
@@ -154,10 +157,24 @@ describe('a facility that approves', () => {
     expect(getCentralState().outcome).toBeNull();
   });
 
-  it('skips the cleanup when the facility is already the selected server', async () => {
+  it('the facility is already the selected server (its session ended while it stayed selected): a valid open without the cleanup', async () => {
     mockActive = server;
     expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'login' });
     expect(mockEvents).toEqual(['discover', 'begin switch', 'end switch', 'initialize', 'token', 'exchange', 'auth/setUserProfile']);
+  });
+
+  it.each([
+    ['a sign-out', { logoutRequest: 'r1' }],
+    ['a forced sign-out', { forceLogoutRequest: 'r2' }],
+    ['an account deletion', { deleteRequest: 'r3' }],
+  ])('refuses to start while %s is still running, so nothing is filed for a session being ended', async (_name, auth) => {
+    mockActive = server;
+    mockAuth = auth;
+    expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'failed', reason: 'busy', message: 'Finish the current operation before switching facilities.' });
+    expect(mockEvents).toEqual([]);
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(getCentralState().opening).toBeNull();
   });
 });
 
@@ -253,7 +270,7 @@ describe('refusals leave a plain message and a status', () => {
     ['invalid_identity_token', 'invalid_identity_token', "North Cold Store couldn't verify your sign-in. Try again. If this keeps happening, tell the facility administrator.", 'unavailable'],
     ['enrollment_limited', 'enrollment_limited', 'Too many new access requests today. Try again tomorrow.', 'approved'],
     ['network', 'network', 'The connection to North Cold Store was lost. Check your connection and try again.', 'approved'],
-    ['unavailable', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'unavailable'],
+    ['unavailable', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'approved'],
     ['invalid_request', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'approved'],
     ['failed', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'approved'],
     ['session_changed', 'failed', "North Cold Store couldn't sign you in. Try again later.", 'approved'],
@@ -408,10 +425,17 @@ it('writes neither the identity token nor the phone number to the log while open
   exchangeMock.mockResolvedValueOnce(refusal('link_required') as never).mockResolvedValueOnce(LOGIN as never);
   await openFacility(ORIGIN, NAME);
   await completeFacilityLink('482913');
-  const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+  const logged = loggedText(spies);
   expect(logged).not.toMatch(/identity-token|9000000001|482913/);
   spies.forEach(spy => spy.mockRestore());
 });
+/** Everything the spies were given, an Error by its message and stack, so a token inside one is seen. */
+const loggedText = (spies: jest.SpyInstance[]): string =>
+  spies
+    .flatMap(spy => spy.mock.calls.flat())
+    .map(arg => (arg instanceof Error ? `${String(arg)} ${arg.stack ?? ''}` : typeof arg === 'string' ? arg : JSON.stringify(arg)))
+    .join(' ');
+
 
 it('never throws: an unexpected error is a plain message too', async () => {
   exchangeMock.mockRejectedValue(new Error('unexpected'));

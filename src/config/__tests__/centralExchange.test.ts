@@ -182,10 +182,17 @@ it('never writes the identity token or a session token to the log', async () => 
   await exchangeCentralIdentity(IDENTITY_TOKEN, { otpCode: '482913' });
   jest.mocked(global.fetch).mockResolvedValue(answer({ success: false, code: 'invalid_identity_token', error: 'x' }, 401));
   await exchangeCentralIdentity(IDENTITY_TOKEN);
-  const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+  const logged = loggedText(spies);
   expect(logged).not.toMatch(/identity\.token|482913|test-signature|eeeeeeee/);
   spies.forEach(spy => spy.mockRestore());
 });
+/** Everything the spies were given, an Error by its message and stack, so a token inside one is seen. */
+const loggedText = (spies: jest.SpyInstance[]): string =>
+  spies
+    .flatMap(spy => spy.mock.calls.flat())
+    .map(arg => (arg instanceof Error ? `${String(arg)} ${arg.stack ?? ''}` : typeof arg === 'string' ? arg : JSON.stringify(arg)))
+    .join(' ');
+
 
 it('after a central sign-in and a facility login, each secure key holds what it should and nothing else', async () => {
   resetCentralSessionForTests();

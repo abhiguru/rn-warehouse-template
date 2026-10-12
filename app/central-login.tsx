@@ -43,6 +43,10 @@ export default function CentralLoginScreen() {
   const [termsNeeded, setTermsNeeded] = useState(true);
   const [termsAccepted, setTermsAccepted] = useState(false);
   useEffect(() => {
+    // Until the number just typed is known to have accepted, the box is shown:
+    // a change from an accepted number to a new one must not leave "Send code"
+    // enabled while the store is being read.
+    setTermsNeeded(true);
     let active = true;
     void hasAcceptedTerms(phoneNumber).then(accepted => {
       if (active) setTermsNeeded(!accepted);

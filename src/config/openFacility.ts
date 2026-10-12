@@ -60,7 +60,8 @@ const EXCHANGE_FAILURES: Record<
   invalid_otp: { reason: 'invalid_otp', message: 'central.errors.invalidCode', status: 'link_needed' },
   enrollment_limited: { reason: 'enrollment_limited', message: 'errors.auth.enrollmentLimited' },
   invalid_request: { reason: 'failed', message: 'central.open.failed' },
-  unavailable: { reason: 'failed', message: 'central.open.failed', status: 'unavailable' },
+  // The facility's database did not answer: transient, so the status stays.
+  unavailable: { reason: 'failed', message: 'central.open.failed' },
   // No answer says nothing about the person's access: the status stays.
   network: { reason: 'network', message: 'central.open.network' },
   session_changed: { reason: 'failed', message: 'central.open.failed' },
@@ -160,8 +161,14 @@ async function switchAndExchange(userId: string, discovery: Discovery): Promise<
   const switched = await switchOperatorServer(server, store.dispatch);
   if (switched.kind === 'busy') return failed('busy', t('central.switch.busyMessage'));
   if (switched.kind === 'failed') return failed('switch_failed', t('central.open.switchFailed', { facility: name }));
-  // The bootstrap does the same when it runs again for the new server; the
-  // exchange must not wait for it, and the second call changes nothing.
+  // `same`: the facility is already the selected server (its session ended
+  // while it stayed selected). Nothing had to be cleaned up, and the exchange
+  // begins with startNewSession, which ends anything still stored. That is a
+  // valid open; what is not is an open during a sign-out in progress, which
+  // openFacility refuses before getting here.
+  // `switched`: the bootstrap initialises the client again for the new
+  // server; the exchange must not wait for it, and the second call changes
+  // nothing.
   initializeSupabase(config.supabaseUrl, config.anonKey);
   return settle(userId, server, await exchange(server.origin), false);
 }
@@ -196,8 +203,18 @@ function publish(userId: string, origin: string, name: string, outcome: OpenOutc
  * Open a facility from "My facilities". `name` is what the list calls it, for
  * messages about a facility that could not even be reached. Never throws.
  */
+/** A sign-out, forced sign-out or account deletion that has not finished yet. */
+function signOutInProgress(): boolean {
+  const auth = store.getState().auth;
+  return Boolean(auth.logoutRequest || auth.forceLogoutRequest || auth.deleteRequest);
+}
+
 export async function openFacility(origin: string, name: string): Promise<OpenOutcome> {
-  if (getCentralState().opening) return failed('busy', t('central.switch.busyMessage'));
+  // While a facility session is being ended its profile is already gone from
+  // the store and My facilities is shown, but the cleanup is still running:
+  // an open now would race it (and, after an account deletion, file a new
+  // access request for the deleted account).
+  if (getCentralState().opening || signOutInProgress()) return failed('busy', t('central.switch.busyMessage'));
   const userId = getCentralState().user?.id ?? '';
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {

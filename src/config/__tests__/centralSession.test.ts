@@ -9,6 +9,9 @@ import * as SecureStore from 'expo-secure-store';
 import {
   CENTRAL_REQUEST_TIMEOUT_MS,
   CENTRAL_SECURE_KEYS,
+  REFRESH_REPEAT_WINDOW_MS,
+  RESTORE_RETRY_MS,
+  retryCentralRestoreIfNeeded,
   deleteCentralAccount,
   fetchCentralProfile,
   fetchFacilityCatalogue,
@@ -410,6 +413,30 @@ describe('refresh', () => {
     }
   });
 
+  it.each([
+    ['at once', 0, 2],
+    ['after 5 seconds', 5000, 2],
+    ['after 12 seconds (a late reset on a connection with no read timeout)', 12000, 1],
+  ])('a connection failure %s: the token is sent %i time(s) in all', async (_name, afterMs, sends) => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      await signedIn(-5);
+      let attempts = 0;
+      fetchMock.mockImplementation(
+        () => new Promise((_, reject) => { attempts += 1; setTimeout(() => reject(new TypeError('Network request failed')), afterMs); })
+      );
+      const result = fetchCentralProfile();
+      await jest.advanceTimersByTimeAsync(afterMs + 1);
+      await jest.advanceTimersByTimeAsync(afterMs + 1);
+      expect(await result).toMatchObject({ ok: false, code: 'network' });
+      expect(attempts).toBe(sends);
+      expect(afterMs < REFRESH_REPEAT_WINDOW_MS).toBe(sends === 2);
+      expect(getCentralState().status).toBe('signedIn');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('an answer of the service is never repeated', async () => {
     await signedIn(-5);
     serve({ 'POST /v1/session/refresh': { status: 503, body: { error: { code: 'unavailable', message: 'x' } } } });
@@ -510,6 +537,45 @@ describe('a secure store that does not answer', () => {
     expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-1' } });
   });
 
+  it('at start: the store is read again 2 seconds later, and once more on the next foreground, before a sign-in is asked for', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      storeSession('first', '1', 600);
+      failReads();
+      await restoreCentralSession();
+      expect(getCentralState().status).toBe('signedOut');
+      // Still failing at the timed retry: nothing is cleared, still signed out.
+      await jest.advanceTimersByTimeAsync(RESTORE_RETRY_MS + 1);
+      expect(getCentralState().status).toBe('signedOut');
+      expect(secure.size).toBe(4);
+      // The app comes to the foreground and the store answers now.
+      restoreReads();
+      await retryCentralRestoreIfNeeded();
+      expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-1' } });
+      // Once a read has settled the foreground retry reads nothing.
+      jest.mocked(SecureStore.getItemAsync).mockClear();
+      await retryCentralRestoreIfNeeded();
+      expect(SecureStore.getItemAsync).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('at start: the timed retry alone finds the session when the store answers again', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      storeSession('first', '1', 600);
+      failReads();
+      await restoreCentralSession();
+      expect(getCentralState().status).toBe('signedOut');
+      restoreReads();
+      await jest.advanceTimersByTimeAsync(RESTORE_RETRY_MS + 1);
+      expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-1' } });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('while signed in: the session in memory is kept and no call signs the person out', async () => {
     await signedIn(600);
     failReads();
@@ -560,8 +626,25 @@ describe('separation from the facility session', () => {
     await requestFacilityToken('https://north-cold.example.test');
     await requestFacilityToken('https://north-cold.example.test');
     await signOutCentral();
-    const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+    const logged = loggedText(spies);
     expect(logged).not.toMatch(new RegExp(`9000000001|482913|facility-token|${refreshToken('1')}|${refreshToken('2')}|signature`));
     spies.forEach(spy => spy.mockRestore());
   });
+
+  it('the log check sees a token inside an Error, which JSON.stringify would hide', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    // Written through a variable: the lint rule against console output is for the app, not for this probe.
+    const output = console;
+    output.error(new Error('refresh failed for facility-token-1'));
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('facility-token-1');
+    expect(loggedText([spy])).toContain('facility-token-1');
+    spy.mockRestore();
+  });
 });
+/** Everything the spies were given, an Error by its message and stack, so a token inside one is seen. */
+const loggedText = (spies: jest.SpyInstance[]): string =>
+  spies
+    .flatMap(spy => spy.mock.calls.flat())
+    .map(arg => (arg instanceof Error ? `${String(arg)} ${arg.stack ?? ''}` : typeof arg === 'string' ? arg : JSON.stringify(arg)))
+    .join(' ');
+

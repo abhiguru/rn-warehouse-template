@@ -86,7 +86,7 @@ import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
-import { restoreCentralSession } from '@/config/centralSession';
+import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility } from '@/store/operatorSwitch';
 import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
@@ -540,14 +540,16 @@ function BootstrapApp() {
     // Suspend credentialed work for a real background stay only: not for the
     // 'inactive' blip of a system dialog, and not for a camera, picker, share
     // or multi-request upload round trip that returns within the grace window.
-    const lifecycle = AppState.addEventListener(
-      'change',
-      createResumeLifecycle({
-        gate: operatorResumeGate,
-        isHandoffActive: () => isNativeHandoffActive() || hasActiveOperatorMutation(),
-        initialState: AppState.currentState,
-      })
-    );
+    const resume = createResumeLifecycle({
+      gate: operatorResumeGate,
+      isHandoffActive: () => isNativeHandoffActive() || hasActiveOperatorMutation(),
+      initialState: AppState.currentState,
+    });
+    const lifecycle = AppState.addEventListener('change', state => {
+      resume(state);
+      // A central session whose store did not answer at start is read again now.
+      if (state === 'active' && isCentralLoginConfigured()) void retryCentralRestoreIfNeeded();
+    });
     return () => {
       bootstrapRun.current += 1;
       lifecycle.remove(); removeVerifier(); unsubscribe(); operatorResumeGate.suspend();

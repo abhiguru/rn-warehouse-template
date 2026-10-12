@@ -46,10 +46,22 @@ jest.mock('@/services/configService', () => ({
 }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: jest.fn(() => 0) } }));
 
+/** What My facilities would see the moment the real `deleteAccount` thunk empties the store. */
+let mockSeenAtDeletion: { autoOpenSpent: boolean; soleApproved: string | null } | undefined;
 const dispatch = jest.fn((action: { type: string }) => ({
   unwrap: async () => {
-    if (action.type === 'test/deleteAccount' && mockDeleteFails) throw 'Couldn\'t delete your account.';
-    mockEvents.push(action.type === 'test/logout' ? 'logout' : action.type === 'test/deleteAccount' ? 'delete facility account' : action.type);
+    if (action.type === 'test/deleteAccount') {
+      // The real thunk's `logout.pending` nulls the profile FIRST; the route guard then
+      // shows My facilities while the cleanup and the revocation (up to 15 s) still run.
+      mockSeenAtDeletion = {
+        autoOpenSpent: getCentralState().autoOpenSpent,
+        soleApproved: soleApprovedFacility(await loadMyFacilities('asha'))?.origin ?? null,
+      };
+      if (mockDeleteFails) throw 'Couldn\'t delete your account.';
+      mockEvents.push('delete facility account');
+      return;
+    }
+    mockEvents.push(action.type === 'test/logout' ? 'logout' : action.type);
   },
 }));
 let mockDeleteFails = false;
@@ -66,6 +78,7 @@ beforeEach(async () => {
   jest.mocked(queryClient.isMutating).mockReturnValue(0);
   jest.mocked(getPendingEnrollmentToken).mockResolvedValue(null);
   mockDeleteFails = false;
+  mockSeenAtDeletion = undefined;
 });
 
 describe('Switch facility', () => {
@@ -174,7 +187,7 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
   });
 
   it('deletes the profile there, takes the facility off the list and leaves without revoking anything', async () => {
-    await deleteFacilityAccount(dispatch);
+    expect(await deleteFacilityAccount(dispatch)).toBe('left');
     expect(deleteAccount).toHaveBeenCalledTimes(1);
     expect(mockEvents).toEqual(['delete facility account', 'begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch']);
     expect(logout).toHaveBeenCalledWith({ localOnly: true });
@@ -182,7 +195,7 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     expect(getCentralState().status).toBe('signedIn');
   });
 
-  it('cannot lead to a new access request: the list no longer names the facility and the start-up skip is spent before the server is cleared', async () => {
+  it('cannot lead to a new access request: the start-up skip is spent BEFORE the deletion empties the store, and the entry is gone before the server is cleared', async () => {
     // Only this facility, approved: before the deletion My facilities would open it without a tap.
     await AsyncStorage.clear();
     await addMyFacility('asha', { origin: facility.origin, name: 'North Cold Store' });
@@ -190,20 +203,28 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     await updateMyFacility('asha', facility.origin, { status: 'approved' });
     expect(soleApprovedFacility(await loadMyFacilities('asha'))?.origin).toBe(facility.origin);
 
-    let spentWhenServerCleared: boolean | undefined;
     let listWhenServerCleared: string[] | undefined;
     const { clearOperatorServer } = jest.requireMock('@/config/operatorServer');
     jest.mocked(clearOperatorServer as () => Promise<void>).mockImplementationOnce(async () => {
-      spentWhenServerCleared = getCentralState().autoOpenSpent;
       listWhenServerCleared = (await loadMyFacilities('asha')).map(entry => entry.origin);
       mockActive = null;
       mockEvents.push('clear server');
     });
     await deleteFacilityAccount(dispatch);
-    // What My facilities sees the moment the route guard sends the person there:
-    expect(spentWhenServerCleared).toBe(true);
+    // At the moment the thunk's logout showed My facilities, the entry was still the sole
+    // approved one, so only the spent skip stands between the person and a new request.
+    expect(mockSeenAtDeletion).toEqual({ autoOpenSpent: true, soleApproved: facility.origin });
     expect(listWhenServerCleared).toEqual([]);
     expect(soleApprovedFacility(await loadMyFacilities('asha'))).toBeNull();
+  });
+
+  it('tries the final cleanup once more when a write is in flight, and reports what happened', async () => {
+    jest.mocked(queryClient.isMutating).mockReturnValueOnce(1);
+    expect(await deleteFacilityAccount(dispatch)).toBe('left');
+    expect(mockEvents.filter(event => event === 'begin switch')).toHaveLength(1);
+
+    jest.mocked(queryClient.isMutating).mockReturnValue(1);
+    expect(await deleteFacilityAccount(dispatch)).toBe('busy');
   });
 
   it('leaves everything in place when the facility refused the deletion', async () => {

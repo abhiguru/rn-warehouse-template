@@ -142,12 +142,14 @@ tick was given.
 (`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
 the facility request gate. The access token is replaced a minute before it expires and once
 when the service answers 401; one refresh runs at a time. A refresh that failed on the
-connection is repeated once at once, because the service answers a repeat of the same token
-with a new session only within 10 seconds of its first use; a refresh the app gave up waiting
-for (15 seconds) is already outside that window and is not repeated, since the repeat would
+connection is repeated once at once, and only while less than 8 seconds have passed since it
+was sent, because the service answers a repeat of the same token with a new session only
+within 10 seconds of its first use; a refresh the app gave up waiting for (15 seconds), or a
+connection reset late, is outside that window and is not repeated, since the repeat would
 count as reuse and revoke the whole session family. When the service refuses the refresh token
 the person is signed out centrally, told why, and returned to central sign-in. A secure store
-that does not answer is not "no session": nothing is cleared and the next call reads again.
+that does not answer is not "no session": nothing is cleared, the store is read again 2 seconds
+later and when the app next comes to the foreground, and the next call reads again.
 
 **My facilities** (`app/facilities.tsx`, `src/config/centralFacilities.ts`). The person's own
 list, stored on the phone under `central_facilities_v1:<central user id>`: address, instance
@@ -160,7 +162,7 @@ sign-out and removed by "Delete my account".
 | `requested` | Requested (critical) | The facility answered that the request waits |
 | `revoked` | Revoked (negative) | The facility answered `account_unavailable` |
 | `link_needed` | Confirm number (neutral) | The facility answered `link_required`, or a wrong code was entered |
-| `unavailable` | Unavailable (neutral) | Just added and never opened; the facility refused the identity, a conflict, or it does not take association sign-in right now |
+| `unavailable` | Unavailable (neutral) | Just added and never opened; the facility refused the identity, a conflict, or it does not take association sign-in right now. A facility whose database did not answer keeps its status |
 
 A status is checked only when its facility is opened; no facility is contacted in the
 background, and pull to refresh reads the list and asks the central service who is signed in.
@@ -213,7 +215,10 @@ Every refusal is a message on My facilities; the person is never left on a raw e
 with no selected server. "Sign out" in Settings signs out of that facility only and returns
 to My facilities. "Delete account" in Settings deletes the profile at that facility (as
 before), takes the facility off the person's list and leaves through the same cleanup, so My
-facilities cannot open it again and file a new access request. On My facilities, "Sign out" revokes the central session, forgets it on the
+facilities cannot open it again and file a new access request: the start-up skip is spent
+before the deletion is dispatched (the facility session empties the store the moment it
+starts), the list entry is removed after it, and no facility is opened while a sign-out or
+deletion is still running. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility; the account entry holds the name and "Delete my
 account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
 

@@ -10,7 +10,7 @@ import { deleteCentralAccount, signOutCentral, type CentralFailure } from '@/con
 import { deleteMyFacilities, removeMyFacility } from '@/config/centralFacilities';
 import { getCentralState, setCentralState } from '@/config/centralState';
 import { deleteAccount } from '@/store/slices/authSlice';
-import { leaveFacility } from './operatorSwitch';
+import { leaveFacility, type LeaveFacilityOutcome } from './operatorSwitch';
 
 type Dispatch = (action: any) => any;
 
@@ -53,16 +53,26 @@ export async function deleteAccountEverywhere(dispatch: Dispatch): Promise<Centr
  * profile at THAT facility is deleted (the existing `deleteAccount` thunk, which
  * also ends the facility session), the facility leaves the person's list, and
  * the app returns to My facilities through the same cleanup as "Switch
- * facility". The list is changed and the start-up skip is spent before the
- * server is cleared, so My facilities cannot open the facility again and file
- * a new access request. Throws what the thunk throws.
+ * facility".
+ *
+ * The thunk's own `logout` empties the profile in the store the moment it
+ * starts, long before it resolves (the server revocation can take 15 s). The
+ * route guard then shows My facilities at once, so the start-up skip is spent
+ * BEFORE the thunk is dispatched; otherwise the list could open the facility
+ * again and file a new access request for the account just deleted. Spending
+ * it on a failed deletion is harmless. `openFacility` also refuses to start
+ * while that logout is pending. Throws what the thunk throws; the returned
+ * outcome is that of the final cleanup.
  */
-export async function deleteFacilityAccount(dispatch: Dispatch): Promise<void> {
+export async function deleteFacilityAccount(dispatch: Dispatch): Promise<LeaveFacilityOutcome> {
   const server = getActiveOperatorServer();
   const userId = getCentralState().user?.id;
-  await dispatch(deleteAccount()).unwrap();
   setCentralState({ autoOpenSpent: true });
+  await dispatch(deleteAccount()).unwrap();
   if (server && userId) await removeMyFacility(userId, server.origin).catch(() => {});
   // The profile is gone at the facility: there is no session left to revoke.
-  await leaveFacility(dispatch, { localOnly: true });
+  // A write that was still in flight gets one more chance to settle.
+  let outcome = await leaveFacility(dispatch, { localOnly: true });
+  if (outcome !== 'left') outcome = await leaveFacility(dispatch, { localOnly: true });
+  return outcome;
 }
