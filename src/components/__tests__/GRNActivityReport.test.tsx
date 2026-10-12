@@ -195,7 +195,7 @@ describe('whose GRNs', () => {
   it('a customer account with no customer is told so, with nothing to retry and nothing asked', async () => {
     signIn({ id: 'u1', role: 'customer', assignedCustomerIds: [] });
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['No customer linked to your account', 'Ask your facility to link your account to a customer.']));
+    expect(texts()).toEqual(expect.arrayContaining(['No customer linked', 'No customer is linked to your account. Ask your facility to link one.']));
     expect(pressables(label => label === 'Try again')).toHaveLength(0);
     expect(allActivity).not.toHaveBeenCalled();
     expect(customerActivity).not.toHaveBeenCalled();
@@ -272,7 +272,7 @@ describe('nothing to show', () => {
     signIn(STAFF);
     await open();
     // Not an access refusal: the screen's own words (its fallbackError), not the service's.
-    expect(texts()).toEqual(expect.arrayContaining(["Couldn't load GRN activity", 'Failed to fetch GRN activity', 'Try again']));
+    expect(texts()).toEqual(expect.arrayContaining(["Couldn't load GRN activity", "Couldn't load GRN activity. Check your connection and try again.", 'Try again']));
     expect(texts()).not.toContain('The facility refused this report.');
   });
 });

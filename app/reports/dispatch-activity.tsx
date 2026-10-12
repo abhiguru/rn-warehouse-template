@@ -16,9 +16,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   ReportCustomerCard,
   ReportCustomerPicker,
-  ReportEmptyState,
-  ReportHeader,
+  ReportDateHeading,
   ReportLastCustomer,
+  ReportNoCustomer,
   ReportScaffold,
   type KPIItem,
   type ReportHeaderAction,
@@ -33,7 +33,8 @@ import {
 } from '@/features/filters/configs/reports/dispatchActivity';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
-import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
+import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
@@ -41,15 +42,13 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/reporting';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber, formatSectionDate, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 
 const REPORT_ID = 'dispatch-activity';
 
 const makeStyles = (t: ThemeTokens) => ({
-  container: { flex: 1, backgroundColor: t.background.base },
-
   // A card per row, spaced by its own bottom margin.
   card: {
     marginHorizontal: layout.marginCompact,
@@ -59,19 +58,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...t.shadow[2],
   },
   cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
-
-  dateHeading: {
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-    paddingHorizontal: layout.marginCompact + space.xs,
-  },
-  dateHeadingText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-    color: t.text.secondary,
-  },
 
   // The card's head: the part that shows the items, and beside it the control that opens the dispatch.
   head: { flexDirection: 'row' as const, alignItems: 'stretch' as const },
@@ -149,7 +135,7 @@ export default function DispatchActivityScreen() {
   const { level } = scope;
   switch (level.kind) {
     case 'none':
-      return <NoCustomer />;
+      return <ReportNoCustomer title={tr('reports.titles.dispatchActivity')} />;
     case 'choose':
       return <ReportCustomerPicker title={tr('reports.titles.dispatchActivity')} onPick={scope.chooseCustomer} />;
     case 'customers':
@@ -167,20 +153,6 @@ export default function DispatchActivityScreen() {
   }
 }
 
-function NoCustomer() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.dispatchActivity')} />
-      <ReportEmptyState
-        icon="alert-circle-outline"
-        message={tr('reports.shared.noCustomerLinked')}
-        description={tr('reports.dispatchActivity.noCustomer')}
-      />
-    </View>
-  );
-}
-
 /** "No dispatches in this period", and a longer period to try unless there is none. */
 const emptyState = (period: ReportPeriod, oneCustomer: boolean) => ({
   icon: 'truck-delivery-outline',
@@ -189,14 +161,6 @@ const emptyState = (period: ReportPeriod, oneCustomer: boolean) => ({
     ? undefined
     : tr(oneCustomer ? 'reports.dispatchActivity.emptyCustomerDescription' : 'reports.dispatchActivity.emptyDescription'),
 });
-
-// ============================================================================
-// The PDF (generate-report-pdf)
-// ============================================================================
-
-/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
-const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
-  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 // ============================================================================
 // Every customer
@@ -227,7 +191,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
-  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
@@ -249,7 +213,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       keyExtractor={customerKey}
       extraData={view.words}
       noun="customers"
-      empty={emptyState(period, false)}
+      empty={{ ...emptyState(period, false), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.dispatchActivity.errorTitle')}
     >
       {lastCustomer && !filters.search ? (
@@ -358,7 +322,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      ...exportActions({ exportPdf, busy, available }),
+      ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
   );
@@ -377,7 +341,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const renderRow = useCallback(
     (row: DispatchRow) =>
       row.kind === 'date' ? (
-        <DateHeading date={row.date} />
+        <ReportDateHeading date={row.date} />
       ) : (
         <DispatchCard
           dispatch={row.dispatch}
@@ -409,22 +373,11 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       getRowType={dispatchRowType}
       extraData={extraData}
       noun="dispatches"
-      empty={emptyState(period, true)}
+      empty={{ ...emptyState(period, true), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.dispatchActivity.errorTitle')}
     />
   );
 }
-
-const DateHeading = memo(function DateHeading({ date }: { date: string }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.dateHeading}>
-      <Text style={styles.dateHeadingText} accessibilityRole="header">
-        {formatSectionDate(date)}
-      </Text>
-    </View>
-  );
-});
 
 /**
  * The items a search found on a dispatch whose items are not shown: only for

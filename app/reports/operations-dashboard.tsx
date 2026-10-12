@@ -15,6 +15,7 @@ import { Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportEmptyState, ReportHeader, ReportScaffold, type KPIItem } from '@/components/reports';
 import { OPERATIONS_DASHBOARD } from '@/features/filters/configs/reports/operationsDashboard';
+import { longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -178,7 +179,7 @@ function OperationsDashboardReport() {
       renderRow={renderRow}
       keyExtractor={activityKey}
       noun="GRNs"
-      empty={{ icon: 'history', title: tr('reports.operations.noActivity') }}
+      empty={{ icon: 'history', title: tr('reports.operations.noActivity'), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.operations.errorTitle')}
     >
       {data ? (

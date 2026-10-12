@@ -326,7 +326,7 @@ describe('GRN activity, every customer', () => {
     expect(allActivity).toHaveBeenCalledTimes(2);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
     // The service's own words for a failure are not shown; the screen's are (useReportQuery).
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", 'Failed to fetch GRN activity']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load GRN activity. Check your connection and try again."]));
   });
 });
 
@@ -372,7 +372,7 @@ describe('GRN activity, one customer', () => {
     const screen = await open(makeStore(account));
     expect(allActivity).not.toHaveBeenCalled();
     expect(customerActivity).not.toHaveBeenCalled();
-    expect(screen.texts()).toContain('No customer linked to your account');
+    expect(screen.texts()).toEqual(expect.arrayContaining(['No customer linked', 'No customer is linked to your account. Ask your facility to link one.']));
     expect(screen.texts()).not.toContain('Riverbank Produce');
     expect(screen.has('Try again')).toBe(false);
   });
@@ -446,5 +446,35 @@ describe('GRN activity, the report PDF', () => {
       { report: 'grn-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'gr_no', order: 'desc' } },
       'GRN_activity_Green_Valley_Traders_2026_06_15_to_2026_10_12.pdf'
     );
+  });
+});
+
+describe('GRN activity, nothing in the period', () => {
+  it('offers "Show last 420 days" until the longest period is chosen, and pressing it asks for those days', async () => {
+    allActivity.mockImplementation(async () => answerCustomers([]));
+    const screen = await open(makeStore());
+    expect(screen.customers()).toEqual([]);
+    expect(screen.texts()).toEqual(expect.arrayContaining(['No GRNs in this period', 'Choose a longer period to see more GRNs.']));
+    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.has('Show last 420 days')).toBe(true);
+
+    await screen.press('Show last 420 days');
+    expect(allActivity.mock.calls).toEqual([[days('2026-06-15')], [days('2025-08-19')]]);
+    expect(screen.has('Period: Last 420 days. Change')).toBe(true);
+    expect(screen.status()).toBe('19 Aug 2025 – 12 Oct · Last updated 10:00 am');
+    // The longest period has nothing longer to offer: no button, and no "Choose a longer period".
+    expect(screen.texts()).toContain('No GRNs in this period');
+    expect(screen.texts()).not.toContain('Choose a longer period to see more GRNs.');
+    expect(screen.has('Show last 420 days')).toBe(false);
+  });
+
+  it("one customer: the same button asks for that customer's last 420 days", async () => {
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    customerActivity.mockResolvedValue({ ...answerGrns, data: { ...answerGrns.data, grns: [] } } as never);
+    const screen = await open(makeStore());
+    expect(screen.has('Show last 420 days')).toBe(true);
+    await screen.press('Show last 420 days');
+    expect(customerActivity).toHaveBeenLastCalledWith({ customerId: 'c2', ...days('2025-08-19') });
+    expect(screen.has('Show last 420 days')).toBe(false);
   });
 });

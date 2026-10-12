@@ -67,3 +67,37 @@ describe('stock trend, full screen', () => {
     expect(modal.animationType).toBe('fade');
   });
 });
+
+describe('stock trend, figures', () => {
+  function render(trends: MonthlyTrendPoint[]) {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<StockTrendChart trends={trends} />);
+    });
+    const texts = tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
+    const chart = { props: { ...tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0].props } };
+    // The latest and highest figures are on the full screen.
+    const card = tree.root.find(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Stock level trend. '));
+    act(() => card.props.onPress());
+    const labels = tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
+    act(() => tree.unmount());
+    return { texts, labels, chart };
+  }
+
+  it('says "Highest 0" when every month was 0, and keeps the axis its own scale', () => {
+    const { texts, labels, chart } = render([point('2026-08', 0), point('2026-09', 0), point('2026-10', 0)]);
+    expect(texts).toContain('Stock went from 0 in Aug 2026 to 0 in Oct 2026. Highest 0.');
+    expect(labels).toContain('Highest 0');
+    expect(labels).not.toContain('Highest 1');
+    // The axis still has a scale to draw a flat line on.
+    expect(chart.props.maxValue).toBe(100);
+  });
+
+  it('gives the highest month as it was, and names the axis in bags', () => {
+    const { texts, labels, chart } = render(TRENDS);
+    expect(texts).toContain('bags');
+    expect(texts).not.toContain('units');
+    expect(labels).toContain('Highest 180');
+    expect(chart.props.maxValue).toBe(200);
+  });
+});

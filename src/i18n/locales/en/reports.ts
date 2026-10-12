@@ -75,6 +75,8 @@ export const reports = {
   period: {
     label: 'Period',
     lastDays: 'Last {{count}} days',
+    /** The button of a period report's empty state, until the longest period is chosen. */
+    showLastDays: 'Show last {{count}} days',
   },
   components: {
     kpiLoading: '{{label}}, loading',
@@ -209,8 +211,6 @@ export const reports = {
     retrievedDetail: 'Customer activity detail retrieved successfully',
     listError: "Couldn't load customer activity. Check your connection and try again.",
     detailError: "Couldn't load this customer's activity. Check your connection and try again.",
-    noCustomer: 'No customer is linked to your account. Ask your facility to link one.',
-    noCustomerTitle: 'No customer linked',
     errorTitle: 'Something went wrong',
     allCustomers: 'All customers',
     myCustomers: 'My customers',
@@ -280,7 +280,6 @@ export const reports = {
     retrieved: 'Dispatch activity retrieved successfully',
     retrievedAll: 'All-customers dispatch activity retrieved successfully',
     loadError: "Couldn't load dispatch activity. Check your connection and try again.",
-    noCustomer: 'No customer is linked to your account. Ask your facility to add one.',
     errorTitle: "Couldn't load dispatch activity",
     bagsDispatched: 'Bags dispatched',
     customerHint: "Shows this customer's dispatches",
@@ -307,8 +306,7 @@ export const reports = {
     // Service results (not shown on a screen today)
     retrieved: 'GRN activity retrieved successfully',
     retrievedAll: 'All-customers GRN activity retrieved successfully',
-    noCustomerTitle: 'No customer linked to your account',
-    noCustomerDescription: 'Ask your facility to link your account to a customer.',
+    loadError: "Couldn't load GRN activity. Check your connection and try again.",
     errorTitle: "Couldn't load GRN activity",
     emptyTitle: 'No GRNs in this period',
     emptyDescription: 'Choose a longer period to see more GRNs.',
@@ -333,7 +331,6 @@ export const reports = {
     retrieved: 'Invoice history retrieved successfully',
     retrievedAll: 'All-customers invoice history retrieved successfully',
     loadError: "Couldn't load the invoice history. Check your connection and try again.",
-    noCustomer: 'Your account has no customer assigned yet. Ask your facility to assign one.',
     errorTitle: "Couldn't load the invoice history",
     invoices: 'Invoices',
     netAmount: 'Net amount',

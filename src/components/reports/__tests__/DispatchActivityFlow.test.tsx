@@ -461,7 +461,7 @@ describe('dispatch activity, one customer', () => {
     const screen = await open(makeStore(account));
     expect(allActivity).not.toHaveBeenCalled();
     expect(customerActivity).not.toHaveBeenCalled();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['No customer linked', 'No customer is linked to your account. Ask your facility to add one.']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['No customer linked', 'No customer is linked to your account. Ask your facility to link one.']));
     expect(screen.texts()).not.toContain('Riverbank Produce');
     expect(screen.has('Try again')).toBe(false);
   });

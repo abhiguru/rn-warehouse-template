@@ -21,9 +21,8 @@ import {
   AgingBucketBar,
   ReportCustomerCard,
   ReportCustomerPicker,
-  ReportEmptyState,
-  ReportHeader,
   ReportLastCustomer,
+  ReportNoCustomer,
   ReportScaffold,
   agingBucketLabel,
   agingBucketsFrom,
@@ -49,7 +48,8 @@ import {
 } from '@/features/filters/configs/reports/stockAging';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
+import { exportHeaderActions } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
@@ -63,17 +63,7 @@ import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'stock-aging';
 
-// ============================================================================
-// The PDF (generate-report-pdf)
-// ============================================================================
-
-/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
-const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
-  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
-
 const makeStyles = (t: ThemeTokens) => ({
-  container: { flex: 1, backgroundColor: t.background.base },
-
   // A card per row, spaced by its own bottom margin.
   card: {
     marginHorizontal: layout.marginCompact,
@@ -163,7 +153,7 @@ export default function StockAgingScreen() {
   const { level } = scope;
   switch (level.kind) {
     case 'none':
-      return <NoCustomer />;
+      return <ReportNoCustomer title={tr('reports.titles.stockAging')} />;
     case 'choose':
       return <ReportCustomerPicker title={tr('reports.titles.stockAging')} onPick={scope.chooseCustomer} />;
     case 'customers':
@@ -179,16 +169,6 @@ export default function StockAgingScreen() {
         />
       );
   }
-}
-
-function NoCustomer() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.stockAging')} />
-      <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={tr('reports.shared.noCustomer')} />
-    </View>
-  );
 }
 
 // ============================================================================
@@ -212,7 +192,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
-  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
@@ -318,7 +298,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      ...exportActions({ exportPdf, busy, available }),
+      ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
   );

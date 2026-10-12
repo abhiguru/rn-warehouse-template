@@ -271,4 +271,9 @@ describe('report layout, accessibility and fit', () => {
     expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Searching').length).toBeGreaterThan(0);
     expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Clear search' && typeof node.props.onPress === 'function')).toEqual([]);
   });
+
+  it('shows the spinner over the skeleton of a server search not answered yet', () => {
+    const { tree } = render({ values: { search: 'garlic' }, query: { phase: 'loading', updatedAt: undefined, isFetching: true }, searchIsServerSide: true });
+    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Searching').length).toBeGreaterThan(0);
+  });
 });

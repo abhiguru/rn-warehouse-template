@@ -159,8 +159,9 @@ function ReportScaffoldInner<T>({
           value={filters.state.search}
           onSearch={filters.state.setSearch}
           placeholder={filters.config.search.placeholder}
-          // A search run on the phone has nothing to wait for: keep the clear button.
-          loading={searchIsServerSide && isFetching && phase === 'ready'}
+          // A search run on the phone has nothing to wait for: keep the clear button. A server
+          // search shows the spinner until it is answered, also over the skeleton of a new search.
+          loading={searchIsServerSide && isFetching}
         />
       ) : null}
       {filters ? <FilterBar config={filters.config} filters={filters.state} /> : null}

@@ -154,6 +154,18 @@ describe('the period', () => {
     const screen = await open();
     expect(screen.texts()).toEqual(expect.arrayContaining(['Total stock', 'No GRNs or dispatches in this period. New activity appears here.']));
   });
+
+  it('with no activity offers "Show last 420 days", which asks for those days, until that period is chosen', async () => {
+    dashboard.mockResolvedValue(answer([]) as never);
+    const screen = await open();
+    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    const button = () => screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Show last 420 days' && typeof node.props.onPress === 'function');
+    expect(button()).not.toEqual([]);
+    await screen.press('Show last 420 days');
+    expect(dashboard.mock.calls).toEqual([[days('2026-06-15')], [days('2025-08-19')]]);
+    expect(screen.status()).toBe('19 Aug 2025 – 12 Oct · Last updated 10:00 am');
+    expect(button()).toEqual([]);
+  });
 });
 
 describe('the recent activity', () => {

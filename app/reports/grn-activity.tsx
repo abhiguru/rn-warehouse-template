@@ -16,9 +16,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   ReportCustomerCard,
   ReportCustomerPicker,
-  ReportEmptyState,
-  ReportHeader,
+  ReportDateHeading,
   ReportLastCustomer,
+  ReportNoCustomer,
   ReportScaffold,
   type KPIItem,
   type ReportHeaderAction,
@@ -35,7 +35,8 @@ import {
 } from '@/features/filters/configs/reports';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
-import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
+import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
@@ -43,23 +44,13 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/grn-activity-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
-import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivityRecord } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'grn-activity';
 
-// ============================================================================
-// The PDF (generate-report-pdf)
-// ============================================================================
-
-/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
-const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
-  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
-
 const makeStyles = (t: ThemeTokens) => ({
-  container: { flex: 1, backgroundColor: t.background.base },
-
   // A card per row, spaced by its own bottom margin.
   card: {
     marginHorizontal: layout.marginCompact,
@@ -70,19 +61,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
   cardPressed: { backgroundColor: t.surface.cardPressed },
-
-  dateHeading: {
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-    paddingHorizontal: layout.marginCompact + space.xs,
-  },
-  dateHeadingText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-    color: t.text.secondary,
-  },
 
   objectCell: {
     flexDirection: 'row' as const,
@@ -130,7 +108,7 @@ export default function GRNActivityScreen() {
   const { level } = scope;
   switch (level.kind) {
     case 'none':
-      return <NoCustomer />;
+      return <ReportNoCustomer title={tr('reports.titles.grnActivity')} />;
     case 'choose':
       return <ReportCustomerPicker title={tr('reports.titles.grnActivity')} onPick={scope.chooseCustomer} />;
     case 'customers':
@@ -146,20 +124,6 @@ export default function GRNActivityScreen() {
         />
       );
   }
-}
-
-function NoCustomer() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.grnActivity')} />
-      <ReportEmptyState
-        icon="alert-circle-outline"
-        message={tr('reports.grnActivity.noCustomerTitle')}
-        description={tr('reports.grnActivity.noCustomerDescription')}
-      />
-    </View>
-  );
 }
 
 /** "No GRNs in this period", and a longer period to try unless there is none. */
@@ -181,7 +145,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const query = useReportQuery<AllGRNActivityData>({
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllGRNActivity({ fromDate: period.from, toDate: period.to }),
-    fallbackError: tr('reports.grnActivity.errors.fetchFailed'),
+    fallbackError: tr('reports.grnActivity.loadError'),
   });
   const { data } = query;
   const rows = useMemo(() => grnCustomersView(data?.by_customer ?? [], view), [data, view]);
@@ -198,7 +162,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
-  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
@@ -220,7 +184,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       keyExtractor={customerKey}
       extraData={view.words}
       noun="customers"
-      empty={emptyState(period)}
+      empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.grnActivity.errorTitle')}
     >
       {lastCustomer && !filters.search ? (
@@ -293,7 +257,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const query = useReportQuery<GRNActivityData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerGRNActivity({ customerId, fromDate: period.from, toDate: period.to }),
-    fallbackError: tr('reports.grnActivity.errors.fetchFailed'),
+    fallbackError: tr('reports.grnActivity.loadError'),
   });
   const { data } = query;
   const grns = useMemo(() => grnRecordsView(data?.grns ?? [], view), [data, view]);
@@ -334,7 +298,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      ...exportActions({ exportPdf, busy, available }),
+      ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
   );
@@ -342,7 +306,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const renderRow = useCallback(
     (row: GRNRow) =>
       row.kind === 'date' ? (
-        <DateHeading date={row.date} />
+        <ReportDateHeading date={row.date} />
       ) : (
         <GRNCard grn={row.grn} words={view.words} showDate={!byDate} onOpen={openGrn} />
       ),
@@ -365,22 +329,11 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       getRowType={grnRowType}
       extraData={view.words}
       noun="GRNs"
-      empty={emptyState(period)}
+      empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.grnActivity.errorTitle')}
     />
   );
 }
-
-const DateHeading = memo(function DateHeading({ date }: { date: string }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.dateHeading}>
-      <Text style={styles.dateHeadingText} accessibilityRole="header">
-        {formatSectionDate(date)}
-      </Text>
-    </View>
-  );
-});
 
 /**
  * What a search found on the GRN that the card does not show: items, their

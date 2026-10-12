@@ -274,6 +274,9 @@ describe('the search (backend with migration 52)', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
     await screen.waitForSearch();
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'ga' })]);
+    // The search runs on the server: while it is answered the field shows a spinner, not its clear button.
+    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Searching').length).toBeGreaterThan(0);
+    expect(screen.has('Clear search')).toBe(false);
 
     // Typed again before "ga" was answered: one more call, for "oni" only.
     await screen.type('o', 'on', 'oni');
@@ -285,6 +288,9 @@ describe('the search (backend with migration 52)', () => {
     // The answer to "ga" arrives last, and changes nothing.
     await screen.run(() => held[1].release());
     expect(screen.items()).toEqual(['Example Onions']);
+    // Answered: the spinner gives way to the clear button.
+    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Searching')).toHaveLength(0);
+    expect(screen.has('Clear search')).toBe(true);
     // The figures cover every item, not the one the search leaves (§14.10).
     expect(screen.figure('Items')).toBe('Items: 3');
     expect(rpc).toHaveBeenCalledTimes(3);

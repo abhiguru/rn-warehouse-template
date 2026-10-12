@@ -12,7 +12,9 @@ export { KPIGrid, type KPIItem } from './KPIGrid';
 export { ReportHeader, type ReportHeaderAction } from './ReportHeader';
 
 // The one layout every report uses
-export { ReportScaffold, type ReportScaffoldProps } from './ReportScaffold';
+export { ReportScaffold, type ReportScaffoldProps, type ReportEmptyAction } from './ReportScaffold';
+export { ReportNoCustomer, type ReportNoCustomerProps } from './ReportNoCustomer';
+export { ReportDateHeading, type ReportDateHeadingProps } from './ReportDateHeading';
 export { ReportStatusLine, type ReportStatusLineProps } from './ReportStatusLine';
 
 // The Reports tab

@@ -169,6 +169,73 @@ The other report screens on the shared layer, and the work they build on:
   the English and Gujarati texts only they used. The report registry test now
   renders the root stack instead of matching its source text.
 
+Review fixes (2026-10-12):
+
+- **Stock screens.**
+  - Stock aging: the oldest-stock figure now reads "Items over 364 days" and
+    matches the red bar; customer rows no longer show a separate "over 1 year"
+    count, and their average age wraps instead of being cut.
+  - Stock summary: the items that ran out are rows of the list under an "Out of
+    stock" header that opens and closes them, so long lists scroll smoothly; a
+    search that finds only items that ran out says so and opens them; the
+    header action reads "Share PDF" and the quantity figure "Stock", as on the
+    other reports; an item with no GRNs says so when opened.
+  - Stock reports: a GRN's package mark is shown in full in the row's details
+    instead of in a tag that could cut it.
+- **The shared report layer and filter kit.**
+  - "Last updated" gives the date as well as the time for figures kept from an
+    earlier day, and is never cut off; screen readers announce the "Showing X
+    of Y" count after a search.
+  - Every filter chip, choice chip and recent-search chip can be tapped across
+    the full 48 dp (Android) / 44 pt (iOS) target, not only the 36 dp pill; the
+    filter bar keeps one height.
+  - While a report first loads, screen readers hear "Loading figures" once.
+  - The sort chip's spoken label uses the full field name.
+  - Filter sheets and the full-screen stock trend chart fade instead of
+    sliding when Reduce Motion is on.
+  - With large text (above 1.2×) the figure tiles show two across.
+  - The last row of a report and of the customer picker is no longer hidden
+    under the system navigation bar; empty states can offer a button, and
+    period reports offer "Show last 420 days" until the longest period is
+    chosen.
+  - The search field keeps its clear button during a background refresh; the
+    spinner shows only for a server search (item stock), also while a new
+    search is first answered.
+  - A double tap on a report or a customer row opens it once.
+- **Item stock summary, report queries, kept figures and PDFs.**
+  - Item stock summary: opening an item no longer closes when an earlier
+    item's GRNs answer late, after a search or a pull to refresh.
+  - Item stock summary: an opened item says "Showing 100 of N" under its GRNs
+    when it has more than the 100 shown.
+  - Item stock summary: the Items and Stock figures stay those of every item
+    while a search is typed.
+  - Item stock summary: a pull to refresh keeps the items loaded below the
+    first page until the new first page arrives, and keeps them if the refresh
+    fails; no next page is loaded against a page still being refreshed or
+    shown from the phone.
+  - Item stock summary on a facility server without migration 52: a note says
+    the order covers only the items loaded, and Share PDF is not offered.
+  - Reports keep only first pages without a search on the phone, so other
+    reports' saved figures are no longer pushed out.
+  - Reports show their own wording, not the server's or the system's, when a
+    report cannot be loaded; access refusals still show the facility's reason.
+  - When the facility refuses a customer's report, that customer's saved
+    figures for every period are removed, not only the period asked for.
+  - Share PDF says how many rows a shortened PDF holds before sharing it, and
+    shows plain wording instead of system error text when sharing fails.
+  - PDF file names for all customers say "All customers" in the app's
+    language.
+- **Shared report parts and wording.** Every report says "No customer linked"
+  in the same words when a customer account has none (it was worded four
+  ways); GRN activity's failure reads "Couldn't load GRN activity. Check your
+  connection and try again." instead of "Failed to fetch GRN activity";
+  customer activity's quick-access cards and stock trend axis count bags, as
+  every other report does, instead of "units"; and a stock trend whose months
+  are all 0 says "Highest 0" instead of "Highest 1". The no-customer state,
+  the date heading over a day's rows and the header's "Share PDF" are one
+  shared part each (`ReportNoCustomer`, `ReportDateHeading`,
+  `exportHeaderActions`) instead of a copy in each screen.
+
 ## Unreleased — price history screen (2026-10-11)
 
 Needs backend migration 48 (`get_item_price_history`), which is in backend

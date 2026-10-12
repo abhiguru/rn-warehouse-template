@@ -6,7 +6,8 @@
  *
  * - One series, in the first chart colour; axes and grid in `border.divider`,
  *   axis labels `caption1` `text.secondary`, the y axis in the language's
- *   number format with its unit over it.
+ *   number format with its unit (bags) over it. "Highest" is the highest
+ *   month as it was, not the axis top (a period of 0 says 0).
  * - The card is one button that opens the full screen; its label is the text
  *   summary. With no months to draw, the card says so and is not a button.
  * - The chart / table switch is a segmented control whose segments are each a
@@ -176,7 +177,9 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
   }));
   const fullData = trends.map((point, index) => ({ value: values[index], label: shortMonth(point.month), dataPointText: formatNumber(values[index]) }));
 
-  const highest = Math.max(...values, 1);
+  // The highest month as it was: 0 when every month was 0. The axis has its own floor,
+  // so a flat line still has a scale, and that floor is never shown as a value.
+  const highest = Math.max(...values, 0);
   const roundedMax = Math.ceil(highest / 100) * 100 || 100;
   const first = values[0];
   const latest = values[values.length - 1];
@@ -232,7 +235,7 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
           </View>
         </View>
         <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-          <Text style={styles.axisUnit}>{tr('reports.shared.units')}</Text>
+          <Text style={styles.axisUnit}>{tr('filters.unit.bags')}</Text>
           <LineChart
             {...axisProps}
             data={lineData}
@@ -303,7 +306,7 @@ export function StockTrendChart({ trends }: StockTrendChartProps) {
             {view === 'chart' ? (
               <View style={styles.chartArea}>
                 <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.chartScroll}>
-                  <Text style={styles.axisUnit}>{tr('reports.shared.units')}</Text>
+                  <Text style={styles.axisUnit}>{tr('filters.unit.bags')}</Text>
                   <LineChart
                     {...axisProps}
                     data={fullData}

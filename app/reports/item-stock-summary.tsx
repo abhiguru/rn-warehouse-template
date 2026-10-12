@@ -28,12 +28,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Text } from 'react-native';
 import { router } from 'expo-router';
 import {
   ReportCustomerPicker,
-  ReportEmptyState,
-  ReportHeader,
+  ReportNoCustomer,
   ReportScaffold,
   StockItemCard,
   isLowStock,
@@ -46,6 +45,7 @@ import { ReportLoadMoreFooter, type ReportLoadMoreState } from '@/components/rep
 import { ITEM_STOCK, itemStockFallbackView } from '@/features/filters/configs/reports/itemStock';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
+import { exportHeaderActions } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { peekReportAnswer, useReportQuery } from '@/features/reports/useReportQuery';
@@ -65,7 +65,6 @@ const ITEM_STOCK_PAGE_SIZE = 50;
 type ItemPage = NonNullable<Awaited<ReturnType<typeof StockService.getItemWiseStockList>>['data']>;
 
 const makeStyles = (t: ThemeTokens) => ({
-  container: { flex: 1, backgroundColor: t.background.base },
   // A card per row, spaced by its own bottom margin; the list has no side padding of its own.
   card: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
   // Under the status line, in its words' size and colour.
@@ -81,7 +80,7 @@ export default function ItemStockSummaryScreen() {
   const { level } = scope;
   switch (level.kind) {
     case 'none':
-      return <NoCustomer />;
+      return <ReportNoCustomer title={tr('reports.titles.itemStockSummary')} />;
     case 'choose':
       return <ReportCustomerPicker title={tr('reports.titles.itemStockSummary')} onPick={scope.chooseCustomer} />;
     case 'customers':
@@ -99,16 +98,6 @@ export default function ItemStockSummaryScreen() {
         />
       );
   }
-}
-
-function NoCustomer() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.itemStockSummary')} />
-      <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={tr('reports.shared.noCustomer')} />
-    </View>
-  );
 }
 
 // ============================================================================
@@ -305,7 +294,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       // Left out once the facility's server has said it cannot make report PDFs, and for a server
       // that cannot sort the list (older than migration 52, so without generate-report-pdf too).
-      ...(available && serverSorted ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : []),
+      ...(serverSorted ? exportHeaderActions({ exportPdf, busy, available }) : []),
     ],
     [onChangeCustomer, available, serverSorted, busy, exportPdf]
   );
@@ -316,6 +305,8 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
       subtitle={subtitle}
       actions={actions}
       filters={{ config: ITEM_STOCK, state: filters }}
+      // The search is sent to the server: the field shows a spinner while it is answered.
+      searchIsServerSide
       query={query}
       kpis={kpis}
       status={{ shown: rows.length, total }}

@@ -17,9 +17,9 @@ import {
   FioriDataTable,
   ReportCustomerCard,
   ReportCustomerPicker,
-  ReportEmptyState,
-  ReportHeader,
+  ReportDateHeading,
   ReportLastCustomer,
+  ReportNoCustomer,
   ReportScaffold,
   type DataTableColumn,
   type KPIItem,
@@ -37,7 +37,8 @@ import {
 } from '@/features/filters/configs/reports/invoiceHistory';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
-import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
+import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
@@ -45,7 +46,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { getAllInvoiceHistory, getCustomerInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
-import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type {
   AllInvoiceHistoryData,
   CustomerInvoiceSummary,
@@ -53,7 +54,7 @@ import type {
   InvoiceHistoryRecord,
   InvoiceMonthlyBreakdown,
 } from '@/types/report.types';
-import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 const REPORT_ID = 'invoice-history';
@@ -66,8 +67,6 @@ const formatSummaryAmount = (amount: number | null | undefined): string =>
 const formatAmount = (amount: number | null | undefined): string => localizeDigits(formatInvoiceAmount(amount));
 
 const makeStyles = (t: ThemeTokens) => ({
-  container: { flex: 1, backgroundColor: t.background.base },
-
   // A card per row, spaced by its own bottom margin.
   card: {
     marginHorizontal: layout.marginCompact,
@@ -78,19 +77,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
   cardPressed: { backgroundColor: t.surface.cardPressed },
-
-  dateHeading: {
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-    paddingHorizontal: layout.marginCompact + space.xs,
-  },
-  dateHeadingText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-    color: t.text.secondary,
-  },
 
   // Monthly breakdown, between the status line and the invoices
   monthly: { marginHorizontal: layout.marginCompact, marginBottom: space.md },
@@ -143,7 +129,7 @@ export default function InvoiceHistoryScreen() {
   const { level } = scope;
   switch (level.kind) {
     case 'none':
-      return <NoCustomer />;
+      return <ReportNoCustomer title={tr('reports.titles.invoiceHistory')} />;
     case 'choose':
       return <ReportCustomerPicker title={tr('reports.titles.invoiceHistory')} onPick={scope.chooseCustomer} />;
     case 'customers':
@@ -161,34 +147,12 @@ export default function InvoiceHistoryScreen() {
   }
 }
 
-function NoCustomer() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.invoiceHistory')} />
-      <ReportEmptyState
-        icon="alert-circle-outline"
-        message={tr('reports.shared.noCustomerLinked')}
-        description={tr('reports.invoiceHistory.noCustomer')}
-      />
-    </View>
-  );
-}
-
 /** "No invoices in this period", and a longer period to try unless there is none. */
 const emptyState = (period: ReportPeriod) => ({
   icon: 'file-document-outline',
   title: tr('reports.invoiceHistory.emptyTitle'),
   description: isLongestPeriod(period) ? undefined : tr('reports.invoiceHistory.emptyDescription'),
 });
-
-// ============================================================================
-// The PDF (generate-report-pdf)
-// ============================================================================
-
-/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
-const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
-  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
 // ============================================================================
 // Every customer
@@ -219,7 +183,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
-  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
@@ -241,7 +205,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       keyExtractor={customerKey}
       extraData={view.words}
       noun="customers"
-      empty={emptyState(period)}
+      empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.invoiceHistory.errorTitle')}
     >
       {lastCustomer && !filters.search ? (
@@ -363,7 +327,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      ...exportActions({ exportPdf, busy, available }),
+      ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
   );
@@ -371,7 +335,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const renderRow = useCallback(
     (row: InvoiceRow) =>
       row.kind === 'date' ? (
-        <DateHeading date={row.date} />
+        <ReportDateHeading date={row.date} />
       ) : (
         <InvoiceCard invoice={row.invoice} words={view.words} showDate={!byDate} onOpen={openInvoice} />
       ),
@@ -396,24 +360,13 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       getRowType={invoiceRowType}
       extraData={view.words}
       noun="invoices"
-      empty={emptyState(period)}
+      empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.invoiceHistory.errorTitle')}
     >
       {months.length > 0 ? <MonthlyBreakdown months={months} /> : null}
     </ReportScaffold>
   );
 }
-
-const DateHeading = memo(function DateHeading({ date }: { date: string }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.dateHeading}>
-      <Text style={styles.dateHeadingText} accessibilityRole="header">
-        {formatSectionDate(date)}
-      </Text>
-    </View>
-  );
-});
 
 // ============================================================================
 // Month by month

@@ -1036,9 +1036,11 @@ The app has one central sign-in that only proves who the user is, then facility 
 - Built with `ReportScaffold` (`src/components/reports`), which owns the layout and every state: first load, failed, failed with earlier rows still shown, nothing there, nothing matching. Top to bottom: header (title, whose data, at most one export action) → search → filter bar with sort, period and filters → figures → status line "dates · showing X of Y · last updated" → charts, if any → rows. The figures cover the whole period, not the rows a search leaves.
 - Whose data comes from `useReportScope`. A warehouse role starts on every customer and opens one as a route parameter (the same route pushed with `?customerId=`), so the phone's back button and the header's agree. A customer account with several customers chooses one first (`ReportCustomerPicker`) and can change it from the header. While no search is typed, the customers list offers the customer opened last as one row above it.
 - The period is the filter bar's period chip (§14.5). All eight reports use `ReportScaffold`.
-- Date headings between rows only while the rows are sorted by date.
+- Date headings between rows only while the rows are sorted by date, drawn by `ReportDateHeading`. A customer account with no customer linked sees `ReportNoCustomer`: the report's title over one wording ("No customer linked", "No customer is linked to your account. Ask your facility to link one.") on every report.
+- When a period report has nothing in its period, its empty state offers "Show last 420 days" (`longestPeriodAction`, which sets the period chip to that preset) until the longest period is chosen; then it offers nothing and no longer suggests a longer period.
+- A failure the facility did not refuse shows the screen's own words ("Couldn't load GRN activity. Check your connection and try again."), never the service's "Failed to fetch …".
 - Every number links to the list behind it where possible.
-- The export action ("Share PDF", `useReportExport`) is the header's one action, present on every report with a PDF (all but the operations dashboard, at both levels) and hidden when the facility's backend cannot make it.
+- The export action ("Share PDF", `useReportExport`, built by `exportHeaderActions`) is the header's one action, present on every report with a PDF (all but the operations dashboard, at both levels) and hidden when the facility's backend cannot make it.
 
 ### 14.11 Maintenance, forced update and errors
 

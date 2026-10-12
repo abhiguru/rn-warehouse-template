@@ -74,6 +74,7 @@ export const reports: Translation<typeof source> = {
   period: {
     label: 'સમયગાળો',
     lastDays: 'છેલ્લા {{count}} દિવસ',
+    showLastDays: 'છેલ્લા {{count}} દિવસ બતાવો',
   },
   components: {
     kpiLoading: '{{label}}, લોડ થઈ રહ્યું છે',
@@ -200,8 +201,6 @@ export const reports: Translation<typeof source> = {
     retrievedDetail: 'વેપારીની કામગીરીની વિગતો મળી ગઈ',
     listError: 'વેપારીઓની કામગીરી લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     detailError: 'આ વેપારીની કામગીરી લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    noCustomer: 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી જોડવા કહો.',
-    noCustomerTitle: 'કોઈ વેપારી જોડાયેલ નથી',
     errorTitle: 'કંઈક ખોટું થયું',
     allCustomers: 'બધા વેપારી',
     myCustomers: 'મારા વેપારી',
@@ -270,7 +269,6 @@ export const reports: Translation<typeof source> = {
     retrieved: 'જાવકની કામગીરી મળી ગઈ',
     retrievedAll: 'બધા વેપારીની જાવકની કામગીરી મળી ગઈ',
     loadError: 'જાવકની કામગીરી લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    noCustomer: 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી ઉમેરવા કહો.',
     errorTitle: 'જાવકની કામગીરી લોડ કરી શકાઈ નથી',
     bagsDispatched: 'જાવકના નંગ',
     customerHint: 'આ વેપારીની જાવક બતાવે છે',
@@ -296,8 +294,7 @@ export const reports: Translation<typeof source> = {
     // Service results (not shown on a screen today)
     retrieved: 'આવકની કામગીરી મળી ગઈ',
     retrievedAll: 'બધા વેપારીની આવકની કામગીરી મળી ગઈ',
-    noCustomerTitle: 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી',
-    noCustomerDescription: 'તમારા કોલ્ડ સ્ટોરેજને તમારું ખાતું વેપારી સાથે જોડવા કહો.',
+    loadError: 'આવકની કામગીરી લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     errorTitle: 'આવકની કામગીરી લોડ કરી શકાઈ નથી',
     emptyTitle: 'આ સમયગાળામાં કોઈ આવક પાવતી નથી',
     emptyDescription: 'વધુ આવક પાવતી જોવા લાંબો સમયગાળો પસંદ કરો.',
@@ -322,7 +319,6 @@ export const reports: Translation<typeof source> = {
     retrieved: 'ઇન્વૉઇસનો ઇતિહાસ મળી ગયો',
     retrievedAll: 'બધા વેપારીના ઇન્વૉઇસનો ઇતિહાસ મળી ગયો',
     loadError: 'ઇન્વૉઇસનો ઇતિહાસ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    noCustomer: 'તમારા ખાતામાં હજુ કોઈ વેપારી સોંપાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી સોંપવા કહો.',
     errorTitle: 'ઇન્વૉઇસનો ઇતિહાસ લોડ કરી શકાયો નથી',
     invoices: 'ઇન્વૉઇસ',
     netAmount: 'ચોખ્ખી રકમ',

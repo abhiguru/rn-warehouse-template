@@ -364,7 +364,7 @@ describe('customer activity, one customer', () => {
     expect(cards).toEqual([
       'Recent GRNs, 12 GRNs. View all',
       'Recent dispatches, 7 dispatches. View all',
-      'Top stock items, 300 units. View all',
+      'Top stock items, 300 bags. View all',
       'Recent invoices, ₹15,400 invoiced. View all',
     ]);
   });
@@ -375,7 +375,7 @@ describe('customer activity, one customer', () => {
     const screen = await open(store);
     await screen.press('Recent GRNs, 12 GRNs. View all');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
-    await screen.press('Top stock items, 300 units. View all');
+    await screen.press('Top stock items, 300 bags. View all');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/stock-aging', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
     await screen.press('Recent dispatches, 7 dispatches. View all');
     await screen.press('Recent invoices, ₹15,400 invoiced. View all');
@@ -399,7 +399,7 @@ describe('customer activity, one customer', () => {
     await screen.pressStarting('Invoice 2026-0042, ');
     expect(mockRouterPush).toHaveBeenLastCalledWith('/invoice-details/i1');
     // The item rows are read as one element each, with nothing to press and no chevron.
-    expect(screen.labels()).toContain('Garlic, 2 GRNs, 200 units');
+    expect(screen.labels()).toContain('Garlic, 2 GRNs, 200 bags');
     expect(screen.controls(label => label.startsWith('Garlic'))).toEqual([]);
   });
 
@@ -409,7 +409,7 @@ describe('customer activity, one customer', () => {
     const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
     expect(chart.props.formatYLabel('1200')).toBe('1,200');
     expect(chart.props.formatYLabel('433.3333')).toBe('433');
-    expect(screen.texts()).toContain('units');
+    expect(screen.texts()).toContain('bags');
     expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 300 in Oct 2026. Highest 1,200.');
 
     await screen.pressStarting('Stock level trend. ');

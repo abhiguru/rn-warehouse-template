@@ -23,9 +23,8 @@ import {
   AgingBucketBar,
   ReportCustomerCard,
   ReportCustomerPicker,
-  ReportEmptyState,
-  ReportHeader,
   ReportLastCustomer,
+  ReportNoCustomer,
   ReportScaffold,
   agingBucketsFrom,
   type KPIItem,
@@ -42,7 +41,8 @@ import {
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports/shared';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { useReportExport, type ReportExport } from '@/features/reports/useReportExport';
+import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
 import { useReportQuery } from '@/features/reports/useReportQuery';
@@ -57,17 +57,7 @@ import { formatCount, formatCurrency, formatDate, formatNumber, toDate } from '@
 
 const REPORT_ID = 'customer-activity';
 
-// ============================================================================
-// The PDF (generate-report-pdf)
-// ============================================================================
-
-/** The header's "Share PDF", left out once the facility's server has said it cannot make report PDFs. */
-const exportActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
-  available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
-
 const makeStyles = (t: ThemeTokens) => ({
-  container: { flex: 1, backgroundColor: t.background.base },
-
   // A card per row, spaced by its own bottom margin.
   card: {
     marginHorizontal: layout.marginCompact,
@@ -142,7 +132,7 @@ export default function CustomerActivityScreen() {
   const { level } = scope;
   switch (level.kind) {
     case 'none':
-      return <NoCustomer />;
+      return <ReportNoCustomer title={tr('reports.titles.customerActivity')} />;
     case 'choose':
       return <ReportCustomerPicker title={tr('reports.titles.customerActivity')} onPick={scope.chooseCustomer} />;
     case 'customers':
@@ -158,20 +148,6 @@ export default function CustomerActivityScreen() {
         />
       );
   }
-}
-
-function NoCustomer() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.customerActivity')} />
-      <ReportEmptyState
-        icon="account-off-outline"
-        message={tr('reports.customerActivity.noCustomerTitle')}
-        description={tr('reports.customerActivity.noCustomer')}
-      />
-    </View>
-  );
 }
 
 // ============================================================================
@@ -203,7 +179,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
   });
-  const actions = useMemo(() => exportActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
+  const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
   const { openCustomer, lastCustomer } = scope;
   const renderRow = useCallback(
@@ -225,7 +201,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       keyExtractor={customerKey}
       extraData={view.words}
       noun="customers"
-      empty={emptyState(period)}
+      empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.customerActivity.loadFailedTitle')}
     >
       {lastCustomer && !filters.search ? (
@@ -338,7 +314,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
-      ...exportActions({ exportPdf, busy, available }),
+      ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
   );
@@ -398,7 +374,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
       getRowType={dashboardType}
       extraData={data}
       noun="customers"
-      empty={emptyState(period)}
+      empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.customerActivity.loadFailedTitle')}
     />
   );
@@ -476,7 +452,7 @@ function quickAccessHead(report: QuickReport, data: CustomerActivityDetailData) 
     case 'dispatch-activity':
       return { icon: 'truck-delivery-outline', title: tr('reports.customerActivity.recentDispatches'), count: formatCount(s.total_dispatches, 'dispatch', 'dispatches') };
     case 'stock-aging':
-      return { icon: 'cube-outline', title: tr('reports.customerActivity.topStockItems'), count: tr('reports.shared.unitsValue', { value: formatNumber(s.current_stock) }) };
+      return { icon: 'cube-outline', title: tr('reports.customerActivity.topStockItems'), count: formatCount(s.current_stock, 'bag') };
     case 'invoice-history':
       return {
         icon: 'file-document-outline',
@@ -505,7 +481,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={dispatch.dispatch_id}
           label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.dispatch_no) })}
           sublabel={formatDate(dispatch.dispatch_date, 'short')}
-          value={tr('reports.shared.unitsValue', { value: formatNumber(dispatch.total_qty) })}
+          value={formatCount(dispatch.total_qty, 'bag')}
           onPress={dispatch.dispatch_id ? () => openDocument(`/dispatch-details/${dispatch.dispatch_id}`) : undefined}
           accessibilityHint={tr('grn.dispatches.openHint')}
         />
@@ -517,7 +493,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={`${item.item_name}-${index}`}
           label={item.item_name}
           sublabel={formatCount(item.grn_count, 'GRN')}
-          value={tr('reports.shared.unitsValue', { value: formatNumber(item.total_stock) })}
+          value={formatCount(item.total_stock, 'bag')}
         />
       ));
     case 'invoice-history':
