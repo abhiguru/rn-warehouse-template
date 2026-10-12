@@ -49,3 +49,9 @@ export { ReportCustomerPicker, type ReportCustomerPickerProps } from './ReportCu
 export { AgingBucketBar, agingBucketsFrom, agingBucketIdFromKey, agingBucketLabel, AGING_BUCKET_IDS, AGING_BUCKET_STATUS, type AgingBucket, type AgingBucketId, type AgingBucketBarProps } from './AgingBucketBar';
 export { StockItemCard, StockGRNRow, isLowStock, LOW_STOCK_PERCENT, EXPAND_ANIMATION, animateExpand } from './StockItemCard';
 export type { StockItemCardProps, StockGRNRowData, StockGRNRowProps, StockGRNState } from './StockItemCard';
+
+// Customer activity's stock trend (chart or table)
+export { StockTrendChart, type StockTrendChartProps } from './StockTrendChart';
+
+// The footer of a paged report (item stock summary)
+export { ReportLoadMoreFooter, type ReportLoadMoreFooterProps, type ReportLoadMoreState } from './ReportLoadMoreFooter';
