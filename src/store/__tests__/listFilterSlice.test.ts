@@ -6,8 +6,14 @@ import reducer, {
   setListFilterField,
   setListSort,
 } from '../slices/listFilterSlice';
+import { logout } from '../slices/authSlice';
 
-jest.mock('../slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled', match: () => false } } }));
+// The test, not the slice, loads the real auth slice: it needs the thunk's action types. The slice
+// itself must not import it (src/tests/storeRequireCycle.test.ts guards that). Its heavy dependencies
+// are stubbed.
+jest.mock('@/config/supabaseConfig', () => ({}));
+jest.mock('@/config/sentryConfig', () => ({ setSentryUser: jest.fn(), clearSentryUser: jest.fn() }));
+jest.mock('../sessionScopedState', () => ({ clearSessionScopedState: jest.fn(async () => {}) }));
 
 describe('list filter slice', () => {
   const withTwoLists = () => {
@@ -38,6 +44,25 @@ describe('list filter slice', () => {
 
   it('forgets every list on session teardown', () => {
     expect(reducer(withTwoLists(), resetAllListFilters())).toEqual({ lists: {} });
+  });
+
+  describe('sign-out', () => {
+    it('the logout thunk still has the type string the slice matches', () => {
+      expect(logout.fulfilled.type).toBe('auth/logout/fulfilled');
+    });
+
+    it('resets list filters that had values when logout is fulfilled', () => {
+      const before = withTwoLists();
+      expect(before.lists['grn-list'].values).toEqual({ stock: 'in_stock' });
+      expect(before.lists['dispatch-list'].values).toEqual({ search: 'garlic' });
+      expect(reducer(before, logout.fulfilled(undefined, 'request-1', undefined))).toEqual({ lists: {} });
+    });
+
+    it('keeps list filters while logout is pending or after it is rejected', () => {
+      const before = withTwoLists();
+      expect(reducer(before, logout.pending('request-1', undefined))).toEqual(before);
+      expect(reducer(before, logout.rejected(new Error('offline'), 'request-1', undefined))).toEqual(before);
+    });
   });
 
   it('gives an unknown list empty values', () => {
