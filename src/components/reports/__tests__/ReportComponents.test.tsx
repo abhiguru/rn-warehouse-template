@@ -174,7 +174,7 @@ describe('report status line', () => {
     setLanguage('gu');
     expect(line({ updatedAt: new Date(2026, 9, 12, 10, 42).getTime() }).shown).toEqual(['છેલ્લે અપડેટ થયું: ૧૦:૪૨ AM']);
     const yesterday = line({ updatedAt: new Date(2026, 9, 11, 16, 5).getTime(), shown: 3, total: 40 });
-    expect(yesterday.shown).toEqual(['૪૦માંથી ૩ બતાવ્યા છે', 'છેલ્લે અપડેટ થયું: ૧૧ ઑક્ટો ૨૦૨૬, ૪:૦૫ PM']);
+    expect(yesterday.shown).toEqual(['૪૦માંથી ૩ દેખાય છે', 'છેલ્લે અપડેટ થયું: ૧૧ ઑક્ટો ૨૦૨૬, ૪:૦૫ PM']);
     expect(yesterday.lineLimits).toEqual([undefined, undefined]);
   });
 

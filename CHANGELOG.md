@@ -367,21 +367,58 @@ After the seed-data check (2026-10-12):
   Five app texts and seven report PDF labels are marked as doubtful and left
   as they are, for the owner's own check, which is still open.
 
+After device run 5 (2026-10-12):
+
+- **Paid and Pending follow the money (invoice history).** Paid is now the
+  money received and Pending is what is still owed. An invoice counts as Paid
+  only when no more than ₹0.50 is owed; a part-paid invoice stays Pending with
+  its balance. Until now any payment made an invoice paid for its whole amount.
+  The Paid and Pending tiles, the Monthly breakdown, the Payment filter and each
+  card's tag use this one rule, worked out in the app from each invoice's total
+  and the payments recorded against it, so Paid plus Pending always equals the
+  Amount. A part-paid invoice's card adds one line, "Paid: ₹4.00 · Pending:
+  ₹10.00", which a screen reader also reads; fully paid and unpaid cards are
+  unchanged. The screen is the same on a server with or without backend
+  migration 62; it needs backend migration 61 for the received amount to be the
+  sum of an invoice's payments. The report PDF's Paid or Pending filter, and the
+  customer activity report's recent invoices and pending amount, follow the same
+  rule from backend migration 62. An invoice whose status the app does not know
+  no longer shows as "Unknown" here: the money decides, so with no payment
+  recorded it counts as Pending for its whole amount.
+- **Stock reports say "1 unit".** A stock of one reads "1 unit" on stock aging,
+  the stock summary and the item cards (English; the Gujarati word does not
+  change).
+- **Stock aging, one customer: the Items figure counts items.** It counts the
+  items shown as cards, not the stock lines (a customer with one item in two
+  lots read one more than its cards). The all-customers level keeps the
+  server's count.
+- **Filter bar: "Clear all" stays on screen.** At large text sizes "Clear all"
+  scrolled away with the chips. It is now pinned at the end of the row on every
+  screen that has the filter bar (the reports and the GRN, dispatch, invoice,
+  order and pricing lists).
+- **Gujarati wording.** Five report texts were reworded after the wording
+  review: "દેખાય છે" for how many rows show, "દિવસ" for the age sort, a plainer
+  note that only loaded items are sorted, "એકાઉન્ટ" and "લાઇન" in the PDF
+  messages. The owner's own check of the Gujarati is still open.
+
 Backend migrations this release of the reports work relates to: 52 (server
 sort and whole-list totals for item stock), 53 with the `generate-report-pdf`
 function (report PDFs), 54–56 (a period includes its last day; report days
 follow India's calendar), 57 (the dispatch id), 58 (the dispatch weight), 59
 (GRN activity weight totals; the app shows neither figure), 60 (the stock
-reports cut their days on India's calendar) and 61 (invoice amounts in the
+reports cut their days on India's calendar), 61 (invoice amounts in the
 reports are the invoice total; the customer activity report and the report PDFs
-are right from it), and the optional `status` field of `generate-report-pdf`
-(the Payment filter of one customer's invoice history PDF), which comes with the
-release of 59 to 61. The app works against a backend without them, with the
-fallbacks described in the entries above, and nothing in the app needs
-migrations 54–56. Without them these figures are wrong or missing: the customer
-activity report's invoiced amounts are overstated before 61, the stock
-summary's GRN days are cut in UTC before 60, and the PDF of one customer's
-invoice history is not filtered by payment without `status`.
+are right from it) and 62 (Paid and Pending follow the money in the invoice
+reports and their PDF), and the optional `status` field of
+`generate-report-pdf` (the Payment filter of one customer's invoice history
+PDF), which comes with the release of 59 to 61. The app works against a backend
+without them, with the fallbacks described in the entries above, and nothing in
+the app needs migrations 54–56. Without them these figures are wrong or
+missing: the customer activity report's invoiced amounts are overstated before
+61, the stock summary's GRN days are cut in UTC before 60, the PDF of one
+customer's invoice history is not filtered by payment without `status`, and,
+without 62, the customer activity report's recent invoices and the PDF still
+treat any payment as paid in full.
 
 ## Unreleased — central login in the app (2026-10-12)
 

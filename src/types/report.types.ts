@@ -516,9 +516,18 @@ export interface InvoiceHistoryKPIs {
  * Payment status for invoice
  */
 export interface InvoicePaymentStatus {
+  /**
+   * The server's word. Before backend migration 62 it is "paid" as soon as any payment is recorded, also
+   * for a part payment, so the invoice history report does not show it: it works Paid and Pending out from
+   * `amount` and the invoice's `total` (`invoicePayment` in src/features/filters/configs/reports).
+   */
   status: 'paid' | 'pending';
   paid_date: string | null;
   payment_ref: string | null;
+  /**
+   * The payments recorded against the invoice: from backend migration 61 the sum of its payment rows
+   * (before, the amount of one row). Not sent for an invoice with no payment.
+   */
   amount?: number;
   payment_mode?: string;
 }

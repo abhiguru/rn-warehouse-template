@@ -155,3 +155,21 @@ describe.each(THEMES)('report customer card in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 });
+
+describe('report customer card, the word beside the figure', () => {
+  it('reads "unit" for a stock of one and "units" for more, in the label too, unless the screen names its own', () => {
+    const one = render('orange', 'light', { value: 1 });
+    expect(hostTexts(one.root).map(textOf)).toEqual(expect.arrayContaining(['1', 'unit']));
+    expect(hostTexts(one.root).map(textOf)).not.toContain('units');
+    expect(one.root.findAll(n => n.props.accessibilityLabel === 'Apex Cold Storage Traders, Average age 353 days, 1 unit').length).toBeGreaterThan(0);
+    act(() => one.unmount());
+
+    const many = render('orange', 'light', { value: 2 });
+    expect(hostTexts(many.root).map(textOf)).toEqual(expect.arrayContaining(['2', 'units']));
+    act(() => many.unmount());
+
+    const own = render('orange', 'light', { value: 1, valueLabel: 'in stock' });
+    expect(hostTexts(own.root).map(textOf)).toEqual(expect.arrayContaining(['1', 'in stock']));
+    act(() => own.unmount());
+  });
+});

@@ -14,6 +14,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
+import { setLanguage } from '@/i18n';
 import { EXPAND_ANIMATION } from '@/components/reports/StockItemCard';
 import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/stock-aging-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
@@ -205,6 +206,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
+  setLanguage('en');
 });
 
 const textOf = (node: TestRenderer.ReactTestInstance) => [node.props.children].flat().join('');
@@ -414,8 +416,12 @@ describe('stock aging, one customer', () => {
     expect(allAging).not.toHaveBeenCalled();
     expect(screen.items()).toEqual(ITEMS_BY_AGE);
     expect(screen.status()).toBe('Last updated 10:00 am');
+    // The server's total_items says 6, which counts stock lines (Garlic and Turmeric are on two
+    // lines each). The tile counts what the cards below show: 4 items.
     // by_bucket['364+'].item_count is 1; items_over_365_days says 7.
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 6', 'Items over 364 days: 1']));
+    expect(screen.items()).toHaveLength(4);
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
+    expect(screen.labels()).not.toContain('Items: 6');
     // The tag on an item gives its oldest line's age, and says so.
     expect(screen.texts()).toEqual(expect.arrayContaining(['Oldest 400 days', 'Oldest 300 days', 'Oldest 150 days', 'Oldest 30 days']));
   });
@@ -522,6 +528,98 @@ describe('stock aging, one customer', () => {
     expect(screen.texts()).toContain('No customer linked');
     expect(screen.texts()).not.toContain('Riverbank Produce');
     expect(screen.has('Try again')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A stock of one reads "1 unit"; the Items tile counts the item cards
+// ---------------------------------------------------------------------------
+
+describe('stock aging, units and the Items tile', () => {
+  // Seed Item 01 has a stock of one, Seed Item 02 a stock of two: the wording must differ.
+  const SEED = {
+    success: true,
+    message: '',
+    data: {
+      ...answerLines.data,
+      summary: { ...answerLines.data.summary, total_items: 2 },
+      items: [line('g1', 'A0001', 'Seed Item 01', 1, 11, '0-120'), line('g2', 'A0002', 'Seed Item 02', 2, 40, '0-120')],
+    },
+  };
+
+  it('every customer: a customer with a stock of one says "1 unit", one with more says "units"', async () => {
+    allAging.mockResolvedValue({ ...answerCustomers, data: { ...answerCustomers.data, by_customer: [customer('c5', 'Single Bag Traders', 50, 1, 0), CUSTOMERS[1]] } } as never);
+    const screen = await open(makeStore());
+    const cards = screen.tree.root.findAllByType(ReportCustomerCard);
+    expect(cards.map(card => [card.props.title, card.props.valueLabel])).toEqual([
+      ['Green Valley Traders', 'units'],
+      ['Single Bag Traders', 'unit'],
+    ]);
+    expect(screen.labels()).toEqual(
+      expect.arrayContaining(['Single Bag Traders, Average age 50 days, 1 unit, Average: 0–120 days', 'Green Valley Traders, Average age 50 days, 300 units, Average: 0–120 days'])
+    );
+    expect(screen.labels().filter(label => label.includes(' 1 units'))).toEqual([]);
+  });
+
+  it('one customer: the card, the stock label under the figure and the lot line say "1 unit"', async () => {
+    openGreenValley();
+    customerAging.mockResolvedValue(SEED as never);
+    const screen = await open(makeStore());
+    expect(screen.items()).toEqual(['Seed Item 02', 'Seed Item 01']);
+    expect(screen.labels()).toEqual(
+      expect.arrayContaining(['Seed Item 01, 1 GRN, 1 unit, oldest 11 days', 'Seed Item 02, 1 GRN, 2 units, oldest 40 days'])
+    );
+    // The word under each figure, in the order of the cards.
+    expect(screen.texts().filter(text => text === 'unit' || text === 'units')).toEqual(['units', 'unit']);
+
+    await screen.pressStarting('Seed Item 01, ');
+    await screen.pressStarting('Seed Item 02, ');
+    // (A pressable repeats its label on the wrappers React draws around it: each is listed once.)
+    const lots = [...new Set(screen.labels().filter(label => label.startsWith('GRN A000')))];
+    expect(lots.sort()).toEqual(['GRN A0001, received 7 Sep 2025, 11 days in storage, 1 unit', 'GRN A0002, received 7 Sep 2025, 40 days in storage, 2 units']);
+    expect(screen.labels().filter(label => label.endsWith(', 1 units'))).toEqual([]);
+  });
+
+  it('one customer in Gujarati: the noun does not change, and is written once', async () => {
+    setLanguage('gu');
+    openGreenValley();
+    customerAging.mockResolvedValue(SEED as never);
+    const screen = await open(makeStore());
+    expect(screen.labels()).toEqual(
+      expect.arrayContaining([
+        'Seed Item 01, ૧ આવક પાવતી, ૧ નંગ, સૌથી જૂનો માલ ૧૧ દિવસથી',
+        'Seed Item 02, ૧ આવક પાવતી, ૨ નંગ, સૌથી જૂનો માલ ૪૦ દિવસથી',
+      ])
+    );
+    expect(screen.texts().filter(text => text === 'નંગ')).toEqual(['નંગ', 'નંગ']);
+    await screen.pressStarting('Seed Item 01, ');
+    expect([...new Set(screen.labels().filter(label => label.startsWith('આવક પાવતી A0001')))]).toEqual(['આવક પાવતી A0001, આવક તા. ૭ સપ્ટે ૨૦૨૫, ૧૧ દિવસથી પડ્યો છે, ૧ નંગ']);
+  });
+
+  it('one customer: the Items tile counts the item cards, whatever the search or the filter leaves', async () => {
+    openGreenValley();
+    const screen = await open(makeStore());
+    // 6 stock lines on 4 items: Garlic and Turmeric are each on two lines.
+    expect(answerLines.data.items).toHaveLength(6);
+    expect(screen.items()).toHaveLength(4);
+    expect(screen.labels()).toContain('Items: 4');
+
+    await screen.search('garlic');
+    expect(screen.items()).toEqual(['Garlic']);
+    expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
+    expect(screen.labels()).toContain('Items: 4');
+
+    await screen.press('Clear all filters and the search');
+    await screen.press('Filter by stock age');
+    await screen.press('0–120 days');
+    expect(screen.items()).toEqual(['Garlic', 'Red chilli']);
+    expect(screen.labels()).toContain('Items: 4');
+  });
+
+  it('every customer: the Items tile is still the server\'s figure, as the list has customers and no items to count', async () => {
+    const screen = await open(makeStore());
+    expect(screen.customers()).toHaveLength(4);
+    expect(screen.labels()).toContain('Items: 14');
   });
 });
 

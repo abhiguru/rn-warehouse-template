@@ -7,6 +7,7 @@ import type { CustomerInvoiceSummary, InvoiceHistoryRecord } from '@/types/repor
 import { todayInIST } from '@/utils/formatters';
 import { matchesSearch } from '../../searchMatch';
 import type { FilterListConfig } from '../../types';
+import { invoicePayment } from './invoicePayment';
 import { PERIOD_FIELD, reportPeriod, reportView, sortRows, type PeriodReportRequest, type ReportView } from './shared';
 
 export type InvoiceCustomersRequest = PeriodReportRequest;
@@ -100,13 +101,13 @@ const invoiceColumns = (invoice: InvoiceHistoryRecord) => [
 
 /**
  * One customer's invoices after the search and the payment choice, in the chosen
- * order. "Paid" and "Pending" take only invoices with that status: one with a
- * status the app does not know is shown under "All" only (see invoicePaymentStatus).
+ * order. "Paid" takes the invoices on which nothing is owed and "Pending" those
+ * with a balance, a part-paid one included (see invoicePayment).
  */
 export function invoiceRecordsView(rows: readonly InvoiceHistoryRecord[], view: InvoiceRecordsRequest['view']): InvoiceHistoryRecord[] {
   return sortRows(
     rows.filter(invoice => {
-      if (view.payment !== 'all' && invoice.payment_status?.status !== view.payment) return false;
+      if (view.payment !== 'all' && invoicePayment(invoice).status !== view.payment) return false;
       return matchesSearch(view.words, invoiceColumns(invoice));
     }),
     view.sort,

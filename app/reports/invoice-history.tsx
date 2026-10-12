@@ -14,6 +14,7 @@ import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
+  FactLines,
   FioriDataTable,
   ReportCustomerCard,
   ReportCustomerPicker,
@@ -36,6 +37,7 @@ import {
   invoiceRecordsView,
 } from '@/features/filters/configs/reports/invoiceHistory';
 import { invoiceMonths, invoiceMonthsHavePaise, invoiceMonthTotals, type InvoiceMonth, type InvoiceMonthTotals } from '@/features/filters/configs/reports/invoiceMonths';
+import { invoicePayment } from '@/features/filters/configs/reports/invoicePayment';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
@@ -118,6 +120,17 @@ const makeStyles = (t: ThemeTokens) => ({
   figures: { alignItems: 'flex-end' as const, gap: space.xs },
   amount: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   amountLabel: { ...typography.footnote, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
+
+  // What is paid and what is pending of a part-paid invoice: a line under the cell, in line with its
+  // text (as the foot row of a GRN activity card), where two amounts have the card's width. Its text is
+  // the figures' footnote (`amountLabel`).
+  objectCellOverFacts: { paddingBottom: space.sm },
+  paymentFacts: {
+    gap: space.xxs,
+    paddingBottom: space.md,
+    paddingLeft: space.lg + layout.avatar.md + space.md,
+    paddingRight: space.lg,
+  },
 });
 
 // ============================================================================
@@ -298,9 +311,10 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   );
   // The table is built from every invoice of the period, not the ones the search or the choice leaves.
   const months = useMemo(() => invoiceMonths(data?.invoices ?? []), [data]);
-  // The Paid and Pending tiles are the table's Total row: one calculation over the period's invoices (each
-  // invoice's `total`), never the server's paid_amount / pending_amount, which are overstated before backend
-  // migration 61. Not what the search or the choice leaves.
+  // The Paid and Pending tiles are the table's Total row: one calculation over the period's invoices (what
+  // was received on each and what is still owed of its `total`), never the server's paid_amount /
+  // pending_amount, which are overstated before backend migration 61 and count a part-paid invoice as paid
+  // in full before migration 62. Not what the search or the choice leaves.
   const totals = useMemo(() => invoiceMonthTotals(months), [months]);
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
@@ -321,9 +335,10 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       ],
     [data, totals]
   );
-  // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period) but not
-  // the search, which is the screen's own. "All" sends no status. A server that predates the field makes
-  // the PDF of all the period's invoices (generateReportPDF asks again without it).
+  // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period, which
+  // the server tells apart by the same rule) but not the search, which is the screen's own. "All" sends no
+  // status. A server that predates the field makes the PDF of all the period's invoices (generateReportPDF
+  // asks again without it).
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({
       report: REPORT_ID,
@@ -424,10 +439,11 @@ const monthKey = (row: Record<string, unknown>) => String(row.id);
 
 /**
  * The period month by month, with a totals row: shut until asked for, as it always was.
- * Every figure is the invoices' `total`, the amount the customer pays (it already includes
- * labour and tax), like the cards and the tiles above it. The server's `net_total` is not
- * used: before backend migration 61 it counts labour and tax twice. `totals` is the Total
- * row and also what the Paid and Pending tiles show.
+ * The Amount is the invoices' `total`, the amount the customer pays (it already includes
+ * labour and tax), like the cards and the tiles above it; Paid is what was received of it
+ * and Pending what is still owed. The server's `net_total` is not used: before backend
+ * migration 61 it counts labour and tax twice. `totals` is the Total row and also what the
+ * Paid and Pending tiles show.
  *
  * Amounts are in whole rupees like the tiles above, unless some amount of the table
  * has paise: then every amount cell, rows and totals, has two decimals (as the invoice
@@ -524,9 +540,19 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
   const styles = useThemedStyles(makeStyles);
   const number = tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) });
   const grn = invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: formatIdentifier(invoice.grn_ref) }) : '';
-  const status = invoicePaymentStatus(invoice.payment_status?.status);
+  // Paid only when nothing is owed, whatever the server's word is; a part-paid invoice is Pending.
+  const payment = invoicePayment(invoice);
+  const status = invoicePaymentStatus(payment.status);
   const items = formatCount(invoice.item_count, 'item');
   const amount = formatAmount(invoice.total);
+  // A part-paid invoice says what was received and what is still owed, in the words of the tiles and the
+  // table, of which these two amounts are its share. The amount above stays the invoice's.
+  const paymentFacts = payment.partPaid
+    ? [
+        tr('reports.shared.labelValue', { label: tr('reports.customerActivity.paid'), value: formatAmount(payment.received) }),
+        tr('reports.shared.labelValue', { label: tr('common.pending'), value: formatAmount(payment.balance) }),
+      ]
+    : [];
   const matched = hiddenMatches(invoice, words, [number, grn]);
   const label = [
     tr('reports.invoiceHistory.cardLabel', {
@@ -537,6 +563,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
       items,
       status: status.label,
     }),
+    ...paymentFacts,
     ...matched,
   ].join(', ');
 
@@ -548,7 +575,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
       accessibilityLabel={label}
       accessibilityHint={tr('reports.invoiceHistory.openHint')}
     >
-      <View style={styles.objectCell}>
+      <View style={paymentFacts.length > 0 ? [styles.objectCell, styles.objectCellOverFacts] : styles.objectCell}>
         <View style={styles.objectIcon}>
           <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
         </View>
@@ -569,6 +596,12 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
 
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>
+
+      {paymentFacts.length > 0 ? (
+        <View style={styles.paymentFacts}>
+          <FactLines facts={paymentFacts} style={styles.amountLabel} />
+        </View>
+      ) : null}
     </Pressable>
   );
 });

@@ -3,15 +3,16 @@
  * that each chip changes only its own filter. Rendered in all four themes.
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { BRANDS, getTokens, radius, space, touchTarget, type Mode } from '@/theme/tokens';
 import { ChoiceChips } from '../components/ChoiceChips';
 import { FilterBar } from '../components/FilterBar';
 import { CHIP_HEIGHT, CHIP_INSET } from '../components/FilterBarChip';
-import { FILTER_CONFIGS } from '../configs';
+import { FILTER_CONFIGS, countable } from '../configs';
+import { REPORT_DATE_PRESETS } from '../datePresets';
 import { countActiveFilters, currentSort, hasAnyFilter, visibleFields } from '../filterModel';
-import type { FilterContext, FilterValues, SortState } from '../types';
+import type { DateRangeField, FilterContext, FilterListConfig, FilterValues, SortState } from '../types';
 import type { useListFilters } from '../useListFilters';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
@@ -313,5 +314,126 @@ describe('FilterBar wording', () => {
       .findAll(node => typeof node.type !== 'string' && node.props.accessibilityRole === 'button' && node.parent?.props.accessibilityLabel !== node.props.accessibilityLabel)
       .map(node => node.props.accessibilityLabel as string);
     expect(labels).toEqual(['With items, on. Turn off', 'Remove filter With items', 'Clear all filters and the search']);
+  });
+});
+
+// A phone 411 dp wide with text at 1.3 times: a sort chip, a period chip and "Payment: Paid" with
+// its remove button need more than the row's width, so the chips scroll. "Clear all" must not be
+// among them. react-test-renderer has no layout, so this proves the structure that gives the
+// result (where the button sits in the tree, and that the chips give way to it), not the pixels.
+describe('FilterBar, Clear all beside the scrolling chips', () => {
+  type ReportRequest = { values: FilterValues; sort?: SortState };
+  const PERIOD: DateRangeField = {
+    key: 'period',
+    kind: 'dateRange',
+    label: 'Period',
+    icon: 'calendar-range',
+    presets: REPORT_DATE_PRESETS,
+    required: true,
+    applyPresetOnTap: true,
+  };
+  const PAYMENT = {
+    key: 'payment',
+    kind: 'choice' as const,
+    label: 'Payment',
+    icon: 'cash',
+    defaultValue: 'all',
+    options: [{ value: 'all', label: 'All' }, { value: 'paid', label: 'Paid' }],
+  };
+  const REPORT: FilterListConfig<ReportRequest> = {
+    listKey: 'test-invoice-report',
+    title: 'Test report',
+    noun: ['invoice', 'invoices'],
+    sort: { options: [{ field: 'date', label: 'Date', kind: 'date' }], default: { field: 'date', order: 'desc' } },
+    fields: [PERIOD, PAYMENT],
+    fastFilters: ['payment'],
+    toRequest: (values, sort) => ({ values, sort }),
+  };
+  const reportConfig = countable(REPORT);
+  const CLEAR_ALL = 'Clear all filters and the search';
+
+  function renderReport(values: FilterValues) {
+    const filters = {
+      ctx: staff,
+      fields: visibleFields(reportConfig, staff),
+      values,
+      sort: currentSort(reportConfig, undefined),
+      request: {},
+      search: '',
+      activeCount: countActiveFilters(reportConfig, values, staff),
+      hasAny: hasAnyFilter(reportConfig, values, staff),
+      apply: jest.fn(),
+      setField: jest.fn(),
+      setSearch: jest.fn(),
+      searchAsText: jest.fn(),
+      setSort: jest.fn(),
+      clear: jest.fn(),
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<FilterBar config={reportConfig} filters={filters as unknown as Filters} />);
+    });
+    const buttons = () =>
+      renderer.root.findAll(
+        node =>
+          typeof node.type !== 'string' &&
+          node.props.accessibilityRole === 'button' &&
+          typeof node.props.accessibilityLabel === 'string' &&
+          node.parent?.props.accessibilityLabel !== node.props.accessibilityLabel
+      );
+    return { renderer, filters, buttons, labels: () => buttons().map(node => node.props.accessibilityLabel as string) };
+  }
+
+  const PAID = { period: { preset: 'last120' }, payment: 'paid' } as FilterValues;
+
+  it('keeps Clear all out of the row that scrolls, and last for a screen reader', () => {
+    const { renderer, labels } = renderReport(PAID);
+    expect(labels()).toEqual([
+      'Sorted by Date, newest first. Change sort',
+      'Period: Last 120 days. Change',
+      'Payment: Paid. Change',
+      'Remove filter Payment Paid',
+      CLEAR_ALL,
+    ]);
+    const scroller = renderer.root.findByType(ScrollView);
+    const inScroller = scroller.findAll(node => node.props.accessibilityLabel === CLEAR_ALL);
+    // The chips are in the scroller; the button is not, so swiping the chips never moves it.
+    expect(inScroller).toHaveLength(0);
+    expect(scroller.findAll(node => node.props.accessibilityLabel === 'Payment: Paid. Change').length).toBeGreaterThan(0);
+    expect(renderer.root.findAll(node => node.props.accessibilityLabel === CLEAR_ALL).length).toBeGreaterThan(0);
+  });
+
+  it('lets the chips shrink and scroll rather than push Clear all off the screen', () => {
+    const { renderer } = renderReport(PAID);
+    // Not the default of growing to fill the line, which is right for a row alone and wrong beside a button.
+    expect(StyleSheet.flatten(renderer.root.findByType(ScrollView).props.style)).toMatchObject({ flexGrow: 0, flexShrink: 1 });
+  });
+
+  it('keeps the button a whole touch target, in a slot as tall as the chip row', () => {
+    const rowHeight = CHIP_HEIGHT + space.sm * 2;
+    const { buttons } = renderReport(PAID);
+    const clear = buttons().find(node => node.props.accessibilityLabel === CLEAR_ALL)!;
+    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(touchTarget);
+    // The nearest ancestor of the button that has the row's height is its own slot, not the chips' row.
+    let slot = clear.parent;
+    while (slot && StyleSheet.flatten(slot.props.style)?.minHeight !== rowHeight) slot = slot.parent;
+    const style = StyleSheet.flatten(slot!.props.style);
+    expect(slot!.findAllByType(ScrollView)).toHaveLength(0);
+    // Padding and a touch target make up the row's height exactly, as in the chips' row: the bar does not grow.
+    expect(style.paddingVertical! * 2 + touchTarget).toBe(rowHeight);
+    expect(style.paddingVertical! + CHIP_INSET).toBe(space.sm);
+  });
+
+  it('draws no button and no slot when only the period is set', () => {
+    const { buttons, renderer } = renderReport({ period: { preset: 'last120' } });
+    expect(buttons().map(node => node.props.accessibilityLabel)).toEqual(['Sorted by Date, newest first. Change sort', 'Period: Last 120 days. Change', 'Filter by payment']);
+    // Only the scroller and its chips: the line holds one child.
+    expect(renderer.root.findByType(ScrollView).parent!.children).toHaveLength(1);
+  });
+
+  it('still clears from the pinned button', () => {
+    const { buttons, filters } = renderReport(PAID);
+    act(() => buttons().find(node => node.props.accessibilityLabel === CLEAR_ALL)!.props.onPress());
+    expect(filters.clear).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,6 +2,11 @@
  * Invoice history, one customer: the period's invoices month by month, and the
  * same sums over the whole period for the Paid and Pending tiles.
  *
+ * Paid is the money received and Pending is what is still owed, invoice by
+ * invoice (`invoicePayment`): a part payment is under Paid and its balance under
+ * Pending, so Paid + Pending is the Amount in every row and in the totals. An
+ * invoice counts as Paid only when nothing is owed, otherwise as Pending.
+ *
  * The figure is each invoice's `total`: the amount the customer pays. The
  * backend stores it as ceil(storage + labour + tax - discount), so it already
  * includes labour and tax and is after the discount; the invoice list, the
@@ -21,11 +26,10 @@
  */
 import type { InvoiceHistoryRecord } from '@/types/report.types';
 import { indiaDay } from '@/utils/formatters';
+import { invoicePayment, toPaise, toRupees, type PayableInvoice } from './invoicePayment';
 
 /** The parts of an invoice a month needs. */
-export type MonthlyInvoice = Pick<InvoiceHistoryRecord, 'invoice_date' | 'total'> & {
-  payment_status?: { status?: string | null } | null;
-};
+export type MonthlyInvoice = Pick<InvoiceHistoryRecord, 'invoice_date'> & PayableInvoice;
 
 export interface InvoiceMonth {
   /** "YYYY-MM"; "" for an invoice whose date cannot be read (last). */
@@ -33,13 +37,13 @@ export interface InvoiceMonth {
   invoiceCount: number;
   /** The invoices' amounts: the sum of their `total`. */
   amount: number;
-  /** Amount of the invoices whose status is "paid". */
+  /** The money received on the invoices, part payments included. */
   paidAmount: number;
-  /** Amount of the invoices whose status is "pending". */
+  /** What is still owed on the invoices: the sum of their balances. */
   pendingAmount: number;
-  /** Invoices whose status is "paid". */
+  /** Invoices on which nothing is owed. */
   paidCount: number;
-  /** Invoices whose status is "pending". */
+  /** Invoices with a balance, part-paid ones included. */
   pendingCount: number;
 }
 
@@ -52,10 +56,6 @@ export function invoiceMonthKey(date: string | null | undefined): string {
   const found = MONTH_KEY.exec(indiaDay(date));
   return found ? `${found[1]}-${found[2]}` : '';
 }
-
-/** Whole paise, so that sums of decimals add up exactly (0.1 + 0.2 is 300 paise). */
-const toPaise = (amount: unknown): number => Math.round((Number(amount) || 0) * 100);
-const toRupees = (paise: number): number => paise / 100;
 
 interface Sums {
   count: number;
@@ -78,25 +78,21 @@ const finish = (sums: Sums): InvoiceMonthTotals => ({
 });
 
 /**
- * Every invoice is in the count and the amount. Only "paid" invoices are in
- * Paid and only "pending" ones in Pending: any other status is in neither, so
- * Paid + Pending is the amount when every invoice is one or the other.
+ * Every invoice is in the count and the amount; what was received on it is in
+ * Paid and its balance in Pending, and it counts as one or the other.
  */
 export function invoiceMonths(invoices: readonly MonthlyInvoice[]): InvoiceMonth[] {
   const byMonth = new Map<string, Sums>();
   for (const invoice of invoices) {
     const key = invoiceMonthKey(invoice.invoice_date);
     const sums = byMonth.get(key) ?? emptySums();
-    const amount = toPaise(invoice.total);
+    const payment = invoicePayment(invoice);
     sums.count += 1;
-    sums.amount += amount;
-    if (invoice.payment_status?.status === 'paid') {
-      sums.paid += amount;
-      sums.paidCount += 1;
-    } else if (invoice.payment_status?.status === 'pending') {
-      sums.pending += amount;
-      sums.pendingCount += 1;
-    }
+    sums.amount += payment.totalPaise;
+    sums.paid += payment.receivedPaise;
+    sums.pending += payment.balancePaise;
+    if (payment.status === 'paid') sums.paidCount += 1;
+    else sums.pendingCount += 1;
     byMonth.set(key, sums);
   }
   // "YYYY-MM" keys sort as dates; the empty key (no readable date) falls last.

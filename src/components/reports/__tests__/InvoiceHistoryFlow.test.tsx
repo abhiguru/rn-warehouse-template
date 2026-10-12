@@ -7,7 +7,10 @@
  * the alert and the router are stand-ins. The rows are made so that every
  * change gives an order of its own. The money is the invoices' `total`: a server
  * before backend migration 61 also sends a `net_total` (and sums of it) that counts
- * labour and tax twice, and the screen must not show it (see the last describe).
+ * labour and tax twice, and the screen must not show it. Paid is the money received
+ * and Pending what is still owed, worked out from each invoice's total and the
+ * payments recorded against it: an invoice here with a status and no amount is as an
+ * older server answers it ("paid" is paid in full, anything else has nothing received).
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
@@ -17,6 +20,7 @@ import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { invoicePaymentStatus } from '@/components/reports/invoicePaymentStatus';
+import { setLanguage } from '@/i18n';
 import { getAllInvoiceHistory, getCustomerInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
@@ -136,7 +140,7 @@ const INVOICES = [
   invoice('inv-1', '2026/0010', '2026-10-12', 5000, 'paid', 'A0010', 'Garlic'),
   invoice('inv-2', '2026/0009', '2026-10-11', 20000, 'pending', 'A0009', 'Red chilli'),
   invoice('inv-3', '2026/0100', '2026-10-11', 12000, 'paid', 'A0100', 'Cumin'),
-  // A status the app does not know: neither paid nor pending.
+  // A word the app does not know, and no amount: no payment is recorded, so all of it is owed.
   invoice('inv-4', '2026/0050', '2026-09-20', 2000, 'partly_paid', 'A0050', 'Turmeric'),
 ];
 const answerInvoices = {
@@ -155,7 +159,7 @@ const answerInvoices = {
   },
 };
 
-// Six invoices over three months with a status the app does not know, as an unfixed server answers them:
+// Six invoices over three months, one with a word the app does not know, as an unfixed server answers them:
 // each `net_total` is more (or less) than the `total` because of labour, tax and discount, and the summary's
 // paid and pending sums and the server's by_month are sums of that overstated figure. The table and the
 // tiles must take their figures from the invoices' `total`, not from there.
@@ -231,6 +235,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
+  setLanguage('en');
 });
 
 const textOf = (node: ReactTestInstance): string =>
@@ -475,10 +480,12 @@ describe('invoice history, one customer', () => {
   it('narrows to paid or pending invoices with the figures of the whole period kept, and Clear all brings the others back', async () => {
     mockParams = GREEN;
     const screen = await open(makeStore());
-    const figures = ['Invoices', '4', 'Paid (2)', '₹17,000', 'Pending (1)', '₹20,000'];
+    // Pending is the invoice of 20,000 and the one of 2,000 whose word the app does not know: no payment
+    // is recorded on either. Not the server's own count and sum (1 and 20,000).
+    const figures = ['Invoices', '4', 'Paid (2)', '₹17,000', 'Pending (2)', '₹22,000'];
     expect(screen.texts()).toEqual(expect.arrayContaining(figures));
     // The figures come before the invoices (§14.10).
-    expect(screen.texts().indexOf('Pending (1)')).toBeLessThan(screen.texts().indexOf('Invoice 2026/0010'));
+    expect(screen.texts().indexOf('Pending (2)')).toBeLessThan(screen.texts().indexOf('Invoice 2026/0010'));
 
     await screen.press('Filter by payment');
     await screen.press('Paid');
@@ -488,8 +495,9 @@ describe('invoice history, one customer', () => {
 
     await screen.press('Payment: Paid. Change');
     await screen.press('Pending');
-    // The invoice whose status the app does not know is neither paid nor pending.
-    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009']);
+    // Every invoice is under one of the two: the one whose word the app does not know has a balance.
+    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', 'Sun, 20 Sep', 'Invoice 2026/0050']);
+    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
 
     await screen.press('Clear all filters and the search');
     expect(screen.invoiceRows()).toEqual(BY_DATE);
@@ -514,13 +522,16 @@ describe('invoice history, one customer', () => {
     expect(screen.bold()).toEqual(['0050', '0050']);
   });
 
-  it('shows each status as a word, an unknown one as "Unknown" in neutral, and opens the invoice', async () => {
+  it('shows each status as a word, by the money and not by the server\'s word, and opens the invoice', async () => {
     mockParams = GREEN;
     const screen = await open(makeStore());
     const card = (number: string) => screen.controls(label => label.startsWith(`Invoice ${number},`))[0];
     expect(card('2026/0010').props.accessibilityLabel).toBe('Invoice 2026/0010, 12 Oct 2026 · GRN A0010, ₹5,000.00, 1 item, Paid');
     expect(card('2026/0009').props.accessibilityLabel).toBe('Invoice 2026/0009, 11 Oct 2026 · GRN A0009, ₹20,000.00, 1 item, Pending');
-    expect(card('2026/0050').props.accessibilityLabel).toBe('Invoice 2026/0050, 20 Sep 2026 · GRN A0050, ₹2,000.00, 1 item, Unknown');
+    // The server's word for this one is not one the app knows. No payment is recorded on it: Pending.
+    expect(card('2026/0050').props.accessibilityLabel).toBe('Invoice 2026/0050, 20 Sep 2026 · GRN A0050, ₹2,000.00, 1 item, Pending');
+    expect(screen.texts()).not.toContain('Unknown');
+    // The tag itself still has a neutral "Unknown" for a word it is given and does not know.
     expect(invoicePaymentStatus('partly_paid')).toEqual({ kind: 'neutral', label: 'Unknown' });
     expect(invoicePaymentStatus(undefined)).toEqual({ kind: 'neutral', label: 'Unknown' });
 
@@ -551,12 +562,13 @@ describe('invoice history, one customer', () => {
     // Per month: the invoices' totals are 5400 + 21500 + 12600 (Oct), 1800 + 7350 (Sep), 3540 (Aug).
     // Their net_total (with labour and tax counted twice) are 42750, 9550 and 3810, and the unfixed
     // server's by_month has other sums again: none of those is on the table.
+    // September's Pending is both its invoices: 7,350, and 1,800 with a word the app does not know and no amount.
     const ROWS = [
       ['Oct 2026', '3', '₹39,500', '₹18,000', '₹21,500'],
-      ['Sep 2026', '2', '₹9,150', '₹0', '₹7,350'],
+      ['Sep 2026', '2', '₹9,150', '₹0', '₹9,150'],
       ['Aug 2026', '1', '₹3,540', '₹3,540', '₹0'],
     ];
-    const TOTALS = ['Total', '6', '₹52,190', '₹21,540', '₹28,850'];
+    const TOTALS = ['Total', '6', '₹52,190', '₹21,540', '₹30,650'];
 
     it('shows each month\'s count, amount, paid and pending, newest first, and the totals of those rows', async () => {
       mockParams = GREEN;
@@ -569,7 +581,7 @@ describe('invoice history, one customer', () => {
       expect(table.rows).toEqual(ROWS);
       expect(table.summaries).toEqual([
         'Month Oct 2026, Invoices 3, Amount ₹39,500, Paid ₹18,000, Pending ₹21,500',
-        'Month Sep 2026, Invoices 2, Amount ₹9,150, Paid ₹0, Pending ₹7,350',
+        'Month Sep 2026, Invoices 2, Amount ₹9,150, Paid ₹0, Pending ₹9,150',
         'Month Aug 2026, Invoices 1, Amount ₹3,540, Paid ₹3,540, Pending ₹0',
       ]);
       expect(table.totals).toEqual(TOTALS);
@@ -583,14 +595,14 @@ describe('invoice history, one customer', () => {
 
       // The table agrees with the figures above it: its totals are the tiles' count, Paid and Pending.
       const tiles = screen.texts();
-      expect(tiles).toEqual(expect.arrayContaining(['Invoices', '6', 'Paid (3)', '₹21,540', 'Pending (2)', '₹28,850']));
-      expect(table.totals.slice(1)).toEqual([String(answerMonthly.data.summary.total_invoices), '₹52,190', '₹21,540', '₹28,850']);
-      // Only September has an invoice of a status the app does not know (1,800): in that row, and in the
-      // totals, Paid + Pending falls short of the Amount by exactly that invoice; the other rows add up.
+      expect(tiles).toEqual(expect.arrayContaining(['Invoices', '6', 'Paid (3)', '₹21,540', 'Pending (3)', '₹30,650']));
+      expect(table.totals.slice(1)).toEqual([String(answerMonthly.data.summary.total_invoices), '₹52,190', '₹21,540', '₹30,650']);
+      // Paid + Pending is the Amount in every row and in the totals: every invoice is under one of the two,
+      // the one of September whose word the app does not know (1,800) too.
       const rupees = (text: string) => Number(text.replace(/[₹,]/g, ''));
       const gap = (cells: string[]) => rupees(cells[2]) - rupees(cells[3]) - rupees(cells[4]);
-      expect(table.rows.map(gap)).toEqual([0, 1800, 0]);
-      expect(gap(table.totals)).toBe(1800);
+      expect(table.rows.map(gap)).toEqual([0, 0, 0]);
+      expect(gap(table.totals)).toBe(0);
     });
 
     it('adds Paid and Pending up to the Amount in every row and in the totals when each invoice is paid or pending', async () => {
@@ -646,7 +658,7 @@ describe('invoice history, one customer', () => {
 
       await screen.press('Payment: Paid. Change');
       await screen.press('Pending');
-      expect(count()).toBe(2);
+      expect(count()).toBe(3);
       expect(screen.monthTable()!.rows).toEqual(ROWS);
       expect(screen.monthTable()!.totals).toEqual(TOTALS);
 
@@ -866,7 +878,7 @@ describe('invoice history, one customer', () => {
       await settleQueries();
     });
     expect(one.loadingTiles()).toBe(0);
-    expect(one.texts()).toEqual(expect.arrayContaining(['Paid (2)', 'Pending (1)']));
+    expect(one.texts()).toEqual(expect.arrayContaining(['Paid (2)', 'Pending (2)']));
   });
 
   it('asks nothing for a customer account whose route names a customer it is not assigned', async () => {
@@ -899,6 +911,17 @@ describe('invoice history, one customer', () => {
     expect(failed.texts()).not.toContain('The facility refused this report.');
   });
 });
+
+type Screen = Awaited<ReturnType<typeof open>>;
+/** The card of an invoice: one pressable, spoken as one element. */
+const invoiceCard = (screen: Screen, number: string) => screen.controls(label => label.startsWith(`Invoice ${number},`))[0];
+const cardLabel = (screen: Screen, number: string) => invoiceCard(screen, number).props.accessibilityLabel as string;
+/** The figure tiles by their spoken label ("Paid (2): ₹19,000"). */
+const tiles = (screen: Screen) =>
+  screen.tree.root
+    .findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string' && /^(Invoices|Paid \(\d+\)|Pending \(\d+\)|Amount): /.test(node.props.accessibilityLabel))
+    .map(node => node.props.accessibilityLabel as string);
+const rupees = (text: string) => Number(text.replace(/[₹,]/g, ''));
 
 // ---------------------------------------------------------------------------
 // The money: the invoices' total, on a server with or without backend migration 61
@@ -981,16 +1004,8 @@ describe('invoice history shows the invoice total, on a server with or without b
     ['a server with migration 61 (net figures equal the totals)', FIXED_ONE, FIXED_ALL],
   ] as const;
 
-  type Screen = Awaited<ReturnType<typeof open>>;
   const MINUS = '−';
-  const cardLabel = (screen: Screen, number: string) => screen.controls(label => label.startsWith(`Invoice ${number},`))[0].props.accessibilityLabel as string;
   const cardLabelOfCustomer = (screen: Screen, name: string) => screen.controls(label => label.startsWith(`${name}, `))[0].props.accessibilityLabel as string;
-  /** The figure tiles by their spoken label ("Paid (2): ₹19,000"). */
-  const tiles = (screen: Screen) =>
-    screen.tree.root
-      .findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string' && /^(Invoices|Paid \(\d+\)|Pending \(\d+\)|Amount): /.test(node.props.accessibilityLabel))
-      .map(node => node.props.accessibilityLabel as string);
-  const rupees = (text: string) => Number(text.replace(/[₹,]/g, ''));
   /** Every spoken label and every text on the screen that shows a negative amount. */
   const negatives = (screen: Screen) => [
     ...screen.texts().filter(text => text.includes(MINUS)),
@@ -1111,12 +1126,284 @@ describe('invoice history shows the invoice total, on a server with or without b
   });
 });
 
+const PDF_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/report/r.pdf?token=fictional';
+
+// ---------------------------------------------------------------------------
+// Paid is the money received, Pending what is still owed
+// ---------------------------------------------------------------------------
+
+/**
+ * Three invoices of one customer in two months: one with no payment (30.00), one part-paid (4.00 of 14.00)
+ * and one paid in full (20.00). The amount of the period is 64.00, of which 24.00 was received and 40.00
+ * is owed. Only the paid one counts as Paid; the part-paid one is Pending with its balance of 10.00.
+ *
+ * The same period as three servers answer it. The screen must show the same for the first two:
+ *  - before backend migration 62 a payment row makes the server say "paid", so the part-paid invoice comes
+ *    as "paid" and the server's own sums count all of its 14.00 as paid (paid 34.00, pending 30.00);
+ *  - with migration 62 the server's word and sums are already by the rule, and each invoice has more keys
+ *    for the money received and the balance (the names here stand for whatever it sends: the app reads none);
+ *  - an older server sends the word and no amount: "paid" is then paid in full, as it always was.
+ */
+const payment = (status: string, amount: number) => ({ status, paid_date: '2026-10-06', payment_ref: 'PAY-0007', amount, payment_mode: 'cash' });
+const UNPAID_ROW = invoice('inv-f1', '2026/0403', '2026-10-12', 30, 'pending', 'A0403', 'Garlic');
+const PART_PAID_ROW = invoice('inv-f2', '2026/0402', '2026-10-05', 14, 'paid', 'A0402', 'Red chilli');
+const PAID_ROW = invoice('inv-f3', '2026/0401', '2026-09-20', 20, 'paid', 'A0401', 'Cumin');
+const answerPayments = (invoices: unknown[], paid: [count: number, october: number, september: number], pending: [count: number, october: number, september: number]) => ({
+  success: true,
+  message: '',
+  data: {
+    summary: {
+      total_invoices: 3, total_amount: 64, total_labour: 0, total_tax: 0, total_discount: 0, net_amount: 64,
+      paid_count: paid[0], pending_count: pending[0], paid_amount: paid[1] + paid[2], pending_amount: pending[1] + pending[2],
+    },
+    invoices,
+    by_month: [
+      { month: '2026-10', invoice_count: 2, total_amount: 44, paid_amount: paid[1], pending_amount: pending[1] },
+      { month: '2026-09', invoice_count: 1, total_amount: 20, paid_amount: paid[2], pending_amount: pending[2] },
+    ],
+  },
+});
+const BEFORE_62 = answerPayments(
+  [UNPAID_ROW, { ...PART_PAID_ROW, payment_status: payment('paid', 4) }, { ...PAID_ROW, payment_status: payment('paid', 20) }],
+  [2, 14, 20],
+  [1, 30, 0]
+);
+const WITH_62 = answerPayments(
+  [
+    { ...UNPAID_ROW, received_amount: 0, balance_amount: 30 },
+    { ...PART_PAID_ROW, payment_status: payment('pending', 4), received_amount: 4, balance_amount: 10 },
+    { ...PAID_ROW, payment_status: payment('paid', 20), received_amount: 20, balance_amount: 0 },
+  ],
+  [1, 4, 20],
+  [2, 40, 0]
+);
+const NO_AMOUNTS = answerPayments([UNPAID_ROW, PART_PAID_ROW, PAID_ROW], [2, 14, 20], [1, 30, 0]);
+
+const PART_PAID_LINE = 'Paid: ₹4.00 · Pending: ₹10.00';
+const PAYMENT_ROWS = ['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402', 'Sun, 20 Sep', 'Invoice 2026/0401'];
+/** Every text drawn inside `card`, in order (a text with a bold part is one text). */
+const textsIn = (card: ReactTestInstance) => {
+  const insideText = (node: ReactTestInstance) => {
+    for (let up = node.parent; up && up !== card; up = up.parent) if ((up.type as unknown) === 'Text') return true;
+    return false;
+  };
+  return card.findAll(node => (node.type as unknown) === 'Text' && !insideText(node)).map(textOf);
+};
+const cardTexts = (screen: Screen, number: string) => textsIn(invoiceCard(screen, number));
+/** How many parts with text a card holds, top to bottom: the cell, and under it the line of a part-paid invoice. */
+const cardParts = (screen: Screen, number: string) =>
+  invoiceCard(screen, number)
+    .findAll(node => typeof node.type === 'string')[0]
+    .children.filter(part => typeof part !== 'string' && part.findAll(node => (node.type as unknown) === 'Text').length > 0).length;
+
+describe('invoice history: Paid is the money received and Pending is what is still owed', () => {
+  describe.each([
+    ['a server before migration 62 (its word is "paid" for the part-paid invoice)', BEFORE_62],
+    ['a server with migration 62 (its word is already by the rule, with more keys per invoice)', WITH_62],
+  ] as const)('%s', (_name, answer) => {
+    beforeEach(() => {
+      mockParams = GREEN;
+      customerHistory.mockResolvedValue(answer as never);
+    });
+
+    it('counts only the invoice with nothing owed as Paid, and shows the money received and the balances', async () => {
+      const screen = await open(makeStore());
+      // Paid: 20.00 and the 4.00 of the part-paid invoice. Pending: its balance of 10.00 and the unpaid 30.00.
+      expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
+      // Not "any payment is paid": that would be Paid (2) with 34 and Pending (1) with 30.
+      for (const wrong of ['Paid (2)', 'Pending (1)', '₹34', '₹30']) expect(screen.texts()).not.toContain(wrong);
+    });
+
+    it('shows per month what was received and what is owed, and Paid + Pending is the Amount in each row and in the Total', async () => {
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      const table = screen.monthTable()!;
+      expect(table.headers).toEqual(['Month', 'Invoices', 'Amount', 'Paid', 'Pending']);
+      expect(table.rows).toEqual([
+        // October: the unpaid 30.00 and the part-paid 14.00, of which 4.00 was received.
+        ['Oct 2026', '2', '₹44', '₹4', '₹40'],
+        ['Sep 2026', '1', '₹20', '₹20', '₹0'],
+      ]);
+      expect(table.totals).toEqual(['Total', '3', '₹64', '₹24', '₹40']);
+      expect(table.summaries).toEqual([
+        'Month Oct 2026, Invoices 2, Amount ₹44, Paid ₹4, Pending ₹40',
+        'Month Sep 2026, Invoices 1, Amount ₹20, Paid ₹20, Pending ₹0',
+      ]);
+      for (const cells of [...table.rows, table.totals]) expect(rupees(cells[3]) + rupees(cells[4])).toBe(rupees(cells[2]));
+      for (const column of [1, 2, 3, 4]) expect(table.rows.reduce((sum, cells) => sum + rupees(cells[column]), 0)).toBe(rupees(table.totals[column]));
+      // The tiles are the Total row.
+      expect(tiles(screen)).toEqual(['Invoices: 3', `Paid (1): ${table.totals[3]}`, `Pending (2): ${table.totals[4]}`]);
+    });
+
+    it('lists the part-paid invoice under Pending and not under Paid, with the figures of the whole period kept', async () => {
+      const screen = await open(makeStore());
+      expect(screen.invoiceRows()).toEqual(PAYMENT_ROWS);
+
+      await screen.press('Filter by payment');
+      await screen.press('Paid');
+      expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0401']);
+      expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 1 of 3 · Last updated 10:00 am');
+      expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
+
+      await screen.press('Payment: Paid. Change');
+      await screen.press('Pending');
+      expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402']);
+      expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 3 · Last updated 10:00 am');
+      expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
+
+      await screen.press('Clear all filters and the search');
+      expect(screen.invoiceRows()).toEqual(PAYMENT_ROWS);
+      expect(customerHistory).toHaveBeenCalledTimes(1);
+    });
+
+    it('says on the part-paid card, and in its spoken label, what is paid and what is pending, under the invoice\'s own amount', async () => {
+      const screen = await open(makeStore());
+      // The amount stays the invoice's 14.00, the tag is Pending, and one more line has the two parts.
+      expect(cardTexts(screen, '2026/0402')).toEqual(['Invoice 2026/0402', 'GRN A0402', '₹14.00', '1 item', 'Pending', PART_PAID_LINE]);
+      expect(cardLabel(screen, '2026/0402')).toBe('Invoice 2026/0402, 5 Oct 2026 · GRN A0402, ₹14.00, 1 item, Pending, Paid: ₹4.00, Pending: ₹10.00');
+      // The line is the last thing in the card, below the cell with the amount and the tag: never cut short.
+      const card = invoiceCard(screen, '2026/0402');
+      const line = card.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === PART_PAID_LINE)[0];
+      expect(line.props.numberOfLines).toBeUndefined();
+      expect(StyleSheet.flatten(line.props.style)).toMatchObject({ color: LIGHT.text.secondary, fontVariant: ['tabular-nums'] });
+      // The card still opens the invoice.
+      await screen.press(cardLabel(screen, '2026/0402'));
+      expect(mockRouterPush).toHaveBeenCalledWith('/invoice-details/inv-f2');
+
+      // A search that finds an item inside the card names it after the two parts.
+      await screen.search('chilli');
+      expect(screen.invoiceRows()).toEqual(['Mon, 5 Oct', 'Invoice 2026/0402']);
+      expect(cardLabel(screen, '2026/0402')).toBe('Invoice 2026/0402, 5 Oct 2026 · GRN A0402, ₹14.00, 1 item, Pending, Paid: ₹4.00, Pending: ₹10.00, Red chilli');
+    });
+
+    it('leaves the card of a fully paid invoice and of an unpaid one as they were: no line, the same words', async () => {
+      const screen = await open(makeStore());
+      expect(cardTexts(screen, '2026/0401')).toEqual(['Invoice 2026/0401', 'GRN A0401', '₹20.00', '1 item', 'Paid']);
+      expect(cardLabel(screen, '2026/0401')).toBe('Invoice 2026/0401, 20 Sep 2026 · GRN A0401, ₹20.00, 1 item, Paid');
+      expect(cardTexts(screen, '2026/0403')).toEqual(['Invoice 2026/0403', 'GRN A0403', '₹30.00', '1 item', 'Pending']);
+      expect(cardLabel(screen, '2026/0403')).toBe('Invoice 2026/0403, 12 Oct 2026 · GRN A0403, ₹30.00, 1 item, Pending');
+      // One part-paid invoice on the screen, one line.
+      expect(screen.texts().filter(text => text.includes('Paid: '))).toEqual([PART_PAID_LINE]);
+      // Their cards hold the cell and nothing under it; the part-paid card holds the cell and its line.
+      expect([cardParts(screen, '2026/0401'), cardParts(screen, '2026/0403'), cardParts(screen, '2026/0402')]).toEqual([1, 1, 2]);
+    });
+
+    it('sends the Payment choice to the report PDF as the status, "paid" or "pending", and none for All', async () => {
+      const screen = await open(makeStore());
+      const BASE = { report: 'invoice-history', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'date', order: 'desc' } };
+      const requestShared = async () => {
+        makePdf.mockClear();
+        makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
+        await screen.press('Share PDF');
+        expect(makePdf).toHaveBeenCalledTimes(1);
+        return makePdf.mock.calls[0][0];
+      };
+      expect(await requestShared()).toEqual(BASE);
+      expect(await requestShared()).not.toHaveProperty('status');
+
+      await screen.press('Filter by payment');
+      await screen.press('Paid');
+      expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0401']);
+      expect(await requestShared()).toEqual({ ...BASE, status: 'paid' });
+
+      await screen.press('Payment: Paid. Change');
+      await screen.press('Pending');
+      expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402']);
+      expect(await requestShared()).toEqual({ ...BASE, status: 'pending' });
+      expect(alert).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows the same screen for a server with migration 62 and for one without it', async () => {
+    const seen = async (answer: unknown) => {
+      customerHistory.mockResolvedValue(answer as never);
+      mockParams = GREEN;
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      const drawn = () => ({
+        texts: screen.texts(),
+        rows: screen.invoiceRows(),
+        cards: screen.controls(label => label.startsWith('Invoice 2026/')).map(node => node.props.accessibilityLabel as string),
+        status: screen.status(),
+      });
+      const all = { ...drawn(), tiles: tiles(screen), table: screen.monthTable() };
+      await screen.press('Filter by payment');
+      await screen.press('Paid');
+      const paid = drawn();
+      await screen.press('Payment: Paid. Change');
+      await screen.press('Pending');
+      const pendingOnly = drawn();
+      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      forgetQueries();
+      return { all, paid, pendingOnly };
+    };
+    const without = await seen(BEFORE_62);
+    const withIt = await seen(WITH_62);
+    // A screen that drew nothing would equal itself: it drew the figures, the line and the two lists.
+    expect(without.all.tiles).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
+    expect(without.all.table?.totals).toEqual(['Total', '3', '₹64', '₹24', '₹40']);
+    expect(without.all.texts).toContain(PART_PAID_LINE);
+    expect(without.paid.rows).toEqual(['Sun, 20 Sep', 'Invoice 2026/0401']);
+    expect(without.pendingOnly.rows).toEqual(['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402']);
+    expect(withIt).toEqual(without);
+  });
+
+  it('takes "paid" with no amount, as an older server answers, as paid in full: no line, and the figures as they were', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(NO_AMOUNTS as never);
+    const screen = await open(makeStore());
+    expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (2): ₹34', 'Pending (1): ₹30']);
+    expect(cardTexts(screen, '2026/0402')).toEqual(['Invoice 2026/0402', 'GRN A0402', '₹14.00', '1 item', 'Paid']);
+    expect(cardLabel(screen, '2026/0402')).toBe('Invoice 2026/0402, 5 Oct 2026 · GRN A0402, ₹14.00, 1 item, Paid');
+    expect(screen.texts().filter(text => text.includes('Paid: '))).toEqual([]);
+  });
+
+  it('is Paid with up to 0.50 owed and Pending, with its line, from 0.51', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(
+      answerPayments(
+        [
+          { ...UNPAID_ROW, payment_status: payment('paid', 29.5) },
+          { ...PART_PAID_ROW, payment_status: payment('paid', 13.49) },
+          // More than the invoice: 20.00 of the 25.00 is the money received on it.
+          { ...PAID_ROW, payment_status: payment('paid', 25) },
+        ],
+        [3, 44, 20],
+        [0, 0, 0]
+      ) as never
+    );
+    const screen = await open(makeStore());
+    // Received: 29.50 + 13.49 + 20.00. Owed: 0.50 + 0.51.
+    expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (2): ₹63', 'Pending (1): ₹1']);
+    expect(cardLabel(screen, '2026/0403')).toBe('Invoice 2026/0403, 12 Oct 2026 · GRN A0403, ₹30.00, 1 item, Paid');
+    expect(cardLabel(screen, '2026/0402')).toBe('Invoice 2026/0402, 5 Oct 2026 · GRN A0402, ₹14.00, 1 item, Pending, Paid: ₹13.49, Pending: ₹0.51');
+    expect(cardLabel(screen, '2026/0401')).toBe('Invoice 2026/0401, 20 Sep 2026 · GRN A0401, ₹20.00, 1 item, Paid');
+    // The payments have paise, so the table shows them: to the paisa, Paid + Pending is the Amount.
+    await screen.press('Monthly breakdown');
+    const table = screen.monthTable()!;
+    expect(table.rows).toEqual([
+      ['Oct 2026', '2', '₹44.00', '₹42.99', '₹1.01'],
+      ['Sep 2026', '1', '₹20.00', '₹20.00', '₹0.00'],
+    ]);
+    expect(table.totals).toEqual(['Total', '3', '₹64.00', '₹62.99', '₹1.01']);
+  });
+
+  it('gives each of the two parts its own line in Gujarati, in that language\'s words and digits', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(BEFORE_62 as never);
+    setLanguage('gu');
+    const screen = await open(makeStore());
+    const card = screen.controls(label => label.includes('2026/0402'))[0];
+    expect(textsIn(card).slice(-2)).toEqual(['ચૂકવેલ: ₹૪.૦૦', 'બાકી: ₹૧૦.૦૦']);
+    expect(card.props.accessibilityLabel).toMatch(/, બાકી, ચૂકવેલ: ₹૪\.૦૦, બાકી: ₹૧૦\.૦૦$/);
+  });
+});
+
 const MODES: Mode[] = ['light', 'dark'];
 // ---------------------------------------------------------------------------
 // The report PDF
 // ---------------------------------------------------------------------------
 
-const PDF_URL = 'https://warehouse.example.test/storage/v1/object/sign/documents/report/r.pdf?token=fictional';
 const NOT_AVAILABLE = 'This report is not available to your account as a PDF.';
 const NEEDS_UPDATE = "This facility's server needs an update before reports can be shared as PDF.";
 
@@ -1211,7 +1498,7 @@ describe('invoice history, the report PDF', () => {
 
     await screen.press('Payment: Paid. Change');
     await screen.press('Pending');
-    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009']);
+    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', 'Sun, 20 Sep', 'Invoice 2026/0050']);
     expect(await requestShared()).toEqual({ ...BASE, status: 'pending' });
 
     // The search narrows the screen only: the request has the status and no search.
@@ -1247,12 +1534,26 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(one.controls(label => label.startsWith('Invoice 2026/0010,'))[0]).backgroundColor).toBe(t.surface.card);
     expect(flat(textNode(one, 'Paid')).color).toBe(t.status.positive.text);
     expect(flat(textNode(one, 'Pending')).color).toBe(t.status.critical.text);
-    expect(flat(textNode(one, 'Unknown')).color).toBe(t.status.neutral.text);
+    // Every invoice is Paid or Pending by the money: no tag says "Unknown".
+    expect(textNode(one, 'Unknown')).toBeUndefined();
     await one.press('Monthly breakdown');
     // The totals row: weight 600 over a separator (§13.7).
     expect(flat(textNode(one, '₹39,000')).fontWeight).toBe(fontWeight.semibold);
     const totalsRow = one.tree.root.findAll(node => typeof node.type === 'string' && flat(node).borderTopColor === t.border.separator && flat(node).borderTopWidth === 1);
     expect(totalsRow.length).toBeGreaterThan(0);
+  });
+
+  it('draws a part-paid invoice as a Pending card with its line of what is paid and what is pending, on theme tokens', async () => {
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(BEFORE_62 as never);
+    const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    const card = invoiceCard(screen, '2026/0402');
+    expect(flat(card).backgroundColor).toBe(t.surface.card);
+    const line = card.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === PART_PAID_LINE)[0];
+    expect(flat(line).color).toBe(t.text.secondary);
+    expect(flat(line).fontVariant).toEqual(['tabular-nums']);
+    const tag = card.findAll(node => (node.type as unknown) === 'Text' && node.props.children === 'Pending')[0];
+    expect(flat(tag).color).toBe(t.status.critical.text);
   });
 
   it('draws each header of the monthly table on one line that shrinks before it is cut, with room for "Invoices"', async () => {

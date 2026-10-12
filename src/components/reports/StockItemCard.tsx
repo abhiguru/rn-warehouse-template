@@ -259,7 +259,7 @@ type Styles = ReturnType<typeof makeStyles>;
 const stockPhrase = (stock: number, total: number | null | undefined): string =>
   total && total > 0
     ? tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(stock), total: formatNumber(total) })
-    : tr('reports.shared.unitsValue', { value: formatNumber(stock) });
+    : tr('reports.shared.unitsValue', { value: formatNumber(stock), count: stock });
 
 export interface StockGRNRowProps {
   grn: StockGRNRowData;
@@ -469,7 +469,7 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
             <View style={styles.value}>
               <Text style={styles.valueText}>{formatNumber(stock)}</Text>
               <Text style={styles.valueLabel}>
-                {hasTotal ? tr('reports.itemStockSummary.ofTotal', { total: formatNumber(total) }) : tr('reports.shared.units')}
+                {hasTotal ? tr('reports.itemStockSummary.ofTotal', { total: formatNumber(total) }) : tr('reports.shared.units', { count: stock })}
               </Text>
             </View>
           ) : null}

@@ -172,7 +172,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   subtitle,
   subtitleLines = 2,
   value,
-  valueLabel = tr('reports.shared.units'),
+  valueLabel,
   onPress,
   customerId,
   status,
@@ -184,13 +184,15 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
+  // The word beside the figure: "unit" for 1, "units" otherwise, unless the screen names its own.
+  const label = valueLabel ?? tr('reports.shared.units', { count: value });
   const facts = Array.isArray(subtitle) ? subtitle : [subtitle];
   const subtitleText = joinFacts(facts);
 
   // Auto-generate accessibility label if not provided
   const a11yLabel =
     accessibilityLabel ??
-    [title, subtitleText, tr('reports.components.valueWithLabel', { value: formatNumber(value), label: valueLabel }), status?.label].filter(Boolean).join(', ');
+    [title, subtitleText, tr('reports.components.valueWithLabel', { value: formatNumber(value), label }), status?.label].filter(Boolean).join(', ');
 
   const row = (
     <Pressable
@@ -213,7 +215,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       {/* C. Value */}
       <View style={styles.valueContainer}>
         <Text style={styles.value}>{formatNumber(value)}</Text>
-        <Text style={styles.valueLabel}>{valueLabel}</Text>
+        <Text style={styles.valueLabel}>{label}</Text>
       </View>
 
       {/* D. Navigation Chevron */}

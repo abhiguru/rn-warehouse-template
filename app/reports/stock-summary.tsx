@@ -237,7 +237,7 @@ function CustomerStockRowCard({ customer, words, onOpen }: CustomerRowProps) {
           highlightWords={words}
           subtitle={[formatCount(customer.item_count, 'item'), formatCount(customer.grn_count, 'GRN')]}
           value={customer.total_stock}
-          valueLabel={tr('reports.shared.units')}
+          valueLabel={tr('reports.shared.units', { count: customer.total_stock })}
           onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
           onShare={available ? () => void exportPdf() : undefined}
           isSharing={busy}

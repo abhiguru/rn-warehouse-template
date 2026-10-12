@@ -230,7 +230,7 @@ describe('a PDF the server cut short', () => {
     setLanguage('gu');
     try {
       await setup().run();
-      expect(showAlert).toHaveBeenCalledWith('PDF શેર કરો', 'આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ હરોળ જ છે.');
+      expect(showAlert).toHaveBeenCalledWith('PDF શેર કરો', 'આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ લાઇન જ છે.');
     } finally {
       setLanguage('en');
     }

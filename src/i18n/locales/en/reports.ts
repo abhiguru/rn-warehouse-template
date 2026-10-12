@@ -11,8 +11,9 @@ export const reports = {
     operationsDashboard: 'Operations dashboard',
   },
   shared: {
-    units: 'units',
-    unitsValue: '{{value}} units',
+    // A label under a stock figure; pass `count` to get "unit" for 1.
+    units: { one: 'unit', other: 'units' },
+    unitsValue: { one: '{{value}} unit', other: '{{value}} units' },
     labelValue: '{{label}}: {{value}}',
     grnNumber: 'GRN {{number}}',
     rack: 'Rack {{rack}}',
@@ -149,8 +150,8 @@ export const reports = {
     itemsOver364: 'Items over 364 days',
     ageOld: '{{age}} old',
     bucketShareA11y: '{{label}}: {{share}} of all stock, {{quantity}}.',
-    groupA11y: '{{name}}, {{grns}}, {{units}} units, oldest {{age}}',
-    entryA11y: '{{title}}, received {{date}}, {{age}} in storage, {{units}} units',
+    groupA11y: '{{name}}, {{grns}}, {{units}}, oldest {{age}}',
+    entryA11y: '{{title}}, received {{date}}, {{age}} in storage, {{units}}',
     receivedQuantity: 'Received quantity',
     dispatched: 'Dispatched',
     dispatchedIn: '{{quantity}} in {{dispatches}}',

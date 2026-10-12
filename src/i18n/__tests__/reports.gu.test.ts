@@ -27,6 +27,45 @@ describe('reports in Gujarati', () => {
   });
 });
 
+describe('the reviewed Gujarati wording of the report texts', () => {
+  it('says how many rows show without a gendered verb', () => {
+    expect(t('reports.scaffold.showing', { shown: '૩', total: '૪૦' }, 'gu')).toBe('૪૦માંથી ૩ દેખાય છે');
+  });
+
+  it('names the age sort with a plain noun, so the spoken "… મુજબ સૉર્ટ કરેલું" is a sentence', () => {
+    expect(t('reports.sort.age', undefined, 'gu')).toBe('દિવસ');
+    // The older average-age label is outside this review and is unchanged.
+    expect(t('reports.stockAging.averageAge', undefined, 'gu')).toBe('સરેરાશ કેટલા દિવસથી');
+  });
+
+  it('says only the loaded items are sorted', () => {
+    expect(t('reports.itemStockSummary.sortedAmongLoaded', { count: 40 }, 'gu')).toBe('ફક્ત લોડ થયેલી ૪૦ આઇટમ જ સૉર્ટ થઈ છે');
+  });
+
+  it('uses એકાઉન્ટ for the login account and લાઇન for a row of the PDF', () => {
+    expect(t('reports.export.notAvailable', undefined, 'gu')).toBe('આ અહેવાલની PDF તમારા એકાઉન્ટ માટે ઉપલબ્ધ નથી.');
+    expect(t('reports.export.truncated', { shown: '૫,૦૦૦', total: '૧૨,૩૪૫' }, 'gu')).toBe('આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ લાઇન જ છે.');
+  });
+});
+
+describe('units after a stock figure', () => {
+  it('is "unit" for exactly 1 in English and "units" otherwise, and "units" when no count is given', () => {
+    expect(t('reports.shared.units', { count: 1 })).toBe('unit');
+    expect(t('reports.shared.units', { count: 2 })).toBe('units');
+    expect(t('reports.shared.units', { count: 0 })).toBe('units');
+    expect(t('reports.shared.units')).toBe('units');
+    expect(formatCount(1, 'unit')).toBe('1 unit');
+    expect(formatCount(1200, 'unit')).toBe('1,200 units');
+  });
+
+  it('is the same word for 1 and for more in Gujarati', () => {
+    for (const count of [0, 1, 2, 1200]) expect(t('reports.shared.units', { count }, 'gu')).toBe('નંગ');
+    setLanguage('gu');
+    expect(formatCount(1, 'unit')).toBe('૧ નંગ');
+    expect(formatCount(1200, 'unit')).toBe('૧,૨૦૦ નંગ');
+  });
+});
+
 describe('activity reports in Gujarati', () => {
   it('describes the stock trend as one sentence', () => {
     expect(

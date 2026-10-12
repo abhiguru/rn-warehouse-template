@@ -121,15 +121,26 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const days = (count: number) => formatCount(count, 'day');
+/** "1 unit", "12 units" (Gujarati: "૧ નંગ", "૧૨ નંગ"). */
+const units = (count: number) => formatCount(count, 'unit');
 
 /**
  * The figures over the rows. The KPI for the oldest stock counts the items of the
  * bar's own over-364 bucket and says so ("Items over 364 days"), so it and the
  * red bar always agree. The RPC's items_over_365_days counts from 365 and is not shown.
+ *
+ * `itemCount` is the number of "Items" the first tile shows. The server's
+ * `total_items` counts stock lines (an item stored on two GRNs counts twice), so a
+ * customer's own screen passes the number of item cards instead; the all-customers
+ * level has no item list to count and shows the server's figure.
  */
-function agingKpis(summary: { total_items: number; average_age_days: number }, byBucket: Record<string, Pick<AgingBucketData, 'item_count'>>): KPIItem[] {
+function agingKpis(
+  summary: { total_items: number; average_age_days: number },
+  byBucket: Record<string, Pick<AgingBucketData, 'item_count'>>,
+  itemCount: number = summary.total_items
+): KPIItem[] {
   return [
-    { icon: 'cube-outline', value: summary.total_items, label: tr('common.items'), variant: 'primary' },
+    { icon: 'cube-outline', value: itemCount, label: tr('common.items'), variant: 'primary' },
     { icon: 'calendar-clock', value: summary.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
     { icon: 'alert', value: byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
   ];
@@ -247,7 +258,7 @@ const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: Custo
           subtitle={tr('reports.stockAging.averageAgeOf', { age: days(customer.average_age_days) })}
           subtitleLines={2}
           value={customer.total_stock}
-          valueLabel={tr('reports.shared.units')}
+          valueLabel={tr('reports.shared.units', { count: customer.total_stock })}
           // The tag is the bucket of the customer's average age, and says so.
           status={{ status: AGING_BUCKET_STATUS[bucket], label: tr('reports.stockAging.averageBucket', { bucket: agingBucketLabel(bucket) }) }}
           onPress={() => onOpen({ id: customer.customer_id, name: customer.customer_name })}
@@ -289,8 +300,9 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const { data } = query;
   const groups = useMemo(() => groupStockAgingLines(data?.items ?? []), [data]);
   const rows = useMemo(() => stockAgingItemsView(groups, view), [groups, view]);
-  // The figures are the whole stock's, not what the search or the bucket leaves.
-  const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket), [data]);
+  // The figures are the whole stock's, not what the search or the bucket leaves. The Items tile
+  // counts the item cards (`groups`, before any search or filter), not the server's stock lines.
+  const kpis = useMemo(() => data && agingKpis(data.summary, data.by_bucket, groups.length), [data, groups]);
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
@@ -400,7 +412,7 @@ const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, openLi
           onPress={() => onToggle(group.key)}
           accessibilityRole="button"
           accessibilityLabel={[
-            tr('reports.stockAging.groupA11y', { name: group.itemName, grns, units: formatNumber(group.totalStock), age: days(group.oldestDays) }),
+            tr('reports.stockAging.groupA11y', { name: group.itemName, grns, units: units(group.totalStock), age: days(group.oldestDays) }),
             ...found,
           ].join(', ')}
           accessibilityState={{ expanded }}
@@ -416,7 +428,7 @@ const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, openLi
           </View>
           <View style={styles.stockInfo}>
             <Text style={styles.stockValue}>{formatNumber(group.totalStock)}</Text>
-            <Text style={styles.stockLabel}>{tr('reports.shared.units')}</Text>
+            <Text style={styles.stockLabel}>{tr('reports.shared.units', { count: group.totalStock })}</Text>
           </View>
           <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
         </Pressable>
@@ -467,7 +479,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
         style={({ pressed }) => [styles.lineRow, pressed && styles.rowPressed]}
         onPress={() => onToggle(groupKey, line.lineKey)}
         accessibilityRole="button"
-        accessibilityLabel={tr('reports.stockAging.entryA11y', { title, date: received, age: days(line.aging_days), units: formatNumber(line.current_stock) })}
+        accessibilityLabel={tr('reports.stockAging.entryA11y', { title, date: received, age: days(line.aging_days), units: units(line.current_stock) })}
         accessibilityState={{ expanded }}
       >
         <View style={styles.cellContent}>
