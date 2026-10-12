@@ -1,11 +1,47 @@
 import fs from 'fs';
 import path from 'path';
+import React from 'react';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { REPORTS, reportById } from '../reportRegistry';
+import { NavigationStack } from '../../../../app/_layout';
 import { canOpenScreen } from '@/config/roles';
 import { decideRoute } from '@/navigation/routeAccess';
 import { setLanguage } from '@/i18n';
 import { en } from '@/i18n/locales/en';
 import { gu } from '@/i18n/locales/gu';
+
+// The root stack of app/_layout.tsx is rendered with a Stack.Screen that records its name.
+// The layout imports the whole app shell; only its stack is rendered, so the shell is stubbed.
+jest.mock('expo-router', () => {
+  const React = require('react');
+  const Stack = ({ children }: { children?: React.ReactNode }) => React.createElement('Stack', null, children);
+  Stack.Screen = ({ name }: { name: string }) => React.createElement('StackScreen', { name });
+  return { Stack, DarkTheme: { colors: {} }, DefaultTheme: { colors: {} }, ThemeProvider: ({ children }: { children: React.ReactNode }) => children };
+});
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  SafeAreaInsetsContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
+}));
+jest.mock('@/hooks/useTheme', () => {
+  const { getTokens } = require('@/theme/tokens');
+  return { useTokens: () => getTokens('orange', 'light'), useTheme: jest.fn() };
+});
+jest.mock('@/store', () => ({ store: {}, persistor: {} }));
+jest.mock('react-redux', () => ({ Provider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('redux-persist/integration/react', () => ({ PersistGate: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@tanstack/react-query', () => ({ QueryClientProvider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@gorhom/bottom-sheet', () => ({ BottomSheetModalProvider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@/lib/queryClient', () => ({ queryClient: {} }));
+jest.mock('@/config/sentryConfig', () => ({
+  initializeSentry: jest.fn(), captureException: jest.fn(), captureMessage: jest.fn(), Sentry: { wrap: (c: unknown) => c },
+}));
+jest.mock('react-native-paper-dates', () => ({ en: {}, registerTranslation: jest.fn() }));
+jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
+jest.mock('expo-navigation-bar', () => ({ setStyle: jest.fn() }));
+jest.mock('@/components/OperatorServerSelection', () => ({ OperatorServerSelection: () => null }));
+jest.mock('@/components/ConfigErrorScreen', () => () => null);
+jest.mock('@/components/ErrorBoundary', () => ({ ErrorBoundary: ({ children }: { children: React.ReactNode }) => children }));
 
 const APP_DIR = path.resolve(__dirname, '../../../../app');
 const ROLES = ['admin', 'supervisor', 'staff', 'customer'];
@@ -37,13 +73,18 @@ describe('report registry', () => {
   });
 
   it('the root stack declares every report route from the registry', () => {
-    const layout = fs.readFileSync(path.join(APP_DIR, '_layout.tsx'), 'utf8');
-    // One <Stack.Screen> per report, named by its id: a report added to the registry is declared with it.
-    expect(layout).toMatch(
-      /\{REPORTS\.map\(\(report\) => \(\s*<Stack\.Screen\s+key=\{report\.id\}\s+name=\{`reports\/\$\{report\.id\}`\}\s+options=\{\{ headerShown: false \}\}\s*\/>\s*\)\)\}/
-    );
-    // No report route is declared by hand beside the table.
-    expect(layout).not.toMatch(/name="reports\//);
+    let tree!: ReactTestRenderer;
+    act(() => {
+      tree = create(React.createElement(NavigationStack, { screenBackground: '#fff' }));
+    });
+    const stacks = tree.root.findAll((node) => (node.type as unknown) === 'Stack');
+    expect(stacks).toHaveLength(1);
+    const names = stacks[0].findAll((node) => (node.type as unknown) === 'StackScreen').map((node) => node.props.name as string);
+    // One screen per report, named by its id, once each: a report removed from the stack fails here.
+    expect(names.filter((name) => name.startsWith('reports/'))).toEqual(REPORTS.map((report) => `reports/${report.id}`));
+    // The other screens are still declared beside them.
+    expect(names).toEqual(expect.arrayContaining(['(tabs)', 'login', 'settings']));
+    act(() => tree.unmount());
   });
 
   it('files the reports under their categories and marks the ones without a period', () => {

@@ -74,12 +74,7 @@ export const reports = {
   },
   period: {
     label: 'Period',
-    groupLabel: 'Report period',
-    days: '{{count}} days',
     lastDays: 'Last {{count}} days',
-    customRange: 'Custom date range',
-    custom: 'Custom',
-    dateRange: '{{from}} – {{to}}',
   },
   components: {
     kpiLoading: '{{label}}, loading',
@@ -91,8 +86,6 @@ export const reports = {
     sharePdfFor: 'Share PDF for {{name}}',
     valueWithLabel: '{{value}} {{label}}',
     searchCustomers: 'Search customers',
-    searching: 'Searching',
-    otherCustomers: 'Other customers',
     summary: 'Summary',
   },
   stockSummary: {
@@ -100,7 +93,6 @@ export const reports = {
     showsGrnsHint: 'Shows the GRNs for this item',
     grnsDispatched: '{{grns}} dispatched',
     emptiedOn: 'Emptied {{date}}',
-    stockOf: '{{stock}} of {{total}}',
     weightEach: '{{weight}} each',
     errorTitle: "Couldn't load the stock summary",
     searchItems: 'Search items or GRNs',
@@ -140,7 +132,6 @@ export const reports = {
     bucket241to364: '241–364 days',
     bucketOver364: 'Over 364 days',
     ageOld: '{{age}} old',
-    bucketA11y: '{{label}}: {{percent}}%, {{units}} units',
     bucketShareA11y: '{{label}}: {{share}} of all stock, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}} units, oldest {{age}}',
     entryA11y: '{{title}}, received {{date}}, {{age}} in storage, {{units}} units',
@@ -229,16 +220,6 @@ export const reports = {
     charts: 'Charts',
     stockAge: 'Stock age',
     quickAccess: 'Quick access',
-    // Stock age buckets
-    aging: {
-      days0to120: '0–120 days',
-      days121to240: '121–240 days',
-      days241to364: '241–364 days',
-      over364: 'Over 364 days',
-      other: '{{bucket}} days',
-      percent: '{{percent}}%',
-      label: '{{label}}: {{percent}}%, {{quantity}} units',
-    },
     // Stock level trend chart
     trend: {
       title: 'Stock level trend',

@@ -1,26 +1,19 @@
 import { t, setLanguage } from '..';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
 
 afterEach(() => setLanguage('en'));
 
 describe('reports in Gujarati', () => {
   it('writes a period with its day count in Gujarati digits', () => {
     expect(t('reports.period.lastDays', { count: 120 }, 'gu')).toBe('છેલ્લા ૧૨૦ દિવસ');
-    expect(t('reports.period.days', { count: 364 }, 'gu')).toBe('૩૬૪ દિવસ');
-  });
-
-  it('puts "થી … સુધી" after the dates of a range', () => {
-    setLanguage('gu');
-    expect(t('reports.period.dateRange', { from: formatDate('2026-06-01'), to: formatDate('2026-10-10') })).toBe(
-      `${formatDate('2026-06-01')}થી ${formatDate('2026-10-10')} સુધી`
-    );
-    expect(t('reports.period.dateRange', { from: 'A', to: 'B' }, 'en')).toBe('A – B');
   });
 
   it('keeps a document number in 0-9 and formats counts around it', () => {
     setLanguage('gu');
     expect(t('reports.shared.grnNumber', { number: '2026/0145' })).toBe('આવક પાવતી 2026/0145');
-    expect(t('reports.stockSummary.stockOf', { stock: formatNumber(1250), total: formatNumber(4000) })).toBe('૪,૦૦૦માંથી ૧,૨૫૦');
+    expect(t('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(1250), total: formatNumber(4000) })).toBe(
+      '૪,૦૦૦માંથી ૧,૨૫૦ સ્ટોકમાં છે'
+    );
   });
 
   it('says how long stock has been lying, with the age after the number', () => {

@@ -4,11 +4,9 @@ import { StyleSheet } from 'react-native';
 import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { KPICard } from '../KPICard';
 import { KPIGrid } from '../KPIGrid';
-import { PeriodSelector } from '../PeriodSelector';
 import { ReportHeader } from '../ReportHeader';
 import { ReportEmptyState } from '../ReportEmptyState';
 import { ReportCustomerCard } from '../ReportCustomerCard';
-import { ReportCustomerSearch } from '../ReportCustomerSearch';
 
 let mockState: { theme: { preference: string; brand: string } } = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -23,7 +21,6 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack, push: jest.fn() }), router: { back: jest.fn() } }));
-jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
@@ -91,20 +88,6 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
-  it('period selector marks the selected segment with brand fill and reports the range', () => {
-    const onChange = jest.fn();
-    const tree = render(brand, mode, <PeriodSelector selectedPeriod="last240days" onPeriodChange={onChange} />);
-    const radios = tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function');
-    expect(radios).toHaveLength(4);
-    const selected = radios.filter(r => r.props.accessibilityState?.selected);
-    expect(selected).toHaveLength(1);
-    expect(selected[0].props.accessibilityLabel).toBe('Last 240 days');
-    expect(hasStyle(tree, 'backgroundColor', t.brand.fill)).toBe(true);
-    act(() => radios[0].props.onPress());
-    expect(onChange).toHaveBeenCalledWith('last120days', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }));
-    act(() => tree.unmount());
-  });
-
   it('header uses header surface, brand tint actions and labelled buttons', () => {
     const onShare = jest.fn();
     const tree = render(brand, mode, (
@@ -134,7 +117,7 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
-  it('customer cell and search field use token colours', () => {
+  it('customer cell uses token colours and highlights the search words', () => {
     let tree = render(brand, mode, (
       <ReportCustomerCard title="Patel Traders" subtitle="3 items" value={1200} onPress={jest.fn()} onShare={jest.fn()} />
     ));
@@ -154,55 +137,6 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
     // The row still reads the whole name.
     expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Green Valley Traders, 2 GRNs, 300 units' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
     act(() => tree.unmount());
-
-    tree = render(brand, mode, (
-      <ReportCustomerSearch searchQuery="pat" onSearchChange={jest.fn()} onCustomerSelect={jest.fn()} visibleCustomerIds={[]} />
-    ));
-    expect(hasStyle(tree, 'backgroundColor', t.surface.field)).toBe(true);
-    expect(hasStyle(tree, 'borderColor', t.border.field)).toBe(true);
-    act(() => tree.unmount());
   });
 });
 
-// M9-10: the answer to an earlier search must not replace the dropdown of the current one.
-describe('ReportCustomerSearch, answers out of order', () => {
-  const { searchService } = require('@/services/search-service') as { searchService: { searchCustomers: jest.Mock } };
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => {
-    jest.useRealTimers();
-    searchService.searchCustomers.mockImplementation(() => Promise.resolve([]));
-  });
-
-  it('keeps the customers found for the text the field shows', async () => {
-    const pending: Record<string, (rows: { value: string; label: string }[]) => void> = {};
-    searchService.searchCustomers.mockImplementation((query: string) => new Promise(resolve => {
-      pending[query] = resolve;
-    }));
-    const element = (query: string) => (
-      <ReportCustomerSearch searchQuery={query} onSearchChange={jest.fn()} onCustomerSelect={jest.fn()} visibleCustomerIds={[]} />
-    );
-    const tree = render('orange' as Brand, 'light', element('pa'));
-    act(() => {
-      jest.advanceTimersByTime(300);
-    });
-    act(() => tree.update(element('patel')));
-    act(() => {
-      jest.advanceTimersByTime(300);
-    });
-    expect(Object.keys(pending)).toEqual(['pa', 'patel']);
-
-    // The name is drawn in pieces (the match is highlighted), so the pieces are read together.
-    const shown = () => texts(tree).join(' ');
-    await act(async () => {
-      pending.patel([{ value: 'c1', label: 'Patel Traders' }]);
-    });
-    expect(shown()).toContain('Traders');
-
-    await act(async () => {
-      pending.pa([{ value: 'c2', label: 'Parmar Stores' }, { value: 'c1', label: 'Patel Traders' }]);
-    });
-    expect(shown()).toContain('Traders');
-    expect(shown()).not.toContain('Stores');
-    act(() => tree.unmount());
-  });
-});

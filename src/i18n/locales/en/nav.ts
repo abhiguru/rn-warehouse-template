@@ -35,8 +35,6 @@ export const nav = {
     subtitleStaff: 'View operations and customer reports',
     subtitleCustomer: 'View your inventory reports',
     profileAndSettings: 'Profile and settings',
-    inventorySection: 'Inventory reports',
-    operationsSection: 'Operations reports',
     cardLabel: '{{title}}. {{description}}',
     // The titles are the report screens' own (`reports.titles`).
     descriptions: {

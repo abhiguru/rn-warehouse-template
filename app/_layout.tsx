@@ -288,7 +288,8 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
 }
 
-function NavigationStack({ screenBackground }: { screenBackground: string }) {
+/** The root stack; exported so a test can list the routes it declares. */
+export function NavigationStack({ screenBackground }: { screenBackground: string }) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
 

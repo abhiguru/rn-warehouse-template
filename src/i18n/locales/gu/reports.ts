@@ -73,12 +73,7 @@ export const reports: Translation<typeof source> = {
   },
   period: {
     label: 'સમયગાળો',
-    groupLabel: 'અહેવાલનો સમયગાળો',
-    days: '{{count}} દિવસ',
     lastDays: 'છેલ્લા {{count}} દિવસ',
-    customRange: 'તારીખો જાતે પસંદ કરો',
-    custom: 'અન્ય તારીખો',
-    dateRange: '{{from}}થી {{to}} સુધી',
   },
   components: {
     kpiLoading: '{{label}}, લોડ થઈ રહ્યું છે',
@@ -90,8 +85,6 @@ export const reports: Translation<typeof source> = {
     sharePdfFor: '{{name}}ની PDF શેર કરો',
     valueWithLabel: '{{value}} {{label}}',
     searchCustomers: 'વેપારી શોધો',
-    searching: 'શોધી રહ્યા છીએ',
-    otherCustomers: 'અન્ય વેપારી',
     summary: 'સારાંશ',
   },
   stockSummary: {
@@ -99,7 +92,6 @@ export const reports: Translation<typeof source> = {
     showsGrnsHint: 'આ આઇટમની આવક પાવતીઓ બતાવે છે',
     grnsDispatched: '{{grns}}નો માલ જાવક થઈ ગયો',
     emptiedOn: 'ખાલી થયું તા. {{date}}',
-    stockOf: '{{total}}માંથી {{stock}}',
     weightEach: 'દરેક {{weight}}',
     errorTitle: 'સ્ટોકનો સારાંશ લોડ કરી શકાયો નથી',
     searchItems: 'આઇટમ અથવા આવક પાવતી શોધો',
@@ -139,7 +131,6 @@ export const reports: Translation<typeof source> = {
     bucket241to364: '૨૪૧–૩૬૪ દિવસ',
     bucketOver364: '૩૬૪ દિવસથી વધુ',
     ageOld: '{{age}}થી પડ્યો છે',
-    bucketA11y: '{{label}}: {{percent}}%, {{units}} નંગ',
     bucketShareA11y: '{{label}}: કુલ સ્ટોકના {{share}}, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}} નંગ, સૌથી જૂનો માલ {{age}}થી',
     entryA11y: '{{title}}, આવક તા. {{date}}, {{age}}થી પડ્યો છે, {{units}} નંગ',
@@ -225,16 +216,6 @@ export const reports: Translation<typeof source> = {
     charts: 'ચાર્ટ',
     stockAge: 'માલ કેટલા દિવસથી પડ્યો છે',
     quickAccess: 'ઝડપી પહોંચ',
-    // Stock age buckets
-    aging: {
-      days0to120: '૦–૧૨૦ દિવસ',
-      days121to240: '૧૨૧–૨૪૦ દિવસ',
-      days241to364: '૨૪૧–૩૬૪ દિવસ',
-      over364: '૩૬૪ દિવસથી વધુ',
-      other: '{{bucket}} દિવસ',
-      percent: '{{percent}}%',
-      label: '{{label}}: {{percent}}%, {{quantity}} નંગ',
-    },
     // Stock level trend chart
     trend: {
       title: 'સ્ટોકમાં વધઘટ',

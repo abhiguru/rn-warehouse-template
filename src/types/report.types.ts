@@ -21,12 +21,6 @@ export interface ReportDateRange {
   toDate: string; // ISO date string
 }
 
-/**
- * Period presets for quick selection
- * Standardized across all reports: 120d, 240d, 364d, 420d
- */
-export type ReportPeriod = 'last120days' | 'last240days' | 'last364days' | 'last420days' | 'custom';
-
 // ============================================================
 // C1: Stock Summary Types
 // ============================================================
@@ -270,32 +264,6 @@ export interface OperationsDashboardData {
  * Service response for operations dashboard
  */
 export type OperationsDashboardResponse = ServiceResponse<OperationsDashboardData>;
-
-// ============================================================
-// Report Menu/Navigation Types
-// ============================================================
-
-/**
- * Report definition for menu display
- */
-export interface ReportDefinition {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  route: string;
-  staffOnly: boolean;
-  category: 'stock' | 'movement' | 'financial' | 'operations';
-}
-
-/**
- * Report category grouping
- */
-export interface ReportCategory {
-  id: string;
-  title: string;
-  reports: ReportDefinition[];
-}
 
 // ============================================================
 // C5: Stock Aging Types
@@ -672,15 +640,6 @@ export type AllInvoiceHistoryResponse = ServiceResponse<AllInvoiceHistoryData>;
 // ============================================================
 // C6: Customer Activity Types
 // ============================================================
-
-/**
- * Customer Activity period extended options
- */
-/**
- * Customer Activity period - now uses standardized ReportPeriod
- * @deprecated Use ReportPeriod instead
- */
-export type CustomerActivityPeriod = ReportPeriod;
 
 /**
  * Customer Activity summary KPIs (Level 1 - list view)

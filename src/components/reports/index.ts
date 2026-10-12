@@ -10,7 +10,6 @@ export { KPIGrid, type KPIItem } from './KPIGrid';
 
 // Layout & Navigation
 export { ReportHeader, type ReportHeaderAction } from './ReportHeader';
-export { PeriodSelector, getDateRangeForPeriod } from './PeriodSelector';
 
 // The one layout every report uses
 export { ReportScaffold, type ReportScaffoldProps } from './ReportScaffold';
@@ -38,11 +37,7 @@ export { ReportLastCustomer, type ReportLastCustomerProps } from './ReportLastCu
 
 export { FactLines, joinFacts, stacksFacts } from './FactLines';
 
-// Search
-export { ReportCustomerSearch, type ReportCustomerSearchProps } from './ReportCustomerSearch';
-
-// Whose data a report shows (role and assigned customers)
-export { ReportCustomerScope, type ReportScope, type ReportCustomerScopeProps } from './ReportCustomerScope';
+// The customer a customer account with several customers picks first
 export { ReportCustomerPicker, type ReportCustomerPickerProps } from './ReportCustomerPicker';
 
 // Shared rows of the stock reports
