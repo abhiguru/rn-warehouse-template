@@ -131,7 +131,7 @@ describe('a facility that approves', () => {
       'exchange',
       'auth/setUserProfile',
     ]);
-    expect(tokenMock).toHaveBeenCalledWith(ORIGIN);
+    expect(tokenMock).toHaveBeenCalledWith(ORIGIN, 'asha');
     expect(exchangeMock).toHaveBeenCalledWith('identity-token-1', undefined);
   });
 
@@ -488,5 +488,88 @@ describe('taking the answer of an open', () => {
     expect(consumeOpenOutcome(first.id)).toBe(false);
     expect(getCentralState().outcome).toBe(second);
     expect(consumeOpenOutcome(second.id)).toBe(true);
+  });
+});
+
+describe('the person changes while an open is in flight (external review R5)', () => {
+  const BHAVIN = { id: 'bhavin', phoneNumber: '919000000002', name: 'Bhavin Fictional', createdAt: '' };
+  const becomeBhavin = () => setCentralState({ status: 'signedIn', user: BHAVIN });
+  type Held<T> = { promise: Promise<T>; resolve: (value: T) => void };
+  function held<T>(): Held<T> {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(res => { resolve = res; });
+    return { promise, resolve };
+  }
+  const asha = async () => (await loadMyFacilities('asha')).find(entry => entry.origin === ORIGIN);
+  const LEAVE = ['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch'];
+
+  it('O1. discovery answers after the person changed: nothing is switched, asked or written, and no answer is shown', async () => {
+    const before = await asha();
+    const answer = held<unknown>();
+    jest.mocked(discoverOperator).mockImplementationOnce(async () => { mockEvents.push('discover'); return answer.promise as never; });
+    const opening = openFacility(ORIGIN, NAME);
+    await new Promise(resolve => setImmediate(resolve));
+    becomeBhavin();
+    answer.resolve(discovery());
+    expect(await opening).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
+    expect(mockEvents).toEqual(['discover']);
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(store.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'auth/setUserProfile' }));
+    expect(await asha()).toEqual(before);
+    expect(getActiveOperatorServer()).toBe(previous);
+    expect(getCentralState().outcome).toBeNull();
+  });
+
+  it('O2. the person changes during the exchange and the facility signs in: no profile, the list stays, and that facility session is left', async () => {
+    const statusBefore = await status();
+    exchangeMock.mockImplementationOnce(async () => { mockEvents.push('exchange'); becomeBhavin(); return LOGIN as never; });
+    expect(await openFacility(ORIGIN, NAME)).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
+    expect(store.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'auth/setUserProfile' }));
+    expect(await status()).toBe(statusBefore);
+    expect(await lastOpened()).toBeNull();
+    expect(mockEvents.slice(mockEvents.indexOf('exchange') + 1)).toEqual(LEAVE);
+    expect(tokenMock).toHaveBeenCalledWith(ORIGIN, 'asha');
+    expect(getCentralState().outcome).toBeNull();
+  });
+
+  it('O3. the person changes during the exchange and the facility asks for linking: no code is sent and no code step starts', async () => {
+    exchangeMock.mockImplementationOnce(async () => { mockEvents.push('exchange'); becomeBhavin(); return refusal('link_required') as never; });
+    expect(await openFacility(ORIGIN, NAME)).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
+    expect(signInWithPhone).not.toHaveBeenCalled();
+    expect(getCentralState().pendingLink).toBeNull();
+  });
+
+  it('O3b. the same person, whose number changes in memory meanwhile: the code goes to the number the open began with', async () => {
+    exchangeMock.mockImplementationOnce(async () => {
+      mockEvents.push('exchange');
+      setCentralState({ user: { ...USER, phoneNumber: '919000000009' } });
+      return refusal('link_required') as never;
+    });
+    expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'link_required', codeSent: true });
+    expect(signInWithPhone).toHaveBeenCalledWith('919000000001');
+    expect(getCentralState().pendingLink).toEqual({ origin: ORIGIN, name: NAME, phoneNumber: '919000000001' });
+  });
+
+  it('O4. a link begun for one person is not completed for another', async () => {
+    exchangeMock.mockResolvedValueOnce(refusal('link_required') as never);
+    await openFacility(ORIGIN, NAME);
+    becomeBhavin();
+    expect(await completeFacilityLink('482913')).toMatchObject({ kind: 'failed', reason: 'failed' });
+    expect(tokenMock).toHaveBeenCalledTimes(1);
+    expect(store.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'auth/setUserProfile' }));
+  });
+
+  it('O5. the facility\'s own SMS sign-in, begun before the person changed: nothing is switched', async () => {
+    const answer = held<unknown>();
+    jest.mocked(discoverOperator).mockImplementationOnce(async () => { mockEvents.push('discover'); return answer.promise as never; });
+    const beginning = beginFacilitySmsSignIn(ORIGIN, NAME);
+    await new Promise(resolve => setImmediate(resolve));
+    becomeBhavin();
+    answer.resolve(discovery(null));
+    expect(await beginning).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
+    expect(mockEvents).toEqual(['discover']);
+    expect(getActiveOperatorServer()).toBe(previous);
+    expect(getCentralState().facilitySmsOrigin).toBeNull();
   });
 });

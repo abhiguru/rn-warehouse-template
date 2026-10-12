@@ -115,8 +115,19 @@ export function subscribeCentralState(listener: () => void): () => void {
   };
 }
 
+/**
+ * Moves on whenever the person changes: a sign-in, a sign-out, or another person's
+ * sign-in. Work begun for one person (opening a facility, openFacility.ts) compares it
+ * before each step and stops when it has moved. Not moved by a profile change of the
+ * same person (a new name) or a token refresh.
+ */
+let identityGeneration = 0;
+export const getCentralIdentityGeneration = (): number => identityGeneration;
+
 export function setCentralState(patch: Partial<CentralState>): void {
+  const before = state;
   state = { ...state, ...patch };
+  if (state.status !== before.status || state.user?.id !== before.user?.id) identityGeneration += 1;
   for (const listener of [...listeners]) listener();
 }
 
@@ -127,5 +138,6 @@ export const nextOutcomeId = (): number => ++outcomeId;
 export function resetCentralStateForTests(): void {
   state = initial;
   outcomeId = 0;
+  identityGeneration += 1;
   for (const listener of [...listeners]) listener();
 }

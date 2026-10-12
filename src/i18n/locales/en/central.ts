@@ -76,6 +76,8 @@ export const central = {
   signOut: {
     confirmMessage:
       "You'll be signed out of the association and of the cold storage you have open. You'll need your mobile number and a one-time code to sign in again.",
+    notCleared:
+      "This phone couldn't remove your association sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone.",
   },
   // "Sign out" inside a facility while central login is on
   facilitySignOut: {
