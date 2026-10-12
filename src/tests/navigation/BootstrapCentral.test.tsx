@@ -14,6 +14,7 @@ import { restoreCentralSession } from '@/config/centralSession';
 import { leaveFacility } from '@/store/operatorSwitch';
 import { useRootRouteGuard } from '@/navigation/RouteGuard';
 import { store } from '@/store';
+import { initializeAuth } from '@/store/slices/authSlice';
 
 let mockCentralOn = false;
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
@@ -181,5 +182,31 @@ describe('the chosen facility cannot be reached', () => {
     expect(leaveFacility).toHaveBeenCalledTimes(1);
     expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
     expect(shows('ServerSelection')).toBe(false);
+  });
+});
+
+// Phone report 2026-10-12: with central login and no facility selected every start logged
+// "[AuthSlice] Initialize auth error: Configuration must be loaded first." The restore itself
+// is covered in src/store/__tests__/initializeAuthNoFacility.test.ts; here, what the root does.
+describe('the facility session restore with no facility server chosen', () => {
+  beforeEach(() => jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'selection' }));
+
+  it('central login off: it is never started, because nothing but the server address screen is shown', async () => {
+    await start();
+    expect(shows('ServerSelection')).toBe(true);
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it('central login on: it is started once with the shell, and a restore that fails still releases the route guard', async () => {
+    mockCentralOn = true;
+    mockDispatch.mockReturnValueOnce({ unwrap: async () => { throw new Error('Configuration must be loaded first.'); } });
+    await start();
+    expect(initializeAuth).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(restoreCentralSession).toHaveBeenCalledTimes(1);
+    // The person is not left on the spinner: the guard is told the restore has settled.
+    expect(useRootRouteGuard).toHaveBeenLastCalledWith(true);
+    expect(shows('AppStack')).toBe(true);
   });
 });

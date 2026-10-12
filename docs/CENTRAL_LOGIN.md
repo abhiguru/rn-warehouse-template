@@ -130,6 +130,12 @@ decides where the person belongs:
 A facility session from before central login keeps working; such a person meets central
 sign-in the first time they leave the facility.
 
+With no facility selected there is no facility backend to ask, so the facility session
+restore (`initializeAuth` in `src/store/slices/authSlice.ts`) answers "no facility session"
+without asking for a client. Before 2026-10-12 it failed there on every such start with
+"Configuration must be loaded first", logged as an error and kept in `auth.error`; the
+person still reached the right screen.
+
 **Central sign-in** (`app/central-login.tsx`, `app/central-otp.tsx`). The layout and components
 of the facility sign-in (`src/components/auth/PhoneSignInForm.tsx`, `CodeEntryForm.tsx`), with
 the association line in place of a facility. The first sign-in on a phone shows a terms tick

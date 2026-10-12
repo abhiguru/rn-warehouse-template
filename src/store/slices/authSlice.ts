@@ -23,6 +23,8 @@ import ConfigService from '@/services/configService';
 import { getUserByIdDirect } from '@/services/user-core-service';
 import { fetchFullConfig, clearFullConfig } from './configSlice';
 import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
+import { isCentralLoginConfigured } from '@/config/envConfig';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -151,6 +153,14 @@ export const initializeAuth = createAsyncThunk(
     const result = await (async () => {
       try {
         await clearProtectedDetailCaches();
+
+        // Central login with no facility selected (docs/CENTRAL_LOGIN.md): the app shell
+        // runs before any facility backend is known, so there is no client to ask and no
+        // facility session to restore. That is how such a build normally starts, not a
+        // failure: asking for the client here would throw "Configuration must be loaded
+        // first", log it as an error and leave it in `auth.error`.
+        if (isCentralLoginConfigured() && getActiveOperatorServer() === null)
+          return { session: null, user: null, userProfile: null };
 
         // STEP 1: Ensure we have Supabase client (fallback to initialized one)
         const supabaseClient = getSupabaseClient();
