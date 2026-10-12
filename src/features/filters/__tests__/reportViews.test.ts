@@ -42,6 +42,8 @@ const stockItem = (id: string, name: string, stock: number, grns: string[]) => (
   total_weight: stock * 50,
   grn_count: grns.length,
   grns: grns.map((gr_no, index) => ({ grn_id: `${id}-g${index}`, gr_no, date: '2026-09-01', orig_qty: stock, stock, item_weight: 50, rack: '', packaging: 'Bag' })),
+});
+
 const stockLine = (over: Record<string, unknown>) => ({
   grn_id: 'g',
   gr_no: 'A0001',
@@ -109,6 +111,7 @@ const FIXTURES: Record<string, { rows: unknown[]; search: string; found: string[
     search: 'a0042',
     found: ['i2'],
     id: (row: { item_id: string }) => row.item_id,
+  },
   'report-stock-aging': {
     rows: [
       { customer_id: 's1', customer_name: 'Riverbank Produce', total_stock: 80, average_age_days: 400, oldest_stock_days: 500, items_over_365_days: 2, aging_distribution: {} },
