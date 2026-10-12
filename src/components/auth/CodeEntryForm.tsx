@@ -112,6 +112,11 @@ export function CodeEntryForm({
       showAlert(tr('auth.otp.incompleteTitle'), tr('auth.otp.incompleteMessage'));
       return;
     }
+    // One submit per code: the button must not be followed by the sixth-digit timer.
+    if (autoSubmitTimerRef.current) {
+      clearTimeout(autoSubmitTimerRef.current);
+      autoSubmitTimerRef.current = null;
+    }
     void onVerify(code);
   };
 

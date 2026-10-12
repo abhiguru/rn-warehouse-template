@@ -398,11 +398,31 @@ phone against a real central service.
   between two readings of the clock that built the same access token (one when the service
   stand-in issued it, one when the assertion built it again); all tokens there now share one
   issue time.
+- **The stored central session and the code step (review fixes, central login only).** A code
+  check overtaken by a newer check or by a sign-out while it was writing to the secure store
+  answered "failed" but left its session stored (the next start signed that person in, also
+  as another number); a check whose write failed could empty the session a newer check had
+  just stored, or leave the app saying signed in over an empty store; and a start-up read
+  that found a leftover could remove a session stored after the read. The check, the store
+  write and the undo are now one queued store operation, and a leftover is removed in the
+  operation that read it. A code check that starts during a token refresh and then fails
+  still loses the refresh's new tokens: not fixed here, it needs its own decision. Pressing "Verify code"
+  within 300 ms of the sixth digit started two checks with the same code; it starts one, and
+  the code step ignores a second press made before it has redrawn. Tests added for each,
+  and for when the access token expires on the device's clock (no code change there).
 - Shared code, no change in behaviour without central login: the server-switch sequence
   moved from `OperatorServerSelection` to `src/store/operatorSwitch.ts`; the part of
   `verifyOTP` that stores a session or an enrollment token is `completeOperatorSignIn`, used
   by both sign-ins; the sign-in and code screens draw with
   `src/components/auth/PhoneSignInForm.tsx` and `CodeEntryForm.tsx`.
+- **Also in a build without central login: one check per code on the facility's own code
+  screen.** The facility's SMS sign-in (`app/otp.tsx`) arms a 300 ms submit at the sixth
+  digit and "Verify code" did not cancel it, so pressing the button within 300 ms of the
+  sixth digit started the check twice with the same code (the released app has the same
+  fault in its own copy of the timer; this branch had moved it into the shared
+  `CodeEntryForm.tsx`, which the linking step also uses). The button now cancels the timer.
+  Nothing else on the screen changes: with no button press the sixth digit still starts the
+  check 300 ms later, once.
 - English and Gujarati text in the new area `central` (and five screen titles in `nav`); the
   Gujarati is a draft for the owner's wording review.
 - Still open: passcode and biometrics, SMS auto-read, passkeys, shared devices, removing a

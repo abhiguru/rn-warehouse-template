@@ -44,8 +44,11 @@ export default function CentralOtpScreen() {
     if (!phoneNumber) router.replace('/central-login');
   }, [phoneNumber]);
 
+  // A ref, not the state: a submit made from an older render still sees it.
+  const checking = useRef(false);
   const verify = async (code: string) => {
-    if (verifying) return;
+    if (checking.current) return;
+    checking.current = true;
     setVerifying(true);
     try {
       const result = await verifyCentralCode(phoneNumber, code, TERMS_VERSION);
@@ -71,6 +74,7 @@ export default function CentralOtpScreen() {
         showAlert(tr('auth.otp.couldNotVerifyTitle'), result.message);
       }
     } finally {
+      checking.current = false;
       setVerifying(false);
     }
   };

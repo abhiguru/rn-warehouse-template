@@ -389,12 +389,25 @@ export async function restoreCentralSession(): Promise<void> {
     restoreRetry = undefined;
   }
   const started = epoch;
-  const [session, userText] = await serialize(
-    async (): Promise<[ReadSession, string | null | typeof UNREADABLE]> => [
-      await readSession(),
-      await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER).catch(() => UNREADABLE),
-    ]
-  );
+  const [session, userText] = await serialize(async (): Promise<[ReadSession, string | null | typeof UNREADABLE]> => {
+    const found = await readSession();
+    const foundUserText: string | null | typeof UNREADABLE = await SecureStore.getItemAsync(
+      CENTRAL_SECURE_KEYS.USER
+    ).catch((): typeof UNREADABLE => UNREADABLE);
+    // A leftover (a session without a user, a user without a session, or a user that cannot
+    // be read) is removed in the same queued operation as the read that found it: no
+    // sign-in can store a session between the read and the removal. Not when a sign-in or a
+    // sign-out has begun since this start, nor when the store did not answer.
+    if (
+      started === epoch &&
+      found !== UNREADABLE &&
+      foundUserText !== UNREADABLE &&
+      !(found && readStoredUser(foundUserText)) &&
+      (found || foundUserText)
+    )
+      await clearStored();
+    return [found, foundUserText];
+  });
   if (started !== epoch) return;
   if (session === UNREADABLE || userText === UNREADABLE) {
     // The store did not answer: nothing stored is touched, and a session already
@@ -420,10 +433,7 @@ export async function restoreCentralSession(): Promise<void> {
   restoreRetried = false;
   const user = readStoredUser(userText);
   if (session && user) setCentralState({ status: 'signedIn', user });
-  else {
-    setCentralState({ status: 'signedOut', user: null });
-    if (session || userText) await serialize(clearStored);
-  }
+  else setCentralState({ status: 'signedOut', user: null });
 }
 
 // ---------------------------------------------------------------------------
@@ -463,20 +473,32 @@ export async function verifyCentralCode(
   const user = parseUser(answer.body.user);
   const session = parseSession(answer.body.session, Date.now());
   if (!user || !session) return failure('failed');
-  if (started !== epoch) return failure('failed');
-  try {
-    await serialize(async () => {
+  // Decided and carried out in ONE queued operation: no other reader or writer of
+  // the store runs between the check, the write, the second check and the undo.
+  const stored = await serialize(async () => {
+    // Overtaken before the write (also while waiting in the queue): nothing is written.
+    if (started !== epoch) return false;
+    let written = true;
+    try {
       await writeSession(session);
       await writeUser(user);
-    });
-  } catch {
-    // Never keep a session that could not be stored securely.
-    await serialize(clearStored);
-    return failure('failed');
-  }
-  if (started !== epoch) return failure('failed');
-  setCentralState({ status: 'signedIn', user, endedMessage: null });
-  return { ok: true, user };
+    } catch {
+      // Never keep a session that could not be stored securely.
+      written = false;
+    }
+    if (written && started === epoch) {
+      setCentralState({ status: 'signedIn', user, endedMessage: null });
+      return true;
+    }
+    // The write failed, or a newer check or a sign-out began during it. This check
+    // wrote (or began to write) all four keys, and no later writer has run yet:
+    // removing them here cannot remove anyone else's.
+    await clearStored();
+    // Its write replaced whatever was stored before: memory must not go on claiming that session.
+    if (getCentralState().status === 'signedIn') setCentralState({ status: 'signedOut', user: null });
+    return false;
+  });
+  return stored ? { ok: true, user } : failure('failed');
 }
 
 // ---------------------------------------------------------------------------
