@@ -2,7 +2,7 @@
  * The filter bar under a list's search field (docs/STYLE_GUIDE.md §14.5; SAP
  * Fiori "filter feedback bar"). One row that scrolls sideways:
  *
- *   [Filters n] [sort] [active filters ×] [fast filters ▾] [Clear all]
+ *   [Filters n] [sort] [period ▾] [active filters ×] [fast filters ▾] [Clear all]
  *
  * It is both the quick way in and the display of what is applied, and its
  * height never changes, so the list below does not jump.
@@ -13,7 +13,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import type { CountableFilterList } from '../configs';
-import { describeDateRange, describeSort, describeValue, financialYearLabel, isFieldActive, readSearch } from '../filterModel';
+import { describeDateRange, describeSort, describeValue, financialYearLabel, isFieldActive, isRequiredField, readSearch } from '../filterModel';
 import type { FilterFieldDef } from '../types';
 import type { useListFilters } from '../useListFilters';
 import { CHIP_HEIGHT, FilterBarChip } from './FilterBarChip';
@@ -49,10 +49,12 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
   const [open, setOpen] = useState<OpenFilter>(null);
   const { fields, values, sort, activeCount } = filters;
 
-  const active = fields.filter(field => isFieldActive(field, values[field.key]));
+  // A required range (a report's period) is always shown, next to the sort, and cannot be removed.
+  const required = fields.filter(isRequiredField);
+  const active = fields.filter(field => !isRequiredField(field) && isFieldActive(field, values[field.key]));
   const idleFast = config.fastFilters
     .map(key => fields.find(field => field.key === key))
-    .filter((field): field is FilterFieldDef => Boolean(field) && !isFieldActive(field as FilterFieldDef, values[(field as FilterFieldDef).key]));
+    .filter((field): field is FilterFieldDef => Boolean(field) && !isRequiredField(field as FilterFieldDef) && !isFieldActive(field as FilterFieldDef, values[(field as FilterFieldDef).key]));
   const recognised = readSearch(config, values);
   const sortText = describeSort(config, sort);
 
@@ -92,6 +94,20 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               accessibilityLabel={translate('filters.bar.sortedBy', { label: sortText.label, direction: sortText.spoken })}
             />
           ) : null}
+          {required.map(field => {
+            const value = describeValue(field, values[field.key]);
+            return (
+              <FilterBarChip
+                key={field.key}
+                variant="action"
+                icon={field.icon}
+                label={value}
+                chevron
+                onPress={() => press(field)}
+                accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value })}
+              />
+            );
+          })}
           {active.map(field => {
             const value = describeValue(field, values[field.key]);
             return (

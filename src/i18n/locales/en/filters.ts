@@ -55,6 +55,7 @@ export const filters = {
     last7: 'Last 7 days',
     thisMonth: 'This month',
     lastMonth: 'Last month',
+    thisFinancialYear: 'This financial year',
   },
   // The apply button, per thing counted
   results: {

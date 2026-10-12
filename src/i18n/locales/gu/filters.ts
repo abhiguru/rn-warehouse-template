@@ -56,6 +56,7 @@ export const filters: Translation<typeof source> = {
     last7: 'છેલ્લા ૭ દિવસ',
     thisMonth: 'આ મહિને',
     lastMonth: 'ગયા મહિને',
+    thisFinancialYear: 'આ નાણાકીય વર્ષ',
   },
   results: {
     showResults: 'પરિણામો બતાવો',

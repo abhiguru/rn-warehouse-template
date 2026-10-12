@@ -5,7 +5,7 @@
  */
 import { formatIdentifier, localizeDigits, normalizeDigits, t } from '@/i18n';
 import { formatDate, formatNumber as formatQuantity, parseLocalISODate } from '@/utils/formatters';
-import { DATE_PRESETS, resolveDateRange } from './datePresets';
+import { presetLabel, resolveDateRange } from './datePresets';
 import { parseQuickSearch, type QuickSearchResult } from './parseQuickSearch';
 import {
   SEARCH_KEY,
@@ -51,6 +51,9 @@ export function isFieldActive(field: FilterFieldDef, value: FilterValue | undefi
     }
   }
 }
+
+/** A range that always has a value (a report's period): shown, but not a filter the user turned on. */
+export const isRequiredField = (field: FilterFieldDef): boolean => field.kind === 'dateRange' && field.required === true;
 
 /** The key every list gives its Customer picker. */
 const CUSTOMERS_KEY = 'customers';
@@ -106,7 +109,7 @@ export function readSearch(config: FilterListDefinition, values: FilterValues, t
 
 /** Number of filters on: each active field once, plus what the search recognised. */
 export function countActiveFilters(config: FilterListDefinition, values: FilterValues, ctx: FilterContext): number {
-  const fields = visibleFields(config, ctx).filter(field => isFieldActive(field, values[field.key])).length;
+  const fields = visibleFields(config, ctx).filter(field => !isRequiredField(field) && isFieldActive(field, values[field.key])).length;
   const search = readSearch(config, values);
   return fields + (search.date ? 1 : 0) + (search.range ? 1 : 0) + (search.financialYear !== undefined ? 1 : 0);
 }
@@ -152,7 +155,7 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
     }
     case 'dateRange': {
       const range = value as DateRangeValue;
-      if (range.preset) return DATE_PRESETS.find(preset => preset.id === range.preset)?.label ?? field.label;
+      if (range.preset) return presetLabel(range.preset) ?? field.label;
       return describeDateRange(resolveDateRange(range));
     }
     case 'numberRange': {

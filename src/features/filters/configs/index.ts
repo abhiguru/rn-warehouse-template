@@ -7,19 +7,24 @@ import { ORDER_FILTERS, ORDER_QUEUE_FILTERS } from './order';
 
 /** A configuration with its request type hidden: the request is built and counted in one step. */
 export interface CountableFilterList extends FilterListDefinition {
-  countResults: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => Promise<number>;
+  /** Missing where the list has nothing to count with: the apply button then reads "Show results". */
+  countResults?: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => Promise<number>;
 }
 
-const countable = <TRequest,>(config: FilterListDefinition & {
+export const countable = <TRequest,>(config: FilterListDefinition & {
   toRequest: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => TRequest;
-  fetchCount: (request: TRequest, ctx: FilterContext) => Promise<number>;
-}): CountableFilterList =>
+  fetchCount?: (request: TRequest, ctx: FilterContext) => Promise<number>;
+}): CountableFilterList => {
+  const { fetchCount } = config;
   // Copy the property descriptors, not the values: a spread would read the label
   // getters once and keep the language the app started in (docs/I18N.md rule 2).
-  Object.defineProperties(
-    { countResults: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => config.fetchCount(config.toRequest(values, sort, ctx), ctx) },
+  return Object.defineProperties(
+    fetchCount
+      ? { countResults: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => fetchCount(config.toRequest(values, sort, ctx), ctx) }
+      : {},
     Object.getOwnPropertyDescriptors(config)
   ) as CountableFilterList;
+};
 
 /** Every list's filter configuration, by `listKey`. The full "Sort and filter" page looks its list up here. */
 export const FILTER_CONFIGS: Record<string, CountableFilterList> = {

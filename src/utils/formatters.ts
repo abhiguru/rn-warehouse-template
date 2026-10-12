@@ -278,6 +278,17 @@ export const toCalendarDay = (value: string | Date): string => {
 export const IST_OFFSET = '+05:30';
 
 /**
+ * Today's calendar day in India, as a Date whose local year, month and day are
+ * that day. A report's period is counted from it, so the month and the
+ * financial year turn over with the facility's books and not with the clock
+ * zone of a phone that is abroad.
+ */
+export const todayInIST = (now: Date = new Date()): Date => {
+  const india = new Date(now.getTime() + (5 * 60 + 30) * 60_000);
+  return new Date(india.getUTCFullYear(), india.getUTCMonth(), india.getUTCDate());
+};
+
+/**
  * The first and the last moment of a calendar day in India, for a range the
  * server reads as moments (timestamptz). The zone is written out, so the range
  * is the same day whatever the phone's or the database's clock zone is.

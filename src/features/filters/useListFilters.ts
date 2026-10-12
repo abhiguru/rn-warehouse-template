@@ -13,7 +13,7 @@ import {
   setListFilterField,
   setListSort,
 } from '@/store/slices/listFilterSlice';
-import { countActiveFilters, currentSort, hasAnyFilter, normalizeValues, visibleFields } from './filterModel';
+import { countActiveFilters, currentSort, hasAnyFilter, isRequiredField, normalizeValues, visibleFields } from './filterModel';
 import {
   SEARCH_KEY,
   SEARCH_LITERAL_KEY,
@@ -77,7 +77,14 @@ export function useListFilters<TRequest>(config: FilterListConfig<TRequest>) {
     [dispatch, key]
   );
   const setSort = useCallback((next: SortState) => dispatch(setListSort({ key, sort: next })), [dispatch, key]);
-  const clear = useCallback(() => dispatch(clearListFilters({ key })), [dispatch, key]);
+  const clear = useCallback(() => {
+    // A required range (a report's period) is not a filter the user turned on: it stays.
+    const kept: FilterValues = {};
+    for (const field of fields) {
+      if (isRequiredField(field) && values[field.key] !== undefined) kept[field.key] = values[field.key];
+    }
+    dispatch(Object.keys(kept).length > 0 ? applyListFilters({ key, values: kept }) : clearListFilters({ key }));
+  }, [dispatch, key, fields, values]);
 
   return {
     ctx,

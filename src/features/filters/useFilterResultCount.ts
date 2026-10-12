@@ -23,18 +23,20 @@ export function useFilterResultCount(
   ctx: FilterContext,
   enabled = true
 ): FilterResultCount {
-  const [state, setState] = useState<FilterResultCount>({ count: null, loading: enabled });
+  // A list with nothing to count with never loads: its button reads "Show results".
+  const countResults = config.countResults;
+  const asks = enabled && Boolean(countResults);
+  const [state, setState] = useState<FilterResultCount>({ count: null, loading: asks });
   const latest = useRef(0);
   // Compare by content: callers build a new values object on every render.
   const signature = JSON.stringify([values, sort]);
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!asks || !countResults) return undefined;
     const request = ++latest.current;
     setState(previous => ({ count: previous.count, loading: true }));
     const timer = setTimeout(() => {
-      config
-        .countResults(values, sort, ctx)
+      countResults(values, sort, ctx)
         .then(count => {
           if (request === latest.current) setState({ count, loading: false });
         })
@@ -45,7 +47,7 @@ export function useFilterResultCount(
     return () => clearTimeout(timer);
     // `values` and `sort` are covered by `signature`.
      
-  }, [config, ctx, enabled, signature]);
+  }, [countResults, ctx, asks, signature]);
 
   return state;
 }
