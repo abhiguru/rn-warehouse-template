@@ -34,11 +34,13 @@ export interface SensorHistoryMetadata {
   raw_reading_count: number;
 }
 
+/** What getSensorHistory answers; a `ReportServiceResult<SensorHistoryData>` for `useReportQuery`. */
 export interface SensorHistoryResponse {
   success: boolean;
-  data?: SensorHistoryData;
+  data?: SensorHistoryData | null;
   metadata?: SensorHistoryMetadata;
   message?: string;
+  /** The server's code for a failure; an access refusal's is one `isAccessRefusal` reads. */
   error?: string;
 }
 

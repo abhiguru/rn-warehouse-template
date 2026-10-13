@@ -11,7 +11,7 @@ export const settings = {
     itemPricing: 'Item pricing',
     itemPricingSubtitle: 'View and manage prices',
     sensors: 'Temperature and humidity',
-    sensorsSubtitle: 'Unavailable in the local demo',
+    sensorsSubtitle: 'Live readings and history',
   },
   // The Preferences section: Appearance, Language on this phone and Brand, each a row that opens a sheet.
   preferences: {

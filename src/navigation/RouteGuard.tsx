@@ -22,6 +22,7 @@ import { useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { useCentralState } from '@/hooks/useCentralState';
+import { useFacilityCapabilities } from '@/hooks/useCapability';
 import {
   CENTRAL_ROUTES,
   CENTRAL_SIGN_IN_ROUTES,
@@ -109,10 +110,12 @@ export function currentRootState(): RootState | undefined {
 export function useRouteAuthState(): RouteAuthState {
   const { userProfile, session, user } = useAppSelector((state) => state.auth);
   const central = useCentralState();
+  const capabilities = useFacilityCapabilities();
   // The same meaning of "signed in" as the tabs layout: a profile, or a user with a session.
   const state: RouteAuthState = {
     isSignedIn: Boolean(userProfile) || (Boolean(user) && Boolean(session)),
     role: userProfile?.role,
+    capabilities,
   };
   // Only a build with a central origin knows the central state; without one nothing changes.
   if (isCentralLoginConfigured())
@@ -152,7 +155,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
   const router = useRouter();
   const navigationRef = useNavigationContainerRef();
   const segments = useSegments();
-  const { isSignedIn, role, central } = useRouteAuthState();
+  const { isSignedIn, role, central, capabilities } = useRouteAuthState();
   const centralSignedIn = central?.signedIn;
   const facilitySms = central?.facilitySms;
   const navigationReady = useNavigationReady();
@@ -161,6 +164,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     ? decideRoute(segments, {
         isSignedIn,
         role,
+        capabilities,
         ...(centralSignedIn === undefined ? {} : { central: { signedIn: centralSignedIn, facilitySms: Boolean(facilitySms) } }),
       })
     : 'allow';
@@ -168,9 +172,9 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
   // What the effect below reads besides its dependencies: the navigator, and the sign-in
   // state of this render. Held in a ref so that the effect runs exactly when it always has
   // (a new decision, a new path, the navigator becoming ready), with or without central login.
-  const live = useRef({ navigationRef, isSignedIn, role, centralSignedIn, facilitySms });
+  const live = useRef({ navigationRef, isSignedIn, role, capabilities, centralSignedIn, facilitySms });
   useEffect(() => {
-    live.current = { navigationRef, isSignedIn, role, centralSignedIn, facilitySms };
+    live.current = { navigationRef, isSignedIn, role, capabilities, centralSignedIn, facilitySms };
   });
   useEffect(() => {
     rootNavigation = navigationRef;
@@ -202,6 +206,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
         decideRoute(shown, {
           isSignedIn: now.isSignedIn,
           role: now.role,
+          capabilities: now.capabilities,
           central: { signedIn: now.centralSignedIn, facilitySms: Boolean(now.facilitySms) },
         }) === 'allow'
       )

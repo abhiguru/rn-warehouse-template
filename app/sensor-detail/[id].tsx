@@ -5,9 +5,16 @@
  * Object page per docs/STYLE_GUIDE.md §14.2: hero card with the sensor name,
  * status tags and key facts, then the period chips, the history chart (§13.11)
  * and the summary statistics.
+ *
+ * The sensor and its history are two report queries asked side by side
+ * (useSensorDevice, useSensorHistory): each period has its own key, so a late
+ * answer for a period left behind never shows under the one chosen. A Realtime
+ * change marks the sensor out of date and it is asked again behind the screen
+ * (useSensorLiveUpdates); the history of a period is not asked again for it.
+ * The minute tick moves "No recent data" without a request.
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -33,20 +40,16 @@ import {
   type ThemeTokens,
   trackedText,
 } from '@/theme/tokens';
-import { SensorService } from '@/services/sensor-service';
-import { getSensorHistory } from '@/services/sensor-history-service';
-import type { SensorDevice } from '@/types/sensor.types';
-import type {
-  SensorHistoryPeriod,
-  SensorHistoryData,
-  SensorHistorySummary,
-} from '@/types/sensor-history.types';
-import { createLogger } from '@/utils/logger';
+import type { SensorHistoryPeriod, SensorHistorySummary } from '@/types/sensor-history.types';
 import { formatDateTime } from '@/utils/formatters';
 import { localizeDigits, t as tr } from '@/i18n';
-import { StatusTag, type StatusKind } from '@/components/ui';
+import { StatusTag } from '@/components/ui';
+import { batteryFact, chartThresholds, connectionStatus, healthStatus, readingTime } from '@/features/sensors/sensorStatus';
+import { useMinuteTick } from '@/features/sensors/useMinuteTick';
+import { useSensorDevice, useSensorHistory } from '@/features/sensors/useSensorQueries';
+import { useSensorLiveUpdates } from '@/hooks/useSensorLiveUpdates';
 
-const logger = createLogger('SensorDetail');
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // All period options
 const ALL_PERIOD_OPTIONS: { value: SensorHistoryPeriod; days: number }[] = [
@@ -70,67 +73,11 @@ const summaryTitle = (days: SensorHistoryPeriod): string =>
 const loadingHistoryLabel = (days: SensorHistoryPeriod): string =>
   days === 365 ? tr('sensors.period.loadingYear') : tr('sensors.period.loadingDays', { days });
 
-/** What went wrong; the text is looked up when it is shown, so it follows the language. */
-type LoadError = 'device' | 'history' | 'notFound';
-const errorText = (error: LoadError): string =>
-  error === 'notFound'
-    ? tr('sensors.detail.notFound')
-    : error === 'device'
-      ? tr('sensors.detail.deviceError')
-      : tr('sensors.detail.historyError');
-
-/**
- * Calculate how many days of historical data are available
- */
-const getDaysOfDataAvailable = (earliestReadingAt: string | null): number => {
-  if (!earliestReadingAt) return 0;
-  const earliest = new Date(earliestReadingAt);
-  const now = new Date();
-  const diffMs = now.getTime() - earliest.getTime();
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+/** Whole days of history the sensor has at `now`, from its first reading. */
+const daysOfData = (firstReadingAt: string | null | undefined, now: number): number => {
+  const first = firstReadingAt ? Date.parse(firstReadingAt) : NaN;
+  return Number.isNaN(first) ? 0 : Math.floor((now - first) / DAY_MS);
 };
-
-// ============================================================================
-// Status (guide §3.5)
-// ============================================================================
-
-interface SensorStatus {
-  kind: StatusKind;
-  label: string;
-}
-
-function healthStatus(health: SensorDevice['health_status']): SensorStatus {
-  switch (health) {
-    case 'healthy':
-      return { kind: 'positive', label: tr('sensors.status.healthy') };
-    case 'warning':
-      return { kind: 'critical', label: tr('sensors.status.warning') };
-    case 'critical':
-      return { kind: 'negative', label: tr('sensors.status.critical') };
-    default:
-      return { kind: 'neutral', label: tr('common.unknown') };
-  }
-}
-
-function connectionStatus(device: SensorDevice): SensorStatus {
-  if (device.connectivity_status === 'OFFLINE') return { kind: 'negative', label: tr('sensors.status.offline') };
-  if (device.is_stale) return { kind: 'critical', label: tr('sensors.status.noRecentData') };
-  if (device.connectivity_status === 'ONLINE') return { kind: 'positive', label: tr('sensors.status.online') };
-  return { kind: 'neutral', label: tr('common.unknown') };
-}
-
-function batteryStatus(device: SensorDevice): SensorStatus {
-  switch (device.battery_status) {
-    case 'GOOD':
-      return { kind: 'positive', label: tr('sensors.battery.good') };
-    case 'LOW':
-      return { kind: 'critical', label: tr('sensors.battery.low') };
-    case 'CRITICAL':
-      return { kind: 'negative', label: tr('sensors.battery.critical') };
-    default:
-      return { kind: 'neutral', label: tr('common.unknown') };
-  }
-}
 
 /** Humidity statistics keep one decimal in the report summary (guide §12.3). */
 function formatHumidityStat(value: number | null | undefined): string {
@@ -270,10 +217,11 @@ const makeStyles = (t: ThemeTokens) =>
     chipTextSelected: {
       color: t.brand.tint,
     },
-    noPeriodsText: {
+    noHistoryText: {
       ...typography.subhead,
       color: t.text.secondary,
       paddingHorizontal: layout.marginCompact,
+      paddingVertical: space.sm,
     },
     summaryTitle: {
       ...typography.headline,
@@ -373,128 +321,47 @@ const SensorDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-
-  // State
-  const [device, setDevice] = useState<SensorDevice | null>(null);
-  const [historyData, setHistoryData] = useState<SensorHistoryData | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<SensorHistoryPeriod>(7);
-  const [deviceLoading, setDeviceLoading] = useState(true);
-  const [firstHistoryDone, setFirstHistoryDone] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [deviceError, setDeviceError] = useState<'device' | 'notFound' | null>(null);
-  const [historyError, setHistoryError] = useState(false);
-  const error: LoadError | null = deviceError ?? (historyError ? 'history' : null);
 
-  // Request generations: only the latest device read and the latest history read may
-  // change the screen, so a slow answer for a period the user left is dropped (DATA-03).
-  const deviceGenRef = useRef(0);
-  const historyGenRef = useRef(0);
-  useEffect(() => () => {
-    deviceGenRef.current += 1;
-    historyGenRef.current += 1;
-  }, []);
+  // Both asked at once on opening; a period chip asks for that period's history only.
+  const deviceQuery = useSensorDevice(id);
+  const historyQuery = useSensorHistory(id, selectedPeriod);
+  // A sensor that cannot be read has nothing for a change to refresh; "Try again" asks.
+  useSensorLiveUpdates(deviceQuery.phase !== 'error');
+  const now = useMinuteTick();
 
-  // Calculate available periods based on earliest_reading_at
+  const device = deviceQuery.data?.device ?? null;
+  const notFound = deviceQuery.data !== undefined && device === null;
+  const historyData = historyQuery.data;
+  const thresholds = useMemo(() => (device ? chartThresholds(device) : []), [device]);
+
+  // 7 days always (the period asked on opening, even before a whole day of data);
+  // the longer periods once the data since the first reading covers them.
+  const firstReadingAt = device ? device.first_reading_at ?? device.earliest_reading_at : null;
   const availablePeriods = useMemo(() => {
-    const daysAvailable = getDaysOfDataAvailable(device?.earliest_reading_at ?? null);
-    // Only show periods where we have at least some data (period <= days available)
-    // Always show 7 days as minimum if any data exists
-    if (daysAvailable < 1) return [];
+    const daysAvailable = daysOfData(firstReadingAt, now);
     return ALL_PERIOD_OPTIONS.filter((opt) => opt.days <= daysAvailable || opt.days === 7);
-  }, [device?.earliest_reading_at]);
+  }, [firstReadingAt, now]);
 
-  // Fetch device info from current polling data. It does not depend on the period.
-  const fetchDeviceInfo = useCallback(async () => {
-    const generation = ++deviceGenRef.current;
-    const isCurrent = () => generation === deviceGenRef.current;
-    try {
-      const result = await SensorService.pollSensorData();
-      if (!isCurrent()) return;
-      if (result.success && result.data) {
-        const foundDevice = result.data.devices.find((d) => d.id === id);
-        if (foundDevice) {
-          setDevice(foundDevice);
-          setDeviceError(null);
-        } else {
-          setDeviceError('notFound');
-        }
-      } else {
-        logger.warn('Device load failed', { message: result.message });
-        setDeviceError('device');
-      }
-    } catch (err) {
-      logger.error('Device load exception', err);
-      if (isCurrent()) setDeviceError('device');
-    } finally {
-      if (isCurrent()) setDeviceLoading(false);
-    }
-  }, [id]);
-
-  // Fetch historical data for one period
-  const fetchHistory = useCallback(async (period: SensorHistoryPeriod) => {
-    const generation = ++historyGenRef.current;
-    const isCurrent = () => generation === historyGenRef.current;
-    if (!id) {
-      setFirstHistoryDone(true);
-      return;
-    }
-
-    setHistoryLoading(true);
-    setHistoryError(false);
-
-    try {
-      const result = await getSensorHistory(id, period);
-      if (!isCurrent()) return;
-      if (result.success && result.data) {
-        setHistoryData(result.data);
-      } else {
-        logger.warn('History load failed', { message: result.message });
-        setHistoryError(true);
-      }
-    } catch (err) {
-      logger.error('History load exception', err);
-      if (isCurrent()) setHistoryError(true);
-    } finally {
-      if (isCurrent()) {
-        setHistoryLoading(false);
-        setFirstHistoryDone(true);
-      }
-    }
-  }, [id]);
-
-  // The device is loaded once per sensor; the history once per sensor and period. On
-  // first open both reads run side by side.
-  useEffect(() => {
-    void fetchDeviceInfo();
-  }, [fetchDeviceInfo]);
-
-  useEffect(() => {
-    void fetchHistory(selectedPeriod);
-  }, [fetchHistory, selectedPeriod]);
-
-  // A period chip only selects the period; the history effect above loads it.
+  // A period chip only selects the period; its own query asks for it.
   const handlePeriodChange = useCallback((period: SensorHistoryPeriod) => {
     setSelectedPeriod(period);
   }, []);
 
-  // Pull to refresh: device and history side by side
+  const { refresh: refreshDevice, retry: retryDevice } = deviceQuery;
+  const { refresh: refreshHistory, retry: retryHistory } = historyQuery;
+  // Pull to refresh: the sensor and the history side by side.
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([fetchDeviceInfo(), fetchHistory(selectedPeriod)]);
-    setRefreshing(false);
-  }, [fetchDeviceInfo, fetchHistory, selectedPeriod]);
+    await Promise.all([refreshDevice(), refreshHistory()]);
+  }, [refreshDevice, refreshHistory]);
+  const retryAll = useCallback(() => {
+    retryDevice();
+    retryHistory();
+  }, [retryDevice, retryHistory]);
+  const refreshing = deviceQuery.isRefreshing || historyQuery.isRefreshing;
 
-  // The whole-screen loading view is for the first open only; a period change shows its
-  // loading in the history area and keeps the rest of the screen.
-  const loading = deviceLoading || !firstHistoryDone;
-
-  // Period chips (only periods with available data)
+  // Period chips: 7 days, and the longer periods the data covers.
   const renderPeriodSelector = () => {
-    if (availablePeriods.length === 0) {
-      return <Text style={styles.noPeriodsText}>{tr('sensors.detail.noHistory')}</Text>;
-    }
-
     return (
       <ScrollView
         horizontal
@@ -580,12 +447,12 @@ const SensorDetailScreen: React.FC = () => {
       subtitle={device?.location}
       actionIcon={device ? 'refresh' : undefined}
       actionLabel={tr('sensors.refresh')}
-      onAction={device ? onRefresh : undefined}
+      onAction={device ? () => void onRefresh() : undefined}
     />
   );
 
-  // Loading state
-  if (loading) {
+  // Loading state: the sensor itself; the history shows its own loading under the hero.
+  if (deviceQuery.phase === 'loading') {
     return (
       <View style={styles.container}>
         {header}
@@ -597,9 +464,8 @@ const SensorDetailScreen: React.FC = () => {
     );
   }
 
-  // Error state
-  if (error && !device) {
-    const notFound = error === 'notFound';
+  // Nothing to show: the sensor could not be read, or the facility has no such sensor.
+  if (!device) {
     return (
       <View style={styles.container}>
         {header}
@@ -607,17 +473,24 @@ const SensorDetailScreen: React.FC = () => {
           icon={notFound ? 'thermometer-off' : 'alert-circle-outline'}
           tone={notFound ? 'default' : 'error'}
           message={notFound ? tr('sensors.detail.notFoundTitle') : tr('sensors.somethingWentWrong')}
-          description={errorText(error)}
+          description={notFound ? tr('sensors.detail.notFound') : deviceQuery.error ?? tr('sensors.detail.deviceError')}
           actionLabel={tr('common.retry')}
-          onAction={onRefresh}
+          onAction={retryAll}
         />
       </View>
     );
   }
 
-  const health = device ? healthStatus(device.health_status) : null;
-  const connection = device ? connectionStatus(device) : null;
-  const battery = device ? batteryStatus(device) : null;
+  const health = healthStatus(device.health_status);
+  const connection = connectionStatus(device, now);
+  const battery = batteryFact(device);
+  const lastReading = readingTime(device);
+  // The sensor on screen is an earlier answer, or the history could not be read.
+  const failure = deviceQuery.error
+    ? { text: deviceQuery.error, retry: retryAll }
+    : historyQuery.phase === 'error' || historyQuery.error
+      ? { text: historyQuery.error ?? tr('sensors.detail.historyError'), retry: retryHistory }
+      : null;
 
   return (
     <View style={styles.container}>
@@ -635,65 +508,63 @@ const SensorDetailScreen: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
       >
         {/* Hero card */}
-        {device && health && connection && battery && (
-          <View style={styles.card}>
-            <View>
-              <Text style={styles.heroType}>{tr('sensors.sensor')}</Text>
-              <Text style={styles.heroTitle} accessibilityRole="header">
-                {device.device_name}
-              </Text>
-              <Text style={styles.heroLocation}>{device.location}</Text>
-            </View>
+        <View style={styles.card}>
+          <View>
+            <Text style={styles.heroType}>{tr('sensors.sensor')}</Text>
+            <Text style={styles.heroTitle} accessibilityRole="header">
+              {device.device_name}
+            </Text>
+            <Text style={styles.heroLocation}>{device.location}</Text>
+          </View>
 
-            <View style={styles.tagRow}>
-              <StatusTag status={health.kind} label={health.label} />
-            </View>
+          <View style={styles.tagRow}>
+            <StatusTag status={health.kind} label={health.label} />
+          </View>
 
-            {/* Current Readings */}
-            <View style={styles.readingsRow}>
-              <View
-                style={styles.readingBox}
-                accessible
-                accessibilityLabel={tr('sensors.detail.temperatureValue', { value: formatTemperature(device.latest_temperature) })}
-              >
-                <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.readingLabel}>{tr('sensors.temperature')}</Text>
-                <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
-              </View>
-              <View
-                style={styles.readingBox}
-                accessible
-                accessibilityLabel={tr('sensors.detail.humidityValue', { value: formatHumidity(device.latest_humidity) })}
-              >
-                <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.readingLabel}>{tr('sensors.humidity')}</Text>
-                <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
-              </View>
+          {/* Current Readings */}
+          <View style={styles.readingsRow}>
+            <View
+              style={styles.readingBox}
+              accessible
+              accessibilityLabel={tr('sensors.detail.temperatureValue', { value: formatTemperature(device.latest_temperature) })}
+            >
+              <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.readingLabel}>{tr('sensors.temperature')}</Text>
+              <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
             </View>
-
-            <View>
-              <KeyValue
-                label={tr('sensors.detail.connection')}
-                value={connection.label}
-                styles={styles}
-                accessory={<StatusTag status={connection.kind} label={connection.label} />}
-              />
-              <KeyValue
-                label={tr('sensors.detail.battery')}
-                value={battery.label}
-                styles={styles}
-                accessory={<StatusTag status={battery.kind} label={battery.label} />}
-              />
-              {device.latest_reading_timestamp && (
-                <KeyValue
-                  label={tr('sensors.detail.lastReading')}
-                  value={formatDateTime(device.latest_reading_timestamp)}
-                  styles={styles}
-                />
-              )}
+            <View
+              style={styles.readingBox}
+              accessible
+              accessibilityLabel={tr('sensors.detail.humidityValue', { value: formatHumidity(device.latest_humidity) })}
+            >
+              <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.readingLabel}>{tr('sensors.humidity')}</Text>
+              <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
             </View>
           </View>
-        )}
+
+          <View>
+            <KeyValue
+              label={tr('sensors.detail.connection')}
+              value={connection.label}
+              styles={styles}
+              accessory={<StatusTag status={connection.kind} label={connection.label} />}
+            />
+            <KeyValue
+              label={tr('sensors.detail.battery')}
+              value={battery.label}
+              styles={styles}
+              accessory={<StatusTag status={battery.kind} label={battery.label} />}
+            />
+            {lastReading ? (
+              <KeyValue
+                label={tr('sensors.detail.lastReading')}
+                value={formatDateTime(lastReading)}
+                styles={styles}
+              />
+            ) : null}
+          </View>
+        </View>
 
         {/* Period Selector */}
         <View style={styles.periodSection}>
@@ -703,13 +574,13 @@ const SensorDetailScreen: React.FC = () => {
           {renderPeriodSelector()}
         </View>
 
-        {error && device && (
+        {failure && (
           <View style={styles.messageStrip} accessibilityLiveRegion="polite">
             <Icon name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
-            <Text style={styles.messageText}>{errorText(error)}</Text>
+            <Text style={styles.messageText}>{failure.text}</Text>
             <Pressable
               style={styles.stripAction}
-              onPress={() => (deviceError ? onRefresh() : fetchHistory(selectedPeriod))}
+              onPress={failure.retry}
               accessibilityRole="button"
               accessibilityLabel={tr('common.retry')}
             >
@@ -719,24 +590,26 @@ const SensorDetailScreen: React.FC = () => {
         )}
 
         {/* Chart */}
-        {historyLoading ? (
+        {historyQuery.phase === 'loading' ? (
           <View style={styles.chartLoading} accessibilityLiveRegion="polite">
             <ActivityIndicator size="small" color={t.brand.tint} />
             <Text style={styles.loadingText}>{loadingHistoryLabel(selectedPeriod)}</Text>
           </View>
+        ) : historyData && historyData.readings.length === 0 ? (
+          // No readings in the period: the empty text alone, no chart or summary.
+          <Text style={styles.noHistoryText}>{tr('sensors.detail.noHistory')}</Text>
         ) : historyData ? (
           <>
             <SensorHistoryChart
               readings={historyData.readings}
               aggregationInterval={historyData.aggregation_interval}
               periodDays={historyData.period_days}
+              thresholds={thresholds}
             />
 
             {/* Summary */}
             {renderSummary(historyData.summary)}
           </>
-        ) : !error ? (
-          <SensorHistoryChart readings={[]} aggregationInterval="" periodDays={selectedPeriod} />
         ) : null}
       </ScrollView>
     </View>

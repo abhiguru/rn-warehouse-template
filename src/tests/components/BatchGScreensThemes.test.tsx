@@ -148,6 +148,8 @@ import ItemPricingFormScreen from '../../../app/item-pricing-form';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import OwnProfileEditScreen from '../../../app/user/edit/[userId]';
 import HelpScreen from '../../../app/help';
+import { clearOperatorServer, saveOperatorServer } from '@/config/operatorServer';
+import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import { CustomerBasicInfoStep } from '@/features/customer/screens/CustomerBasicInfoStep';
 import { CustomerDetailsStep } from '@/features/customer/screens/CustomerDetailsStep';
 import { CustomerReviewStep } from '@/features/customer/screens/CustomerReviewStep';
@@ -258,19 +260,27 @@ describe('what each role is offered', () => {
     return tree;
   };
 
+  // The Sensors row also needs the facility's `sensors` capability (its public config).
+  const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'sensors']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'sensors']],
-    ['staff', ['itemPricing', 'sensors']],
-    ['customer', []],
-  ])('Settings feature rows for %s: %j', async (role, rows) => {
+    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'sensors']],
+    ['supervisor', true, ['customers', 'items', 'users', 'itemPricing', 'sensors']],
+    ['staff', true, ['itemPricing', 'sensors']],
+    ['customer', true, []],
+    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing']],
+    ['staff', false, ['itemPricing']],
+  ])('Settings feature rows for %s, sensors capability %s: %j', async (role, sensors, rows) => {
     signedInAs(role);
+    await saveOperatorServer(FACILITY, false);
+    setFacilityCapabilities(FACILITY, { sensors });
     const tree = await renderScreen(<SettingsScreen />);
     const shown = tree.root
       .findAll(node => typeof node.type !== 'string' && String(node.props.testID ?? '').startsWith('settings-feature-'))
       .map(node => String(node.props.testID).replace('settings-feature-', ''));
     expect([...new Set(shown)]).toEqual(rows);
     await act(async () => { tree.unmount(); });
+    resetFacilityCapabilities();
+    await clearOperatorServer();
   });
 
   it.each([

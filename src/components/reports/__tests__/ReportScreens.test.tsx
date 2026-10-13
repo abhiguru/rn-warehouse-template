@@ -15,7 +15,8 @@ import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
 import DispatchActivityScreen from '../../../../app/reports/dispatch-activity';
 import GRNActivityScreen from '../../../../app/reports/grn-activity';
 import InvoiceHistoryScreen from '../../../../app/reports/invoice-history';
-import SensorsEntry, { SensorsScreen, rowStatus } from '../../../../app/sensors';
+import SensorsScreen from '../../../../app/sensors';
+import { rowStatus } from '@/features/sensors/sensorStatus';
 import SensorDetailScreen from '../../../../app/sensor-detail/[id]';
 import type { SensorDevice } from '@/types/sensor.types';
 import { ReportEmptyState } from '@/components/reports';
@@ -62,17 +63,20 @@ jest.mock('@/utils/logger', () => {
   return { createLogger: () => log };
 });
 
-const DEVICE: SensorDevice = {
+const mockDevice: SensorDevice = {
   id: 'dev-1',
   device_name: 'Chamber 2 sensor',
   mac_address: '00:11',
   location: 'Chamber 2',
   active: true,
   health_status: 'warning',
-  battery_status: 'GOOD',
+  battery_status: 'OK',
   connectivity_status: 'ONLINE',
   is_stale: false,
   last_reading_at: '2026-10-09T10:00:00Z',
+  // Five minutes ago: the screens measure staleness against the time of the test.
+  measured_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+  battery_low: true,
   staleness_threshold_minutes: 30,
   consecutive_failures: 0,
   latest_temperature: -18.5,
@@ -82,31 +86,32 @@ const DEVICE: SensorDevice = {
 };
 
 jest.mock('@/services/sensor-service', () => ({
-  SensorService: {
-    pollSensorData: jest.fn(() =>
-      Promise.resolve({
+  getSnapshot: jest.fn(() =>
+    Promise.resolve({
+      success: true,
+      data: {
         success: true,
-        message: '',
-        data: {
-          success: true,
-          poll_timestamp: '2026-10-09T10:00:00Z',
-          devices: [DEVICE],
-          new_readings: [],
-          dashboard: {
-            total_active_sensors: 1,
-            online_sensors: 1,
-            offline_sensors: 0,
-            stale_sensors: 0,
-            low_battery_count: 1,
-            critical_battery_count: 0,
-            sensors_with_failures: 0,
-            most_recent_sync: '2026-10-09T10:00:00Z',
-          },
+        poll_timestamp: '2026-10-09T10:00:00Z',
+        devices: [mockDevice],
+        new_readings: [],
+        dashboard: {
+          total_active_sensors: 1,
+          online_sensors: 1,
+          offline_sensors: 0,
+          stale_sensors: 0,
+          low_battery_count: 1,
+          critical_battery_count: 0,
+          sensors_with_failures: 0,
+          most_recent_sync: '2026-10-09T10:00:00Z',
         },
-      })
-    ),
-  },
+      },
+    })
+  ),
+  getDevice: jest.fn(() => Promise.resolve({ success: true, data: { device: { ...mockDevice, first_reading_at: mockDevice.earliest_reading_at, hub: null } } })),
 }));
+// The sensor screens follow Realtime changes; no test here reaches a facility.
+jest.mock('@/services/sensor-live-updates', () => ({ subscribeToSensorChanges: jest.fn(() => () => undefined) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
 
 jest.mock('@/services/sensor-history-service', () => {
   const actual = jest.requireActual('@/services/sensor-history-service');
@@ -365,11 +370,13 @@ function pending() {
 
 describe('sensor row status', () => {
   it('shows the most severe of health, connection and battery', () => {
-    expect(rowStatus({ ...DEVICE, health_status: 'healthy' })).toEqual({ kind: 'positive', label: 'Healthy' });
-    expect(rowStatus(DEVICE)).toEqual({ kind: 'critical', label: 'Warning' });
-    expect(rowStatus({ ...DEVICE, health_status: 'critical' })).toEqual({ kind: 'negative', label: 'Critical' });
-    expect(rowStatus({ ...DEVICE, health_status: 'healthy', connectivity_status: 'OFFLINE' }).label).toBe('Offline');
-    expect(rowStatus({ ...DEVICE, health_status: 'healthy', battery_status: 'LOW' }).label).toBe('Battery low');
+    const now = Date.now();
+    const fine = { ...mockDevice, battery_low: false };
+    expect(rowStatus({ ...fine, health_status: 'healthy' }, now)).toEqual({ kind: 'positive', label: 'Healthy' });
+    expect(rowStatus(fine, now)).toEqual({ kind: 'critical', label: 'Warning' });
+    expect(rowStatus({ ...fine, health_status: 'critical' }, now)).toEqual({ kind: 'negative', label: 'Critical' });
+    expect(rowStatus({ ...fine, health_status: 'healthy', connectivity_status: 'OFFLINE' }, now).label).toBe('Offline');
+    expect(rowStatus({ ...fine, health_status: 'healthy', battery_status: 'LOW' }, now).label).toBe('Battery low');
   });
 });
 
@@ -459,14 +466,9 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
       expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background])
     );
     const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Chamber 2 sensor', 'Warning', '−18.5°C', '85%', '1 low battery']));
-    act(() => tree.unmount());
-  });
-
-  it('sensors demo entry', async () => {
-    const tree = await render(brand, mode, <SensorsEntry />);
-    expect(backgrounds(tree)).toContain(t.background.base);
-    expect(texts(tree)).toContain('Sensor monitoring is unavailable in the local demo.');
+    // The battery is low: the row's tag is the more severe of "Warning" and "Battery low", the
+    // strip over the list names it, and the figures count it.
+    expect(all).toEqual(expect.arrayContaining(['Temperature and humidity', 'Chamber 2 sensor', 'Warning', '−18.5°C', '85%', '1 low battery', 'Battery low']));
     act(() => tree.unmount());
   });
 

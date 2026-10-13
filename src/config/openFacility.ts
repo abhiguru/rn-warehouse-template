@@ -36,6 +36,7 @@ import {
 import { requestFacilityToken, type CentralFailure } from './centralSession';
 import { updateMyFacility } from './centralFacilities';
 import { discoverOperator, getActiveOperatorServer, type OperatorServer } from './operatorServer';
+import { setFacilityCapabilities } from './facilityCapabilities';
 import {
   exchangeCentralIdentity,
   initializeSupabase,
@@ -230,6 +231,7 @@ async function switchAndExchange(ticket: Ticket, discovery: Discovery): Promise<
   // server; the exchange must not wait for it, and the second call changes
   // nothing.
   initializeSupabase(config.supabaseUrl, config.anonKey);
+  setFacilityCapabilities(server, config.capabilities);
   return settle(ticket, server, await exchange(ticket, server.origin), false);
 }
 
@@ -342,6 +344,7 @@ export async function beginFacilitySmsSignIn(origin: string, name: string): Prom
   if (switched.kind === 'failed')
     return failed('switch_failed', t('central.open.switchFailed', { facility: facilityNameOf(discovery.server) }));
   initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
+  setFacilityCapabilities(discovery.server, discovery.config.capabilities);
   if (!isCurrent(ticket)) return ended();
   setCentralState({ facilitySmsOrigin: discovery.server.origin, autoOpenSpent: true });
   return { kind: 'sms_offer' };

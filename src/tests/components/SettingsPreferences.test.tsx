@@ -34,6 +34,10 @@ jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), re
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => false }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null }));
+// A facility whose public config turns sensors on: the Settings row of every role is shown.
+jest.mock('@/hooks/useCapability', () => ({
+  useFacilityCapabilities: () => ({ printing: false, sensors: true, realtime: true, customerDocuments: false }),
+}));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn() }));
 jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(), signOutEverywhere: jest.fn() }));
 jest.mock('@/store/slices/authSlice', () => ({

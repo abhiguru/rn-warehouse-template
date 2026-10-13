@@ -14,12 +14,12 @@ describe('sensors in Gujarati', () => {
   it('counts sensors in an alert without changing the noun', () => {
     expect(t('sensors.list.lowBatteryCount', { count: 1 }, 'gu')).toBe('૧ સેન્સરની બૅટરી ઓછી છે');
     expect(t('sensors.list.staleCount', { count: 12 }, 'gu')).toBe('૧૨ સેન્સરનો તાજેતરનો ડેટા નથી');
+    expect(t('sensors.list.offlineCount', { count: 3 }, 'gu')).toBe('૩ સેન્સર ઑફલાઇન છે');
   });
 
   it('puts the period before its noun and writes its number in Gujarati digits', () => {
     expect(t('sensors.period.summaryDays', { days: 30 }, 'gu')).toBe('છેલ્લા ૩૦ દિવસનો સારાંશ');
     expect(t('sensors.period.loadingYear', undefined, 'gu')).toBe('૧ વર્ષનો ઇતિહાસ લોડ થઈ રહ્યો છે');
-    expect(t('sensors.list.nextUpdate', { seconds: 7 }, 'gu')).toBe('આગળનું અપડેટ ૭ સેકન્ડમાં');
   });
 
   it('shows readings in Gujarati digits and keeps the units', () => {
