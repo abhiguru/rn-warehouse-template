@@ -111,8 +111,10 @@ jest.mock('@/services/user-service', () => ({
       data: {
         name: 'Asha', email: '', mobile: '9876543210', supervisor: false, active: true, role: 'staff',
         assignedCustomers: [{ id: 'c1', name: 'Patel Traders', mobile: '9812345678', city: 'Rajkot', active: true }],
+        assignedCustomersStatus: 'loaded',
       },
     })),
+    getAccessibleCustomers: jest.fn(async () => ({ status: 'loaded', customers: [] })),
     updateUser: jest.fn(),
   },
 }));
@@ -145,6 +147,7 @@ import ItemPricingScreen from '../../../app/item-pricing';
 import ItemPricingFormScreen from '../../../app/item-pricing-form';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import OwnProfileEditScreen from '../../../app/user/edit/[userId]';
+import HelpScreen from '../../../app/help';
 import { CustomerBasicInfoStep } from '@/features/customer/screens/CustomerBasicInfoStep';
 import { CustomerDetailsStep } from '@/features/customer/screens/CustomerDetailsStep';
 import { CustomerReviewStep } from '@/features/customer/screens/CustomerReviewStep';
@@ -165,6 +168,7 @@ const SCREENS: Array<[string, () => React.ReactElement, string | ((t: ReturnType
   ['item pricing', () => <ItemPricingScreen />, t => t.background.base],
   ['item pricing form', () => <ItemPricingFormScreen />, t => t.background.base],
   ['own profile edit', () => <OwnProfileEditScreen />, t => t.background.base],
+  ['help', () => <HelpScreen />, t => t.background.grouped],
   ['customer basic info', () => <CustomerBasicInfoStep mode="create" />, t => t.background.base],
   ['customer details', () => <CustomerDetailsStep mode="create" />, t => t.background.base],
   ['customer review', () => <CustomerReviewStep mode="create" />, t => t.background.base],

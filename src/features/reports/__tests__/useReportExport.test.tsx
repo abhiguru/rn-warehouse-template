@@ -3,13 +3,16 @@
  * ignored, the file name in any script and with the customer as the function
  * names it, failures shown with showAlert in the app's words, and the export
  * offered no longer once the facility (its origin and instance) has said it has
- * no generate-report-pdf.
+ * no generate-report-pdf. What the PDF will not follow is said before anything
+ * is shared: a search it does not apply, a filter an older server refuses (the
+ * full report only with the person's consent), a PDF cut short (waited for).
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { setLanguage, t } from '@/i18n';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { showAlert } from '@/utils/alert';
+import { alertTexts, dismissLatestAlert, pressAlertButton } from '@/tests/helpers/alertMock';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import type { ReportPdfRequest } from '@/services/pdf-service';
 import {
@@ -19,6 +22,7 @@ import {
   type ReportExport,
   type ReportExportFallbackResult,
   type ReportExportNameParts,
+  type UseReportExportOptions,
 } from '../useReportExport';
 
 // The facility in use: the requests go to its origin, and what it cannot do is remembered
@@ -31,7 +35,8 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockFacility }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// askAlert draws through the stand-in showAlert: a dialog the export waits on is answered by pressing its button.
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
 const CUSTOMER_ID = '1275b249-2831-11ed-ba24-525400024271';
@@ -82,11 +87,12 @@ const settle = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 function setup(
   request: ReportPdfRequest | null = periodRequest,
   parts: ReportExportNameParts = { title: 'GRN activity', customerName: CUSTOMER_NAME },
-  fallback?: () => Promise<ReportExportFallbackResult>
+  fallback?: () => Promise<ReportExportFallbackResult>,
+  unappliedSearch?: UseReportExportOptions['unappliedSearch']
 ) {
   let latest!: ReportExport;
   function Probe() {
-    latest = useReportExport({ buildRequest: () => request, filenameParts: () => parts, fallback });
+    latest = useReportExport({ buildRequest: () => request, filenameParts: () => parts, fallback, unappliedSearch });
     return null;
   }
   let renderer!: TestRenderer.ReactTestRenderer;
@@ -100,6 +106,12 @@ function setup(
     run: () => act(async () => { await latest.exportPdf(); }),
   };
 }
+
+/** Presses a button of the dialog the export waits on, and lets the export go on. */
+const press = (text: string) => act(async () => { pressAlertButton(showAlert as jest.Mock, text); await settle(); await settle(); });
+/** Closes the dialog the export waits on without a button. */
+const dismiss = () => act(async () => { dismissLatestAlert(showAlert as jest.Mock); await settle(); await settle(); });
+const dialogs = () => alertTexts(showAlert as jest.Mock);
 
 /** A fetch that answers only when the test says so. */
 function heldFetch() {
@@ -214,19 +226,29 @@ describe('a PDF the server cut short', () => {
       document: { type: 'report', report: 'grn-activity', rows_count: 5000, rows_total: 12345, truncated, sort: { field: 'date', order: 'desc' } },
     });
 
-  it('says how many rows it holds, then shares it all the same', async () => {
+  it('says how many rows it holds, waits for OK, then shares it all the same', async () => {
     jest.mocked(fetch).mockResolvedValue(cutShort(true));
-    const order: string[] = [];
-    jest.mocked(showAlert).mockImplementation(() => void order.push('notice'));
-    jest.mocked(downloadAndSharePDF).mockImplementation(async () => {
-      order.push('share');
-      return { success: true };
-    });
     const probe = setup();
-    await probe.run();
-    expect(showAlert).toHaveBeenCalledWith('Share PDF', 'This PDF shows the first 5,000 of 12,345 rows.');
-    expect(order).toEqual(['notice', 'share']);
+    await probe.tap();
+    expect(dialogs()).toEqual([['Share PDF', 'This PDF shows the first 5,000 of 12,345 rows.']]);
+    // The share sheet waits for the notice: a broken export opens it under the notice.
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
+    expect(probe.current().busy).toBe(true);
+    // Busy through the notice: a second tap is ignored.
+    await probe.tap();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await press('OK');
     expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, 'GRN_activity_Fictional_Traders_2026_09_01_to_2026_09_30.pdf');
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('shares it also when the notice is closed without OK', async () => {
+    jest.mocked(fetch).mockResolvedValue(cutShort(true));
+    const probe = setup();
+    await probe.tap();
+    await dismiss();
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
     expect(probe.current().busy).toBe(false);
   });
 
@@ -234,8 +256,10 @@ describe('a PDF the server cut short', () => {
     jest.mocked(fetch).mockResolvedValue(cutShort(true));
     setLanguage('gu');
     try {
-      await setup().run();
-      expect(showAlert).toHaveBeenCalledWith('PDF શેર કરો', 'આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ લાઇન જ છે.');
+      await setup().tap();
+      expect(dialogs()).toEqual([['PDF શેર કરો', 'આ PDFમાં ૧૨,૩૪૫માંથી પહેલી ૫,૦૦૦ લાઇન જ છે.']]);
+      await press('ઓકે');
+      expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
     } finally {
       setLanguage('en');
     }
@@ -452,22 +476,59 @@ describe("a payment status on one customer's invoice history", () => {
   });
 
   const FILTER_NEEDS_UPDATE =
-    "This facility's server can't filter the PDF by payment yet. Remove the Payment filter to share all the invoices, or ask for a server update.";
+    "This facility's server can't apply your filter or search to the PDF yet. You can share the full report, or cancel and ask for a server update.";
 
-  it('refuses the export on an older server that does not know the field: one request, one alert with the new message, nothing shared, the export stays offered', async () => {
-    // A success is queued behind the refusal, as the old retry would have found it: it must stay unused.
+  it('on an older server that does not know the field: one request, then the question; Cancel shares nothing and the export stays offered', async () => {
+    // A success is queued behind the refusal: nothing may use it without the person's consent.
     jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
     const probe = setup(invoiceRequest, parts);
-    await probe.run();
+    await probe.tap();
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(bodyOf(0)).toHaveProperty('status', 'pending');
+    expect(dialogs()).toEqual([['Share the full report?', FILTER_NEEDS_UPDATE]]);
+    expect(probe.current().busy).toBe(true);
+    await press('Cancel');
+
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(showAlert).toHaveBeenCalledWith("Couldn't create the PDF", FILTER_NEEDS_UPDATE);
     expect(downloadAndSharePDF).not.toHaveBeenCalled();
     // Not taken as a server without report PDFs: the action stays, on this screen and on another.
     expect(probe.current().available).toBe(true);
     expect(setup({ report: 'stock-aging' }).current().available).toBe(true);
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('with the consent: asks once more without the status and shares that PDF under the same name', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
+    const probe = setup(invoiceRequest, parts);
+    await probe.tap();
+    await press('Share full report');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(bodyOf(1)).not.toHaveProperty('status');
+    expect(bodyOf(1)).toMatchObject({ report: 'invoice-history', customer_id: CUSTOMER_ID, from: '2026-09-01', to: '2026-09-30' });
+    expect(jest.mocked(downloadAndSharePDF).mock.calls).toEqual([[SIGNED_URL, FILE]]);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('closing the question shares nothing', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
+    const probe = setup(invoiceRequest, parts);
+    await probe.tap();
+    await dismiss();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('with the consent, a failure of the full report is shown as any failure', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(answer(403, { success: false }));
+    const probe = setup(invoiceRequest, parts);
+    await probe.tap();
+    await press('Share full report');
+    expect(dialogs()[1]).toEqual(["Couldn't create the PDF", 'This report is not available to your account as a PDF.']);
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
     expect(probe.current().busy).toBe(false);
   });
 
@@ -486,7 +547,8 @@ describe("a payment status on one customer's invoice history", () => {
     });
     mounted.push(renderer);
 
-    await act(async () => { await latest.exportPdf(); });
+    await act(async () => { void latest.exportPdf(); await settle(); });
+    await press('Cancel');
     expect(downloadAndSharePDF).not.toHaveBeenCalled();
     expect(latest.available).toBe(true);
 
@@ -497,16 +559,18 @@ describe("a payment status on one customer's invoice history", () => {
     expect(bodyOf(1)).not.toHaveProperty('status');
     expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
     expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, FILE);
-    // The refusal's alert is the only one.
+    // The refusal's question is the only dialog.
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(latest.available).toBe(true);
   });
 
-  it('sends the filter again at the next tap and is refused again each time: the older server is never answered with the unfiltered PDF', async () => {
+  it('sends the filter again at the next tap and is refused again each time: the older server is never answered with the unfiltered PDF unasked', async () => {
     jest.mocked(fetch).mockResolvedValue(unknownField());
     const probe = setup(invoiceRequest, parts);
-    await probe.run();
-    await probe.run();
+    await probe.tap();
+    await press('Cancel');
+    await probe.tap();
+    await press('Cancel');
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(bodyOf(0)).toHaveProperty('status', 'pending');
     expect(bodyOf(1)).toHaveProperty('status', 'pending');
@@ -520,13 +584,16 @@ describe("a payment status on one customer's invoice history", () => {
     try {
       setLanguage('gu');
       const probe = setup(invoiceRequest, parts);
-      await probe.run();
+      await probe.tap();
       expect(showAlert).toHaveBeenCalledTimes(1);
-      const [title, message] = jest.mocked(showAlert).mock.calls[0];
-      expect(title).toBe(t('reports.export.failedTitle'));
+      const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
+      expect(title).toBe('આખો અહેવાલ શેર કરવો છે?');
       expect(message).toBe(t('reports.export.filterNeedsUpdate'));
       expect(message).not.toBe(FILTER_NEEDS_UPDATE);
-      expect(message).toContain('ચુકવણી');
+      expect(message).toContain('ફિલ્ટર');
+      expect(buttons?.map(button => button.text)).toEqual(['રદ કરો', 'આખો અહેવાલ શેર કરો']);
+      await press('રદ કરો');
+      expect(downloadAndSharePDF).not.toHaveBeenCalled();
     } finally {
       setLanguage('en');
     }
@@ -634,5 +701,195 @@ describe('fallback', () => {
     expect(downloadAndSharePDF).not.toHaveBeenCalled();
     expect(probe.current().available).toBe(true);
     expect(probe.current().busy).toBe(false);
+  });
+});
+
+describe('a filter an older server does not know, for every filter field', () => {
+  const unknownField = () => answer(400, { success: false, error: 'Unknown field in report request' });
+  const bodyOf = (call: number) => JSON.parse(jest.mocked(fetch).mock.calls[call][1]!.body as string);
+  const cases: [string, ReportPdfRequest, string][] = [
+    ['invoicing', { ...periodRequest, invoicing: 'not_invoiced' }, 'GRN_activity_Fictional_Traders_2026_09_01_to_2026_09_30.pdf'],
+    ['bucket', { report: 'stock-aging', customer_id: CUSTOMER_ID, bucket: 'over-364' }, 'GRN_activity_Fictional_Traders.pdf'],
+    ['search', { report: 'item-stock-summary', search: 'onion' }, 'GRN_activity_All_customers.pdf'],
+  ];
+
+  it.each(cases)('%s: sent, refused, asked about, and with the consent asked for once more without it', async (field, request, file) => {
+    jest.mocked(fetch).mockResolvedValueOnce(unknownField()).mockResolvedValueOnce(success());
+    const probe = setup(request);
+    await probe.tap();
+    expect(bodyOf(0)).toHaveProperty(field);
+    expect(dialogs()).toEqual([['Share the full report?', t('reports.export.filterNeedsUpdate')]]);
+    await press('Share full report');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(bodyOf(1)).not.toHaveProperty(field);
+    expect(bodyOf(1).report).toBe(request.report);
+    expect(jest.mocked(downloadAndSharePDF).mock.calls).toEqual([[SIGNED_URL, file]]);
+  });
+
+  it.each(cases)('%s: sent and shared at once by a server that knows it, with no dialog', async (field, request) => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    await setup(request).run();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).toHaveProperty(field);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a search the PDF does not apply', () => {
+  const ON_SCREEN = { query: 'chilli', count: 1234 };
+  const DISCLOSURE = 'The PDF will include every row of the period, not only the 1,234 matching "chilli".';
+
+  it('is said before anything is asked for; Cancel asks for nothing', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(periodRequest, undefined, undefined, () => ON_SCREEN);
+    await probe.tap();
+    expect(dialogs()).toEqual([['Share the full report?', DISCLOSURE]]);
+    const buttons = jest.mocked(showAlert).mock.calls[0][2];
+    expect(buttons?.map(button => [button.text, button.style])).toEqual([['Cancel', 'cancel'], ['Share full report', undefined]]);
+    // A broken export has asked for the PDF already.
+    expect(fetch).not.toHaveBeenCalled();
+    expect(probe.current().busy).toBe(true);
+    await press('Cancel');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('with the consent, the full report is asked for and shared', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(periodRequest, undefined, undefined, () => ON_SCREEN);
+    await probe.tap();
+    await press('Share full report');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string)).not.toHaveProperty('search');
+    expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, 'GRN_activity_Fictional_Traders_2026_09_01_to_2026_09_30.pdf');
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('closing the dialog is Cancel', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(periodRequest, undefined, undefined, () => ON_SCREEN);
+    await probe.tap();
+    await dismiss();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('a second tap while the dialog waits is ignored', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(periodRequest, undefined, undefined, () => ON_SCREEN);
+    await probe.tap();
+    await probe.tap();
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    await press('Share full report');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not asked about without a search, nor for a blank one', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    await setup(periodRequest, undefined, undefined, () => null).run();
+    await setup(periodRequest, undefined, undefined, () => ({ query: '  ', count: 3 })).run();
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(2);
+  });
+
+  it('a stock report says all the stock; a long search is cut at 40 characters', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const long = 'Example very long search words for one item name';
+    const probe = setup({ report: 'stock-aging', customer_id: CUSTOMER_ID }, undefined, undefined, () => ({ query: long, count: 2 }));
+    await probe.tap();
+    expect(dialogs()).toEqual([
+      ['Share the full report?', 'The PDF will include all the stock, not only the 2 matching "Example very long search words for one i…".'],
+    ]);
+    await press('Cancel');
+  });
+
+  it('says it in Gujarati, with Gujarati digits and the search as typed', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    setLanguage('gu');
+    try {
+      const probe = setup(periodRequest, undefined, undefined, () => ({ query: 'મરચાં', count: 12 }));
+      await probe.tap();
+      expect(dialogs()).toEqual([['આખો અહેવાલ શેર કરવો છે?', 'PDFમાં સમયગાળાની બધી લાઇન આવશે, ફક્ત "મરચાં" સાથે મળતી ૧૨ લાઇન જ નહીં.']]);
+      await press('આખો અહેવાલ શેર કરો');
+      expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+    } finally {
+      setLanguage('en');
+    }
+  });
+
+  // With a filter the PDF does apply (Payment, Invoicing, Stock age) the PDF is not the full report:
+  // the question says the search is dropped and the other choices kept, and the request keeps the filter.
+  it.each([
+    [
+      'a payment status on invoice history',
+      { ...periodRequest, report: 'invoice-history', status: 'paid' } as ReportPdfRequest,
+      'status',
+      'paid',
+      'The PDF will list every row of the period that your other choices keep, not only the 1,234 matching "chilli".',
+    ],
+    [
+      'an invoicing choice on GRN activity',
+      { ...periodRequest, invoicing: 'not_invoiced' } as ReportPdfRequest,
+      'invoicing',
+      'not_invoiced',
+      'The PDF will list every row of the period that your other choices keep, not only the 1,234 matching "chilli".',
+    ],
+    [
+      'a stock age on stock aging',
+      { report: 'stock-aging', customer_id: CUSTOMER_ID, bucket: '121-240' } as ReportPdfRequest,
+      'bucket',
+      '121-240',
+      'The PDF will list every row your other choices keep, not only the 1,234 matching "chilli".',
+    ],
+  ])('with %s, asks to share without the search and keeps the filter', async (_name, request, field, value, message) => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    const probe = setup(request, { title: 'Report', customerName: CUSTOMER_NAME }, undefined, () => ON_SCREEN);
+    await probe.tap();
+    expect(dialogs()).toEqual([['Share without the search?', message]]);
+    const buttons = jest.mocked(showAlert).mock.calls[0][2];
+    expect(buttons?.map(button => button.text)).toEqual(['Cancel', 'Share without the search']);
+    expect(fetch).not.toHaveBeenCalled();
+    await press('Share without the search');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(body[field]).toBe(value);
+    expect(body).not.toHaveProperty('search');
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the filtered question in Gujarati', async () => {
+    jest.mocked(fetch).mockResolvedValue(success());
+    setLanguage('gu');
+    try {
+      const request: ReportPdfRequest = { report: 'stock-aging', customer_id: CUSTOMER_ID, bucket: 'over-364' };
+      const probe = setup(request, undefined, undefined, () => ({ query: 'મરચાં', count: 12 }));
+      await probe.tap();
+      expect(dialogs()).toEqual([
+        ['શોધ વગર શેર કરવું છે?', 'PDFમાં તમારી બીજી પસંદગીઓ મુજબની બધી લાઇન આવશે, ફક્ત "મરચાં" સાથે મળતી ૧૨ લાઇન જ નહીં.'],
+      ]);
+      await press('શોધ વગર શેર કરો');
+      expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
+    } finally {
+      setLanguage('en');
+    }
+  });
+
+  it('then a filter the server refuses: a second question, and the full report only after both', async () => {
+    jest
+      .mocked(fetch)
+      .mockResolvedValueOnce(answer(400, { success: false, error: 'Unknown field in report request' }))
+      .mockResolvedValueOnce(success());
+    const request: ReportPdfRequest = { ...periodRequest, report: 'invoice-history', status: 'paid' };
+    const probe = setup(request, { title: 'Invoice history', customerName: CUSTOMER_NAME }, undefined, () => ON_SCREEN);
+    await probe.tap();
+    await press('Share without the search');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(dialogs()).toHaveLength(2);
+    await press('Share full report');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(1);
   });
 });

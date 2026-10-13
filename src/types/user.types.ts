@@ -10,6 +10,11 @@ export interface UserProfile {
   created_at: string;
   updated_at: string;
   assignedCustomers?: CustomerAssignment[];
+  /**
+   * Whether `assignedCustomers` was read: `failed` means the lookup did not
+   * answer (the list is empty but says nothing), `loaded` that it is the answer.
+   */
+  assignedCustomersStatus?: 'loaded' | 'failed';
   assignedCustomerIds?: string[];
   phoneNumber?: string;
 }
@@ -20,6 +25,12 @@ export interface CustomerAssignment {
   mobile?: string;
   city?: string;
   active: boolean;
+}
+
+/** The customers the signed-in person may see, and whether they could be read. */
+export interface AccessibleCustomers {
+  status: 'loaded' | 'failed';
+  customers: CustomerAssignment[];
 }
 
 export interface UserFormData {

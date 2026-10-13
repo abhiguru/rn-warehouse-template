@@ -45,7 +45,7 @@ export { ReportCustomerPicker, type ReportCustomerPickerProps } from './ReportCu
 // Shared rows of the stock reports
 export { AgingBucketBar, agingBucketsFrom, agingBucketIdFromKey, agingBucketLabel, AGING_BUCKET_IDS, AGING_BUCKET_STATUS, type AgingBucket, type AgingBucketId, type AgingBucketBarProps } from './AgingBucketBar';
 export { StockItemCard, StockGRNRow, isLowStock, LOW_STOCK_PERCENT, EXPAND_ANIMATION, animateExpand } from './StockItemCard';
-export type { StockItemCardProps, StockGRNRowData, StockGRNRowProps, StockGRNState } from './StockItemCard';
+export type { StockItemCardProps, StockGRNRowData, StockGRNRowProps, StockGRNState, StockGRNMore } from './StockItemCard';
 
 // The status tag of an invoice's payment (invoice history)
 export { invoicePaymentStatus, type InvoicePaymentStatusInfo } from './invoicePaymentStatus';

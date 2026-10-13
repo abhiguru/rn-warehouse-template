@@ -43,8 +43,8 @@ export const nav: Translation<typeof source> = {
     cardLabel: '{{title}}. {{description}}',
     descriptions: {
       customerActivity: 'વેપારીની બધી કામગીરી એક જગ્યાએ જુઓ',
-      stockSummary: 'હાલનો સ્ટોક એક નજરે જુઓ',
-      itemStockSummary: 'બધા વેપારીનો મળીને દરેક આઇટમનો સ્ટોક જુઓ',
+      stockSummary: 'વેપારી મુજબ સ્ટોક',
+      itemStockSummary: 'આઇટમ મુજબ સ્ટોક, બધા વેપારીનો મળીને',
       dispatchActivity: 'તાજેતરની જાવક અને બહાર ગયેલો માલ',
       grnActivity: 'તાજેતરમાં આવેલો માલ અને તેના ઇન્વૉઇસની સ્થિતિ',
       invoiceHistory: 'બિલિંગનો ઇતિહાસ અને ચુકવણીની સ્થિતિ',

@@ -15,12 +15,8 @@
  *   and a run that was in flight is no longer current, so its late result can be
  *   ignored through the `isCurrent` callback every run receives.
  */
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
-// Expo Router ships React Navigation inside itself. NavigationContext is read directly so
-// that a component rendered outside a navigator (tests, a root-level sheet) counts as
-// focused instead of throwing, which `useIsFocused` would do there.
-import { NavigationContext } from 'expo-router/react-navigation';
+import { useCallback, useEffect, useRef } from 'react';
+import { useAppForeground, useRouteFocus } from './useRouteFocus';
 
 /** Whether a run is still the current one: false once polling stopped or `resetKey` changed. */
 export type IsCurrent = () => boolean;
@@ -45,44 +41,6 @@ export interface UsePollingResult {
   runNow: () => Promise<void>;
   /** Whether polling is currently allowed to run (enabled, focused, foreground). */
   active: boolean;
-}
-
-function useRouteFocus(enabled: boolean): boolean {
-  const navigation = useContext(NavigationContext);
-  const [focused, setFocused] = useState<boolean>(() =>
-    !enabled || !navigation ? true : navigation.isFocused()
-  );
-
-  useEffect(() => {
-    if (!enabled || !navigation) {
-      setFocused(true);
-      return undefined;
-    }
-    setFocused(navigation.isFocused());
-    const offFocus = navigation.addListener('focus', () => setFocused(true));
-    const offBlur = navigation.addListener('blur', () => setFocused(false));
-    return () => {
-      offFocus();
-      offBlur();
-    };
-  }, [navigation, enabled]);
-
-  return focused;
-}
-
-function isForeground(status: AppStateStatus | null | undefined): boolean {
-  return status !== 'background' && status !== 'inactive';
-}
-
-function useAppForeground(): boolean {
-  const [foreground, setForeground] = useState<boolean>(() => isForeground(AppState.currentState));
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', next => {
-      setForeground(next === 'active');
-    });
-    return () => subscription.remove();
-  }, []);
-  return foreground;
 }
 
 export function usePolling(

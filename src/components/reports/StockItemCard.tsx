@@ -58,6 +58,7 @@ import { formatCount, formatIndiaDate, formatNumber, formatWeight } from '@/util
 import { t as tr, formatIdentifier } from '@/i18n';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { FactLines, joinFacts } from './FactLines';
+import { ReportLoadMoreFooter, type ReportLoadMoreState } from './ReportLoadMoreFooter';
 
 // ============================================================================
 // TYPES
@@ -89,6 +90,14 @@ export interface StockGRNRowData {
   total?: number | null;
 }
 
+/** "Show more GRN lines" under the loaded GRN lines of an item that has more (`ReportLoadMoreFooter`). */
+export interface StockGRNMore {
+  /** `more`: the button; `loading`: the next lines are being read; `failed`: "Try again"; `none`: nothing. */
+  state: ReportLoadMoreState;
+  onLoadMore: () => void;
+  onRetry: () => void;
+}
+
 /** Where the GRNs of an opened card are. */
 export type StockGRNState =
   | { status: 'loading' }
@@ -117,6 +126,11 @@ export interface StockItemCardProps {
    * Not drawn with `grnsInList`: the screen draws its own rows, and any line under them.
    */
   grnsFooter?: string;
+  /**
+   * More GRN lines to read for an item whose drill-down reads them a page at a time: drawn under
+   * the loaded lines and `grnsFooter`. Not drawn with `grnsInList`, nor before the lines are loaded.
+   */
+  grnsMore?: StockGRNMore;
   /**
    * The screen's list draws the loaded GRNs, each as a row of its own (`StockGRNListRow`)
    * right under this card. The card then draws only its header while it has GRNs to show,
@@ -469,6 +483,7 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
   grns,
   emptyGRNsText,
   grnsFooter,
+  grnsMore,
   onOpenGRN,
   highlightWords,
   matchLine,
@@ -585,6 +600,16 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
               <Text style={styles.empty}>{emptyGRNsText}</Text>
             )}
             {grnsFooter && rows.length > 0 ? <Text style={styles.grnsFooter}>{grnsFooter}</Text> : null}
+            {grnsMore && rows.length > 0 ? (
+              <ReportLoadMoreFooter
+                state={grnsMore.state}
+                loadingText={tr('reports.itemStockSummary.grnLinesLoading')}
+                failedText={tr('reports.itemStockSummary.grnLinesLoadError')}
+                moreLabel={tr('reports.itemStockSummary.grnLinesMore')}
+                onLoadMore={grnsMore.onLoadMore}
+                onRetry={grnsMore.onRetry}
+              />
+            ) : null}
           </View>
         ) : null}
       </View>

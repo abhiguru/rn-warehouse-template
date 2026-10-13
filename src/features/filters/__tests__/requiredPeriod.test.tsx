@@ -110,6 +110,14 @@ describe('report periods', () => {
     expect(presetRange('thisFinancialYear', new Date(2026, 3, 1))).toEqual({ from: '2026-04-01', to: '2027-03-31' });
   });
 
+  it('offers the daily-work periods first: today, yesterday and the last 7 days, today counted as one of them', () => {
+    expect(REPORT_DATE_PRESETS.map(preset => preset.id).slice(0, 3)).toEqual(['today', 'yesterday', 'last7']);
+    const monday = new Date(2026, 9, 12, 10, 0);
+    expect(presetRange('today', monday)).toEqual({ from: '2026-10-12', to: '2026-10-12' });
+    expect(presetRange('yesterday', monday)).toEqual({ from: '2026-10-11', to: '2026-10-11' });
+    expect(presetRange('last7', monday)).toEqual({ from: '2026-10-06', to: '2026-10-12' });
+  });
+
   it('takes the day from India, so the year turns over at midnight there', () => {
     expect(toLocalISODate(todayInIST(new Date('2026-03-31T18:29:00Z')))).toBe('2026-03-31');
     expect(toLocalISODate(todayInIST(new Date('2026-03-31T18:30:00Z')))).toBe('2026-04-01');
@@ -118,6 +126,9 @@ describe('report periods', () => {
   it('names a quick range from either set, and leaves the lists with their own five', () => {
     expect(DATE_PRESETS.map(preset => preset.id)).toEqual(['today', 'yesterday', 'last7', 'thisMonth', 'lastMonth']);
     expect(REPORT_DATE_PRESETS.map(preset => preset.label)).toEqual([
+      'Today',
+      'Yesterday',
+      'Last 7 days',
       'Last 120 days',
       'Last 240 days',
       'Last 364 days',
@@ -229,6 +240,13 @@ describe('the period sheet', () => {
     expect(sheet.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('applies Today with one tap, as it does the longer periods', () => {
+    const sheet = setup({ period: { preset: 'last120' } });
+    sheet.press('Today');
+    expect(sheet.filters.setField.mock.calls).toEqual([['period', { preset: 'today' }]]);
+    expect(sheet.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the quick range in effect when it is tapped again, and offers no Reset', () => {
     const sheet = setup({ period: { preset: 'last120' } });
     expect(sheet.has('Reset')).toBe(false);
@@ -302,6 +320,15 @@ describe('the period sheet of a report shows the days its request asks for', () 
     jest.setSystemTime(MONDAY_MORNING);
     expect(requested('last120')).toEqual({ from: '2026-06-15', to: '2026-10-12' });
     expect(shown('last120')).toEqual({ from: 'From date, 15 Jun 2026', to: 'To date, 12 Oct 2026' });
+  });
+
+  it('asks for India\'s today, yesterday and last 7 days half an hour after midnight there, when it is still the day before in UTC', () => {
+    // 19:00 UTC on 12 October is 00:30 on 13 October in India.
+    jest.useFakeTimers({ now: new Date('2026-10-12T19:00:07Z') });
+    expect(requested('today')).toEqual({ from: '2026-10-13', to: '2026-10-13' });
+    expect(requested('yesterday')).toEqual({ from: '2026-10-12', to: '2026-10-12' });
+    expect(requested('last7')).toEqual({ from: '2026-10-07', to: '2026-10-13' });
+    expect(shown('today')).toEqual({ from: 'From date, 13 Oct 2026', to: 'To date, 13 Oct 2026' });
   });
 
   it('turns the month and the financial year over at midnight in India', () => {

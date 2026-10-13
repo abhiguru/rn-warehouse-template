@@ -5,14 +5,16 @@
  * warning in status.critical.text, danger in status.negative.text. Title in
  * title3, message in body text.secondary. Cancel is a secondary button and the
  * action a primary one (the destructive fill for `danger`). The Android back
- * button and a tap on the scrim cancel.
+ * button and a tap on the scrim cancel, except while `busy`: then the action
+ * shows a spinner, both buttons are disabled and neither Back nor the scrim
+ * closes the dialog.
  *
  * Wording (§12.2): the title asks a question naming the object, and the
  * confirm button repeats the verb ("Delete GRN", "Cancel").
  */
 
 import React from 'react';
-import { View, Text, Modal, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -36,6 +38,9 @@ export interface ConfirmDialogProps {
   icon?: string;
   /** Whether tapping the scrim cancels (default true). The back button always cancels. */
   dismissible?: boolean;
+  /** The action is running: spinner in the confirm button, both buttons disabled, Back and the scrim do nothing. */
+  busy?: boolean;
+  testID?: string;
 }
 
 const ICON_CIRCLE = layout.avatar.lg - space.xs;
@@ -120,6 +125,7 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     textAlign: 'center' as const,
   },
+  disabled: { opacity: t.interaction.disabledOpacity },
 });
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -133,6 +139,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   variant = 'default',
   icon,
   dismissible = true,
+  busy = false,
+  testID,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -154,14 +162,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onCancel}
+      onRequestClose={busy ? () => {} : onCancel}
       statusBarTranslucent
     >
       <View style={styles.overlay}>
         {/* Scrim: tap to cancel */}
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={dismissible ? onCancel : undefined}
+          onPress={dismissible && !busy ? onCancel : undefined}
           accessible={false}
           importantForAccessibility="no"
         />
@@ -170,6 +178,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           accessibilityViewIsModal
           accessibilityRole="alert"
           accessibilityLabel={title}
+          testID={testID}
         >
           {iconName && (
             <View style={[styles.iconContainer, iconBg]} accessible={false} importantForAccessibility="no-hide-descendants">
@@ -187,10 +196,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             {/* cancelText="" asks for a one-button dialog; an unlabelled button is not drawn. */}
             {cancelText ? (
               <Pressable
-                style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed]}
+                style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed, busy && styles.disabled]}
                 onPress={onCancel}
+                disabled={busy}
                 accessibilityRole="button"
                 accessibilityLabel={cancelText}
+                accessibilityState={{ disabled: busy }}
               >
                 <Text style={styles.cancelButtonText}>{cancelText}</Text>
               </Pressable>
@@ -203,17 +214,23 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 pressed && (destructive ? styles.confirmDestructivePressed : styles.confirmPrimaryPressed),
               ]}
               onPress={onConfirm}
+              disabled={busy}
               accessibilityRole="button"
               accessibilityLabel={confirmText}
+              accessibilityState={{ disabled: busy, busy }}
             >
-              <Text
-                style={[
-                  styles.confirmButtonText,
-                  destructive ? styles.confirmDestructiveText : styles.confirmPrimaryText,
-                ]}
-              >
-                {confirmText}
-              </Text>
+              {busy ? (
+                <ActivityIndicator size="small" color={destructive ? t.destructive.onFill : t.brand.onFill} />
+              ) : (
+                <Text
+                  style={[
+                    styles.confirmButtonText,
+                    destructive ? styles.confirmDestructiveText : styles.confirmPrimaryText,
+                  ]}
+                >
+                  {confirmText}
+                </Text>
+              )}
             </Pressable>
           </View>
         </View>

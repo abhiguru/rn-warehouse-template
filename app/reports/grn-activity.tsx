@@ -161,6 +161,8 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: rows.length } : null),
   });
   const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
@@ -254,7 +256,7 @@ interface CustomerReportProps {
 }
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
-  const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER);
+  const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<GRNActivityData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
@@ -294,8 +296,12 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       from: period.from,
       to: period.to,
       sort: reportPdfSort(REPORT_ID, 'customer', view.sort),
+      // The Invoicing choice: the server lists the same GRNs (one older than the field is asked first, useReportExport).
+      ...(view.invoiced !== 'all' && { invoicing: view.invoiced }),
     }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: grns.length } : null),
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [

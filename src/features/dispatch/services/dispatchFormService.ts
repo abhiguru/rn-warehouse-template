@@ -23,6 +23,7 @@ import type {
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { serverText } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
+import { invalidateReportQueries } from '@/lib/queryClient';
 
 const log = createLogger('dispatch');
 
@@ -238,6 +239,8 @@ export const createDispatch = async (payload: {
     }
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
 
     // Upload deferred images if any. The dispatch is saved either way; photos
     // that did not arrive are returned so the screen can name them and offer
@@ -355,6 +358,8 @@ export const updateDispatch = async (
     }
 
     log.info('Dispatch updated', { dispatchId });
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
 
     return {
       success: true,
@@ -513,6 +518,8 @@ export const deleteDispatch = async (
     };
   }
 
+  // The write changed what reports count: a report on screen asks again (SR-10).
+  void invalidateReportQueries();
   log.info('Dispatch deleted', {
     dispatchId,
     orderRestored: result.data?.order_restored || false,

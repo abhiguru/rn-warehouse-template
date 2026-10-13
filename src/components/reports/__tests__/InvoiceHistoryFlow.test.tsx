@@ -27,6 +27,7 @@ import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '
 import { BRANDS, fontWeight, getTokens, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 import { showAlert } from '@/utils/alert';
+import { alertTexts, pressAlertButton } from '@/tests/helpers/alertMock';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import InvoiceHistoryScreen from '../../../../app/reports/invoice-history';
 
@@ -54,11 +55,27 @@ jest.mock('@/store/hooks', () => {
     },
   };
 });
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn() }),
-  router: { push: (...args: unknown[]) => mockRouterPush(...args), back: jest.fn() },
-  useLocalSearchParams: () => mockParams,
-}));
+// A tree wrapped in the test's ParamsContext reads its own route's params (two customers'
+// reports on the stack at once); any other tree reads `mockParams`, and so does a read made
+// outside a render (the customer-name stand-in in jest.setup.js reads it from an effect).
+jest.mock('expo-router', () => {
+  const { createContext, useContext } = jest.requireActual('react');
+  const ParamsContext = createContext(null);
+  const readParams = () => {
+    try {
+      return useContext(ParamsContext) ?? mockParams;
+    } catch {
+      return mockParams;
+    }
+  };
+  return {
+    useRouter: () => ({ push: mockPush, back: jest.fn() }),
+    router: { push: (...args: unknown[]) => mockRouterPush(...args), back: jest.fn() },
+    useLocalSearchParams: readParams,
+    ParamsContext,
+  };
+});
+const ParamsContext: React.Context<Record<string, string> | null> = jest.requireMock('expo-router').ParamsContext;
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
@@ -71,7 +88,8 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'aut
 jest.mock('@/services/reporting/invoice-history-service', () => ({ getAllInvoiceHistory: jest.fn(), getCustomerInvoiceHistory: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// askAlert draws through the stand-in showAlert: a dialog the export waits on is answered by pressing its button.
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
@@ -241,11 +259,20 @@ afterEach(() => {
 const textOf = (node: ReactTestInstance): string =>
   [node.props.children].flat().map(child => (typeof child === 'string' || typeof child === 'number' ? String(child) : child?.props ? textOf(child as ReactTestInstance) : '')).join('');
 
-async function open(store: Store) {
+/** `params`: the route's own, for a tree that stands for one entry of the stack. */
+async function open(store: Store, params?: Record<string, string>) {
   mockStore = store;
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => {
-    tree = TestRenderer.create(<InvoiceHistoryScreen />);
+    tree = TestRenderer.create(
+      params ? (
+        <ParamsContext.Provider value={params}>
+          <InvoiceHistoryScreen />
+        </ParamsContext.Provider>
+      ) : (
+        <InvoiceHistoryScreen />
+      )
+    );
     await settleQueries();
   });
   mounted.push(tree);
@@ -1445,6 +1472,59 @@ describe('invoice history, one customer: the Invoices tile counts the invoices l
   });
 });
 
+// SR-06: a search typed for one customer must not narrow another customer's invoices.
+describe('invoice history, a search across customers', () => {
+  const RIVER = { customerId: 'c1', customerName: 'Riverbank Produce' };
+  const ALL = ['2026/0010', '2026/0009', '2026/0100', '2026/0050'];
+  /** The invoice numbers the list draws (a search marks the match in bold, so the card's text is split). */
+  const invoices = (screen: Awaited<ReturnType<typeof open>>) =>
+    (screen.tree.root.findByType('FlashList' as never).props.data as { kind: string; invoice?: { invoice_number: string } }[])
+      .filter(row => row.kind === 'invoice')
+      .map(row => row.invoice?.invoice_number);
+
+  it("another customer's report opens on all its invoices, and Back finds the first customer's search", async () => {
+    const store = makeStore();
+    const green = await open(store, GREEN);
+    await green.search('a0100');
+    expect(invoices(green)).toEqual(['2026/0100']);
+
+    const river = await open(store, RIVER);
+    expect(river.searchValue()).toBe('');
+    expect(invoices(river)).toEqual(ALL);
+    expect(invoices(green)).toEqual(['2026/0100']);
+
+    act(() => river.tree.unmount());
+    mounted.splice(mounted.indexOf(river.tree), 1);
+    expect(green.searchValue()).toBe('a0100');
+    expect(invoices(green)).toEqual(['2026/0100']);
+  });
+
+  it('opening a customer from the customers list again forgets its search and keeps the Payment choice', async () => {
+    const store = makeStore();
+    const green = await open(store, GREEN);
+    await green.press('Filter by payment');
+    await green.press('Paid');
+    await green.search('a0100');
+    expect(invoices(green)).toEqual(['2026/0100']);
+    act(() => green.tree.unmount());
+    mounted.splice(mounted.indexOf(green.tree), 1);
+
+    const list = await open(store);
+    const row = list.tree.root.findAll(
+      node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Green Valley Traders,') && typeof node.props.onPress === 'function'
+    )[0];
+    await act(async () => {
+      row.props.onPress();
+      await settleQueries();
+    });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/invoice-history', params: GREEN });
+
+    const again = await open(store, GREEN);
+    expect(again.searchValue()).toBe('');
+    expect(invoices(again)).toEqual(['2026/0010', '2026/0100']);
+  });
+});
+
 const MODES: Mode[] = ['light', 'dark'];
 // ---------------------------------------------------------------------------
 // The report PDF
@@ -1547,9 +1627,26 @@ describe('invoice history, the report PDF', () => {
     expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', 'Sun, 20 Sep', 'Invoice 2026/0050']);
     expect(await requestShared()).toEqual({ ...BASE, status: 'pending' });
 
-    // The search narrows the screen only: the request has the status and no search.
+    // The search narrows the screen only: the person is told before the PDF, which has the status and no search.
     await screen.search('chilli');
-    expect(await requestShared()).toEqual({ ...BASE, status: 'pending' });
+    const matching = screen.invoiceRows().filter(row => row.startsWith('Invoice ')).length;
+    makePdf.mockClear();
+    sharePdf.mockClear();
+    makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
+    await screen.press('Share PDF');
+    // A broken screen shares at once, without a word about the search. The PDF keeps the Payment choice,
+    // so it is not called the full report (review Step 3 M1).
+    expect(alertTexts(alert)).toEqual([
+      ['Share without the search?', `The PDF will list every row of the period that your other choices keep, not only the ${matching} matching "chilli".`],
+    ]);
+    expect(makePdf).not.toHaveBeenCalled();
+    await act(async () => {
+      pressAlertButton(alert, 'Share without the search');
+      await settleQueries();
+    });
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, status: 'pending' }]]);
+    expect(sharePdf.mock.calls).toEqual([[PDF_URL, FILE]]);
+    alert.mockClear();
 
     await screen.press('Clear all filters and the search');
     expect(await requestShared()).toEqual(BASE);

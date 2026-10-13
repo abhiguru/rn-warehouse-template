@@ -45,8 +45,8 @@ export const nav = {
     // The titles are the report screens' own (`reports.titles`).
     descriptions: {
       customerActivity: 'Consolidated view of all customer operations',
-      stockSummary: 'View current inventory at a glance',
-      itemStockSummary: 'View all items aggregated across customers',
+      stockSummary: 'Stock by customer',
+      itemStockSummary: 'Stock by item, across customers',
       dispatchActivity: 'Recent dispatches and outbound goods',
       grnActivity: 'Recent goods received with invoice status',
       invoiceHistory: 'Billing history with payment status',

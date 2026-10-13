@@ -172,6 +172,8 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: rows.length } : null),
   });
   const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
@@ -324,7 +326,7 @@ interface CustomerReportProps {
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
   const styles = useThemedStyles(makeStyles);
-  const filters = useReportFilters(STOCK_SUMMARY_CUSTOMER);
+  const filters = useReportFilters(STOCK_SUMMARY_CUSTOMER, { scope: customerId });
   const { view } = filters.request;
   const query = useReportQuery<StockSummaryData>({
     key: [REPORT_ID, 'customer', customerId],
@@ -403,6 +405,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
     fallback: olderStockPdf(customerId),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: items.length + emptied.length } : null),
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [

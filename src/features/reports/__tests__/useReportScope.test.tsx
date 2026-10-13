@@ -7,7 +7,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { forgetCustomerNames, trustedCustomerName } from '../customerNames';
-import { PUSH_GUARD_MS, useReportScope, type ReportScope } from '../useReportScope';
+import { PUSH_GUARD_MS, clearDestinationFilters, useReportScope, type ReportScope } from '../useReportScope';
 
 // The real question to the facility, not the stand-in every other test gets (jest.setup.js).
 jest.unmock('@/features/reports/customerNames');
@@ -388,4 +388,46 @@ it('notes the report as opened, once', () => {
   expect(actions().filter(action => action.type === 'reportPrefs/noteReportOpened')).toEqual([
     { type: 'reportPrefs/noteReportOpened', payload: expect.objectContaining({ scope: SCOPE, reportId: 'grn-activity' }) },
   ]);
+});
+
+// SR-06: a search typed for an earlier visit must not narrow the customer's report that opens.
+describe('opening a customer clears that customer\'s search there', () => {
+  it('openCustomer clears only the destination customer\'s search, before it pushes', () => {
+    signIn({ role: 'staff' });
+    const probe = use();
+    let clearedBeforePush = false;
+    mockPush.mockImplementationOnce(() => {
+      clearedBeforePush = actions().some(action => action.type === 'listFilters/clearListFilterScope');
+    });
+    probe.run(() => probe.scope().openCustomer(RIVER));
+    expect(actions().filter(action => action.type === 'listFilters/clearListFilterScope')).toEqual([
+      { type: 'listFilters/clearListFilterScope', payload: { key: 'report-grn-activity-customer', scope: 'c2', choices: false } },
+    ]);
+    expect(clearedBeforePush).toBe(true);
+  });
+
+  it('a double tap clears once, as it pushes once', () => {
+    signIn({ role: 'staff' });
+    const probe = use();
+    probe.run(() => probe.scope().openCustomer(GREEN));
+    probe.run(() => probe.scope().openCustomer(GREEN));
+    expect(actions().filter(action => action.type === 'listFilters/clearListFilterScope')).toHaveLength(1);
+  });
+
+  it('clearDestinationFilters clears the search and, when asked, the choices', () => {
+    const dispatch = jest.fn();
+    clearDestinationFilters(dispatch, 'invoice-history', 'c1', { choices: true });
+    clearDestinationFilters(dispatch, 'stock-aging', 'c2');
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
+      { type: 'listFilters/clearListFilterScope', payload: { key: 'report-invoice-history-customer', scope: 'c1', choices: true } },
+      { type: 'listFilters/clearListFilterScope', payload: { key: 'report-stock-aging-customer', scope: 'c2', choices: false } },
+    ]);
+  });
+
+  it('clearDestinationFilters does nothing for a report without a customer level or without a customer', () => {
+    const dispatch = jest.fn();
+    clearDestinationFilters(dispatch, 'operations-dashboard', 'c1', { choices: true });
+    clearDestinationFilters(dispatch, 'grn-activity', '');
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });

@@ -57,7 +57,7 @@ describe('central login in Gujarati', () => {
     expect(t('central.open.revoked', { facility: 'North Cold Store' }, 'gu')).toBe(
       'North Cold Storeએ તમારી મંજૂરી પાછી લઈ લીધી છે. આ ભૂલ લાગતી હોય તો કોલ્ડ સ્ટોરેજના એડમિનનો સંપર્ક કરો.'
     );
-    expect(t('central.switch.confirmMessage', { facility: 'North Cold Store' }, 'gu')).toContain('North Cold Storeમાંથી');
+    expect(t('central.leave.confirmTitle', { facility: 'North Cold Store' }, 'gu')).toBe('North Cold Storeમાંથી નીકળવું છે?');
   });
 
   it('shows a wait in Gujarati digits and a phone number as stored', () => {

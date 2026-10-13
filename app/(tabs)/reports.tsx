@@ -11,9 +11,11 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
-import { useThemedStyles } from '@/hooks/useTheme';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { triggerLightTap } from '@/hooks/useHaptics';
 import {
+  iconSize,
   layout,
   radius,
   space,
@@ -23,9 +25,10 @@ import {
 } from '@/theme/tokens';
 import type { ReportDefinition } from '@/features/reports/reportRegistry';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
+import { useFacilityName } from '@/features/reports/useFacilityName';
 import { ReportHubRow } from '@/components/reports/ReportHubRow';
 import { reportHubSections, type ReportHubSectionId } from '@/components/reports/reportHubSections';
-import { Avatar, SectionHeader } from '@/components/ui';
+import { SectionHeader } from '@/components/ui';
 import { t as translate } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
 
@@ -64,6 +67,12 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.subhead,
       color: t.text.secondary,
       marginTop: space.xs,
+    },
+    // The facility the reports are of, under the title (SR-O11).
+    headerFacility: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      marginTop: space.xxs,
     },
     profileButton: {
       width: touchTarget,
@@ -110,7 +119,9 @@ export default function ReportsScreen() {
   const router = useRouter();
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const { prefs, togglePin, noteOpened } = useReportPrefs();
+  const facility = useFacilityName();
 
   const role = userProfile?.role;
   // Staff see every customer's reports, like the managers.
@@ -153,6 +164,11 @@ export default function ReportsScreen() {
             <Text style={styles.headerTitle} accessibilityRole="header">
               {translate('nav.reports.title')}
             </Text>
+            {facility ? (
+              <Text style={styles.headerFacility} accessibilityLabel={translate('reports.shared.facilityLabel', { name: facility })}>
+                {facility}
+              </Text>
+            ) : null}
             <Text style={styles.headerSubtitle}>
               {seesAllCustomers ? translate('nav.reports.subtitleStaff') : translate('nav.reports.subtitleCustomer')}
             </Text>
@@ -163,7 +179,7 @@ export default function ReportsScreen() {
             accessibilityRole="button"
             accessibilityLabel={translate('nav.reports.profileAndSettings')}
           >
-            <Avatar name={userProfile?.name} id={userProfile?.id} size="sm" />
+            <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
         </View>
       </View>

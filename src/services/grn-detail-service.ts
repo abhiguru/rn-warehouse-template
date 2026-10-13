@@ -15,6 +15,7 @@ import type {
   RpcUserDetails,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { invalidateReportQueries } from '@/lib/queryClient';
 
 // Re-export canonical types for consumers
 export type {
@@ -439,5 +440,7 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
   }
 
   if (__DEV__) console.log('[GRNDetailService] GRN deleted successfully:', responseData.message);
+  // The write changed what reports count: a report on screen asks again (SR-10).
+  void invalidateReportQueries();
   return responseData;
 };

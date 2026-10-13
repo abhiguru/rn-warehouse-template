@@ -1,10 +1,13 @@
 /**
- * Keeps the language choice on the phone and on the person's profile in step.
+ * The language belongs to the phone; the profile only carries a person's last
+ * choice to a phone that has none (docs/I18N.md, "Language on this phone").
  *
  * - On sign-in with no choice on this phone ("Phone language"), the profile's
  *   language is taken, if it has one.
- * - On sign-in with a choice on this phone, that choice is saved to the profile.
- * - A change in Settings while signed in is saved to the profile.
+ * - On sign-in with a choice on this phone, that choice stays and nothing is
+ *   read or written: on a shared phone, the next person does not inherit it
+ *   into their profile, and the phone does not change under them.
+ * - A change in Settings while signed in is saved to the profile, once.
  */
 import { useEffect, useRef } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -21,6 +24,8 @@ export function useProfileLanguage(): void {
   // restored from saved tokens has no session object.
   const profileId = useAppSelector((state: AuthState) => state.auth.userProfile?.id);
   const last = useRef<{ profileId?: string; preference?: LanguagePreference }>({});
+  // The language just taken from the profile: applying it is not a change to save back.
+  const fromProfile = useRef<LanguagePreference | null>(null);
 
   useEffect(() => {
     const previous = last.current;
@@ -28,17 +33,23 @@ export function useProfileLanguage(): void {
     if (!profileId) return;
 
     const signedIn = previous.profileId !== profileId;
-    if (signedIn && preference === 'system') {
+    if (signedIn) {
+      fromProfile.current = null;
+      if (preference !== 'system') return undefined;
       let current = true;
       void fetchProfileLanguage().then(language => {
-        if (current && language) dispatch(setLanguagePreference(language));
+        if (!current || !language) return;
+        fromProfile.current = language;
+        dispatch(setLanguagePreference(language));
       });
       return () => {
         current = false;
       };
     }
-    if (signedIn || previous.preference !== preference) {
-      void saveProfileLanguage(preference);
+    if (previous.preference !== preference) {
+      const taken = fromProfile.current === preference;
+      fromProfile.current = null;
+      if (!taken) void saveProfileLanguage(preference);
     }
     return undefined;
   }, [dispatch, profileId, preference]);

@@ -10,7 +10,19 @@
  * share helper gave in the app's language is shown as it is, anything else (a
  * native error's text such as "Network request failed") as "Check your
  * connection and try again." A PDF the server cut short (`document.truncated`)
- * is still shared, after a notice that says how many of the rows it holds.
+ * is still shared, once the person has read a notice that says how many of the
+ * rows it holds (the notice is waited for; the share sheet follows it).
+ *
+ * The PDF follows the screen's choices the server can apply (the request's
+ * filter fields: Payment, Invoicing, Stock age, the item search). What it cannot
+ * apply is said before anything is shared, never left to be found in the PDF:
+ * - a search the server does not apply (`unappliedSearch`, every searchable
+ *   screen but the item stock summary): "Share the full report?" first; Cancel
+ *   or closing the dialog asks for nothing;
+ * - a server older than a filter field refuses the request
+ *   ('filter-unsupported'): the person is asked whether to share the full
+ *   report instead, and only then is it asked for again without the filters.
+ * `busy` stays true, and a second tap is ignored, while a dialog waits.
  *
  * `available` turns false once the facility's server has answered that it has
  * no generate-report-pdf (a backend older than the release with migrations
@@ -35,9 +47,16 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { t } from '@/i18n';
-import { generateReportPDF, isPeriodReport, type ReportPdfDocument, type ReportPdfRequest } from '@/services/pdf-service';
+import {
+  generateReportPDF,
+  isPeriodReport,
+  REPORT_PDF_FILTER_FIELDS,
+  withoutReportFilters,
+  type ReportPdfDocument,
+  type ReportPdfRequest,
+} from '@/services/pdf-service';
 import { facilityKey } from '@/services/stock-service';
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -156,8 +175,13 @@ interface MadePdf {
   document?: ReportPdfDocument;
 }
 
+/** The server cannot apply the request's filters: nothing was made, and nothing has been shown yet. */
+const FILTERS_REFUSED = 'filters-refused';
+
 /**
- * The PDF made, or undefined after the failure has been shown.
+ * The PDF made, or undefined after the failure has been shown, or
+ * FILTERS_REFUSED (when `askOnFilters`) for a server older than a filter field
+ * the request carries, so the caller can ask the person.
  * On a facility known to lack generate-report-pdf an export with a fallback goes
  * straight to it; a facility that answers so now is remembered (actions without a
  * fallback are then left out) and the fallback is asked instead.
@@ -165,8 +189,9 @@ interface MadePdf {
 async function makePdf(
   request: ReportPdfRequest,
   facility: string,
-  fallback: (() => Promise<ReportExportFallbackResult>) | undefined
-): Promise<MadePdf | undefined> {
+  fallback: (() => Promise<ReportExportFallbackResult>) | undefined,
+  askOnFilters: boolean
+): Promise<MadePdf | typeof FILTERS_REFUSED | undefined> {
   if (fallback && outdatedFacilities.has(facility)) return fallbackPdf(request, fallback);
   const result = await generateReportPDF(request);
   if (result.success && result.pdfUrl) {
@@ -175,6 +200,7 @@ async function makePdf(
   }
   // The reason only: never the customer, the URL or the server's text.
   log.warn('Report PDF not created', { report: request.report, reason: result.reason });
+  if (result.reason === 'filter-unsupported' && askOnFilters) return FILTERS_REFUSED;
   if (result.reason === 'server-outdated') {
     noteFacility(facility, true);
     if (fallback) return fallbackPdf(request, fallback);
@@ -214,12 +240,73 @@ function shareFailureText(reason: string | undefined): string {
   return reason && shown.includes(reason) ? reason : t('common.checkConnection');
 }
 
-/** A PDF the server cut short: say how many of the rows it holds. The alert does not wait; the share sheet follows. */
-function noteTruncated(document: ReportPdfDocument | undefined): void {
+/** A PDF the server cut short: say how many of the rows it holds, and wait for OK before the share sheet. */
+async function noteTruncated(document: ReportPdfDocument | undefined): Promise<void> {
   if (!document?.truncated) return;
-  showAlert(
+  await askAlert(
     t('reports.export.sharePdf'),
-    t('reports.export.truncated', { shown: formatNumber(document.rows_count), total: formatNumber(document.rows_total) })
+    t('reports.export.truncated', { shown: formatNumber(document.rows_count), total: formatNumber(document.rows_total) }),
+    [{ text: t('common.ok'), value: undefined }],
+    undefined
+  );
+}
+
+/** A search shown in a sentence: at most 40 characters, then "…". */
+const QUOTED_SEARCH_MAX = 40;
+function quotedSearch(query: string): string {
+  const characters = Array.from(query.trim());
+  return characters.length > QUOTED_SEARCH_MAX ? `${characters.slice(0, QUOTED_SEARCH_MAX).join('').trimEnd()}…` : characters.join('');
+}
+
+/** The question before a PDF that will not follow the screen: its title, the message and the button that agrees. */
+interface ShareQuestion {
+  title: string;
+  message: string;
+  agree: string;
+}
+
+/** "Share the full report?" with Cancel and "Share full report": the PDF will hold all the period, or all the stock. */
+const fullReportQuestion = (message: string): ShareQuestion => ({
+  title: t('reports.export.fullReportTitle'),
+  message,
+  agree: t('reports.export.shareFullReport'),
+});
+
+/** Asks the question with Cancel and its agree button; true only for the latter. Closing the dialog is Cancel. */
+const agreeToShare = ({ title, message, agree }: ShareQuestion): Promise<boolean> =>
+  askAlert(
+    title,
+    message,
+    [
+      { text: t('common.cancel'), style: 'cancel', value: false },
+      { text: agree, value: true },
+    ],
+    false
+  );
+
+/** True when the request keeps a filter of the screen that the PDF applies (Payment, Invoicing, Stock age). */
+const keepsAFilter = (request: ReportPdfRequest): boolean =>
+  REPORT_PDF_FILTER_FIELDS.some(field => field !== 'search' && request[field] != null);
+
+/**
+ * The search the PDF will not apply, said before the export. Without another filter the PDF holds the whole
+ * period, or all the stock ("Share the full report?"); with one it keeps that filter, so the question is to
+ * share without the search ("Share without the search?").
+ */
+function searchNotAppliedQuestion(request: ReportPdfRequest, search: UnappliedSearch): ShareQuestion {
+  const values = { count: formatNumber(search.count), query: quotedSearch(search.query) };
+  const period = isPeriodReport(request.report);
+  if (keepsAFilter(request)) {
+    return {
+      title: t('reports.export.withoutSearchTitle'),
+      message: period
+        ? t('reports.export.searchNotAppliedFiltered', values)
+        : t('reports.export.searchNotAppliedFilteredStock', values),
+      agree: t('reports.export.shareWithoutSearch'),
+    };
+  }
+  return fullReportQuestion(
+    period ? t('reports.export.searchNotApplied', values) : t('reports.export.searchNotAppliedStock', values)
   );
 }
 
@@ -238,6 +325,21 @@ export interface UseReportExportOptions {
    * (`generateCustomerStockPDF`); the file is named as the report's would be.
    */
   fallback?: () => Promise<ReportExportFallbackResult>;
+  /**
+   * The search on screen that the PDF will not apply, read at the tap: what was
+   * typed and how many rows it leaves; null or undefined when there is none. The
+   * person is then asked to share the full report first, or, when the request
+   * keeps a filter, to share without the search.
+   */
+  unappliedSearch?: () => UnappliedSearch | null | undefined;
+}
+
+/** A search the screen applies and the PDF does not. */
+export interface UnappliedSearch {
+  /** As typed. */
+  query: string;
+  /** The rows on screen that the search leaves. */
+  count: number;
 }
 
 /** What a fallback export gives: a signed link to the PDF, or a failure. */
@@ -275,17 +377,26 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
 
   const exportPdf = useCallback(async () => {
     if (running.current) return;
-    const { buildRequest, fallback } = latest.current;
+    const { buildRequest, fallback, unappliedSearch } = latest.current;
     const request = buildRequest();
     if (!request) return;
+    // Running, and busy, through every dialog below: a second tap meanwhile is ignored.
     running.current = true;
     setBusy(true);
     const facility = currentFacility();
     try {
-      const made = await makePdf(request, facility, fallback);
-      if (!made) return;
+      // A search the PDF will not apply: the person agrees to the full report before anything is asked for.
+      const search = unappliedSearch?.();
+      if (search && search.query.trim() && !(await agreeToShare(searchNotAppliedQuestion(request, search)))) return;
+      let made = await makePdf(request, facility, fallback, true);
+      // The server cannot apply a filter: the full report only if the person agrees, never on its own.
+      if (made === FILTERS_REFUSED) {
+        if (!(await agreeToShare(fullReportQuestion(t('reports.export.filterNeedsUpdate'))))) return;
+        made = await makePdf(withoutReportFilters(request), facility, fallback, false);
+      }
+      if (!made || made === FILTERS_REFUSED) return;
       const filename = reportPdfFilename(request, namePartsOf(made.document, latest.current.filenameParts?.()));
-      noteTruncated(made.document);
+      await noteTruncated(made.document);
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
       if (!shared.success) {
         log.warn('Report PDF not shared', { report: request.report });

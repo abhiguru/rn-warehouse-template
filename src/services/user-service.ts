@@ -3,7 +3,8 @@ import {
   UserProfile,
   UserFormData,
   UserServiceResponse,
-  CustomerAssignment
+  CustomerAssignment,
+  AccessibleCustomers,
 } from '@/types/user.types';
 // M3 Fix: Import executeRPC utilities (kept for future use - current methods have extensive debug logging)
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
@@ -16,7 +17,7 @@ const log = createLogger('user');
 
 export class UserService {
   
-  // Get user by ID with customer assignments
+  // Get user by ID with the customers the signed-in person may see
   static async getUserById(userId: string): Promise<UserServiceResponse<UserProfile>> {
     try {
 
@@ -76,29 +77,9 @@ export class UserService {
         };
       }
 
-      // Fetch customer assignments via RPC
-      const { data: assignedCustomerIds, error: rpcError } = await client
-        .rpc('user_accessible_customers');
-
-      let assignedCustomers: CustomerAssignment[] = [];
-
-      if (!rpcError && assignedCustomerIds && assignedCustomerIds.length > 0) {
-        // Fetch customer details for assigned customers
-        const { data: customers, error: customersError } = await client
-          .from('customers')
-          .select('id, name, mobile, city, active')
-          .in('id', assignedCustomerIds);
-
-        if (!customersError && customers) {
-          assignedCustomers = customers.map(customer => ({
-            id: customer.id,
-            name: customer.name,
-            mobile: customer.mobile,
-            city: customer.city,
-            active: customer.active
-          }));
-        }
-      }
+      // The customers this person may see. A failed read is not "none": the
+      // profile still loads and the screen says the access could not be loaded.
+      const access = await UserService.getAccessibleCustomers(client);
 
       // Map user profile with assignments
       const mappedUser: UserProfile = {
@@ -112,7 +93,8 @@ export class UserService {
         active: userProfile.active,
         created_at: userProfile.created_at,
         updated_at: userProfile.updated_at,
-        assignedCustomers: assignedCustomers
+        assignedCustomers: access.customers,
+        assignedCustomersStatus: access.status,
       };
 
 
@@ -128,6 +110,51 @@ export class UserService {
         message: t('errors.general.unexpected'),
         error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
+    }
+  }
+
+  /**
+   * The customers the signed-in person may see (`user_accessible_customers`):
+   * every active customer for admin, supervisor and staff, the assigned ones
+   * for a customer. `loaded` with an empty list means there are none;
+   * `failed` means the RPC or the customers read did not answer, and says
+   * nothing about what the person may see.
+   */
+  static async getAccessibleCustomers(
+    client?: Awaited<ReturnType<typeof getAuthenticatedClient>>
+  ): Promise<AccessibleCustomers> {
+    try {
+      const db = client ?? (await getAuthenticatedClient());
+      const { data: ids, error: rpcError } = await db.rpc('user_accessible_customers');
+      if (rpcError) {
+        handleGlobalAuthError(rpcError);
+        log.warn('Accessible customers RPC error', loggableError(rpcError));
+        return { status: 'failed', customers: [] };
+      }
+      if (!Array.isArray(ids) || ids.length === 0) return { status: 'loaded', customers: [] };
+
+      const { data: customers, error: customersError } = await db
+        .from('customers')
+        .select('id, name, mobile, city, active')
+        .in('id', ids);
+      if (customersError || !customers) {
+        if (customersError) handleGlobalAuthError(customersError);
+        log.warn('Accessible customers read error', loggableError(customersError));
+        return { status: 'failed', customers: [] };
+      }
+      return {
+        status: 'loaded',
+        customers: customers.map((customer: CustomerAssignment) => ({
+          id: customer.id,
+          name: customer.name,
+          mobile: customer.mobile,
+          city: customer.city,
+          active: customer.active,
+        })),
+      };
+    } catch (error) {
+      log.warn('Accessible customers exception', loggableError(error));
+      return { status: 'failed', customers: [] };
     }
   }
 

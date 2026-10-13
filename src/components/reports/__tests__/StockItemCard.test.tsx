@@ -411,6 +411,66 @@ describe('GRNs read on demand', () => {
   });
 });
 
+describe('more GRN lines to read (grnsMore)', () => {
+  const more = (state: 'none' | 'more' | 'loading' | 'failed') => ({ state, onLoadMore: jest.fn(), onRetry: jest.fn() });
+  const buttons = (tree: TestRenderer.ReactTestRenderer, label: string) =>
+    tree.root.findAllByType(Button).filter(button => button.props.children === label);
+  const FOOTNOTE = 'Showing 2 of 240 GRN lines';
+
+  it('more: "Show more GRN lines" under the lines and their footnote, which asks for the next lines', () => {
+    const grnsMore = more('more');
+    const { tree, texts } = render(baseProps({ isExpanded: true, grnsFooter: FOOTNOTE, grnsMore }));
+    const shown = texts();
+    // The lines stay, the footnote says how many, and the button follows them.
+    expect(shown).toContain('GRN 311');
+    expect(shown.indexOf(FOOTNOTE)).toBeGreaterThan(shown.indexOf('GRN 311'));
+    const button = buttons(tree, 'Show more GRN lines');
+    expect(button).toHaveLength(1);
+    act(() => button[0].props.onPress());
+    expect(grnsMore.onLoadMore).toHaveBeenCalledTimes(1);
+    expect(grnsMore.onRetry).not.toHaveBeenCalled();
+  });
+
+  it('loading: a spinner and "Loading more GRN lines" under the lines, no button', () => {
+    const { tree, texts } = render(baseProps({ isExpanded: true, grnsFooter: FOOTNOTE, grnsMore: more('loading') }));
+    expect(texts()).toEqual(expect.arrayContaining(['GRN 311', FOOTNOTE, 'Loading more GRN lines']));
+    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(buttons(tree, 'Show more GRN lines')).toHaveLength(0);
+  });
+
+  it('failed: the lines stay, "Couldn\'t load more GRN lines." and "Try again", which retries', () => {
+    const grnsMore = more('failed');
+    const { tree, texts } = render(baseProps({ isExpanded: true, grnsMore }));
+    expect(texts()).toEqual(expect.arrayContaining(['GRN 311', "Couldn't load more GRN lines."]));
+    expect(texts()).not.toContain("Couldn't load the GRNs for this item.");
+    const retry = buttons(tree, 'Try again');
+    expect(retry).toHaveLength(1);
+    act(() => retry[0].props.onPress());
+    expect(grnsMore.onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('none, a closed card, lines not loaded yet, or the lines drawn by the list: nothing', () => {
+    const cases: Partial<StockItemCardProps>[] = [
+      { isExpanded: true, grnsMore: more('none') },
+      { isExpanded: false, grnsMore: more('more') },
+      { isExpanded: true, grns: { status: 'loading' }, grnsMore: more('more') },
+      { isExpanded: true, grns: { status: 'loaded', rows: [] }, grnsMore: more('more') },
+      { isExpanded: true, grnsInList: true, grnsMore: more('more') },
+    ];
+    for (const over of cases) {
+      const { tree, texts } = render(baseProps(over));
+      expect(buttons(tree, 'Show more GRN lines')).toHaveLength(0);
+      expect(texts()).not.toContain('Loading more GRN lines');
+    }
+  });
+
+  it('says it in Gujarati', () => {
+    setLanguage('gu');
+    const { tree } = render(baseProps({ isExpanded: true, grnsMore: more('more') }));
+    expect(buttons(tree, 'આવક પાવતીની વધુ લાઇન બતાવો')).toHaveLength(1);
+  });
+});
+
 describe('status tags', () => {
   it(`"Low stock" is under ${LOW_STOCK_PERCENT}% of what was received, rounded to a whole percent`, () => {
     expect(isLowStock(19, 100)).toBe(true);

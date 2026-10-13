@@ -166,7 +166,8 @@ describe('the GRN card', () => {
   });
 
   it('names an item the search found inside the card, in bold, and nothing more when the card already shows the word', async () => {
-    signIn(STAFF, { lists: { 'report-grn-activity-customer': { values: { search: 'garlic' } } } });
+    // One customer's search lives under its own scope since the per-customer search (SR-06).
+    signIn(STAFF, { lists: { 'report-grn-activity-customer': { values: {}, searches: { c1: 'garlic' } } } });
     await open();
     expect(texts()).toContain('GRN 311');
     expect(texts()).not.toContain('GRN 312');
@@ -176,7 +177,7 @@ describe('the GRN card', () => {
     act(() => tree!.unmount());
 
     // "fictional" is in the sender's name on the card, so the item that also has it is not named.
-    signIn(STAFF, { lists: { 'report-grn-activity-customer': { values: { search: 'fictional' } } } });
+    signIn(STAFF, { lists: { 'report-grn-activity-customer': { values: {}, searches: { c1: 'fictional' } } } });
     await open();
     expect(texts()).not.toContain('Fictional Onions');
     expect(bold()).toEqual(['Fictional']);

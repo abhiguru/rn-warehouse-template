@@ -15,6 +15,7 @@ import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
+import { invalidateReportQueries } from '@/lib/queryClient';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -1097,6 +1098,8 @@ export const deleteDispatch = async (
     }
 
     console.log('[DispatchService] ✅ Dispatch deleted successfully');
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
     console.log('[DispatchService] Order restored:', result.order_restored || result.orderRestored || false);
     console.log('[DispatchService] Restored order ID:', result.restored_order_id || result.restoredOrderId || 'N/A');
     console.log('[DispatchService] Stock restored:', result.stock_restored || result.stockRestored || 'N/A');

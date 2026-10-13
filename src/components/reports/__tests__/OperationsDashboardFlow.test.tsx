@@ -39,7 +39,7 @@ jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'))
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('@/config/operatorServer', () => ({
-  getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+  getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Riverside', companyName: 'Riverside Cold Storage' }),
 }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
@@ -149,7 +149,7 @@ describe('the period', () => {
   it('shows the six figures, the daily averages and the recent activity of the answer', async () => {
     const screen = await open();
     expect(screen.texts()).toEqual(
-      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Total weight', '5,400.50', 'Period averages', 'Recent activity'])
+      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Total weight', '5,400.50', 'Period averages', 'Latest activity (any date)'])
     );
     // Over the 120 days of 15 Jun to 12 Oct, not over the 2 days (GRNs) and 1 day (dispatches) that had events:
     // 5 GRNs / 120 = 0.04 and 1 dispatch / 120 = 0.008: not zero, and too small for one decimal, so "<0.1" and
@@ -158,6 +158,29 @@ describe('the period', () => {
     // generate-report-pdf has no operations dashboard: the header offers no PDF.
     expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Share PDF')).toEqual([]);
     expect(screen.tree.root.findAll(node => node.props.name === 'file-pdf-box')).toEqual([]);
+  });
+
+  it('says what each figure covers: the period\'s GRNs and dispatches, then what is true right now, then the latest activity of any date', async () => {
+    const screen = await open();
+    const headers = () =>
+      screen.tree.root
+        .findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header')
+        .map(node => (node.props.accessibilityLabel as string | undefined) ?? [node.props.children].flat().join(''));
+    expect(headers()).toEqual(['Operations dashboard', 'In 15 Jun – 12 Oct', 'Right now', 'Period averages', 'Latest activity (any date)']);
+    // The facility whose figures these are, under the title, and read out as such.
+    expect(screen.texts()).toContain('Riverside Cold Storage');
+    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Facility: Riverside Cold Storage').length).toBeGreaterThan(0);
+    // Each group's figures are under its own heading.
+    const texts = screen.texts();
+    const at = (words: string) => texts.indexOf(words);
+    const order = ['IN 15 JUN – 12 OCT', 'GRNs', 'Dispatches', 'RIGHT NOW', 'Pending orders', 'Active customers', 'Total stock', 'Total weight'].map(at);
+    expect(order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1]))).toBe(true);
+    expect(texts).not.toContain('Recent activity');
+
+    // Last month (all of September): the movement is September's; stock and pending orders are still today's.
+    await screen.press('Period: Last 120 days. Change');
+    await screen.press('Last month');
+    expect(headers()).toEqual(['Operations dashboard', 'In 1 Sep – 30 Sep', 'Right now', 'Period averages', 'Latest activity (any date)']);
   });
 
   it('with no activity in the period says so under the figures', async () => {
@@ -244,7 +267,8 @@ describe('a refused dashboard', () => {
     await screen.run(() => undefined);
     expect(dashboard).toHaveBeenCalledTimes(1);
     expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load the operations dashboard", 'This report is for staff only']));
-    expect(screen.texts()).not.toContain('Recent activity');
+    expect(screen.texts()).not.toContain('Latest activity (any date)');
+    expect(screen.texts()).not.toContain('RIGHT NOW');
 
     await screen.press('Try again');
     expect(dashboard).toHaveBeenCalledTimes(2);

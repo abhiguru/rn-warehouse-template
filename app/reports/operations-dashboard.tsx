@@ -4,9 +4,13 @@
  *
  * Built on the report layer (docs/STYLE_GUIDE.md §14.10): useReportFilters
  * holds the period (the filter bar's period chip, shared by every report),
- * useReportQuery the data, and ReportScaffold draws every state. Under the
- * figures: the period's daily averages (its total over every day of it that has
- * happened, quiet days included), then the recent GRNs and dispatches.
+ * useReportQuery the data, and ReportScaffold draws every state. The figures
+ * come in two groups that say what they cover (SR-14): the period's GRNs and
+ * dispatches ("In 15 Jun – 12 Oct"), and what is true now whatever the period
+ * ("Right now": pending orders, customers with stock, the stock and its weight).
+ * Under them: the period's daily averages (its total over every day of it that
+ * has happened, quiet days included), then the latest GRNs and dispatches of any
+ * date, as the server sends them.
  * There is no search, sort or customer. The server answers a role it refuses
  * in the body of its answer; that shows as the failed state with the reason.
  */
@@ -14,9 +18,11 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ReportEmptyState, ReportHeader, ReportScaffold, type KPIItem } from '@/components/reports';
+import { ReportEmptyState, ReportHeader, ReportScaffold } from '@/components/reports';
+import type { ReportKpiGroup } from '@/components/reports/ReportScaffold';
 import { OPERATIONS_DASHBOARD } from '@/features/filters/configs/reports/operationsDashboard';
 import { periodDays } from '@/features/filters/configs/reports/shared';
+import { describeDateRange } from '@/features/filters/filterModel';
 import { longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
@@ -159,24 +165,36 @@ function OperationsDashboardReport() {
   });
   const { data } = query;
 
-  const kpis = useMemo<KPIItem[] | undefined>(() => {
+  // The server counts GRNs and dispatches over the period; pending orders, the customers with
+  // stock, the stock and its weight are today's, whatever the period. Each group says which.
+  const kpiGroups = useMemo<ReportKpiGroup[] | undefined>(() => {
     if (!data) return undefined;
     const { kpis: figures } = data;
     return [
-      { icon: 'package-down', value: figures.total_grns, label: tr('reports.operations.grns'), variant: 'primary' },
-      { icon: 'truck-delivery-outline', value: figures.total_dispatches, label: tr('reports.operations.dispatches'), variant: 'primary' },
-      { icon: 'clipboard-list-outline', value: figures.pending_orders, label: tr('reports.operations.pendingOrders'), variant: 'neutral' },
-      { icon: 'account-group-outline', value: figures.active_customers, label: tr('reports.operations.activeCustomers'), variant: 'neutral' },
-      { icon: 'warehouse', value: figures.total_stock_qty, label: tr('reports.operations.totalStock'), variant: 'primary' },
       {
-        icon: 'scale-balance',
-        value: formatNumber(figures.total_stock_weight, 2),
-        label: tr('reports.operations.totalWeight'),
-        variant: 'primary',
-        unit: tr('reports.operations.kg'),
+        title: tr('reports.operations.inPeriod', { period: describeDateRange(period) }),
+        items: [
+          { icon: 'package-down', value: figures.total_grns, label: tr('reports.operations.grns'), variant: 'primary' },
+          { icon: 'truck-delivery-outline', value: figures.total_dispatches, label: tr('reports.operations.dispatches'), variant: 'primary' },
+        ],
+      },
+      {
+        title: tr('reports.operations.rightNow'),
+        items: [
+          { icon: 'clipboard-list-outline', value: figures.pending_orders, label: tr('reports.operations.pendingOrders'), variant: 'neutral' },
+          { icon: 'account-group-outline', value: figures.active_customers, label: tr('reports.operations.activeCustomers'), variant: 'neutral' },
+          { icon: 'warehouse', value: figures.total_stock_qty, label: tr('reports.operations.totalStock'), variant: 'primary' },
+          {
+            icon: 'scale-balance',
+            value: formatNumber(figures.total_stock_weight, 2),
+            label: tr('reports.operations.totalWeight'),
+            variant: 'primary',
+            unit: tr('reports.operations.kg'),
+          },
+        ],
       },
     ];
-  }, [data]);
+  }, [data, period]);
 
   const renderRow = useCallback((activity: RecentActivityItem) => <ActivityRow activity={activity} />, []);
 
@@ -185,7 +203,7 @@ function OperationsDashboardReport() {
       title={tr('reports.titles.operationsDashboard')}
       filters={{ config: OPERATIONS_DASHBOARD, state: filters }}
       query={query}
-      kpis={kpis}
+      kpiGroups={kpiGroups}
       kpiPlaceholders={6}
       status={{ range: period }}
       rows={data?.recent_activity ?? []}
@@ -198,7 +216,8 @@ function OperationsDashboardReport() {
       {data ? (
         <>
           <PeriodAverages grnDaily={data.trends.grn_daily} dispatchDaily={data.trends.dispatch_daily} days={periodDays(period, todayInIST())} />
-          <SectionHeading title={tr('reports.operations.recentActivity')} />
+          {/* The server sends the latest GRNs and dispatches of any date, not those of the period. */}
+          <SectionHeading title={tr('reports.operations.latestActivity')} />
         </>
       ) : null}
     </ReportScaffold>
@@ -263,7 +282,7 @@ const activityTime = (value: string | null | undefined): string => {
 };
 
 /**
- * A recent GRN or dispatch. The server sends no document id with it, so it
+ * One of the latest GRNs or dispatches. The server sends no document id with it, so it
  * opens nothing: no chevron, no button role, read as one element.
  */
 const ActivityRow = memo(function ActivityRow({ activity }: { activity: RecentActivityItem }) {

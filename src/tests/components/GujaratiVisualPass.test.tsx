@@ -45,11 +45,15 @@ jest.mock('react-native-reanimated', () => {
 
 const GUJARATI_DIGIT = /[૦-૯]/;
 
+// Every tree is unmounted after its test: a card reads useWindowDimensions, so a tree left
+// mounted is drawn again by a later Dimensions.set, after this file's environment is gone.
+const mounted: ReactTestRenderer[] = [];
 function render(element: React.ReactElement): ReactTestRenderer {
   let tree!: ReactTestRenderer;
   act(() => {
     tree = create(element);
   });
+  mounted.push(tree);
   return tree;
 }
 
@@ -110,7 +114,10 @@ const recent = {
   items: [],
 } as unknown as RecentDispatchedOrder;
 
-afterEach(() => setLanguage('en'));
+afterEach(() => {
+  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+  setLanguage('en');
+});
 
 describe('document numbers on the list cards in Gujarati', () => {
   beforeEach(() => setLanguage('gu'));

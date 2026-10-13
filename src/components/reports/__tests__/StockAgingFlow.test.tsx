@@ -24,6 +24,7 @@ import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { showAlert } from '@/utils/alert';
+import { alertTexts, pressAlertButton } from '@/tests/helpers/alertMock';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import StockAgingScreen from '../../../../app/reports/stock-aging';
 
@@ -66,7 +67,8 @@ jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } } }));
 jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// askAlert draws through the stand-in showAlert: a dialog the export waits on is answered by pressing its button.
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
@@ -285,10 +287,15 @@ describe('stock aging, every customer', () => {
     expect(screen.has('Sorted by Average age, highest first. Change sort')).toBe(true);
     expect(screen.labels().filter(label => label.startsWith('Period'))).toEqual([]);
 
-    // The KPI is by_bucket['364+'].item_count (4), named as a count of items in the bucket's own
-    // words; not the RPC's items_over_365_days (9), which counts from 365.
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 14', 'Average age: 160 days', 'Items over 364 days: 4']));
-    expect(screen.labels()).not.toContain('Items over 364 days: 9');
+    // The server counts stock lines (lots): total_items (14) and by_bucket['364+'].item_count (4), named
+    // as lots in the bucket's own words; not the RPC's items_over_365_days (9), which counts from 365.
+    // An item on two old lots counts twice here, so the tiles do not say "Items" (a customer's screen does).
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Stock lots: 14', 'Average age: 160 days', 'Lots over 364 days: 4']));
+    expect(screen.labels()).not.toContain('Lots over 364 days: 9');
+    expect(screen.labels()).not.toContain('Items: 14');
+    expect(screen.labels()).not.toContain('Items over 364 days: 4');
+    // The note about counting by item name belongs to a customer's item cards, not to lots.
+    expect(screen.texts()).not.toContain('Items are counted by item name.');
     expect(screen.labels()).not.toContain('Over 364 days: 4');
     expect(screen.labels().filter(label => label.startsWith('Over 1 year'))).toEqual([]);
     expect(screen.texts()).toEqual(expect.arrayContaining(['Stock age', '0–120 days', '121–240 days', '241–364 days', 'Over 364 days']));
@@ -321,7 +328,7 @@ describe('stock aging, every customer', () => {
     expect(screen.bold()).toEqual(['Produce', 'Produce']);
     expect(screen.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
     // The figures are the whole stock's, not what the search leaves.
-    expect(screen.labels()).toContain('Items over 364 days: 4');
+    expect(screen.labels()).toContain('Lots over 364 days: 4');
 
     await screen.press('Clear all filters and the search');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
@@ -424,6 +431,9 @@ describe('stock aging, one customer', () => {
     expect(screen.items()).toHaveLength(4);
     expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
     expect(screen.labels()).not.toContain('Items: 6');
+    // A customer's items are grouped by name (there is no stable item id): the screen says so, once.
+    expect(screen.texts().filter(text => text === 'Items are counted by item name.')).toHaveLength(1);
+    expect(screen.labels().filter(label => label.startsWith('Stock lots') || label.startsWith('Lots over'))).toEqual([]);
     // The tag on an item gives its oldest line's age, and says so.
     expect(screen.texts()).toEqual(expect.arrayContaining(['Oldest 400 days', 'Oldest 300 days', 'Oldest 150 days', 'Oldest 30 days']));
   });
@@ -654,10 +664,10 @@ describe('stock aging, units and the Items tile', () => {
     expect(screen.labels()).toContain('Items over 364 days: 1');
   });
 
-  it('every customer: the Items tile is still the server\'s figure, as the list has customers and no items to count', async () => {
+  it('every customer: the lots tile is still the server\'s figure, as the list has customers and no items to count', async () => {
     const screen = await open(makeStore());
     expect(screen.customers()).toHaveLength(4);
-    expect(screen.labels()).toContain('Items: 14');
+    expect(screen.labels()).toContain('Stock lots: 14');
   });
 });
 
@@ -750,5 +760,55 @@ describe('stock aging, the report PDF', () => {
       { report: 'stock-aging', customer_id: 'c2', sort: { field: 'age', order: 'desc' } },
       'Stock_aging_Green_Valley_Traders.pdf'
     );
+  });
+});
+
+describe('stock aging, the report PDF of what the screen shows', () => {
+  const BASE = { report: 'stock-aging', customer_id: 'c2', sort: { field: 'age', order: 'desc' } };
+  const answerDialog = (text: string) =>
+    act(async () => {
+      pressAlertButton(alert, text);
+      await settleQueries();
+    });
+
+  it('one customer: sends the Stock age choice as the bucket, and none for All', async () => {
+    openGreenValley();
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open(makeStore());
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[BASE]]);
+
+    await screen.press('Filter by stock age');
+    await screen.press('Over 364 days');
+    makePdf.mockClear();
+    await screen.press('Share PDF');
+    // A broken screen sends no bucket, and the PDF lists the stock of every age.
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: 'over-364' }]]);
+
+    await screen.press('Stock age: Over 364 days. Change');
+    await screen.press('0–120 days');
+    makePdf.mockClear();
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: '0-120' }]]);
+    expect(sharePdf).toHaveBeenLastCalledWith(PDF_URL, 'Stock_aging_Green_Valley_Traders.pdf');
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('one customer with a search and a stock age: asks first to share without the search, then sends the bucket only', async () => {
+    openGreenValley();
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open(makeStore());
+    await screen.press('Filter by stock age');
+    await screen.press('0–120 days');
+    await screen.search('garlic');
+    expect(screen.items()).toEqual(['Garlic']);
+    await screen.press('Share PDF');
+    // The PDF keeps the stock age, so it is not called all the stock (review Step 3 M1).
+    expect(alertTexts(alert)).toEqual([
+      ['Share without the search?', 'The PDF will list every row your other choices keep, not only the 1 matching "garlic".'],
+    ]);
+    expect(makePdf).not.toHaveBeenCalled();
+    await answerDialog('Share without the search');
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: '0-120' }]]);
   });
 });

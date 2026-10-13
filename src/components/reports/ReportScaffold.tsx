@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeleton } from '@/components/skeletons/ListSkeleton';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { FilterBar } from '@/features/filters/components/FilterBar';
 import { filteredEmptyProps, type EmptyNounPlural } from '@/features/filters/components/FilteredListHeader';
 import { ListSearchField } from '@/features/filters/components/ListSearchField';
@@ -41,6 +42,12 @@ export interface ReportEmptyAction {
   icon?: string;
 }
 
+/** A group of figures with the heading of what they cover. */
+export interface ReportKpiGroup {
+  title: string;
+  items: KPIItem[];
+}
+
 export interface ReportScaffoldProps<T> {
   title: string;
   /** Whose data this is: "All customers" or the customer's name. */
@@ -58,15 +65,21 @@ export interface ReportScaffoldProps<T> {
    */
   searchIsServerSide?: boolean;
 
-  /** The state of the report's data. */
-  query: Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'>;
+  /** The state of the report's data. `isKeptCopy` adds "Saved copy, refreshing…" to the status line while it is asked again. */
+  query: Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'> &
+    Partial<Pick<ReportQuery<unknown>, 'isKeptCopy'>>;
 
   /** The figures over the rows. They describe the whole result, not the rows a search leaves. */
   kpis?: KPIItem[];
+  /**
+   * The figures in groups that cover different things, each under a heading that says what
+   * ("In 1 Sep – 30 Sep", "Right now"), in place of `kpis`. A group with no figures is left out.
+   */
+  kpiGroups?: ReportKpiGroup[];
   /** How many figure tiles the first load shows. */
   kpiPlaceholders?: number;
-  /** What the status line says. `updatedAt` comes from the query. */
-  status?: Omit<ReportStatusLineProps, 'updatedAt'>;
+  /** What the status line says. `updatedAt` and `refreshingKeptCopy` come from the query. */
+  status?: Omit<ReportStatusLineProps, 'updatedAt' | 'refreshingKeptCopy'>;
   /** Between the status line and the rows: charts, bucket bars. */
   children?: React.ReactNode;
 
@@ -129,6 +142,7 @@ function ReportScaffoldInner<T>({
   searchIsServerSide = false,
   query,
   kpis,
+  kpiGroups,
   kpiPlaceholders = 2,
   status,
   children,
@@ -155,7 +169,8 @@ function ReportScaffoldInner<T>({
       <ReportHeader title={title} subtitle={subtitle} onBack={onBack} actions={actions} />
       {filters?.config.search ? (
         <ListSearchField
-          listKey={filters.config.listKey}
+          // Per customer for one customer's report: its recent searches are not another's (SR-06).
+          listKey={filters.state.recentKey ?? filters.config.listKey}
           value={filters.state.search}
           onSearch={filters.state.setSearch}
           placeholder={filters.config.search.placeholder}
@@ -243,8 +258,8 @@ function ReportScaffoldInner<T>({
           </Pressable>
         </View>
       ) : null}
-      {kpis && kpis.length > 0 ? <KPIGrid items={kpis} compact /> : null}
-      <ReportStatusLine {...status} updatedAt={updatedAt} />
+      {kpiGroups ? <KpiGroups groups={kpiGroups} /> : kpis && kpis.length > 0 ? <KPIGrid items={kpis} compact /> : null}
+      <ReportStatusLine {...status} updatedAt={updatedAt} refreshingKeptCopy={Boolean(query.isKeptCopy) && isFetching} />
       {children}
     </>
   );
@@ -285,6 +300,22 @@ function ReportScaffoldInner<T>({
         showsVerticalScrollIndicator={false}
       />
     </View>
+  );
+}
+
+/** Each group of figures under its heading (a header for screen readers), in the order given. */
+function KpiGroups({ groups }: { groups: ReportKpiGroup[] }) {
+  return (
+    <>
+      {groups
+        .filter(group => group.items.length > 0)
+        .map(group => (
+          <View key={group.title}>
+            <SectionHeader title={group.title} />
+            <KPIGrid items={group.items} compact />
+          </View>
+        ))}
+    </>
   );
 }
 

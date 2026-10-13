@@ -84,6 +84,19 @@ export const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Mark every report's answer out of date after a write that changes what a report counts
+ * (a GRN, dispatch or invoice saved or deleted). A report on screen asks again at once; one
+ * that is not shown asks when it is next drawn. The answers kept on the phone stay: they are
+ * still the last thing the facility said, and are replaced when it answers again.
+ *
+ * Call it after a write SUCCEEDED only. Never awaited by the caller: a report's refresh must
+ * not hold up the save.
+ */
+export function invalidateReportQueries(): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: ['report'] });
+}
+
 // Query key factories for consistent key generation
 export const queryKeys = {
   // GRN queries

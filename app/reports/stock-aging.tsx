@@ -74,6 +74,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
   barCard: { padding: space.lg, marginTop: space.xs, marginBottom: space.md },
+  // Under a customer's tiles: what its Items tiles count.
+  itemsByName: { ...typography.footnote, color: t.text.secondary, marginHorizontal: layout.marginCompact, marginBottom: space.xs },
   rowPressed: { backgroundColor: t.surface.cardPressed },
 
   // An item
@@ -153,28 +155,52 @@ const days = (count: number) => formatCount(count, 'day');
 const units = (count: number) => formatCount(count, 'unit');
 
 /**
- * The figures over the rows. Two tiles count items, and the red bar of the bucket
- * card shows bags: the bar still draws the server's quantities by age, while the
- * "Items over 364 days" tile counts items. The RPC's items_over_365_days counts from
- * 365 and is not shown.
+ * The figures over the rows. Two tiles count, and the red bar of the bucket card
+ * shows bags: the bar still draws the server's quantities by age. The RPC's
+ * items_over_365_days counts from 365 and is not shown.
  *
- * The server's counts are of stock lines (an item stored on two GRNs counts twice):
- * `total_items`, and `by_bucket['364+'].item_count` too. So a customer's own screen
- * passes `items`, the counts of its item cards: `count` is the "Items" tile, and
- * `over364` the items that have at least one lot in the over-364 bucket, which is the
- * tile "Items over 364 days". The all-customers level has no item list (its rows are
- * customers) and shows the server's figures.
+ * The two levels count different things, and their tiles say which (SR-04):
+ * - The server's counts are of stock lines, that is lots (an item stored on two GRNs
+ *   counts twice): `total_items`, and `by_bucket['364+'].item_count` too. The
+ *   all-customers level has no item list (its rows are customers) and shows those
+ *   figures as "Stock lots" and "Lots over 364 days", as the stock aging PDF does.
+ * - A customer's own screen passes `items`, the counts of its item cards, which group
+ *   the lots by item name (there is no stable item id): `count` is the "Items" tile,
+ *   and `over364` the items with at least one lot in the over-364 bucket, the tile
+ *   "Items over 364 days". A note under the tiles says items are counted by name.
+ * So an item on two old lots is 2 lots on the overview and 1 item on its customer's
+ * screen: the counts differ on purpose, and the labels never claim the same unit.
  */
 function agingKpis(
   summary: { total_items: number; average_age_days: number },
   byBucket: Record<string, Pick<AgingBucketData, 'item_count'>>,
   items?: { count: number; over364: number }
 ): KPIItem[] {
+  const average: KPIItem = {
+    icon: 'calendar-clock',
+    value: summary.average_age_days,
+    label: tr('reports.stockAging.averageAge'),
+    unit: tr('reports.stockAging.daysUnit'),
+    variant: 'neutral',
+  };
+  if (items) {
+    return [
+      { icon: 'cube-outline', value: items.count, label: tr('common.items'), variant: 'primary' },
+      average,
+      { icon: 'alert', value: items.over364, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
+    ];
+  }
   return [
-    { icon: 'cube-outline', value: items?.count ?? summary.total_items, label: tr('common.items'), variant: 'primary' },
-    { icon: 'calendar-clock', value: summary.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
-    { icon: 'alert', value: items?.over364 ?? byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.itemsOver364'), variant: 'warning' },
+    { icon: 'cube-outline', value: summary.total_items, label: tr('reports.stockAging.lots'), variant: 'primary' },
+    average,
+    { icon: 'alert', value: byBucket['364+']?.item_count ?? 0, label: tr('reports.stockAging.lotsOver364'), variant: 'warning' },
   ];
+}
+
+/** The Items tiles of a customer count its item cards, which group the lots by item name (agingKpis). */
+function ItemsByNameNote() {
+  const styles = useThemedStyles(makeStyles);
+  return <Text style={styles.itemsByName}>{tr('reports.stockAging.itemsByName')}</Text>;
 }
 
 function BucketCard({ byBucket }: { byBucket: AllStockAgingData['by_bucket'] }) {
@@ -233,6 +259,8 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: rows.length } : null),
   });
   const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
@@ -359,7 +387,7 @@ interface CustomerReportProps {
 }
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
-  const filters = useReportFilters(STOCK_AGING_CUSTOMER);
+  const filters = useReportFilters(STOCK_AGING_CUSTOMER, { scope: customerId });
   const { view } = filters.request;
   const query = useReportQuery<StockAgingData>({
     key: [REPORT_ID, 'customer', customerId],
@@ -381,8 +409,16 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     [data, groups]
   );
   const { exportPdf, busy, available } = useReportExport({
-    buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, sort: reportPdfSort(REPORT_ID, 'customer', view.sort) }),
+    buildRequest: () => ({
+      report: REPORT_ID,
+      customer_id: customerId,
+      sort: reportPdfSort(REPORT_ID, 'customer', view.sort),
+      // The Stock age choice: the server keeps the same lines (one older than the field is asked first, useReportExport).
+      ...(view.bucket !== 'all' && { bucket: view.bucket }),
+    }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: shown.length } : null),
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
@@ -454,7 +490,12 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       empty={{ icon: 'package-variant-closed', title: tr('reports.shared.noStockForCustomer'), description: tr('reports.shared.noStockForCustomerDescription') }}
       errorTitle={tr('reports.stockAging.errorTitle')}
     >
-      {data && data.items.length > 0 ? <BucketCard byBucket={data.by_bucket} /> : null}
+      {data && data.items.length > 0 ? (
+        <>
+          <ItemsByNameNote />
+          <BucketCard byBucket={data.by_bucket} />
+        </>
+      ) : null}
     </ReportScaffold>
   );
 }

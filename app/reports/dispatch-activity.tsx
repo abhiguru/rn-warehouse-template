@@ -216,6 +216,8 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: rows.length } : null),
   });
   const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
@@ -317,7 +319,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   // updated during the render that first sees the answer so that no frame is drawn with the wrong sort.
   const [offerWeight, setOfferWeight] = useState(false);
   const config = offerWeight ? DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT : DISPATCH_ACTIVITY_CUSTOMER;
-  const filters = useReportFilters(config);
+  const filters = useReportFilters(config, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<DispatchActivityData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
@@ -353,6 +355,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       sort: reportPdfSort(REPORT_ID, 'customer', view.sort),
     }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: dispatches.length } : null),
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [

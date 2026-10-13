@@ -40,12 +40,16 @@ export const reports = {
     noStockForCustomer: 'No stock for this customer',
     noStockForCustomerDescription: 'Stock appears here once goods are received for this customer.',
     customerIdRequired: 'Customer ID is required',
+    // The facility under a report's title and the Reports tab's (useFacilityName), as it is read out.
+    facilityLabel: 'Facility: {{name}}',
   },
   // The shared report layout (ReportScaffold)
   scaffold: {
     updated: 'Last updated {{time}}',
     showing: 'Showing {{shown}} of {{total}}',
     notUpdated: "Couldn't update. These figures were loaded earlier.",
+    // Figures kept on the phone, shown while the facility is asked again (SR-10)
+    keptCopyRefreshing: 'Saved copy, refreshing…',
     // The one row above a customers list that opens the customer opened last
     lastOpened: 'Last opened',
     lastOpenedCustomer: 'Last opened: {{name}}',
@@ -139,6 +143,15 @@ export const reports = {
     loadMoreError: "Couldn't load more items.",
     // A backend that cannot sort: the order on screen covers only the items loaded so far.
     sortedAmongLoaded: 'Sorted among the {{count}} items loaded',
+    // The figures while a search is typed: every item's, not the matching ones'.
+    allItems: 'All items',
+    allStock: 'All stock',
+    // The GRN lines under an opened item, read 100 at a time. A line is one item on one GRN.
+    grnLinesOf: 'Showing {{shown}} of {{total}} GRN lines',
+    grnLinesShown: 'Showing {{shown}} GRN lines',
+    grnLinesMore: 'Show more GRN lines',
+    grnLinesLoading: 'Loading more GRN lines',
+    grnLinesLoadError: "Couldn't load more GRN lines.",
   },
   stockAging: {
     loadError: "Couldn't load stock aging. Check your connection and try again.",
@@ -146,8 +159,13 @@ export const reports = {
     bucket121to240: '121–240 days',
     bucket241to364: '241–364 days',
     bucketOver364: 'Over 364 days',
-    // The KPI of the over-364 bucket: a count of items, in the bucket's words.
+    // A customer's KPI of the over-364 bucket: a count of items (by name), in the bucket's words.
     itemsOver364: 'Items over 364 days',
+    // The all-customers KPIs count the server's stock lines (lots): an item on two GRNs counts twice.
+    lots: 'Stock lots',
+    lotsOver364: 'Lots over 364 days',
+    // Under a customer's tiles: its items are grouped by name, not by a stable item id.
+    itemsByName: 'Items are counted by item name.',
     ageOld: '{{age}} old',
     bucketShareA11y: '{{label}}: {{share}} of all stock, {{quantity}}.',
     groupA11y: '{{name}}, {{grns}}, {{units}}, oldest {{age}}',
@@ -196,7 +214,11 @@ export const reports = {
     periodAverages: 'Period averages',
     grnsPerDay: 'GRNs per day',
     dispatchesPerDay: 'Dispatches per day',
-    recentActivity: 'Recent activity',
+    // The figure groups: the period's movement, then what is true now whatever the period.
+    inPeriod: 'In {{period}}',
+    rightNow: 'Right now',
+    // The rows are the latest GRNs and dispatches overall, not those of the period.
+    latestActivity: 'Latest activity (any date)',
     noActivity: 'No GRNs or dispatches in this period. New activity appears here.',
     errorTitle: "Couldn't load the operations dashboard",
     service: {
@@ -223,7 +245,6 @@ export const reports = {
     // Customer rows
     activeToday: 'Active today',
     lastActive: 'Last active {{date}}',
-    invoicedAmount: '{{amount}} invoiced',
     inStock: 'in stock',
     customerLabel: '{{name}}, {{subtitle}}, {{stock}} in stock, {{grns}}, {{dispatches}}, {{invoiced}}',
     customerHint: "Opens this customer's activity",
@@ -255,15 +276,34 @@ export const reports = {
       periodLabel: 'Period {{value}}',
       summaryOne: 'Stock at the end of {{month}}: {{stock}}.',
       summaryRange: 'Stock went from {{first}} in {{firstMonth}} to {{latest}} in {{lastMonth}}. Highest {{highest}}.',
+      // The month in progress has no month end yet: its point is the stock as of today.
+      summaryNow: 'Stock as of {{date}}: {{stock}}.',
+      summaryOneNow: 'Stock was {{lastEnd}} at the end of {{lastMonth}}, and {{latest}} as of {{date}}.',
+      summaryRangeNow:
+        'Stock went from {{first}} in {{firstMonth}} to {{lastEnd}} at the end of {{lastMonth}}, and {{latest}} as of {{date}}. Highest {{highest}}.',
+      // Under the month in progress in the table, its row read out, and the note under the table.
+      asOf: 'as of {{date}}',
+      rowNowA11y: '{{month}}, as of {{date}}, {{stock}}',
+      footnoteNow: '{{month}}: as of {{date}}',
       empty: 'No stock levels to show for this period.',
     },
-    // Quick access cards
-    viewAll: 'View all',
-    quickAccessLabel: '{{title}}, {{count}}. View all',
-    recentGrns: 'Recent GRNs',
-    recentDispatches: 'Recent dispatches',
+    // Customer rows sorted by the invoiced amount show it first.
+    invoicedFact: 'Invoiced {{amount}}',
+    // Quick access cards: the period's total and the action name the period; the preview rows
+    // under them are the latest overall, and their heading says so.
+    quickAccessLabel: '{{head}}. {{action}}',
+    quickGrnsHead: 'GRNs in {{period}}: {{count}}',
+    quickGrnsAction: 'View GRNs in {{period}}',
+    latestGrns: 'Latest GRNs (any date)',
+    quickDispatchesHead: 'Dispatches in {{period}}: {{count}}',
+    quickDispatchesAction: 'View dispatches in {{period}}',
+    latestDispatches: 'Latest dispatches (any date)',
+    quickInvoicedHead: 'Invoiced in {{period}}: {{amount}}',
+    quickInvoicesAction: 'View invoices in {{period}}',
+    latestInvoices: 'Latest invoices (any date)',
+    currentStockHead: 'Current stock: {{count}}',
+    viewStockAge: 'View stock age',
     topStockItems: 'Top stock items',
-    recentInvoices: 'Recent invoices',
     grnNumber: 'GRN {{number}}',
     dispatchNumber: 'Dispatch {{number}}',
     invoiceNumber: 'Invoice {{number}}',
@@ -365,8 +405,22 @@ export const reports = {
     notAccepted: "The server didn't accept this request. Update the app and try again.",
     // Shown before the share sheet when the server cut the PDF short.
     truncated: 'This PDF shows the first {{shown}} of {{total}} rows.',
-    // Shown instead of a PDF of all the invoices when the facility's server cannot filter the PDF by payment.
+    // Asked when the facility's server cannot apply a filter or the search to the PDF (Payment, Invoicing, Stock
+    // age, the item search): the full report is shared only if the person agrees (fullReportTitle, shareFullReport).
     filterNeedsUpdate:
-      "This facility's server can't filter the PDF by payment yet. Remove the Payment filter to share all the invoices, or ask for a server update.",
+      "This facility's server can't apply your filter or search to the PDF yet. You can share the full report, or cancel and ask for a server update.",
+    // The question before a PDF that will not follow what the screen shows, and its button.
+    fullReportTitle: 'Share the full report?',
+    shareFullReport: 'Share full report',
+    // A search the PDF does not apply: said before the export. The count is of the rows the search leaves on screen.
+    searchNotApplied: 'The PDF will include every row of the period, not only the {{count}} matching "{{query}}".',
+    searchNotAppliedStock: 'The PDF will include all the stock, not only the {{count}} matching "{{query}}".',
+    // The same when the request keeps a filter the PDF applies (Payment, Invoicing, Stock age): the PDF is not the
+    // full report, it drops only the search. Its question and button.
+    withoutSearchTitle: 'Share without the search?',
+    shareWithoutSearch: 'Share without the search',
+    searchNotAppliedFiltered:
+      'The PDF will list every row of the period that your other choices keep, not only the {{count}} matching "{{query}}".',
+    searchNotAppliedFilteredStock: 'The PDF will list every row your other choices keep, not only the {{count}} matching "{{query}}".',
   },
 };

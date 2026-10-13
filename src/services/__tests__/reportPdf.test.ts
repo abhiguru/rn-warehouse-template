@@ -5,7 +5,14 @@
 import { createAuthenticatedFetch } from '@/config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { setLanguage } from '@/i18n';
-import { generateReportPDF, reportPdfRequestBody, type ReportPdfRequest } from '../pdf-service';
+import {
+  REPORT_PDF_FILTER_FIELDS,
+  generateReportPDF,
+  reportPdfRequestBody,
+  reportPdfSearch,
+  withoutReportFilters,
+  type ReportPdfRequest,
+} from '../pdf-service';
 
 let mockConfigUrl = 'https://warehouse.example.test';
 jest.mock('@/config/supabaseConfig', () => ({
@@ -252,7 +259,7 @@ describe("the payment status of one customer's invoice history", () => {
 describe('a server that does not know the payment status', () => {
   const withStatus: ReportPdfRequest = { ...invoiceRequest, status: 'paid' };
   const FILTER_NEEDS_UPDATE =
-    "This facility's server can't filter the PDF by payment yet. Remove the Payment filter to share all the invoices, or ask for a server update.";
+    "This facility's server can't apply your filter or search to the PDF yet. You can share the full report, or cancel and ask for a server update.";
 
   it('is refused with its own reason and message after one request, and no PDF of all the invoices is asked for', async () => {
     // A second answer is ready, as the old retry would have found it: the new code must not use it.
@@ -288,7 +295,7 @@ describe('a server that does not know the payment status', () => {
     const result = await generateReportPDF(withStatus);
     expect(result.reason).toBe('filter-unsupported');
     expect(result.error).toBe(
-      'આ કોલ્ડ સ્ટોરેજનું સર્વર હજુ PDFને ચુકવણી મુજબ ફિલ્ટર કરી શકતું નથી. બધા ઇન્વૉઇસ શેર કરવા ચુકવણી ફિલ્ટર કાઢી નાખો, અથવા સર્વર અપડેટ કરવાનું કહો.'
+      'આ કોલ્ડ સ્ટોરેજનું સર્વર હજુ PDFમાં તમારું ફિલ્ટર કે શોધ લાગુ કરી શકતું નથી. તમે આખો અહેવાલ શેર કરી શકો છો, અથવા રદ કરીને સર્વર અપડેટ કરવાનું કહો.'
     );
   });
 
@@ -350,6 +357,125 @@ describe('a server that does not know the payment status', () => {
     expect(await generateReportPDF(withStatus)).toMatchObject({ success: true, pdfUrl: SIGNED_URL });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(bodyOf(0)).toHaveProperty('status', 'paid');
+  });
+});
+
+describe('the Invoicing choice of one customer\'s GRN activity', () => {
+  const grnRequest: ReportPdfRequest = { ...periodRequest, invoicing: 'not_invoiced' };
+
+  it.each(['invoiced', 'not_invoiced'] as const)('is sent as "%s" with the customer, the dates and the sort', async invoicing => {
+    jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
+    await generateReportPDF({ ...periodRequest, invoicing });
+    expect(sentBody()).toEqual({
+      report: 'grn-activity',
+      customer_id: CUSTOMER_ID,
+      invoicing,
+      from: '2026-09-01',
+      to: '2026-09-30',
+      sort: { field: 'date', order: 'desc' },
+      lang: 'en',
+    });
+  });
+
+  it('is left out with none, at the all-customers level, for another report and for any other value', () => {
+    expect(reportPdfRequestBody(periodRequest)).not.toHaveProperty('invoicing');
+    expect(reportPdfRequestBody({ ...grnRequest, customer_id: null })).not.toHaveProperty('invoicing');
+    expect(reportPdfRequestBody({ ...grnRequest, customer_id: '' })).not.toHaveProperty('invoicing');
+    for (const report of ['dispatch-activity', 'invoice-history', 'customer-activity'] as const) {
+      expect(reportPdfRequestBody({ ...grnRequest, report })).not.toHaveProperty('invoicing');
+    }
+    expect(reportPdfRequestBody({ report: 'stock-aging', customer_id: CUSTOMER_ID, invoicing: 'invoiced' })).not.toHaveProperty('invoicing');
+    for (const invoicing of ['all', '', 'INVOICED', 'not-invoiced', null, 1]) {
+      expect(reportPdfRequestBody({ ...periodRequest, invoicing } as unknown as ReportPdfRequest)).not.toHaveProperty('invoicing');
+    }
+  });
+});
+
+describe("the Stock age choice of one customer's stock aging", () => {
+  const agingRequest: ReportPdfRequest = { report: 'stock-aging', customer_id: CUSTOMER_ID, sort: { field: 'age', order: 'desc' } };
+
+  it.each(['0-120', '121-240', '241-364', 'over-364'] as const)('is sent as "%s" with the customer and the sort, without dates', async bucket => {
+    jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
+    await generateReportPDF({ ...agingRequest, bucket });
+    expect(sentBody()).toEqual({ report: 'stock-aging', customer_id: CUSTOMER_ID, bucket, sort: { field: 'age', order: 'desc' }, lang: 'en' });
+  });
+
+  it('is left out with none, at the all-customers level, for another report and for any other value', () => {
+    expect(reportPdfRequestBody(agingRequest)).not.toHaveProperty('bucket');
+    expect(reportPdfRequestBody({ report: 'stock-aging', bucket: 'over-364' })).not.toHaveProperty('bucket');
+    expect(reportPdfRequestBody({ report: 'stock-summary', customer_id: CUSTOMER_ID, bucket: 'over-364' })).not.toHaveProperty('bucket');
+    expect(reportPdfRequestBody({ ...periodRequest, bucket: 'over-364' })).not.toHaveProperty('bucket');
+    // '364+' is the RPC's own key, not the request's.
+    for (const bucket of ['all', '364+', 'over_364', '0-119', '', null]) {
+      expect(reportPdfRequestBody({ ...agingRequest, bucket } as unknown as ReportPdfRequest)).not.toHaveProperty('bucket');
+    }
+  });
+});
+
+describe('the search of the item stock summary', () => {
+  const itemRequest: ReportPdfRequest = { report: 'item-stock-summary', sort: { field: 'item', order: 'asc' } };
+
+  it('is sent trimmed, at either level, with the sort and without dates', async () => {
+    jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
+    await generateReportPDF({ ...itemRequest, search: '  onion bags ' });
+    expect(sentBody()).toEqual({ report: 'item-stock-summary', search: 'onion bags', sort: { field: 'item', order: 'asc' }, lang: 'en' });
+    expect(reportPdfRequestBody({ ...itemRequest, customer_id: CUSTOMER_ID, search: 'ડુંગળી' })).toMatchObject({ customer_id: CUSTOMER_ID, search: 'ડુંગળી' });
+  });
+
+  it('is sent up to 80 characters and left out beyond, blank, with a control character, or for another report', () => {
+    const eighty = 'a'.repeat(80);
+    expect(reportPdfRequestBody({ ...itemRequest, search: eighty })).toHaveProperty('search', eighty);
+    expect(reportPdfRequestBody({ ...itemRequest, search: ` ${eighty} ` })).toHaveProperty('search', eighty);
+    expect(reportPdfRequestBody({ ...itemRequest, search: `${eighty}b` })).not.toHaveProperty('search');
+    for (const search of ['', '   ', 'onion\nbags', 'tab\there', 'bell\u0007', 'c1\u0085', undefined, null, 5]) {
+      expect(reportPdfRequestBody({ ...itemRequest, search } as unknown as ReportPdfRequest)).not.toHaveProperty('search');
+    }
+    for (const report of ['stock-summary', 'stock-aging'] as const) {
+      expect(reportPdfRequestBody({ report, customer_id: CUSTOMER_ID, search: 'onion' })).not.toHaveProperty('search');
+    }
+    expect(reportPdfRequestBody({ ...periodRequest, search: 'onion' })).not.toHaveProperty('search');
+  });
+
+  it('reportPdfSearch says which searches a PDF can carry', () => {
+    expect(reportPdfSearch(' onion ')).toBe('onion');
+    expect(reportPdfSearch('x'.repeat(81))).toBeUndefined();
+    expect(reportPdfSearch('')).toBeUndefined();
+    expect(reportPdfSearch(undefined)).toBeUndefined();
+  });
+});
+
+describe('the request without its filters', () => {
+  it('keeps the report, customer, period, sort and language, and drops every filter field', () => {
+    const narrowed = { ...periodRequest, lang: 'gu', status: 'paid', invoicing: 'invoiced', bucket: 'over-364', search: 'onion' } as ReportPdfRequest;
+    expect(withoutReportFilters(narrowed)).toEqual({ ...periodRequest, lang: 'gu' });
+    expect([...REPORT_PDF_FILTER_FIELDS]).toEqual(['status', 'invoicing', 'bucket', 'search']);
+  });
+});
+
+describe('a server that does not know a filter field', () => {
+  const FILTER_NEEDS_UPDATE =
+    "This facility's server can't apply your filter or search to the PDF yet. You can share the full report, or cancel and ask for a server update.";
+  const narrowed: [string, ReportPdfRequest][] = [
+    ['invoicing', { ...periodRequest, invoicing: 'not_invoiced' }],
+    ['bucket', { report: 'stock-aging', customer_id: CUSTOMER_ID, bucket: 'over-364' }],
+    ['search', { report: 'item-stock-summary', search: 'onion' }],
+  ];
+
+  it.each(narrowed)('refuses a request with %s as filter-unsupported, after one request', async (field, request) => {
+    jest
+      .mocked(fetch)
+      .mockResolvedValueOnce(refusal(UNKNOWN_FIELD))
+      .mockResolvedValueOnce(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
+    expect(await generateReportPDF(request)).toEqual({ success: false, reason: 'filter-unsupported', error: FILTER_NEEDS_UPDATE });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0)).toHaveProperty(field);
+    nothingLogged();
+  });
+
+  it.each(narrowed)('is the normal failure when %s was left out of the body', async (field, request) => {
+    jest.mocked(fetch).mockResolvedValue(refusal(UNKNOWN_FIELD));
+    expect((await generateReportPDF(withoutReportFilters(request))).reason).toBe('not-accepted');
+    expect(bodyOf(0)).not.toHaveProperty(field);
   });
 });
 

@@ -49,7 +49,7 @@ import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/Prin
 import { Button } from '@/components/ui/Button';
 import { printGRNRange } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
-import { StatusTag, Avatar } from '@/components/ui';
+import { StatusTag } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, singleLineText } from '@/theme/tokens';
@@ -776,8 +776,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     );
   }, [loadingMore, styles, t]);
 
-  const userName = userProfile?.name || 'User';
-
   const renderHeader = (interactive: boolean) => (
     <View style={styles.header}>
       <Text style={styles.headerTitle} accessibilityRole="header">{translate('lists.grn.title')}</Text>
@@ -802,7 +800,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           accessibilityRole="button"
           accessibilityLabel={translate('common.openSettings')}
         >
-          <Avatar name={userName} id={userProfile?.id} size="sm" />
+          <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
         </Pressable>
       </View>
     </View>

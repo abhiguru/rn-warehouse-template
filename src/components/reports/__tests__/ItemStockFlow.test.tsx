@@ -21,14 +21,17 @@ import { getAuthenticatedClient, getSessionIdentity } from '@/config/supabaseCon
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { readReportCache, writeReportCache } from '@/features/reports/reportCache';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
-import { getAllGRNItems } from '@/services/grn-service';
+import { getAllGRNItems, getCustomerGRNItems } from '@/services/grn-service';
+import { queryClient } from '@/lib/queryClient';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { forgetItemSortSupport } from '@/services/stock-service';
-import listFilterReducer from '@/store/slices/listFilterSlice';
+import listFilterReducer, { applyListFilters } from '@/store/slices/listFilterSlice';
+import { SEARCH_KEY } from '@/features/filters/types';
 import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
 import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 import { showAlert } from '@/utils/alert';
+import { alertTexts, pressAlertButton } from '@/tests/helpers/alertMock';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
 
@@ -70,7 +73,8 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'aut
 jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCustomerGRNItems: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// askAlert draws through the stand-in showAlert: a dialog the export waits on is answered by pressing its button.
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
@@ -201,6 +205,9 @@ beforeEach(async () => {
   resetReportExportAvailability();
   sharePdf.mockResolvedValue({ success: true });
   rpc.mockReset();
+  // A once-answer a failed test left unused must not answer the next test's drill-down.
+  grnItems.mockReset();
+  jest.mocked(getCustomerGRNItems).mockReset();
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
   jest.mocked(getSessionIdentity).mockResolvedValue(null);
 });
@@ -294,8 +301,9 @@ describe('the search (backend with migration 52)', () => {
     // Answered: the spinner gives way to the clear button.
     expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Searching')).toHaveLength(0);
     expect(screen.has('Clear search')).toBe(true);
-    // The figures cover every item, not the one the search leaves (§14.10).
-    expect(screen.figure('Items')).toBe('Items: 3');
+    // The figures cover every item, not the one the search leaves (§14.10), and say so.
+    expect(screen.figure('All items')).toBe('All items: 3');
+    expect(screen.figure('Items')).toBeUndefined();
     expect(rpc).toHaveBeenCalledTimes(3);
   });
 });
@@ -310,7 +318,9 @@ describe('the figures with a search typed (backend with migration 52)', () => {
     return { data: { success: true, data: { ...answer.data.data, summary } }, error: null };
   };
 
-  it('are those of the whole list, from its first page already read; without it in memory, the searched ones, and nothing more is asked', async () => {
+  const figures = (screen: Awaited<ReturnType<typeof open>>) => [screen.figure('All items'), screen.figure('All stock')];
+
+  it('are those of the whole list, from its first page already read, under any sort, and nothing more is asked', async () => {
     serve(totalling(FEW));
     const screen = await open();
     expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 3', 'Stock: 130']);
@@ -319,15 +329,62 @@ describe('the figures with a search typed (backend with migration 52)', () => {
     await screen.waitForSearch();
     expect(screen.items()).toEqual(['Example Onions']);
     // A broken screen would show the searched list's figures: Items 1, Stock 90.
-    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 3', 'Stock: 130']);
+    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' })]);
 
-    // Sorted otherwise with the search still typed: that sort's list without the search was never read.
+    // Sorted otherwise with the search still typed: the whole list read under the other sort still counts.
     await screen.press('Sorted by Item, A to Z. Change sort');
     await screen.press('Stock');
     await screen.press('Done');
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' }), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
-    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 1', 'Stock: 90']);
+    // A broken screen falls back to the searched figures here: Items 1, Stock 90.
+    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual([undefined, undefined]);
+  });
+
+  it('with a search kept from before the screen opened, the whole list is asked for once, after the searched one', async () => {
+    serve(totalling(FEW));
+    const store = makeStore();
+    store.dispatch(applyListFilters({ key: 'report-item-stock', values: { [SEARCH_KEY]: 'oni' } }));
+    const screen = await open(store);
+    expect(screen.items()).toEqual(['Example Onions']);
+    // A broken screen asks for the searched list alone and shows Items 1, Stock 90.
+    expect(calls()).toEqual([page0({ p_search_query: 'oni' }), page0()]);
+    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+
+    // Sorted otherwise: the whole list already read stands; it is not asked for again.
+    await screen.press('Sorted by Item, A to Z. Change sort');
+    await screen.press('Stock');
+    await screen.press('Done');
+    expect(calls()).toEqual([page0({ p_search_query: 'oni' }), page0(), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
+    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+  });
+
+  it('say when the figures were read, not when the search was answered, until a pull to refresh reads them again', async () => {
+    let stock = 130;
+    serve(params => {
+      const answer = totalling(FEW)(params) as { data: { data: { summary: { total_stock: number } } } };
+      if (!params.p_search_query) answer.data.data.summary.total_stock = stock;
+      return answer as Answer;
+    });
+    const screen = await open();
+    expect(screen.status()).toBe('Last updated 10:00 am');
+
+    jest.setSystemTime(new Date(2026, 9, 12, 10, 5));
+    stock = 140;
+    await screen.type('oni');
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual(['Example Onions']);
+    // The figures are the ones read at 10:00. A broken screen says 10:05, as if they had been read again.
+    expect(screen.status()).toBe('Last updated 10:00 am');
+    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+
+    await screen.refresh();
+    await screen.run(() => undefined);
+    // The pull reads the searched list and the whole list again.
+    expect(calls().slice(2)).toEqual([page0({ p_search_query: 'oni' }), page0()]);
+    expect(screen.status()).toBe('Last updated 10:05 am');
+    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 140']);
   });
 });
 
@@ -688,6 +745,45 @@ describe('a pull to refresh with later pages loaded (backend with migration 52)'
   });
 });
 
+describe('the first page answered again without a pull (backend with migration 52)', () => {
+  // As a return to the screen or a saved document asks it again: the first page alone, not the later ones.
+  const FIRST = ['report', 'item-stock-summary', 'customers', '', 'item_name', 'asc', 0];
+  const askFirstAgain = () => queryClient.refetchQueries({ queryKey: FIRST, exact: true });
+  const offsets = () => calls().map(params => params.p_offset);
+
+  it('drops the later pages when the first page came back different: the next page is asked from offset 50', async () => {
+    let stock = 4321;
+    serve(params => facility(MANY, { sorts: true, stock })(params));
+    const screen = await open();
+    await screen.endReached();
+    expect(screen.items()).toHaveLength(100);
+
+    stock = 4000;
+    await screen.run(askFirstAgain);
+    expect(offsets()).toEqual([0, 50, 0]);
+    // A broken screen keeps the 100 rows built on the old first page and next asks for offset 100.
+    expect(screen.items()).toHaveLength(50);
+    expect(screen.figure('Stock')).toBe('Stock: 4,000');
+    await screen.endReached();
+    expect(offsets()).toEqual([0, 50, 0, 50]);
+    expect(screen.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
+  });
+
+  it('keeps the later pages when the first page came back the same: the next page is asked from offset 100', async () => {
+    serve(facility(MANY, { sorts: true }));
+    const screen = await open();
+    await screen.endReached();
+    expect(screen.items()).toHaveLength(100);
+
+    await screen.run(askFirstAgain);
+    expect(offsets()).toEqual([0, 50, 0]);
+    expect(screen.items()).toHaveLength(100);
+    await screen.endReached();
+    expect(offsets()).toEqual([0, 50, 0, 100]);
+    expect(screen.items()).toEqual(MANY.map(row => row.item_name));
+  });
+});
+
 describe('the copy kept on the phone (backend with migration 52)', () => {
   const account = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', subject: 'user-a' };
   const FIRST_KEY = ['item-stock-summary', 'customers', '', 'item_name', 'asc', 0];
@@ -706,7 +802,7 @@ describe('the copy kept on the phone (backend with migration 52)', () => {
     await screen.run(() => undefined);
     // The phone's copy is on screen while the facility is asked.
     expect(screen.items()).toHaveLength(50);
-    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 8:00 am');
+    expect(screen.status()).toBe('Showing 50 of 123 · Saved copy, refreshing… · Last updated 8:00 am');
     await screen.endReached();
     // A broken screen asks for offset 50 here, against a first page that may have changed.
     expect(calls()).toEqual([page0()]);
@@ -762,37 +858,171 @@ describe('the GRNs of an item', () => {
     expect(screen.texts()).not.toContain("Couldn't load the GRNs for this item.");
   });
 
-  /** The GRNs of an item, as the drill-down answers: `count` rows, `total` in all. */
-  const grnPage = (count: number, total?: number) => ({
+  /**
+   * The GRN lines of an item as the drill-down answers: `count` rows from `offset`, `total` in all
+   * (no pagination at all when `total` is left out); `has_more` as the server says it, by default
+   * whether lines remain after these.
+   */
+  const grnPage = (count: number, total?: number, { offset = 0, hasMore }: { offset?: number; hasMore?: boolean } = {}) => ({
     success: true,
     message: '',
     data: {
-      items: Array.from({ length: count }, (_, index) => ({ ...GRN, id: `gi-${index}`, grn_id: `g${index}`, gr_no: String(400 + index) })),
-      ...(total === undefined ? {} : { pagination: { total_count: total, limit: 100, offset: 0, has_more: total > count } }),
+      items: Array.from({ length: count }, (_, index) => ({
+        ...GRN,
+        id: `gi-${offset + index}`,
+        grn_id: `g${offset + index}`,
+        gr_no: String(400 + offset + index),
+      })),
+      ...(total === undefined ? {} : { pagination: { total_count: total, limit: 100, offset, has_more: hasMore ?? offset + count < total } }),
     },
   });
   const footnotes = (screen: Awaited<ReturnType<typeof open>>) => screen.texts().filter(text => text.startsWith('Showing') && !text.includes('Last updated'));
+  /** What the drill-down asks for the item `itemId`: the first 100 lines, or 100 from `offset`. */
+  const drillDown = (itemId: string, offset = 0) => ({
+    p_filters: { item_ids: [itemId], stock_status: 'in_stock' },
+    p_limit: 100,
+    ...(offset > 0 ? { p_offset: offset } : {}),
+  });
+  const MORE = 'Show more GRN lines';
 
-  it('says under the rows how many there are in all when the item has more than were read', async () => {
+  it('reads every GRN line of an item, 100 at a time: "Show more GRN lines" asks from where the lines end', async () => {
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
     const screen = await open();
     await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1'));
     expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
-    expect(footnotes(screen)).toEqual(['Showing 100 of 240']);
+    expect(footnotes(screen)).toEqual(['Showing 100 of 240 GRN lines']);
+    // A broken screen stops here: the note, and no way to the other 140 lines.
+    expect(screen.has(MORE)).toBe(true);
 
-    // Every row read (3 of 3): no note.
+    grnItems.mockResolvedValueOnce(grnPage(100, 240, { offset: 100 }) as never);
+    await screen.press(MORE);
+    expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 100));
+    const rows = () => screen.card('Example Garlic')!.props.grns.rows as { key: string; grNo: string }[];
+    expect(rows()).toHaveLength(200);
+    expect(rows()[100].grNo).toBe('500');
+    expect(footnotes(screen)).toEqual(['Showing 200 of 240 GRN lines']);
+
+    grnItems.mockResolvedValueOnce(grnPage(40, 240, { offset: 200 }) as never);
+    await screen.press(MORE);
+    expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 200));
+    expect(rows()).toHaveLength(240);
+    expect(new Set(rows().map(row => row.key)).size).toBe(240);
+    // Every line read: no note, nothing more to show.
+    expect(footnotes(screen)).toEqual([]);
+    expect(screen.has(MORE)).toBe(false);
+    expect(grnItems).toHaveBeenCalledTimes(3);
+  });
+
+  it('every line read at once (3 of 3): no note and nothing more to show', async () => {
+    serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(3, 3) as never);
+    const screen = await open();
     await screen.run(() => screen.card('Example Onions')!.props.onToggle());
     expect(screen.card('Example Onions')!.props.grns.rows).toHaveLength(3);
     expect(screen.card('Example Onions')!.props.grnsFooter).toBeUndefined();
-    expect(footnotes(screen)).toEqual(['Showing 100 of 240']);
+    expect(footnotes(screen)).toEqual([]);
+    expect(screen.has(MORE)).toBe(false);
+  });
 
-    // No total in the answer: the item's own GRN count (Example Cumin: 3) says how many there are.
+  it("without a total in the answer: a page shorter than 100 is the end (the item's GRN count is not taken for a line count)", async () => {
+    serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(2) as never);
+    const screen = await open();
     await screen.run(() => screen.card('Example Cumin')!.props.onToggle());
-    // Cumin's card is drawn above Garlic's (A to Z).
-    expect(footnotes(screen)).toEqual(['Showing 2 of 3', 'Showing 100 of 240']);
+    // Cumin has 3 GRNs. A broken screen says "Showing 2 of 3", counting GRNs against lines.
+    expect(footnotes(screen)).toEqual([]);
+    expect(screen.has(MORE)).toBe(false);
+  });
+
+  it('without a total in the answer: a full page says how many lines are shown and offers more until a page is short', async () => {
+    serve(facility(FEW, { sorts: true }));
+    grnItems.mockResolvedValueOnce(grnPage(100) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(footnotes(screen)).toEqual(['Showing 100 GRN lines']);
+    expect(screen.has(MORE)).toBe(true);
+
+    grnItems.mockResolvedValueOnce(grnPage(30, undefined, { offset: 100 }) as never);
+    await screen.press(MORE);
+    expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 100));
+    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(130);
+    expect(footnotes(screen)).toEqual([]);
+    expect(screen.has(MORE)).toBe(false);
+  });
+
+  it('a failure to read more keeps the lines read and offers "Try again", which asks from the same place', async () => {
+    serve(facility(FEW, { sorts: true }));
+    grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+
+    let answer!: (value: unknown) => void;
+    grnItems.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)) as never);
+    await screen.press(MORE);
+    expect(screen.texts()).toContain('Loading more GRN lines');
+    expect(screen.has(MORE)).toBe(false);
+    await screen.run(() => answer({ success: false, message: 'fictional failure' }));
+    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
+    expect(screen.texts()).toContain("Couldn't load more GRN lines.");
+    expect(screen.texts()).not.toContain("Couldn't load the GRNs for this item.");
+    expect(footnotes(screen)).toEqual(['Showing 100 of 240 GRN lines']);
+
+    grnItems.mockResolvedValueOnce(grnPage(100, 240, { offset: 100 }) as never);
+    await screen.press('Try again');
+    expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 100));
+    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(200);
+    expect(screen.texts()).not.toContain("Couldn't load more GRN lines.");
+    expect(footnotes(screen)).toEqual(['Showing 200 of 240 GRN lines']);
+  });
+
+  it("one customer: follows the server's has_more, not the size of the page, and asks that customer's lines", async () => {
+    serve(facility(FEW, { sorts: true }));
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    const customerGrnItems = jest.mocked(getCustomerGRNItems);
+    customerGrnItems.mockResolvedValueOnce(grnPage(100, 100, { hasMore: false }) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(customerGrnItems).toHaveBeenLastCalledWith('c2', drillDown('i1'));
+    // A full page that the server says is the last: nothing more.
+    expect(screen.has(MORE)).toBe(false);
+    expect(footnotes(screen)).toEqual([]);
+
+    customerGrnItems.mockResolvedValueOnce(grnPage(100, 150) as never);
+    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
+    expect(footnotes(screen)).toEqual(['Showing 100 of 150 GRN lines']);
+    customerGrnItems.mockResolvedValueOnce(grnPage(50, 150, { offset: 100 }) as never);
+    await screen.press(MORE);
+    expect(customerGrnItems).toHaveBeenLastCalledWith('c2', drillDown('i2', 100));
+    expect(screen.card('Example Onions')!.props.grns.rows).toHaveLength(150);
+    expect(screen.has(MORE)).toBe(false);
+    expect(grnItems).not.toHaveBeenCalled();
+  });
+
+  it('more lines that answer after the search has changed are not added anywhere', async () => {
+    serve(facility(FEW, { sorts: true }));
+    grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    let answer!: (value: unknown) => void;
+    grnItems.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)) as never);
+    await screen.press(MORE);
+
+    await screen.type('ga');
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual(['Example Garlic']);
+    // The search closed the card; opened again, its lines are read from the start.
+    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(false);
+    grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1'));
+
+    // The lines asked for before the search answer now. A broken screen adds them: 200 rows.
+    await screen.run(() => answer(grnPage(100, 240, { offset: 100 })));
+    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
+    expect(footnotes(screen)).toEqual(['Showing 100 of 240 GRN lines']);
+    expect(screen.has(MORE)).toBe(true);
   });
 
   it('a late answer for a search that has gone leaves the cards opened since alone', async () => {
@@ -917,6 +1147,82 @@ describe('the report PDF (backend with migration 52)', () => {
       { report: 'item-stock-summary', customer_id: 'c2', sort: { field: 'item', order: 'asc' } },
       'Item_stock_summary_Green_Valley_Traders.pdf'
     );
+  });
+});
+
+describe('the report PDF of the list on screen (backend with migration 52)', () => {
+  const ALL = { report: 'item-stock-summary', sort: { field: 'item', order: 'asc' } };
+  const FILE = 'Item_stock_summary_All_customers.pdf';
+  const answerDialog = (text: string) =>
+    act(async () => {
+      pressAlertButton(alert, text);
+      await settleQueries();
+    });
+
+  it('sends the search as the server searched the rows, and asks nothing', async () => {
+    serve(facility(FEW, { sorts: true }));
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open();
+    await screen.type('oni');
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual(['Example Onions']);
+    await screen.press('Share PDF');
+    // A broken screen leaves the search out: the PDF lists all three items.
+    expect(makePdf.mock.calls).toEqual([[{ ...ALL, search: 'oni' }]]);
+    expect(alert).not.toHaveBeenCalled();
+    expect(sharePdf.mock.calls).toEqual([[PDF_URL, FILE]]);
+
+    // One customer: the same, with the customer.
+    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    makePdf.mockClear();
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    const one = await open();
+    await one.type('gar');
+    await one.waitForSearch();
+    await one.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[{ report: 'item-stock-summary', customer_id: 'c2', sort: { field: 'item', order: 'asc' }, search: 'gar' }]]);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('a search longer than a PDF can carry (81 characters) is said first, and the PDF is of every item', async () => {
+    const long = `Example ${'x'.repeat(73)}`;
+    expect(long).toHaveLength(81);
+    serve(facility([...FEW, item('i9', long, 5, 50, 1)], { sorts: true }));
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open();
+    await screen.type(long);
+    await screen.waitForSearch();
+    expect(screen.items()).toEqual([long]);
+    await screen.press('Share PDF');
+    expect(alertTexts(alert)).toEqual([
+      ['Share the full report?', `The PDF will include all the stock, not only the 1 matching "Example ${'x'.repeat(32)}…".`],
+    ]);
+    expect(makePdf).not.toHaveBeenCalled();
+    await answerDialog('Share full report');
+    expect(makePdf.mock.calls).toEqual([[ALL]]);
+  });
+
+  it('a server that cannot search the PDF yet: asks before sharing every item, and asks for it without the search', async () => {
+    serve(facility(FEW, { sorts: true }));
+    makePdf
+      .mockResolvedValueOnce({ success: false, reason: 'filter-unsupported', error: 'fictional refusal' })
+      .mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
+    const screen = await open();
+    await screen.type('oni');
+    await screen.waitForSearch();
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[{ ...ALL, search: 'oni' }]]);
+    expect(alertTexts(alert)).toEqual([
+      [
+        'Share the full report?',
+        "This facility's server can't apply your filter or search to the PDF yet. You can share the full report, or cancel and ask for a server update.",
+      ],
+    ]);
+    // Nothing is shared until the person agrees.
+    expect(sharePdf).not.toHaveBeenCalled();
+    await answerDialog('Share full report');
+    expect(makePdf.mock.calls[1]).toEqual([ALL]);
+    expect(sharePdf.mock.calls).toEqual([[PDF_URL, FILE]]);
   });
 });
 

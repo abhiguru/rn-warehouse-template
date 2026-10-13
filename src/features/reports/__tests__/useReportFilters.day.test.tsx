@@ -56,6 +56,8 @@ const SUNDAY_NIGHT = new Date('2026-10-11T18:29:07Z'); // 11 October, 23:59 in I
 const MONDAY_MORNING = new Date('2026-10-11T18:31:07Z'); // 12 October, 00:01 in India
 
 type Request = ReturnType<typeof GRN_ACTIVITY_CUSTOMERS.toRequest>;
+/** The report choices of the account above on the facility the mock names (useReportPrefs). */
+const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 
 function mount() {
   let request!: Request;
@@ -90,6 +92,24 @@ describe('the day a report\'s request is counted from', () => {
     jest.setSystemTime(MONDAY_MORNING);
     report.draw();
     expect(report.request().period).toEqual({ from: '2026-06-15', to: '2026-10-12' });
+  });
+
+  it('turns "Today" over at midnight in India, and keeps "Last 120 days" as the period nobody chose', () => {
+    jest.useFakeTimers({ now: SUNDAY_NIGHT });
+    const report = mount();
+    // Nobody chose a period: the default is unchanged.
+    expect(report.request().period).toEqual({ from: '2026-06-14', to: '2026-10-11' });
+
+    mockState.reportPrefs = { byScope: { [SCOPE]: { period: { preset: 'today' }, sort: {}, pinned: [], recent: [], lastCustomer: {}, usedAt: 1 } } };
+    try {
+      report.draw();
+      expect(report.request().period).toEqual({ from: '2026-10-11', to: '2026-10-11' });
+      jest.setSystemTime(MONDAY_MORNING);
+      report.draw();
+      expect(report.request().period).toEqual({ from: '2026-10-12', to: '2026-10-12' });
+    } finally {
+      mockState.reportPrefs = { byScope: {} };
+    }
   });
 
   it('is not the phone\'s: its own midnight makes the request again only where that is India\'s midnight too', () => {

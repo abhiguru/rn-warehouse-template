@@ -14,7 +14,7 @@ import { CentralHeader } from '@/components/central/CentralHeader';
 import { Button } from '@/components/ui/Button';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { useAppDispatch } from '@/store/hooks';
-import { signOutEverywhere } from '@/store/centralSignOut';
+import { signOutPhoneWithMessages } from '@/features/account/useAccountActions';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { setCentralState, type FacilityStatus } from '@/config/centralState';
@@ -123,15 +123,8 @@ export default function FacilitiesScreen() {
         style: 'destructive',
         onPress: () => {
           setSigningOut(true);
-          void signOutEverywhere(dispatch)
-            .then(result => {
-              if (!result.ok)
-                showAlert(
-                  tr('auth.signOut.couldNotTitle'),
-                  result.reason === 'local_clear_failed' ? tr('central.signOut.notCleared') : tr('central.switch.busyMessage')
-                );
-            })
-            .finally(() => setSigningOut(false));
+          // The same sign-out and messages as "Sign out of this phone" inside a facility.
+          void signOutPhoneWithMessages(dispatch).finally(() => setSigningOut(false));
         },
       },
     ]);

@@ -17,6 +17,7 @@ import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
+import { invalidateReportQueries } from '@/lib/queryClient';
 
 // Identifiers, counts and error codes only: a GRN's names, notes, photo
 // addresses and the server's messages never reach the device log.
@@ -257,6 +258,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       log.error('save_grn returned failure');
       throw new Error(serverText(data?.message, t('grn.form.creationFailed')));
     }
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
 
     const rpcResult = data.data;
 
@@ -536,6 +539,8 @@ export const updateGRN = async (
     // Saved (also when this is the stored answer of an earlier attempt,
     // `idempotent: true`): whatever is saved next is a new save with a new key.
     beginGrnEditSession(grnId);
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
 
     // ✅ Photos removed in the form. update_grn deletes the rows it was not sent,
     // but only when it was sent at least one image, so the answer's own image

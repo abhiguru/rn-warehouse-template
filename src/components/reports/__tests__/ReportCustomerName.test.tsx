@@ -407,7 +407,7 @@ describe('customer activity opened by a link that pairs a customer with another 
     expect(getCustomerActivityDetail).toHaveBeenCalledWith(expect.objectContaining({ customerId: 'c1' }));
     expect(screen.subtitle()).toBe('Riverbank Produce');
 
-    await screen.press('Recent GRNs, 12 GRNs. View all');
+    await screen.press('GRNs in 15 Jun – 12 Oct: 12. View GRNs in 15 Jun – 12 Oct');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
     // The report the card opens has the name at once.

@@ -15,14 +15,21 @@ export const DATE_PRESETS: DatePreset[] = [
   { id: 'lastMonth', get label() { return t('filters.preset.lastMonth'); } },
 ];
 
+/** The lists' quick ranges a report offers too, for the day's and the week's work. */
+const DAILY_WORK: readonly DatePresetId[] = ['today', 'yesterday', 'last7'];
+
 /** Days in each "last N days" period of a report. */
 const LAST_DAYS = { last120: 120, last240: 240, last364: 364, last420: 420 } as const;
 
 /**
- * A report's periods (docs/STYLE_GUIDE.md §14.10): the four storage periods,
- * then the calendar ones. The financial year runs from April to March.
+ * A report's periods (docs/STYLE_GUIDE.md §14.10): the daily-work ones (today,
+ * yesterday, the last 7 days, as the lists offer them), the four storage
+ * periods, then the calendar ones. The financial year runs from April to March.
+ * A report counts them all from India's today (PERIOD_FIELD.today). The period
+ * nobody chose stays the last 120 days (DEFAULT_REPORT_PERIOD).
  */
 export const REPORT_DATE_PRESETS: DatePreset[] = [
+  ...DATE_PRESETS.filter(preset => DAILY_WORK.includes(preset.id)),
   { id: 'last120', get label() { return t('reports.period.lastDays', { count: LAST_DAYS.last120 }); } },
   { id: 'last240', get label() { return t('reports.period.lastDays', { count: LAST_DAYS.last240 }); } },
   { id: 'last364', get label() { return t('reports.period.lastDays', { count: LAST_DAYS.last364 }); } },
