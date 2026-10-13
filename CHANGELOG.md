@@ -36,6 +36,10 @@ Backend PR #96 (report PDF filters) merges first; the app falls back with consen
 - **Long customer names and chart labels fit (SR-O10):** cards stack under large text or long names; charts leave headroom.
 - **Reports show the facility name in their headers (SR-O11),** and so does the Reports tab.
 
+### Follow-ups
+
+- **The print range dialog keeps Print above the keyboard (SR-15 follow-up):** the two number fields scroll and the buttons stay below them, as in the deletion confirmation.
+
 ## Unreleased — performance review fixes (2026-10-13)
 
 No backend change.

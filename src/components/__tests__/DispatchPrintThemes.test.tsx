@@ -18,6 +18,10 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
+// PrintRangeDialog pads its overlay by the safe-area insets (keyboard-safe layout).
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }),
+}));
 jest.mock('@/config/demoCapabilities', () => ({
   DEMO_CAPABILITIES: { printing: true, sensors: false, realtime: true, customerDocuments: false },
 }));
