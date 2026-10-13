@@ -6,6 +6,7 @@
  */
 
 import { canOpenScreen, type RoleGatedScreen } from '@/config/roles';
+import type { FacilityCapabilities } from '@/config/facilityCapabilities';
 
 /**
  * Routes a signed-out person may open: sign-in, its code step, the facility choice, the
@@ -74,12 +75,19 @@ export interface RouteAuthState {
   role?: string | null;
   /** Present only when central login is configured in this build; absent, nothing below changes. */
   central?: CentralRouteState;
+  /**
+   * The facility's capabilities (src/config/facilityCapabilities.ts): a route of a
+   * capability it does not have is sent home like a route the role is not offered.
+   * Absent, only the role decides. The route guard always passes them.
+   */
+  capabilities?: FacilityCapabilities;
 }
 
 /**
  *   allow         render the screen
  *   login         signed out on a protected route: go to sign-in
- *   home          signed in on the sign-in screen, or on a screen the role is not offered
+ *   home          signed in on the sign-in screen, or on a screen the role or the facility
+ *                 (its capabilities) does not offer
  *   centralLogin  central login on, signed in nowhere: go to central sign-in
  *   facilities    central login on, signed in centrally with no facility session: go to My facilities
  */
@@ -162,6 +170,6 @@ export function decideRoute(route: string | readonly string[], auth: RouteAuthSt
   }
   const gate = roleGateFor(parts);
   // A Supabase session without a profile has no role yet; the screens' own checks apply.
-  if (gate && auth.role != null && !canOpenScreen(auth.role, gate)) return 'home';
+  if (gate && auth.role != null && !canOpenScreen(auth.role, gate, auth.capabilities)) return 'home';
   return 'allow';
 }

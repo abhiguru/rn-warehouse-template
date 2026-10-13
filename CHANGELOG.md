@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — live sensors (2026-10-13)
+
+Needs backend migration 74 (`sensor_latest`, `get_sensor_device`, the new `get_sensor_polling_data`): merge and deploy the backend first.
+
+### Facility capabilities
+
+- The app now reads a facility's `capabilities` from its public config (get-public-config) at every server verification and when a facility is opened, keeps them per server, and uses the demo set (printing and sensors off, live order updates on) until they are known.
+- Sensors (the Sensors screen, sensor details and the Settings row) are offered only where the facility's config turns `sensors` on, still to admin, supervisor and staff only; elsewhere the Settings row is hidden and a link to a sensors screen goes home. The row's subtitle now reads 'Live readings and history'.
+
+### Realtime
+
+- Realtime live updates are now table-agnostic: `subscribeToTableChanges` and `useLiveUpdates` carry the existing orders rules, and orders keep the same behaviour (channel `warehouse-orders`, 150 ms coalescing, no refetch on the first join, catch-up on refocus and reconnect).
+- Sensor screens follow `public.sensor_latest` live (channel `warehouse-sensors`) through `useSensorLiveUpdates`. A change marks only the sensor list and detail queries out of date, not a sensor's history; it needs backend migration 74, which publishes `sensor_latest`.
+
+### Sensors
+
+- The Sensors screen is now the live list for facilities with sensors: Sensors / Online / No recent data / Battery low figures, a Needs attention strip that names each sensor with a link to it, one row per sensor, with the reports' loading, error, saved-copy and pull-to-refresh behaviour.
+- The sensors list and the sensor detail no longer poll every 10 seconds. A Realtime change to `sensor_latest` asks for the latest values again, and a once-a-minute tick moves 'No recent data' and 'Updated N min ago' without a request. "No recent data" is measured from when the sensor was last heard from (`last_seen_at`, which a heartbeat without new values refreshes; else `measured_at`), the server's own rule.
+- The sensor detail reads the sensor with `get_sensor_device` and draws the sensor's temperature limits (`alert_config.temperature_max/min`, when a facility sets them) on the chart. The backend passes `alert_config` through as stored; a config without those keys (legacy rows carry only on/off flags) draws no lines. Needs backend migration 74: merge and deploy the backend first.
+
+### Gujarati, for review
+
+- New or changed Gujarati strings await the owner's review: `settings.features.sensorsSubtitle`, `sensors.list.offlineCount`, `sensors.list.alertsTitle`, `sensors.list.alertOpenHint`, `sensors.detail.thresholdMax`, `sensors.detail.thresholdMin`.
+
 ## Unreleased — Settings and Reports UX review fixes (2026-10-13)
 
 Backend PR #96 (report PDF filters) merges first; the app falls back with consent on an older server.

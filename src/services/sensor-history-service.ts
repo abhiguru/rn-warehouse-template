@@ -8,11 +8,19 @@ import {
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { ACCESS_REFUSED_CODE, isAccessRefusal, rpcRefusal, type RpcRefusal } from '@/utils/rpcRefusal';
 
 const sensorHistoryLogger = createLogger('SensorHistoryService');
 
+/** The code of a failure: an access refusal always has one that `isAccessRefusal` reads. */
+function failureCode(refusal: RpcRefusal): string | undefined {
+  if (isAccessRefusal(refusal)) return refusal.code === '42501' ? refusal.code : ACCESS_REFUSED_CODE;
+  return refusal.code;
+}
+
 /**
- * Fetch historical sensor data for a specific device
+ * Fetch historical sensor data for a specific device. The answer is shaped for
+ * `useReportQuery` (`ReportServiceResult`): a refusal carries a code `isAccessRefusal` reads.
  * @param deviceId - The sensor device UUID
  * @param daysBack - Number of days to look back (7, 14, 30, 90, or 365)
  * @returns Historical readings with aggregated data and summary statistics
@@ -21,6 +29,8 @@ export async function getSensorHistory(
   deviceId: string,
   daysBack: SensorHistoryPeriod = 7
 ): Promise<SensorHistoryResponse> {
+  const fallback = t('errors.sensor.historyFetchFailed');
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const authenticatedClient = await getAuthenticatedClient();
 
@@ -28,10 +38,10 @@ export async function getSensorHistory(
 
     const startTime = Date.now();
 
-    // Set a timeout for RPC calls (30 seconds)
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000)
-    );
+    // Given up after 30 seconds; the timer is cleared when the answer comes.
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000);
+    });
 
     const rpcPromise = authenticatedClient.rpc('get_sensor_history', {
       p_device_id: deviceId,
@@ -45,21 +55,15 @@ export async function getSensorHistory(
 
     if (error) {
       sensorHistoryLogger.error('RPC error:', error);
-      return {
-        success: false,
-        message: serverText(error.message, t('errors.sensor.historyFetchFailed')),
-        error: error.message,
-      };
+      const refusal = { text: error.message, code: error.code };
+      return { success: false, message: serverText(error.message, fallback), error: failureCode(refusal) };
     }
 
-    if (!data || !data.success) {
-      const errorMsg = serverText(data?.error, t('errors.sensor.historyNoData'));
+    const refusal = rpcRefusal(data);
+    if (refusal || !data?.data) {
+      const errorMsg = serverText(refusal?.text, t('errors.sensor.historyNoData'));
       sensorHistoryLogger.warn('RPC returned unsuccessful response', { error: errorMsg });
-      return {
-        success: false,
-        message: errorMsg,
-        error: data?.error,
-      };
+      return { success: false, message: errorMsg, error: refusal ? failureCode(refusal) : undefined };
     }
 
     sensorHistoryLogger.debug('History data received:', {
@@ -79,9 +83,11 @@ export async function getSensorHistory(
     sensorHistoryLogger.error('Exception:', error);
     return {
       success: false,
-      message: t('errors.sensor.historyFetchFailed'),
+      message: fallback,
       error: error instanceof Error ? error.message : t('errors.general.unknown'),
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

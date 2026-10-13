@@ -14,7 +14,7 @@ export const settings: Translation<typeof source> = {
     itemPricing: 'આઇટમના દર',
     itemPricingSubtitle: 'દર જુઓ અને બદલો',
     sensors: 'તાપમાન અને ભેજ',
-    sensorsSubtitle: 'લોકલ ડેમોમાં ઉપલબ્ધ નથી',
+    sensorsSubtitle: 'હાલની નોંધ અને ઇતિહાસ',
   },
   preferences: {
     title: 'પસંદગીઓ',

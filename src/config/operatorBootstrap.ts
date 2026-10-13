@@ -1,4 +1,5 @@
 import { discoverOperator, loadOperatorServer, saveOperatorServer, getActiveOperatorServer } from './operatorServer';
+import { setFacilityCapabilities } from './facilityCapabilities';
 
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
 type BootstrapResult = { kind: 'selection' } | { kind: 'superseded' } | { kind: 'verified'; discovery: Discovery };
@@ -19,6 +20,9 @@ export async function verifySelectedOperator(
     if (!isCurrent()) return { kind: 'superseded' };
   }
   await saveOperatorServer(discovery.server, false);
+  // Every active-server path passes here (cold start, server change, return to the
+  // foreground), so the facility's capabilities are always those of its latest answer.
+  setFacilityCapabilities(discovery.server, discovery.config.capabilities);
   if (!isCurrent()) return { kind: 'superseded' };
   return { kind: 'verified', discovery };
 }

@@ -6,6 +6,8 @@ import React from 'react';
 import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { GuardedScreen, useRootRouteGuard } from '../RouteGuard';
+import { clearOperatorServer, saveOperatorServer } from '@/config/operatorServer';
+import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 
 const mockReplace = jest.fn();
 let mockSegments: string[] = [];
@@ -234,5 +236,66 @@ describe('signed in', () => {
     await render('login', ['login']);
     expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(mockReplace).toHaveBeenCalledWith('/');
+  });
+});
+
+describe("the facility's capabilities", () => {
+  // The real store and server: the guard reads the capabilities of the active server.
+  const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
+  beforeEach(async () => {
+    await saveOperatorServer(FACILITY, false);
+  });
+  afterEach(async () => {
+    resetFacilityCapabilities();
+    await clearOperatorServer();
+  });
+
+  it.each([
+    ['sensors', ['sensors']],
+    ['sensor-detail/[id]', ['sensor-detail', 'device-1']],
+  ])('staff who open %s by link at a facility without sensors are sent home and the screen is not mounted', async (routeName, segments) => {
+    setFacilityCapabilities(FACILITY, { sensors: false });
+    mockAuth = profile('staff');
+    await render(routeName, segments);
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/');
+    expect(showsSpinner()).toBe(true);
+    expect(mountCount).toBe(0);
+  });
+
+  it('staff at a facility whose config was not read in this run get the demo capabilities: sensors are not offered', async () => {
+    mockAuth = profile('staff');
+    await render('sensors', ['sensors']);
+    expect(mockReplace).toHaveBeenCalledWith('/');
+    expect(mountCount).toBe(0);
+  });
+
+  it('staff who open sensors at a facility with sensors see the screen', async () => {
+    setFacilityCapabilities(FACILITY, { sensors: true });
+    mockAuth = profile('staff');
+    await render('sensors', ['sensors']);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(showsContent()).toBe(true);
+    expect(mountCount).toBe(1);
+  });
+
+  it('a facility that turns sensors off while the screen is open sends staff home', async () => {
+    setFacilityCapabilities(FACILITY, { sensors: true });
+    mockAuth = profile('staff');
+    await render('sensors', ['sensors']);
+    expect(showsContent()).toBe(true);
+
+    await act(async () => setFacilityCapabilities(FACILITY, { sensors: false }));
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/');
+    expect(showsContent()).toBe(false);
+  });
+
+  it("another facility's capabilities are not this one's", async () => {
+    setFacilityCapabilities({ origin: 'https://south-cold.example.test', instanceId: 'instance-south' }, { sensors: true });
+    mockAuth = profile('admin');
+    await render('sensors', ['sensors']);
+    expect(mockReplace).toHaveBeenCalledWith('/');
+    expect(mountCount).toBe(0);
   });
 });

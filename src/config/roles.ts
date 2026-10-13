@@ -11,6 +11,8 @@
  *   isCustomerAccount customer                   reads its assigned customers only
  */
 
+import type { FacilityCapabilities } from './facilityCapabilities';
+
 export type RoleName = 'admin' | 'supervisor' | 'staff' | 'customer';
 
 const ROLE_NAMES: readonly RoleName[] = ['admin', 'supervisor', 'staff', 'customer'];
@@ -70,11 +72,22 @@ export type RoleGatedScreen =
   | 'enrollmentReview'
   | 'masterData';
 
-export function canOpenScreen(role: string | null | undefined, screen: RoleGatedScreen): boolean {
+/**
+ * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
+ * src/config/facilityCapabilities.ts) a screen of a capability the facility does not have
+ * is offered to nobody; without them only the role decides. The route guard and Settings
+ * always pass them.
+ */
+export function canOpenScreen(
+  role: string | null | undefined,
+  screen: RoleGatedScreen,
+  capabilities?: FacilityCapabilities
+): boolean {
   switch (screen) {
+    case 'sensors':
+      return isWarehouseUser(role) && (capabilities === undefined || capabilities.sensors);
     case 'itemPricing':
     case 'itemPricingWrite':
-    case 'sensors':
       return isWarehouseUser(role);
     case 'operationsDashboard':
     case 'userManagement':
@@ -88,17 +101,24 @@ export function canOpenScreen(role: string | null | undefined, screen: RoleGated
   }
 }
 
-/** The rows of Settings > Features, in the order shown. A customer account gets none. */
+/**
+ * The rows of Settings > Features, in the order shown. A customer account gets none, and a
+ * row of a capability the facility does not have (`capabilities`, as for canOpenScreen) is
+ * left out.
+ */
 export type SettingsFeature = 'customers' | 'enrollmentReview' | 'items' | 'users' | 'itemPricing' | 'sensors';
 
-export function settingsFeatureRows(role: string | null | undefined): SettingsFeature[] {
+export function settingsFeatureRows(
+  role: string | null | undefined,
+  capabilities?: FacilityCapabilities
+): SettingsFeature[] {
   const rows: SettingsFeature[] = [];
   if (canOpenScreen(role, 'masterData')) rows.push('customers');
   if (canOpenScreen(role, 'enrollmentReview')) rows.push('enrollmentReview');
   if (canOpenScreen(role, 'masterData')) rows.push('items');
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
   if (canOpenScreen(role, 'itemPricing')) rows.push('itemPricing');
-  if (canOpenScreen(role, 'sensors')) rows.push('sensors');
+  if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;
 }
 

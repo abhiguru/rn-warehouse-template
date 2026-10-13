@@ -42,6 +42,10 @@ jest.mock('@/config/operatorServer', () => ({
     companyName: 'North Cold Store',
   }),
 }));
+// A facility whose public config turns sensors on: the Settings row of every role is shown.
+jest.mock('@/hooks/useCapability', () => ({
+  useFacilityCapabilities: () => ({ printing: false, sensors: true, realtime: true, customerDocuments: false }),
+}));
 jest.mock('@/config/supabaseConfig', () => ({
   getPendingEnrollmentToken: jest.fn(async () => 'enrollment-secret'),
   getEnrollmentStatus: jest.fn(async () => ({ success: true, status: 'approved' })),

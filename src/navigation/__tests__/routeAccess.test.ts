@@ -117,3 +117,24 @@ describe('signed in', () => {
     expect(decideRoute('users', { isSignedIn: true, role: undefined })).toBe('allow');
   });
 });
+
+describe('by facility capability', () => {
+  const ON = { printing: false, sensors: true, realtime: true, customerDocuments: false };
+  const OFF = { ...ON, sensors: false };
+  const withCapabilities = (role: string, capabilities: typeof ON) => ({ isSignedIn: true, role, capabilities });
+
+  it.each([['sensors'], ['sensor-detail/[id]'], [['sensor-detail', 'device-1']]])(
+    '%j: home for every role when the facility has no sensors, the role decides when it has',
+    (route) => {
+      const roles = ['admin', 'supervisor', 'staff', 'customer'];
+      expect(roles.map((role) => decideRoute(route, withCapabilities(role, OFF)))).toEqual(['home', 'home', 'home', 'home']);
+      expect(roles.map((role) => decideRoute(route, withCapabilities(role, ON)))).toEqual(['allow', 'allow', 'allow', 'home']);
+    }
+  );
+
+  it('a capability gates only its own routes', () => {
+    expect(decideRoute('item-pricing', withCapabilities('staff', OFF))).toBe('allow');
+    expect(decideRoute('users', withCapabilities('admin', OFF))).toBe('allow');
+    expect(decideRoute('settings', withCapabilities('staff', OFF))).toBe('allow');
+  });
+});

@@ -2,7 +2,8 @@
 
 The source demo subscribes to `public.orders` while an authenticated order list,
 supervisor queue or customer cart is mounted, the app is active and the network
-is connected. Stock and invoice subscriptions are not included.
+is connected. Live sensor screens follow `public.sensor_latest` the same way (see
+"Other tables" below). Stock and invoice subscriptions are not included.
 
 Events are invalidation signals: the screen refetches using its existing
 custom-session RPC/RLS path, never by copying socket records into local state.
@@ -24,6 +25,23 @@ again. Order/cart fetch results from an obsolete session are discarded.
 Use the companion backend with Realtime enabled in its default Compose services.
 Older immutable release tags do not include this mobile behavior. No schema
 change is needed: the existing orders publication and customer RLS are used.
+
+## Other tables
+
+The subscription is table-agnostic: `subscribeToTableChanges({ table, channel,
+schema = 'public' }, refresh)` in `src/services/table-live-updates.ts` holds the
+rules above (own client with the custom JWT, 150 ms debounce, one queued refetch,
+first join and first system `ok` refetch nothing, stop on session change or
+operator suspension). `subscribeToOrderChanges` is that call for `orders` on the
+`warehouse-orders` channel. `subscribeToSensorChanges`
+(`src/services/sensor-live-updates.ts`) follows `sensor_latest` on the
+`warehouse-sensors` channel; the backend publishes that table with RLS for
+admin, supervisor and staff. The screen hook is `useLiveUpdates(subscribe,
+refresh, enabled, options)` (`src/hooks/useLiveUpdates.ts`), with the same
+focus, foreground, network and profile gating; `useOrderLiveUpdates` and
+`useSensorLiveUpdates` wrap it. A sensor event only marks the sensor report
+queries (`['report', 'sensors', ...]`) out of date; it does not refresh on focus,
+since the report query asks again on its own return.
 
 ## Verification
 

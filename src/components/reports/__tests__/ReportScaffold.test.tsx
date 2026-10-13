@@ -350,3 +350,31 @@ describe('report layout, figures in groups', () => {
     expect(texts).not.toContain('NOTHING HERE');
   });
 });
+
+describe('report layout without filters', () => {
+  it('needs no noun: a report with nothing to narrow its rows shows its rows, and its own empty state', () => {
+    const draw = (rows: string[]) => {
+      let tree!: TestRenderer.ReactTestRenderer;
+      act(() => {
+        tree = TestRenderer.create(
+          <ReportScaffold<string>
+            title="Temperature and humidity"
+            query={query({})}
+            kpis={[{ icon: 'thermometer', value: 2, label: 'Sensors' }]}
+            rows={rows}
+            renderRow={row => <Text>{row}</Text>}
+            keyExtractor={row => row}
+            empty={{ icon: 'thermometer-off', title: 'No sensors yet', description: 'Sensors set up for this facility appear here.' }}
+          />
+        );
+      });
+      mounted.push(tree);
+      return tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+    };
+    expect(draw(['North chamber probe'])).toEqual(expect.arrayContaining(['Sensors', 'North chamber probe']));
+    const empty = draw([]);
+    expect(empty).toEqual(expect.arrayContaining(['No sensors yet', 'Sensors set up for this facility appear here.']));
+    // Nothing narrows the rows, so nothing speaks of a search or a filter.
+    expect(empty.some(line => /match|filter/i.test(line))).toBe(false);
+  });
+});

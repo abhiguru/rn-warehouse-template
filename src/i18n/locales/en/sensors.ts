@@ -28,16 +28,16 @@ export const sensors = {
   },
   list: {
     loadError: "Couldn't load sensor data. Check your connection and try again.",
-    loading: 'Loading sensors',
     emptyTitle: 'No sensors yet',
     emptyDescription: 'Sensors set up for this facility appear here.',
-    demoTitle: "Sensors aren't available",
-    demoDescription: 'Sensor monitoring is unavailable in the local demo.',
     staleCount: { one: '{{count}} with no recent data', other: '{{count}} with no recent data' },
     lowBatteryCount: { one: '{{count}} low battery', other: '{{count}} low battery' },
     criticalBatteryCount: { one: '{{count}} battery critical', other: '{{count}} battery critical' },
-    nextUpdate: 'Next update in {{seconds}} s',
-    lastSync: 'Last sync {{time}}',
+    offlineCount: { one: '{{count}} offline', other: '{{count}} offline' },
+    /** Heading of the strip over the list that names the sensors with a problem. */
+    alertsTitle: 'Needs attention',
+    /** Spoken hint of a sensor named in that strip. */
+    alertOpenHint: 'Opens this sensor',
     updated: 'Updated {{time}}',
     lastSeen: 'Last seen {{time}}',
     openHint: 'Opens sensor history',
@@ -63,6 +63,9 @@ export const sensors = {
     lowest: 'Lowest',
     highest: 'Highest',
     basedOn: { one: 'Based on {{count}} reading', other: 'Based on {{count}} readings' },
+    /** The sensor's temperature limits, drawn on the chart as dashed lines. */
+    thresholdMax: 'Max {{value}}',
+    thresholdMin: 'Min {{value}}',
   },
   period: {
     days: '{{days}} days',

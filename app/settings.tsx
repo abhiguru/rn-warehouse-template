@@ -1,9 +1,9 @@
 /**
  * Settings screen: a grouped list on background.grouped (style guide §14.12).
  *
- * Sections, in order: the profile card; Warehouse tools (by role); Preferences
- * (Appearance, Language on this phone and Brand, each a row with its current
- * value that opens a sheet); Account (the actions of useAccountActions, then
+ * Sections, in order: the profile card; Warehouse tools (by role and the
+ * facility's capabilities); Preferences (Appearance, Language on this phone and
+ * Brand, each a row with its current value that opens a sheet); Account (the actions of useAccountActions, then
  * deletion); Help and about (Help, terms, privacy); Development (development
  * builds only); the app version.
  */
@@ -45,6 +45,7 @@ import {
 } from '@/features/settings/preferenceSheetMemory';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
+import { useFacilityCapabilities } from '@/hooks/useCapability';
 
 const THEME_OPTIONS: {
   value: ThemePreference;
@@ -64,6 +65,7 @@ const BRAND_NAME_KEYS: Record<Brand, TranslationKey> = {
 
 const SettingsScreen: React.FC = () => {
   const { userProfile } = useAppSelector(state => state.auth);
+  const capabilities = useFacilityCapabilities();
   const insets = useSafeAreaInsets();
   // Sign-out, leaving the facility and deletion: the same actions as Profile (§14.8).
   const account = useAccountActions();
@@ -104,7 +106,8 @@ const SettingsScreen: React.FC = () => {
     );
   };
 
-  // Feature rows by role: the same table the server uses (src/config/roles.ts).
+  // Feature rows by role: the same table the server uses (src/config/roles.ts). A row of a
+  // capability this facility does not have (Sensors) is not shown.
   const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; route: string }> = {
     customers: { icon: 'account-outline', label: t('common.customers'), subtitle: t('settings.features.customersSubtitle'), route: '/customers' },
     enrollmentReview: {
@@ -118,7 +121,7 @@ const SettingsScreen: React.FC = () => {
     itemPricing: { icon: 'tag-outline', label: t('settings.features.itemPricing'), subtitle: t('settings.features.itemPricingSubtitle'), route: '/item-pricing' },
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
-  const featureRows = settingsFeatureRows(userProfile?.role);
+  const featureRows = settingsFeatureRows(userProfile?.role, capabilities);
 
   const roleLabel = roleName(userProfile?.role);
   const profileName = userProfile?.name || t('users.fallbackName');

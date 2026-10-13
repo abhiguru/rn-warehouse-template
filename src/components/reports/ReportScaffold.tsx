@@ -48,7 +48,7 @@ export interface ReportKpiGroup {
   items: KPIItem[];
 }
 
-export interface ReportScaffoldProps<T> {
+interface ReportScaffoldBaseProps<T> {
   title: string;
   /** Whose data this is: "All customers" or the customer's name. */
   subtitle?: string;
@@ -56,8 +56,6 @@ export interface ReportScaffoldProps<T> {
   /** Header actions. A report has at most one that exports. */
   actions?: ReportHeaderAction[];
 
-  /** The report's search, filters, sort and period. Left out for a report with none of them. */
-  filters?: { config: CountableFilterList; state: ReturnType<typeof useListFilters> };
   /**
    * The search is sent to the server (item stock), so the field shows a spinner while
    * the answer is fetched. Default false: the search runs on the phone over rows already
@@ -94,8 +92,6 @@ export interface ReportScaffoldProps<T> {
   footer?: React.ReactNode;
   onEndReached?: () => void;
 
-  /** What the rows are, for "No GRNs match ...". */
-  noun: EmptyNounPlural;
   /**
    * Shown when there are no rows and nothing narrows them. `action` is the button
    * under it, for a way out the description suggests ("Choose a longer period").
@@ -104,6 +100,14 @@ export interface ReportScaffoldProps<T> {
   /** Title of the failure with nothing to show. The reason is shown under it. */
   errorTitle?: string;
 }
+
+/** The search, filters, sort and period, and what the rows are for "No GRNs match ...": the noun is needed only with filters. */
+type ReportScaffoldFilterProps =
+  | { filters: { config: CountableFilterList; state: ReturnType<typeof useListFilters> }; noun: EmptyNounPlural }
+  /** A report with no search, filters, sort or period (the sensors list): nothing can narrow its rows. */
+  | { filters?: undefined; noun?: EmptyNounPlural };
+
+export type ReportScaffoldProps<T> = ReportScaffoldBaseProps<T> & ReportScaffoldFilterProps;
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -281,7 +285,7 @@ function ReportScaffoldInner<T>({
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           <ListEmptyState
-            {...(filters
+            {...(filters && noun
               ? filteredEmptyProps(filters.state, noun)
               : { activeFilterCount: 0 })}
             emptyIcon={empty.icon}

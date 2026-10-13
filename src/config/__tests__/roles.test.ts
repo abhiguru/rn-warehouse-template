@@ -63,6 +63,41 @@ describe('role by screen', () => {
   });
 });
 
+const SCREENS_WITHOUT_SENSORS: RoleGatedScreen[] = [
+  'operationsDashboard',
+  'itemPricing',
+  'itemPricingWrite',
+  'userManagement',
+  'enrollmentReview',
+  'masterData',
+  'itemPriceHistory',
+];
+
+describe('role and facility capabilities by screen', () => {
+  const ON = { printing: false, sensors: true, realtime: true, customerDocuments: false };
+  const OFF = { ...ON, sensors: false };
+
+  it.each([
+    // role, sensors with the capability on, with it off
+    ['admin', true, false],
+    ['supervisor', true, false],
+    ['staff', true, false],
+    ['customer', false, false],
+    [null, false, false],
+  ])('sensors for %s: capability on %s, off %s', (role, on, off) => {
+    expect(canOpenScreen(role, 'sensors', ON)).toBe(on);
+    expect(canOpenScreen(role, 'sensors', OFF)).toBe(off);
+  });
+
+  it('a capability changes no other screen', () => {
+    for (const role of ['admin', 'supervisor', 'staff', 'customer']) {
+      expect(SCREENS_WITHOUT_SENSORS.map((screen) => canOpenScreen(role, screen, OFF))).toEqual(
+        SCREENS_WITHOUT_SENSORS.map((screen) => canOpenScreen(role, screen))
+      );
+    }
+  });
+});
+
 describe('report routing', () => {
   it.each([
     ['admin', [], 'all-customers'],
@@ -90,6 +125,21 @@ describe('settings feature rows', () => {
     [undefined, []],
   ])('%s sees %j', (role, rows) => {
     expect(settingsFeatureRows(role)).toEqual(rows);
+  });
+
+  it.each([
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing']],
+    ['supervisor', ['customers', 'items', 'users', 'itemPricing']],
+    ['staff', ['itemPricing']],
+    ['customer', []],
+  ])('%s at a facility without sensors sees %j', (role, rows) => {
+    expect(settingsFeatureRows(role, { printing: true, sensors: false, realtime: true, customerDocuments: true })).toEqual(rows);
+  });
+
+  it('a facility with sensors keeps the Sensors row of the role', () => {
+    const on = { printing: false, sensors: true, realtime: false, customerDocuments: false };
+    expect(settingsFeatureRows('staff', on)).toEqual(['itemPricing', 'sensors']);
+    expect(settingsFeatureRows('customer', on)).toEqual([]);
   });
 });
 
