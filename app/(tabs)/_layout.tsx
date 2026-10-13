@@ -18,6 +18,7 @@ import FioriTabBar from '@/components/FioriTabBar';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useTheme } from '@/hooks/useTheme';
 import { useSessionGenerationGuard } from '@/hooks/useSessionGenerationGuard';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t as translate } from '@/i18n';
 
 export default function TabsLayout() {
@@ -25,10 +26,20 @@ export default function TabsLayout() {
   const dispatch = useAppDispatch();
   const { userProfile, session, user } = useAppSelector((state) => state.auth);
   const { tokens: t } = useTheme();
-  const [hasAuthCheckSettled, setHasAuthCheckSettled] = useState(false);
+  // The root restores the session before any route mounts (app/_layout.tsx), so
+  // a start of the app reaches the tabs with the restore settled. It runs here
+  // only when nothing has restored the current session: after a sign-in or a
+  // facility switch began a new one. A restore still running is waited for.
+  const initializeStatus = useAppSelector((state) => state.auth.initializeStatus);
+  const initializeGeneration = useAppSelector((state) => state.auth.initializeGeneration);
+  const restoreStatus =
+    initializeGeneration === getSessionGeneration() ? initializeStatus ?? 'idle' : 'idle';
+  const [statusAtMount] = useState(restoreStatus);
+  const [hasAuthCheckSettled, setHasAuthCheckSettled] = useState(statusAtMount === 'settled');
 
   // Restore credentials before mounting protected screens or deciding to redirect.
   useEffect(() => {
+    if (statusAtMount !== 'idle') return undefined;
     let isMounted = true;
     // Load after the store mounts: auth services also depend on the store.
     void loadAuthSlice()
@@ -46,7 +57,13 @@ export default function TabsLayout() {
     return () => {
       isMounted = false;
     };
-  }, [dispatch]);
+  }, [dispatch, statusAtMount]);
+
+  // A restore already running when this layout mounted: settled once it ends
+  // (or is superseded by a sign-in, a sign-out or a new session).
+  useEffect(() => {
+    if (statusAtMount === 'pending' && restoreStatus !== 'pending') setHasAuthCheckSettled(true);
+  }, [statusAtMount, restoreStatus]);
 
   const isUnauthenticated = !userProfile && (!user || !session);
 

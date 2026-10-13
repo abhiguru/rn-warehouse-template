@@ -222,22 +222,47 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     }
   }, [customerId, request, isWarehouseRole, assignedCustomerIds]);
 
-  // Any change of filter, search or sort is a new first page.
+  // One owner for loading the first page. The newest request is kept in a ref so the
+  // focus callback below never changes identity: expo-router reruns a focus effect
+  // whose callback changes while the screen is focused, which would count a filter
+  // change as a return to the screen and load twice.
+  const fetchDispatchesRef = useRef(fetchDispatches);
+  fetchDispatchesRef.current = fetchDispatches;
+  // The list is mounted by its screen, so it starts focused; a blur says otherwise.
+  const screenFocusedRef = useRef(true);
+  const blurredRef = useRef(false);
+  const changedWhileHiddenRef = useRef(false);
+
+  // First load, and any change of filter, search or sort: a new first page from the
+  // history kept for the account (fresh=false). While the screen is hidden (e.g. on
+  // the Sort and filter page) the change waits for the return, which loads it.
   useEffect(() => {
+    if (!screenFocusedRef.current) {
+      changedWhileHiddenRef.current = true;
+      return;
+    }
     setCurrentOffset(0);
     fetchDispatches(0, false);
   }, [fetchDispatches]);
 
-  // Refetch on focus (e.g., returning from edit screen); the first focus is the initial load.
-  const focusCountRef = useRef(0);
+  // A real return to the screen (after a blur, e.g. back from an edit) loads once.
   useFocusEffect(
     useCallback(() => {
-      focusCountRef.current += 1;
-      if (focusCountRef.current > 1) {
+      screenFocusedRef.current = true;
+      if (blurredRef.current) {
+        // Filters applied while away are served like an inline change (fresh=false);
+        // a revisit with the same request reads the server again.
+        const fresh = !changedWhileHiddenRef.current;
+        blurredRef.current = false;
+        changedWhileHiddenRef.current = false;
         setCurrentOffset(0);
-        fetchDispatches(0, false, true);
+        fetchDispatchesRef.current(0, false, fresh);
       }
-    }, [fetchDispatches])
+      return () => {
+        screenFocusedRef.current = false;
+        blurredRef.current = true;
+      };
+    }, [])
   );
 
   // ============================================================================

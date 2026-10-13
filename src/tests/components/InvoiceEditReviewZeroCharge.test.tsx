@@ -35,7 +35,12 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), di
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: () => null }));
-jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
+jest.mock('react-native-keyboard-aware-scroll-view', () => ({
+  KeyboardAwareScrollView: 'KeyboardAwareScrollView',
+  // The items step's table is a keyboard-aware FlashList.
+  listenToKeyboardEvents: () => (component: unknown) => component,
+}));
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: 'InvoiceCalculationSummary' }));

@@ -1,15 +1,27 @@
 import { operatorResumeGate } from '@/config/operatorResume';
 import { createClient } from '@supabase/supabase-js';
-import { ensureValidTokens, getStoredToken } from '@/config/supabaseConfig';
-import { advanceSessionGeneration } from '@/config/sessionLifecycle';
+import { acquireValidSession } from '@/config/supabaseConfig';
+import { advanceSessionGeneration, getSessionGeneration } from '@/config/sessionLifecycle';
 import { subscribeToOrderChanges } from '../order-live-updates';
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/config/supabaseConfig', () => ({
   getCurrentConfig: () => ({ url: 'http://localhost:18000', anonKey: 'public-key' }),
-  ensureValidTokens: jest.fn(),
-  getStoredToken: jest.fn(),
+  acquireValidSession: jest.fn(),
 }));
+// The validated session as acquireValidSession returns it: tied to the
+// generation that was current when the acquisition began.
+const sessionFor = (authToken: string) => ({
+  authToken,
+  refreshToken: 'refresh-test',
+  expiresAt: Date.now() + 3600 * 1000,
+  generation: getSessionGeneration(),
+});
+const holdSession = () => {
+  let finish!: (value: ReturnType<typeof sessionFor> | null) => void;
+  (acquireValidSession as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  return (value: ReturnType<typeof sessionFor> | null) => finish(value);
+};
 
 /** The part of a Realtime channel the service uses; each method returns the channel. */
 type FakeChannel = { on: jest.Mock; subscribe: jest.Mock };
@@ -24,8 +36,7 @@ const flush = () => jest.advanceTimersByTimeAsync(200);
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
-  (ensureValidTokens as jest.Mock).mockResolvedValue(true);
-  (getStoredToken as jest.Mock).mockResolvedValue({ isValid: true, authToken: 'session-one' });
+  (acquireValidSession as jest.Mock).mockImplementation(async () => sessionFor('session-one'));
   (createClient as jest.Mock).mockImplementation((_url, _key, options) => {
     accessToken = options.accessToken;
     const channel: FakeChannel = {
@@ -52,6 +63,43 @@ test('coalesces changes and refetches after each reconnect', async () => {
   expect(refresh).toHaveBeenCalledTimes(2);
 });
 
+test('the first join refetches nothing; a rejoin on the same subscription refetches once', async () => {
+  const refresh = jest.fn();
+  stop = subscribeToOrderChanges(refresh);
+  status('SUBSCRIBED');
+  await flush();
+  expect(refresh).not.toHaveBeenCalled();
+  status('CHANNEL_ERROR');
+  status('SUBSCRIBED');
+  await flush();
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ['SUBSCRIBED first', ['join', 'ok']],
+  ['system ok first', ['ok', 'join']],
+])('the first join and first system ok refetch nothing (%s); later ones do, coalesced', async (_name, order) => {
+  const refresh = jest.fn();
+  stop = subscribeToOrderChanges(refresh);
+  for (const message of order) {
+    if (message === 'join') status('SUBSCRIBED');
+    else handlers.system({ status: 'ok' });
+  }
+  await flush();
+  expect(refresh).not.toHaveBeenCalled();
+  // A later system ok on its own: one refetch.
+  handlers.system({ status: 'ok' });
+  await flush();
+  expect(refresh).toHaveBeenCalledTimes(1);
+  // A rejoin and its system ok within the 150 ms debounce: one refetch.
+  status('CHANNEL_ERROR');
+  status('SUBSCRIBED');
+  await jest.advanceTimersByTimeAsync(50);
+  handlers.system({ status: 'ok' });
+  await flush();
+  expect(refresh).toHaveBeenCalledTimes(2);
+});
+
 test('queues changes received during a slow refetch', async () => {
   let finish!: () => void;
   const refresh = jest.fn().mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
@@ -68,23 +116,22 @@ test('queues changes received during a slow refetch', async () => {
 test('reads rotated custom tokens and never falls back to anonymous auth', async () => {
   stop = subscribeToOrderChanges(jest.fn());
   expect(await accessToken()).toBe('session-one');
-  (getStoredToken as jest.Mock).mockResolvedValue({ isValid: true, authToken: 'session-two' });
+  (acquireValidSession as jest.Mock).mockImplementation(async () => sessionFor('session-two'));
   expect(await accessToken()).toBe('session-two');
-  (ensureValidTokens as jest.Mock).mockResolvedValue(false);
+  (acquireValidSession as jest.Mock).mockResolvedValue(null);
   await expect(accessToken()).rejects.toThrow('Sign in required');
 });
 
 test('logout disconnects immediately, cancels pending refresh and rejects late token reads', async () => {
   const refresh = jest.fn();
   stop = subscribeToOrderChanges(refresh);
-  let finish!: (value: boolean) => void;
-  (ensureValidTokens as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const finish = holdSession();
   const pending = accessToken();
   const rejection = expect(pending).rejects.toThrow('Sign in required');
   handlers.postgres_changes();
   advanceSessionGeneration();
   expect(disconnect).toHaveBeenCalledTimes(1);
-  finish(true);
+  finish({ ...sessionFor('session-one'), generation: getSessionGeneration() - 1 });
   await rejection;
   status('SUBSCRIBED');
   await flush();
@@ -148,12 +195,11 @@ describe("the client's own first token read (backlog A19)", () => {
   afterEach(() => { warn.mockRestore(); });
 
   test('the subscription ends while that read waits for the session check: no warning, and no token', async () => {
-    let finish!: (value: boolean) => void;
-    (ensureValidTokens as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const finish = holdSession();
     stop = subscribeToOrderChanges(jest.fn());
     expect(createClient).toHaveBeenCalledTimes(1);
     stop(); // the screen went while the first read was on its way
-    finish(true);
+    finish(sessionFor('session-one'));
     await flush();
     expect(warn).not.toHaveBeenCalled();
     expect(setAuth).not.toHaveBeenCalled();
@@ -161,12 +207,12 @@ describe("the client's own first token read (backlog A19)", () => {
   });
 
   test('the session changes while that read reads the stored token: no warning, and no token', async () => {
-    let finish!: (value: { isValid: boolean; authToken: string }) => void;
-    (getStoredToken as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const finish = holdSession();
     stop = subscribeToOrderChanges(jest.fn());
-    await flush(); // the session check has answered; the stored token is being read
+    await flush(); // the stored session is being read
+    const before = sessionFor('session-one');
     advanceSessionGeneration();
-    finish({ isValid: true, authToken: 'session-one' });
+    finish(before);
     await flush();
     expect(warn).not.toHaveBeenCalled();
     expect(setAuth).not.toHaveBeenCalled();
@@ -182,7 +228,7 @@ describe("the client's own first token read (backlog A19)", () => {
   });
 
   test('nothing changes for a current subscription without a session: its first read is refused, as before', async () => {
-    (ensureValidTokens as jest.Mock).mockResolvedValue(false);
+    (acquireValidSession as jest.Mock).mockResolvedValue(null);
     stop = subscribeToOrderChanges(jest.fn());
     await flush();
     expect(setAuth).not.toHaveBeenCalled();

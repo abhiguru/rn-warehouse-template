@@ -28,6 +28,7 @@ import {
   type ReportHeaderAction,
   type StockGRNRowData,
 } from '@/components/reports';
+import { StockGRNListRow } from '@/components/reports/StockItemCard';
 import { ListEmptyState, type ListEmptyStateProps } from '@/components/list/ListEmptyState';
 import { filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
 import { matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -67,6 +68,10 @@ const makeStyles = (t: ThemeTokens) => ({
   cardClip: { borderRadius: radius.card, overflow: 'hidden' as const },
   // The item card draws its own surface, shadow and match line; the list only spaces it.
   itemCard: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
+  // An opened item's GRN rows follow its card with no gap; the last one spaces the next card.
+  itemCardOpen: { marginHorizontal: layout.marginCompact },
+  grnRow: { marginHorizontal: layout.marginCompact },
+  grnRowLast: { marginHorizontal: layout.marginCompact, marginBottom: space.sm },
 
   // The header row over the out-of-stock rows
   section: { marginTop: space.lg },
@@ -260,6 +265,10 @@ function CustomerStockRowCard({ customer, words, onOpen }: CustomerRowProps) {
  *   a header row "Out of stock", which opens and closes the rows under it
  *   the items that ran out in the last 360 days, while the header is open
  *
+ * An opened item is followed by a row for each of its GRNs (P2F-UI-2): an item can
+ * be on hundreds of GRNs, and drawn inside its card they would all be mounted at
+ * once in one list cell. As rows of their own the list draws only those on screen.
+ *
  * The message row is needed because the list's own empty state shows only for a
  * list with no rows at all.
  */
@@ -267,14 +276,28 @@ type CustomerListRow =
   | { kind: 'item'; item: StockItemSummary }
   | { kind: 'nothingInStock' }
   | { kind: 'emptiedHeader'; count: number }
-  | { kind: 'emptied'; item: StockItemSummary };
+  | { kind: 'emptied'; item: StockItemSummary }
+  | {
+      kind: 'grn';
+      /** The item row's key, then the GRN's own: stable for the same answer. */
+      key: string;
+      /** The item the GRN is under. */
+      parentId: string;
+      grn: StockGRNRowData;
+      outOfStock: boolean;
+      isFirst: boolean;
+      isLast: boolean;
+    };
+
+const itemRowKey = (kind: 'item' | 'emptied', item: StockItemSummary) => `${kind}:${item.item_id}`;
 
 const rowKey = (row: CustomerListRow): string => {
   switch (row.kind) {
     case 'item':
-      return `item:${row.item.item_id}`;
     case 'emptied':
-      return `emptied:${row.item.item_id}`;
+      return itemRowKey(row.kind, row.item);
+    case 'grn':
+      return row.key;
     default:
       return row.kind;
   }
@@ -300,6 +323,7 @@ interface CustomerReportProps {
 }
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
+  const styles = useThemedStyles(makeStyles);
   const filters = useReportFilters(STOCK_SUMMARY_CUSTOMER);
   const { view } = filters.request;
   const query = useReportQuery<StockSummaryData>({
@@ -346,14 +370,14 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   }, [reduceMotion]);
 
   const rows = useMemo<CustomerListRow[]>(() => {
-    const inStock = items.map(item => ({ kind: 'item' as const, item }));
+    const inStock = items.flatMap(item => itemWithGrns('item', item, open.has(item.item_id)));
     if (emptied.length === 0) return inStock;
     return [
       ...(inStock.length > 0 ? inStock : [{ kind: 'nothingInStock' as const }]),
       { kind: 'emptiedHeader' as const, count: emptied.length },
-      ...(sectionOpen ? emptied.map(item => ({ kind: 'emptied' as const, item })) : []),
+      ...(sectionOpen ? emptied.flatMap(item => itemWithGrns('emptied', item, openEmptied.has(item.item_id))) : []),
     ];
-  }, [items, emptied, sectionOpen]);
+  }, [items, emptied, sectionOpen, open, openEmptied]);
 
   // The message in place of the in-stock rows when items ran out but none in stock is shown:
   // nothing in stock at all, or a search that finds only items that ran out.
@@ -399,13 +423,25 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
           return (
             <ItemRow item={row.item} words={view.words} isExpanded={openEmptied.has(row.item.item_id)} onToggle={toggleEmptied} outOfStock />
           );
+        case 'grn':
+          return (
+            <StockGRNListRow
+              grn={row.grn}
+              isFirst={row.isFirst}
+              isLast={row.isLast}
+              muted={row.outOfStock}
+              onOpen={openGRN}
+              highlightWords={view.words}
+              style={row.isLast ? styles.grnRowLast : styles.grnRow}
+            />
+          );
         case 'emptiedHeader':
           return <OutOfStockHeader count={row.count} isOpen={sectionOpen} onToggle={toggleSection} />;
         case 'nothingInStock':
           return <ListEmptyState {...nothingInStock} />;
       }
     },
-    [view.words, open, openEmptied, sectionOpen, nothingInStock, toggleItem, toggleEmptied, toggleSection]
+    [view.words, open, openEmptied, sectionOpen, nothingInStock, toggleItem, toggleEmptied, toggleSection, styles]
   );
   const extraData = useMemo(
     () => ({ words: view.words, open, openEmptied, sectionOpen, nothingInStock }),
@@ -438,7 +474,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 }
 
 /** The GRNs of an item as the shared card draws them. */
-const grnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData[] =>
+const toGrnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData[] =>
   item.grns.map((grn, index) => {
     const emptiedOn = outOfStock && grn.emptied_date ? grn.emptied_date : null;
     return {
@@ -456,6 +492,40 @@ const grnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData[]
       total: grn.orig_qty,
     };
   });
+
+// The same answer gives the same GRN rows, so an item opened again (or another item opened)
+// draws none of its GRN rows again: their props are the same objects.
+const grnRowsCache = { item: new WeakMap<StockItemSummary, StockGRNRowData[]>(), emptied: new WeakMap<StockItemSummary, StockGRNRowData[]>() };
+const grnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData[] => {
+  const cache = outOfStock ? grnRowsCache.emptied : grnRowsCache.item;
+  let rows = cache.get(item);
+  if (!rows) {
+    rows = toGrnRows(item, outOfStock);
+    cache.set(item, rows);
+  }
+  return rows;
+};
+
+/** An item's row and, while it is open, a row for each of its GRNs under it. */
+function itemWithGrns(kind: 'item' | 'emptied', item: StockItemSummary, isOpen: boolean): CustomerListRow[] {
+  const head: CustomerListRow = { kind, item };
+  if (!isOpen) return [head];
+  const outOfStock = kind === 'emptied';
+  const parentKey = itemRowKey(kind, item);
+  const grns = grnRows(item, outOfStock);
+  return [
+    head,
+    ...grns.map((grn, index) => ({
+      kind: 'grn' as const,
+      key: `${parentKey}|grn:${grn.key}`,
+      parentId: item.item_id,
+      grn,
+      outOfStock,
+      isFirst: index === 0,
+      isLast: index === grns.length - 1,
+    })),
+  ];
+}
 
 /**
  * The GRNs a search found on an item (§14.6): a closed card shows its name, not
@@ -487,6 +557,8 @@ const ItemRow = memo(function ItemRow({ item, words, isExpanded, onToggle, outOf
   const { item_id: itemId } = item;
   const handleToggle = useCallback(() => onToggle(itemId), [onToggle, itemId]);
   const grns = useMemo(() => ({ status: 'loaded' as const, rows: grnRows(item, outOfStock) }), [item, outOfStock]);
+  // Opened with GRNs, the card is the top of its frame: the GRN rows under it carry the gap.
+  const joined = isExpanded && grns.rows.length > 0;
   const matchLine = useMemo(() => hiddenMatches(item, words).join(' · ') || undefined, [item, words]);
   return (
     <StockItemCard
@@ -502,7 +574,9 @@ const ItemRow = memo(function ItemRow({ item, words, isExpanded, onToggle, outOf
       matchLine={matchLine}
       // An item with no GRN to list says so rather than opening onto nothing.
       emptyGRNsText={outOfStock ? tr('reports.stockSummary.noGrnsToShow') : tr('reports.itemStockSummary.noGrnsInStock')}
-      style={styles.itemCard}
+      // The list draws the GRNs, each a row of its own under this card (see CustomerListRow).
+      grnsInList
+      style={joined ? styles.itemCardOpen : styles.itemCard}
     />
   );
 });

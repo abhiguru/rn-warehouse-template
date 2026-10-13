@@ -17,6 +17,13 @@ import {
 import type { DispatchImageData } from '@/types/dispatch.types';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { mapWithConcurrency } from '@/utils/concurrency';
+import {
+  holdLocalPhoto,
+  localPhotoUploadEnded,
+  LOCAL_PHOTO_OWNERS,
+  releaseLocalPhotos,
+} from '@/utils/localPhotoFiles';
 
 // ============================================================================
 // TYPES
@@ -58,6 +65,12 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 // Storage bucket name
 const STORAGE_BUCKET = 'dispatch-images';
+
+/**
+ * Photo uploads that run at the same time when a dispatch is saved, as for a
+ * GRN: each one reads its file only when its turn comes.
+ */
+export const DISPATCH_PHOTO_UPLOAD_CONCURRENCY = 4;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -155,6 +168,9 @@ export const uploadDispatchImage = async (
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
   let finishMutation: (() => void) | undefined;
+  // The prepared copy is kept only when the form holds it for a later upload.
+  let preparedUri: string | undefined;
+  let keepPrepared = false;
   try {
     finishMutation = beginOperatorMutation();
     // Validate file size before compression
@@ -176,7 +192,8 @@ export const uploadDispatchImage = async (
       fileSize,
       mimeType: contentType,
       extension,
-    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS);
+    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS, LOCAL_PHOTO_OWNERS.dispatchForm);
+    preparedUri = compressedUri;
 
     // Check compressed file size
     if (fileSize > MAX_FILE_SIZE) {
@@ -196,6 +213,8 @@ export const uploadDispatchImage = async (
         onProgress({ loaded: 100, total: 100, percentage: 100 });
       }
 
+      // The form holds this copy until the dispatch is saved.
+      keepPrepared = true;
       return {
         success: true,
         imageId: undefined,
@@ -408,6 +427,8 @@ export const uploadDispatchImage = async (
       error: errorMessage,
     };
   } finally {
+    // Uploaded at once, refused, or too large: the copy is not needed any more.
+    if (preparedUri && !keepPrepared) void releaseLocalPhotos([preparedUri]);
     finishMutation?.();
   }
 };
@@ -558,8 +579,9 @@ const uploadSingleDeferredImage = async (
 };
 
 /**
- * Upload deferred images after dispatch creation
- * Uses parallel uploads for better performance
+ * Upload deferred images after dispatch creation, at most
+ * DISPATCH_PHOTO_UPLOAD_CONCURRENCY at a time. A photo whose upload is
+ * confirmed has its copy on the phone deleted; a failed one keeps it for a retry.
  */
 export const uploadDeferredDispatchImages = async (
   realDispatchId: string,
@@ -580,18 +602,28 @@ export const uploadDeferredDispatchImages = async (
   }
 
   let finishMutation: (() => void) | undefined;
+  let started = false;
   try {
     finishMutation = beginOperatorMutation();
     const supabase = await getAuthenticatedClient();
+    started = true;
 
-    // Upload all images in parallel
-    const uploadPromises = deferredImages.map(image =>
-      uploadSingleDeferredImage(supabase, realDispatchId, image).then(
-        result => ({ ...result, image })
-      )
+    // A few at a time; each file is held from the start, also while it waits.
+    const releases = deferredImages.map(image => holdLocalPhoto(image.image_url));
+    const results = await mapWithConcurrency(
+      deferredImages,
+      DISPATCH_PHOTO_UPLOAD_CONCURRENCY,
+      async (image, index) => {
+        let result: { success: boolean; error?: string } = { success: false };
+        try {
+          result = await uploadSingleDeferredImage(supabase, realDispatchId, image);
+        } finally {
+          localPhotoUploadEnded(image.image_url, result.success);
+          releases[index]();
+        }
+        return { ...result, image };
+      }
     );
-
-    const results = await Promise.all(uploadPromises);
 
     for (const result of results) {
       if (result.success) {
@@ -613,6 +645,9 @@ export const uploadDeferredDispatchImages = async (
       '[DispatchImageService] uploadDeferredDispatchImages exception:',
       error
     );
+    // Could not start: like a failed upload, each file is kept for the retry,
+    // also through the form reset that follows the save.
+    if (!started) deferredImages.forEach(image => localPhotoUploadEnded(image.image_url, false));
     // Nothing is known to have arrived beyond the counted ones: every photo
     // not counted is reported, so none is passed over.
     return {

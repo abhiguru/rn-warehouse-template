@@ -10,6 +10,7 @@ import { uploadGRNPhotos, unpreparedGRNPhotos } from '@/features/grn/services/im
 import { removeHeaderImage, adoptSavedLines, setSaveUnconfirmed } from '@/store/slices/grnFormSlice';
 import { showAlert } from '@/utils/alert';
 import { router } from 'expo-router';
+import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
@@ -64,6 +65,10 @@ jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.f
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
+jest.mock('@/utils/localPhotoFiles', () => ({
+  abandonLocalPhotoUpload: jest.fn(),
+  releaseLocalPhotos: jest.fn(async () => 0),
+}));
 
 const failedHeaderPhoto = {
   image: { id: 'temp_1', fileName: 'new.webp', imageUrl: 'file:///cache/new.webp', uploadStatus: 'completed' },
@@ -216,6 +221,49 @@ describe('GRN review step photos', () => {
       act(() => dialog.props.onCancel());
       expect(photoDialog(tree).props.visible).toBe(false);
       expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
+      await act(async () => { tree.unmount(); });
+    });
+  });
+
+  // P2F-MEDIA-3: the files the app wrote for photos that leave the form are released.
+  describe('local photo files', () => {
+    it('releases the file of a removed photo that never reached the server, and only that one', async () => {
+      mockHeader.gr_images.push({ id: 'temp_9', fileName: 'gate.webp', imageUrl: 'file:///cache/gate.webp', storagePath: '', uploadStatus: 'completed' });
+      try {
+        const tree = await render('create');
+        const grid = one(tree, 'ImagePreviewGrid');
+
+        act(() => grid.props.onRemoveImage(SAVED_PHOTO));
+        expect(releaseLocalPhotos).not.toHaveBeenCalled();
+
+        act(() => grid.props.onRemoveImage('temp_9'));
+        expect(mockDispatch).toHaveBeenCalledWith(removeHeaderImage('temp_9'));
+        expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+        expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/gate.webp']);
+        await act(async () => { tree.unmount(); });
+      } finally {
+        mockHeader.gr_images.pop();
+      }
+    });
+
+    it('gives up the retry of the photos left with "Continue without photos", then releases their files', async () => {
+      (updateGRN as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [failedHeaderPhoto, failedItemPhoto], removalFailures: 0 } },
+      });
+      const tree = await render('edit');
+      await save(tree);
+      expect(releaseLocalPhotos).not.toHaveBeenCalled();
+
+      act(() => photoDialog(tree).props.onCancel());
+
+      expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+      expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/new.webp', 'file:///cache/mark.webp']);
+      // The awaiting-retry mark is cleared first, or the release would only be deferred.
+      expect(jest.mocked(abandonLocalPhotoUpload).mock.calls.map(([uri]) => uri)).toEqual(['file:///cache/new.webp', 'file:///cache/mark.webp']);
+      expect(Math.max(...jest.mocked(abandonLocalPhotoUpload).mock.invocationCallOrder))
+        .toBeLessThan(jest.mocked(releaseLocalPhotos).mock.invocationCallOrder[0]);
+      expect(uploadGRNPhotos).not.toHaveBeenCalled();
       await act(async () => { tree.unmount(); });
     });
   });

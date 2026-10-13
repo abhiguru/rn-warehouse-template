@@ -10,6 +10,7 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { t } from '@/i18n';
 import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
+import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 
 /**
  * GRN Item type - uses snake_case matching backend RPC response
@@ -402,7 +403,7 @@ export const getCustomerGRNItems = async (
   }
 };
 
-const compareGRNItems = (
+export const compareGRNItems = (
   left: GRNItem,
   right: GRNItem,
   sortBy: GRNListParams['p_sort_by'],
@@ -425,6 +426,163 @@ const compareGRNItems = (
   return String(leftValue || '').localeCompare(String(rightValue || ''), undefined, {
     numeric: true,
   }) * direction;
+};
+
+/*
+ * A customer account with several assigned customers has no server-side combined list: the app
+ * pages `get_customer_grn_items` per customer and merges. To show positions offset..end-1 of the
+ * merged order, the app needs, for every customer, enough of that customer's first rows. The
+ * cursor below keeps what was downloaded for one request (customers, sort, dates, filters) so the
+ * next page fetches only the missing rows instead of every customer's prefix again.
+ */
+
+/** One customer's rows downloaded so far, for one cursor. */
+interface CustomerCursor {
+  customerId: string;
+  /** The customer's first rows, in the RPC's order, without gaps. */
+  rows: GRNItem[];
+  /** The RPC said there are no more rows (or returned an empty page). */
+  exhausted: boolean;
+  /** From the customer's latest page. */
+  totalCount: number;
+  aggregations: GRNAggregations;
+}
+
+interface CursorEntry {
+  key: string;
+  generation: number;
+  /** In the order of the target ids: ties in the merge keep this order. */
+  customers: CustomerCursor[];
+  /**
+   * Whether each customer's RPC order agrees with compareGRNItems. Only then is a row the app has
+   * not downloaded known to sort after that customer's last downloaded row.
+   */
+  orderTrusted: boolean;
+  /** Calls on one cursor run one after another. */
+  tail: Promise<unknown>;
+}
+
+const MAX_CURSORS = 4;
+/** Insertion order is the least recently used order. */
+const cursors = new Map<string, CursorEntry>();
+onSessionChange(() => cursors.clear());
+
+const cursorKey = (generation: number, targetIds: string[], params: GRNListParams) => {
+  const { customer_ids: _customerIds, ...filters } = params.p_filters || {};
+  const sortedFilters: Record<string, unknown> = {};
+  for (const name of Object.keys(filters).sort()) {
+    sortedFilters[name] = filters[name as keyof typeof filters];
+  }
+  // The customer order stays as given: tied rows keep it in the merge.
+  return JSON.stringify([
+    generation,
+    targetIds,
+    params.p_sort_by || 'date',
+    params.p_sort_order || 'desc',
+    closeDateRange(params.p_date_from, params.p_date_to),
+    sortedFilters,
+  ]);
+};
+
+/** The cursor for a request. A first page (first load, refresh, new filter) always starts again. */
+const takeEntry = (targetIds: string[], params: GRNListParams, offset: number): CursorEntry => {
+  const generation = getSessionGeneration();
+  const key = cursorKey(generation, targetIds, params);
+  const entry: CursorEntry = (offset > 0 && cursors.get(key)) || {
+    key,
+    generation,
+    customers: targetIds.map(customerId => ({
+      customerId,
+      rows: [],
+      exhausted: false,
+      totalCount: 0,
+      aggregations: { total_qty: 0, total_stock: 0 },
+    })),
+    // The app's text order (localeCompare) may differ from the database collation. Ascending
+    // dates too: the server puts a missing date last, the app first, and fractional seconds
+    // compare differently.
+    orderTrusted:
+      params.p_sort_by !== 'item_name' && !((params.p_sort_by || 'date') === 'date' && params.p_sort_order === 'asc'),
+    tail: Promise.resolve(),
+  };
+  cursors.delete(key);
+  cursors.set(key, entry);
+  for (const oldest of cursors.keys()) {
+    if (cursors.size <= MAX_CURSORS) break;
+    cursors.delete(oldest);
+  }
+  return entry;
+};
+
+/**
+ * Merges each customer's first `end` retained rows (what the app showed before the cursor, applied
+ * to the rows it holds) and lists the customers that must be fetched further before positions
+ * 0..end-1 are final.
+ */
+const planCursor = (entry: CursorEntry, end: number, params: GRNListParams) => {
+  const merged = entry.customers
+    .flatMap(customer => customer.rows.slice(0, end))
+    .sort((left, right) => compareGRNItems(left, right, params.p_sort_by, params.p_sort_order));
+  const open = entry.customers.filter(customer => !customer.exhausted);
+  if (!entry.orderTrusted || merged.length < end) {
+    return { merged, needy: open.filter(customer => customer.rows.length < end) };
+  }
+  // Every row of a customer not yet downloaded sorts after its last downloaded row, so a
+  // customer whose last row is at end-1 or later cannot change positions 0..end-1.
+  const positions = new Map<GRNItem, number>();
+  merged.forEach((row, position) => positions.set(row, position));
+  const needy = open.filter(customer => {
+    const last = customer.rows[Math.min(customer.rows.length, end) - 1];
+    return !last || (positions.get(last) ?? -1) < end - 1;
+  });
+  return { merged, needy };
+};
+
+const appendRows = (entry: CursorEntry, customer: CustomerCursor, items: GRNItem[], params: GRNListParams) => {
+  let previous = customer.rows[customer.rows.length - 1];
+  for (const item of items) {
+    if (previous && compareGRNItems(previous, item, params.p_sort_by, params.p_sort_order) > 0) {
+      entry.orderTrusted = false;
+    }
+    customer.rows.push(item);
+    previous = item;
+  }
+};
+
+/** Fetches until positions 0..end-1 are final; returns the merge, or the first failure in customer order. */
+const extendCursor = async (
+  entry: CursorEntry,
+  end: number,
+  params: GRNListParams
+): Promise<{ merged: GRNItem[]; failed?: GRNListResponse }> => {
+  for (;;) {
+    const { merged, needy } = planCursor(entry, end, params);
+    if (needy.length === 0) return { merged };
+    const responses = await Promise.all(
+      needy.map(customer =>
+        getCustomerGRNItems(customer.customerId, {
+          ...params,
+          p_offset: customer.rows.length,
+          p_limit: Math.min(CUSTOMER_GRN_RPC_MAX_LIMIT, end - customer.rows.length),
+        })
+      )
+    );
+    let failed: GRNListResponse | undefined;
+    responses.forEach((response, index) => {
+      const customer = needy[index];
+      if (!response.success) {
+        failed = failed || response;
+        return;
+      }
+      appendRows(entry, customer, response.data.items, params);
+      customer.totalCount = response.data.pagination.total_count;
+      customer.aggregations = response.data.aggregations;
+      if (!response.data.pagination.has_more || response.data.items.length === 0) {
+        customer.exhausted = true;
+      }
+    });
+    if (failed) return { merged, failed };
+  }
 };
 
 export const getAssignedCustomerGRNItems = async (
@@ -457,79 +615,47 @@ export const getAssignedCustomerGRNItems = async (
     return getCustomerGRNItems(targetIds[0], { ...params, p_limit: limit, p_offset: offset });
   }
 
-  const requiredItems = offset + limit;
-  const responses = await Promise.all(
-    targetIds.map(async customerId => {
-      const customerItems: GRNItem[] = [];
-      let pageOffset = 0;
-      let firstResponse: GRNListResponse | null = null;
-
-      while (customerItems.length < requiredItems) {
-        const pageLimit = Math.min(
-          CUSTOMER_GRN_RPC_MAX_LIMIT,
-          requiredItems - customerItems.length
-        );
-        const response = await getCustomerGRNItems(customerId, {
-          ...params,
-          p_limit: pageLimit,
-          p_offset: pageOffset,
-        });
-        if (!response.success) return response;
-        if (!firstResponse) firstResponse = response;
-        customerItems.push(...response.data.items);
-        if (!response.data.pagination.has_more || response.data.items.length === 0) break;
-        pageOffset += response.data.items.length;
-      }
-
-      if (!firstResponse) {
-        return getCustomerGRNItems(customerId, { ...params, p_limit: limit, p_offset: 0 });
-      }
-
-      return {
-        ...firstResponse,
-        data: { ...firstResponse.data, items: customerItems },
-      };
-    })
-  );
-  const failed = responses.find(response => !response.success);
-  if (failed) return failed;
-
-  const allItems = responses
-    .flatMap(response => response.data.items)
-    .sort((left, right) => compareGRNItems(left, right, params.p_sort_by, params.p_sort_order));
-  const totalCount = responses.reduce(
-    (total, response) => total + response.data.pagination.total_count,
-    0
-  );
-
-  return {
-    success: true,
-    message: t('errors.grn.assignedItemsRetrieved'),
-    data: {
-      items: allItems.slice(offset, offset + limit),
-      pagination: {
-        total_count: totalCount,
-        limit,
-        offset,
-        has_more: offset + limit < totalCount,
+  const end = offset + limit;
+  const entry = takeEntry(targetIds, params, offset);
+  // Not deduplicated: a refresh must not join a page fetched for the cursor it replaces. A
+  // replaced cursor is no longer in the map; a call still running on it finishes on its own.
+  const page = async (): Promise<GRNListResponse> => {
+    const { merged, failed } = await extendCursor(entry, end, params);
+    if (failed) return failed;
+    const customers = entry.customers;
+    const totalCount = customers.reduce((total, customer) => total + customer.totalCount, 0);
+    return {
+      success: true,
+      message: t('errors.grn.assignedItemsRetrieved'),
+      data: {
+        items: merged.slice(offset, end),
+        pagination: {
+          total_count: totalCount,
+          limit,
+          offset,
+          has_more: end < totalCount,
+        },
+        aggregations: {
+          total_qty: customers.reduce((total, customer) => total + customer.aggregations.total_qty, 0),
+          total_stock: customers.reduce((total, customer) => total + customer.aggregations.total_stock, 0),
+        },
+        filters: {
+          date_from: params.p_date_from || null,
+          date_to: params.p_date_to || null,
+          applied_filters: params.p_filters || {},
+          sort_by: params.p_sort_by || 'date',
+          sort_order: params.p_sort_order || 'desc',
+        },
+        user_access: {
+          role: 'customer',
+          is_admin: false,
+          is_supervisor: false,
+          accessible_customers: targetIds.length,
+        },
       },
-      aggregations: {
-        total_qty: responses.reduce((total, response) => total + response.data.aggregations.total_qty, 0),
-        total_stock: responses.reduce((total, response) => total + response.data.aggregations.total_stock, 0),
-      },
-      filters: {
-        date_from: params.p_date_from || null,
-        date_to: params.p_date_to || null,
-        applied_filters: params.p_filters || {},
-        sort_by: params.p_sort_by || 'date',
-        sort_order: params.p_sort_order || 'desc',
-      },
-      user_access: {
-        role: 'customer',
-        is_admin: false,
-        is_supervisor: false,
-        accessible_customers: targetIds.length,
-      },
-    },
+    };
   };
+  const result = entry.tail.then(page);
+  entry.tail = result.catch(() => undefined);
+  return result;
 };

@@ -1,28 +1,41 @@
-import { ensureValidTokens, getStoredToken } from '@/config/supabaseConfig';
+import { acquireValidSession, getStoredToken } from '@/config/supabaseConfig';
+import { advanceSessionGeneration, getSessionGeneration } from '@/config/sessionLifecycle';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuthToken, getRefreshToken } from '../authTokenUtils';
 
 jest.mock('@/config/supabaseConfig', () => ({
-  ensureValidTokens: jest.fn(),
+  acquireValidSession: jest.fn(),
   getStoredToken: jest.fn(),
 }));
 
 it('renews the custom session before returning its access token', async () => {
-  jest.mocked(ensureValidTokens).mockResolvedValue(true);
-  jest.mocked(getStoredToken).mockResolvedValue({
-    isValid: true,
+  jest.mocked(acquireValidSession).mockResolvedValue({
     authToken: 'new.access.jwt',
+    refreshToken: 'refresh-test',
     expiresAt: 123,
+    generation: getSessionGeneration(),
   });
   expect(await getAuthToken()).toEqual({
     token: 'new.access.jwt',
     expiresAt: 123,
     source: 'securestore',
   });
+  // The validated session is used as it is: the store is not read a second time.
+  expect(getStoredToken).not.toHaveBeenCalled();
+});
+
+it('does not return a token whose session ended while it was being validated', async () => {
+  let finish!: (value: Awaited<ReturnType<typeof acquireValidSession>>) => void;
+  jest.mocked(acquireValidSession).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const pending = getAuthToken();
+  const before = getSessionGeneration();
+  advanceSessionGeneration();
+  finish({ authToken: 'old.access.jwt', refreshToken: 'refresh-test', expiresAt: 123, generation: before });
+  expect(await pending).toEqual({ token: null, source: 'none' });
 });
 
 it('does not return an expired token when renewal fails', async () => {
-  jest.mocked(ensureValidTokens).mockResolvedValue(false);
+  jest.mocked(acquireValidSession).mockResolvedValue(null);
   expect(await getAuthToken()).toEqual({ token: null, source: 'none' });
 });
 

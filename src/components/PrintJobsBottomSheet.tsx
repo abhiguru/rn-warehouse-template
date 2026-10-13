@@ -7,8 +7,9 @@
  * Shows job progress, printer status, and provides job cancellation.
  *
  * Features:
- * - Real-time print job polling (10s intervals)
- * - Printer status monitoring (2s intervals when active)
+ * - Print job and printer status polling through usePrintJobPolling: one read of each at
+ *   a time, only while the sheet is open and the app is in the foreground; jobs every
+ *   10 s and status every 5 s while a job is queued or printing, 60 s and 30 s when idle
  * - Tab navigation between in-progress and completed jobs
  * - Pull-to-refresh for manual updates
  * - Job cancellation with confirmation
@@ -52,6 +53,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
+import type { IsCurrent } from '@/hooks/usePolling';
 import { formatRelativeTime } from '@/utils/formatters';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { localizeDigits, t as tr, type TranslationKey, formatIdentifier } from '@/i18n';
@@ -130,14 +132,16 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       },
     }));
 
-    // Fetch and update printer status from most recent print job
-    const updatePrinterStatus = useCallback(async () => {
+    // Fetch and update printer status from most recent print job. usePrintJobPolling owns
+    // the schedule; `isCurrent()` is false once the sheet closed, so a late answer is dropped.
+    const updatePrinterStatus = useCallback(async (isCurrent: IsCurrent) => {
       try {
         if (__DEV__) console.log('[PrintJobsBottomSheet] Fetching printer status from print_jobs...');
 
         // Query the print_jobs table for the most recent job (limit=1, no filters)
         // This gets the absolute latest job regardless of type or status
         const result = await getPrintJobs(undefined, 1, undefined);
+        if (!isCurrent()) return;
 
         if (!result.success || !result.data || result.data.length === 0) {
           if (__DEV__) console.log('[PrintJobsBottomSheet] No recent print jobs found');
@@ -192,17 +196,20 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         }
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error fetching printer status:', error);
+        if (!isCurrent()) return;
         setPrinterStatus(null);
         setPrinterMessage(tr('components.printJobs.message.unavailable'));
       }
     }, []);
 
-    // Fetch print jobs based on active tab
-    const fetchPrintJobs = useCallback(async (isRefreshing = false) => {
+    /** A pull to refresh is in progress: its errors show no snackbar. */
+    const refreshingRef = useRef(false);
+
+    // Fetch print jobs based on active tab. The printer status has its own read.
+    const fetchPrintJobs = useCallback(async (isCurrent: IsCurrent) => {
+      const isRefreshing = refreshingRef.current;
       if (!isRefreshing) {
         setLoading(true);
-      } else {
-        setRefreshing(true);
       }
 
       try {
@@ -217,6 +224,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             getPrintJobs(undefined, 50, 'pending'),
             getPrintJobs(undefined, 50, 'printing'),
           ]);
+          if (!isCurrent()) return;
 
           // Extract results, handling rejected promises
           const pendingResult = pendingSettled.status === 'fulfilled'
@@ -263,6 +271,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             getPrintJobs(undefined, 50, 'failed'),
             getPrintJobs(undefined, 50, 'cancelled'),
           ]);
+          if (!isCurrent()) return;
 
           // Extract results, handling rejected promises
           const completedResult = completedSettled.status === 'fulfilled'
@@ -305,25 +314,39 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         });
 
         setPrintJobs(allJobs);
-        // Fetch printer status separately
-        updatePrinterStatus();
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error fetching jobs:', error);
-        if (!isRefreshing) {
+        if (isCurrent() && !isRefreshing) {
           setSnackbarMessage(tr(LOAD_ERROR_KEY));
           setSnackbarVisible(true);
         }
       } finally {
-        setLoading(false);
+        if (isCurrent()) setLoading(false);
+      }
+    }, [activeTab]);
+
+    // One owner polls the jobs and the printer status (see usePrintJobPolling for the
+    // cadence): faster while a job is queued or printing, slower when idle.
+    const hasActiveJob = printerStatus === 'busy' || (activeTab === 'inProgress' && printJobs.length > 0);
+    const { fetchNow, updateStatusNow } = usePrintJobPolling({
+      isActive: isOpen,
+      onFetchJobs: fetchPrintJobs,
+      onUpdateStatus: updatePrinterStatus,
+      hasActiveJob,
+      jobsKey: activeTab,
+    });
+
+    // Handle pull-to-refresh: through the polling owner, joining reads in flight
+    const handleRefresh = useCallback(async () => {
+      refreshingRef.current = true;
+      setRefreshing(true);
+      try {
+        await Promise.all([fetchNow(), updateStatusNow()]);
+      } finally {
+        refreshingRef.current = false;
         setRefreshing(false);
       }
-    }, [activeTab, updatePrinterStatus]);
-
-    // Handle pull-to-refresh
-    const handleRefresh = useCallback(() => {
-      fetchPrintJobs(true);
-      updatePrinterStatus();
-    }, [fetchPrintJobs, updatePrinterStatus]);
+    }, [fetchNow, updateStatusNow]);
 
     // Handle job cancellation
     const handleCancelJob = useCallback(async (jobId: string) => {
@@ -334,7 +357,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           setSnackbarMessage(tr('components.printJobs.cancelled'));
           setSnackbarVisible(true);
           // Refresh the list immediately
-          fetchPrintJobs();
+          void fetchNow();
         } else {
           setSnackbarMessage(tr('components.printJobs.cancelFailed'));
           setSnackbarVisible(true);
@@ -344,7 +367,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         setSnackbarMessage(tr('components.printJobs.cancelFailed'));
         setSnackbarVisible(true);
       }
-    }, [fetchPrintJobs]);
+    }, [fetchNow]);
 
     // Snackbars dismiss themselves after 4 seconds
     useEffect(() => {
@@ -362,15 +385,6 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       });
       return () => sub.remove();
     }, [isOpen]);
-
-    // Use custom polling hook for jobs and printer status
-    usePrintJobPolling({
-      isActive: isOpen,
-      onFetchJobs: fetchPrintJobs,
-      onUpdateStatus: updatePrinterStatus,
-      jobPollInterval: 10000,  // Poll jobs every 10 seconds
-      statusPollInterval: 2000, // Poll status every 2 seconds
-    });
 
     // Handle sheet changes
     const handleSheetChanges = useCallback((index: number) => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { Snackbar } from 'react-native-paper';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   GRNImageData,
+  type GRNItemData,
   setCurrentStep,
   setValidationErrors,
   addHeaderImage,
@@ -33,6 +34,8 @@ import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
 import { createGRN, updateGRN, findLinesSavedByLostUpdate, type GRNPhotoSaveReport } from '@/features/grn/services/grnFormService';
 import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/features/grn/services/imageUploadService';
 import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
+import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
+import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import { validateStep3 } from '@/features/grn/schemas/grnValidation';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
@@ -271,6 +274,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const handleContinueWithoutPhotos = () => {
+    // The photos are given up, retry included: their files on the phone go (the
+    // registry keeps a file while an upload of it still runs, until it ends).
+    if (photosNotUploaded) {
+      const files = photosNotUploaded.failed.map((photo) => photo.image.imageUrl);
+      files.forEach(abandonLocalPhotoUpload);
+      void releaseLocalPhotos(files);
+    }
     setPhotosNotUploaded(null);
     setShowSuccessDialog(true);
   };
@@ -521,67 +531,22 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     </View>
   );
 
-  const renderItemCell = (item: (typeof items)[0], index: number, isLast: boolean, isProtected: boolean) => {
-    const qty = item.qty || 0;
-    const weight = item.weight || 0;
-    const hasWeight = weight > 0;
-    const rack = item.rack?.trim();
-    const packageMark = item.package_mark?.trim();
-    const imageCount = item.trl_images?.length || 0;
-    const a11yParts = [
-      tr('grn.item.itemNumber', { number: index + 1 }),
-      item.item_name,
-      item.packaging,
-      tr('grn.item.a11yQuantity', { quantity: formatNumber(qty) }),
-      hasWeight ? tr('grn.review.weightEach', { weight: formatWeight(weight) }) : undefined,
-      rack ? tr('grn.item.a11yRack', { rack }) : undefined,
-      packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
-      imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
-      isProtected ? tr('grn.review.a11yDispatchedLocked') : undefined,
-    ].filter(Boolean);
-
-    return (
-      <View
-        key={item.grn_trl_id || `item-${index}`}
-        style={[styles.objectCell, !isLast && styles.objectCellBorder]}
-        accessible
-        accessibilityLabel={a11yParts.join(', ')}
-      >
-        <View style={styles.objectCellAvatar}>
-          <Text style={styles.objectCellAvatarText}>{formatNumber(index + 1)}</Text>
-        </View>
-
-        <View style={styles.objectCellContent}>
-          <Text style={styles.objectCellHeadline} numberOfLines={2}>
-            {item.item_name}
-          </Text>
-
-          {item.packaging ? (
-            <Text style={styles.objectCellSubheadline} numberOfLines={1}>
-              {item.packaging}
-            </Text>
-          ) : null}
-
-          <View style={styles.objectCellFootnote}>
-            {hasWeight && <StatusTag status="neutral" label={formatWeight(weight)} icon="weight-kilogram" />}
-            {rack ? <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
-            {packageMark ? <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
-            {imageCount > 0 && (
-              <StatusTag status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />
-            )}
-          </View>
-        </View>
-
-        <View style={styles.objectCellStatus}>
-          <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
-          <Text style={styles.qtyLabel}>{tr('grn.item.qtyShort')}</Text>
-          {isProtected && (
-            <StatusTag status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />
-          )}
-        </View>
-      </View>
-    );
-  };
+  // The item cells, built again only when the lines, the mode or the theme change:
+  // a dialog or a photo upload on this step does not redraw every line.
+  const itemCells = useMemo(
+    () =>
+      items.map((item, index) => (
+        <GrnReviewItemCell
+          key={item.grn_trl_id || `item-${index}`}
+          item={item}
+          index={index}
+          isLast={index === items.length - 1}
+          isProtected={!isCreateMode && item.qty !== item.stock}
+          styles={styles}
+        />
+      )),
+    [items, isCreateMode, styles]
+  );
 
   const renderSummaryKPI = (icon: string, label: string, value: number) => (
     <View style={styles.summaryKPI} accessible accessibilityLabel={`${label}, ${formatNumber(value)}`}>
@@ -682,7 +647,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                   imageData={header.gr_images}
                   removeFromServer={false}
                   onRemoveImage={(imageId: string) => {
+                    const removed = header.gr_images?.find((img) => img.id === imageId);
                     dispatch(removeHeaderImage(imageId));
+                    // A photo that never reached the server: its file on the phone is not needed.
+                    if (removed && isTemporaryGRNImageId(imageId)) void releaseLocalPhotos([removed.imageUrl]);
                   }}
                   onImagePress={(imageData) => {
                     const index = header.gr_images?.findIndex(img => img.id === imageData.id) ?? 0;
@@ -708,11 +676,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 <Text style={styles.emptyStateSubtitle}>{tr('grn.review.emptySubtitle')}</Text>
               </View>
             ) : (
-              <View>
-                {items.map((item, index) =>
-                  renderItemCell(item, index, index === items.length - 1, !isCreateMode && item.qty !== item.stock)
-                )}
-              </View>
+              <View>{itemCells}</View>
             )}
           </View>
 
@@ -848,6 +812,79 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     </View>
   );
 }
+
+type GrnReviewStyles = ReturnType<typeof makeStyles>;
+
+interface GrnReviewItemCellProps {
+  item: GRNItemData;
+  index: number;
+  isLast: boolean;
+  /** A stored line with dispatches: its quantity cannot change. */
+  isProtected: boolean;
+  styles: GrnReviewStyles;
+}
+
+/** One line of the review's item list; drawn again only when its own props change. */
+const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, isLast, isProtected, styles }: GrnReviewItemCellProps) {
+  const qty = item.qty || 0;
+  const weight = item.weight || 0;
+  const hasWeight = weight > 0;
+  const rack = item.rack?.trim();
+  const packageMark = item.package_mark?.trim();
+  const imageCount = item.trl_images?.length || 0;
+  const a11yParts = [
+    tr('grn.item.itemNumber', { number: index + 1 }),
+    item.item_name,
+    item.packaging,
+    tr('grn.item.a11yQuantity', { quantity: formatNumber(qty) }),
+    hasWeight ? tr('grn.review.weightEach', { weight: formatWeight(weight) }) : undefined,
+    rack ? tr('grn.item.a11yRack', { rack }) : undefined,
+    packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
+    imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
+    isProtected ? tr('grn.review.a11yDispatchedLocked') : undefined,
+  ].filter(Boolean);
+
+  return (
+    <View
+      style={[styles.objectCell, !isLast && styles.objectCellBorder]}
+      accessible
+      accessibilityLabel={a11yParts.join(', ')}
+    >
+      <View style={styles.objectCellAvatar}>
+        <Text style={styles.objectCellAvatarText}>{formatNumber(index + 1)}</Text>
+      </View>
+
+      <View style={styles.objectCellContent}>
+        <Text style={styles.objectCellHeadline} numberOfLines={2}>
+          {item.item_name}
+        </Text>
+
+        {item.packaging ? (
+          <Text style={styles.objectCellSubheadline} numberOfLines={1}>
+            {item.packaging}
+          </Text>
+        ) : null}
+
+        <View style={styles.objectCellFootnote}>
+          {hasWeight && <StatusTag status="neutral" label={formatWeight(weight)} icon="weight-kilogram" />}
+          {rack ? <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
+          {packageMark ? <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
+          {imageCount > 0 && (
+            <StatusTag status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />
+          )}
+        </View>
+      </View>
+
+      <View style={styles.objectCellStatus}>
+        <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
+        <Text style={styles.qtyLabel}>{tr('grn.item.qtyShort')}</Text>
+        {isProtected && (
+          <StatusTag status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />
+        )}
+      </View>
+    </View>
+  );
+});
 
 // ============================================================================
 // STYLES

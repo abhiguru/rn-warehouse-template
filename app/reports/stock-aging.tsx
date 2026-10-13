@@ -100,7 +100,35 @@ const makeStyles = (t: ThemeTokens) => ({
   stockInfo: { alignItems: 'flex-end' as const, flexShrink: 0 },
   stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   stockLabel: { ...typography.caption1, color: t.text.secondary },
-  groupLines: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border.divider },
+  // An opened item whose lots are rows of the list under it: the card is the top of one
+  // frame and the lot rows the rest. No shadow, which would fall across the rows under it;
+  // a hairline frame instead. The last lot row rounds the frame off and spaces the next card.
+  cardOpen: {
+    marginBottom: 0,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 0,
+    borderColor: t.border.divider,
+  },
+  cardClipOpen: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  lineCell: {
+    marginHorizontal: layout.marginCompact,
+    backgroundColor: t.surface.card,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
+  },
+  lineCellFirst: { borderTopWidth: StyleSheet.hairlineWidth },
+  lineCellLast: {
+    marginBottom: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomLeftRadius: radius.card,
+    borderBottomRightRadius: radius.card,
+    overflow: 'hidden' as const,
+  },
 
   // A GRN line under an item
   lineDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
@@ -276,7 +304,45 @@ const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: Custo
 // One customer's items
 // ============================================================================
 
-const groupKey = (group: StockAgingGroup) => group.key;
+/**
+ * The rows of one customer's list: an item card, and while it is open a row for each
+ * of its lots under it (P2F-UI-2). An item can be on hundreds of lots, and drawn
+ * inside its card they would all be mounted at once in one list cell; as rows of
+ * their own the list draws only those on screen.
+ */
+type AgingListRow =
+  | { kind: 'group'; key: string; group: StockAgingGroup }
+  | {
+      kind: 'line';
+      /** The item row's key, then the lot's own: stable for the same answer. */
+      key: string;
+      /** The item (group key) the lot is under. */
+      parentId: string;
+      line: StockAgingLine;
+      isFirst: boolean;
+      isLast: boolean;
+    };
+
+const rowKey = (row: AgingListRow) => row.key;
+const rowType = (row: AgingListRow) => row.kind;
+
+/** An item's row and, while it is open, a row for each of its lots under it. */
+function groupWithLines(group: StockAgingGroup, isOpen: boolean): AgingListRow[] {
+  const key = `group:${group.key}`;
+  const head: AgingListRow = { kind: 'group', key, group };
+  if (!isOpen) return [head];
+  return [
+    head,
+    ...group.lines.map((line, index) => ({
+      kind: 'line' as const,
+      key: `${key}|line:${line.lineKey}`,
+      parentId: group.key,
+      line,
+      isFirst: index === 0,
+      isLast: index === group.lines.length - 1,
+    })),
+  ];
+}
 
 /** A set with one key added or taken out. */
 function toggled(set: ReadonlySet<string> | undefined, key: string): Set<string> {
@@ -302,7 +368,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const { data } = query;
   const groups = useMemo(() => groupStockAgingLines(data?.items ?? []), [data]);
-  const rows = useMemo(() => stockAgingItemsView(groups, view), [groups, view]);
+  // The items the search and the bucket leave; the list's rows add the lots of the open ones.
+  const shown = useMemo(() => stockAgingItemsView(groups, view), [groups, view]);
   // The figures are the whole stock's, not what the search or the bucket leaves. Both item tiles
   // count item cards (`groups`, before any search or filter), not the server's stock lines: the
   // oldest-stock tile counts the items with at least one lot over 364 days (the bar beside it
@@ -346,17 +413,23 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     [reduceMotion]
   );
 
+  const rows = useMemo(() => shown.flatMap(group => groupWithLines(group, openGroups.has(group.key))), [shown, openGroups]);
+
   const renderRow = useCallback(
-    (group: StockAgingGroup) => (
-      <ItemGroupRow
-        group={group}
-        words={view.words}
-        expanded={openGroups.has(group.key)}
-        openLines={openLines[group.key]}
-        onToggle={toggleGroup}
-        onToggleLine={toggleLine}
-      />
-    ),
+    (row: AgingListRow) =>
+      row.kind === 'group' ? (
+        <ItemGroupRow group={row.group} words={view.words} expanded={openGroups.has(row.group.key)} onToggle={toggleGroup} />
+      ) : (
+        <StockLineRow
+          line={row.line}
+          groupKey={row.parentId}
+          words={view.words}
+          expanded={openLines[row.parentId]?.has(row.line.lineKey) ?? false}
+          isFirst={row.isFirst}
+          isLast={row.isLast}
+          onToggle={toggleLine}
+        />
+      ),
     [view.words, openGroups, openLines, toggleGroup, toggleLine]
   );
   const extraData = useMemo(() => ({ words: view.words, openGroups, openLines }), [view.words, openGroups, openLines]);
@@ -370,10 +443,12 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       query={query}
       kpis={kpis}
       kpiPlaceholders={3}
-      status={{ shown: rows.length, total: groups.length }}
+      // Items, not rows: the lots of an open item are rows too.
+      status={{ shown: shown.length, total: groups.length }}
       rows={rows}
       renderRow={renderRow}
-      keyExtractor={groupKey}
+      keyExtractor={rowKey}
+      getRowType={rowType}
       extraData={extraData}
       noun="items"
       empty={{ icon: 'package-variant-closed', title: tr('reports.shared.noStockForCustomer'), description: tr('reports.shared.noStockForCustomerDescription') }}
@@ -398,13 +473,12 @@ interface ItemGroupRowProps {
   group: StockAgingGroup;
   /** Lower-cased search words, shown in bold. */
   words: string[];
+  /** Open: its lots are the list's rows under it (see AgingListRow). */
   expanded: boolean;
-  openLines: ReadonlySet<string> | undefined;
   onToggle: (groupKey: string) => void;
-  onToggleLine: (groupKey: string, lineKey: string) => void;
 }
 
-const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, openLines, onToggle, onToggleLine }: ItemGroupRowProps) {
+const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, onToggle }: ItemGroupRowProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const grns = formatCount(group.lines.length, 'GRN');
@@ -415,8 +489,8 @@ const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, openLi
     : [];
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardClip}>
+    <View style={[styles.card, expanded && styles.cardOpen]}>
+      <View style={[styles.cardClip, expanded && styles.cardClipOpen]}>
         <Pressable
           style={({ pressed }) => [styles.groupHeader, pressed && styles.rowPressed]}
           onPress={() => onToggle(group.key)}
@@ -442,22 +516,6 @@ const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, openLi
           </View>
           <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
         </Pressable>
-
-        {expanded ? (
-          <View style={styles.groupLines}>
-            {group.lines.map((line, index) => (
-              <StockLineRow
-                key={line.lineKey}
-                line={line}
-                groupKey={group.key}
-                words={words}
-                expanded={openLines?.has(line.lineKey) ?? false}
-                isLast={index === group.lines.length - 1}
-                onToggle={onToggleLine}
-              />
-            ))}
-          </View>
-        ) : null}
       </View>
     </View>
   );
@@ -468,6 +526,9 @@ interface StockLineRowProps {
   groupKey: string;
   words: string[];
   expanded: boolean;
+  /** The first lot under its item: draws the line under the item's card. */
+  isFirst: boolean;
+  /** The last lot under its item: rounds the frame off and spaces the next card. */
   isLast: boolean;
   onToggle: (groupKey: string, lineKey: string) => void;
 }
@@ -476,7 +537,8 @@ const openGrn = (grnId: string) => {
   if (grnId) router.push(`/grn-details/${grnId}`);
 };
 
-const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expanded, isLast, onToggle }: StockLineRowProps) {
+/** One lot of an open item, as a row of the list under the item's card. */
+const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expanded, isFirst, isLast, onToggle }: StockLineRowProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const title = grnTitle(line);
@@ -484,7 +546,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
   const dispatch = line.dispatch_info;
 
   return (
-    <View style={!isLast ? styles.lineDivider : undefined}>
+    <View style={[styles.lineCell, isFirst && styles.lineCellFirst, isLast ? styles.lineCellLast : styles.lineDivider]}>
       <Pressable
         style={({ pressed }) => [styles.lineRow, pressed && styles.rowPressed]}
         onPress={() => onToggle(groupKey, line.lineKey)}

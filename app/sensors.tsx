@@ -1,7 +1,7 @@
 /**
  * Temperature & Humidity Sensors Screen
  *
- * Displays real-time sensor data with auto-polling. Styling follows
+ * Displays real-time sensor data with auto-polling (src/hooks/usePolling.ts). Styling follows
  * docs/STYLE_GUIDE.md: list report on `background.base`, sensor object cards on
  * `surface.card`, one status tag per sensor (§3.5: healthy / warning / critical
  * map to positive / critical / negative, each with its icon and word).
@@ -13,8 +13,6 @@ import {
   FlatList,
   StyleSheet,
   RefreshControl,
-  AppState,
-  AppStateStatus,
   Text,
   Pressable,
   ActivityIndicator,
@@ -38,6 +36,7 @@ import {
 import { SensorService } from '@/services/sensor-service';
 import { SensorDevice, SensorDashboard } from '@/types/sensor.types';
 import { createLogger } from '@/utils/logger';
+import { usePolling, type IsCurrent } from '@/hooks/usePolling';
 import { formatNumber, formatRelativeTime, formatTime } from '@/utils/formatters';
 import { StatusTag, STATUS_ICONS, type StatusKind } from '@/components/ui';
 import { formatHumidity, formatTemperature } from '@/components/sensors/SensorHistoryChart';
@@ -283,6 +282,121 @@ const makeStyles = (t: ThemeTokens) =>
     },
   });
 
+type Styles = ReturnType<typeof makeStyles>;
+
+/**
+ * "Next update in N s": its own one-second state, so the countdown never re-renders the
+ * sensor rows (review R5). Counts down from the end of the last poll, as the poller does.
+ */
+const PollCountdown = React.memo(function PollCountdown({
+  lastPollAt,
+  active,
+  styles,
+}: {
+  lastPollAt: number;
+  active: boolean;
+  styles: Styles;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    if (!active) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active, lastPollAt]);
+  const seconds = Math.max(0, Math.ceil((lastPollAt + POLL_INTERVAL - now) / 1000));
+  return <Text style={styles.pollingText}>{tr('sensors.list.nextUpdate', { seconds })}</Text>;
+});
+
+/**
+ * One sensor card. Memoized with stable props so a screen re-render that does not change
+ * this sensor (the countdown, another sensor) does not re-render it (review R5).
+ */
+const SensorRow = React.memo(function SensorRow({
+  device,
+  styles,
+  t,
+}: {
+  device: SensorDevice;
+  styles: Styles;
+  t: ThemeTokens;
+}) {
+  const isOffline = device.connectivity_status === 'OFFLINE' || device.is_stale;
+  const status = rowStatus(device);
+  const hasReading = !isOffline && device.latest_temperature !== null;
+  const a11yLabel = [
+    device.device_name,
+    device.location,
+    status.label,
+    hasReading ? tr('sensors.list.spokenTemperature', { value: formatTemperature(device.latest_temperature) }) : null,
+    hasReading ? tr('sensors.list.spokenHumidity', { value: formatHumidity(device.latest_humidity) }) : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.deviceCard, pressed && styles.deviceCardPressed]}
+      onPress={() => router.push(`/sensor-detail/${device.id}`)}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint={tr('sensors.list.openHint')}
+    >
+      {/* Device Header */}
+      <View style={styles.deviceHeader}>
+        <Icon
+          name={isOffline ? 'thermometer-off' : 'thermometer'}
+          size={iconSize.lg}
+          color={isOffline ? t.icon.secondary : t.icon.primary}
+        />
+        <View style={styles.deviceInfo}>
+          <Text style={styles.deviceName} numberOfLines={2}>
+            {device.device_name}
+          </Text>
+          <Text style={styles.deviceLocation} numberOfLines={1}>
+            {device.location}
+          </Text>
+          <StatusTag status={status.kind} label={status.label} />
+        </View>
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+      </View>
+
+      {/* Temperature & Humidity */}
+      {hasReading ? (
+        <>
+          <View style={styles.readingsRow}>
+            <View style={styles.readingBox}>
+              <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.readingLabel}>{tr('sensors.temperature')}</Text>
+              <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
+            </View>
+
+            <View style={styles.readingBox}>
+              <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.readingLabel}>{tr('sensors.humidity')}</Text>
+              <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
+            </View>
+          </View>
+
+          {device.latest_reading_timestamp && (
+            <Text style={styles.timestampText}>{tr('sensors.list.updated', { time: formatRelativeTime(device.latest_reading_timestamp) })}</Text>
+          )}
+        </>
+      ) : (
+        <View style={styles.offlineContainer}>
+          <Icon name="cloud-off-outline" size={iconSize.xl} color={t.icon.secondary} />
+          <Text style={styles.offlineText}>{device.is_stale ? tr('sensors.status.noRecentData') : tr('sensors.status.offline')}</Text>
+          {device.last_reading_at && (
+            <Text style={styles.timestampText}>{tr('sensors.list.lastSeen', { time: formatRelativeTime(device.last_reading_at) })}</Text>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+});
+
+const keyExtractor = (device: SensorDevice) => device.id;
+
 const SensorsScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -292,125 +406,70 @@ const SensorsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorVisible, setErrorVisible] = useState(false);
-  const [nextPollIn, setNextPollIn] = useState<number>(POLL_INTERVAL);
+  const [lastPollAt, setLastPollAt] = useState(() => Date.now());
 
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const appState = useRef(AppState.currentState);
+  /** The first successful poll reads everything; later ones ask only for what changed. */
+  const fullLoadDoneRef = useRef(false);
 
-  // Fetch sensor data
-  const fetchSensorData = useCallback(
-    async (isRefresh = false, sinceTimestamp?: string) => {
-      try {
-        if (isRefresh) {
-          setRefreshing(true);
-        }
+  // One poll. usePolling owns the schedule: one poll at a time, the next one 10 s after
+  // this one ends, only while this route is focused and the app is in the foreground
+  // (review R3). A poll that ends after polling stopped changes nothing on screen.
+  const pollSensors = useCallback(async (isCurrent: IsCurrent) => {
+    try {
+      const sinceTimestamp = fullLoadDoneRef.current
+        ? (await AsyncStorage.getItem(LAST_POLL_KEY)) || undefined
+        : undefined;
+      const result = await SensorService.pollSensorData(sinceTimestamp);
+      if (!isCurrent()) return;
 
-        const result = await SensorService.pollSensorData(sinceTimestamp);
+      if (result.success && result.data) {
+        setDevices(result.data.devices);
+        setDashboard(result.data.dashboard);
+        setErrorVisible(false);
+        fullLoadDoneRef.current = true;
 
-        if (result.success && result.data) {
-          setDevices(result.data.devices);
-          setDashboard(result.data.dashboard);
-          setErrorVisible(false);
+        // Store the poll timestamp
+        await AsyncStorage.setItem(LAST_POLL_KEY, result.data.poll_timestamp);
 
-          // Store the poll timestamp
-          await AsyncStorage.setItem(LAST_POLL_KEY, result.data.poll_timestamp);
-
-          // Reset countdown
-          setNextPollIn(POLL_INTERVAL);
-
-          logger.debug('Poll successful', {
-            devices: result.data.devices.length,
-            newReadings: result.data.new_readings.length,
-            timestamp: result.data.poll_timestamp,
-          });
-        } else {
-          logger.warn('Poll failed', { message: result.message });
-          setErrorVisible(true);
-        }
-      } catch (error) {
-        logger.error('Exception', error);
+        logger.debug('Poll successful', {
+          devices: result.data.devices.length,
+          newReadings: result.data.new_readings.length,
+          timestamp: result.data.poll_timestamp,
+        });
+      } else {
+        logger.warn('Poll failed', { message: result.message });
         setErrorVisible(true);
-      } finally {
+      }
+    } catch (error) {
+      logger.error('Exception', error);
+      if (isCurrent()) setErrorVisible(true);
+    } finally {
+      if (isCurrent()) {
         setLoading(false);
-        setRefreshing(false);
+        setLastPollAt(Date.now());
       }
-    },
-    []
-  );
-
-  // Initial load
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setLoading(true);
-      // First poll - no timestamp (get all data)
-      await fetchSensorData(false);
-    };
-
-    loadInitialData();
-  }, [fetchSensorData]);
-
-  // Setup polling interval
-  useEffect(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
     }
-
-    pollIntervalRef.current = setInterval(async () => {
-      const lastPoll = await AsyncStorage.getItem(LAST_POLL_KEY);
-      logger.debug('Auto-polling (10 second interval)');
-      await fetchSensorData(false, lastPoll || undefined);
-    }, POLL_INTERVAL);
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, [fetchSensorData]);
-
-  // Countdown timer for next poll
-  useEffect(() => {
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-    }
-
-    countdownIntervalRef.current = setInterval(() => {
-      setNextPollIn(prev => {
-        const next = prev - 1000;
-        return next < 0 ? POLL_INTERVAL : next;
-      });
-    }, 1000);
-
-    return () => {
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    };
   }, []);
 
-  // Handle app state changes (pause polling when app is in background)
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        // App has come to foreground - trigger a poll
-        logger.debug('App foregrounded - polling');
-        AsyncStorage.getItem(LAST_POLL_KEY).then(lastPoll => {
-          fetchSensorData(false, lastPoll || undefined);
-        });
-      }
-      appState.current = nextAppState;
-    });
+  const { runNow, active: pollingActive } = usePolling(pollSensors, {
+    intervalMs: POLL_INTERVAL,
+    enabled: true,
+  });
 
-    return () => {
-      subscription.remove();
-    };
-  }, [fetchSensorData]);
-
+  // Pull to refresh and the refresh button join a poll in flight instead of adding one.
   const onRefresh = useCallback(async () => {
-    const lastPoll = await AsyncStorage.getItem(LAST_POLL_KEY);
-    await fetchSensorData(true, lastPoll || undefined);
-  }, [fetchSensorData]);
+    setRefreshing(true);
+    try {
+      await runNow();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [runNow]);
+
+  const renderDevice = useCallback(
+    ({ item }: { item: SensorDevice }) => <SensorRow device={item} styles={styles} t={t} />,
+    [styles, t]
+  );
 
   const renderTile = (
     label: string,
@@ -441,8 +500,6 @@ const SensorsScreen: React.FC = () => {
     if (dashboard.critical_battery_count > 0) {
       alerts.push({ kind: 'negative', label: tr('sensors.list.criticalBatteryCount', { count: dashboard.critical_battery_count }) });
     }
-
-    const seconds = Math.max(0, Math.floor(nextPollIn / 1000));
 
     return (
       <View style={styles.dashboardSection}>
@@ -475,7 +532,7 @@ const SensorsScreen: React.FC = () => {
         <View style={styles.pollingInfo}>
           <View style={styles.pollingRow}>
             <Icon name="timer-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.pollingText}>{tr('sensors.list.nextUpdate', { seconds })}</Text>
+            <PollCountdown lastPollAt={lastPollAt} active={pollingActive} styles={styles} />
           </View>
           {dashboard.most_recent_sync && (
             <Text style={styles.pollingText}>{tr('sensors.list.lastSync', { time: formatTime(dashboard.most_recent_sync) })}</Text>
@@ -506,81 +563,6 @@ const SensorsScreen: React.FC = () => {
           </Text>
         )}
       </View>
-    );
-  };
-
-  const renderDevice = ({ item: device }: { item: SensorDevice }) => {
-    const isOffline = device.connectivity_status === 'OFFLINE' || device.is_stale;
-    const status = rowStatus(device);
-    const hasReading = !isOffline && device.latest_temperature !== null;
-    const a11yLabel = [
-      device.device_name,
-      device.location,
-      status.label,
-      hasReading ? tr('sensors.list.spokenTemperature', { value: formatTemperature(device.latest_temperature) }) : null,
-      hasReading ? tr('sensors.list.spokenHumidity', { value: formatHumidity(device.latest_humidity) }) : null,
-    ]
-      .filter(Boolean)
-      .join(', ');
-
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.deviceCard, pressed && styles.deviceCardPressed]}
-        onPress={() => router.push(`/sensor-detail/${device.id}`)}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={tr('sensors.list.openHint')}
-      >
-        {/* Device Header */}
-        <View style={styles.deviceHeader}>
-          <Icon
-            name={isOffline ? 'thermometer-off' : 'thermometer'}
-            size={iconSize.lg}
-            color={isOffline ? t.icon.secondary : t.icon.primary}
-          />
-          <View style={styles.deviceInfo}>
-            <Text style={styles.deviceName} numberOfLines={2}>
-              {device.device_name}
-            </Text>
-            <Text style={styles.deviceLocation} numberOfLines={1}>
-              {device.location}
-            </Text>
-            <StatusTag status={status.kind} label={status.label} />
-          </View>
-          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-        </View>
-
-        {/* Temperature & Humidity */}
-        {hasReading ? (
-          <>
-            <View style={styles.readingsRow}>
-              <View style={styles.readingBox}>
-                <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.readingLabel}>{tr('sensors.temperature')}</Text>
-                <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
-              </View>
-
-              <View style={styles.readingBox}>
-                <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.readingLabel}>{tr('sensors.humidity')}</Text>
-                <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
-              </View>
-            </View>
-
-            {device.latest_reading_timestamp && (
-              <Text style={styles.timestampText}>{tr('sensors.list.updated', { time: formatRelativeTime(device.latest_reading_timestamp) })}</Text>
-            )}
-          </>
-        ) : (
-          <View style={styles.offlineContainer}>
-            <Icon name="cloud-off-outline" size={iconSize.xl} color={t.icon.secondary} />
-            <Text style={styles.offlineText}>{device.is_stale ? tr('sensors.status.noRecentData') : tr('sensors.status.offline')}</Text>
-            {device.last_reading_at && (
-              <Text style={styles.timestampText}>{tr('sensors.list.lastSeen', { time: formatRelativeTime(device.last_reading_at) })}</Text>
-            )}
-          </View>
-        )}
-      </Pressable>
     );
   };
 
@@ -619,7 +601,7 @@ const SensorsScreen: React.FC = () => {
       <FlatList
         data={devices}
         renderItem={renderDevice}
-        keyExtractor={device => device.id}
+        keyExtractor={keyExtractor}
         ListHeaderComponent={renderDashboard()}
         ListEmptyComponent={
           errorVisible && !dashboard ? (

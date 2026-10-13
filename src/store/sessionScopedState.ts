@@ -15,6 +15,7 @@ import { forgetReportCustomers } from './slices/reportPrefsSlice';
 import { clearAllCaches } from '@/utils/cacheManager';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearImageCaches } from '@/utils/imageCache';
+import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { forgetRecentSearches } from '@/features/filters/recentSearches';
 
 export async function clearSessionScopedState(
@@ -36,6 +37,14 @@ export async function clearSessionScopedState(
   await clearAllCaches();
   // Photos seen in this session must not stay on the phone for the next one.
   await clearImageCaches();
+  // So must the photo files the app wrote for its forms and camera, also those
+  // kept for a retry (the retry is given up); a file an upload still runs on is
+  // kept by the registry until that upload ends. Never throws.
+  await Promise.all(
+    [LOCAL_PHOTO_OWNERS.grnForm, LOCAL_PHOTO_OWNERS.dispatchForm, LOCAL_PHOTO_OWNERS.camera].map(owner =>
+      releaseLocalPhotosOwnedBy(owner, { abandonRetries: true })
+    )
+  );
   // Local teardown must not fail because a cached file could not be removed.
   await sweepSharedDocuments().catch(() => {});
 }

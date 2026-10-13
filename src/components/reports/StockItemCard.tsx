@@ -18,9 +18,15 @@
  * - search (§14.6): the item name and each GRN number show the searched words in
  *   bold (`highlightWords`); a match the closed card does not show is named in a
  *   short line under its facts (`matchLine`), read with the header
+ *
+ * An item can hold hundreds of GRNs. A screen whose list has no cap on them sets
+ * `grnsInList`: the card then draws only its header (and the loading, error and
+ * empty states), and the screen gives each GRN a row of its own in the same
+ * FlashList, drawn by `StockGRNListRow`, so the list mounts only the GRNs on
+ * screen instead of all of them inside one cell.
  */
 
-import React from 'react';
+import React, { memo } from 'react';
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -106,8 +112,18 @@ export interface StockItemCardProps {
   grns: StockGRNState;
   /** Shown when the GRNs are loaded and there are none. Without it nothing is shown. */
   emptyGRNsText?: string;
-  /** A footnote under the loaded GRN rows, such as "Showing 100 of 240" when not all were read. */
+  /**
+   * A footnote under the loaded GRN rows, such as "Showing 100 of 240" when not all were read.
+   * Not drawn with `grnsInList`: the screen draws its own rows, and any line under them.
+   */
   grnsFooter?: string;
+  /**
+   * The screen's list draws the loaded GRNs, each as a row of its own (`StockGRNListRow`)
+   * right under this card. The card then draws only its header while it has GRNs to show,
+   * squared off at the bottom so the rows under it read as its body. Loading, a failure
+   * and "no GRNs" are still drawn inside the card.
+   */
+  grnsInList?: boolean;
   /** Opens a GRN; rows with a GRN id become buttons only when this is given. */
   onOpenGRN?: (grnId: string) => void;
   /**
@@ -247,6 +263,33 @@ const makeStyles = (t: ThemeTokens) =>
     },
     rowStockMuted: { color: t.text.secondary },
     rowSecondary: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'], textAlign: 'right' },
+
+    // An opened card whose GRNs are rows of the list (`grnsInList`): the header is the top of
+    // one frame and the GRN rows under it are the rest. No shadow, which would fall across the
+    // rows under it; a hairline frame instead.
+    cardJoined: {
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+      shadowOpacity: 0,
+      elevation: 0,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderBottomWidth: 0,
+      borderColor: t.border.divider,
+    },
+    clipJoined: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+    listRow: {
+      backgroundColor: t.background.base,
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderColor: t.border.divider,
+    },
+    listRowFirst: { borderTopWidth: StyleSheet.hairlineWidth },
+    listRowLast: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomLeftRadius: radius.card,
+      borderBottomRightRadius: radius.card,
+      overflow: 'hidden',
+    },
   });
 
 type Styles = ReturnType<typeof makeStyles>;
@@ -276,6 +319,36 @@ export const StockGRNRow: React.FC<StockGRNRowProps> = ({ grn, isLast = false, m
   const t = useTokens();
   return <GRNRowView grn={grn} isLast={isLast} muted={muted} onOpen={onOpen} highlightWords={highlightWords} styles={styles} t={t} />;
 };
+
+export interface StockGRNListRowProps extends StockGRNRowProps {
+  /** The first GRN under its card: draws the line between the card's header and its GRNs. */
+  isFirst?: boolean;
+  /** The screen's spacing of the row (side margins; a bottom margin on the last one). */
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * One GRN of an opened `StockItemCard` with `grnsInList`, as a row of the screen's
+ * list. Together the rows under the card read as its body: the first draws the
+ * line under the header, the last rounds the frame off.
+ */
+export const StockGRNListRow = memo(function StockGRNListRow({
+  grn,
+  isFirst = false,
+  isLast = false,
+  muted = false,
+  onOpen,
+  highlightWords,
+  style,
+}: StockGRNListRowProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <View style={[styles.listRow, isFirst && styles.listRowFirst, isLast && styles.listRowLast, style]}>
+      <GRNRowView grn={grn} isLast={isLast} muted={muted} onOpen={onOpen} highlightWords={highlightWords} styles={styles} t={t} />
+    </View>
+  );
+});
 
 const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }> = ({
   grn,
@@ -399,6 +472,7 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
   onOpenGRN,
   highlightWords,
   matchLine,
+  grnsInList = false,
   style,
 }) => {
   const styles = useThemedStyles(makeStyles);
@@ -429,11 +503,14 @@ export const StockItemCard: React.FC<StockItemCardProps> = ({
   };
 
   const rows = grns.status === 'loaded' ? grns.rows : [];
-  const showBody = isExpanded && (grns.status !== 'loaded' || rows.length > 0 || !!emptyGRNsText);
+  // With `grnsInList` the loaded GRNs are the list's rows under this card, not its body.
+  const rowsInList = grnsInList && rows.length > 0;
+  const joined = isExpanded && rowsInList;
+  const showBody = isExpanded && !rowsInList && (grns.status !== 'loaded' || rows.length > 0 || !!emptyGRNsText);
 
   return (
-    <View style={[styles.card, style]}>
-      <View style={styles.clip}>
+    <View style={[styles.card, joined && styles.cardJoined, style]}>
+      <View style={[styles.clip, joined && styles.clipJoined]}>
         <Pressable
           style={({ pressed }) => [styles.header, pressed && styles.pressed]}
           onPress={handlePress}

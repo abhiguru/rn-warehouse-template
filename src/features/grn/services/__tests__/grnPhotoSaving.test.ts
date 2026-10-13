@@ -6,16 +6,36 @@
  * RPCs by name, storage calls as `storage.upload` / `storage.remove`.
  */
 import { createGRN, updateGRN } from '../grnFormService';
-import { uploadGRNPhotos, collectDeferredGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '../imageUploadService';
+import {
+  uploadGRNPhotos,
+  collectDeferredGRNPhotos,
+  unpreparedGRNPhotos,
+  GRN_PHOTO_UPLOAD_CONCURRENCY,
+  type FailedGRNPhoto,
+} from '../imageUploadService';
 import type { GRNHeaderData, GRNImageData } from '@/store/slices/grnFormSlice';
 
 type RpcAnswer = { data: unknown; error: unknown };
 const mockCalls: Array<{ name: string; args: any }> = [];
 let mockRpcHandlers: Record<string, (args: any) => RpcAnswer | Promise<RpcAnswer>> = {};
 let mockRegistered = 0;
+/** When set, a storage upload waits for what this returns (P2F-MEDIA-2). */
+let mockUploadHook: ((path: string) => Promise<{ error: unknown }>) | null = null;
+/** Switch gates taken and ended by the uploads. */
+const mockMutation = { begun: 0, finished: 0 };
+/** Photo files read into memory. */
+let mockBuffersRead = 0;
 
 jest.mock('@/config/supabaseConfig', () => ({
-  beginOperatorMutation: () => jest.fn(),
+  beginOperatorMutation: () => {
+    mockMutation.begun += 1;
+    let ended = false;
+    return () => {
+      if (ended) return;
+      ended = true;
+      mockMutation.finished += 1;
+    };
+  },
   getCurrentConfig: () => ({ url: 'https://facility.invalid' }),
   getSupabaseWithJWT: jest.fn(),
   getSupabaseClient: jest.fn(),
@@ -30,7 +50,7 @@ jest.mock('@/config/supabaseConfig', () => ({
       from: () => ({
         upload: async (path: string) => {
           mockCalls.push({ name: 'storage.upload', args: path });
-          return { error: null };
+          return mockUploadHook ? mockUploadHook(path) : { error: null };
         },
         remove: async (paths: string[]) => {
           mockCalls.push({ name: 'storage.remove', args: paths });
@@ -125,6 +145,10 @@ beforeEach(() => {
   mockCalls.length = 0;
   mockRpcHandlers = {};
   mockRegistered = 0;
+  mockUploadHook = null;
+  mockMutation.begun = 0;
+  mockMutation.finished = 0;
+  mockBuffersRead = 0;
   photoBackend();
   // The photo file is read with fetch + FileReader on the device.
   (global as any).fetch = jest.fn(async () => ({ blob: async () => ({ size: 1200 }) }));
@@ -133,6 +157,7 @@ beforeEach(() => {
     onload: (() => void) | null = null;
     onerror: (() => void) | null = null;
     readAsArrayBuffer() {
+      mockBuffersRead += 1;
       this.result = new ArrayBuffer(8);
       this.onload?.();
     }
@@ -279,6 +304,137 @@ describe('a photo upload that outlasts the wait', () => {
     expect(await retry).toEqual({ uploadedCount: 1, failed: [] });
     expect(callsTo('register_grn_image_upload')).toHaveLength(1);
     expect(callsTo('storage.upload')).toHaveLength(1);
+  });
+});
+
+// P2F-MEDIA-2: a save with many photos runs a few complete uploads (read, register,
+// upload, confirm) at a time, never all of them at once.
+describe('a save with many photos', () => {
+  const many = (count: number, prefix = 'photo') =>
+    Array.from({ length: count }, (_, index) => ({
+      image: picked(`${prefix}-${index}`),
+      imageType: 'header' as const,
+      position: index + 1,
+    }));
+  /** Storage uploads that wait until the test lets them through. */
+  function blockedStorage() {
+    const waiting: Array<() => void> = [];
+    let active = 0;
+    let most = 0;
+    mockUploadHook = () => {
+      active += 1;
+      most = Math.max(most, active);
+      return new Promise((resolve) =>
+        waiting.push(() => {
+          active -= 1;
+          resolve({ error: null });
+        })
+      );
+    };
+    return {
+      get active() { return active; },
+      get most() { return most; },
+      /** Lets every upload through, also the ones that start meanwhile. */
+      async releaseAll(flush: () => Promise<void>) {
+        await flush();
+        while (waiting.length > 0) {
+          waiting.splice(0).forEach((release) => release());
+          await flush();
+        }
+      },
+    };
+  }
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  const tick = () => jest.advanceTimersByTimeAsync(0);
+
+  it('never has more than four uploads or photo files in memory at once, and uploads all 50', async () => {
+    const storage = blockedStorage();
+    const saving = uploadGRNPhotos(GRN_ID, many(50));
+
+    await settle();
+    expect(storage.active).toBe(4);
+    expect(callsTo('storage.upload')).toHaveLength(4);
+    expect(mockBuffersRead).toBe(4);
+    expect(callsTo('register_grn_image_upload')).toHaveLength(4);
+
+    await storage.releaseAll(settle);
+    expect(await saving).toEqual({ uploadedCount: 50, failed: [] });
+    expect(storage.most).toBe(GRN_PHOTO_UPLOAD_CONCURRENCY);
+    expect(GRN_PHOTO_UPLOAD_CONCURRENCY).toBe(4);
+    expect(callsTo('confirm_grn_image_upload')).toHaveLength(50);
+    expect(mockBuffersRead).toBe(50);
+    expect(mockMutation).toEqual({ begun: 1, finished: 1 });
+  });
+
+  it('reports the queued photos like running ones when the wait ends, and they still upload later', async () => {
+    jest.useFakeTimers();
+    const storage = blockedStorage();
+    const first = uploadGRNPhotos(GRN_ID, many(10), 30000);
+    await jest.advanceTimersByTimeAsync(30000);
+    const outcome = await first;
+
+    expect(outcome.uploadedCount).toBe(0);
+    expect(outcome.failed).toHaveLength(10);
+    for (const photo of outcome.failed) {
+      expect(photo.error).toBe('The upload was still running');
+      expect(photo.inFlight).toBeInstanceOf(Promise);
+    }
+    // Only four were started; six are waiting for a place.
+    expect(callsTo('register_grn_image_upload')).toHaveLength(4);
+    // The switch gate stays taken until the last queued upload has ended.
+    expect(mockMutation.finished).toBe(0);
+
+    await storage.releaseAll(tick);
+    const late = await Promise.all(outcome.failed.map((photo) => photo.inFlight!));
+    expect(late.every((result) => result.success)).toBe(true);
+    expect(callsTo('register_grn_image_upload')).toHaveLength(10);
+    expect(callsTo('confirm_grn_image_upload')).toHaveLength(10);
+    expect(storage.most).toBe(4);
+    expect(mockMutation).toEqual({ begun: 1, finished: 1 });
+  });
+
+  it('a retry joins the queued and running uploads instead of registering the photos again', async () => {
+    jest.useFakeTimers();
+    const storage = blockedStorage();
+    const first = uploadGRNPhotos(GRN_ID, many(6), 30000);
+    await jest.advanceTimersByTimeAsync(30000);
+    const outcome = await first;
+    expect(outcome.failed).toHaveLength(6);
+
+    const retry = uploadGRNPhotos(GRN_ID, outcome.failed as FailedGRNPhoto[], 30000);
+    await storage.releaseAll(tick);
+
+    expect(await retry).toEqual({ uploadedCount: 6, failed: [] });
+    expect(callsTo('register_grn_image_upload')).toHaveLength(6);
+    expect(callsTo('storage.upload')).toHaveLength(6);
+    expect(storage.most).toBe(4);
+  });
+
+  it('two saves at the same time share the four places', async () => {
+    const storage = blockedStorage();
+    const one = uploadGRNPhotos(GRN_ID, many(5, 'one'));
+    const two = uploadGRNPhotos(GRN_ID, many(5, 'two'));
+
+    await settle();
+    expect(storage.active).toBe(4);
+    await storage.releaseAll(settle);
+
+    expect(await one).toEqual({ uploadedCount: 5, failed: [] });
+    expect(await two).toEqual({ uploadedCount: 5, failed: [] });
+    expect(storage.most).toBe(4);
+    expect(mockMutation).toEqual({ begun: 2, finished: 2 });
+  });
+
+  it('a failing upload frees its place: every photo is still tried and reported', async () => {
+    mockRpcHandlers.register_grn_image_upload = () => ({ data: null, error: { message: 'Network request failed' } });
+    const outcome = await uploadGRNPhotos(GRN_ID, many(9));
+
+    expect(outcome.uploadedCount).toBe(0);
+    expect(outcome.failed.map((photo) => photo.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(callsTo('register_grn_image_upload')).toHaveLength(9);
+    expect(mockMutation).toEqual({ begun: 1, finished: 1 });
   });
 });
 

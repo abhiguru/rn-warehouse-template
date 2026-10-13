@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -139,49 +138,44 @@ export default function InvoiceEditStep2() {
         isEditMode={true}
       />
 
-      <KeyboardAwareScrollView
+      {/* Grouped Items Table: the page's scroll container, with the content above and below it */}
+      <InvoiceItemsTable
+        items={items}
+        onItemUpdate={handleItemUpdate}
+        onBulkEdit={handleBulkEdit}
+        onInputErrorChange={setHasRateInputError}
+        renderItem={renderItem}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
-        enableOnAndroid={true}
-        enableAutomaticScroll={true}
-        extraScrollHeight={120}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Item count */}
-        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={tr('invoice.items.itemsToInvoiceA11y', { count: items.length })}>
-          <Text style={styles.kvKey}>{tr('invoice.items.itemsToInvoice')}</Text>
-          <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{formatNumber(items.length)}</Text>
-        </View>
-
-        {/* Grouped Items Table */}
-        <InvoiceItemsTable
-          items={items}
-          onItemUpdate={handleItemUpdate}
-          onBulkEdit={handleBulkEdit}
-          onInputErrorChange={setHasRateInputError}
-          renderItem={renderItem}
-        />
-
-        {/* Pricing guide */}
-        <View style={styles.infoStrip}>
-          <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
-          <View style={styles.infoStripContent}>
-            <Text style={styles.infoStripTitle} accessibilityRole="header">{tr('invoice.items.guide.title')}</Text>
-            <Text style={styles.infoStripText}>
-              • {tr('invoice.items.guide.tapGroup')}{'\n'}
-              • {tr('invoice.items.guide.groupPrices')}{'\n'}
-              • {tr('invoice.items.guide.openDispatch')}{'\n'}
-              • <Text style={styles.bold}>{tr('invoice.label.duration')}</Text>{tr('invoice.items.guide.durationText')}{'\n'}
-              • <Text style={styles.bold}>{tr('invoice.label.charge')}</Text>{tr('invoice.items.guide.chargeText')}{'\n'}
-              • <Text style={styles.bold}>{tr('invoice.label.labourRate')}</Text>{tr('invoice.items.guide.labourText')}{'\n'}
-              • <Text style={styles.bold}>{tr('invoice.label.tax')}</Text>{tr('invoice.items.guide.taxText')}{'\n'}
-              • {tr('invoice.items.guide.customTag')}{'\n'}
-              • {tr('invoice.items.guide.calculated')}
-            </Text>
+        ListHeaderComponent={
+          <>
+            {/* Item count */}
+            <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={tr('invoice.items.itemsToInvoiceA11y', { count: items.length })}>
+              <Text style={styles.kvKey}>{tr('invoice.items.itemsToInvoice')}</Text>
+              <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{formatNumber(items.length)}</Text>
+            </View>
+          </>
+        }
+        ListFooterComponent={
+          <View style={styles.infoStrip}>
+            <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
+            <View style={styles.infoStripContent}>
+              <Text style={styles.infoStripTitle} accessibilityRole="header">{tr('invoice.items.guide.title')}</Text>
+              <Text style={styles.infoStripText}>
+                • {tr('invoice.items.guide.tapGroup')}{'\n'}
+                • {tr('invoice.items.guide.groupPrices')}{'\n'}
+                • {tr('invoice.items.guide.openDispatch')}{'\n'}
+                • <Text style={styles.bold}>{tr('invoice.label.duration')}</Text>{tr('invoice.items.guide.durationText')}{'\n'}
+                • <Text style={styles.bold}>{tr('invoice.label.charge')}</Text>{tr('invoice.items.guide.chargeText')}{'\n'}
+                • <Text style={styles.bold}>{tr('invoice.label.labourRate')}</Text>{tr('invoice.items.guide.labourText')}{'\n'}
+                • <Text style={styles.bold}>{tr('invoice.label.tax')}</Text>{tr('invoice.items.guide.taxText')}{'\n'}
+                • {tr('invoice.items.guide.customTag')}{'\n'}
+                • {tr('invoice.items.guide.calculated')}
+              </Text>
+            </View>
           </View>
-        </View>
-      </KeyboardAwareScrollView>
+        }
+      />
 
       {/* Bottom action bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>

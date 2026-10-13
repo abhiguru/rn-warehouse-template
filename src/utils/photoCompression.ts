@@ -8,8 +8,17 @@
  *   block (GPS position, device) of the original, and the reported type is
  *   the format that was really written. If the photo cannot be re-encoded the
  *   upload fails; the original file is never sent in its place.
+ *
+ * The photo is encoded once. Its size comes with it (the camera and the
+ * picker both report it); only a photo whose size is not known is decoded
+ * first to learn it, and that probe copy is deleted at once. The size of the
+ * written file is read from the file system, not by reading the file back.
+ * The written copy is registered as an app file (localPhotoFiles), so it is
+ * deleted once nothing needs it.
  */
 import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
+import { discardLocalPhoto, registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 export interface PhotoCompressionSettings {
   compress: number;
@@ -60,19 +69,36 @@ export const resizeToFit = (
   return width! >= height! ? [{ resize: { width: maxEdge } }] : [{ resize: { height: maxEdge } }];
 };
 
+/**
+ * Bytes of a written file, from its metadata; the file is not read. 0 when the
+ * file system does not say: the upload then measures the file itself.
+ */
+const writtenFileSize = (uri: string): number => {
+  const size = new File(uri).size;
+  return typeof size === 'number' && Number.isFinite(size) && size > 0 ? size : 0;
+};
+
+/**
+ * @param owner who the written copy belongs to (see LOCAL_PHOTO_OWNERS); it is
+ *   registered under that name.
+ */
 export const compressPhoto = async (
   source: { uri: string; width?: number; height?: number },
-  settings: PhotoCompressionSettings
+  settings: PhotoCompressionSettings,
+  owner = 'photo'
 ): Promise<CompressedPhoto> => {
-  // A photo from the in-app camera arrives without its size (0 x 0). The size
-  // is read first: limiting the width blindly leaves a portrait photo taller
-  // than `maxEdge` and enlarges a small one.
+  // A photo whose size is not known has it read first: limiting the width
+  // blindly leaves a portrait photo taller than `maxEdge` and enlarges a small
+  // one. The camera passes its size, so this happens only for a photo from
+  // elsewhere that came without one.
   let { width, height } = source;
   if (!isKnownSize(width, height)) {
     try {
       const probe = await ImageManipulator.manipulateAsync(source.uri, [], {});
       width = probe.width;
       height = probe.height;
+      // The probe wrote a full-size copy that nothing uses.
+      if (probe.uri !== source.uri) await discardLocalPhoto(probe.uri);
     } catch {
       // The size stays unknown; the width is limited, which keeps the shape.
     }
@@ -84,15 +110,20 @@ export const compressPhoto = async (
   }
 
   for (const format of formats) {
+    let writtenUri: string | undefined;
     try {
       const written = await ImageManipulator.manipulateAsync(source.uri, actions, {
         compress: settings.compress,
         format,
       });
-      const response = await fetch(written.uri);
-      const blob = await response.blob();
-      return { uri: written.uri, fileSize: blob.size, ...describeFormat(format) };
+      // Never the original: a "copy" at the same address would still carry its EXIF block.
+      if (!written?.uri || written.uri === source.uri) throw new Error('no re-encoded copy');
+      writtenUri = written.uri;
+      await registerLocalPhoto(written.uri, owner, 'prepared');
+      return { uri: written.uri, fileSize: writtenFileSize(written.uri), ...describeFormat(format) };
     } catch {
+      // A copy that cannot be used is not left behind.
+      if (writtenUri) await releaseLocalPhotos([writtenUri]);
       // Try the next format; the original file is not an acceptable substitute.
     }
   }

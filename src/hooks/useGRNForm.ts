@@ -46,6 +46,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PHOTO_OWNERS, releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import {
   updateHeader,
   addItem,
@@ -97,6 +98,21 @@ function describeValidationErrors(errors: Record<string, string>): string {
  * If session changed, the async operation was cancelled and should not update state.
  */
 const log = createLogger('useGRNForm');
+
+/**
+ * The form is being reset or discarded: the photo files the app wrote for it
+ * go, also those of photos removed from it earlier. A file whose upload is
+ * still running, or failed and may be retried, is kept until that is settled
+ * (see localPhotoFiles); gallery photos are never touched.
+ */
+function releaseFormPhotoFiles(header: GRNHeaderData, items: GRNItemData[]): void {
+  const uris = [...(header.gr_images || []), ...items.flatMap(item => item.trl_images || [])].map(
+    image => image.imageUrl
+  );
+  const resetAt = Date.now();
+  void releaseLocalPhotos(uris);
+  void releaseLocalPhotosOwnedBy(LOCAL_PHOTO_OWNERS.grnForm, { createdBefore: resetAt });
+}
 
 let globalSessionId = 0;
 
@@ -198,6 +214,13 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       grNoChangeAbortRef.current = null;
     };
   }, []);
+
+  // The form's photos as last rendered, for the reset paths below (a ref, so
+  // resetFormState keeps its identity while the form changes).
+  const formPhotosRef = useRef({ header, items });
+  useEffect(() => {
+    formPhotosRef.current = { header, items };
+  }, [header, items]);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -608,6 +631,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     console.log('[useGRNForm] Global session incremented to:', globalSessionId);
 
     setLocalValidationErrors({});
+    releaseFormPhotoFiles(formPhotosRef.current.header, formPhotosRef.current.items);
     dispatch(resetForm());
   }, [dispatch]);
 
@@ -670,6 +694,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         // Reset form before loading new data to prevent stale data flash
         if (previousGrnIdParamRef.current && previousGrnIdParamRef.current !== grnIdParam) {
           console.log('[useGRNForm] GRN ID changed, resetting form first');
+          releaseFormPhotoFiles(formPhotosRef.current.header, formPhotosRef.current.items);
           dispatch(resetForm());
         }
         loadExistingGRN(grnIdParam);
