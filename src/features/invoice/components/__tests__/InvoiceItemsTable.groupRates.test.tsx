@@ -22,6 +22,8 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/fiori', () => ({ InlineValidation: 'InlineValidation' }));
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+jest.mock('react-native-keyboard-aware-scroll-view', () => ({ listenToKeyboardEvents: () => (component: unknown) => component }));
 
 const line = (id: string, rates: Partial<InvoiceItemData>): InvoiceItemData => ({
   temp_id: id, disp_trl_id: `d-${id}`, grn_item_id: 'gi', item_id: 'item', item_name: 'Fictional potatoes', qty: 100,

@@ -14,6 +14,7 @@ import {
   GRNImageData,
   addItem,
   updateItem,
+  reconcileItems,
   removeItem,
   addItemImage,
   completeItemImageUpload,
@@ -34,6 +35,8 @@ import WizardBottomBar from '@/components/WizardBottomBar';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
+import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
+import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
 import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
 import {
@@ -360,7 +363,10 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   // Nothing is deleted on the server here. The photo leaves the form; a saved photo is
   // remembered by the store and deleted when the GRN is saved, so "Discard changes" keeps it.
   const handleImageRemove = async (imageId: string) => {
+    const removed = currentItem.trl_images?.find((img) => img.id === imageId);
     dispatch(removeItemImage({ itemId: currentItem.grn_trl_id, imageId }));
+    // A photo that never reached the server: its file on the phone is not needed.
+    if (removed && isTemporaryGRNImageId(imageId)) void releaseLocalPhotos([removed.imageUrl]);
     setCurrentItem((prev) => ({
       ...prev,
       trl_images: (prev.trl_images || []).filter((img) => img.id !== imageId),
@@ -527,15 +533,23 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     setLocalValidationErrors({});
     dispatch(setValidationErrors({}));
 
+    // One lookup of the stored lines, and one action for all of them: a line
+    // that did not change keeps its stored object.
+    const storedById = new Map<string, GRNItemData>();
+    items.forEach((item) => {
+      if (!storedById.has(item.grn_trl_id)) storedById.set(item.grn_trl_id, item);
+    });
+    const storeItems: GRNItemData[] = [];
     parsedItems.forEach(({ itemToSave, parsedQty }) => {
       if (parsedQty === null) return;
-      const existingInStore = items.find((item) => item.grn_trl_id === itemToSave.grn_trl_id);
+      const existingInStore = storedById.get(itemToSave.grn_trl_id);
       const hasDispatches = !isCreateMode && itemsWithDispatchesOnLoad.has(itemToSave.grn_trl_id);
+      // A line with dispatches keeps its stored stock; any other line's stock is its quantity.
       const stockValue = hasDispatches
         ? existingInStore?.stock ?? parsedQty
         : parsedQty;
 
-      const storeItem: GRNItemData = {
+      storeItems.push({
         grn_trl_id: itemToSave.grn_trl_id,
         item_table_id: itemToSave.item_table_id,
         item_name: itemToSave.item_name,
@@ -546,14 +560,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         rack: itemToSave.rack,
         package_mark: itemToSave.package_mark,
         trl_images: itemToSave.trl_images || [],
-      };
-
-      if (existingInStore) {
-        dispatch(updateItem({ grn_trl_id: itemToSave.grn_trl_id, item: storeItem }));
-      } else {
-        dispatch(addItem(storeItem));
-      }
+      });
     });
+    dispatch(reconcileItems(storeItems));
 
     dispatch(setCurrentStep(3));
     setIsNavigating(true);

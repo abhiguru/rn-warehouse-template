@@ -28,9 +28,14 @@ const digits = (n: number) => localizeDigits(String(n));
 
 interface OrderItemCardProps {
   item: OrderItem;
-  /** Resolves true once the server stored the quantity. */
-  onQuantityChange: (newQuantity: number) => Promise<boolean> | boolean | void;
-  onRemove: () => void;
+  /**
+   * Called with this card's line id, so the parent can pass one stable function to
+   * every card and the memoized card skips renders. Resolves true once the server
+   * stored the quantity.
+   */
+  onQuantityChange: (itemId: string, newQuantity: number) => Promise<boolean> | boolean | void;
+  /** Called with this card's line id. */
+  onRemove: (itemId: string) => void;
 }
 
 const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
@@ -82,6 +87,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
   const onQuantityChangeRef = useRef(onQuantityChange);
   onQuantityChangeRef.current = onQuantityChange;
+  const itemIdRef = useRef(item.id);
+  itemIdRef.current = item.id;
 
   // Track if item is being removed (to skip force-save on unmount)
   const isRemovingRef = useRef(false);
@@ -100,7 +107,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         const lastSavedQty = lastSavedQuantityRef.current;
         if (currentLocalQty !== lastSavedQty && !isRemovingRef.current) {
           if (__DEV__) console.log(`[OrderItemCard] Force saving on unmount: ${lastSavedQty} → ${currentLocalQty}`);
-          void onQuantityChangeRef.current(currentLocalQty);
+          void onQuantityChangeRef.current(itemIdRef.current, currentLocalQty);
         }
       }
     };
@@ -127,7 +134,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
       let saved: boolean;
       try {
-        saved = (await onQuantityChange(newQuantity)) !== false;
+        saved = (await onQuantityChange(itemIdRef.current, newQuantity)) !== false;
       } catch {
         saved = false;
       }
@@ -152,6 +159,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     }, 2000); // 2 second delay
   }, [onQuantityChange, triggerStockError]);
   
+  const handleRemove = () => onRemove(item.id);
+
   const handleQuantityDecrease = (amount: number = 1) => {
     if (localQuantity > amount) {
       const newQuantity = localQuantity - amount;
@@ -169,7 +178,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         debounceTimerRef.current = null;
       }
       isRemovingRef.current = true;
-      onRemove();
+      handleRemove();
     } else if (localQuantity <= amount && amount > 1) {
       // If trying to decrease by 10 and quantity is <= 10, remove the item
       if (debounceTimerRef.current) {
@@ -177,7 +186,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         debounceTimerRef.current = null;
       }
       isRemovingRef.current = true;
-      onRemove();
+      handleRemove();
     }
   };
 
@@ -332,7 +341,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {/* Remove Button: secondary negative, last in the row */}
         <Pressable
-          onPress={onRemove}
+          onPress={handleRemove}
           style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
           accessibilityRole="button"
           accessibilityLabel={tr('orders.item.removeFromOrder', { name: itemName })}

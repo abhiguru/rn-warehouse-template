@@ -95,6 +95,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PHOTO_OWNERS, releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { validationSummary } from '@/utils/validationSummary';
@@ -182,6 +183,18 @@ export interface UseDispatchFormReturn {
  * - DispatchItemsStep.tsx
  * - DispatchReviewStep.tsx
  */
+/**
+ * The form is being reset: the photo files the app wrote for it go, also those
+ * of photos removed from it earlier. A file whose upload is still running, or
+ * failed and may be retried, is kept until that is settled (see
+ * localPhotoFiles); gallery photos are never touched.
+ */
+function releaseFormPhotoFiles(images: DispatchImageData[]): void {
+  const resetAt = Date.now();
+  void releaseLocalPhotos(images.map(image => image.image_url));
+  void releaseLocalPhotosOwnedBy(LOCAL_PHOTO_OWNERS.dispatchForm, { createdBefore: resetAt });
+}
+
 export function useDispatchForm({
   mode,
   dispatchIdParam,
@@ -202,6 +215,13 @@ export function useDispatchForm({
   const isReadyToSubmit = useAppSelector(selectIsReadyToSubmit);
 
   const isCreateMode = mode === 'create';
+
+  // The form's photos as last rendered, for the reset paths below (a ref, so
+  // resetFormState keeps its identity while the form changes).
+  const formImagesRef = useRef(images);
+  useEffect(() => {
+    formImagesRef.current = images;
+  }, [images]);
 
   // Message for a typed number that another dispatch already holds; step 1 does not pass
   // while it is set. It lives in the form slice: a screen's own copy was lost when step 1
@@ -718,6 +738,7 @@ export function useDispatchForm({
     console.log('[useDispatchForm] Global session incremented to:', globalSessionId);
 
     setLocalValidationErrors({});
+    releaseFormPhotoFiles(formImagesRef.current);
     dispatch(resetForm());
   }, [dispatch]);
 
@@ -780,6 +801,7 @@ export function useDispatchForm({
         // Reset form before loading new data to prevent stale data flash
         if (previousDispatchIdParamRef.current && previousDispatchIdParamRef.current !== dispatchIdParam) {
           console.log('[useDispatchForm] Dispatch ID changed, resetting form first');
+          releaseFormPhotoFiles(formImagesRef.current);
           dispatch(resetForm());
         }
         loadExistingDispatch(dispatchIdParam);

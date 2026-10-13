@@ -6,10 +6,18 @@
  * only one network call is made and all callers share the result.
  */
 
+import { onSessionChange } from '@/config/sessionLifecycle';
+
 type PendingRequest<T> = Promise<T>;
 
 // Map of in-flight requests by key
 const pendingRequests = new Map<string, PendingRequest<unknown>>();
+
+// A request of the previous session (sign-out, sign-in, server switch) is never joined.
+// sessionLifecycle imports nothing, so this adds no import cycle.
+onSessionChange(() => {
+  clearAllPendingRequests();
+});
 
 /**
  * Stable JSON stringify that sorts object keys recursively.
@@ -75,16 +83,20 @@ export async function deduplicatedRequest<T>(
     return existing;
   }
 
-  // Create new request and track it
-  const request = requestFn()
+  // Create new request and track it. Cleanup removes only this request: after a
+  // session change a newer request may hold the key.
+  const forget = () => {
+    if (pendingRequests.get(key) === request) pendingRequests.delete(key);
+  };
+  const request: Promise<T> = requestFn()
     .then((result) => {
       // Clean up after successful completion
-      pendingRequests.delete(key);
+      forget();
       return result;
     })
     .catch((error) => {
       // Clean up on error too
-      pendingRequests.delete(key);
+      forget();
       throw error;
     });
 

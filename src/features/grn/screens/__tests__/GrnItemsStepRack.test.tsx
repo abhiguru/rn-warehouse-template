@@ -8,7 +8,7 @@ import { Alert } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
-import { addItem, updateItem } from '@/store/slices/grnFormSlice';
+import { addItem, reconcileItems, updateItem } from '@/store/slices/grnFormSlice';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const LINE_ID = '55555555-2222-4333-8444-555555555555';
@@ -133,7 +133,8 @@ describe('GRN items step racks', () => {
     const save = alert.mock.calls[0]?.[2]?.find((button: { text: string }) => button.text === 'Save item');
     if (save) await act(async () => { await save.onPress(); });
 
-    expect(mockDispatch).toHaveBeenCalledWith(addItem(expect.objectContaining({ rack: '20B' }) as never));
+    // Next stores the step's lines in one action.
+    expect(mockDispatch).toHaveBeenCalledWith(reconcileItems([expect.objectContaining({ rack: '20B' })] as never));
     await act(async () => { tree.unmount(); });
   });
 

@@ -85,6 +85,7 @@ import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
+import { sweepLocalPhotoFiles } from '@/utils/localPhotoFiles';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
@@ -520,6 +521,9 @@ function BootstrapApp() {
     // Documents handed to the share sheet in an earlier run are not session
     // data for this one; remove them before anything else starts.
     void sweepSharedDocuments();
+    // Photo files the app wrote (camera shots, prepared copies) that no form
+    // can still use: no form survives a restart, so those older than a week go.
+    void sweepLocalPhotoFiles();
     void bootstrapApp();
     const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
     const removeVerifier = operatorResumeGate.installVerifier(async current => {

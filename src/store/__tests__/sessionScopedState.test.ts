@@ -13,6 +13,14 @@ import { recentSearches, rememberSearch } from '@/features/filters/recentSearche
 import { Image } from 'expo-image';
 import { getSessionIdentity } from '@/config/supabaseConfig';
 import { readReportCache, writeReportCache } from '@/features/reports/reportCache';
+import {
+  holdLocalPhoto,
+  localPhotoFilesIdle,
+  localPhotoUploadEnded,
+  registerLocalPhoto,
+  releaseLocalPhotos,
+  releaseLocalPhotosOwnedBy,
+} from '@/utils/localPhotoFiles';
 
 jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
@@ -20,6 +28,30 @@ jest.mock('@/lib/queryClient', () => ({
 jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn() }));
+// The real photo file registry, with its owner release watched for the order of the teardown.
+jest.mock('@/utils/localPhotoFiles', () => {
+  const actual = jest.requireActual('@/utils/localPhotoFiles');
+  return { ...actual, releaseLocalPhotosOwnedBy: jest.fn(actual.releaseLocalPhotosOwnedBy) };
+});
+const mockFiles = new Set<string>();
+jest.mock('expo-file-system', () => ({
+  Paths: {
+    cache: { uri: 'file:///data/user/0/org.example.warehouse/cache/' },
+    document: { uri: 'file:///data/user/0/org.example.warehouse/files/' },
+  },
+  File: class {
+    uri: string;
+    constructor(path: string) {
+      this.uri = path;
+    }
+    get exists() {
+      return mockFiles.has(this.uri);
+    }
+    delete() {
+      mockFiles.delete(this.uri);
+    }
+  },
+}));
 jest.mock('expo-image', () => ({
   Image: { clearDiskCache: jest.fn(async () => true), clearMemoryCache: jest.fn(async () => true) },
 }));
@@ -174,4 +206,46 @@ it('forgets the customer last opened in a report, for every account, and keeps t
   expect(byScope['scope-b'].lastCustomer).toEqual({});
   expect(byScope['scope-a'].period).toEqual({ preset: 'last240' });
   expect(byScope['scope-a'].pinned).toEqual(['stock-summary']);
+});
+
+// P2F-MEDIA-3: the photo files the app wrote for the forms and the camera in this session go with it.
+it('releases the photo files of the GRN form, the dispatch form and the camera, after the image cache', async () => {
+  await clearSessionScopedState(makeStore().dispatch);
+  expect(releaseLocalPhotosOwnedBy).toHaveBeenCalledTimes(3);
+  expect(jest.mocked(releaseLocalPhotosOwnedBy).mock.calls.map(([owner]) => owner).sort()).toEqual(['camera', 'dispatch-form', 'grn-form']);
+  const firstRelease = Math.min(...jest.mocked(releaseLocalPhotosOwnedBy).mock.invocationCallOrder);
+  expect(jest.mocked(Image.clearMemoryCache).mock.invocationCallOrder[0]).toBeLessThan(firstRelease);
+  expect(firstRelease).toBeLessThan(jest.mocked(sweepSharedDocuments).mock.invocationCallOrder[0]);
+});
+
+it('deletes on sign-out the photo files kept for a retry, and keeps one an upload still runs on until it ends', async () => {
+  const folder = 'file:///data/user/0/org.example.warehouse/cache/ImageManipulator';
+  const grnCopy = `${folder}/session-grn-copy.webp`;
+  const dispatchCopy = `${folder}/session-dispatch-copy.webp`;
+  const running = `${folder}/session-running-copy.webp`;
+  for (const [uri, owner] of [[grnCopy, 'grn-form'], [dispatchCopy, 'dispatch-form'], [running, 'grn-form']]) {
+    mockFiles.add(uri);
+    await registerLocalPhoto(uri, owner, 'prepared');
+  }
+  // Two uploads failed and wait for a retry; the saved forms were reset meanwhile.
+  for (const uri of [grnCopy, dispatchCopy]) {
+    const end = holdLocalPhoto(uri);
+    localPhotoUploadEnded(uri, false);
+    end();
+  }
+  await releaseLocalPhotos([grnCopy, dispatchCopy]);
+  expect(mockFiles.has(grnCopy)).toBe(true);
+  const endRunning = holdLocalPhoto(running);
+
+  await clearSessionScopedState(makeStore().dispatch);
+  await localPhotoFilesIdle();
+  expect(mockFiles.has(grnCopy)).toBe(false);
+  expect(mockFiles.has(dispatchCopy)).toBe(false);
+  expect(mockFiles.has(running)).toBe(true);
+
+  // The running upload fails after the sign-out: nothing waits for it any more.
+  localPhotoUploadEnded(running, false);
+  endRunning();
+  await localPhotoFilesIdle();
+  expect(mockFiles.has(running)).toBe(false);
 });

@@ -3,9 +3,8 @@ import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { createClient } from '@supabase/supabase-js';
 import {
-  ensureValidTokens,
+  acquireValidSession,
   getCurrentConfig,
-  getStoredToken,
 } from '@/config/supabaseConfig';
 import {
   getSessionGeneration,
@@ -80,15 +79,17 @@ export function subscribeToOrderChanges(refresh: () => void | Promise<void>) {
             if (first && !current()) return ended();
             throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
           };
-          if (!current() || !(await ensureValidTokens())) return refuse();
-          const token = await getStoredToken();
-          if (!current() || !token.isValid || !token.authToken) return refuse();
-          return token.authToken;
+          if (!current()) return refuse();
+          const session = await acquireValidSession();
+          if (!current() || !session || session.generation !== generation) return refuse();
+          return session.authToken;
         },
       });
     } finally {
       constructing = false;
     }
+    let systemOk = false;
+    let joined = false;
     const channel = client
       .channel('warehouse-orders')
       .on(
@@ -97,11 +98,17 @@ export function subscribeToOrderChanges(refresh: () => void | Promise<void>) {
         schedule
       )
       .on('system', {}, payload => {
-        if (payload.status === 'ok') schedule();
+        if (payload.status !== 'ok') return;
+        // Same as the first join below: the first ok needs no refetch, a later one does.
+        if (systemOk) schedule();
+        systemOk = true;
       });
     channel.subscribe(status => {
-      // This also runs after automatic socket rejoin: recover missed changes.
-      if (status === 'SUBSCRIBED') schedule();
+      if (status !== 'SUBSCRIBED') return;
+      // The first join needs no refetch: the screen loads, or catches up on its return,
+      // itself. A later one is an automatic socket rejoin: recover missed changes.
+      if (joined) schedule();
+      joined = true;
     });
   };
   unsubscribeSession = onSessionChange(stop);

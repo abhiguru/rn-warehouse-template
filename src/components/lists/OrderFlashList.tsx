@@ -326,21 +326,51 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     };
   }, []);
 
-  useOrderLiveUpdates(() => fetchOrders(true, true));
+  // The list owns the refresh on a return to the screen (below), so the live updates
+  // hook only follows changes while the screen is shown.
+  useOrderLiveUpdates(() => fetchOrders(true, true), true, { refreshOnFocus: false });
 
-  // First load, and a new first page whenever the search or filter changes.
+  // One owner for loading. The list is mounted by its screen, so it starts focused;
+  // a blur says otherwise.
+  const screenFocusedRef = useRef(true);
+  const blurredRef = useRef(false);
+  const changedWhileHiddenRef = useRef(false);
+
+  // First load, and a new first page whenever the customer, search or filter changes.
+  // While the screen is hidden (e.g. on the Sort and filter page) the change waits
+  // for the return, which loads it.
   useEffect(() => {
     loadedCountRef.current = 0;
+    if (!screenFocusedRef.current) {
+      changedWhileHiddenRef.current = true;
+      return;
+    }
     fetchOrders();
-     
-  }, [showWithItemsOnly, searchText]);
+  }, [customerId, showWithItemsOnly, searchText]);
 
-  // Refresh when screen comes into focus (after editing an order)
-  // Silent refresh (isSilent=true) — avoids RefreshControl pushing content down by ~60px
+  // A real return to the screen (after a blur, e.g. back from editing an order)
+  // loads once; a revisit refreshes silently: no RefreshControl pushing content down by ~60px.
+  // The callback never changes identity: expo-router reruns a focus effect whose
+  // callback changes while the screen is focused, which loaded every filter twice.
   useFocusEffect(
     useCallback(() => {
-      fetchOrders(true, true);
-    }, [fetchOrders])
+      screenFocusedRef.current = true;
+      if (blurredRef.current) {
+        blurredRef.current = false;
+        // Filters applied while away load a new first page, like an inline change;
+        // a revisit with the same request refreshes the loaded rows silently.
+        if (changedWhileHiddenRef.current) {
+          changedWhileHiddenRef.current = false;
+          void fetchOrdersRef.current();
+        } else {
+          void fetchOrdersRef.current(true, true);
+        }
+      }
+      return () => {
+        screenFocusedRef.current = false;
+        blurredRef.current = true;
+      };
+    }, [])
   );
 
   // ============================================================================

@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — performance review fixes (2026-10-13)
+
+No backend change.
+
+### Performance
+
+- **Fewer reads of the saved sign-in (DATA-01).** Each request reads the stored session once instead of twice, and requests made at the same moment share one read: 20 at once now cost 4 reads instead of 160.
+- **Scrolling a GRN list of several customers no longer downloads earlier pages again (DATA-02).** Ten pages now take 10 requests and 800 rows instead of 84 requests and 7,600 rows. Sorted by date, oldest first, the rows keep the order shown before, rows without a date included.
+- **Photos upload four at a time (MEDIA-2).** Saving a GRN or dispatch with many photos no longer starts every upload at once or holds every photo in memory together.
+- **Lists load once (R1).** Opening the Orders, Order queue, Invoices or Dispatches list, or changing a filter on it, loads it once instead of twice; coming back to a list after a change made elsewhere loads it once more.
+- **Signing in opens the tabs without restoring the session again (R2).**
+- **Sensor screens stop asking for readings while hidden (R3),** and one request at a time runs while they are shown.
+- **Changing the sensor history period sends one request (DATA-03),** and only the history area shows that it is loading.
+- **Print job status is polled less often (DATA-04):** about half as many requests while a job runs, and only a few a minute while nothing is printing; nothing after the sheet is closed.
+- **Order lists listen for live changes only while shown (R4),** and joining live updates no longer reloads a list that has just loaded. The order editor and the Orders and Order queue lists still load once when the app comes back to the foreground or the phone comes back online while they are shown.
+- **The dispatch list kept for offline use stays small (DATA-05):** older pages and filters are dropped instead of filling the phone's storage.
+- **A customer's history is forgotten at sign-out (DATA-06),** and only the last few customers opened are kept in memory.
+- **Long invoice pricing, GRN review and dispatch review forms draw only the rows on screen (UI-1);** typing a rate redraws only its own group.
+- **The order editor redraws only the lines that changed (R6)** when the order is refreshed.
+- **Opened groups in the stock summary and stock aging reports scroll smoothly (UI-2),** even with hundreds of lots under one item.
+- **Changing rates on a long invoice stays quick (F1);** grouping 1,000 dispatches no longer takes half a million comparisons.
+- **A camera photo is encoded once instead of twice (MEDIA-1).**
+- **Photos taken or prepared by the app are deleted from the phone once nothing needs them (MEDIA-3):** when removed from a form, when a form is reset or discarded, after a confirmed upload, at sign-out, and at start-up for files older than seven days. A photo kept for a retry stays until it is uploaded, also when the upload could not start, and goes when it is given up with "Continue without photos" on a GRN or at sign-out.
+- **"Next" on the GRN items step with nothing changed does no work (FORM-1),** even on a GRN with hundreds of lines.
+- **A shared PDF larger than the limit is stopped while it downloads (F5),** instead of after all of it has been downloaded into memory.
+- **The sensor countdown no longer redraws every sensor row each second (R5).**
+
 ## Unreleased — backlog fixes outside central login (2026-10-13)
 
 No backend change.

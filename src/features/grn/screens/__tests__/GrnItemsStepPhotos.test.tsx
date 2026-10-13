@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
 import { deleteGRNImage, uploadGRNItemImage } from '@/features/grn/services/imageUploadService';
 import { removeItemImage } from '@/store/slices/grnFormSlice';
+import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const LINE_ID = '55555555-2222-4333-8444-555555555555';
@@ -72,6 +73,8 @@ jest.mock('@/features/grn/services/imageUploadService', () => ({
   validateImageFile: () => ({ valid: true }),
 }));
 
+jest.mock('@/utils/localPhotoFiles', () => ({ releaseLocalPhotos: jest.fn(async () => 0) }));
+
 async function render() {
   let tree!: ReactTestRenderer;
   await act(async () => {
@@ -102,6 +105,8 @@ describe('GRN items step photos while editing', () => {
     await act(async () => { await form(tree).props.onImageRemove(SAVED_PHOTO); });
 
     expect(deleteGRNImage).not.toHaveBeenCalled();
+    // A saved photo has no file of the app's on the phone to release.
+    expect(releaseLocalPhotos).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(removeItemImage({ itemId: LINE_ID, imageId: SAVED_PHOTO }));
     expect(form(tree).props.currentItem.trl_images).toEqual([]);
     await act(async () => { tree.unmount(); });
@@ -138,6 +143,33 @@ describe('GRN items step photos while editing', () => {
       expect.objectContaining({ imageUrl: 'file:///cache/prepared.webp', uploadStatus: 'completed', storagePath: undefined }),
     ]);
     expect(form(tree).props.currentItem.trl_images[0].id).toMatch(/^temp_/);
+    await act(async () => { tree.unmount(); });
+  });
+
+  // P2F-MEDIA-3: removing a photo that never reached the server releases its prepared file.
+  it('releases the local file of a picked photo when it is removed', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///camera/raw.jpg', fileName: 'raw.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
+    });
+    (uploadGRNItemImage as jest.Mock).mockResolvedValue({
+      success: true,
+      imageId: undefined,
+      imageUrl: 'file:///cache/prepared.webp',
+      metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z', storagePath: undefined },
+    });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    act(() => form(tree).props.onImagePick());
+    await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
+    const picked = form(tree).props.currentItem.trl_images[0];
+    expect(releaseLocalPhotos).not.toHaveBeenCalled();
+
+    await act(async () => { await form(tree).props.onImageRemove(picked.id); });
+
+    expect(form(tree).props.currentItem.trl_images).toEqual([]);
+    expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/prepared.webp']);
     await act(async () => { tree.unmount(); });
   });
 });

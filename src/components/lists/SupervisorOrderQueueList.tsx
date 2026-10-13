@@ -264,22 +264,53 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     };
   }, []);
 
-  useOrderLiveUpdates(() => fetchOrders(true, true));
+  // The list owns the refresh on a return to the screen (below), so the live updates
+  // hook only follows changes while the screen is shown.
+  useOrderLiveUpdates(() => fetchOrders(true, true), true, { refreshOnFocus: false });
 
-  // First load, and a new first page whenever the search changes.
+  // One owner for loading. The list is mounted by its screen, so it starts focused;
+  // a blur says otherwise.
+  const screenFocusedRef = useRef(true);
+  const blurredRef = useRef(false);
+  const changedWhileHiddenRef = useRef(false);
+
+  // First load, and a new first page whenever the search changes. While the screen
+  // is hidden the change waits for the return, which loads it.
   useEffect(() => {
     loadedCountRef.current = 0;
+    if (!screenFocusedRef.current) {
+      changedWhileHiddenRef.current = true;
+      return;
+    }
     fetchOrders();
   }, [fetchOrders]);
 
-  // Refresh when screen comes into focus (after editing an order)
+  // A real return to the screen (after a blur, e.g. back from editing an order)
+  // folds open cards and loads once; a revisit refreshes silently: no RefreshControl
+  // pushing content down by ~60px. The callback never changes identity: expo-router reruns a focus
+  // effect whose callback changes while the screen is focused, which loaded every
+  // search twice.
   useFocusEffect(
     useCallback(() => {
-      // Only collapse expanded cards if any are open — avoids spurious re-render on every focus
-      setExpandedOrders(prev => (prev.size > 0 ? new Set() : prev));
-      // Silent refresh — avoids RefreshControl pushing content down by ~60px
-      fetchOrders(true, true);
-    }, [fetchOrders])
+      screenFocusedRef.current = true;
+      if (blurredRef.current) {
+        blurredRef.current = false;
+        // Only collapse expanded cards if any are open — avoids a spurious re-render
+        setExpandedOrders(prev => (prev.size > 0 ? new Set() : prev));
+        // Filters applied while away load a new first page, like an inline change;
+        // a revisit with the same request refreshes the loaded rows silently.
+        if (changedWhileHiddenRef.current) {
+          changedWhileHiddenRef.current = false;
+          void fetchOrdersRef.current();
+        } else {
+          void fetchOrdersRef.current(true, true);
+        }
+      }
+      return () => {
+        screenFocusedRef.current = false;
+        blurredRef.current = true;
+      };
+    }, [])
   );
 
   // ============================================================================

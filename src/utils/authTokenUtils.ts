@@ -8,11 +8,12 @@
  */
 
 import {
+  acquireValidSession,
   clearStoredTokens,
-  ensureValidTokens,
   getStoredToken,
   storeTokens,
 } from '@/config/supabaseConfig';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
 
 export interface AuthTokenResult {
   token: string | null;
@@ -28,13 +29,13 @@ export interface AuthTokenResult {
  */
 export async function getAuthToken(): Promise<AuthTokenResult> {
   try {
-    if (!(await ensureValidTokens())) return { token: null, source: 'none' };
-    const stored = await getStoredToken();
-    return stored.isValid && stored.authToken
+    const session = await acquireValidSession();
+    // The token is returned only while its session is still the current one.
+    return session && session.generation === getSessionGeneration()
       ? {
-          token: stored.authToken,
+          token: session.authToken,
           source: 'securestore',
-          expiresAt: stored.expiresAt,
+          expiresAt: session.expiresAt,
         }
       : { token: null, source: 'none' };
   } catch {

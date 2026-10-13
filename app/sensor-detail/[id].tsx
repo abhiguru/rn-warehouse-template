@@ -7,7 +7,7 @@
  * and the summary statistics.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -378,10 +378,22 @@ const SensorDetailScreen: React.FC = () => {
   const [device, setDevice] = useState<SensorDevice | null>(null);
   const [historyData, setHistoryData] = useState<SensorHistoryData | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<SensorHistoryPeriod>(7);
-  const [loading, setLoading] = useState(true);
+  const [deviceLoading, setDeviceLoading] = useState(true);
+  const [firstHistoryDone, setFirstHistoryDone] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<LoadError | null>(null);
+  const [deviceError, setDeviceError] = useState<'device' | 'notFound' | null>(null);
+  const [historyError, setHistoryError] = useState(false);
+  const error: LoadError | null = deviceError ?? (historyError ? 'history' : null);
+
+  // Request generations: only the latest device read and the latest history read may
+  // change the screen, so a slow answer for a period the user left is dropped (DATA-03).
+  const deviceGenRef = useRef(0);
+  const historyGenRef = useRef(0);
+  useEffect(() => () => {
+    deviceGenRef.current += 1;
+    historyGenRef.current += 1;
+  }, []);
 
   // Calculate available periods based on earliest_reading_at
   const availablePeriods = useMemo(() => {
@@ -392,74 +404,90 @@ const SensorDetailScreen: React.FC = () => {
     return ALL_PERIOD_OPTIONS.filter((opt) => opt.days <= daysAvailable || opt.days === 7);
   }, [device?.earliest_reading_at]);
 
-  // Fetch device info from current polling data
+  // Fetch device info from current polling data. It does not depend on the period.
   const fetchDeviceInfo = useCallback(async () => {
+    const generation = ++deviceGenRef.current;
+    const isCurrent = () => generation === deviceGenRef.current;
     try {
       const result = await SensorService.pollSensorData();
+      if (!isCurrent()) return;
       if (result.success && result.data) {
         const foundDevice = result.data.devices.find((d) => d.id === id);
         if (foundDevice) {
           setDevice(foundDevice);
+          setDeviceError(null);
         } else {
-          setError('notFound');
+          setDeviceError('notFound');
         }
       } else {
         logger.warn('Device load failed', { message: result.message });
-        setError('device');
+        setDeviceError('device');
       }
     } catch (err) {
       logger.error('Device load exception', err);
-      setError('device');
+      if (isCurrent()) setDeviceError('device');
+    } finally {
+      if (isCurrent()) setDeviceLoading(false);
     }
   }, [id]);
 
-  // Fetch historical data
+  // Fetch historical data for one period
   const fetchHistory = useCallback(async (period: SensorHistoryPeriod) => {
-    if (!id) return;
+    const generation = ++historyGenRef.current;
+    const isCurrent = () => generation === historyGenRef.current;
+    if (!id) {
+      setFirstHistoryDone(true);
+      return;
+    }
 
     setHistoryLoading(true);
-    setError(null);
+    setHistoryError(false);
 
     try {
       const result = await getSensorHistory(id, period);
+      if (!isCurrent()) return;
       if (result.success && result.data) {
         setHistoryData(result.data);
       } else {
         logger.warn('History load failed', { message: result.message });
-        setError('history');
+        setHistoryError(true);
       }
     } catch (err) {
       logger.error('History load exception', err);
-      setError('history');
+      if (isCurrent()) setHistoryError(true);
     } finally {
-      setHistoryLoading(false);
+      if (isCurrent()) {
+        setHistoryLoading(false);
+        setFirstHistoryDone(true);
+      }
     }
   }, [id]);
 
-  // Initial load
+  // The device is loaded once per sensor; the history once per sensor and period. On
+  // first open both reads run side by side.
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      await fetchDeviceInfo();
-      await fetchHistory(selectedPeriod);
-      setLoading(false);
-    };
-    loadData();
-  }, [fetchDeviceInfo, fetchHistory, selectedPeriod]);
+    void fetchDeviceInfo();
+  }, [fetchDeviceInfo]);
 
-  // Handle period change
+  useEffect(() => {
+    void fetchHistory(selectedPeriod);
+  }, [fetchHistory, selectedPeriod]);
+
+  // A period chip only selects the period; the history effect above loads it.
   const handlePeriodChange = useCallback((period: SensorHistoryPeriod) => {
     setSelectedPeriod(period);
-    fetchHistory(period);
-  }, [fetchHistory]);
+  }, []);
 
-  // Pull to refresh
+  // Pull to refresh: device and history side by side
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchDeviceInfo();
-    await fetchHistory(selectedPeriod);
+    await Promise.all([fetchDeviceInfo(), fetchHistory(selectedPeriod)]);
     setRefreshing(false);
   }, [fetchDeviceInfo, fetchHistory, selectedPeriod]);
+
+  // The whole-screen loading view is for the first open only; a period change shows its
+  // loading in the history area and keeps the rest of the screen.
+  const loading = deviceLoading || !firstHistoryDone;
 
   // Period chips (only periods with available data)
   const renderPeriodSelector = () => {
@@ -681,7 +709,7 @@ const SensorDetailScreen: React.FC = () => {
             <Text style={styles.messageText}>{errorText(error)}</Text>
             <Pressable
               style={styles.stripAction}
-              onPress={() => fetchHistory(selectedPeriod)}
+              onPress={() => (deviceError ? onRefresh() : fetchHistory(selectedPeriod))}
               accessibilityRole="button"
               accessibilityLabel={tr('common.retry')}
             >

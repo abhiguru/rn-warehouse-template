@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction, createSelector, original } from '@reduxjs/toolkit';
 
 import { toLocalISODate } from '@/utils/formatters';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
@@ -140,6 +140,57 @@ const rememberRemovedImage = (state: GRNFormState, image: GRNImageData | undefin
   state.removedImages.push({ id: image.id, storagePath: image.storagePath });
 };
 
+/** Equal as stored: the same value, or arrays whose entries are equal field by field. */
+const sameStoredValue = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((entry, index) => sameFields(entry, b[index]));
+  }
+  return false;
+};
+const sameFields = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const aKeys = Object.keys(a);
+  const bRecord = b as Record<string, unknown>;
+  return (
+    aKeys.length === Object.keys(b).length &&
+    aKeys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && (a as Record<string, unknown>)[key] === bRecord[key])
+  );
+};
+
+/**
+ * The stored lines after the items step: each given line replaces the stored
+ * line with its id (merged over it, as `updateItem` does), or is added at the
+ * end. A stored line whose given fields are all equal stays the same object,
+ * and when nothing changes the same array is returned. Stored lines that are
+ * not given stay as they are.
+ */
+export function reconcileGrnItems(stored: readonly GRNItemData[], given: readonly GRNItemData[]): GRNItemData[] {
+  const indexById = new Map<string, number>();
+  stored.forEach((item, index) => {
+    if (!indexById.has(item.grn_trl_id)) indexById.set(item.grn_trl_id, index);
+  });
+
+  let result: GRNItemData[] | null = null;
+  const added: GRNItemData[] = [];
+  given.forEach((item) => {
+    const index = indexById.get(item.grn_trl_id);
+    if (index === undefined) {
+      added.push(item);
+      return;
+    }
+    const current = (result ?? stored)[index];
+    const unchanged = (Object.keys(item) as (keyof GRNItemData)[]).every((key) => sameStoredValue(current[key], item[key]));
+    if (unchanged) return;
+    result ??= [...stored];
+    result[index] = { ...current, ...item };
+  });
+
+  if (added.length > 0) result = [...(result ?? stored), ...added];
+  return result ?? (stored as GRNItemData[]);
+}
+
 const grnFormSlice = createSlice({
   name: 'grnForm',
   initialState: createInitialState,
@@ -166,6 +217,12 @@ const grnFormSlice = createSlice({
       if (index !== -1) {
         state.items[index] = { ...state.items[index], ...action.payload.item };
       }
+    },
+    // The items step's Next: every line of the step in one action (see reconcileGrnItems).
+    reconcileItems: (state, action: PayloadAction<GRNItemData[]>) => {
+      const stored = original(state.items) ?? state.items;
+      const next = reconcileGrnItems(stored, action.payload);
+      if (next !== stored) state.items = next;
     },
     removeItem: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.grn_trl_id !== action.payload);
@@ -382,6 +439,7 @@ export const {
   updateHeader,
   addItem,
   updateItem,
+  reconcileItems,
   removeItem,
   addHeaderImage,
   updateHeaderImageProgress,

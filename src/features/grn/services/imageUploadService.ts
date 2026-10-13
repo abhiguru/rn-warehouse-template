@@ -22,6 +22,13 @@ import { formatNumber } from '@/utils/formatters';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
+import { createLimiter } from '@/utils/concurrency';
+import {
+  holdLocalPhoto,
+  localPhotoUploadEnded,
+  LOCAL_PHOTO_OWNERS,
+  releaseLocalPhotos,
+} from '@/utils/localPhotoFiles';
 
 const log = createLogger('grn-photos');
 
@@ -157,6 +164,9 @@ export const uploadGRNImage = async (
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
   let finishMutation: (() => void) | undefined;
+  // The prepared copy is kept only when the form holds it for a later upload.
+  let preparedUri: string | undefined;
+  let keepPrepared = false;
   try {
     finishMutation = beginOperatorMutation();
     // Validate file size before compression
@@ -178,7 +188,8 @@ export const uploadGRNImage = async (
       fileSize,
       mimeType: contentType,
       extension,
-    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS);
+    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS, LOCAL_PHOTO_OWNERS.grnForm);
+    preparedUri = compressedUri;
 
     // Check compressed file size
     if (fileSize > MAX_FILE_SIZE) {
@@ -199,6 +210,8 @@ export const uploadGRNImage = async (
         onProgress({ loaded: 100, total: 100, percentage: 100 });
       }
 
+      // The form holds this copy until the GRN is saved.
+      keepPrepared = true;
       return {
         success: true,
         imageId: undefined,
@@ -392,6 +405,8 @@ export const uploadGRNImage = async (
       error: errorMessage,
     };
   } finally {
+    // Uploaded at once, refused, or too large: the copy is not needed any more.
+    if (preparedUri && !keepPrepared) void releaseLocalPhotos([preparedUri]);
     finishMutation?.();
   }
 };
@@ -424,9 +439,14 @@ export const uploadGRNItemImage = async (
  */
 export const deleteGRNImage = async (
   imageId: string,
-  _imageUrl: string
+  imageUrl: string
 ): Promise<{ success: boolean; partial?: boolean; error?: string }> => {
-  if (isTemporaryGRNImageId(imageId)) return { success: true };
+  if (isTemporaryGRNImageId(imageId)) {
+    // A photo that never reached the server: only its file on the phone goes
+    // (and only when the app wrote that file).
+    if (imageUrl) await releaseLocalPhotos([imageUrl]);
+    return { success: true };
+  }
   const result = await deleteWarehouseImage('grn', imageId);
   if (result.partial) {
     // The record is gone; only the stored file could not be confirmed deleted.
@@ -537,6 +557,16 @@ export const generateTempGRNId = (): string => {
   return `temp_grn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
+/** Bytes of a local file from its metadata, without reading it; 0 when unknown. */
+const localFileSize = (uri: string): number => {
+  try {
+    const size = new File(uri).size;
+    return typeof size === 'number' && Number.isFinite(size) && size > 0 ? size : 0;
+  } catch {
+    return 0;
+  }
+};
+
 /**
  * Upload a single deferred image using three-step transactional flow
  */
@@ -551,8 +581,9 @@ const uploadSingleDeferredImage = async (
     const fileName = image.fileName || 'image.webp';
     const mimeType = image.mimeType || 'image/webp';
 
-    // Step 0: Get actual file size from the image (in case fileSize is undefined)
-    let actualFileSize = image.fileSize;
+    // Step 0: Get actual file size from the image (in case fileSize is undefined):
+    // from the file system first, by reading the file only when it does not say.
+    let actualFileSize = image.fileSize || localFileSize(image.imageUrl);
     let fileBuffer: ArrayBuffer | null = null;
 
     if (!actualFileSize || actualFileSize === 0) {
@@ -715,6 +746,16 @@ export interface GRNPhotoUploadOutcome {
 export const GRN_PHOTO_UPLOAD_WAIT_MS = 30000;
 
 /**
+ * Photo uploads that run at the same time, across every save and retry. Each
+ * one is the whole transaction: read the file, register, upload, confirm.
+ */
+export const GRN_PHOTO_UPLOAD_CONCURRENCY = 4;
+
+// Shared by every call of uploadGRNPhotos, so a retry started while an earlier
+// save is still uploading does not add places of its own.
+const grnPhotoUploadSlots = createLimiter(GRN_PHOTO_UPLOAD_CONCURRENCY);
+
+/**
  * A photo that exists only on the device and is ready to be uploaded: the
  * prepared (re-encoded) local file, no storage path, no server id.
  *
@@ -774,10 +815,16 @@ export const collectDeferredGRNPhotos = (
 };
 
 /**
- * Upload photos to a saved GRN, in parallel, and report each one that did not
- * arrive. Never throws.
+ * Upload photos to a saved GRN, a few at a time (GRN_PHOTO_UPLOAD_CONCURRENCY),
+ * and report each one that did not arrive. Never throws.
  *
  * Pass the `failed` list of an earlier call to try those photos again.
+ *
+ * Every photo is queued at once, but its file is read only when its turn
+ * comes. When the wait ends, a photo still uploading or still waiting for its
+ * turn is reported with `inFlight`, the promise of that same upload, which goes
+ * on afterwards. A retry waits for it (without taking a place) instead of
+ * uploading the photo again.
  */
 export const uploadGRNPhotos = async (
   realGrnId: string,
@@ -804,14 +851,42 @@ export const uploadGRNPhotos = async (
   } catch (error) {
     finishMutation?.();
     log.error('uploadGRNPhotos could not start', loggableError(error));
+    // Like a failed upload: each prepared file is kept for the retry, also
+    // through the form reset that follows the save.
+    photos.forEach(({ image }) => {
+      if (isDeferredGRNPhoto(image)) localPhotoUploadEnded(image.imageUrl, false);
+    });
     return {
       uploadedCount: 0,
       failed: photos.map(photo => ({ ...describe(photo), error: t('grn.photos.uploadFailed') })),
     };
   }
 
+  /** One photo: its whole upload runs in a shared place, its file is held until it ends. */
+  const upload = async (photo: PendingGRNPhoto): Promise<{ success: boolean; error?: string }> => {
+    const file = photo.image.imageUrl;
+    // Taken while the photo waits for its turn too, so resetting the form
+    // meanwhile does not delete the file it is about to read.
+    const releaseHold = holdLocalPhoto(file);
+    let result: { success: boolean; error?: string } = { success: false, error: t('grn.photos.uploadFailed') };
+    try {
+      result = await grnPhotoUploadSlots(() =>
+        uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId)
+      );
+    } catch (error) {
+      log.error('Photo upload ended unexpectedly', loggableError(error));
+    } finally {
+      // Confirmed: the copy on the phone is not needed any more. Otherwise it
+      // stays for a retry.
+      localPhotoUploadEnded(file, result.success);
+      releaseHold();
+    }
+    return result;
+  };
+
   const attempts = photos.map(async (photo): Promise<{ success: boolean; error?: string }> => {
-    // An upload from an earlier try may still be running: its result counts.
+    // An upload from an earlier try may still be running or waiting: its result
+    // counts. It is awaited outside the shared places, so waiting never blocks one.
     const earlier = (photo as FailedGRNPhoto).inFlight;
     if (earlier) {
       const earlierResult = await earlier;
@@ -824,10 +899,11 @@ export const uploadGRNPhotos = async (
     if (!isDeferredGRNPhoto(photo.image)) {
       return { success: false, error: t('grn.upload.notPrepared') };
     }
-    return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
+    return upload(photo);
   });
-  // The uploads are not cancelled when the wait ends, so the mutation ends with them.
-  void Promise.all(attempts).then(() => finishMutation?.());
+  // The uploads are not cancelled when the wait ends (queued ones still start
+  // later), so the mutation ends with the last of them.
+  void Promise.allSettled(attempts).then(() => finishMutation?.());
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<null>(resolve => {

@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useSessionGenerationGuard } from '@/hooks/useSessionGenerationGuard';
 import { StatusBar } from 'react-native';
 import { getTokens } from '@/theme/tokens';
+import { advanceSessionGeneration, getSessionGeneration } from '@/config/sessionLifecycle';
 
 const lightTokens = getTokens('orange', 'light');
 const darkTokens = getTokens('gcsa', 'dark');
@@ -124,6 +125,8 @@ type AuthSnapshot = {
   userProfile: unknown;
   session: unknown;
   user: unknown;
+  initializeStatus?: 'idle' | 'pending' | 'settled';
+  initializeGeneration?: number;
 };
 
 type Deferred = {
@@ -234,7 +237,91 @@ describe('TabsLayout authentication gate', () => {
     });
   });
 
-  it('keeps the protected tabs and login redirect hidden while auth restoration is pending', async () => {
+  // Review 2026-10-13 R2: the root restores the session before the stack mounts
+  // (app/_layout.tsx). The tabs restore it again only when nothing has for the
+  // current session generation: a sign-in or a facility switch began a new one.
+  it('does not restore again when the root has settled the restore for the current session', async () => {
+    authState.userProfile = { id: 'profile-1', role: 'customer' };
+    authState.initializeStatus = 'settled';
+    authState.initializeGeneration = getSessionGeneration();
+    const renderer = await renderLayout();
+
+    expect(loadAuthSlice).not.toHaveBeenCalled();
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    // No second spinner: the tabs are there on the first render.
+    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(false);
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
+    expect(replace).not.toHaveBeenCalled();
+    await unmountLayout(renderer);
+  });
+
+  it('redirects at once, without restoring again, when the root restore settled signed out', async () => {
+    authState.initializeStatus = 'settled';
+    authState.initializeGeneration = getSessionGeneration();
+    const renderer = await renderLayout();
+
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith('/login');
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
+    await unmountLayout(renderer);
+  });
+
+  it('restores once when the settled restore belongs to an earlier session (remount after a switch)', async () => {
+    authState.userProfile = { id: 'profile-1', role: 'customer' };
+    authState.initializeStatus = 'settled';
+    authState.initializeGeneration = getSessionGeneration();
+    advanceSessionGeneration();
+    const renderer = await renderLayout();
+
+    expect(initializeAuth).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
+    await settleRestore(restore);
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
+    await unmountLayout(renderer);
+  });
+
+  it('waits for a restore already running for the current session instead of starting another', async () => {
+    authState.initializeStatus = 'pending';
+    authState.initializeGeneration = getSessionGeneration();
+    const renderer = await renderLayout();
+
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
+
+    authState.userProfile = { id: 'profile-1', role: 'customer' };
+    authState.initializeStatus = 'settled';
+    await act(async () => {
+      renderer.update(<TabsLayout />);
+      await flushPromises();
+    });
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
+    await unmountLayout(renderer);
+  });
+
+  it('stops waiting when the running restore is superseded (a sign-in set the profile)', async () => {
+    authState.initializeStatus = 'pending';
+    authState.initializeGeneration = getSessionGeneration();
+    const renderer = await renderLayout();
+    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
+
+    authState.userProfile = { id: 'profile-1', role: 'customer' };
+    authState.initializeStatus = 'idle';
+    await act(async () => {
+      renderer.update(<TabsLayout />);
+      await flushPromises();
+    });
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
+    await unmountLayout(renderer);
+  });
+
+  it('keeps the protected tabs and login redirect hidden while its own auth restoration is pending (status idle)', async () => {
     const renderer = await renderLayout();
     const root = renderer.root;
 

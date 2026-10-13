@@ -1,7 +1,9 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { createSessionReadFetch } from '@/config/supabaseConfig';
+import { REQUEST_TIME_LIMIT_MS, awaitIdentityGate } from '@/config/supabaseConfig';
+import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 import { withNativeHandoff } from '@/config/nativeHandoff';
+import { AppError } from '@/utils/appError';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
 
@@ -137,41 +139,102 @@ type DownloadOutcome =
   | { success: true; file: File; name: string }
   | { success: false; error: string };
 
+/** Why a download was stopped from this side. */
+type StopReason = 'too-large' | 'session' | 'timeout';
+
+/** The HTTP status in the native download's error ("... response has status: 403"). */
+const statusOf = (error: unknown): string | null =>
+  /status:?\s*(\d{3})\b/i.exec(error instanceof Error ? error.message : String(error))?.[1] ?? null;
+
 /**
- * Fetch a signed document with the session read fetch and store it under the
- * shared-documents directory. The 25 MB cap is checked on the declared
- * Content-Length before the body is read and again on the received bytes.
+ * Download a signed document into the shared-documents directory.
+ *
+ * The body goes from the network straight to the file (expo-file-system's native
+ * download): it is never held in JavaScript, and nothing is written on the JS
+ * thread. The 25 MB cap bounds the download itself (F5): each progress event
+ * carries the bytes written and the declared Content-Length, and the download is
+ * cancelled as soon as either passes the cap, so a body with no length, or with a
+ * length lower than what it sends, stops within one progress step of the cap.
+ *
+ * It keeps the session rules of the read fetch it replaces (createSessionReadFetch):
+ * the identity gate first, and a session generation replaced at any point (a
+ * sign-out or a server change) cancels the download and refuses the file with the
+ * same 'Session changed' signal. The signed URL carries the access, so, as before,
+ * no header is sent. The read time limit applies to the whole download, as it did
+ * to a fetch that resolves once its body has arrived. Whatever stops a download,
+ * the part already written is deleted.
  */
 async function downloadDocument(pdfUrl: string, filename: string): Promise<DownloadOutcome> {
   const name = sanitizeDocumentFilename(filename);
-  const sessionFetch = createSessionReadFetch();
-
-  log.debug('Downloading document', { name });
-  const response = await sessionFetch(pdfUrl);
-
-  if (!response.ok) {
-    log.error('Document download failed', { status: response.status });
-    return {
-      success: false,
-      error: t('errors.pdf.downloadFailedStatus', { status: String(response.status) }),
-    };
-  }
-
-  const declaredLength = Number(response.headers?.get?.('content-length'));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_SHARED_DOCUMENT_BYTES) {
-    log.warn('Document exceeds the share size cap', { declaredLength });
-    return { success: false, error: tooLargeError() };
-  }
-
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength > MAX_SHARED_DOCUMENT_BYTES) {
-    log.warn('Document exceeds the share size cap', { byteLength: bytes.byteLength });
-    return { success: false, error: tooLargeError() };
-  }
+  const generation = getSessionGeneration();
+  await awaitIdentityGate(generation);
 
   const directory = ensureSharedDocumentsDirectory();
   const file = new File(directory, name);
-  file.write(new Uint8Array(bytes));
+  // A file shared a moment ago under the same name is being replaced: its cleanup
+  // must not delete the new download halfway through.
+  const pendingCleanup = pendingCleanups.get(file.uri);
+  if (pendingCleanup) {
+    clearTimeout(pendingCleanup);
+    pendingCleanups.delete(file.uri);
+  }
+
+  const controller = new AbortController();
+  let stopped = null as StopReason | null;
+  const stop = (reason: StopReason) => {
+    if (stopped) return;
+    stopped = reason;
+    controller.abort();
+  };
+  const stopOnSessionChange = onSessionChange(() => stop('session'));
+  const timer = setTimeout(() => stop('timeout'), REQUEST_TIME_LIMIT_MS.read);
+  // Under Node (tests) a waiting download must not keep the process alive.
+  (timer as { unref?: () => void }).unref?.();
+
+  log.debug('Downloading document', { name });
+  try {
+    if (generation !== getSessionGeneration()) stop('session');
+    else {
+      await File.downloadFileAsync(pdfUrl, file, {
+        idempotent: true,
+        signal: controller.signal,
+        onProgress: ({ bytesWritten, totalBytes }) => {
+          if (bytesWritten > MAX_SHARED_DOCUMENT_BYTES || totalBytes > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
+        },
+      });
+      // The last progress event can be skipped; the file on disk has the final word.
+      if (!stopped && (file.size ?? 0) > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
+      if (!stopped && generation !== getSessionGeneration()) stop('session');
+    }
+  } catch (error) {
+    if (!stopped) {
+      deleteQuietly(file);
+      const status = statusOf(error);
+      log.error('Document download failed', status ? { status } : undefined);
+      return {
+        success: false,
+        error: status ? t('errors.pdf.downloadFailedStatus', { status }) : t('errors.pdf.downloadFailed'),
+      };
+    }
+  } finally {
+    clearTimeout(timer);
+    stopOnSessionChange();
+  }
+
+  if (stopped) {
+    deleteQuietly(file);
+    switch (stopped) {
+      case 'too-large':
+        log.warn('Document exceeds the share size cap');
+        return { success: false, error: tooLargeError() };
+      case 'session':
+        // A signal, as from the gated fetch: the callers show their own words.
+        throw new Error('Session changed');
+      case 'timeout':
+        throw new AppError('TIMEOUT', t('errors.network.requestTimedOut'));
+    }
+  }
+
   log.debug('Document downloaded', { name });
   return { success: true, file, name };
 }

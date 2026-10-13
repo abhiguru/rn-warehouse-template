@@ -9,7 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { File } from 'expo-file-system';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { CameraModal } from '@/components/CameraModal';
+import { CameraModal, type CapturedPhotoSize } from '@/components/CameraModal';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import {
   uploadGRNHeaderImage,
@@ -27,8 +27,12 @@ import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
+import { mapWithConcurrency } from '@/utils/concurrency';
+import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const log = createLogger('grn-photos');
+/** Photos prepared at the same time after a pick from the library. */
+const PREPARATION_CONCURRENCY = 3;
 // Type for custom upload function metadata (supports both camelCase and snake_case)
 type CustomUploadMetadata = {
   // camelCase (GRN format)
@@ -132,6 +136,8 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
     // Validate image before upload
     const validation = validateImageFile(asset);
     if (!validation.valid) {
+      // A camera shot that cannot be used is deleted (a gallery photo is never touched).
+      void releaseLocalPhotos([asset.uri]);
       showAlert(tr('grn.photos.cantUseTitle'), validation.error);
       return;
     }
@@ -201,6 +207,13 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
         // Notify parent component of successful upload
         onImageUploadComplete?.(finalImageData);
 
+        // The prepared copy (or the server's address) has taken the camera shot's
+        // place in the form; the shot itself is no longer needed. Files the app
+        // did not write, such as gallery photos, are left alone.
+        if (finalImageData.imageUrl !== asset.uri) {
+          void releaseLocalPhotos([asset.uri]);
+        }
+
         // Legacy support: update the URLs array
         if (onImagesSelected && !onImageUploadComplete) {
           const updatedUrls = currentImages.map(url =>
@@ -240,16 +253,9 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   const uploadImages = async (assets: ImagePicker.ImagePickerAsset[]): Promise<void> => {
     setIsUploading(true);
     try {
-      // P1 Fix: Upload images in parallel with concurrency limit (3 at a time)
-      // This is ~3x faster than sequential uploads for multiple images
-      const CONCURRENCY_LIMIT = 3;
-
-      // Process in batches for controlled concurrency
-      for (let i = 0; i < assets.length; i += CONCURRENCY_LIMIT) {
-        const batch = assets.slice(i, i + CONCURRENCY_LIMIT);
-        // Upload batch in parallel, wait for all to complete before next batch
-        await Promise.all(batch.map(asset => uploadImage(asset)));
-      }
+      // At most three photos are prepared at a time; the next one starts as
+      // soon as one is done. uploadImage reports its own failures.
+      await mapWithConcurrency(assets, PREPARATION_CONCURRENCY, uploadImage);
     } finally {
       setIsUploading(false);
     }
@@ -293,7 +299,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   };
 
   // Handle photo captured from CameraModal
-  const handleCameraCapture = async (uri: string) => {
+  const handleCameraCapture = async (uri: string, size?: CapturedPhotoSize) => {
     setShowCameraModal(false);
     try {
       // Get the actual file size using the new File API (SDK 54+)
@@ -307,11 +313,12 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
         log.warn('Could not get file size, proceeding anyway', loggableError(infoError));
       }
 
-      // Create asset object with actual file size
+      // The camera's own size of the photo, so it is encoded once, not decoded
+      // a second time to learn it (0 x 0 only when the camera did not say).
       const asset: ImagePicker.ImagePickerAsset = {
         uri,
-        width: 0, // Will be determined by the image manipulator
-        height: 0,
+        width: size?.width ?? 0,
+        height: size?.height ?? 0,
         type: 'image',
         fileName: `photo_${Date.now()}.jpg`,
         mimeType: 'image/jpeg',

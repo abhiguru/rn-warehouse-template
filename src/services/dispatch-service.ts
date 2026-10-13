@@ -1,13 +1,8 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { compareDocumentNumbers } from '@/utils/documentNumber';
 import { offsetToPage, hasMoreItems } from '@/utils/paginationUtils';
-import {
-  generateScopedCacheKey,
-  getCachedData,
-  getSessionCacheScope,
-  setCachedData,
-  invalidateCacheByPrefix,
-} from '@/utils/cacheManager';
+import { createBoundedCache, generateScopedCacheKey, getSessionCacheScope } from '@/utils/cacheManager';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { unwrapNestedData } from '@/utils/responseUtils';
 import { createErrorResponse, executeRPC, handleGlobalAuthError, isOfflineFailure } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
@@ -24,6 +19,24 @@ import { rpcRefusal } from '@/utils/rpcRefusal';
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
 const DISPATCH_CACHE_EXPIRY_MS = CACHE_DURATION_DEFAULT_MS;
+
+/**
+ * The offline copies of dispatch list answers are bounded (one entry per page,
+ * search, filter and sort): Android keeps all of AsyncStorage in one 6 MB
+ * database that also holds the drafts and the report cache.
+ */
+export const DISPATCH_CACHE_MAX_ENTRIES = 24;
+/** All dispatch entries together: about a sixth of Android's 6 MB storage database. */
+export const DISPATCH_CACHE_MAX_TOTAL_CHARS = 1024 * 1024;
+/** Longest answer kept; a longer page is fetched again rather than stored. */
+export const DISPATCH_CACHE_MAX_ENTRY_CHARS = 256 * 1024;
+
+const dispatchCache = createBoundedCache(DISPATCH_CACHE_PREFIX, {
+  maxEntries: DISPATCH_CACHE_MAX_ENTRIES,
+  maxTotalChars: DISPATCH_CACHE_MAX_TOTAL_CHARS,
+  maxEntryChars: DISPATCH_CACHE_MAX_ENTRY_CHARS,
+  expiryMs: DISPATCH_CACHE_EXPIRY_MS,
+});
 
 /**
  * Generate a dispatch-specific cache key scoped to the signed-in session on the
@@ -50,7 +63,8 @@ const generateDispatchCacheKey = async (
  * Clears all cached dispatch data to ensure fresh data is fetched
  */
 export const invalidateDispatchCache = async (): Promise<void> => {
-  await invalidateCacheByPrefix(DISPATCH_CACHE_PREFIX);
+  // Queued behind the cache writes already sent, so none of them can put an entry back.
+  await dispatchCache.clear();
 };
 
 /**
@@ -500,6 +514,8 @@ export const getDispatchListWithItems = async (
   } = params;
 
   // Session-scoped cache key for this request (DRY-7); null without a session.
+  // A cache read or write that crosses a change of session does nothing.
+  const cacheGeneration = getSessionGeneration();
   const cacheKey = await generateDispatchCacheKey(params);
 
   // Only a connectivity failure may be answered from this session's cache. A
@@ -508,9 +524,7 @@ export const getDispatchListWithItems = async (
   // error object rather than an exception, so both branches below use this.
   const serveCachedList = async (error: unknown): Promise<DispatchListResponseNew | null> => {
     if (!cacheKey || !isOfflineFailure(error)) return null;
-    const cachedData = await getCachedData<DispatchListResponseNew['data']>(cacheKey, {
-      expiryMs: DISPATCH_CACHE_EXPIRY_MS,
-    });
+    const cachedData = await dispatchCache.get<DispatchListResponseNew['data']>(cacheKey, cacheGeneration);
     if (!cachedData) return null;
     console.log('[DispatchService] Network error, returning cached dispatch data as fallback');
     return {
@@ -661,11 +675,10 @@ export const getDispatchListWithItems = async (
       }
     };
 
-    // Cache successful response for offline access (fire and forget) - DRY-7
+    // Cache successful response for offline access (fire and forget, never rejects) - DRY-7.
+    // Bounded: older and surplus entries of the dispatch prefix are removed by this write.
     if (cacheKey) {
-      setCachedData(cacheKey, responsePayload, { expiryMs: DISPATCH_CACHE_EXPIRY_MS }).catch((err) => {
-        console.warn('[DispatchService] Failed to cache dispatch data:', cacheKey, err);
-      });
+      void dispatchCache.set(cacheKey, responsePayload, cacheGeneration);
     }
 
     return {

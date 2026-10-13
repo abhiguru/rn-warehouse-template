@@ -60,6 +60,15 @@ interface AuthState {
 
   // E2 Fix: Track background operation failures
   configFetchFailed: boolean;
+  /**
+   * Whether the session restore (initializeAuth) has run for the session
+   * generation in `initializeGeneration`. The root restores at start; the tabs
+   * layout restores again only when this is not 'pending' or 'settled' for the
+   * current generation (after a sign-in or a facility switch began a new one).
+   * Absent until the first restore starts, which means 'idle'.
+   */
+  initializeStatus?: 'idle' | 'pending' | 'settled';
+  initializeGeneration?: number;
   initializeRequest?: string;
   refreshRequest?: string;
   profileRequest?: string;
@@ -146,7 +155,9 @@ const fetchConfigOnce = (
 };
 
 // Async thunks
-export const initializeAuth = createAsyncThunk(
+export const initializeAuth = createAsyncThunk.withTypes<{
+  pendingMeta: { generation: number };
+}>()(
   'auth/initialize',
   async (_, { dispatch, rejectWithValue }) => {
     const generation = getSessionGeneration();
@@ -354,7 +365,9 @@ export const initializeAuth = createAsyncThunk(
     return generation === getSessionGeneration()
       ? result
       : rejectWithValue(t('errors.auth.sessionChanged'));
-  }
+  },
+  // The generation this restore is for, recorded with its pending state.
+  { getPendingMeta: () => ({ generation: getSessionGeneration() }) }
 );
 
 export const fetchUserProfile = createAsyncThunk(
@@ -683,6 +696,8 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.profileRequest = undefined;
       state.refreshRequest = undefined;
+      // A restore that was still running is superseded: it did not settle.
+      if (state.initializeRequest) state.initializeStatus = 'idle';
       state.initializeRequest = undefined;
       state.userProfile = action.payload;
     },
@@ -715,6 +730,8 @@ const authSlice = createSlice({
       // Initialize auth
       .addCase(initializeAuth.pending, (state, action) => {
         state.initializeRequest = action.meta.requestId;
+        state.initializeStatus = 'pending';
+        state.initializeGeneration = action.meta.generation;
         // Only set loading if we don't have cached auth data
         // This prevents the UI from unmounting when we have cached credentials
         if (!state.userProfile) {
@@ -724,6 +741,7 @@ const authSlice = createSlice({
       .addCase(initializeAuth.fulfilled, (state, action) => {
         if (state.initializeRequest !== action.meta.requestId) return;
         state.initializeRequest = undefined;
+        state.initializeStatus = 'settled';
         state.isLoading = false;
         state.session = action.payload.session;
         state.user = action.payload.user;
@@ -732,6 +750,7 @@ const authSlice = createSlice({
       .addCase(initializeAuth.rejected, (state, action) => {
         if (state.initializeRequest !== action.meta.requestId) return;
         state.initializeRequest = undefined;
+        state.initializeStatus = 'settled';
         state.isLoading = false;
         state.session = null;
         state.user = null;
@@ -761,6 +780,7 @@ const authSlice = createSlice({
         state.logoutRequest = action.meta.requestId;
         state.profileRequest = undefined;
         state.initializeRequest = undefined;
+        state.initializeStatus = 'idle';
         state.refreshRequest = undefined;
         state.session = null;
         state.user = null;
@@ -809,6 +829,7 @@ const authSlice = createSlice({
       .addCase(forceLogoutOnInvalidToken.pending, (state, action) => {
         state.forceLogoutRequest = action.meta.requestId;
         state.initializeRequest = undefined;
+        state.initializeStatus = 'idle';
         state.refreshRequest = undefined;
         state.profileRequest = undefined;
         state.session = null;

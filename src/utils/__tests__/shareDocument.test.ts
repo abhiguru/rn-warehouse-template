@@ -8,10 +8,12 @@ import {
   sweepSharedDocuments,
 } from '../shareDocument';
 
-// In-memory stand-in for the expo-file-system 19 Paths/Directory/File API.
+// In-memory stand-in for the expo-file-system Paths/Directory/File API, with the native
+// download (`File.downloadFileAsync`) answering from `download`, which each test sets.
 jest.mock('expo-file-system', () => {
-  const entries = new Map<string, { kind: 'dir' | 'file'; bytes?: Uint8Array }>();
+  const entries = new Map<string, { kind: 'dir' | 'file'; bytes?: Uint8Array; size?: number }>();
   const failing = new Set<string>();
+  const download = { ok: true, status: 200, contentLength: null as string | null, byteLength: 1024, written: 0 };
   const join = (parts: Array<string | { uri: string }>) =>
     parts.map(part => (typeof part === 'string' ? part : part.uri)).join('/').replace(/\/+$/, '');
   class Directory {
@@ -34,42 +36,62 @@ jest.mock('expo-file-system', () => {
     uri: string;
     constructor(...parts: Array<string | { uri: string }>) { this.uri = join(parts); }
     get exists() { return entries.get(this.uri)?.kind === 'file'; }
+    get size() { return entries.get(this.uri)?.size ?? 0; }
     write(bytes: Uint8Array) { entries.set(this.uri, { kind: 'file', bytes }); }
     delete() {
       if (failing.has(this.uri)) throw new Error('locked');
       if (!entries.delete(this.uri)) throw new Error('File does not exist');
     }
+    // The body is written in one step of at most 1 MB, then a progress event; an abort stops it.
+    static downloadFileAsync = jest.fn(
+      async (_url: string, to: { uri: string }, options?: { signal?: AbortSignal; onProgress?: (p: { bytesWritten: number; totalBytes: number }) => void }) => {
+        if (!download.ok) throw new Error(`Unable to download a file: response has status: ${download.status}`);
+        const declared = download.contentLength === null ? -1 : Number(download.contentLength);
+        download.written = 0;
+        while (download.written < download.byteLength) {
+          if (options?.signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+          download.written += Math.min(1024 * 1024, download.byteLength - download.written);
+          entries.set(to.uri, { kind: 'file', size: download.written });
+          options?.onProgress?.({ bytesWritten: download.written, totalBytes: declared });
+        }
+        if (options?.signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+        entries.set(to.uri, { kind: 'file', size: download.written });
+        return to;
+      }
+    );
   }
   const Paths = { cache: new Directory('file:///cache') };
-  return { Directory, File, Paths, __fs: { entries, failing } };
+  return { Directory, File, Paths, __fs: { entries, failing, download } };
 });
 jest.mock('expo-sharing', () => ({
   isAvailableAsync: jest.fn(async () => true),
   shareAsync: jest.fn(async () => {}),
 }));
 jest.mock('@/config/supabaseConfig', () => ({
-  createSessionReadFetch: () => (...args: Parameters<typeof fetch>) => global.fetch(...args),
+  REQUEST_TIME_LIMIT_MS: { read: 30000, write: 60000, transfer: 120000 },
+  awaitIdentityGate: jest.fn(async () => {}),
 }));
 jest.mock('@/config/nativeHandoff', () => ({
   withNativeHandoff: jest.fn((run: () => Promise<unknown>) => run()),
 }));
 
-const fs = jest.requireMock('expo-file-system').__fs as {
-  entries: Map<string, { kind: 'dir' | 'file'; bytes?: Uint8Array }>;
-  failing: Set<string>;
+const { File: MockFile, __fs: fs } = jest.requireMock('expo-file-system') as {
+  File: { downloadFileAsync: jest.Mock };
+  __fs: {
+    entries: Map<string, { kind: 'dir' | 'file'; bytes?: Uint8Array; size?: number }>;
+    failing: Set<string>;
+    download: { ok: boolean; status: number; contentLength: string | null; byteLength: number; written: number };
+  };
 };
+const download = MockFile.downloadFileAsync;
 const sharedDir = 'file:///cache/shared-documents';
 const signedUrl = 'https://warehouse.example.test/storage/v1/object/sign/documents/grn.pdf?token=fictional-private-link';
-const originalFetch = global.fetch;
 let logs: jest.SpyInstance[];
 
-function response(options: { ok?: boolean; status?: number; contentLength?: string | null; byteLength?: number } = {}) {
+/** What the server answers the next download with. */
+function respond(options: { ok?: boolean; status?: number; contentLength?: string | null; byteLength?: number } = {}) {
   const { ok = true, status = 200, contentLength = null, byteLength = 1024 } = options;
-  const arrayBuffer = jest.fn(async () => ({ byteLength }) as ArrayBuffer);
-  return {
-    body: { ok, status, headers: { get: (name: string) => (name.toLowerCase() === 'content-length' ? contentLength : null) }, arrayBuffer },
-    arrayBuffer,
-  };
+  Object.assign(fs.download, { ok, status, contentLength, byteLength, written: 0 });
 }
 
 beforeEach(() => {
@@ -79,12 +101,11 @@ beforeEach(() => {
   fs.failing.clear();
   fs.entries.set('file:///cache', { kind: 'dir' });
   fs.entries.set('file:///cache/unrelated.tmp', { kind: 'file' });
-  global.fetch = jest.fn();
+  respond();
   logs = ['log', 'warn', 'error', 'debug'].map(method => jest.spyOn(console, method as 'log').mockImplementation(() => {}));
 });
 afterEach(() => {
   logs.forEach(log => log.mockRestore());
-  global.fetch = originalFetch;
   jest.useRealTimers();
 });
 
@@ -185,10 +206,10 @@ describe('sanitizeDocumentFilename', () => {
 
 describe('downloadAndSharePDF', () => {
   it('stores the document under the shared-documents directory with a sanitized name and shares that file', async () => {
-    const { body } = response({ contentLength: '1024' });
-    jest.mocked(fetch).mockResolvedValue(body as never);
+    respond({ contentLength: '1024' });
     expect(await downloadAndSharePDF(signedUrl, '../GRN Z0797.pdf')).toEqual({ success: true });
-    expect(fetch).toHaveBeenCalledWith(signedUrl);
+    // Downloaded natively into the file, with no header: the signed link carries the access.
+    expect(download).toHaveBeenCalledWith(signedUrl, expect.objectContaining({ uri: `${sharedDir}/GRN_Z0797.pdf` }), expect.not.objectContaining({ headers: expect.anything() }));
     expect(fs.entries.get(`${sharedDir}/GRN_Z0797.pdf`)?.kind).toBe('file');
     expect(Sharing.shareAsync).toHaveBeenCalledWith(`${sharedDir}/GRN_Z0797.pdf`, expect.objectContaining({ mimeType: 'application/pdf', dialogTitle: 'Share GRN_Z0797.pdf' }));
     expect(withNativeHandoff).toHaveBeenCalledTimes(1);
@@ -196,26 +217,26 @@ describe('downloadAndSharePDF', () => {
   });
 
   it('removes the shared file after the cleanup delay', async () => {
-    jest.mocked(fetch).mockResolvedValue(response().body as never);
     await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf');
     expect(fs.entries.has(`${sharedDir}/GRN_Z0797.pdf`)).toBe(true);
     jest.advanceTimersByTime(60_000);
     expect(fs.entries.has(`${sharedDir}/GRN_Z0797.pdf`)).toBe(false);
   });
 
-  it('refuses a document whose Content-Length exceeds 25 MB before reading the body', async () => {
-    const { body, arrayBuffer } = response({ contentLength: String(MAX_SHARED_DOCUMENT_BYTES + 1) });
-    jest.mocked(fetch).mockResolvedValue(body as never);
+  it('refuses a document whose Content-Length exceeds 25 MB on the first part of the body', async () => {
+    respond({ contentLength: String(MAX_SHARED_DOCUMENT_BYTES + 1), byteLength: MAX_SHARED_DOCUMENT_BYTES + 1 });
     const result = await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf');
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/larger than 25 MB/);
-    expect(arrayBuffer).not.toHaveBeenCalled();
+    // Stopped at the first progress event, not read to the end.
+    expect(fs.download.written).toBe(1024 * 1024);
     expect(Sharing.shareAsync).not.toHaveBeenCalled();
-    expect([...fs.entries.keys()].some(uri => uri.startsWith(sharedDir))).toBe(false);
+    // The directory is made before the download writes into it; no file is left in it.
+    expect([...fs.entries.keys()].some(uri => uri.startsWith(`${sharedDir}/`))).toBe(false);
   });
 
   it('refuses a document whose received bytes exceed 25 MB when no length was declared', async () => {
-    jest.mocked(fetch).mockResolvedValue(response({ byteLength: MAX_SHARED_DOCUMENT_BYTES + 1 }).body as never);
+    respond({ byteLength: MAX_SHARED_DOCUMENT_BYTES + 1 });
     const result = await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf');
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/larger than 25 MB/);
@@ -224,12 +245,12 @@ describe('downloadAndSharePDF', () => {
   });
 
   it('accepts a document of exactly 25 MB', async () => {
-    jest.mocked(fetch).mockResolvedValue(response({ contentLength: String(MAX_SHARED_DOCUMENT_BYTES), byteLength: MAX_SHARED_DOCUMENT_BYTES }).body as never);
+    respond({ contentLength: String(MAX_SHARED_DOCUMENT_BYTES), byteLength: MAX_SHARED_DOCUMENT_BYTES });
     expect(await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf')).toEqual({ success: true });
   });
 
   it('reports a failed download status without sharing', async () => {
-    jest.mocked(fetch).mockResolvedValue(response({ ok: false, status: 403 }).body as never);
+    respond({ ok: false, status: 403 });
     expect(await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf')).toEqual({ success: false, error: 'Failed to download PDF (status: 403)' });
     expect(Sharing.shareAsync).not.toHaveBeenCalled();
   });
@@ -237,11 +258,10 @@ describe('downloadAndSharePDF', () => {
   it('does not download when sharing is unavailable', async () => {
     jest.mocked(Sharing.isAvailableAsync).mockResolvedValueOnce(false);
     expect((await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf')).success).toBe(false);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
   });
 
   it('deletes the downloaded file when the share sheet throws', async () => {
-    jest.mocked(fetch).mockResolvedValue(response().body as never);
     jest.mocked(Sharing.shareAsync).mockRejectedValueOnce(new Error('Share cancelled by system'));
     expect(await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf')).toEqual({ success: false, error: 'Share cancelled by system' });
     expect(fs.entries.has(`${sharedDir}/GRN_Z0797.pdf`)).toBe(false);
@@ -250,13 +270,13 @@ describe('downloadAndSharePDF', () => {
 
 describe('downloadPDF', () => {
   it('returns the shared-documents path of the sanitized file', async () => {
-    jest.mocked(fetch).mockResolvedValue(response().body as never);
     expect(await downloadPDF(signedUrl, 'Invoice 12/2026.pdf')).toEqual({ success: true, localUri: `${sharedDir}/2026.pdf` });
   });
 
   it('applies the same size cap', async () => {
-    jest.mocked(fetch).mockResolvedValue(response({ contentLength: String(MAX_SHARED_DOCUMENT_BYTES + 1) }).body as never);
+    respond({ contentLength: String(MAX_SHARED_DOCUMENT_BYTES + 1), byteLength: MAX_SHARED_DOCUMENT_BYTES + 1 });
     expect((await downloadPDF(signedUrl, 'Invoice.pdf')).success).toBe(false);
+    expect(fs.entries.has(`${sharedDir}/Invoice.pdf`)).toBe(false);
   });
 });
 

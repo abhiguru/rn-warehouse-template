@@ -27,8 +27,14 @@ const listResponse = (id: string) => ({
   },
   error: null,
 });
-const dispatchCacheKeys = async () =>
-  (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(CACHE_PREFIXES.DISPATCH_LIST));
+// The entries, without the bounded cache's index key (dispatchCacheEviction.test.ts checks that one).
+const dispatchCacheKeys = async () => {
+  // The cache is written after the list is returned: let the queued write land.
+  await new Promise(resolve => setImmediate(resolve));
+  return (await AsyncStorage.getAllKeys()).filter(
+    key => key.startsWith(CACHE_PREFIXES.DISPATCH_LIST) && key !== `${CACHE_PREFIXES.DISPATCH_LIST}_index`
+  );
+};
 let logs: jest.SpyInstance[];
 
 beforeEach(async () => {

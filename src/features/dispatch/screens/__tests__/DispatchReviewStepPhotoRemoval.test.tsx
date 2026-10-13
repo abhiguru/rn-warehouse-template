@@ -8,6 +8,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { deleteDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 import { showAlert } from '@/utils/alert';
+import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const mockRemoveImageFromForm = jest.fn();
 const mockImages = [
@@ -62,6 +63,7 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/localPhotoFiles', () => ({ releaseLocalPhotos: jest.fn(async () => 0) }));
 
 let tree: ReactTestRenderer;
 const grid = () => tree.root.findByType('ImagePreviewGrid' as never);
@@ -86,6 +88,7 @@ it('keeps the photo and shows the reason when the server refuses the removal', a
   await remove('image-1');
   expect(deleteDispatchImage).toHaveBeenCalledWith('image-1', 'https://files.example/truck');
   expect(mockRemoveImageFromForm).not.toHaveBeenCalled();
+  expect(releaseLocalPhotos).not.toHaveBeenCalled();
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(showAlert).toHaveBeenCalledWith("Couldn't remove the photo", 'You do not have permission to do this.');
 });
@@ -116,4 +119,7 @@ it('removes a photo that was never uploaded without asking the server', async ()
   await remove('temp_load');
   expect(deleteDispatchImage).not.toHaveBeenCalled();
   expect(mockRemoveImageFromForm).toHaveBeenCalledWith('temp_load');
+  // P2F-MEDIA-3: the file the app wrote for it goes with it.
+  expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+  expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/load.webp']);
 });

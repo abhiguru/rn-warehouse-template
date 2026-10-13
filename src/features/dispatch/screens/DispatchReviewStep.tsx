@@ -6,7 +6,7 @@
  * Refactored to use useDispatchForm hook for form state management.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { uploadDeferredDispatchImages } from '@/features/dispatch/services/dispatchImageService';
+import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import { Snackbar } from 'react-native-paper';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -241,14 +242,16 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             }
         }
         removeImageFromForm(imageId);
+        // Its file on the phone, if the app wrote one, is not needed any more.
+        if (imageToRemove) void releaseLocalPhotos([imageToRemove.image_url]);
     };
 
     const dispatchUploadFunction: CustomUploadFunction = async (asset, entityId, onProgress) => {
         return uploadDispatchImage(asset, entityId, onProgress);
     };
 
-    // Toggle item expansion
-    const toggleItemExpansion = (unique_id: string) => {
+    // Toggle item expansion (stable, so the memoized rows keep their props)
+    const toggleItemExpansion = useCallback((unique_id: string) => {
         setExpandedItems((prev) => {
             const newSet = new Set(prev);
             if (newSet.has(unique_id)) {
@@ -258,7 +261,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             }
             return newSet;
         });
-    };
+    }, []);
 
     // Calculate totals
     const totals = useMemo(() => {
@@ -573,149 +576,26 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         </View>
     );
 
-    // Render single item
-    const renderItem = (item: DispatchItemData, index: number) => {
-        const isExpanded = expandedItems.has(item.unique_id);
-        const itemTotalWeight = item.grnItems_weight * item.disp_quantity;
-        const stockValue = isCreateMode
-            ? item.grnItems_stock
-            : freshStockValues[item.unique_id] ?? item.grnItems_stock;
-
-        return (
-            <View key={item.unique_id} style={styles.itemCard}>
-                <Pressable
-                    style={({ pressed }) => [styles.itemHeader, pressed && styles.itemHeaderPressed]}
-                    onPress={() => toggleItemExpansion(item.unique_id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={tr(
-                        item.grnItems_package_mark ? 'dispatch.review.itemRowLabelWithMark' : 'dispatch.review.itemRowLabel',
-                        {
-                            index: index + 1,
-                            item: item.grnItems_item_name,
-                            mark: item.grnItems_package_mark,
-                            grn: formatIdentifier(item.grns_gr_no),
-                            quantity: item.disp_quantity,
-                        }
-                    )}
-                    accessibilityHint={isExpanded ? tr('dispatch.review.hidesDetails') : tr('dispatch.review.showsDetails')}
-                    accessibilityState={{ expanded: isExpanded }}
-                >
-                    <View style={styles.itemNumberBadge}>
-                        <Text style={styles.itemNumber}>{formatNumber(index + 1)}</Text>
-                    </View>
-
-                    <View style={styles.itemMainInfo}>
-                        <View style={styles.itemTitleRow}>
-                            <View style={styles.itemNameSection}>
-                                <Text style={styles.itemName} numberOfLines={2}>
-                                    {item.grnItems_item_name}
-                                </Text>
-                                {item.grnItems_package_mark && (
-                                    <View style={styles.packageMarkBadge}>
-                                        <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                        <Text style={styles.packageMarkText}>{item.grnItems_package_mark}</Text>
-                                    </View>
-                                )}
-                            </View>
-                            <Icon
-                                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                                size={iconSize.lg}
-                                color={t.icon.secondary}
-                            />
-                        </View>
-                        <View style={styles.itemMetaRow}>
-                            <View style={styles.metaBadge}>
-                                <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
-                                    {tr('dispatch.review.grnBadge', { number: formatIdentifier(item.grns_gr_no), quantity: item.grnItems_quantity })}
-                                </Text>
-                            </View>
-                            <View style={styles.metaBadge}>
-                                <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{tr('dispatch.review.qty', { quantity: item.disp_quantity })}</Text>
-                            </View>
-                        </View>
-                    </View>
-                </Pressable>
-
-                {isExpanded && (
-                    <View style={styles.itemDetails}>
-                        <View style={styles.detailRow}>
-                            <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('dispatch.review.grnDate')}</Text>
-                            <Text style={styles.detailValue}>{formatDisplayDate(item.grns_date)}</Text>
-                        </View>
-
-                        <View style={styles.detailRow}>
-                            <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('common.customer')}</Text>
-                            <Text style={styles.detailValue}>{item.grns_customer_name}</Text>
-                        </View>
-
-                        {item.grnItems_package_mark && (
-                            <View style={styles.detailRow}>
-                                <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
-                                <Text style={styles.detailValue}>{item.grnItems_package_mark}</Text>
-                            </View>
-                        )}
-
-                        {item.grnItems_rack && (
-                            <View style={styles.detailRow}>
-                                <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
-                                <Text style={styles.detailValue}>{item.grnItems_rack}</Text>
-                            </View>
-                        )}
-
-                        <View style={styles.detailRow}>
-                            <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('dispatch.review.unitWeight')}</Text>
-                            <Text style={styles.detailValue}>{formatWeight(item.grnItems_weight)}</Text>
-                        </View>
-
-                        <View style={styles.detailRow}>
-                            <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('dispatch.review.totalWeight')}</Text>
-                            <Text style={styles.detailValue}>{formatWeight(itemTotalWeight, 0)}</Text>
-                        </View>
-
-                        <View style={styles.detailRow}>
-                            <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('dispatch.review.originalQuantity')}</Text>
-                            <Text style={styles.detailValue}>{formatNumber(item.grnItems_quantity)}</Text>
-                        </View>
-
-                        <View style={styles.detailRow}>
-                            <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
-                            <Text style={[styles.detailValue, !isCreateMode && loadingStock && styles.detailValueLoading]}>
-                                {!isCreateMode && loadingStock ? '-' : formatNumber(stockValue)}
-                            </Text>
-                        </View>
-
-                        {isCreateMode && (
-                            <View style={styles.detailRow}>
-                                <Icon name="database-check-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.detailLabel}>{tr('dispatch.review.stockAfter')}</Text>
-                                <Text style={[styles.detailValue, styles.detailValueEmphasized]}>
-                                    {formatNumber(item.grnItems_stock - item.disp_quantity)}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                )}
-            </View>
-        );
-    };
-
     // Render items section
     const renderItemsSection = () => (
         <View style={styles.section}>
             {renderSectionHeader(tr('dispatch.review.itemsTitle', { count: items.length }), DISPATCH_STEP_NUMBERS.ITEMS, tr('dispatch.review.editItems'))}
 
             <View style={styles.itemsContainer}>
-                {items.map((item: DispatchItemData, index: number) => renderItem(item, index))}
+                {items.map((item: DispatchItemData, index: number) => (
+                    <DispatchReviewItemRow
+                        key={item.unique_id}
+                        item={item}
+                        index={index}
+                        isExpanded={expandedItems.has(item.unique_id)}
+                        stockValue={isCreateMode ? item.grnItems_stock : freshStockValues[item.unique_id] ?? item.grnItems_stock}
+                        isCreateMode={isCreateMode}
+                        loadingStock={loadingStock}
+                        onToggle={toggleItemExpansion}
+                        styles={styles}
+                        t={t}
+                    />
+                ))}
             </View>
         </View>
     );
@@ -1026,6 +906,166 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         </View>
     );
 }
+
+type DispatchReviewStyles = ReturnType<typeof makeStyles>;
+
+/** A date as the review shows it (guide 12.3: "9 Oct 2026"), or nothing. */
+const formatReviewDate = (isoDate: string) => (toDate(isoDate) ? formatDate(isoDate) : '');
+
+interface DispatchReviewItemRowProps {
+    item: DispatchItemData;
+    index: number;
+    isExpanded: boolean;
+    /** The stock shown for the line: as loaded in a new dispatch, as read again in an edit. */
+    stockValue: number;
+    isCreateMode: boolean;
+    loadingStock: boolean;
+    onToggle: (uniqueId: string) => void;
+    styles: DispatchReviewStyles;
+    t: ThemeTokens;
+}
+
+/** One item of the review; drawn again only when its own props change. */
+const DispatchReviewItemRow = React.memo(function DispatchReviewItemRow({
+    item,
+    index,
+    isExpanded,
+    stockValue,
+    isCreateMode,
+    loadingStock,
+    onToggle,
+    styles,
+    t,
+}: DispatchReviewItemRowProps) {
+    const itemTotalWeight = item.grnItems_weight * item.disp_quantity;
+
+    return (
+        <View style={styles.itemCard}>
+            <Pressable
+                style={({ pressed }) => [styles.itemHeader, pressed && styles.itemHeaderPressed]}
+                onPress={() => onToggle(item.unique_id)}
+                accessibilityRole="button"
+                accessibilityLabel={tr(
+                    item.grnItems_package_mark ? 'dispatch.review.itemRowLabelWithMark' : 'dispatch.review.itemRowLabel',
+                    {
+                        index: index + 1,
+                        item: item.grnItems_item_name,
+                        mark: item.grnItems_package_mark,
+                        grn: formatIdentifier(item.grns_gr_no),
+                        quantity: item.disp_quantity,
+                    }
+                )}
+                accessibilityHint={isExpanded ? tr('dispatch.review.hidesDetails') : tr('dispatch.review.showsDetails')}
+                accessibilityState={{ expanded: isExpanded }}
+            >
+                <View style={styles.itemNumberBadge}>
+                    <Text style={styles.itemNumber}>{formatNumber(index + 1)}</Text>
+                </View>
+
+                <View style={styles.itemMainInfo}>
+                    <View style={styles.itemTitleRow}>
+                        <View style={styles.itemNameSection}>
+                            <Text style={styles.itemName} numberOfLines={2}>
+                                {item.grnItems_item_name}
+                            </Text>
+                            {item.grnItems_package_mark && (
+                                <View style={styles.packageMarkBadge}>
+                                    <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                    <Text style={styles.packageMarkText}>{item.grnItems_package_mark}</Text>
+                                </View>
+                            )}
+                        </View>
+                        <Icon
+                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={iconSize.lg}
+                            color={t.icon.secondary}
+                        />
+                    </View>
+                    <View style={styles.itemMetaRow}>
+                        <View style={styles.metaBadge}>
+                            <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
+                                {tr('dispatch.review.grnBadge', { number: formatIdentifier(item.grns_gr_no), quantity: item.grnItems_quantity })}
+                            </Text>
+                        </View>
+                        <View style={styles.metaBadge}>
+                            <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{tr('dispatch.review.qty', { quantity: item.disp_quantity })}</Text>
+                        </View>
+                    </View>
+                </View>
+            </Pressable>
+
+            {isExpanded && (
+                <View style={styles.itemDetails}>
+                    <View style={styles.detailRow}>
+                        <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.detailLabel}>{tr('dispatch.review.grnDate')}</Text>
+                        <Text style={styles.detailValue}>{formatReviewDate(item.grns_date)}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                        <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.detailLabel}>{tr('common.customer')}</Text>
+                        <Text style={styles.detailValue}>{item.grns_customer_name}</Text>
+                    </View>
+
+                    {item.grnItems_package_mark && (
+                        <View style={styles.detailRow}>
+                            <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
+                            <Text style={styles.detailValue}>{item.grnItems_package_mark}</Text>
+                        </View>
+                    )}
+
+                    {item.grnItems_rack && (
+                        <View style={styles.detailRow}>
+                            <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
+                            <Text style={styles.detailValue}>{item.grnItems_rack}</Text>
+                        </View>
+                    )}
+
+                    <View style={styles.detailRow}>
+                        <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.detailLabel}>{tr('dispatch.review.unitWeight')}</Text>
+                        <Text style={styles.detailValue}>{formatWeight(item.grnItems_weight)}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                        <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.detailLabel}>{tr('dispatch.review.totalWeight')}</Text>
+                        <Text style={styles.detailValue}>{formatWeight(itemTotalWeight, 0)}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                        <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.detailLabel}>{tr('dispatch.review.originalQuantity')}</Text>
+                        <Text style={styles.detailValue}>{formatNumber(item.grnItems_quantity)}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                        <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
+                        <Text style={[styles.detailValue, !isCreateMode && loadingStock && styles.detailValueLoading]}>
+                            {!isCreateMode && loadingStock ? '-' : formatNumber(stockValue)}
+                        </Text>
+                    </View>
+
+                    {isCreateMode && (
+                        <View style={styles.detailRow}>
+                            <Icon name="database-check-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>{tr('dispatch.review.stockAfter')}</Text>
+                            <Text style={[styles.detailValue, styles.detailValueEmphasized]}>
+                                {formatNumber(item.grnItems_stock - item.disp_quantity)}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            )}
+        </View>
+    );
+});
 
 const makeStyles = (t: ThemeTokens) => ({
     container: {

@@ -27,6 +27,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, motion, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PHOTO_OWNERS, registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import { t as tr } from '@/i18n';
 
 const logger = createLogger('CameraModal');
@@ -37,10 +38,26 @@ const PHOTO_STATUS_BAR = 'light-content' as const;
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
 
+/** Size of a captured photo in pixels, upright as it is shown. */
+export interface CapturedPhotoSize {
+    width: number;
+    height: number;
+}
+
+interface CapturedPhoto extends CapturedPhotoSize {
+    uri: string;
+}
+
 interface CameraModalProps {
     visible: boolean;
     onClose: () => void;
-    onCapture: (uri: string) => void;
+    /**
+     * The accepted photo. Its size comes from the camera, so preparing it for
+     * upload does not have to decode it once more just to learn it. The file
+     * is the app's (registered in localPhotoFiles); the receiver releases it
+     * once it no longer needs it.
+     */
+    onCapture: (uri: string, size?: CapturedPhotoSize) => void;
 }
 
 export const CameraModal: React.FC<CameraModalProps> = ({
@@ -54,7 +71,9 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     const [flashMode, setFlashMode] = useState<FlashMode>('on'); // Default flash ON
     const [isCapturing, setIsCapturing] = useState(false);
     const [facing, setFacing] = useState<'front' | 'back'>('back');
-    const [previewUri, setPreviewUri] = useState<string | null>(null); // Photo preview state
+    // The shot waiting for Retake / Use photo.
+    const [preview, setPreview] = useState<CapturedPhoto | null>(null);
+    const previewUri = preview?.uri ?? null;
     const cameraRef = useRef<CameraView>(null);
     const [permission, requestPermission] = useCameraPermissions();
 
@@ -81,8 +100,10 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             });
 
             if (photo?.uri) {
+                // The camera wrote this file; it is deleted when it is retaken or left.
+                void registerLocalPhoto(photo.uri, LOCAL_PHOTO_OWNERS.camera, 'capture');
                 // Show preview instead of immediately closing
-                setPreviewUri(photo.uri);
+                setPreview({ uri: photo.uri, width: photo.width, height: photo.height });
             }
         } catch (error) {
             logger.error('Error capturing photo', error);
@@ -91,22 +112,29 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         }
     }, [isCapturing]);
 
+    // A shot that is not used is deleted; it was only ever on this screen.
+    const discardPreview = useCallback(() => {
+        if (previewUri) void releaseLocalPhotos([previewUri]);
+        setPreview(null);
+    }, [previewUri]);
+
     const handleRetake = useCallback(() => {
-        setPreviewUri(null);
-    }, []);
+        discardPreview();
+    }, [discardPreview]);
 
     const handleUsePhoto = useCallback(() => {
-        if (previewUri) {
-            onCapture(previewUri);
-            setPreviewUri(null);
+        if (preview) {
+            const { uri, width, height } = preview;
+            onCapture(uri, width > 0 && height > 0 ? { width, height } : undefined);
+            setPreview(null);
             onClose();
         }
-    }, [previewUri, onCapture, onClose]);
+    }, [preview, onCapture, onClose]);
 
     const handleClose = useCallback(() => {
-        setPreviewUri(null);
+        discardPreview();
         onClose();
-    }, [onClose]);
+    }, [discardPreview, onClose]);
 
     const getFlashIcon = () => {
         switch (flashMode) {

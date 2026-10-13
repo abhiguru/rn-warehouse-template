@@ -1,6 +1,6 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -41,6 +41,45 @@ import { searchService, SearchResult } from '@/services/search-service';
 import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+
+const NO_LINES: OrderItem[] = [];
+const isOpenLine = (item: OrderItem) => (item.item_status || '').toLowerCase() !== 'fulfilled';
+
+/** Plain JSON values (server answers) compared by content. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) return false;
+  return keys.every(key => Object.prototype.hasOwnProperty.call(right, key) && sameValue(left[key], right[key]));
+}
+
+/**
+ * The order the server sent, keeping the previous objects for everything whose
+ * content did not change: the whole order when nothing changed, otherwise each
+ * unchanged line, so the memoized line cards render only for lines that changed.
+ */
+function keepUnchanged(previous: Order | null, next: Order): Order {
+  if (!previous || previous.id !== next.id) return next;
+  if (sameValue(previous, next)) return previous;
+  if (!previous.items || !next.items) return next;
+  const before = new Map(previous.items.map(item => [item.id, item]));
+  let sameLines = previous.items.length === next.items.length;
+  const items = next.items.map((item, index) => {
+    const old = before.get(item.id);
+    if (old && sameValue(old, item)) {
+      if (previous.items![index] !== old) sameLines = false;
+      return old;
+    }
+    sameLines = false;
+    return item;
+  });
+  return { ...next, items: sameLines ? previous.items : items };
+}
+
 interface OrderManagementProps {
   customerId?: string;
   onOpenItemCatalog?: () => void;
@@ -176,37 +215,43 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const activeOrderId = useRef(order?.id);
   activeOrderId.current = order?.id;
   useEffect(() => () => { activeOrderId.current = undefined; }, []);
+  // The order as last rendered, for callbacks that stay the same across renders.
+  const orderRef = useRef(order);
+  orderRef.current = order;
 
-  // Handle refresh
+  // Handle refresh. Stable, so the line cards keep their props while it runs.
   const onRefresh = useCallback(async () => {
-    if (!order) return;
-    
+    const current = orderRef.current;
+    if (!current) return;
+
     const sessionGeneration = getSessionGeneration();
     setRefreshing(true);
     try {
-      const result = await OrderService.getOrderWithItems(order.id);
-      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== order.id) return;
+      const result = await OrderService.getOrderWithItems(current.id);
+      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return;
       if (result.success && result.data) {
-        setOrder(result.data);
+        const next = result.data;
+        setOrder(previous => keepUnchanged(previous, next));
       }
     } catch (error) {
       console.error('[OrderManagement] Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [order]);
+  }, []);
 
   useOrderLiveUpdates(onRefresh, !!order);
 
-  // Handle quantity update
+  // Handle quantity update for one line, by its id; one function for every card.
   // Resolves true only when the server stored the quantity.
-  const handleQuantityUpdate = useCallback(async (item: OrderItem, newQuantity: number): Promise<boolean> => {
-    if (!order) return false;
+  const handleQuantityUpdate = useCallback(async (itemId: string, newQuantity: number): Promise<boolean> => {
+    const current = orderRef.current;
+    if (!current) return false;
 
     try {
       const result = await OrderService.updateOrderItemQuantity(
-        item.id,
-        order.id,
+        itemId,
+        current.id,
         newQuantity
       );
 
@@ -222,11 +267,13 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('common.checkConnection'));
       return false;
     }
-  }, [order, onRefresh]);
+  }, [onRefresh]);
 
-  // Handle item removal
-  const handleRemoveItem = useCallback(async (item: OrderItem) => {
-    if (!order) return;
+  // Handle removal of one line, by its id; one function for every card.
+  const handleRemoveItem = useCallback((itemId: string) => {
+    const current = orderRef.current;
+    const item = current?.items?.find(line => line.id === itemId);
+    if (!current || !item) return;
 
     const itemName = item.grn_item?.name;
     showAlert(
@@ -239,7 +286,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           style: 'destructive',
           onPress: async () => {
             try {
-              const result = await OrderService.removeItemFromOrder(item.id, order.id);
+              const result = await OrderService.removeItemFromOrder(item.id, current.id);
               if (result.success) {
                 await onRefresh();
               } else {
@@ -253,7 +300,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         }
       ]
     );
-  }, [order, onRefresh]);
+  }, [onRefresh]);
 
   // Handle items updated from catalog (sync quantities, don't add)
   const handleItemsAdded = useCallback(async (items: Array<{grnItemId: string, quantity: number}>) => {
@@ -340,6 +387,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   }, [order, onRefresh]);
 
 
+  // The open lines, kept while the order's lines are unchanged.
+  const openItems = useMemo(() => order?.items?.filter(isOpenLine) ?? NO_LINES, [order?.items]);
+
   if (loading && !order) {
     return (
       <View style={styles.loadingContainer}>
@@ -379,20 +429,18 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           <RecentDispatchesSection customerId={customerId} />
         )}
 
-        {order && order.items && order.items.filter(item =>
-          (item.item_status || '').toLowerCase() !== 'fulfilled'
-        ).length > 0 ? (
+        {/* Every card gets the same two callbacks and its own line object, so a
+            refresh renders only the cards whose line changed (OrderItemCard is memoized). */}
+        {openItems.length > 0 ? (
           <>
-            {order.items
-              .filter(item => (item.item_status || '').toLowerCase() !== 'fulfilled')
-              .map((item) => (
-                <OrderItemCard
-                  key={item.id}
-                  item={item}
-                  onQuantityChange={(newQty) => handleQuantityUpdate(item, newQty)}
-                  onRemove={() => handleRemoveItem(item)}
-                />
-              ))}
+            {openItems.map((item) => (
+              <OrderItemCard
+                key={item.id}
+                item={item}
+                onQuantityChange={handleQuantityUpdate}
+                onRemove={handleRemoveItem}
+              />
+            ))}
           </>
         ) : (
           <View style={styles.emptyState}>
@@ -416,9 +464,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
 
       {/* Sticky Order Summary Card - only show if there are non-fulfilled items */}
-      {order && order.items && order.items.filter(item =>
-        (item.item_status || '').toLowerCase() !== 'fulfilled'
-      ).length > 0 && (
+      {order && openItems.length > 0 && (
         <CustomerOrderSummary order={order} />
       )}
 
@@ -499,13 +545,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           onAddItems={handleItemsAdded}
           currentOrderId={order.id}
           customerId={selectedCustomer.id}
-          currentOrderItems={order.items
-            ?.filter(item => (item.item_status || '').toLowerCase() !== 'fulfilled')
-            .map(item => ({
-              grnItemId: item.grn_item_id,
-              quantity: item.requested_quantity,
-              item: item.grn_item!
-            })) || []}
+          currentOrderItems={openItems.map(item => ({
+            grnItemId: item.grn_item_id,
+            quantity: item.requested_quantity,
+            item: item.grn_item!
+          }))}
         />
       )}
     </Surface>

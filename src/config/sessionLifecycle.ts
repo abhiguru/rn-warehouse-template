@@ -14,9 +14,15 @@ export function advanceSessionGeneration() {
   for (const listener of listeners) listener();
   return generation;
 }
+// How many credential operations have ever been queued. A read queued while
+// this number is unchanged sits directly after the previous one, with nothing
+// in between that could have written the secure store.
+let enqueued = 0;
+export const credentialQueueStamp = (): number => enqueued;
 export function serializeCredentials<T>(
   operation: () => Promise<T>
 ): Promise<T> {
+  enqueued += 1;
   const result = mutations.then(operation, operation);
   mutations = result.catch(() => {});
   return result;

@@ -14,6 +14,7 @@ import { CACHE_DURATION_LONG_MS } from '@/config/cacheConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import {
   advanceSessionGeneration,
+  credentialQueueStamp,
   getSessionGeneration,
   renewAheadMs,
   serializeCredentials,
@@ -393,7 +394,8 @@ export const getSupabaseRPCClient = getSupabaseClient;
 export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
   if (operatorSwitching) throw new AppError('SERVER_SWITCH', t('errors.auth.serverSwitchInProgress'));
   const generation = getSessionGeneration();
-  if (!(await ensureValidTokens())) {
+  const session = await acquireValidSession();
+  if (!session) {
     clearAuthenticatedClientCache();
     // A refresh credential that survived the failed refresh means the failure
     // was transient (offline, timeout), not a definitive rejection: report it
@@ -407,19 +409,18 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
     }
     throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
   }
-  const token = await getStoredToken();
+  // The session just validated is the one used: no second read of the store.
   if (
     generation !== getSessionGeneration() ||
-    operatorSwitching ||
-    !token.authToken ||
-    !token.isValid
+    session.generation !== generation ||
+    operatorSwitching
   )
     throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
-  if (!__authenticatedClientInstance || __cachedAuthToken !== token.authToken) {
+  if (!__authenticatedClientInstance || __cachedAuthToken !== session.authToken) {
     const config = getCurrentConfig();
     __authenticatedClientInstance = createClient(config.url, config.anonKey, {
       global: {
-        headers: { Authorization: 'Bearer ' + token.authToken },
+        headers: { Authorization: 'Bearer ' + session.authToken },
         // Only a write holds a server switch back; a read is aborted by it.
         fetch: (input, init) =>
           sessionFetch(input, init, generation, !isReadRequest(input, init)),
@@ -430,7 +431,7 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
         detectSessionInUrl: false,
       },
     });
-    __cachedAuthToken = token.authToken;
+    __cachedAuthToken = session.authToken;
   }
   return __authenticatedClientInstance;
 };
@@ -1331,14 +1332,33 @@ const refreshSession = async (
   }
 };
 
+/** A stored session that is usable now, and the session generation it belongs to. */
+export type ValidSession = {
+  authToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  generation: number;
+};
+
 /**
- * Check if stored tokens are expired and try to refresh them
- *
- * @returns true if tokens are valid (or were successfully refreshed), false otherwise
+ * The stored session, renewed first when its access token is expired or about
+ * to expire. Null when there is no usable session (none stored, the renewal
+ * failed and the stored token has expired, or the session changed meanwhile).
+ * Callers use the returned token directly instead of reading the store again.
  */
-export const ensureValidTokens = async (): Promise<boolean> => {
+export const acquireValidSession = async (): Promise<ValidSession | null> => {
   try {
+    const generation = getSessionGeneration();
     const tokenData = await getStoredToken();
+    const usable = (stored: typeof tokenData): ValidSession | null =>
+      stored.authToken && stored.refreshToken && stored.expiresAt
+        ? {
+            authToken: stored.authToken,
+            refreshToken: stored.refreshToken,
+            expiresAt: stored.expiresAt,
+            generation,
+          }
+        : null;
 
     // JWT tokens - check if we need to refresh
     if (tokenData.type === 'jwt') {
@@ -1347,7 +1367,7 @@ export const ensureValidTokens = async (): Promise<boolean> => {
 
       // Token still valid with its renew-ahead margin
       if (expiresAt > now + renewAheadMs(tokenData.authToken)) {
-        return true;
+        return usable(tokenData);
       }
       // A token issued within the last minute is used, not renewed again: with
       // a lifetime the margin cannot be read from, every request would
@@ -1359,7 +1379,7 @@ export const ensureValidTokens = async (): Promise<boolean> => {
         issued.token === tokenData.authToken &&
         Math.abs(now - issued.at) < JUST_ISSUED_MS
       ) {
-        return true;
+        return usable(tokenData);
       }
 
       // Token expired or about to expire - try refresh
@@ -1367,22 +1387,38 @@ export const ensureValidTokens = async (): Promise<boolean> => {
       const refreshResult = await refreshCustomJWT();
 
       if (refreshResult) {
-        return true;
+        // The renewed session is used only by the session that asked for it.
+        return generation === getSessionGeneration()
+          ? {
+              authToken: refreshResult.accessToken,
+              refreshToken: refreshResult.refreshToken,
+              expiresAt: refreshResult.expiresAt,
+              generation,
+            }
+          : null;
       }
 
       // Refresh failed - tokens are invalid
 
       // A temporary network error must not destroy an otherwise unexpired session.
       const remaining = await getStoredToken();
-      return remaining.isValid === true;
+      return remaining.isValid && remaining.authToken ? usable(remaining) : null;
     }
 
-    return false;
+    return null;
   } catch (error) {
     console.error('[Auth] ensureValidTokens error:');
-    return false;
+    return null;
   }
 };
+
+/**
+ * Check if stored tokens are expired and try to refresh them
+ *
+ * @returns true if tokens are valid (or were successfully refreshed), false otherwise
+ */
+export const ensureValidTokens = async (): Promise<boolean> =>
+  (await acquireValidSession()) !== null;
 
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
@@ -1451,12 +1487,48 @@ const readStoredToken = async (): Promise<{
   }
 };
 
-export const getStoredToken = async () => {
+type StoredToken = Awaited<ReturnType<typeof readStoredToken>>;
+
+// Reads that start together share one queued read. A caller joins the read in
+// flight only when nothing has been queued after it (credentialQueueStamp), the
+// session generation and the selected server are the same: its own read would
+// have come next in the queue and found the same values. The slot is emptied
+// as soon as the read settles; nothing is kept. Sign-in (startNewSession) and
+// sign-out queue their own reads and never share.
+let sharedRead: {
+  generation: number;
+  stamp: number;
+  operator: string;
+  promise: Promise<StoredToken>;
+} | null = null;
+const operatorKey = (): string => {
+  const operator = getActiveOperatorServer();
+  return operator ? `${operator.origin}|${operator.instanceId}` : '';
+};
+
+export const getStoredToken = async (): Promise<StoredToken> => {
   const generation = getSessionGeneration();
-  const stored = await serializeCredentials(readStoredToken);
+  const operator = operatorKey();
+  let slot = sharedRead;
+  if (
+    !slot ||
+    slot.generation !== generation ||
+    slot.stamp !== credentialQueueStamp() ||
+    slot.operator !== operator
+  ) {
+    const promise = serializeCredentials(readStoredToken);
+    const own = { generation, stamp: credentialQueueStamp(), operator, promise };
+    sharedRead = slot = own;
+    const release = () => {
+      if (sharedRead === own) sharedRead = null;
+    };
+    void promise.then(release, release);
+  }
+  const stored = await slot.promise;
+  // Every caller checks its own generation and gets its own copy.
   return generation === getSessionGeneration()
-    ? stored
-    : ({ isValid: false } as Awaited<ReturnType<typeof readStoredToken>>);
+    ? { ...stored }
+    : ({ isValid: false } as StoredToken);
 };
 
 // Read-only compatibility for migrating old sessions; never encode new tokens.
