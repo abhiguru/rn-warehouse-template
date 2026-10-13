@@ -17,6 +17,10 @@
  *   the card's width and four lines instead of being cut beside a large quantity
  *   (SR-O10). Decided from the name and the text size, not from a measured layout, so
  *   the card is drawn once. The row's label is the same in both layouts.
+ *   Stacked, the share icon sits `space.sm` under the facts: the row keeps only
+ *   `space.xs` below them, and the button is drawn just around the icon with the rest
+ *   of its touch area as `hitSlop` below it, inside its own line, so the two targets
+ *   still never overlap.
  */
 
 import React from 'react';
@@ -100,6 +104,11 @@ const STACKED_TITLE_LINES = 4;
 /** A name longer than this many characters goes on lines of its own, the value under it. */
 export const CARD_STACK_TITLE_LENGTH = 28;
 
+/** Stacked: the share button as drawn, just around its icon; the rest of its target is below it. */
+const STACKED_SHARE_HEIGHT = iconSize.lg + 2 * space.xs;
+const STACKED_SHARE_SLOP = Math.max(0, touchTarget - STACKED_SHARE_HEIGHT);
+const STACKED_SHARE_HIT_SLOP = { top: 0, bottom: STACKED_SHARE_SLOP, left: 0, right: 0 };
+
 /** Whether a card puts its value (and share button) under the name instead of beside it. */
 export const stacksCard = (title: string, fontScale: number): boolean =>
   fontScale >= CARD_STACK_FONT_SCALE - FONT_SCALE_TOLERANCE || [...title].length > CARD_STACK_TITLE_LENGTH;
@@ -142,11 +151,16 @@ const makeStyles = (t: ThemeTokens) =>
     stackedWithShare: {
       backgroundColor: t.surface.card,
     },
+    // The row ends a little under the facts; the share line follows at once.
+    rowStackedWithShare: {
+      paddingBottom: space.xs,
+    },
+    // Its bottom padding holds the button's touch area under the drawn button.
     shareBelow: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
       paddingRight: space.sm,
-      paddingBottom: space.xs,
+      paddingBottom: STACKED_SHARE_SLOP,
     },
     content: {
       flex: 1,
@@ -167,6 +181,9 @@ const makeStyles = (t: ThemeTokens) =>
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: radius.pill,
+    },
+    shareButtonStacked: {
+      height: STACKED_SHARE_HEIGHT,
     },
     shareButtonPressed: {
       backgroundColor: t.brand.subtle,
@@ -239,7 +256,11 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
 
   const row = (
     <Pressable
-      style={({ pressed }) => [styles.card, onShare && !stacked && styles.rowWithShare, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.card,
+        onShare && (stacked ? styles.rowStackedWithShare : styles.rowWithShare),
+        pressed && styles.cardPressed,
+      ]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
@@ -283,7 +304,8 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       <View style={stacked ? styles.shareBelow : styles.shareSlot}>
         <Pressable
           onPress={onShare}
-          style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
+          style={({ pressed }) => [styles.shareButton, stacked && styles.shareButtonStacked, pressed && styles.shareButtonPressed]}
+          hitSlop={stacked ? STACKED_SHARE_HIT_SLOP : undefined}
           disabled={isSharing}
           accessibilityRole="button"
           accessibilityLabel={tr('reports.components.sharePdfFor', { name: title })}

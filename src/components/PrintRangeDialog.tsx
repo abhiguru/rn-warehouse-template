@@ -7,6 +7,13 @@ import { DEMO_CAPABILITIES } from '@/config/demoCapabilities';
  *
  * Pre-populates both start and end fields with the selected item number
  * User can override to print a range or just click OK to print single item
+ *
+ * Keyboard (same structure as ConfirmInputDialog): the Modal draws behind both
+ * system bars, `KeyboardAvoidingView` pads by the keyboard on both platforms
+ * with an offset of minus the bottom inset (the overlay pads for the insets
+ * itself), the header stays on top, the body with both fields scrolls, and the
+ * actions row sits below it, outside the scroll, so Print stays reachable
+ * while the keyboard is open.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -19,8 +26,9 @@ import {
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
+  ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -54,6 +62,14 @@ interface PrintRangeDialogProps {
 }
 
 const makeStyles = (t: ThemeTokens) => ({
+  root: { flex: 1 },
+  overlay: {
+    flex: 1,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: t.overlay.scrim,
@@ -70,6 +86,14 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.card,
     ...t.shadow[4],
   },
+  /** The keyboard-safe dialog: never taller than the space left above the keyboard. */
+  dialogSized: {
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    maxHeight: '100%' as const,
+    flexShrink: 1,
+  },
+  body: { flexGrow: 0, flexShrink: 1 },
   header: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -249,6 +273,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   const [startNumber, setStartNumber] = useState(defaultNumber);
   const [endNumber, setEndNumber] = useState(defaultNumber);
@@ -370,21 +395,20 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       visible={visible}
       transparent
       animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={onDismiss}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.backdrop}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onDismiss}
-          accessibilityRole="button"
-          accessibilityLabel={tr('components.printRange.cancelPrinting')}
-        />
+      <KeyboardAvoidingView style={styles.root} behavior="padding" keyboardVerticalOffset={-insets.bottom}>
+        <View style={[styles.overlay, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel={tr('components.printRange.cancelPrinting')}
+          />
 
-        <View style={styles.dialogContainer}>
-          <View style={styles.dialog} accessibilityViewIsModal>
+          <View style={[styles.dialog, styles.dialogSized]} accessibilityViewIsModal>
             {/* Header */}
             <View style={styles.header}>
               <Icon name="printer-outline" size={iconSize.lg} color={t.brand.tint} />
@@ -404,8 +428,12 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
               </Pressable>
             </View>
 
-            {/* Content */}
-            <View style={styles.content}>
+            {/* Content: scrolls when the keyboard leaves little room */}
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={styles.content}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.description}>
                 {texts.chooseRange}
               </Text>
@@ -475,7 +503,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               )}
-            </View>
+            </ScrollView>
 
             {/* Actions */}
             <View style={styles.actions}>

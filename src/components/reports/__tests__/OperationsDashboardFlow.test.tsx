@@ -183,10 +183,12 @@ describe('the period', () => {
     expect(headers()).toEqual(['Operations dashboard', 'In 1 Sep – 30 Sep', 'Right now', 'Period averages', 'Latest activity (any date)']);
   });
 
-  it('with no activity in the period says so under the figures', async () => {
+  it('with no latest activity says none yet under the figures, without naming the period', async () => {
     dashboard.mockResolvedValue(answer([]) as never);
     const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Total stock', 'No GRNs or dispatches in this period. New activity appears here.']));
+    // The list is the latest GRNs and dispatches of any date, so the empty text does not speak of the period.
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Total stock', 'No GRNs or dispatches yet. The latest ones appear here.']));
+    expect(screen.texts().filter(text => /in this period/.test(text))).toEqual([]);
   });
 
   it('with no activity offers "Show last 420 days", which asks for those days, until that period is chosen', async () => {

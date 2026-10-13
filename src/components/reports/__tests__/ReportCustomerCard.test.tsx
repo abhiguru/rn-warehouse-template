@@ -247,6 +247,68 @@ describe('report customer card, a long name or a large text size', () => {
   });
 });
 
+describe('report customer card, the share button under a stacked card', () => {
+  const SHORT = 'Apex Cold Storage Traders';
+  const { space, iconSize, touchTarget } = jest.requireActual('@/theme/tokens');
+
+  /** The row, the share button (host views), the line holding the button, and the card around both. */
+  function shareParts() {
+    const tree = render('orange', 'light', { title: SHORT, subtitle: ['6 items', '38 GRNs'], onShare: jest.fn() });
+    const row = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityRole === 'button' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith(SHORT))[0];
+    const share = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityLabel === `Share PDF for ${SHORT}`)[0];
+    let line: ReactTestInstance = share.parent!;
+    while (typeof line.type !== 'string') line = line.parent!;
+    let card: ReactTestInstance = line.parent!;
+    while (typeof card.type !== 'string') card = card.parent!;
+    const facts = hostTexts(tree.root).find(node => textOf(node) === '6 items · 38 GRNs')!;
+    return { tree, row, share, line, card, facts };
+  }
+
+  it('stacked: the share icon sits a small gap under the facts, its full touch area below the row', () => {
+    atTextSize(1.3);
+    const { tree, row, share, line, card, facts } = shareParts();
+    // The facts are the last line of the row's content; the row and the share line are the card's two parts.
+    expect(row.findAll(node => node === facts)).toHaveLength(1);
+    expect(card.findAll(node => node === row)).toHaveLength(1);
+    expect(row.findAll(node => node === share)).toHaveLength(0);
+
+    // No stretched spacer between the facts and the share line.
+    for (const part of [card, line]) {
+      const style = flat(part);
+      expect(style.flex).toBeUndefined();
+      expect(style.flexGrow).toBeUndefined();
+      expect(style.minHeight).toBeUndefined();
+      expect(style.height).toBeUndefined();
+      expect(style.paddingTop ?? 0).toBe(0);
+      expect(style.marginTop ?? 0).toBe(0);
+    }
+
+    // Facts to the icon: the row's bottom padding plus the space above the icon in its button.
+    const rowStyle = flat(row);
+    const button = flat(share);
+    const aboveIcon = ((button.height as number) - iconSize.lg) / 2;
+    const rowBottom = (rowStyle.paddingBottom ?? rowStyle.paddingVertical ?? rowStyle.padding ?? 0) as number;
+    expect(rowBottom + aboveIcon).toBeLessThanOrEqual(space.sm);
+
+    // The touch area is still a full target, all of it under the row (they never overlap) and inside its line.
+    const slop = share.props.hitSlop ?? {};
+    expect((button.height as number) + (slop.top ?? 0) + (slop.bottom ?? 0)).toBeGreaterThanOrEqual(touchTarget);
+    expect(button.width).toBe(touchTarget);
+    expect(slop.top ?? 0).toBe(0);
+    expect(flat(line).paddingBottom).toBeGreaterThanOrEqual(slop.bottom ?? 0);
+    act(() => tree.unmount());
+  });
+
+  it('side by side: the share button keeps its full square target and the row its padding', () => {
+    const { tree, row, share } = shareParts();
+    expect(flat(share)).toMatchObject({ width: touchTarget, height: touchTarget });
+    expect(share.props.hitSlop).toBeUndefined();
+    expect(flat(row).paddingVertical).toBe(space.md);
+    expect(flat(row).paddingBottom).toBeUndefined();
+    act(() => tree.unmount());
+  });
+});
+
 describe('report customer card, the word beside the figure', () => {
   it('reads "unit" for a stock of one and "units" for more, in the label too, unless the screen names its own', () => {
     const one = render('orange', 'light', { value: 1 });

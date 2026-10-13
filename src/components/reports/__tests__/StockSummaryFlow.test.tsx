@@ -366,7 +366,13 @@ describe('stock summary, every customer', () => {
     expect(row.findAll(node => node.props.accessibilityLabel === 'Share PDF for Riverbank Produce')).toHaveLength(0);
     for (let node = share.parent; node; node = node.parent) expect(node).not.toBe(row);
     expect(share.props.accessibilityRole).toBe('button');
-    expect(pressedStyle(share)).toMatchObject({ width: touchTarget, height: touchTarget });
+    // A full target: square beside the row; under a stacked card (Jest's text size of 2 stacks it)
+    // drawn just around its icon, the rest of its height a hitSlop below it, never over the row.
+    const drawn = pressedStyle(share) as { width: number; height: number };
+    const slop = share.props.hitSlop ?? {};
+    expect(drawn.width).toBe(touchTarget);
+    expect(drawn.height + (slop.top ?? 0) + (slop.bottom ?? 0)).toBe(touchTarget);
+    expect(slop.top ?? 0).toBe(0);
 
     await screen.press('Share PDF for Riverbank Produce');
     expect(makePdf.mock.calls).toEqual([[{ report: 'stock-summary', customer_id: 'c1' }]]);

@@ -200,7 +200,7 @@ export const reports: Translation<typeof source> = {
     inPeriod: '{{period}} દરમિયાન',
     rightNow: 'અત્યારે',
     latestActivity: 'છેલ્લી કામગીરી (કોઈ પણ તારીખની)',
-    noActivity: 'આ સમયગાળામાં કોઈ આવક પાવતી કે જાવક નથી. નવી કામગીરી અહીં દેખાશે.',
+    noActivity: 'હજુ કોઈ આવક પાવતી કે જાવક નથી. છેલ્લી આવક પાવતી અને જાવક અહીં દેખાશે.',
     errorTitle: 'કામગીરીની ઝલક લોડ કરી શકાઈ નથી',
     service: {
       accessDenied: 'પરવાનગી નથી. આ અહેવાલ ફક્ત સ્ટાફ માટે છે.',

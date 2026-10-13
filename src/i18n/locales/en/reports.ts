@@ -219,7 +219,7 @@ export const reports = {
     rightNow: 'Right now',
     // The rows are the latest GRNs and dispatches overall, not those of the period.
     latestActivity: 'Latest activity (any date)',
-    noActivity: 'No GRNs or dispatches in this period. New activity appears here.',
+    noActivity: 'No GRNs or dispatches yet. The latest ones appear here.',
     errorTitle: "Couldn't load the operations dashboard",
     service: {
       accessDenied: 'Access denied. This report is for staff only.',
