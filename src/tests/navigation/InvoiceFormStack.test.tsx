@@ -6,16 +6,20 @@
  * expo-router's own testing library) with the real Invoices tab, the real
  * invoice-form layout and step 1, and the real useInvoiceForm on a real
  * invoice-form slice. The step 1 header is a stand-in that offers the "Discard"
- * of its question; step 2 is a stand-in whose two ways back are the ones the
- * real step 2 has: its Back button (useInvoiceForm's navigateToStep(1)) and the
- * Android Back key, which useBackHandler turns into
- * `router.replace('/invoice-form/step1')` on step 2.
+ * of its question; step 2 is a stand-in with the two ways back the real step 2
+ * has: its Back button (useInvoiceForm's navigateToStep(1)) and the Android Back
+ * key (the real useBackHandler with the options of app/invoice-form/step2.tsx).
  *
  * The cause found: every way back from step 2 to step 1 added a second step-1
- * entry ([step1, step2, step1] by the Back button, [step1, step1] by the Back
- * key), and a second tap on "Create invoice" did the same. Discard did
- * `router.back()`, which only took off the top entry and showed the step 1 under
- * it, whose form had just been reset.
+ * entry ([step1, step2, step1] by the Back button; [step1, step1] by the Back
+ * key, which useBackHandler turned into `router.replace(step1)`), and a second
+ * tap on "Create invoice" did the same. Discard did `router.back()`, which only
+ * took off the top entry and showed the step 1 under it, whose form had just
+ * been reset.
+ *
+ * The GRN and dispatch create forms use the same Back-key handling on their
+ * later steps; their real step-2 routes run here too, with the step's content
+ * left out.
  */
 import React from 'react';
 import { Pressable, Text } from 'react-native';
@@ -26,12 +30,16 @@ import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
 import { store as routerStore } from 'expo-router/build/global-state/router-store';
 import { router, Stack, Tabs } from 'expo-router';
+import { installHardwareBack } from '@/tests/helpers/hardwareBack';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import invoiceFormReducer, { setItems, updateHeader } from '@/store/slices/invoiceFormSlice';
 import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import InvoicesTab from '../../../app/(tabs)/invoices';
 import InvoiceFormLayout from '../../../app/invoice-form/_layout';
 import InvoiceFormStep1 from '../../../app/invoice-form/step1';
+import GRNFormStep2 from '../../../app/grn-form/step2';
+import DispatchFormStep2 from '../../../app/dispatch-form/step2';
 
 // ---------------------------------------------------------------------------
 // The store: the real invoice-form slice, read through the app's hooks.
@@ -66,7 +74,8 @@ jest.mock('@/features/invoice/services/invoiceFormService', () => ({
   checkGrnStillInvoiceable: jest.fn(),
 }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
-jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
+jest.mock('@/features/grn/screens/GrnItemsStep', () => () => null);
+jest.mock('@/features/dispatch/screens', () => ({ DispatchItemsStep: () => null }));
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocomplete: () => null }));
@@ -91,16 +100,19 @@ const LINE = '33333333-4444-4555-8666-777777777777';
 /** Step 2 as far as leaving it goes. */
 function Step2() {
   const { navigateToStep } = useInvoiceForm({ mode: 'create' });
-  return (
-    <>
-      <Pressable testID="step2-back" onPress={() => { void navigateToStep(1); }}><Text>Back</Text></Pressable>
-      {/* What useBackHandler({ currentStep: 2, stepBasePath: '/invoice-form/step' }) does on the Back key. */}
-      <Pressable testID="step2-back-key" onPress={() => router.replace('/invoice-form/step1')}><Text>Back key</Text></Pressable>
-    </>
-  );
+  // As app/invoice-form/step2.tsx has it.
+  useBackHandler({ currentStep: 2, totalSteps: 4, stepBasePath: '/invoice-form/step', exitRoute: '/invoices' });
+  return <Pressable testID="step2-back" onPress={() => { void navigateToStep(1); }}><Text>Back</Text></Pressable>;
 }
 
+/** A tab that opens a create form, and that form's step 1, which goes on to step 2. */
+const opener = (testID: string, href: '/grn-form/step1' | '/dispatch-form/step1') => () =>
+  <Pressable testID={testID} onPress={() => router.push(href)}><Text>Create</Text></Pressable>;
+const firstStep = (testID: string, href: '/grn-form/step2' | '/dispatch-form/step2') => () =>
+  <Pressable testID={testID} onPress={() => router.push(href)}><Text>Next</Text></Pressable>;
+
 let tree: ReactTestRenderer;
+let backKey: ReturnType<typeof installHardwareBack>;
 
 beforeEach(async () => {
   jest.useFakeTimers();
@@ -110,6 +122,7 @@ beforeEach(async () => {
   jest.mocked(getNextInvoiceNumber).mockImplementation(async (finYear: string) =>
     ({ success: true, data: { next_invoice_number: 55, financial_year: finYear } }));
   process.env.EXPO_ROUTER_IMPORT_MODE = 'sync';
+  backKey = installHardwareBack();
   const context = getMockContext({
     _layout: () => <Stack screenOptions={{ headerShown: false }} />,
     '(tabs)/_layout': () => <Tabs screenOptions={{ headerShown: false }} />,
@@ -119,6 +132,14 @@ beforeEach(async () => {
     'invoice-form/step1': InvoiceFormStep1,
     'invoice-form/step2': Step2,
     'invoice-form/step3': () => null,
+    '(tabs)/grn': opener('create-grn', '/grn-form/step1'),
+    'grn-form/_layout': () => <Stack screenOptions={{ headerShown: false }} />,
+    'grn-form/step1': firstStep('grn-next', '/grn-form/step2'),
+    'grn-form/step2': GRNFormStep2,
+    '(tabs)/dispatch': opener('create-dispatch', '/dispatch-form/step1'),
+    'dispatch-form/_layout': () => <Stack screenOptions={{ headerShown: false }} />,
+    'dispatch-form/step1': firstStep('dispatch-next', '/dispatch-form/step2'),
+    'dispatch-form/step2': DispatchFormStep2,
   });
   await act(async () => {
     tree = create(<ExpoRoot context={context} location="/invoices" />);
@@ -127,6 +148,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await act(async () => { tree.unmount(); });
+  backKey.restore();
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
@@ -150,10 +172,17 @@ const tap = async (testID: string, times = 1) => {
   await settle();
 };
 
-/** The routes of the root stack, with the steps of the invoice form in it. */
+/** The routes of the root stack, with the steps of a create form in it. */
 const stack = () =>
   (routerStore.state!.routes[0].state?.routes ?? []).map((route) =>
-    route.name === 'invoice-form' ? (route.state?.routes ?? []).map((step) => step.name) : route.name);
+    route.name.endsWith('-form') ? (route.state?.routes ?? []).map((step) => step.name) : route.name);
+/** Presses the Android Back key; true when a screen took it. */
+const pressBackKey = async () => {
+  let taken = false;
+  await act(async () => { taken = backKey.press(); });
+  await settle();
+  return taken;
+};
 const pathname = () => routerStore.getRouteInfo().pathname;
 
 /** A new invoice with a GRN and one line, so that Next goes on. */
@@ -177,13 +206,15 @@ const openNewInvoice = async () => {
 };
 
 describe('Discard on step 1 of a new invoice', () => {
-  it('lands on the Invoices tab although the Back key on step 2 left two step-1 entries', async () => {
+  it('lands on the Invoices tab after the Back key on step 2, which no longer adds a step-1 entry', async () => {
     await openNewInvoice();
     await tap(NEXT);
     expect(pathname()).toBe('/invoice-form/step2');
-    await tap('step2-back-key');
-    // The double entry this review reproduced on the phone.
-    expect(stack()).toEqual(['(tabs)', ['step1', 'step1']]);
+
+    expect(await pressBackKey()).toBe(true);
+    // Was [step1, step1]: the double entry this review reproduced on the phone.
+    expect(stack()).toEqual(['(tabs)', ['step1']]);
+    expect(pathname()).toBe('/invoice-form/step1');
 
     await tap('discard');
 
@@ -236,5 +267,24 @@ describe('a double tap', () => {
     await tap(NEXT);
 
     expect(stack()).toEqual(['(tabs)', ['step1', 'step2']]);
+  });
+});
+
+describe.each([
+  ['GRN', '/grn', 'create-grn', 'grn-next', '/grn-form/step2', '/grn-form/step1'],
+  ['dispatch', '/dispatch', 'create-dispatch', 'dispatch-next', '/dispatch-form/step2', '/dispatch-form/step1'],
+] as const)('the Back key on step 2 of a new %s', (_form, tab, create, next, second, first) => {
+  it('returns to the step 1 already in the stack', async () => {
+    // The app opens on the Invoices tab; its own tab is drawn once it is chosen.
+    await act(async () => { router.navigate(tab); });
+    await settle();
+    await tap(create);
+    await tap(next);
+    expect(pathname()).toBe(second);
+
+    expect(await pressBackKey()).toBe(true);
+
+    expect(pathname()).toBe(first);
+    expect(stack()).toEqual(['(tabs)', ['step1']]);
   });
 });

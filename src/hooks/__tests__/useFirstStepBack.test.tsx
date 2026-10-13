@@ -15,7 +15,7 @@ import DispatchFormStep2 from '../../../app/dispatch-form/step2';
 import DispatchFormStep3 from '../../../app/dispatch-form/step3';
 
 jest.mock('expo-router', () => {
-  const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true) };
+  const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismissTo: jest.fn(), canGoBack: jest.fn(() => true) };
   return {
     router: mockRouter,
     useRouter: () => mockRouter,
@@ -157,8 +157,10 @@ describe('Back on the later steps of a create form', () => {
 
     expect(back.press()).toBe(true);
 
-    expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledWith(previous);
+    // To the step already in the stack, not a second entry of it (src/tests/navigation/InvoiceFormStack.test.tsx).
+    expect(router.dismissTo).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith(previous);
+    expect(router.replace).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });

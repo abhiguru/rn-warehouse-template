@@ -237,8 +237,10 @@ describe('Back on step 2 of a new invoice', () => {
     expect(await pressBack()).toBe(true);
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledWith('/invoice-form/step1');
+    // To the step 1 already in the stack (src/tests/navigation/InvoiceFormStack.test.tsx).
+    expect(router.dismissTo).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith('/invoice-form/step1');
+    expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
