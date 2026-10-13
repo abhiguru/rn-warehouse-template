@@ -11,7 +11,7 @@ import { act, create } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import invoiceFormReducer, { loadInvoiceEditData, resetForm, loadInvoiceFormData, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { checkGrnStillInvoiceable, createInvoice, updateInvoice } from '@/features/invoice/services/invoiceFormService';
-import { validateFullInvoice } from '@/features/invoice/schemas/invoiceValidation';
+import { validateNewInvoice } from '@/features/invoice/schemas/invoiceValidation';
 import { showAlert } from '@/utils/alert';
 import { useInvoiceForm, type InvoiceFormMode, type UseInvoiceFormReturn } from '../useInvoiceForm';
 
@@ -38,6 +38,9 @@ jest.mock('@/features/invoice/schemas/invoiceValidation', () => ({
   validateStep1: jest.fn(async () => ({ isValid: true, errors: {} })),
   validateStep2: jest.fn(async () => ({ isValid: true, errors: {} })),
   validateFullInvoice: jest.fn(async () => ({ isValid: true, errors: {} })),
+  // A new invoice is checked with the number's ceiling (backend migration 73).
+  validateNewInvoiceStep1: jest.fn(async () => ({ isValid: true, errors: {} })),
+  validateNewInvoice: jest.fn(async () => ({ isValid: true, errors: {} })),
 }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
@@ -115,7 +118,7 @@ describe('saving a new invoice', () => {
   });
 
   it('does not ask the server anything when the form itself is not valid', async () => {
-    jest.mocked(validateFullInvoice).mockResolvedValueOnce({ isValid: false, errors: { discount: 'Discount is too large' } });
+    jest.mocked(validateNewInvoice).mockResolvedValueOnce({ isValid: false, errors: { discount: 'Discount is too large' } });
     const { form, unmount } = await mount('create');
 
     expect((await submit(form)).success).toBe(false);

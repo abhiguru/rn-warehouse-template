@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   setInvoiceId,
@@ -49,6 +49,8 @@ import {
   validateStep2,
   validateStep3,
   validateFullInvoice,
+  validateNewInvoiceStep1,
+  validateNewInvoice,
 } from '@/features/invoice/schemas/invoiceValidation';
 import {
   getNextInvoiceNumber,
@@ -170,6 +172,8 @@ export function useInvoiceForm({
   const isLoadingData = useRef(false);
   // Counts the requests for the next invoice number; an answer is used only while its request is the latest.
   const nextNumberRequest = useRef(0);
+  // True while navigateToStep checks the form before it moves to a step.
+  const isNavigating = useRef(false);
 
   /**
    * Ask the server for the next invoice number of a financial year and put it
@@ -390,17 +394,18 @@ export function useInvoiceForm({
     let result: { isValid: boolean; errors: Record<string, string> };
 
     switch (step) {
+      // A new invoice's number also has the server's ceiling (backend migration 73).
       case 1:
-        result = await validateStep1(header);
+        result = await (isCreateMode ? validateNewInvoiceStep1 : validateStep1)(header);
         break;
       case 2:
         result = await validateStep2(items);
         break;
       case 3:
-        result = await validateStep3({ header, items });
+        result = await (isCreateMode ? validateNewInvoice : validateStep3)({ header, items });
         break;
       case 4:
-        result = await validateFullInvoice({ header, items });
+        result = await (isCreateMode ? validateNewInvoice : validateFullInvoice)({ header, items });
         break;
       default:
         result = { isValid: true, errors: {} };
@@ -415,7 +420,7 @@ export function useInvoiceForm({
     }
 
     return result;
-  }, [header, items, dispatch]);
+  }, [header, items, dispatch, isCreateMode]);
 
   const clearFieldValidationError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {
@@ -454,35 +459,35 @@ export function useInvoiceForm({
    * Navigate to a specific step
    */
   const navigateToStep = useCallback(async (step: number): Promise<boolean> => {
+    if (step < 1 || step > 4) return false;
+    // A second tap while the first is still being checked does nothing.
+    if (isNavigating.current) return false;
     const currentStep = invoiceFormState.currentStep;
     // Going on waits for the invoice number: while it is being asked for, and
     // when the field was emptied (it is then asked for first).
     if (step > currentStep && (isGettingNextNumber || suggestNumberIfEmpty())) return false;
-    const canNavigate = await canNavigateToStep(step, currentStep);
+    isNavigating.current = true;
+    try {
+      const canNavigate = await canNavigateToStep(step, currentStep);
+      if (!canNavigate) return false;
 
-    if (!canNavigate) return false;
+      dispatch(setCurrentStep(step));
 
-    dispatch(setCurrentStep(step));
-
-    // Determine route based on mode
-    const baseRoute = isCreateMode ? '/invoice-form' : `/invoice-edit/${invoiceId}`;
-
-    switch (step) {
-      case 1:
-        router.push(`${baseRoute}/step1`);
-        break;
-      case 2:
-        router.push(`${baseRoute}/step2`);
-        break;
-      case 3:
-        router.push(`${baseRoute}/step3`);
-        break;
-      case 4:
-        router.push(`${baseRoute}/step4`);
-        break;
+      const route = `${isCreateMode ? '/invoice-form' : `/invoice-edit/${invoiceId}`}/step${step}` as Href;
+      if (step < currentStep) {
+        // Back to a step that is already in the stack: the steps above it are
+        // taken off. A push here added a second entry of that step, and the
+        // form's Discard then showed the one under it, emptied.
+        router.dismissTo(route);
+      } else {
+        // `navigate` does nothing when the step is already in front, so a tap
+        // that lands after the step opened does not open it a second time.
+        router.navigate(route);
+      }
+      return true;
+    } finally {
+      isNavigating.current = false;
     }
-
-    return true;
   }, [invoiceFormState.currentStep, canNavigateToStep, isCreateMode, invoiceId, dispatch, isGettingNextNumber, suggestNumberIfEmpty]);
 
   /**
@@ -490,7 +495,7 @@ export function useInvoiceForm({
    */
   const submitForm = useCallback(async (): Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }> => {
     // Validate full invoice
-    const validation = await validateFullInvoice({ header, items });
+    const validation = await (isCreateMode ? validateNewInvoice : validateFullInvoice)({ header, items });
     if (!validation.isValid) {
       showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
       return { success: false, error: t('errors.general.validationFailed') };

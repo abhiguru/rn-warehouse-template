@@ -18,7 +18,11 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) } }));
+jest.mock('expo-router', () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
+  // The Invoices tab takes "Create invoice" again once it is back in front.
+  useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
+}));
 jest.mock('@/components/lists', () => ({ DispatchFlashList: () => null, InvoiceFlashList: () => null }));
 jest.mock('@/components/list/ListErrorBoundary', () => ({
   ListErrorBoundary: ({ children }: { children: React.ReactNode }) => children,

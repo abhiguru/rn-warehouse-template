@@ -385,6 +385,8 @@ export const invoice = {
     invoiceNumberPositive: 'Invoice number must be positive',
     invoiceNumberWhole: 'Invoice number must be a whole number',
     invoiceNumberMin: 'Invoice number must be at least 1',
+    // The server's own sentence for WH422 (backend migration 73).
+    invoiceNumberRange: 'Invoice number must be between 1 and 99999999',
     grnInvalid: 'Invalid GRN selection',
     grnRequired: 'GRN is required',
     grnNumberRequired: 'GRN number is required',
