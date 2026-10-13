@@ -55,7 +55,7 @@ export const users = {
     accountInformation: 'Account information',
     notProvided: 'Not provided',
     actions: 'Actions',
-    signOutSubtitle: 'Sign out of this phone.',
+    signOutSubtitle: 'Sign out of this facility on this phone.',
   },
   // An admin or supervisor edits another user (app/user-edit/[id].tsx)
   edit: {
@@ -136,5 +136,19 @@ export const users = {
     roleStatusFooter: 'Administrators manage your role and status.',
     askAdmin: 'Ask an administrator to assign customers to you.',
     assignmentsFooter: 'Administrators manage customer assignments.',
+    // The screen's title: the name is the one thing a person changes here.
+    title: 'Change name',
+    // Under the name. {{facility}} is the facility's name; scopeAccount when it is not known.
+    scope: 'This is the name {{facility}} shows for you.',
+    scopeAccount: 'This is the name shown for your account.',
+    // A row that opens the read-only mobile number, role, status and customer access.
+    accountDetails: 'Account details',
+    accountDetailsHint: 'Shows your mobile number, role and customer access',
+    // Admin, supervisor and staff see every active customer: a rule of the role, not assignments.
+    customerAccess: 'Customer access',
+    customerAccessFooter: 'Your role lets you see every active customer of this facility.',
+    customerAccessEmpty: 'This facility has no active customers yet.',
+    customerAccessFailed: "Couldn't load your customer access. Check your connection and try again.",
+    customerAccessLoading: 'Loading customer access…',
   },
 };

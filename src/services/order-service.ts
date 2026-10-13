@@ -9,6 +9,7 @@ import {
   handleGlobalAuthError,
 } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
+import { invalidateReportQueries } from '@/lib/queryClient';
 import {
   Order,
   OrderItem,
@@ -163,6 +164,8 @@ export class OrderService {
 
       // The RPC returns just the cart_id as a string
       const cartId = data;
+      // It makes an open order when the customer has none: Operations counts them (Pending orders).
+      void invalidateReportQueries();
 
       return {
         success: true,
@@ -217,6 +220,8 @@ export class OrderService {
         unwrapNested: false, // Response is direct data
       }
     );
+    // A changed order changes the reports (Operations: Pending orders); after a success only.
+    if (result.success) void invalidateReportQueries();
 
     return {
       success: result.success,
@@ -266,6 +271,7 @@ export class OrderService {
         unwrapNested: false,
       }
     );
+    if (result.success) void invalidateReportQueries();
 
     return {
       success: result.success,
@@ -298,6 +304,7 @@ export class OrderService {
         unwrapNested: false,
       }
     );
+    if (result.success) void invalidateReportQueries();
 
     return {
       success: result.success,

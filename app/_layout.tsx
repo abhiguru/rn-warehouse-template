@@ -373,6 +373,7 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
       {/* Other screens */}
       <Stack.Screen name="settings" options={{ headerShown: false }} />
       <Stack.Screen name="profile" options={{ headerShown: false }} />
+      <Stack.Screen name="help" options={{ headerShown: false }} />
       <Stack.Screen name="customers" options={{ headerShown: false }} />
       <Stack.Screen name="sensors" options={{ headerShown: false }} />
 

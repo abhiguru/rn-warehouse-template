@@ -1,17 +1,18 @@
 /**
- * Inside a facility with central login on: "Switch facility" and "Sign out" in
- * Settings, the facility line of the facility's own sign-in screen, and the
- * waiting screen. With central login off each of them is as it was.
+ * Inside a facility with central login on: "Leave this facility" and "Sign out
+ * of this phone" in Settings and in Profile (the same actions, SR-01), deletion
+ * at this facility, the facility line of the facility's own sign-in screen, and
+ * the waiting screen. With central login off each of them is as it was.
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import SettingsScreen from '../../../app/settings';
+import ProfileScreen from '../../../app/profile';
 import LoginScreen from '../../../app/login';
 import PendingEnrollmentScreen from '../../../app/pending-enrollment';
 import { leaveFacility } from '@/store/operatorSwitch';
-import { deleteFacilityAccount } from '@/store/centralSignOut';
-import type { LeaveFacilityOutcome } from '@/store/operatorSwitch';
+import { deleteFacilityAccount, signOutEverywhere } from '@/store/centralSignOut';
 import { deleteAccount, logout } from '@/store/slices/authSlice';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '@/config/centralState';
 import { getEnrollmentStatus, signOutPendingEnrollment } from '@/config/supabaseConfig';
@@ -48,7 +49,10 @@ jest.mock('@/config/supabaseConfig', () => ({
   signInWithPhone: jest.fn(),
 }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
-jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(async () => 'left') }));
+jest.mock('@/store/centralSignOut', () => ({
+  deleteFacilityAccount: jest.fn(async () => 'left'),
+  signOutEverywhere: jest.fn(async () => ({ ok: true })),
+}));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
   deleteAccount: jest.fn(),
@@ -92,100 +96,151 @@ afterEach(async () => {
   tree = undefined;
 });
 
-describe('Settings with central login on', () => {
-  it('offers "Switch facility" with the name of the facility, in place of "Change warehouse server"', async () => {
-    await render(<SettingsScreen />);
-    expect(texts()).toContain('Switch facility');
-    expect(texts()).toContain('North Cold Store');
+/** The confirming button of the open dialog: the last one with that name. */
+const confirmButton = (label: string) =>
+  tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function').pop()!;
+const LEAVE_ROW = 'Leave this facility, Leave North Cold Store and return to My facilities. You stay signed in to the association.';
+const PHONE_ROW = 'Sign out of this phone, Ends your association sign-in and this facility on this phone.';
+const SIGN_OUT_ROW = 'Sign out, Sign out of this facility on this phone.';
+const DELETE_ROW =
+  'Delete my account at North Cold Store, Removes your profile and sign-in here. Records, your association sign-in and other facilities stay.';
+
+/** Opens the deletion, passes the warning and types the number. */
+async function deleteWith(row: string, number: string) {
+  await press(row);
+  await act(async () => { await confirmButton('Continue').props.onPress(); });
+  const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
+  await act(async () => { field.props.onChangeText(number); });
+  await act(async () => { await confirmButton('Delete account').props.onPress(); });
+}
+
+describe.each([
+  ['Settings', () => <SettingsScreen />],
+  ['Profile', () => <ProfileScreen />],
+])('%s with central login on', (_screen, element) => {
+  it('offers "Leave this facility" with the facility and "Sign out of this phone", not a plain "Sign out"', async () => {
+    await render(element());
+    expect(texts()).toContain('Leave this facility');
+    expect(texts()).toContain('Leave North Cold Store and return to My facilities. You stay signed in to the association.');
+    expect(texts()).toContain('Sign out of this phone');
     expect(texts()).not.toContain('Change warehouse server');
+    expect(texts()).not.toContain('Sign out of this facility on this phone.');
   });
 
-  it('"Switch facility" asks first, then leaves the facility through the shared cleanup', async () => {
-    await render(<SettingsScreen />);
-    await press('Switch facility, North Cold Store');
-    expect(alerts()[0][0]).toBe('Switch facility?');
-    expect(alerts()[0][1]).toBe(
-      "You'll leave North Cold Store and unsaved forms are discarded. You can open it again from My facilities."
+  it('"Leave this facility" asks first, then leaves through the shared cleanup; the association sign-in stays', async () => {
+    await render(element());
+    await press(LEAVE_ROW);
+    expect(texts()).toContain('Leave North Cold Store?');
+    expect(texts()).toContain(
+      'Unsaved forms are discarded. You stay signed in to the association and can open this facility again from My facilities.'
     );
     expect(leaveFacility).not.toHaveBeenCalled();
-    const buttons = alerts()[0][2] as Array<{ text: string; onPress?: () => void }>;
-    expect(buttons.map(entry => entry.text)).toEqual(['Cancel', 'Switch facility']);
-    await act(async () => { buttons[1].onPress?.(); });
+    await act(async () => { await confirmButton('Leave').props.onPress(); });
     expect(leaveFacility).toHaveBeenCalledTimes(1);
     expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
+    expect(signOutEverywhere).not.toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
     // The route guard leads to My facilities; nothing sends the person to a sign-in screen.
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
+    expect(getCentralState().status).toBe('signedIn');
   });
 
-  it('says when a write in flight holds the switch back', async () => {
+  it('says when a write in flight holds the leaving back', async () => {
     jest.mocked(leaveFacility).mockResolvedValue('busy');
-    await render(<SettingsScreen />);
-    await press('Switch facility, North Cold Store');
-    await act(async () => { (alerts()[0][2] as Array<{ onPress?: () => void }>)[1].onPress?.(); });
-    expect(alerts()[1]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
+    await render(element());
+    await press(LEAVE_ROW);
+    await act(async () => { await confirmButton('Leave').props.onPress(); });
+    expect(alerts()[0]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
   });
 
-  it('"Delete account" deletes the profile at this facility through the central-mode helper and does not open a sign-in screen', async () => {
+  it('"Sign out of this phone" ends the association sign-in too, with the wording that says so', async () => {
+    await render(element());
+    await press(PHONE_ROW);
+    expect(texts()).toContain('Sign out of this phone?');
+    expect(texts()).toContain(
+      "You'll be signed out of the association and of the cold storage you have open. You'll need your mobile number and a one-time code to sign in again."
+    );
+    await act(async () => { await confirmButton('Sign out').props.onPress(); });
+    expect(signOutEverywhere).toHaveBeenCalledWith(mockDispatch);
+    expect(logout).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('facility SMS access without the association sign-in: one "Sign out" through the facility cleanup', async () => {
+    setCentralState({ status: 'signedOut', user: null });
+    await render(element());
+    expect(texts()).not.toContain('Sign out of this phone');
+    await press(SIGN_OUT_ROW);
+    expect(texts()).toContain("You'll need your mobile number and a one-time code to sign in again.");
+    await act(async () => { await confirmButton('Sign out').props.onPress(); });
+    expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
+    expect(logout).not.toHaveBeenCalled();
+    expect(signOutEverywhere).not.toHaveBeenCalled();
+  });
+});
+
+describe('deletion in Settings with central login on', () => {
+  it('names the facility in the row and in both steps, and says the association sign-in stays', async () => {
     await render(<SettingsScreen />);
-    await press('Delete account, Permanently delete your account and data');
-    // Warning step, then the number is asked for.
-    const proceed = tree!.root.findAll(node => node.props.accessibilityLabel === 'Continue' && typeof node.props.onPress === 'function').pop();
-    if (proceed) await act(async () => { await proceed.props.onPress(); });
-    const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
-    await act(async () => { field.props.onChangeText('9000000001'); });
-    const confirm = tree!.root.findAll(node => node.props.accessibilityLabel === 'Delete account' && typeof node.props.onPress === 'function').pop()!;
-    await act(async () => { await confirm.props.onPress(); });
+    await press(DELETE_ROW);
+    expect(texts()).toContain('Delete your account at North Cold Store?');
+    expect(texts().some(text => text.includes('Your association sign-in and your other facilities stay'))).toBe(true);
+    await act(async () => { await confirmButton('Continue').props.onPress(); });
+    expect(texts()).toContain('Confirm deletion at North Cold Store');
+    expect(texts()).toContain(
+      'Enter the mobile number on your account to delete your account at North Cold Store. Your association sign-in stays.'
+    );
+  });
+
+  it('deletes the profile at this facility through the central-mode helper and does not open a sign-in screen', async () => {
+    await render(<SettingsScreen />);
+    await deleteWith(DELETE_ROW, '9000000001');
     expect(deleteFacilityAccount).toHaveBeenCalledWith(mockDispatch);
     expect(deleteAccount).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     expect(alerts()).toHaveLength(0);
   });
 
+  it('a wrong number keeps the field, the error and both buttons', async () => {
+    await render(<SettingsScreen />);
+    await deleteWith(DELETE_ROW, '9000000002');
+    expect(deleteFacilityAccount).not.toHaveBeenCalled();
+    expect(texts()).toContain("This number doesn't match your account. Check it and try again.");
+    expect(confirmButton('Delete account').props.disabled).toBe(false);
+    expect(confirmButton('Cancel').props.disabled).toBe(false);
+  });
+
   it('says so when the final cleanup after the deletion was held back by a write in flight', async () => {
     jest.mocked(deleteFacilityAccount).mockResolvedValue('busy');
     await render(<SettingsScreen />);
-    await press('Delete account, Permanently delete your account and data');
-    const proceed = tree!.root.findAll(node => node.props.accessibilityLabel === 'Continue' && typeof node.props.onPress === 'function').pop();
-    if (proceed) await act(async () => { await proceed.props.onPress(); });
-    const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
-    await act(async () => { field.props.onChangeText('9000000001'); });
-    const confirm = tree!.root.findAll(node => node.props.accessibilityLabel === 'Delete account' && typeof node.props.onPress === 'function').pop()!;
-    await act(async () => { await confirm.props.onPress(); });
+    await deleteWith(DELETE_ROW, '9000000001');
     expect(alerts()[0]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
-  });
-
-  it('"Sign out" signs out of this facility only and returns to My facilities', async () => {
-    await render(<SettingsScreen />);
-    await press('Sign out');
-    expect(texts()).toContain("You'll leave this cold storage and return to My facilities. You stay signed in to the association.");
-    expect(texts()).not.toContain("You'll need your mobile number and a one-time code to sign in again.");
-    // The confirming button of the dialog is the last one with that name.
-    const confirm = tree!.root.findAll(node => node.props.accessibilityLabel === 'Sign out' && typeof node.props.onPress === 'function').pop()!;
-    await act(async () => { await confirm.props.onPress(); });
-    expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
-    expect(logout).not.toHaveBeenCalled();
-    expect(router.replace).not.toHaveBeenCalled();
-    expect(getCentralState().status).toBe('signedIn');
   });
 });
 
-describe('Settings with central login off', () => {
+describe.each([
+  ['Settings', () => <SettingsScreen />],
+  ['Profile', () => <ProfileScreen />],
+])('%s with central login off', (screen, element) => {
   beforeEach(() => { mockCentralOn = false; });
 
-  it('keeps "Change warehouse server" and the sign-out that leads to the sign-in screen', async () => {
-    await render(<SettingsScreen />);
-    expect(texts()).toContain('Change warehouse server');
-    expect(texts()).not.toContain('Switch facility');
-    await press('Change warehouse server');
-    expect(router.push).toHaveBeenCalledWith('/operator-server');
+  it('keeps the sign-out that leads to the sign-in screen', async () => {
+    await render(element());
+    expect(texts()).not.toContain('Leave this facility');
+    expect(texts()).not.toContain('Sign out of this phone');
+    if (screen === 'Settings') {
+      expect(texts()).toContain('Change warehouse server');
+      await press('Change warehouse server');
+      expect(router.push).toHaveBeenCalledWith('/operator-server');
+    }
 
-    await press('Sign out');
+    await press(SIGN_OUT_ROW);
     expect(texts()).toContain("You'll need your mobile number and a one-time code to sign in again.");
-    const confirm = tree!.root.findAll(node => node.props.accessibilityLabel === 'Sign out' && typeof node.props.onPress === 'function').pop()!;
-    await act(async () => { await confirm.props.onPress(); });
+    await act(async () => { await confirmButton('Sign out').props.onPress(); });
     expect(logout).toHaveBeenCalledTimes(1);
     expect(leaveFacility).not.toHaveBeenCalled();
+    expect(signOutEverywhere).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith('/login');
   });
 });

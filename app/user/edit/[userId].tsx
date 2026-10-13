@@ -1,6 +1,13 @@
 /**
- * Edit own profile (style guide §14.4): name is editable; mobile, role,
- * status and customer assignments are read-only and managed by admins.
+ * Change name: the own-profile edit (style guide §14.4). The name is the one
+ * editable field, with a line saying where it is shown. Mobile, role, status
+ * and customer access are read-only, managed by administrators, and sit in a
+ * collapsed "Account details" (review 2026-10-13: SR-07, SR-08, O06).
+ *
+ * Customer access is read on its own: a failed read says so and offers Try
+ * again, which reloads only that part and keeps a typed name. For admin,
+ * supervisor and staff it is every active customer (a rule of the role); for
+ * a customer it is the assigned ones.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -11,7 +18,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  FlatList,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,11 +42,25 @@ import {
   UserFormData,
   CustomerAssignment
 } from '@/types/user.types';
-
+import { getActiveOperatorServer } from '@/config/operatorServer';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
+import { roleLabel } from '@/utils/roleLabel';
+import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+
+const log = createLogger('ownProfileEdit');
+
+/** The customers this person may see, and whether they could be read. */
+type CustomerAccess = { status: 'loading' | 'loaded' | 'failed'; customers: CustomerAssignment[] };
+
+/** The facility's name for the scope line; empty when no facility is chosen. */
+const facilityName = (): string => {
+  const server = getActiveOperatorServer();
+  return server ? server.companyName || server.displayName : '';
+};
 const UserEditScreen: React.FC = () => {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const styles = useThemedStyles(makeStyles);
@@ -55,6 +75,7 @@ const UserEditScreen: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameFocused, setNameFocused] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<UserFormData>({
@@ -66,8 +87,8 @@ const UserEditScreen: React.FC = () => {
     assignedCustomerIds: []
   });
 
-  // Customer assignment state (read-only)
-  const [assignedCustomers, setAssignedCustomers] = useState<CustomerAssignment[]>([]);
+  // Customer access (read-only), loaded with the profile and retried on its own
+  const [customerAccess, setCustomerAccess] = useState<CustomerAccess>({ status: 'loading', customers: [] });
 
   // Load user data
   const loadUserData = useCallback(async () => {
@@ -91,7 +112,10 @@ const UserEditScreen: React.FC = () => {
 
       const userData = result.data;
       setUser(userData);
-      setAssignedCustomers(userData.assignedCustomers || []);
+      setCustomerAccess({
+        status: userData.assignedCustomersStatus === 'failed' ? 'failed' : 'loaded',
+        customers: userData.assignedCustomers || [],
+      });
       
       // Set form data
       setFormData({
@@ -104,7 +128,7 @@ const UserEditScreen: React.FC = () => {
       });
 
     } catch (error) {
-      console.error('[UserEditScreen] Load error:', error);
+      log.error('Load error', loggableError(error));
       showAlert(tr('users.selfEdit.couldNotLoadTitle'), tr('common.checkConnection'));
       router.back();
     } finally {
@@ -152,7 +176,7 @@ const UserEditScreen: React.FC = () => {
         showAlert(tr('users.selfEdit.couldNotSaveTitle'), serverText(result.message, tr('users.edit.tryAgainSoon')));
       }
     } catch (error) {
-      console.error('[UserEditScreen] Save error:', error);
+      log.error('Save error', loggableError(error));
       showAlert(tr('users.selfEdit.couldNotSaveTitle'), tr('common.checkConnection'));
     } finally {
       setSaving(false);
@@ -163,6 +187,13 @@ const UserEditScreen: React.FC = () => {
   useEffect(() => {
     loadUserData();
   }, [loadUserData]);
+
+  // Try again after a failed customer-access read: only that part; the form is kept.
+  const retryCustomerAccess = useCallback(async () => {
+    setCustomerAccess(prev => ({ ...prev, status: 'loading' }));
+    const result = await UserService.getAccessibleCustomers();
+    setCustomerAccess(result);
+  }, []);
 
 
   // Render assigned customer (read-only)
@@ -221,8 +252,14 @@ const UserEditScreen: React.FC = () => {
     );
   }
 
-  const ownRoleLabel = tr(formData.supervisor ? 'users.role.supervisor' : 'users.role.user');
+  // The stored role, named as on Settings and Profile (not the legacy supervisor flag).
+  const ownRoleLabel = roleLabel(user.role);
   const ownStatusLabel = tr(formData.active ? 'common.active' : 'common.inactive');
+  const isCustomer = user.role === 'customer';
+  const facility = facilityName();
+  const scopeLine = facility
+    ? tr('users.selfEdit.scope', { facility })
+    : tr('users.selfEdit.scopeAccount');
 
   return (
     <View style={styles.container}>
@@ -236,7 +273,7 @@ const UserEditScreen: React.FC = () => {
           <Text style={styles.cancelButtonText}>{tr('common.cancel')}</Text>
         </Pressable>
         <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-          {tr('users.profile.edit')}
+          {tr('users.selfEdit.title')}
         </Text>
         <Pressable
           onPress={handleSave}
@@ -260,10 +297,9 @@ const UserEditScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Basic Information */}
-        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.selfEdit.basicInformation')}</Text>
-        <View style={styles.section}>
-          <View style={styles.inputGroup}>
+        {/* The one editable field */}
+        <View style={[styles.section, styles.firstSection]}>
+          <View>
             <Text style={[styles.inputLabel, !!nameError && styles.inputLabelError]}>
               {tr('users.fields.name')}<Text style={styles.required}> *</Text>
             </Text>
@@ -282,6 +318,7 @@ const UserEditScreen: React.FC = () => {
               autoComplete="name"
               textContentType="name"
               accessibilityLabel={tr('users.selfEdit.nameLabel')}
+              accessibilityHint={scopeLine}
             />
             {!!nameError && (
               <View style={styles.errorRow} accessibilityLiveRegion="polite">
@@ -290,63 +327,108 @@ const UserEditScreen: React.FC = () => {
               </View>
             )}
           </View>
-
-          <View>
-            <Text style={styles.inputLabel}>{tr('users.selfEdit.mobileLabel')}</Text>
-            <View style={styles.readOnlyField} accessible accessibilityLabel={tr('users.selfEdit.mobileReadOnly', { mobile: formData.mobile ? formatMobile(formData.mobile) : tr('users.selfEdit.mobileNotSet') })}>
-              <Text style={styles.readOnlyValue}>
-                {formData.mobile ? formatMobile(formData.mobile) : '—'}
-              </Text>
-            </View>
-            <Text style={styles.helperText}>{tr('users.selfEdit.mobileHelp')}</Text>
-          </View>
         </View>
+        <Text style={styles.sectionFooter}>{scopeLine}</Text>
 
-        {/* Role & Status */}
-        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.selfEdit.roleAndStatus')}</Text>
-        <View style={styles.section}>
-          <View style={styles.infoRow} accessible accessibilityLabel={`${tr('users.fields.role')}, ${ownRoleLabel}`}>
-            <View style={styles.infoLeft}>
-              <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
-              <Text style={styles.infoLabel}>{tr('users.fields.role')}</Text>
-            </View>
-            <Text style={styles.infoValue}>{ownRoleLabel}</Text>
-          </View>
+        {/* Read-only account details, collapsed */}
+        <Pressable
+          testID="self-edit-account-details"
+          onPress={() => setDetailsExpanded(expanded => !expanded)}
+          style={({ pressed }) => [styles.disclosure, pressed && styles.disclosurePressed]}
+          accessibilityRole="button"
+          accessibilityLabel={tr('users.selfEdit.accountDetails')}
+          accessibilityHint={tr('users.selfEdit.accountDetailsHint')}
+          accessibilityState={{ expanded: detailsExpanded }}
+        >
+          <Icon name="account-details-outline" size={iconSize.md} color={t.icon.secondary} />
+          <Text style={styles.disclosureLabel}>{tr('users.selfEdit.accountDetails')}</Text>
+          <Icon name={detailsExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+        </Pressable>
 
-          <View style={[styles.infoRow, styles.infoRowLast]} accessible accessibilityLabel={`${tr('users.fields.status')}, ${ownStatusLabel}`}>
-            <View style={styles.infoLeft}>
-              <Icon
-                name={formData.active ? 'check-circle' : 'alert-circle'}
-                size={iconSize.md}
-                color={formData.active ? t.status.positive.text : t.status.negative.text}
-              />
-              <Text style={styles.infoLabel}>{tr('users.fields.status')}</Text>
-            </View>
-            <Text style={styles.infoValue}>{ownStatusLabel}</Text>
-          </View>
-        </View>
-        <Text style={styles.sectionFooter}>{tr('users.selfEdit.roleStatusFooter')}</Text>
+        {detailsExpanded && (
+          <>
+            <View style={[styles.section, styles.detailsSection]}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{tr('users.selfEdit.mobileLabel')}</Text>
+                <View style={styles.readOnlyField} accessible accessibilityLabel={tr('users.selfEdit.mobileReadOnly', { mobile: formData.mobile ? formatMobile(formData.mobile) : tr('users.selfEdit.mobileNotSet') })}>
+                  <Text style={styles.readOnlyValue}>
+                    {formData.mobile ? formatMobile(formData.mobile) : '—'}
+                  </Text>
+                </View>
+                <Text style={styles.helperText}>{tr('users.selfEdit.mobileHelp')}</Text>
+              </View>
 
-        {/* Customer Assignments */}
-        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.edit.assignments')}</Text>
-        <View style={styles.section}>
-          {assignedCustomers.length > 0 ? (
-            <FlatList
-              data={assignedCustomers}
-              renderItem={renderAssignedCustomerReadOnly}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
-          ) : (
-            <View style={styles.emptyState}>
-              <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
-              <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
-              <Text style={styles.emptySubtext}>{tr('users.selfEdit.askAdmin')}</Text>
+              <View style={styles.infoRow} accessible accessibilityLabel={`${tr('users.fields.role')}, ${ownRoleLabel}`}>
+                <View style={styles.infoLeft}>
+                  <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
+                  <Text style={styles.infoLabel}>{tr('users.fields.role')}</Text>
+                </View>
+                <Text style={styles.infoValue}>{ownRoleLabel}</Text>
+              </View>
+
+              <View style={[styles.infoRow, styles.infoRowLast]} accessible accessibilityLabel={`${tr('users.fields.status')}, ${ownStatusLabel}`}>
+                <View style={styles.infoLeft}>
+                  <Icon
+                    name={formData.active ? 'check-circle' : 'alert-circle'}
+                    size={iconSize.md}
+                    color={formData.active ? t.status.positive.text : t.status.negative.text}
+                  />
+                  <Text style={styles.infoLabel}>{tr('users.fields.status')}</Text>
+                </View>
+                <Text style={styles.infoValue}>{ownStatusLabel}</Text>
+              </View>
             </View>
-          )}
-        </View>
-        <Text style={styles.sectionFooter}>{tr('users.selfEdit.assignmentsFooter')}</Text>
+            <Text style={styles.sectionFooter}>{tr('users.selfEdit.roleStatusFooter')}</Text>
+
+            {/* Customer access: assignments for a customer, every active customer for the other roles */}
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              {tr(isCustomer ? 'users.edit.assignments' : 'users.selfEdit.customerAccess')}
+            </Text>
+            <View style={styles.section}>
+              {customerAccess.status === 'loading' ? (
+                <View style={styles.emptyState} accessibilityRole="progressbar" accessibilityLabel={tr('users.selfEdit.customerAccessLoading')}>
+                  <ActivityIndicator size="small" color={t.brand.tint} />
+                  <Text style={styles.emptySubtext}>{tr('users.selfEdit.customerAccessLoading')}</Text>
+                </View>
+              ) : customerAccess.status === 'failed' ? (
+                <View style={styles.failedState}>
+                  <InlineValidation variant="error" message={tr('users.selfEdit.customerAccessFailed')} />
+                  <Pressable
+                    testID="self-edit-customers-retry"
+                    onPress={retryCustomerAccess}
+                    style={({ pressed }) => [styles.secondaryButton, styles.retryButton, pressed && styles.secondaryButtonPressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr('common.retry')}
+                  >
+                    <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
+                  </Pressable>
+                </View>
+              ) : customerAccess.customers.length > 0 ? (
+                customerAccess.customers.map((item, index) => (
+                  <React.Fragment key={item.id}>
+                    {index > 0 && <View style={styles.separator} />}
+                    {renderAssignedCustomerReadOnly({ item })}
+                  </React.Fragment>
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
+                  {isCustomer ? (
+                    <>
+                      <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
+                      <Text style={styles.emptySubtext}>{tr('users.selfEdit.askAdmin')}</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.emptyText}>{tr('users.selfEdit.customerAccessEmpty')}</Text>
+                  )}
+                </View>
+              )}
+            </View>
+            <Text style={styles.sectionFooter}>
+              {tr(isCustomer ? 'users.selfEdit.assignmentsFooter' : 'users.selfEdit.customerAccessFooter')}
+            </Text>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -453,6 +535,39 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     marginTop: space.sm,
     marginHorizontal: layout.marginCompact,
+  },
+  firstSection: {
+    marginTop: space.xxl,
+  },
+  detailsSection: {
+    marginTop: space.sm,
+  },
+  disclosure: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: touchTarget,
+    marginTop: space.xxl,
+    marginHorizontal: layout.marginCompact,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.card,
+    backgroundColor: t.surface.card,
+  },
+  disclosurePressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  disclosureLabel: {
+    ...typography.body,
+    flex: 1,
+    color: t.text.primary,
+  },
+  failedState: {
+    gap: space.md,
+  },
+  retryButton: {
+    alignSelf: 'flex-start' as const,
+    alignItems: 'center' as const,
   },
   section: {
     backgroundColor: t.surface.card,

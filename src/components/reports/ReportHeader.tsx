@@ -5,6 +5,8 @@
  * title in `headline`, back and actions in `brand.tint`, no shadow and a hairline
  * `border.divider` at the bottom. It also sets the status bar style from tokens.
  * Export, print and other actions go on the right (§14.10).
+ * Under the title, the facility whose data this is (`useFacilityName`, SR-O11),
+ * then the subtitle (whose data: a customer, or all customers).
  */
 
 import React from 'react';
@@ -15,6 +17,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { useFacilityName } from '@/features/reports/useFacilityName';
+import { t as tr } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface ReportHeaderAction {
@@ -93,6 +97,11 @@ const makeStyles = (t: ThemeTokens) =>
       color: t.text.secondary,
       textAlign: 'center',
     },
+    facility: {
+      ...typography.caption1,
+      color: t.text.secondary,
+      textAlign: 'center',
+    },
   });
 
 export const ReportHeader: React.FC<ReportHeaderProps> = ({
@@ -109,6 +118,7 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const facility = useFacilityName();
 
   const handleBack = () => {
     if (onBack) {
@@ -140,6 +150,11 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
           <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
             {title}
           </Text>
+          {facility ? (
+            <Text style={styles.facility} numberOfLines={1} accessibilityLabel={tr('reports.shared.facilityLabel', { name: facility })}>
+              {facility}
+            </Text>
+          ) : null}
           {subtitle ? (
             <Text style={styles.subtitle} numberOfLines={2}>
               {subtitle}

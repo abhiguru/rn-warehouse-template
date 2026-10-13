@@ -40,7 +40,6 @@ import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { Avatar } from '@/components/ui';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
@@ -479,7 +478,7 @@ const ItemPricingScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel={tr('pricing.list.settings')}
             >
-              <Avatar name={userProfile.name} id={userProfile.id} size="sm" />
+              <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
             </Pressable>
           )}
         </View>

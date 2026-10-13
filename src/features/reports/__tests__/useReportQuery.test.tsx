@@ -12,7 +12,9 @@ import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { queryClient } from '@/lib/queryClient';
 import { ACCESS_REFUSED_CODE } from '@/utils/rpcRefusal';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries as settle } from '@/tests/helpers/reportQueries';
-import { notedRefusals, useReportQuery, type ReportQuery, type ReportServiceResult } from '../useReportQuery';
+import { fakeAppState, makeRoute } from '@/tests/helpers/fakeRoute';
+import { NavigationContext } from 'expo-router/react-navigation';
+import { RETURN_REFRESH_AFTER_MS, notedRefusals, useReportQuery, type ReportQuery, type ReportServiceResult } from '../useReportQuery';
 import { readReportCache, removeReportCache, writeReportCache } from '../reportCache';
 
 // Without a session (the default here) nothing is kept on the phone; the cases at the end sign in.
@@ -798,5 +800,174 @@ describe('isKeptCopy', () => {
     await probe.run(() => {});
     await probe.fail(0);
     expect(probe.query()).toMatchObject({ data: kept, isKeptCopy: true, error: 'Could not load' });
+  });
+});
+
+// SR-10: a report left underneath another screen asks again when the person comes back to it.
+describe('coming back to a report', () => {
+  let now = 1_800_000_000_000;
+  let app: ReturnType<typeof fakeAppState>;
+  beforeEach(() => {
+    now = 1_800_000_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    app = fakeAppState();
+  });
+  afterEach(() => {
+    app.restore();
+    jest.restoreAllMocks();
+  });
+
+  function setupOnRoute({ enabled = true, revalidateOnReturn }: { enabled?: boolean; revalidateOnReturn?: boolean } = {}) {
+    const route = makeRoute();
+    const pending: Pending[] = [];
+    const fetch = jest.fn(
+      () =>
+        new Promise<ReportServiceResult<Rows>>((resolve, reject) => {
+          pending.push({ key: 'a', resolve, reject });
+        })
+    );
+    let latest!: ReportQuery<Rows>;
+    let renders = 0;
+    function Probe({ on }: { on: boolean }) {
+      renders += 1;
+      latest = useReportQuery<Rows>({ key: ['test', 'a'], fetch, fallbackError: 'Could not load', enabled: on, revalidateOnReturn });
+      return null;
+    }
+    const tree = (on: boolean) => (
+      <NavigationContext.Provider value={route.navigation as never}>
+        <Probe on={on} />
+      </NavigationContext.Provider>
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(tree(enabled));
+    });
+    mounted.push(renderer);
+    return {
+      fetch,
+      pending,
+      route,
+      query: () => latest,
+      renders: () => renders,
+      rerender: (on = enabled) => act(() => renderer.update(tree(on))),
+      answer: (index: number, result: ReportServiceResult<Rows>) => act(async () => { pending[index].resolve(result); await settle(); }),
+      run: (callback: () => void) => act(async () => { callback(); await settle(); }),
+    };
+  }
+  const later = (ms: number) => { now += ms; };
+  const away = RETURN_REFRESH_AFTER_MS + 1_000;
+
+  it('asks once on mount and not again on a re-render', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    later(away);
+    probe.rerender();
+    probe.rerender();
+    await probe.run(() => {});
+    expect(probe.renders()).toBeGreaterThan(2);
+    expect(probe.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks once when its route is focused again after more than 30 seconds, keeping the rows meanwhile', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    await probe.run(() => probe.route.blur());
+    later(away);
+    await probe.run(() => probe.route.focus());
+    expect(probe.fetch).toHaveBeenCalledTimes(2);
+    expect(probe.query()).toMatchObject({ phase: 'ready', data: { rows: ['GRN A0010'] }, isFetching: true, isRefreshing: false });
+    await probe.answer(1, rows('GRN A0010', 'GRN A0011'));
+    expect(probe.query()).toMatchObject({ data: { rows: ['GRN A0010', 'GRN A0011'] }, isFetching: false });
+    // Drawn again with nothing changed: nothing more.
+    probe.rerender();
+    await probe.run(() => {});
+    expect(probe.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks nothing for a focus without a blur before it', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    later(away);
+    await probe.run(() => probe.route.focus());
+    expect(probe.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing when it comes back within 30 seconds', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    await probe.run(() => probe.route.blur());
+    later(RETURN_REFRESH_AFTER_MS - 1_000);
+    await probe.run(() => probe.route.focus());
+    expect(probe.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing while disabled', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    probe.rerender(false);
+    await probe.run(() => probe.route.blur());
+    later(away);
+    await probe.run(() => probe.route.focus());
+    expect(probe.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing when asked not to (a later page)', async () => {
+    const probe = setupOnRoute({ revalidateOnReturn: false });
+    await probe.answer(0, rows('GRN A0010'));
+    await probe.run(() => probe.route.blur());
+    later(away);
+    await probe.run(() => probe.route.focus());
+    await probe.run(() => app.setAppState('background'));
+    later(away);
+    await probe.run(() => app.setAppState('active'));
+    expect(probe.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing when nothing is on screen (the failure keeps its Retry)', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, { success: false });
+    expect(probe.query().phase).toBe('error');
+    await probe.run(() => probe.route.blur());
+    later(away);
+    await probe.run(() => probe.route.focus());
+    expect(probe.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('joins a request already out instead of sending another', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    let outcome: Promise<boolean> | undefined;
+    await probe.run(() => {
+      outcome = probe.query().refresh();
+    });
+    expect(probe.fetch).toHaveBeenCalledTimes(2);
+    await probe.run(() => probe.route.blur());
+    later(away);
+    await probe.run(() => probe.route.focus());
+    expect(probe.fetch).toHaveBeenCalledTimes(2);
+    await probe.answer(1, rows('GRN A0011'));
+    await expect(outcome).resolves.toBe(true);
+    expect(probe.query().data).toEqual({ rows: ['GRN A0011'] });
+  });
+
+  it('asks once when the app comes back to the foreground after more than 30 seconds', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    await probe.run(() => app.setAppState('background'));
+    later(away);
+    await probe.run(() => app.setAppState('active'));
+    expect(probe.fetch).toHaveBeenCalledTimes(2);
+    await probe.answer(1, rows('GRN A0011'));
+    expect(probe.query().data).toEqual({ rows: ['GRN A0011'] });
+  });
+
+  it('a refusal on the return still clears the figures it had', async () => {
+    const probe = setupOnRoute();
+    await probe.answer(0, rows('GRN A0010'));
+    await probe.run(() => probe.route.blur());
+    later(away);
+    await probe.run(() => probe.route.focus());
+    await probe.answer(1, { success: false, message: 'Access denied', error: ACCESS_REFUSED_CODE });
+    expect(probe.query()).toMatchObject({ phase: 'error', data: undefined, error: 'Access denied' });
   });
 });

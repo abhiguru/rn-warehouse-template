@@ -33,13 +33,23 @@
  * kept, so the query shows the refusal. A request sent afterwards is an
  * ordinary one, and the report comes back when access does.
  *
+ * Coming back to a report asks again (review 2026-10-13, SR-10). A report
+ * left underneath another screen stays mounted, so the mount's request does
+ * not run again: when its route is focused again, or the app comes back to the
+ * foreground, and its answer is more than `RETURN_REFRESH_AFTER_MS` old, it is
+ * asked again once, behind the rows on screen. A request already out is joined,
+ * not repeated. A first mount and a re-render ask nothing extra. A write that
+ * changes what reports count marks them out of date instead
+ * (`invalidateReportQueries` in src/lib/queryClient.ts).
+ *
  * What is shown as the reason: the service's message for a refusal (in the
  * app's language), and the caller's `fallbackError` for any other failure. A
  * service's message for a failure ("Failed to fetch ...") and a thrown error's
  * text ("Network request failed") are not for people (docs/STYLE_GUIDE.md §12.1).
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { hashKey, useQuery, type Query } from '@tanstack/react-query';
+import { useAppForeground, useRouteFocus } from '@/hooks/useRouteFocus';
 import { queryClient } from '@/lib/queryClient';
 import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 import { isAccessRefusal } from '@/utils/rpcRefusal';
@@ -118,7 +128,17 @@ export interface ReportQueryOptions<T> {
    * a later page or a search: nothing is written or read for the key.
    */
   persist?: boolean;
+  /**
+   * Ask again when the person comes back to the report (its route focused again, or the
+   * app back in the foreground) and the answer is older than `RETURN_REFRESH_AFTER_MS`
+   * (default true). False for a query that must not move by itself, such as a later page
+   * of a paged list, whose first page decides when it is asked again.
+   */
+  revalidateOnReturn?: boolean;
 }
+
+/** An answer younger than this is not asked for again on a return: a quick look elsewhere and back. */
+export const RETURN_REFRESH_AFTER_MS = 30_000;
 
 /** Answers that came from the phone, not the facility, while they are on screen. */
 const keptAnswers = new WeakSet<object>();
@@ -277,7 +297,14 @@ export function peekReportAnswer<T>(key: readonly unknown[]): T | undefined {
   return queryClient.getQueryData<T>(['report', ...key]);
 }
 
-export function useReportQuery<T>({ key, fetch, fallbackError, enabled = true, persist = true }: ReportQueryOptions<T>): ReportQuery<T> {
+export function useReportQuery<T>({
+  key,
+  fetch,
+  fallbackError,
+  enabled = true,
+  persist = true,
+  revalidateOnReturn = true,
+}: ReportQueryOptions<T>): ReportQuery<T> {
   const [isRefreshing, setRefreshing] = useState(false);
   const queryKey = ['report', ...key];
   const query = useQuery<T, Error>(
@@ -326,6 +353,24 @@ export function useReportQuery<T>({ key, fetch, fallbackError, enabled = true, p
   const retry = useCallback(() => {
     refetch();
   }, [refetch]);
+
+  // A return to the report: its route focused again, or the app back in the foreground.
+  const focused = useRouteFocus(revalidateOnReturn);
+  const foreground = useAppForeground();
+  const inFront = focused && foreground;
+  const wasInFront = useRef(inFront);
+  // Read when the return happens, so the effect runs on a change of `inFront` alone.
+  const latest = useRef({ enabled, revalidateOnReturn, hasData: false, dataUpdatedAt: 0, refetch });
+  latest.current = { enabled, revalidateOnReturn, hasData: query.data !== undefined, dataUpdatedAt: query.dataUpdatedAt, refetch };
+  useEffect(() => {
+    const returned = inFront && !wasInFront.current;
+    wasInFront.current = inFront;
+    const now = latest.current;
+    if (!returned || !now.revalidateOnReturn || !now.enabled || !now.hasData) return;
+    if (Date.now() - now.dataUpdatedAt <= RETURN_REFRESH_AFTER_MS) return;
+    // Joins a request already out; the rows on screen stay while it is answered.
+    void now.refetch({ cancelRefetch: false });
+  }, [inFront]);
 
   const hasData = query.data !== undefined;
   // An error with no data and a request out is a retry in progress: show loading, not the old error.

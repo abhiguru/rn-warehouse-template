@@ -20,6 +20,7 @@ import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '
 import { fontWeight } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
 import { showAlert } from '@/utils/alert';
+import { alertTexts, pressAlertButton } from '@/tests/helpers/alertMock';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import GRNActivityScreen from '../../../../app/reports/grn-activity';
 
@@ -47,11 +48,27 @@ jest.mock('@/store/hooks', () => {
     },
   };
 });
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn() }),
-  router: { push: (...args: unknown[]) => mockRouterPush(...args), back: jest.fn() },
-  useLocalSearchParams: () => mockParams,
-}));
+// A tree wrapped in the test's ParamsContext reads its own route's params (two customers'
+// reports on the stack at once); any other tree reads `mockParams`, and so does a read made
+// outside a render (the customer-name stand-in in jest.setup.js reads it from an effect).
+jest.mock('expo-router', () => {
+  const { createContext, useContext } = jest.requireActual('react');
+  const ParamsContext = createContext(null);
+  const readParams = () => {
+    try {
+      return useContext(ParamsContext) ?? mockParams;
+    } catch {
+      return mockParams;
+    }
+  };
+  return {
+    useRouter: () => ({ push: mockPush, back: jest.fn() }),
+    router: { push: (...args: unknown[]) => mockRouterPush(...args), back: jest.fn() },
+    useLocalSearchParams: readParams,
+    ParamsContext,
+  };
+});
+const ParamsContext: React.Context<Record<string, string> | null> = jest.requireMock('expo-router').ParamsContext;
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
@@ -64,7 +81,8 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'aut
 jest.mock('@/services/reporting/grn-activity-service', () => ({ getAllGRNActivity: jest.fn(), getCustomerGRNActivity: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ ...jest.requireActual('@/services/pdf-service'), generateReportPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// askAlert draws through the stand-in showAlert: a dialog the export waits on is answered by pressing its button.
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
@@ -178,11 +196,20 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-async function open(store: Store) {
+/** `params`: the route's own, for a tree that stands for one entry of the stack. */
+async function open(store: Store, params?: Record<string, string>) {
   mockStore = store;
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => {
-    tree = TestRenderer.create(<GRNActivityScreen />);
+    tree = TestRenderer.create(
+      params ? (
+        <ParamsContext.Provider value={params}>
+          <GRNActivityScreen />
+        </ParamsContext.Provider>
+      ) : (
+        <GRNActivityScreen />
+      )
+    );
     await settleQueries();
   });
   mounted.push(tree);
@@ -393,6 +420,64 @@ describe('GRN activity, one customer', () => {
   });
 });
 
+// SR-06: a search typed for one customer must not narrow another customer's GRNs.
+describe('GRN activity, a search across customers', () => {
+  const GREEN = { customerId: 'c2', customerName: 'Green Valley Traders' };
+  const RIVER = { customerId: 'c1', customerName: 'Riverbank Produce' };
+  const ALL_ROWS = ['A0010', 'A0009', 'A0100', 'A0050'];
+  /** The GRN numbers the list draws (a search marks the match in bold, so the card's text is split). */
+  const grns = (screen: Awaited<ReturnType<typeof open>>) =>
+    (screen.tree.root.findByType('FlashList' as never).props.data as { kind: string; grn?: { gr_no: string } }[])
+      .filter(row => row.kind === 'grn')
+      .map(row => row.grn?.gr_no);
+
+  it("another customer's report opens on all its GRNs, and Back finds the first customer's search", async () => {
+    const store = makeStore();
+    const green = await open(store, GREEN);
+    await green.search('A0009');
+    expect(grns(green)).toEqual(['A0009']);
+
+    // Riverbank opened on top of it: the search typed for Green Valley is not Riverbank's.
+    const river = await open(store, RIVER);
+    expect(river.searchValue()).toBe('');
+    expect(grns(river)).toEqual(ALL_ROWS);
+    expect(grns(green)).toEqual(['A0009']);
+
+    // Back: Riverbank is gone, Green Valley still shows its search and the GRNs it found.
+    act(() => river.tree.unmount());
+    mounted.splice(mounted.indexOf(river.tree), 1);
+    expect(green.searchValue()).toBe('A0009');
+    expect(grns(green)).toEqual(['A0009']);
+  });
+
+  it('opening a customer from the customers list again forgets its search and keeps the invoicing choice', async () => {
+    const store = makeStore();
+    const green = await open(store, GREEN);
+    await green.press('Filter by invoicing');
+    await green.press('Not invoiced');
+    await green.search('A0009');
+    expect(grns(green)).toEqual(['A0009']);
+    act(() => green.tree.unmount());
+    mounted.splice(mounted.indexOf(green.tree), 1);
+
+    const list = await open(store);
+    const row = list.tree.root.findAll(
+      node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Green Valley Traders,') && typeof node.props.onPress === 'function'
+    )[0];
+    await act(async () => {
+      row.props.onPress();
+      await settleQueries();
+    });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: GREEN });
+    expect(store.getState().listFilters.lists['report-grn-activity-customer'].searches?.c2).toBeUndefined();
+
+    const again = await open(store, GREEN);
+    expect(again.searchValue()).toBe('');
+    expect(grns(again)).toEqual(['A0009', 'A0050']);
+    expect(again.has('Filter by invoicing')).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // The report PDF
 // ---------------------------------------------------------------------------
@@ -461,6 +546,82 @@ describe('GRN activity, the report PDF', () => {
       { report: 'grn-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'gr_no', order: 'desc' } },
       'GRN_activity_Green_Valley_Traders_2026_06_15_to_2026_10_12.pdf'
     );
+  });
+});
+
+describe('GRN activity, the report PDF of what the screen shows', () => {
+  const FILE = 'GRN_activity_Green_Valley_Traders_2026_06_15_to_2026_10_12.pdf';
+  const BASE = { report: 'grn-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'date', order: 'desc' } };
+  /** Answers the dialog the export waits on. */
+  const answerDialog = (text: string) =>
+    act(async () => {
+      pressAlertButton(alert, text);
+      await settleQueries();
+    });
+
+  it('one customer: sends the Invoicing choice, "not_invoiced" or "invoiced", and none for All', async () => {
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open(makeStore());
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[BASE]]);
+
+    await screen.press('Filter by invoicing');
+    await screen.press('Not invoiced');
+    expect(screen.grnRows()).toEqual(['Yesterday', 'GRN A0009', 'Sun, 20 Sep', 'GRN A0050']);
+    makePdf.mockClear();
+    await screen.press('Share PDF');
+    // A broken screen sends no choice, and the PDF lists all four GRNs of the period.
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, invoicing: 'not_invoiced' }]]);
+
+    await screen.press('Invoicing: Not invoiced. Change');
+    await screen.press('Invoiced');
+    makePdf.mockClear();
+    await screen.press('Share PDF');
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, invoicing: 'invoiced' }]]);
+    expect(sharePdf).toHaveBeenLastCalledWith(PDF_URL, FILE);
+    expect(sharePdf).toHaveBeenCalledTimes(3);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('one customer with a search and an invoicing choice: asks first to share without the search; Cancel shares nothing, the consent shares it with the choice', async () => {
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open(makeStore());
+    await screen.press('Filter by invoicing');
+    await screen.press('Not invoiced');
+    await screen.search('A0009');
+    // One GRN left on screen (its number is drawn with the search in bold, so it is counted by the status line).
+    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 1 of 4 · Last updated 10:00 am');
+
+    await screen.press('Share PDF');
+    // A broken screen asks for the PDF at once, without a word about the search.
+    // The PDF keeps the invoicing choice, so it is not called the full report (review Step 3 M1).
+    expect(alertTexts(alert)).toEqual([
+      ['Share without the search?', 'The PDF will list every row of the period that your other choices keep, not only the 1 matching "A0009".'],
+    ]);
+    expect(makePdf).not.toHaveBeenCalled();
+    await answerDialog('Cancel');
+    expect(makePdf).not.toHaveBeenCalled();
+    expect(sharePdf).not.toHaveBeenCalled();
+    expect(screen.control('Share PDF').props.accessibilityState).toMatchObject({ busy: false });
+
+    await screen.press('Share PDF');
+    await answerDialog('Share without the search');
+    expect(makePdf.mock.calls).toEqual([[{ ...BASE, invoicing: 'not_invoiced' }]]);
+    expect(sharePdf.mock.calls).toEqual([[PDF_URL, FILE]]);
+  });
+
+  it('every customer with a search: the customers it leaves are counted, and nothing of the search is sent', async () => {
+    makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
+    const screen = await open(makeStore());
+    await screen.search('green');
+    expect(screen.customers()).toEqual(['Green Valley Traders']);
+    await screen.press('Share PDF');
+    expect(alertTexts(alert)).toEqual([['Share the full report?', 'The PDF will include every row of the period, not only the 1 matching "green".']]);
+    await answerDialog('Share full report');
+    expect(makePdf).toHaveBeenCalledTimes(1);
+    expect(Object.keys(makePdf.mock.calls[0][0]).sort()).toEqual(['from', 'report', 'sort', 'to']);
   });
 });
 

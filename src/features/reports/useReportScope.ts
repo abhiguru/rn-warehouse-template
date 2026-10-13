@@ -24,8 +24,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { useAppDispatch } from '@/store/hooks';
+import { clearListFilterScope } from '@/store/slices/listFilterSlice';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { lookUpCustomerName, subscribeCustomerNames, trustCustomerName, trustedCustomerName } from './customerNames';
+import { reportCustomerListKey } from './reportCustomerListKeys';
 import { useReportPrefs } from './useReportPrefs';
 
 export type ReportLevel =
@@ -50,6 +53,25 @@ export interface ReportScope {
 }
 
 const param = (value: string | string[] | undefined): string => (typeof value === 'string' ? value : '');
+
+/**
+ * Before a customer's report is opened: forget the search typed there for that customer on
+ * an earlier visit, so the report opens on all of the customer's records (review 2026-10-13,
+ * SR-06). With `choices`, the report's other choices (invoicing, payment, age bucket) go too:
+ * for a link that promises everything ("View all"). Without, they stay, as they do for every
+ * customer of the report. Another customer's search, the sort and the period are untouched;
+ * a report still on the stack underneath keeps its own customer's search.
+ */
+export function clearDestinationFilters(
+  dispatch: (action: ReturnType<typeof clearListFilterScope>) => unknown,
+  reportId: string,
+  customerId: string,
+  { choices = false }: { choices?: boolean } = {}
+): void {
+  const key = reportCustomerListKey(reportId);
+  if (!key || !customerId) return;
+  dispatch(clearListFilterScope({ key, scope: customerId, choices }));
+}
 
 /** A second push within this long of the first is a double tap, and is ignored. */
 export const PUSH_GUARD_MS = 600;
@@ -77,6 +99,7 @@ export function useReportScope(reportId: string): ReportScope {
   const params = useLocalSearchParams<{ customerId?: string }>();
   const { isWarehouseUser, reportScope, assignedCustomerIds, assignedCustomers, singleAssignedCustomerId } = useRoleBasedAccess();
   const { prefs, setCustomer, noteOpened } = useReportPrefs();
+  const dispatch = useAppDispatch();
 
   // The hub lists the reports opened last.
   useEffect(() => {
@@ -148,10 +171,13 @@ export function useReportScope(reportId: string): ReportScope {
         trustCustomerName(customer.id, customer.name);
         setCustomer(reportId, customer);
       }
+      // The customer's report opens on all its records: a search typed there on an earlier visit
+      // is forgotten. Its other choices stay, as they do for every customer of this report.
+      clearDestinationFilters(dispatch, reportId, customer.id, { choices: false });
       // The name still travels in the route, as it always has; the report that opens does not read it.
       router.push({ pathname: `/reports/${reportId}`, params: { customerId: customer.id, customerName: customer.name } } as never);
     },
-    [router, reportId, setCustomer]
+    [router, reportId, setCustomer, dispatch]
   );
   const chooseCustomer = useCallback(
     (customer: ReportCustomerRef) => {

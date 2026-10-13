@@ -35,6 +35,8 @@ describe('signed out', () => {
     [['sensors']],
     [['list-filters']],
     [['settings']],
+    // Help names the facility and its server: signed-in only.
+    [['help']],
     [['grn-details', 'grn-1']],
     [['(tabs)']],
     [['(tabs)', 'reports']],
@@ -51,6 +53,13 @@ describe('signed out', () => {
       expect(decideRoute(route, signedOut)).toBe('allow');
     }
   );
+
+  it('Help needs a facility session with central login too', () => {
+    expect(isPublicRoute('help')).toBe(false);
+    expect(decideRoute(['help'], { isSignedIn: false, central: { signedIn: false, facilitySms: false } })).toBe('centralLogin');
+    expect(decideRoute(['help'], { isSignedIn: false, central: { signedIn: true, facilitySms: false } })).toBe('facilities');
+    expect(decideRoute(['help'], { isSignedIn: true, role: 'customer', central: { signedIn: true, facilitySms: false } })).toBe('allow');
+  });
 
   it('a route that only begins like a public one is not public', () => {
     expect(isPublicRoute('login-help')).toBe(false);
@@ -74,6 +83,7 @@ describe('signed in', () => {
     ['(tabs)', 'allow', 'allow', 'allow', 'allow'],
     ['settings', 'allow', 'allow', 'allow', 'allow'],
     ['profile', 'allow', 'allow', 'allow', 'allow'],
+    ['help', 'allow', 'allow', 'allow', 'allow'],
     ['reports/stock-summary', 'allow', 'allow', 'allow', 'allow'],
     ['reports/stock-aging', 'allow', 'allow', 'allow', 'allow'],
     ['reports/item-stock-summary', 'allow', 'allow', 'allow', 'allow'],

@@ -1,10 +1,11 @@
 /**
  * The customer cell of the report screens: where its status tag sits, what a
  * screen reader reads, and how many lines its subtitle may use, in all four
- * themes (docs/STYLE_GUIDE.md §4, §11.4, §13.6).
+ * themes (docs/STYLE_GUIDE.md §4, §11.4, §13.6). At a large text size or with a
+ * long name, the value and the share button move under the name (SR-O10).
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
@@ -61,7 +62,14 @@ function columns(tree: ReactTestRenderer, label: string) {
   return { row, parts, content: holding('Apex Cold Storage Traders'), value: holding('1,200') };
 }
 
-afterEach(() => setLanguage('en'));
+// Jest's window has a text size of 2; the side-by-side card is the one of ordinary text sizes.
+const WINDOW = Dimensions.get('window');
+const atTextSize = (fontScale: number) => Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale } });
+beforeEach(() => atTextSize(1));
+afterEach(() => {
+  setLanguage('en');
+  Dimensions.set({ window: WINDOW });
+});
 
 describe.each(THEMES)('report customer card in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
@@ -153,6 +161,89 @@ describe.each(THEMES)('report customer card in %s %s', (brand, mode) => {
     expect(facts.map(node => node.props.numberOfLines)).toEqual([2, 2]);
     expect(content.children[content.children.length - 1]).toBe(tag);
     act(() => tree.unmount());
+  });
+});
+
+describe('report customer card, a long name or a large text size', () => {
+  // 40 characters: wider than a name keeps beside a quantity and a PDF button.
+  const LONG = 'Sunrise Agro Foods and Cold Chain Traders';
+  const SHORT = 'Apex Cold Storage Traders';
+
+  /** Where the value is: in a column of its own beside the name, or in the name's column under it. */
+  function layoutOf(props: Partial<ReportCustomerCardProps>) {
+    const tree = render('orange', 'light', { onShare: jest.fn(), ...props });
+    const title = props.title ?? SHORT;
+    const name = hostTexts(tree.root).find(node => textOf(node) === title)!;
+    // 1,200 in either language's digits.
+    const value = hostTexts(tree.root).find(node => /^[0-9૦-૯,]+$/.test(textOf(node)))!;
+    // The name's column: the nearest host view around the name that takes the row's free width.
+    let column: ReactTestInstance | null = name.parent;
+    while (column && !(typeof column.type === 'string' && flat(column).flex === 1)) column = column.parent;
+    const row = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityRole === 'button' && typeof n.props.accessibilityLabel === 'string')[0];
+    const share = tree.root.findAll(n => n.props.accessibilityLabel === `Share PDF for ${title}` && typeof n.props.onPress === 'function');
+    const shareInsideRow = row.findAll(n => n.props.accessibilityLabel === `Share PDF for ${title}`).length > 0;
+    const result = {
+      valueUnderName: column!.findAll(node => node === value).length > 0,
+      titleLines: name.props.numberOfLines,
+      label: row.props.accessibilityLabel as string,
+      shares: share.length > 0,
+      shareInsideRow,
+    };
+    act(() => tree.unmount());
+    return result;
+  }
+
+  it('keeps the value beside the name for a short name at an ordinary text size', () => {
+    expect(layoutOf({ title: SHORT })).toEqual({
+      valueUnderName: false,
+      titleLines: 2,
+      label: `${SHORT}, Average age 353 days, 1,200 units`,
+      shares: true,
+      shareInsideRow: false,
+    });
+    atTextSize(1.29);
+    expect(layoutOf({ title: SHORT }).valueUnderName).toBe(false);
+  });
+
+  it('moves the value under the name at 1.3 times the text size, the name on up to four lines', () => {
+    atTextSize(1.3);
+    expect(layoutOf({ title: SHORT })).toEqual({
+      valueUnderName: true,
+      titleLines: 4,
+      // The label still has the whole name and the figure, read once.
+      label: `${SHORT}, Average age 353 days, 1,200 units`,
+      shares: true,
+      // The share button is still a target of its own, never inside the row's.
+      shareInsideRow: false,
+    });
+  });
+
+  // Android hands the text size over as a 32-bit float: its 1.3 step arrives as 1.2999999523162842
+  // (seen on a Samsung A34), which must stack as 1.3 does; 1.2 stays side by side.
+  it.each([
+    [1.2999999523162842, true],
+    [Math.fround(1.3), true],
+    [1.2, false],
+  ])('at the text size %d the value is under the name: %s', (fontScale, under) => {
+    atTextSize(fontScale);
+    const layout = layoutOf({ title: SHORT });
+    expect(layout.valueUnderName).toBe(under);
+    expect(layout.titleLines).toBe(under ? 4 : 2);
+  });
+
+  it('moves the value under a name longer than 28 characters at any text size, in Gujarati too', () => {
+    expect([...LONG].length).toBeGreaterThan(28);
+    expect(layoutOf({ title: LONG })).toEqual({
+      valueUnderName: true,
+      titleLines: 4,
+      label: `${LONG}, Average age 353 days, 1,200 units`,
+      shares: true,
+      shareInsideRow: false,
+    });
+    setLanguage('gu');
+    const gujarati = layoutOf({ title: 'સૂર્યોદય ઍગ્રો ફૂડ્સ ઍન્ડ કોલ્ડ ચેઇન ટ્રેડર્સ', valueLabel: 'નંગ' });
+    expect(gujarati.valueUnderName).toBe(true);
+    expect(gujarati.label).toBe('સૂર્યોદય ઍગ્રો ફૂડ્સ ઍન્ડ કોલ્ડ ચેઇન ટ્રેડર્સ, Average age 353 days, ૧,૨૦૦ નંગ');
   });
 });
 

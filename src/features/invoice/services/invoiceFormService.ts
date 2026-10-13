@@ -16,6 +16,7 @@ import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculat
 import { serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
+import { invalidateReportQueries } from '@/lib/queryClient';
 
 const invoiceFormLogger = createLogger('InvoiceFormService');
 
@@ -607,6 +608,8 @@ export const createInvoice = async (
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
       throw new Error(errorMsg);
     }
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
 
     return {
       success: true,
@@ -919,6 +922,8 @@ export const updateInvoice = async (
         message: errorMsg,
       };
     }
+    // The write changed what reports count: a report on screen asks again (SR-10).
+    void invalidateReportQueries();
 
     return {
       success: true,

@@ -79,15 +79,27 @@ export const central = {
     notCleared:
       "This phone couldn't remove your association sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone.",
   },
-  // "Sign out" inside a facility while central login is on
-  facilitySignOut: {
-    confirmMessage: "You'll leave this cold storage and return to My facilities. You stay signed in to the association.",
+  // Inside a facility while central login is on (src/features/account/useAccountActions.ts):
+  // leave this facility only; {{facility}} is its name.
+  leave: {
+    action: 'Leave this facility',
+    subtitle: 'Leave {{facility}} and return to My facilities. You stay signed in to the association.',
+    subtitleNoName: 'Return to My facilities. You stay signed in to the association.',
+    confirmTitle: 'Leave {{facility}}?',
+    confirmTitleNoName: 'Leave this facility?',
+    confirmMessage:
+      'Unsaved forms are discarded. You stay signed in to the association and can open this facility again from My facilities.',
+    confirmAction: 'Leave',
+  },
+  // Inside a facility: end the association sign-in and the facility on this phone.
+  // The dialog's message is signOut.confirmMessage.
+  phoneSignOut: {
+    action: 'Sign out of this phone',
+    subtitle: 'Ends your association sign-in and this facility on this phone.',
+    confirmTitle: 'Sign out of this phone?',
   },
   switch: {
     action: 'Switch facility',
-    subtitle: 'Back to My facilities',
-    confirmTitle: 'Switch facility?',
-    confirmMessage: "You'll leave {{facility}} and unsaved forms are discarded. You can open it again from My facilities.",
     busyMessage: 'Finish the current operation before switching facilities.',
     failedTitle: "Couldn't switch facility",
   },

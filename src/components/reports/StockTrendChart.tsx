@@ -8,10 +8,15 @@
  *   month in progress has no end yet: its point is the stock now, the figure of
  *   the screen's Stock tile (`currentStock`), so the line ends where the tile
  *   is and "Latest" and "Highest" cannot contradict it (`trendStockLevels`).
+ *   The summary, the table row and its read-out call that point the stock "as
+ *   of" today, never a month end; months after this one (a financial year that
+ *   runs to March) are not drawn at all (`visibleTrend`, SR-11).
  * - One series, in the first chart colour; axes and grid in `border.divider`,
  *   axis labels `caption1` `text.secondary`, the y axis in the language's
  *   number format with its unit (bags) over it. "Highest" is the highest
- *   of the points drawn, not the axis top (a period of 0 says 0).
+ *   of the points drawn, not the axis top (a period of 0 says 0). The axis
+ *   leaves a fifth above the highest point, so its label is not cut off at
+ *   the top (`chartAxis`).
  * - The card is one button that opens the full screen; its label is the text
  *   summary. With no months to draw, the card says so and is not a button.
  * - The chart / table switch is a segmented control whose segments are each a
@@ -31,7 +36,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { MonthlyTrendPoint } from '@/types/report.types';
-import { formatCount, formatMonth, formatNumber, indiaDay, toDate } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatMonth, formatNumber, indiaDay, toDate } from '@/utils/formatters';
 
 export interface StockTrendChartProps {
   /** Months of the period, oldest first. */
@@ -46,6 +51,9 @@ export interface StockTrendChartProps {
 /** The month it is in India, as a trend names its months ("2026-10"). */
 const monthNow = () => indiaDay(new Date()).slice(0, 7);
 
+/** A trend month the calendar can place ("2026-10"). */
+const isMonth = (month: string) => /^\d{4}-\d{2}$/.test(month);
+
 /**
  * The stock drawn for each month of a trend.
  *
@@ -54,15 +62,54 @@ const monthNow = () => indiaDay(new Date()).slice(0, 7);
  * a second reckoning of the stock now, and it need not equal the stock the server keeps on its
  * GRNs, which is what the Stock tile shows: on a phone the tile said 4,460 while the trend ended
  * at 4,360 and called 4,444 its highest. The stock now has one figure, so the month in progress
- * (and any later month of a period that runs past today) takes `currentStock`.
+ * takes `currentStock`. A later month is not given it (`visibleTrend` leaves such months out).
  */
 export function trendStockLevels(trends: readonly MonthlyTrendPoint[], currentStock?: number, thisMonth: string = monthNow()): number[] {
   const stockNow = typeof currentStock === 'number' && Number.isFinite(currentStock) ? currentStock : null;
-  return trends.map(point => {
-    const inProgress = /^\d{4}-\d{2}$/.test(point.month) && point.month >= thisMonth;
-    return stockNow !== null && inProgress ? stockNow : point.stock_level_end || 0;
-  });
+  return trends.map(point => (stockNow !== null && point.month === thisMonth ? stockNow : point.stock_level_end || 0));
 }
+
+export interface VisibleTrend {
+  /** The months to draw: those of the period up to this one. */
+  points: MonthlyTrendPoint[];
+  /** Their stock, as `trendStockLevels` gives it. */
+  values: number[];
+  /** The month in progress among them, or -1: its figure is the stock as of today, not a month end. */
+  nowIndex: number;
+}
+
+/**
+ * The months a trend draws. The server sends every month of the period, also those to come ("This
+ * financial year" runs to March): those have no stock yet, so they are left out rather than drawn
+ * at today's figure as if it were their month end. A month the calendar cannot place is kept.
+ */
+export function visibleTrend(trends: readonly MonthlyTrendPoint[], currentStock?: number, thisMonth: string = monthNow()): VisibleTrend {
+  const points = trends.filter(point => !(isMonth(point.month) && point.month > thisMonth));
+  return { points, values: trendStockLevels(points, currentStock, thisMonth), nowIndex: points.findIndex(point => point.month === thisMonth) };
+}
+
+/** The steps an axis may take, times a power of ten. */
+const NICE_STEPS = [1, 2, 2.5, 5];
+/** The smallest step: a flat or small line still gets a readable scale. */
+const MIN_AXIS_STEP = 100;
+/** The top of the axis is at least this much over the highest point, so its label has room. */
+const AXIS_HEADROOM = 1.2;
+
+/**
+ * The top and the step of a chart's y axis: `sections` equal steps of 1, 2, 2.5 or 5 times a power
+ * of ten (at least 100), reaching at least a fifth above `highest`. The label over the highest point
+ * then sits inside the chart instead of being cut at its top edge.
+ */
+export function chartAxis(highest: number, sections: number): { maxValue: number; stepValue: number } {
+  const needed = Math.max((Math.max(highest, 0) * AXIS_HEADROOM) / sections, MIN_AXIS_STEP);
+  const scale = 10 ** Math.floor(Math.log10(needed));
+  const stepValue = NICE_STEPS.map(step => step * scale).find(step => step >= needed) ?? 10 * scale;
+  return { maxValue: stepValue * sections, stepValue };
+}
+
+/** The steps of the card's small chart and of the full-screen one. */
+const COMPACT_SECTIONS = 3;
+const FULL_SECTIONS = 5;
 
 /** "Oct 2026" for a "2026-10" trend month (guide §12.3). */
 const monthYear = (month: string) => (toDate(`${month}-01`) ? formatMonth(`${month}-01`, 'short') : month);
@@ -160,6 +207,9 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   tableCell: { ...typography.subhead, color: t.text.primary },
+  // Under the month in progress: its figure is the stock as of today, not a month end.
+  asOf: { ...typography.caption1, color: t.text.secondary },
+  tableNote: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: layout.marginCompact, paddingVertical: space.md },
   colLabel: { flex: 1 },
   colNumber: { flex: 1, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] },
   totals: {
@@ -185,10 +235,10 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
   const [view, setView] = useState<'chart' | 'table'>('chart');
   // Reduce Motion: the full-screen chart fades in instead of sliding (§9).
   const reduceMotion = useReducedMotion();
-  // One list of values for the line, the table, the summary and the figures under the chart.
-  const values = useMemo(() => trendStockLevels(trends, currentStock), [trends, currentStock]);
+  // One list of months and values for the line, the table, the summary and the figures under the chart.
+  const { points, values, nowIndex } = useMemo(() => visibleTrend(trends, currentStock), [trends, currentStock]);
 
-  if (trends.length === 0) {
+  if (points.length === 0) {
     return (
       <View style={styles.card}>
         <Text style={styles.title} accessibilityRole="header">
@@ -200,33 +250,49 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
   }
 
   const seriesColour = t.chart[0];
-  const shown = labelIndices(trends.length, 4);
-  const lineData = trends.map((point, index) => ({
+  const shown = labelIndices(points.length, 4);
+  const lineData = points.map((point, index) => ({
     value: values[index],
     label: shown.has(index) ? shortMonth(point.month) : '',
     dataPointText: formatNumber(values[index]),
   }));
-  const fullData = trends.map((point, index) => ({ value: values[index], label: shortMonth(point.month), dataPointText: formatNumber(values[index]) }));
+  const fullData = points.map((point, index) => ({ value: values[index], label: shortMonth(point.month), dataPointText: formatNumber(values[index]) }));
 
   // The highest point drawn: 0 when every month was 0. The axis has its own floor,
   // so a flat line still has a scale, and that floor is never shown as a value.
   const highest = Math.max(...values, 0);
-  const roundedMax = Math.ceil(highest / 100) * 100 || 100;
+  const compactAxis = chartAxis(highest, COMPACT_SECTIONS);
+  const fullAxis = chartAxis(highest, FULL_SECTIONS);
   const first = values[0];
   const latest = values[values.length - 1];
-  const summary =
-    trends.length === 1
-      ? tr('reports.customerActivity.trend.summaryOne', { month: monthYear(trends[0].month), stock: formatNumber(latest) })
-      : tr('reports.customerActivity.trend.summaryRange', {
-          first: formatNumber(first),
-          firstMonth: monthYear(trends[0].month),
-          latest: formatNumber(latest),
-          lastMonth: monthYear(trends[trends.length - 1].month),
-          highest: formatNumber(highest),
-        });
+  const last = points.length - 1;
+  // The trend ends with the month in progress: its figure is the stock as of today (India's day).
+  const endsNow = nowIndex >= 0 && nowIndex === last;
+  const asOf = formatIndiaDate(new Date(), 'short');
+  const summary = (() => {
+    if (points.length === 1) {
+      return endsNow
+        ? tr('reports.customerActivity.trend.summaryNow', { date: asOf, stock: formatNumber(latest) })
+        : tr('reports.customerActivity.trend.summaryOne', { month: monthYear(points[0].month), stock: formatNumber(latest) });
+    }
+    if (!endsNow) {
+      return tr('reports.customerActivity.trend.summaryRange', {
+        first: formatNumber(first),
+        firstMonth: monthYear(points[0].month),
+        latest: formatNumber(latest),
+        lastMonth: monthYear(points[last].month),
+        highest: formatNumber(highest),
+      });
+    }
+    // The last month that is over has a month end; the one in progress has the stock as of today.
+    const lastEnd = { lastEnd: formatNumber(values[last - 1]), lastMonth: monthYear(points[last - 1].month), latest: formatNumber(latest), date: asOf };
+    return points.length === 2
+      ? tr('reports.customerActivity.trend.summaryOneNow', lastEnd)
+      : tr('reports.customerActivity.trend.summaryRangeNow', { ...lastEnd, first: formatNumber(first), firstMonth: monthYear(points[0].month), highest: formatNumber(highest) });
+  })();
 
-  // Wide enough for the largest axis number as the language writes it.
-  const yAxisLabelWidth = Math.max(32, formatAxisLabel(String(roundedMax)).length * 8 + 4);
+  // Wide enough for the largest axis number of either chart, as the language writes it.
+  const yAxisLabelWidth = Math.max(32, formatAxisLabel(String(Math.max(compactAxis.maxValue, fullAxis.maxValue))).length * 8 + 4);
   const chartWidth = screenWidth - 2 * layout.marginCompact - 2 * space.lg - yAxisLabelWidth;
   const spacing = lineData.length > 1 ? Math.max(20, (chartWidth - 40) / (lineData.length - 1)) : 40;
   const axisProps = {
@@ -239,7 +305,6 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
     xAxisLabelTextStyle: [styles.axisLabel, styles.axisLabelX],
     yAxisTextStyle: styles.axisLabel,
     yAxisLabelWidth,
-    maxValue: roundedMax,
     yAxisOffset: 0,
     formatYLabel: formatAxisLabel,
   };
@@ -275,7 +340,9 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
             thickness={2}
             hideDataPoints={lineData.length > 8}
             dataPointsRadius={4}
-            noOfSections={3}
+            maxValue={compactAxis.maxValue}
+            stepValue={compactAxis.stepValue}
+            noOfSections={COMPACT_SECTIONS}
             hideRules
             spacing={spacing}
             initialSpacing={20}
@@ -349,7 +416,9 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
                     textFontSize={typography.caption1.fontSize}
                     textShiftY={-10}
                     textShiftX={-5}
-                    noOfSections={5}
+                    maxValue={fullAxis.maxValue}
+                    stepValue={fullAxis.stepValue}
+                    noOfSections={FULL_SECTIONS}
                     rulesType="dashed"
                     showVerticalLines
                     verticalLinesColor={t.border.divider}
@@ -375,16 +444,35 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
                   <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('reports.customerActivity.trend.stockAtMonthEnd')}</Text>
                 </View>
                 <FlatList
-                  data={trends}
+                  data={points}
                   extraData={values}
                   keyExtractor={item => item.month}
-                  renderItem={({ item, index }) => (
-                    // The values the chart draws, the month in progress included.
-                    <View style={styles.tableRow} accessible accessibilityLabel={`${monthYear(item.month)}, ${formatNumber(values[index])}`}>
-                      <Text style={[styles.tableCell, styles.colLabel]}>{monthYear(item.month)}</Text>
-                      <Text style={[styles.tableCell, styles.colNumber]}>{formatNumber(values[index])}</Text>
-                    </View>
-                  )}
+                  renderItem={({ item, index }) => {
+                    // The values the chart draws, the month in progress included: that one is not a month end.
+                    const now = index === nowIndex;
+                    const month = monthYear(item.month);
+                    const stock = formatNumber(values[index]);
+                    return (
+                      <View
+                        style={styles.tableRow}
+                        accessible
+                        accessibilityLabel={now ? tr('reports.customerActivity.trend.rowNowA11y', { month, date: asOf, stock }) : `${month}, ${stock}`}
+                      >
+                        <View style={styles.colLabel}>
+                          <Text style={styles.tableCell}>{month}</Text>
+                          {now ? <Text style={styles.asOf}>{tr('reports.customerActivity.trend.asOf', { date: asOf })}</Text> : null}
+                        </View>
+                        <Text style={[styles.tableCell, styles.colNumber]}>{stock}</Text>
+                      </View>
+                    );
+                  }}
+                  ListFooterComponent={
+                    nowIndex >= 0 ? (
+                      <Text style={styles.tableNote}>
+                        {tr('reports.customerActivity.trend.footnoteNow', { month: monthYear(points[nowIndex].month), date: asOf })}
+                      </Text>
+                    ) : null
+                  }
                 />
               </>
             )}
@@ -399,9 +487,9 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
               <Text style={styles.totalLabel}>{tr('reports.customerActivity.trend.highest')}</Text>
               <Text style={styles.totalValue}>{formatNumber(highest)}</Text>
             </View>
-            <View style={styles.total} accessible accessibilityLabel={tr('reports.customerActivity.trend.periodLabel', { value: formatCount(trends.length, 'month') })}>
+            <View style={styles.total} accessible accessibilityLabel={tr('reports.customerActivity.trend.periodLabel', { value: formatCount(points.length, 'month') })}>
               <Text style={styles.totalLabel}>{tr('reports.customerActivity.trend.period')}</Text>
-              <Text style={styles.totalValue}>{formatCount(trends.length, 'month')}</Text>
+              <Text style={styles.totalValue}>{formatCount(points.length, 'month')}</Text>
             </View>
           </View>
         </View>

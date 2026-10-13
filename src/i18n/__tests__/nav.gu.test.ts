@@ -20,7 +20,19 @@ describe('navigation in Gujarati', () => {
   it('reads a report card as its title, then its description', () => {
     setLanguage('gu');
     expect(t('nav.reports.cardLabel', { title: t('reports.titles.stockSummary'), description: t('nav.reports.descriptions.stockSummary') })).toBe(
-      'સ્ટોકનો સારાંશ. હાલનો સ્ટોક એક નજરે જુઓ'
+      'સ્ટોકનો સારાંશ. વેપારી મુજબ સ્ટોક'
     );
+  });
+
+  it('tells the two stock summaries apart: one by customer, one by item across customers', () => {
+    expect([t('nav.reports.descriptions.stockSummary'), t('nav.reports.descriptions.itemStockSummary')]).toEqual([
+      'Stock by customer',
+      'Stock by item, across customers',
+    ]);
+    setLanguage('gu');
+    expect([t('nav.reports.descriptions.stockSummary'), t('nav.reports.descriptions.itemStockSummary')]).toEqual([
+      'વેપારી મુજબ સ્ટોક',
+      'આઇટમ મુજબ સ્ટોક, બધા વેપારીનો મળીને',
+    ]);
   });
 });

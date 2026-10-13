@@ -5,6 +5,10 @@
  *
  * <AlertHost /> (mounted once in app/_layout.tsx) renders the dialogs. When no
  * host is mounted, for example in unit tests, it falls back to Alert.alert.
+ *
+ * askAlert: the same dialog as a question to wait for. It resolves with the
+ * value of the button pressed, or with `dismissed` when the dialog is closed
+ * without one (Android back, a tap on the scrim).
  */
 import { Alert, type AlertButton, type AlertOptions } from 'react-native';
 import { t } from '@/i18n';
@@ -49,5 +53,34 @@ export function showAlert(
     message,
     buttons: buttons && buttons.length > 0 ? buttons : [{ text: t('common.ok') }],
     options,
+  });
+}
+
+/** One button of an `askAlert` dialog and the answer it gives. */
+export interface AlertChoice<T> {
+  text: string;
+  /** As Alert.alert's: 'cancel' is also what closing the dialog does, 'destructive' is drawn as such. */
+  style?: AlertButton['style'];
+  value: T;
+}
+
+/**
+ * Show a dialog and wait for the answer: the `value` of the button pressed, or
+ * `dismissed` when it is closed without one. Settles once.
+ */
+export function askAlert<T>(title: string, message: string | undefined, choices: AlertChoice<T>[], dismissed: T): Promise<T> {
+  return new Promise<T>(resolve => {
+    let settled = false;
+    const settle = (value: T) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    showAlert(
+      title,
+      message,
+      choices.map(choice => ({ text: choice.text, style: choice.style, onPress: () => settle(choice.value) })),
+      { cancelable: true, onDismiss: () => settle(dismissed) }
+    );
   });
 }

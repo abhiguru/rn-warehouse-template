@@ -19,7 +19,7 @@ const mockPush = jest.fn();
 const mockDispatch = jest.fn((action: Action) => {
   mockState = { ...mockState, reportPrefs: reportPrefs(mockState.reportPrefs, action) };
 });
-let mockServer: { origin: string; instanceId: string } | null = null;
+let mockServer: { origin: string; instanceId: string; displayName: string; companyName: string } | null = null;
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -31,7 +31,7 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSele
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } } }));
 
-const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
+const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Riverside', companyName: 'Riverside Cold Storage' };
 const SCOPE = JSON.stringify([SERVER.origin, SERVER.instanceId, 'user-a']);
 
 function signIn(role: string, prefs: { pinned?: string[]; recent?: string[] } = {}, brand: Brand = 'orange', mode: Mode = 'light') {
@@ -104,6 +104,30 @@ describe('sections', () => {
     const text = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [].concat(node.props.children).join(''));
     expect(text).toEqual(expect.arrayContaining(['Reports', 'View operations and customer reports', 'STOCK', 'MOVEMENT']));
     expect(target(tree.root, 'Profile and settings')).toBeDefined();
+  });
+
+  it('names the facility the reports are of under the title, its company name first and its short name otherwise', () => {
+    signIn('staff');
+    const facility = (tree: TestRenderer.ReactTestRenderer) =>
+      tree.root.findAll((node) => (node.type as unknown) === 'Text' && String(node.props.accessibilityLabel ?? '').startsWith('Facility: '));
+    const tree = render();
+    const [line] = facility(tree);
+    expect(line.props.accessibilityLabel).toBe('Facility: Riverside Cold Storage');
+    expect([].concat(line.props.children).join('')).toBe('Riverside Cold Storage');
+    const text = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [].concat(node.props.children).join(''));
+    expect(text.indexOf('Reports')).toBeLessThan(text.indexOf('Riverside Cold Storage'));
+
+    mockServer = { ...SERVER, companyName: '' };
+    expect(facility(render()).map((node) => node.props.accessibilityLabel)).toEqual(['Facility: Riverside']);
+  });
+
+  it('tells the stock reports apart: stock by customer, stock by item across customers, and stock age', () => {
+    signIn('staff');
+    const tree = render();
+    const stock = section(tree, 'stock');
+    expect(target(stock, 'Stock summary. Stock by customer')).toBeDefined();
+    expect(target(stock, 'Item stock summary. Stock by item, across customers')).toBeDefined();
+    expect(target(stock, 'Stock aging. Analyse how long stock has been stored')).toBeDefined();
   });
 
   it('shows the pinned reports first, in the order they were pinned, and keeps each in its category', () => {
@@ -248,6 +272,8 @@ describe('pressing', () => {
     mockServer = null;
     signIn('staff', { pinned: ['grn-activity'], recent: ['stock-aging'] });
     const tree = render();
+    // No facility to name: no facility line.
+    expect(tree.root.findAll((node) => String(node.props.accessibilityLabel ?? '').startsWith('Facility'))).toEqual([]);
     expect(sections(tree)).toEqual([STOCK, MOVEMENT, FINANCIAL, ['Operations', ['Customer activity']]]);
     press(target(section(tree, 'movement'), 'Pin GRN activity to the top'));
     press(target(section(tree, 'movement'), OPEN_GRN));

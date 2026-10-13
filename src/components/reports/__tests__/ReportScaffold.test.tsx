@@ -13,6 +13,7 @@ import type { FilterContext, FilterListConfig, FilterValues } from '@/features/f
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
 import { BRANDS, getTokens, space, type Mode } from '@/theme/tokens';
+import { setLanguage } from '@/i18n';
 import { KPICard } from '../KPICard';
 import { KPIGrid } from '../KPIGrid';
 import { ReportScaffold, type ReportEmptyAction } from '../ReportScaffold';
@@ -65,7 +66,8 @@ function makeFilters(values: FilterValues) {
   return filters as unknown as ReturnType<typeof useListFilters> & typeof filters;
 }
 
-type Query = Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'>;
+type Query = Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'> &
+  Partial<Pick<ReportQuery<unknown>, 'isKeptCopy'>>;
 const query = (over: Partial<Query>): Query => ({
   phase: 'ready',
   isRefreshing: false,
@@ -275,5 +277,76 @@ describe('report layout, accessibility and fit', () => {
   it('shows the spinner over the skeleton of a server search not answered yet', () => {
     const { tree } = render({ values: { search: 'garlic' }, query: { phase: 'loading', updatedAt: undefined, isFetching: true }, searchIsServerSide: true });
     expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Searching').length).toBeGreaterThan(0);
+  });
+});
+
+// SR-10: figures kept on the phone say so while the facility is asked again.
+describe('report status line, the saved copy', () => {
+  beforeEach(() => {
+    mockState = { theme: { preference: 'light', brand: 'orange' } };
+  });
+  const LINE = '15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Saved copy, refreshing… · Last updated 10:42 am';
+
+  it('says "Saved copy, refreshing…" beside the time while the kept copy is asked again', () => {
+    const { text } = render({ query: { isKeptCopy: true, isFetching: true } });
+    expect(text()).toContain(LINE);
+  });
+
+  it('says nothing of it once the facility has answered, or for a fresh answer being refreshed', () => {
+    expect(render({ query: { isKeptCopy: false, isFetching: true } }).text()).toContain('15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Last updated 10:42 am');
+    expect(render({ query: { isKeptCopy: true, isFetching: false } }).text()).not.toContain(LINE);
+  });
+
+  it('leaves the failure to the banner: no "refreshing" once the request failed', () => {
+    const { text } = render({ query: { isKeptCopy: true, isFetching: false, error: 'Could not reach the facility' } });
+    expect(text()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", '15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Last updated 10:42 am']));
+    expect(text().some(line => line.includes('refreshing'))).toBe(false);
+  });
+
+  it('says it in Gujarati in that language', () => {
+    setLanguage('gu');
+    try {
+      const { text } = render({ query: { isKeptCopy: true, isFetching: true } });
+      expect(text().some(line => line.includes('સાચવેલી નકલ, અપડેટ થઈ રહી છે…'))).toBe(true);
+    } finally {
+      setLanguage('en');
+    }
+  });
+});
+
+describe('report layout, figures in groups', () => {
+  it('draws each group of figures under a heading of what it covers, in the order given, and leaves out an empty group', () => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <ReportScaffold<string>
+          title="Operations dashboard"
+          query={query({})}
+          kpiGroups={[
+            { title: 'In 1 Sep – 30 Sep', items: [{ icon: 'package-down', value: 12, label: 'GRNs' }, { icon: 'truck-delivery-outline', value: 7, label: 'Dispatches' }] },
+            { title: 'Nothing here', items: [] },
+            { title: 'Right now', items: [{ icon: 'clipboard-list-outline', value: 3, label: 'Pending orders' }] },
+          ]}
+          rows={['GRN A0010']}
+          renderRow={row => <Text>{row}</Text>}
+          keyExtractor={row => row}
+          noun="GRNs"
+          empty={{ icon: 'history', title: 'No activity' }}
+        />
+      );
+    });
+    mounted.push(tree);
+    // The headings are read as headers, in their own words; on screen they are capitals.
+    const headers = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessible);
+    expect(headers.map(node => node.props.accessibilityLabel)).toEqual(['In 1 Sep – 30 Sep', 'Right now']);
+    // Each grid follows its own heading: the figures of a group are under it, not under the other.
+    const grids = tree.root.findAllByType(KPIGrid);
+    expect(grids.map(grid => grid.props.items.map((item: { label: string }) => item.label))).toEqual([['GRNs', 'Dispatches'], ['Pending orders']]);
+    const texts = tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+    const at = (words: string) => texts.indexOf(words);
+    expect(at('IN 1 SEP – 30 SEP')).toBeLessThan(at('GRNs'));
+    expect(at('Dispatches')).toBeLessThan(at('RIGHT NOW'));
+    expect(at('RIGHT NOW')).toBeLessThan(at('Pending orders'));
+    expect(texts).not.toContain('NOTHING HERE');
   });
 });

@@ -11,19 +11,27 @@
  * Both live in the persisted report choices. The search and the other filters
  * stay with the session, like a list's. "Clear all" touches neither the period
  * nor the sort.
+ *
+ * One customer's report passes `{ scope: customerId }`: its search is that
+ * customer's alone, so a GRN number searched for one customer does not narrow
+ * the next one's report; its other choices are shared by every customer
+ * (review 2026-10-13, SR-06).
  */
 import { useCallback, useMemo } from 'react';
 import { countActiveFilters, currentSort, hasAnyFilter, isRequiredField } from '@/features/filters/filterModel';
 import type { DateRangeValue, FilterListConfig, FilterValue, FilterValues, SortState } from '@/features/filters/types';
-import { useListFilters } from '@/features/filters/useListFilters';
+import { useListFilters, type UseListFiltersOptions } from '@/features/filters/useListFilters';
 import { indiaDay } from '@/utils/formatters';
 import { useReportPrefs } from './useReportPrefs';
 
 /** The period of a report nobody has chosen a period for yet. */
 export const DEFAULT_REPORT_PERIOD: DateRangeValue = { preset: 'last120' };
 
-export function useReportFilters<TRequest>(config: FilterListConfig<TRequest>): ReturnType<typeof useListFilters<TRequest>> {
-  const list = useListFilters(config);
+export function useReportFilters<TRequest>(
+  config: FilterListConfig<TRequest>,
+  options: UseListFiltersOptions = {}
+): ReturnType<typeof useListFilters<TRequest>> {
+  const list = useListFilters(config, options);
   const { prefs, setPeriod, setSort: rememberSort } = useReportPrefs();
 
   // The key of the report's period, if it has one: its one range that always has a value.

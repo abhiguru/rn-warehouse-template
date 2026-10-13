@@ -2,26 +2,22 @@
  * Profile screen: the signed-in user's details and account actions, as a
  * grouped list on background.grouped (style guide §14.12).
  */
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   ScrollView,
-  Modal,
-  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { logout } from '@/store/slices/authSlice';
+import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -31,12 +27,14 @@ import {
   type ThemeTokens,
   trackedText,
 } from '@/theme/tokens';
-import { showAlert } from '@/utils/alert';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { formatMobile } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { t as tr } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
+import { AppVersionFooter } from '@/components/AppVersionFooter';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useAccountActions } from '@/features/account/useAccountActions';
 
 /** Roles are categories, not statuses: staff roles informative, others neutral (as in the users list). */
 const ROLE_TONE: Record<string, 'informative' | 'neutral'> = {
@@ -47,30 +45,12 @@ const ROLE_TONE: Record<string, 'informative' | 'neutral'> = {
 };
 
 const UserProfileScreen: React.FC = () => {
-  const dispatch = useAppDispatch();
   const { user, userProfile } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
+  // The same account actions as Settings, with the same wording and cleanup (§14.8).
+  const account = useAccountActions();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-
-  const handleLogout = () => {
-    setShowLogoutModal(true);
-  };
-
-  const confirmLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await dispatch(logout()).unwrap();
-      router.replace('/login');
-    } catch {
-      showAlert(tr('auth.signOut.couldNotTitle'), tr('common.checkConnection'));
-      setShowLogoutModal(false);
-    } finally {
-      setLoggingOut(false);
-    }
-  };
 
   const handleEditProfile = () => {
     // Use userProfile.id (users table) not user.id (auth table)
@@ -228,86 +208,35 @@ const UserProfileScreen: React.FC = () => {
               <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
 
-            {/* Sign Out */}
-            <Pressable
-              style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
-              onPress={handleLogout}
-              accessibilityRole="button"
-              accessibilityLabel={tr('auth.signOut.action')}
-            >
-              <Icon name="logout" size={iconSize.md} color={t.status.negative.text} />
-              <View style={styles.actionContent}>
-                <Text style={[styles.actionLabel, styles.actionLabelNegative]}>{tr('auth.signOut.action')}</Text>
-                <Text style={styles.actionSubtitle}>{tr('users.profile.signOutSubtitle')}</Text>
-              </View>
-            </Pressable>
+            {/* Sign out, or leave this facility and sign out of this phone (useAccountActions) */}
+            {account.actions.map((action, index) => (
+              <Pressable
+                key={action.id}
+                testID={action.testID}
+                style={({ pressed }) => [
+                  styles.actionRow,
+                  index < account.actions.length - 1 && styles.keyValueRowDivider,
+                  pressed && styles.actionRowPressed,
+                ]}
+                onPress={() => account.request(action.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${action.label}, ${action.subtitle}`}
+              >
+                <Icon name={action.icon} size={iconSize.md} color={action.destructive ? t.status.negative.text : t.brand.tint} />
+                <View style={styles.actionContent}>
+                  <Text style={[styles.actionLabel, action.destructive && styles.actionLabelNegative]}>{action.label}</Text>
+                  <Text style={styles.actionSubtitle}>{action.subtitle}</Text>
+                </View>
+              </Pressable>
+            ))}
           </View>
         </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Icon name="snowflake" size={iconSize.lg} color={t.icon.secondary} />
-          <Text style={styles.footerTitle}>{process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}</Text>
-          <Text style={styles.footerSubtitle}>{tr('settings.footer.version', { version: '1.0' })}</Text>
-        </View>
+        <AppVersionFooter />
       </ScrollView>
 
-      {/* Sign-out confirmation (style guide §13.9) */}
-      <Modal
-        visible={showLogoutModal}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => !loggingOut && setShowLogoutModal(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => !loggingOut && setShowLogoutModal(false)}
-          accessibilityRole="button"
-          accessibilityLabel={tr('common.cancel')}
-        >
-          <Pressable
-            style={styles.modalDialog}
-            onPress={(e) => e.stopPropagation()}
-            accessibilityViewIsModal
-            accessible={false}
-          >
-            <Icon name="logout" size={iconSize.xl} color={t.status.negative.text} />
-            <Text style={styles.modalTitle} accessibilityRole="header">
-              {tr('auth.signOut.confirmTitle')}
-            </Text>
-            <Text style={styles.modalMessage}>
-              {tr('auth.signOut.confirmMessage')}
-            </Text>
-
-            <View style={styles.modalActions}>
-              <Pressable
-                style={({ pressed }) => [styles.modalButton, styles.modalButtonSecondary, pressed && styles.modalButtonSecondaryPressed]}
-                onPress={() => setShowLogoutModal(false)}
-                disabled={loggingOut}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: loggingOut }}
-              >
-                <Text style={styles.modalButtonTextSecondary}>{tr('common.cancel')}</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.modalButton, styles.modalButtonDestructive, pressed && styles.modalButtonDestructivePressed]}
-                onPress={confirmLogout}
-                disabled={loggingOut}
-                accessibilityRole="button"
-                accessibilityLabel={tr('auth.signOut.action')}
-                accessibilityState={{ busy: loggingOut }}
-              >
-                {loggingOut ? (
-                  <ActivityIndicator size="small" color={t.destructive.onFill} />
-                ) : (
-                  <Text style={styles.modalButtonTextDestructive}>{tr('auth.signOut.action')}</Text>
-                )}
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Account dialog (style guide §13.9) */}
+      <ConfirmDialog {...account.dialog} />
     </View>
   );
 };
@@ -480,88 +409,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     marginTop: space.xxs,
-  },
-
-  // Footer
-  footer: {
-    alignItems: 'center' as const,
-    paddingVertical: space.xxxl,
-    gap: space.xs,
-  },
-  footerTitle: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
-    marginTop: space.xs,
-  },
-  footerSubtitle: {
-    ...typography.footnote,
-    color: t.text.secondary,
-  },
-
-  // Dialog
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    padding: space.xxl,
-    backgroundColor: t.overlay.scrim,
-  },
-  modalDialog: {
-    width: '100%' as const,
-    maxWidth: layout.maxFormWidth,
-    borderRadius: radius.card,
-    padding: space.xxl,
-    alignItems: 'center' as const,
-    gap: space.sm,
-    backgroundColor: t.surface.sheet,
-    ...t.shadow[4],
-  },
-  modalTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-  },
-  modalMessage: {
-    ...typography.body,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-  },
-  modalActions: {
-    flexDirection: 'row' as const,
-    gap: space.sm,
-    width: '100%' as const,
-  },
-  modalButton: {
-    flex: 1,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  modalButtonSecondary: {
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  modalButtonSecondaryPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-  modalButtonDestructive: {
-    backgroundColor: t.destructive.fill,
-  },
-  modalButtonDestructivePressed: {
-    backgroundColor: t.destructive.fillPressed,
-  },
-  modalButtonTextSecondary: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-  },
-  modalButtonTextDestructive: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.destructive.onFill,
   },
 });
 

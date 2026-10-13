@@ -1,6 +1,7 @@
 import reducer, {
   applyListFilters,
   clearListFilters,
+  clearListFilterScope,
   resetAllListFilters,
   selectListFilters,
   setListFilterField,
@@ -67,5 +68,78 @@ describe('list filter slice', () => {
 
   it('gives an unknown list empty values', () => {
     expect(selectListFilters({ listFilters: withTwoLists() }, 'never-used')).toEqual({ values: {} });
+  });
+
+  // SR-06: one customer's search must not narrow another customer's report.
+  describe('scoped search', () => {
+    const KEY = 'report-grn-activity-customer';
+    const scoped = () => {
+      let state = reducer(undefined, applyListFilters({ key: KEY, values: { search: 'E0014', invoicing: 'not_invoiced' }, scope: 'c1' }));
+      state = reducer(state, applyListFilters({ key: KEY, values: { search: 'A0006', invoicing: 'not_invoiced' }, scope: 'c2' }));
+      return state;
+    };
+
+    it('keeps the search of each scope apart and the other choices shared', () => {
+      const state = scoped();
+      expect(state.lists[KEY].values).toEqual({ invoicing: 'not_invoiced' });
+      expect(state.lists[KEY].searches).toEqual({ c1: 'E0014', c2: 'A0006' });
+    });
+
+    it('a scoped write without a search forgets that scope only', () => {
+      const state = reducer(scoped(), applyListFilters({ key: KEY, values: { invoicing: 'invoiced' }, scope: 'c2' }));
+      expect(state.lists[KEY].searches).toEqual({ c1: 'E0014' });
+      expect(state.lists[KEY].values).toEqual({ invoicing: 'invoiced' });
+    });
+
+    it('keeps the "search as text" flag per scope', () => {
+      let state = reducer(scoped(), setListFilterField({ key: KEY, field: 'searchLiteral', value: true, scope: 'c1' }));
+      expect(state.lists[KEY].searchLiterals).toEqual({ c1: true });
+      expect(state.lists[KEY].values).toEqual({ invoicing: 'not_invoiced' });
+      state = reducer(state, applyListFilters({ key: KEY, values: { search: 'E0015' }, scope: 'c1' }));
+      expect(state.lists[KEY].searchLiterals).toEqual({});
+      state = reducer(state, applyListFilters({ key: KEY, values: { search: 'E0015', searchLiteral: true }, scope: 'c1' }));
+      expect(state.lists[KEY].searchLiterals).toEqual({ c1: true });
+    });
+
+    it('a scoped field write of the search goes to the scope, any other field to the shared values', () => {
+      let state = reducer(scoped(), setListFilterField({ key: KEY, field: 'search', value: 'B0001', scope: 'c3' }));
+      expect(state.lists[KEY].searches).toEqual({ c1: 'E0014', c2: 'A0006', c3: 'B0001' });
+      state = reducer(state, setListFilterField({ key: KEY, field: 'search', value: undefined, scope: 'c1' }));
+      expect(state.lists[KEY].searches).toEqual({ c2: 'A0006', c3: 'B0001' });
+      state = reducer(state, setListFilterField({ key: KEY, field: 'invoicing', value: 'invoiced', scope: 'c1' }));
+      expect(state.lists[KEY].values).toEqual({ invoicing: 'invoiced' });
+    });
+
+    it('clearing a scope forgets its search and keeps the choices unless asked', () => {
+      let state = reducer(scoped(), setListSort({ key: KEY, sort: { field: 'number', order: 'asc' } }));
+      state = reducer(state, clearListFilterScope({ key: KEY, scope: 'c1' }));
+      expect(state.lists[KEY]).toEqual({
+        values: { invoicing: 'not_invoiced' },
+        sort: { field: 'number', order: 'asc' },
+        searches: { c2: 'A0006' },
+        searchLiterals: undefined,
+      } as never);
+      state = reducer(state, clearListFilterScope({ key: KEY, scope: 'c2', choices: true }));
+      expect(state.lists[KEY].values).toEqual({});
+      expect(state.lists[KEY].searches).toEqual({});
+      expect(state.lists[KEY].sort).toEqual({ field: 'number', order: 'asc' });
+    });
+
+    it('clearing a scope with its choices keeps the list\'s unscoped search (an all-customers view)', () => {
+      let state = reducer(undefined, applyListFilters({ key: 'report-item-stock', values: { search: 'garlic' } }));
+      state = reducer(state, applyListFilters({ key: 'report-item-stock', values: { search: 'cumin' }, scope: 'c1' }));
+      expect(state.lists['report-item-stock'].values).toEqual({ search: 'garlic' });
+      state = reducer(state, clearListFilterScope({ key: 'report-item-stock', scope: 'c1', choices: true }));
+      expect(state.lists['report-item-stock'].values).toEqual({ search: 'garlic' });
+      expect(state.lists['report-item-stock'].searches).toEqual({});
+    });
+
+    it('clearing a scope of a list never used adds nothing', () => {
+      expect(reducer(undefined, clearListFilterScope({ key: KEY, scope: 'c1', choices: true }))).toEqual({ lists: {} });
+    });
+
+    it('forgets every scope on sign-out', () => {
+      expect(reducer(scoped(), logout.fulfilled(undefined, 'request-1', undefined))).toEqual({ lists: {} });
+    });
   });
 });

@@ -13,10 +13,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { Avatar } from '@/components/ui/Avatar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { FILTER_CONFIGS } from '../configs';
 import type { FilterListDefinition } from '../types';
@@ -78,7 +76,6 @@ const makeStyles = (t: ThemeTokens) => ({
 export function FilteredListHeader({ title, config, filters, loading, expand, actions, children }: FilteredListHeaderProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const userProfile = useAppSelector(state => state.auth.userProfile);
   const countable = FILTER_CONFIGS[config.listKey];
   // The full page exists for lists with more filters than fit in the bar.
   const hasPage = config.fields.length > config.fastFilters.length || Boolean(config.sort);
@@ -112,7 +109,7 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
             accessibilityRole="button"
             accessibilityLabel={translate('common.openSettings')}
           >
-            <Avatar name={userProfile?.name || 'User'} id={userProfile?.id} size="sm" />
+            <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
         </View>
       </View>

@@ -197,6 +197,8 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, from: period.from, to: period.to, sort: reportPdfSort(REPORT_ID, 'customers', view.sort) }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: rows.length } : null),
   });
   const actions = useMemo(() => exportHeaderActions({ exportPdf, busy, available }), [exportPdf, busy, available]);
 
@@ -294,7 +296,7 @@ interface CustomerReportProps {
 }
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
-  const filters = useReportFilters(INVOICE_HISTORY_CUSTOMER);
+  const filters = useReportFilters(INVOICE_HISTORY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<InvoiceHistoryData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
@@ -339,10 +341,10 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     [data, totals]
   );
   // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period, which
-  // the server tells apart by the same rule) but not the search, which is the screen's own. "All" sends no
-  // status. A server that predates the field refuses it, and generateReportPDF then fails with
-  // 'filter-unsupported': the export alert says to remove the Payment filter or update the server, and
-  // nothing is shared (the choice is never dropped to share all the invoices).
+  // the server tells apart by the same rule) but not the search, which is the screen's own: the person is
+  // told so before the export. "All" sends no status. A server that predates the field refuses it
+  // ('filter-unsupported'): the person is asked whether to share all the invoices instead, and nothing is
+  // shared without that (the choice is never dropped on its own).
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({
       report: REPORT_ID,
@@ -353,6 +355,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       ...(view.payment !== 'all' && { status: view.payment }),
     }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName }),
+    // The PDF does not apply the search: the person is told before the export (useReportExport).
+    unappliedSearch: () => (view.words.length > 0 ? { query: filters.search, count: invoices.length } : null),
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [

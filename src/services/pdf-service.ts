@@ -370,6 +370,38 @@ export interface ReportPdfSort {
 
 /** The payment status an invoice history PDF is narrowed to. */
 export type ReportPdfStatus = 'paid' | 'pending';
+/** The GRNs a GRN activity PDF is narrowed to: those invoiced, or those not yet invoiced. */
+export type ReportPdfInvoicing = 'invoiced' | 'not_invoiced';
+/** The stock age a stock aging PDF is narrowed to, in days (the app's AgingBucketId). */
+export type ReportPdfBucket = '0-120' | '121-240' | '241-364' | 'over-364';
+
+const INVOICING_VALUES: readonly string[] = ['invoiced', 'not_invoiced'];
+const BUCKET_VALUES: readonly string[] = ['0-120', '121-240', '241-364', 'over-364'];
+/** The longest search an item stock PDF is narrowed to (backend report-request.ts). */
+export const REPORT_PDF_SEARCH_MAX_LENGTH = 80;
+
+// Control characters (C0, DEL and C1), which the server refuses in a search.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
+ * The search as an item stock PDF request carries it: trimmed, 1 to 80
+ * characters (UTF-16 units, as the server counts), without control characters;
+ * undefined for one the server would refuse (the screen then says the PDF is of
+ * every item).
+ */
+export function reportPdfSearch(text: string | null | undefined): string | undefined {
+  if (typeof text !== 'string') return undefined;
+  const search = text.trim();
+  if (!search || search.length > REPORT_PDF_SEARCH_MAX_LENGTH || CONTROL_CHARACTER.test(search)) return undefined;
+  return search;
+}
+
+/**
+ * The request fields that narrow a report PDF to what the screen shows. A server
+ * older than a field refuses the whole request ('filter-unsupported').
+ */
+export const REPORT_PDF_FILTER_FIELDS = ['status', 'invoicing', 'bucket', 'search'] as const;
 
 interface ReportPdfRequestBase {
   /** One customer's report; absent or null = the all-customers level. */
@@ -382,6 +414,12 @@ interface ReportPdfRequestBase {
    * (see generateReportPDF): a filtered export never becomes an unfiltered one.
    */
   status?: ReportPdfStatus;
+  /** Only the GRNs invoiced or not yet invoiced: sent with `report: 'grn-activity'` and a `customer_id` only. */
+  invoicing?: ReportPdfInvoicing;
+  /** Only the stock of this age: sent with `report: 'stock-aging'` and a `customer_id` only. */
+  bucket?: ReportPdfBucket;
+  /** Only the items this search finds: sent with `report: 'item-stock-summary'` only, as `reportPdfSearch` gives it. */
+  search?: string;
   /** Language of the PDF's labels; the app's current language when absent. */
   lang?: AppLanguage;
 }
@@ -410,10 +448,11 @@ export interface ReportPdfDocument {
 /**
  * Why a report PDF was not made. `server-outdated`: the facility's backend has
  * no generate-report-pdf (older than the release with migrations 52-53).
- * `filter-unsupported`: the backend has it but not the `status` field, so it
- * cannot make the PDF of the Paid or the Pending invoices only; nothing is made
- * (the PDF of all the invoices would not be what the screen asked for), and the
- * server is not outdated for the exports without a filter.
+ * `filter-unsupported`: the backend has it but not a filter field the request
+ * carries (`REPORT_PDF_FILTER_FIELDS`), so it cannot make the narrowed PDF;
+ * nothing is made (the full report is not what the screen asked for: the export
+ * asks the person first, useReportExport), and the server is not outdated for
+ * the exports without a filter.
  */
 export type ReportPdfFailure =
   | 'session'
@@ -437,7 +476,18 @@ export interface ReportPdfResult {
   reason?: ReportPdfFailure;
 }
 
-/** The JSON body sent for a request: only the contract's fields, dates only for a period report. */
+/** The request without the fields that narrow it: the full report the screen's period, customer and sort give. */
+export function withoutReportFilters(request: ReportPdfRequest): ReportPdfRequest {
+  const rest: Record<string, unknown> = { ...request };
+  for (const field of REPORT_PDF_FILTER_FIELDS) delete rest[field];
+  return rest as unknown as ReportPdfRequest;
+}
+
+/**
+ * The JSON body sent for a request: only the contract's fields, dates only for a
+ * period report, and each filter only where the server accepts it (any other is
+ * left out, as the server would refuse the request).
+ */
 export function reportPdfRequestBody(request: ReportPdfRequest): Record<string, unknown> {
   const body: Record<string, unknown> = { report: request.report };
   if (typeof request.customer_id === 'string' && request.customer_id) body.customer_id = request.customer_id;
@@ -445,6 +495,17 @@ export function reportPdfRequestBody(request: ReportPdfRequest): Record<string, 
   if (request.report === 'invoice-history' && body.customer_id && (request.status === 'paid' || request.status === 'pending')) {
     body.status = request.status;
   }
+  // Accepted only for one customer's GRN activity.
+  if (request.report === 'grn-activity' && body.customer_id && typeof request.invoicing === 'string' && INVOICING_VALUES.includes(request.invoicing)) {
+    body.invoicing = request.invoicing;
+  }
+  // Accepted only for one customer's stock aging.
+  if (request.report === 'stock-aging' && body.customer_id && typeof request.bucket === 'string' && BUCKET_VALUES.includes(request.bucket)) {
+    body.bucket = request.bucket;
+  }
+  // Accepted only for the item stock summary, at either level.
+  const search = request.report === 'item-stock-summary' ? reportPdfSearch(request.search) : undefined;
+  if (search) body.search = search;
   if (isPeriodReport(request.report)) {
     body.from = request.from;
     body.to = request.to;
@@ -463,7 +524,7 @@ const isFunctionEnvelope = (data: unknown): data is { success: boolean; error?: 
 
 const reportFailure = (reason: ReportPdfFailure, error: string): ReportPdfResult => ({ success: false, error, reason });
 
-/** What a server that predates the `status` field answers (HTTP 400) to a request that carries it. It is the only message read. */
+/** What a server that predates a filter field answers (HTTP 400) to a request that carries it. It is the only message read. */
 const UNKNOWN_FIELD_MESSAGE = 'Unknown field in report request';
 
 /** One POST to generate-report-pdf; null when no answer came. */
@@ -509,14 +570,14 @@ async function readReportPdfAnswer(response: Response): Promise<unknown> {
  *   the facility's server predates generate-report-pdf and needs an update;
  * - no answer at all (offline, timed out): check the connection.
  *
- * A request with `status` (the Payment choice of one customer's invoice history)
+ * A request with a filter field (`status`, `invoicing`, `bucket` or `search`)
  * that the server answers with HTTP 400 "Unknown field in report request" is a
  * failure with the reason `filter-unsupported`: the server is older than the
- * field and cannot filter. It is asked once and never again without `status`,
- * because the PDF of all the invoices is not the PDF that was asked for; the
- * person is told to remove the Payment filter or have the server updated. That
- * server is not outdated: a request without `status` is made as usual. Any other
- * 400, and the same message to a request without `status`, are failures as above.
+ * field and cannot filter. It is asked once and never again here without the
+ * filter, because the full report is not the PDF that was asked for; the export
+ * asks the person whether to share the full report instead. That server is not
+ * outdated: a request without a filter is made as usual. Any other 400, and the
+ * same message to a request without a filter, are failures as above.
  *
  * Nothing is logged: no request, customer, link or server text
  * (src/services/__tests__/reportPdf.test.ts).
@@ -548,9 +609,9 @@ export async function generateReportPDF(request: ReportPdfRequest): Promise<Repo
       case 404:
         return reportFailure('customer-unavailable', t('reports.export.customerUnavailable'));
       case 400:
-        // A server older than the `status` field cannot filter. The request is not made again without
-        // the filter: that would share every invoice, as if nothing had been chosen.
-        if ('status' in body && data.error === UNKNOWN_FIELD_MESSAGE) {
+        // A server older than a filter field cannot filter. The request is not made again here without
+        // the filter: that would share the full report, as if nothing had been chosen.
+        if (REPORT_PDF_FILTER_FIELDS.some(field => field in body) && data.error === UNKNOWN_FIELD_MESSAGE) {
           return reportFailure('filter-unsupported', t('reports.export.filterNeedsUpdate'));
         }
         // The server's refusals are fixed English sentences; only this one is the person's to fix.

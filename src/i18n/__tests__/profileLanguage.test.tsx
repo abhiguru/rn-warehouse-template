@@ -1,6 +1,8 @@
 /**
  * The language choice on the phone and on the profile: which one wins at
- * sign-in, and what is saved when.
+ * sign-in, and what is saved when (SR-O05). The phone's choice wins and is not
+ * copied into the next account's profile; only a phone with no choice takes
+ * the profile's language; a change in Settings while signed in is saved once.
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
@@ -39,7 +41,7 @@ async function update(renderer: TestRenderer.ReactTestRenderer): Promise<void> {
 const calls = (name: string) => mockRpc.mock.calls.filter(([rpc]) => rpc === name);
 
 beforeEach(() => {
-  mockDispatch.mockClear();
+  mockDispatch.mockReset();
   mockRpc.mockReset();
   mockRpc.mockResolvedValue({ data: { success: true, language: null }, error: null });
   mockState = { theme: { language: 'system' }, auth: { session: null, userProfile: null } };
@@ -69,12 +71,12 @@ describe('language on the profile', () => {
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 
-  it('saves the choice of this phone at sign-in and does not read the profile', async () => {
+  it('keeps the choice of this phone at sign-in: the profile is neither read nor written', async () => {
     mockState.theme.language = 'gu';
     mockState.auth = { session: {}, userProfile: { id: 'p1' } };
     await render();
     expect(calls('get_my_language')).toHaveLength(0);
-    expect(calls('set_my_language')).toEqual([['set_my_language', { p_language: 'gu' }]]);
+    expect(calls('set_my_language')).toHaveLength(0);
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 
@@ -86,24 +88,56 @@ describe('language on the profile', () => {
     await update(renderer);
     mockState.theme.language = 'system';
     await update(renderer);
-    expect(calls('set_my_language').map(([, body]) => body.p_language)).toEqual(['gu', 'en', null]);
+    expect(calls('set_my_language').map(([, body]) => body.p_language)).toEqual(['en', null]);
     expect(calls('get_my_language')).toHaveLength(0);
   });
 
-  it('saves nothing more when the screen redraws without a change', async () => {
+  it('saves a change once, and nothing more when the screen redraws without a change', async () => {
     mockState.theme.language = 'gu';
     mockState.auth = { session: {}, userProfile: { id: 'p1' } };
     const renderer = await render();
     await update(renderer);
+    expect(calls('set_my_language')).toHaveLength(0);
+    mockState.theme.language = 'en';
     await update(renderer);
-    expect(calls('set_my_language')).toHaveLength(1);
+    await update(renderer);
+    await update(renderer);
+    expect(calls('set_my_language')).toEqual([['set_my_language', { p_language: 'en' }]]);
   });
 
   it('counts a session restored from saved tokens, which has no session object, as signed in', async () => {
-    mockState.theme.language = 'gu';
     mockState.auth = { session: null, userProfile: { id: 'p1' } };
     await render();
-    expect(calls('set_my_language')).toEqual([['set_my_language', { p_language: 'gu' }]]);
+    expect(calls('get_my_language')).toHaveLength(1);
+  });
+
+  it("a second person on a phone with a choice keeps the phone's language and their profile is untouched", async () => {
+    mockState.theme.language = 'gu';
+    mockState.auth = { session: {}, userProfile: { id: 'p1' } };
+    const renderer = await render();
+    mockState.auth = { session: null, userProfile: null };
+    await update(renderer);
+    mockState.auth = { session: {}, userProfile: { id: 'p2' } };
+    await update(renderer);
+    expect(calls('get_my_language')).toHaveLength(0);
+    expect(calls('set_my_language')).toHaveLength(0);
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it('does not save back the language it has just taken from the profile', async () => {
+    mockRpc.mockResolvedValue({ data: { success: true, language: 'gu' }, error: null });
+    mockDispatch.mockImplementation((action: { payload: string }) => {
+      mockState.theme.language = action.payload;
+    });
+    mockState.auth = { session: {}, userProfile: { id: 'p1' } };
+    const renderer = await render();
+    await update(renderer);
+    expect(mockState.theme.language).toBe('gu');
+    expect(calls('set_my_language')).toHaveLength(0);
+    // A later change in Settings is saved.
+    mockState.theme.language = 'en';
+    await update(renderer);
+    expect(calls('set_my_language')).toEqual([['set_my_language', { p_language: 'en' }]]);
   });
 
   it('reads the profile again for another account', async () => {

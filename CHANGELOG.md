@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — Settings and Reports UX review fixes (2026-10-13)
+
+Backend PR #96 (report PDF filters) merges first; the app falls back with consent on an older server.
+
+### Settings
+
+- **One set of account actions in Settings and Profile (SR-01).** With central login, "Leave this facility" and "Sign out of this phone" say what each ends; Profile no longer promises a phone sign-out that keeps the association sign-in.
+- **Edit profile names the real role (SR-07)** (Staff, Admin, Customer) instead of "User".
+- **A failed customer-access lookup says so and offers Retry (SR-08),** keeping the typed name; it is no longer shown as "no access".
+- **Deleting a facility account names the facility (SR-09)** and says that the association sign-in stays.
+- **Settings and Profile show the real app version and build (SR-12),** with "Share these details" for support.
+- **The deletion warning no longer promises to erase preferences the phone keeps (SR-13);** an empty confirmation field never matches.
+- **The deletion confirmation keeps its buttons above the keyboard (SR-15).**
+- **Settings is grouped as Warehouse tools, Preferences, Account, Help and about (SR-O02).**
+- **The Settings button is a gear icon (SR-O03)** in the tab headers.
+- **Preferences are compact rows that open a sheet (SR-O04);** the language sheet reopens after the language change rebuilds the screen.
+- **The language row says it belongs to this phone (SR-O05);** the phone's choice is not uploaded at sign-in, a change made while signed in is uploaded once.
+- **Self-edit is "Change name" (SR-O06),** with the account details collapsed and the customer access in plain words.
+- **A Help screen (SR-O07):** who to ask, roles, what to do on a new phone or number, and the app details.
+
+### Reports
+
+- **Item stock figures keep their meaning under a search for every sort (SR-02):** "All items" and "All stock" come from the whole list, and the time shown is that of the figures.
+- **Sharing a PDF never silently widens the report (SR-03).** The filters and search are sent to the server; when the PDF cannot apply them (an older server, a search it does not take) the app asks before sharing the full report, and a cut-short PDF is said so.
+- **Stock aging counts lots as lots (SR-04):** "Stock lots" and "Lots over 364 days", with a footnote that items are counted by name.
+- **The item stock drill-down shows more than 100 GRN lines (SR-05)** with "Show more GRN lines".
+- **A search stays with the customer it was typed for (SR-06);** opening a customer clears only the search, a card's "View …" clears the search and the choices.
+- **Coming back to a report after 30 seconds or more refreshes it (SR-10),** reports are refreshed after GRN, dispatch and invoice changes, and a kept copy says "Saved copy, refreshing…".
+- **The stock trend no longer shows future months or calls the current month a month-end (SR-11);** the current month is "as of" today.
+- **Customer activity and Operations separate period totals from current stock and latest activity (SR-14),** under "In <period>", "Right now" and "Latest … (any date)".
+- **Every period report has Today, Yesterday and Last 7 days (SR-O01):** customer activity, GRN activity, dispatch activity, invoice history and Operations.
+- **Customer cards sorted by invoiced amount show that amount (SR-O08).**
+- **The Reports tab names each report by what it shows (SR-O09):** stock by customer, stock by item, "View stock age".
+- **Long customer names and chart labels fit (SR-O10):** cards stack under large text or long names; charts leave headroom.
+- **Reports show the facility name in their headers (SR-O11),** and so does the Reports tab.
+
 ## Unreleased — performance review fixes (2026-10-13)
 
 No backend change.

@@ -23,6 +23,12 @@ export interface ReportStatusLineProps {
   /** Rows on screen and rows in all, when a search, a filter or paging shows fewer. */
   shown?: number;
   total?: number;
+  /**
+   * The figures are the copy kept on the phone and the facility is being asked again:
+   * "Saved copy, refreshing…" beside "Last updated" (SR-10). The failure banner, not this
+   * line, says when that request fails.
+   */
+  refreshingKeptCopy?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -36,13 +42,14 @@ export function describeUpdatedAt(updatedAt: number, now: Date = new Date()): st
   return at.toDateString() === now.toDateString() ? formatTime(at) : formatDateTime(at);
 }
 
-export function ReportStatusLine({ range, updatedAt, shown, total }: ReportStatusLineProps) {
+export function ReportStatusLine({ range, updatedAt, shown, total, refreshingKeptCopy = false }: ReportStatusLineProps) {
   const styles = useThemedStyles(makeStyles);
   const facts = [
     range && (range.from || range.to) ? describeDateRange(range) : null,
     typeof shown === 'number' && typeof total === 'number' && shown < total
       ? tr('reports.scaffold.showing', { shown: formatNumber(shown), total: formatNumber(total) })
       : null,
+    refreshingKeptCopy ? tr('reports.scaffold.keptCopyRefreshing') : null,
     updatedAt ? tr('reports.scaffold.updated', { time: describeUpdatedAt(updatedAt) }) : null,
   ].filter((fact): fact is string => Boolean(fact));
   if (facts.length === 0) return null;

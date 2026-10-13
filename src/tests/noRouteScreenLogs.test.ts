@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '../..');
 
 it.each([
   'app/profile.tsx',
+  'app/help.tsx',
   'app/user/edit/[userId].tsx',
   'app/item-edit/[id].tsx',
   'app/reports/dispatch-activity.tsx',
