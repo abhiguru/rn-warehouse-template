@@ -15,8 +15,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const online = { type: 'wifi', isConnected: true, isInternetReachable: true, details: null } as NetInfoState;
-const offline = { type: 'none', isConnected: false, isInternetReachable: false, details: null } as NetInfoState;
+// Plain states with no details: the cast goes through `unknown` because NetInfo types `details` per connection type.
+const online = { type: 'wifi', isConnected: true, isInternetReachable: true, details: null } as unknown as NetInfoState;
+const offline = { type: 'none', isConnected: false, isInternetReachable: false, details: null } as unknown as NetInfoState;
 let initial: ReturnType<typeof deferred<NetInfoState>>;
 let listener: (state: NetInfoState) => void;
 let status: NetworkStatus;

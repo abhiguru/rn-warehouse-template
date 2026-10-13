@@ -11,6 +11,12 @@ import { ApplyFiltersButton } from '@/features/filters/components/ApplyFiltersBu
 import { showAlert } from '@/utils/alert';
 import ListFiltersScreen from '../list-filters';
 
+// The mocked react-native components are plain strings in the tree, so the tag names are cast
+// to the element type the renderer's nodes carry (as in OperatorServerSelectionKeyboard.test.tsx).
+const tag = (name: string) => name as unknown as React.ElementType;
+const TEXT = tag('Text');
+const TEXT_INPUT = tag('TextInput');
+
 const mockDispatch = jest.fn();
 let mockParams: { listKey?: string } = { listKey: 'grn-list' };
 let mockState: {
@@ -88,7 +94,7 @@ function open() {
         .map(node => node.props.accessibilityLabel as string),
     has: (label: string) => withLabel(label).length > 0,
     press: (label: string) => act(() => withLabel(label)[0].props.onPress()),
-    title: () => renderer.root.findAll(node => node.type === 'Text' && node.props.accessibilityRole === 'header')[0].props.children as string,
+    title: () => renderer.root.findAll(node => node.type === TEXT && node.props.accessibilityRole === 'header')[0].props.children as string,
     apply: () => act(() => renderer.root.findByType(ApplyFiltersButton).props.onPress()),
     hardwareBack: () =>
       act(() => {
@@ -178,7 +184,7 @@ describe('Sort and filter page', () => {
   it('keeps a number field mounted while typing, so the keyboard stays on it', () => {
     const page = open();
     const input = () =>
-      page.renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Weight, minimum, in kg')[0];
+      page.renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === 'Weight, minimum, in kg')[0];
     const mounts = () => mockMounts.mock.calls.filter(([key]) => key === 'weight').length;
     expect(mounts()).toBe(1);
     // The first character turns the filter on; the field must be the same one, not a new copy.
@@ -192,7 +198,7 @@ describe('Sort and filter page', () => {
   it('empties a typed number field on Reset', () => {
     const page = open();
     const input = () =>
-      page.renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Weight, minimum, in kg')[0];
+      page.renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === 'Weight, minimum, in kg')[0];
     act(() => input().props.onChangeText('50'));
     expect(input().props.value).toBe('50');
     page.press('Reset all filters and the sort on this page');

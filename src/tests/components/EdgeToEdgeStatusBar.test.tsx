@@ -28,7 +28,7 @@ const mountedRenderers: ReactTestRenderer[] = [];
 
 const getBarStyleCalls = (): Array<
   Parameters<typeof StatusBar.setBarStyle>
-> => StatusBar.setBarStyle.mock.calls;
+> => jest.mocked(StatusBar.setBarStyle).mock.calls;
 
 const mountStatusBar = async (
   props: EdgeToEdgeStatusBarProps
@@ -66,7 +66,7 @@ const unmountStatusBar = async (
 describe('EdgeToEdgeStatusBar', () => {
   beforeEach(() => {
     Platform.OS = 'ios';
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
   });
 
   afterEach(async () => {
@@ -75,7 +75,7 @@ describe('EdgeToEdgeStatusBar', () => {
         mountedRenderers.pop()?.unmount();
       }
     });
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
   });
 
   it('applies the mounted style through the supported StatusBar API', async () => {
@@ -117,7 +117,7 @@ describe('EdgeToEdgeStatusBar', () => {
       barStyle: 'dark-content',
       animated: false,
     });
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
 
     await updateStatusBar(renderer, {
       barStyle: 'light-content',
@@ -134,7 +134,7 @@ describe('EdgeToEdgeStatusBar', () => {
       barStyle: 'default',
       animated: false,
     });
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
 
     await updateStatusBar(renderer, {
       barStyle: 'default',
@@ -177,7 +177,7 @@ describe('EdgeToEdgeStatusBar', () => {
       active: true,
     });
     expect(getBarStyleCalls()).toEqual([['light-content', true]]);
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
 
     await updateStatusBar(renderer, {
       barStyle: 'light-content',
@@ -206,7 +206,7 @@ describe('EdgeToEdgeStatusBar', () => {
       ['light-content', true],
       ['dark-content', false],
     ]);
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
 
     await unmountStatusBar(top);
     expect(getBarStyleCalls()).toEqual([['light-content', true]]);
@@ -221,7 +221,7 @@ describe('EdgeToEdgeStatusBar', () => {
       animated: true,
     });
     const top = await mountStatusBar({ barStyle: 'dark-content' });
-    StatusBar.setBarStyle.mockClear();
+    jest.mocked(StatusBar.setBarStyle).mockClear();
 
     await updateStatusBar(bottom, {
       barStyle: 'default',

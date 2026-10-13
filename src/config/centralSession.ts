@@ -645,6 +645,12 @@ type RefreshOutcome = { kind: 'ok'; session: StoredSession } | { kind: 'refused'
 type RefreshFailure = { kind: 'unavailable'; failure: CentralFailure };
 const unreadable = (): RefreshFailure => ({ kind: 'unavailable', failure: failure('unavailable') });
 let refreshInFlight: { epoch: number; promise: Promise<RefreshOutcome> } | null = null;
+/**
+ * The refresh token the last refresh request carried, and the pair it was answered with (null:
+ * no usable pair). Sign-out reads it: a token a refresh has already exchanged for a new pair is
+ * not sent again.
+ */
+let lastRefresh: { sent: string; session: StoredSession | null } | null = null;
 
 export function refreshCentralSession(): Promise<RefreshOutcome> {
   if (refreshInFlight?.epoch === epoch) return refreshInFlight.promise;
@@ -714,6 +720,9 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
   const answer = await centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', {
     body: { refresh_token: stored.refreshToken },
   });
+  // A success without both tokens is not stored: nothing stored is replaced by half an answer.
+  const session = answer.kind === 'ok' ? parseSession(answer.body.session, Date.now()) : null;
+  lastRefresh = { sent: stored.refreshToken, session };
   // Only a refusal or a failure is dropped when a sign-in or a sign-out has begun since
   // this refresh did: they would end or leave alone a session that is not the one that was
   // asked about. A new token pair is never dropped for that reason (below): it is the only
@@ -738,8 +747,6 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
     }
     return { kind: 'unavailable', failure: failureOf(answer) };
   }
-  // A success without both tokens is not stored: nothing stored is replaced by half an answer.
-  const session = parseSession(answer.body.session, Date.now());
   if (!session) return { kind: 'unavailable', failure: failure('unavailable') };
   // The new pair is written in ONE queued operation, and only if the stored pair is still the
   // one this refresh read: nothing has written or removed it since (the session revision has
@@ -872,16 +879,20 @@ async function signedCall(
 /**
  * Keeps the profile the service answered with, in the store and in memory, in ONE queued
  * operation and only while the stored session still belongs to that person: an answer for
- * a person who has since been replaced or signed out is dropped.
+ * a person who has since been replaced or signed out is dropped (true: nothing to keep).
+ * False when the secure store could not be read or written: memory is then left as it was,
+ * matching the store, and the caller answers `unavailable` (backlog A24).
  */
-async function keepUser(user: CentralUser): Promise<void> {
-  await serialize(async () => {
+async function keepUser(user: CentralUser): Promise<boolean> {
+  return serialize(async () => {
     const session = await readSession();
+    if (session === UNREADABLE) return false;
     const storedUser = readStoredUser(await SecureStore.getItemAsync(CENTRAL_SECURE_KEYS.USER));
-    if (!session || session === UNREADABLE || storedUser?.id !== user.id) return;
+    if (!session || storedUser?.id !== user.id) return true;
     await writeUser(user);
     if (getCentralState().status === 'signedIn') setCentralState({ user });
-  }).catch(() => {});
+    return true;
+  }).catch(() => false);
 }
 
 /** `GET /v1/me`. */
@@ -890,7 +901,7 @@ export async function fetchCentralProfile(): Promise<CentralResult<{ user: Centr
   if ('ok' in answer) return answer;
   const user = parseUser(answer.body.user);
   if (!user) return failure('unavailable');
-  await keepUser(user);
+  if (!(await keepUser(user))) return failure('unavailable');
   return { ok: true, user };
 }
 
@@ -900,7 +911,7 @@ export async function updateCentralName(name: string): Promise<CentralResult<{ u
   if ('ok' in answer) return answer;
   const user = parseUser(answer.body.user);
   if (!user) return failure('unavailable');
-  await keepUser(user);
+  if (!(await keepUser(user))) return failure('unavailable');
   return { ok: true, user };
 }
 
@@ -943,24 +954,40 @@ export async function requestFacilityToken(audience: string, onlyFor: string): P
  * Answers whether the device removed its stored session. False: memory is signed out, but
  * the secure store kept (some of) the keys; the sign-out marker makes the next start remove
  * them instead of signing the person back in, and the caller tells the person.
+ *
+ * The revocation needs an access token. An expired one is replaced first, under the rule of one
+ * refresh at a time: the pair is read in the same queued operation that removes it, so it is the
+ * last pair stored (no refresh can store a newer one after it); a refresh that is running is
+ * waited for; and if a refresh has already sent that refresh token and was answered with a new
+ * pair, that pair is used and the token is not sent again. Without such an answer (none came, or
+ * a refusal) the token is sent as the next refresh would send it. The new refresh token is never
+ * stored: the family is about to be revoked.
  */
 export async function signOutCentral(): Promise<boolean> {
   const config = getCentralLoginConfig();
-  const stored = await serialize(readSession);
-  const cleared = await endLocally(null);
+  // Taken before anything changes: the newest refresh, which waits for any older one.
+  const running = refreshInFlight?.promise;
+  forgetInMemory(null);
+  const [stored, cleared] = await serialize(async (): Promise<readonly [ReadSession, boolean]> => {
+    const found = await readSession();
+    return [found, await clearEnded()] as const;
+  });
   if (!stored || stored === UNREADABLE || !config) return cleared;
-  let token = stored.accessToken;
+  let token: string | null = stored.accessToken;
   if (stored.expiresAt <= Date.now()) {
-    // The revocation needs an access token; an expired one is replaced first.
-    // The new refresh token is never stored: the family is about to be revoked.
-    const refreshed = await centralFetch(config, 'POST', '/v1/session/refresh', {
-      body: { refresh_token: stored.refreshToken },
-    });
-    const session = refreshed.kind === 'ok' ? parseSession(refreshed.body.session, Date.now()) : null;
-    if (!session) return cleared;
-    token = session.accessToken;
+    if (running) await running.catch(() => undefined);
+    if (lastRefresh?.sent === stored.refreshToken && lastRefresh.session) token = lastRefresh.session.accessToken;
+    else {
+      const refreshed = await centralFetch(config, 'POST', '/v1/session/refresh', {
+        body: { refresh_token: stored.refreshToken },
+      });
+      token = refreshed.kind === 'ok' ? (parseSession(refreshed.body.session, Date.now())?.accessToken ?? null) : null;
+    }
   }
-  await centralFetch(config, 'POST', '/v1/session/signout', { accessToken: token });
+  // Forgotten only when it is about the token cleared here: a refresh of a session signed in
+  // again while this sign-out waited keeps its record for that session's own sign-out.
+  if (lastRefresh?.sent === stored.refreshToken) lastRefresh = null;
+  if (token) await centralFetch(config, 'POST', '/v1/session/signout', { accessToken: token });
   return cleared;
 }
 
@@ -1040,6 +1067,7 @@ export function resetCentralSessionForTests(): void {
   epoch += 1;
   sessionRevision += 1;
   refreshInFlight = null;
+  lastRefresh = null;
   catalogueCache = null;
   writes = Promise.resolve();
   restorePending = false;

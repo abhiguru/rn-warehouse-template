@@ -4,7 +4,7 @@ import { act, create } from 'react-test-renderer';
 import { router } from 'expo-router';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed } from '@/services/invoice-service';
-import type { InvoiceDetailsResponse } from '@/services/invoice-service';
+import type { InvoiceDetailsResponse, InvoiceItemsDetailedResponse } from '@/services/invoice-service';
 
 const mockAuth = { userProfile: { role: 'admin' } };
 const grnId = '00000000-0000-4000-8000-000000000123';
@@ -62,7 +62,7 @@ async function openBreakdown(grn: Record<string, string | undefined>, headerNumb
       items: [],
     },
   } as unknown as InvoiceDetailsResponse);
-  jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false });
+  jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false } as InvoiceItemsDetailedResponse);
   await act(async () => { renderer = create(<InvoiceDetailScreen />); });
   await act(async () => {
     renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType)
@@ -115,7 +115,7 @@ it('opens a billed dispatch by its id, not by its printed number', async () => {
       }],
     },
   } as unknown as InvoiceDetailsResponse);
-  jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false });
+  jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false } as InvoiceItemsDetailedResponse);
   await act(async () => { renderer = create(<InvoiceDetailScreen />); });
   await act(async () => {
     renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('breakdown');

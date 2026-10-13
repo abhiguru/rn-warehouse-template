@@ -907,6 +907,50 @@ describe('central sign-in', () => {
       expect(showAlert).not.toHaveBeenCalled();
     });
 
+    it('then a second code step whose own (wrong) code is checked while the first check finishes: one navigation, from the shown step, and no message (A1)', async () => {
+      await checkThenBack(true);
+      const answerFirst = answer;
+      await go(() => router.push('/central-otp'));
+      expect(rootRoutes()).toEqual(['central-login', 'central-otp']);
+      // The first check's last step, remembering the terms tick, is held: the window of backlog A1.
+      let releaseTerms!: () => void;
+      const termsHeld = new Promise<void>(resolve => { releaseTerms = resolve; });
+      // AsyncStorage is already a mock here: its own implementation is wrapped, and put back below.
+      const setItem = jest.mocked(AsyncStorage.setItem);
+      const ordinarySetItem = setItem.getMockImplementation()!;
+      setItem.mockImplementation(async (key: string, value: string) => {
+        if (key.startsWith('central_terms_accepted_v1:')) await termsHeld;
+        return ordinarySetItem(key, value);
+      });
+      // The first check stores the session (as the real one does) and waits in that last step.
+      await act(async () => { answerFirst({ ok: true }); });
+      await wait(STEP_MS);
+      expect(getCentralState().status).toBe('signedIn');
+      expect(rootRoutes()).toEqual(['central-login', 'central-otp']);
+      navigations = [];
+
+      // The shown code step checks a code of its own, and it is wrong.
+      await enterCode('573910');
+      expect(verifyCentralCode).toHaveBeenCalledTimes(2);
+      await act(async () => { answer({ ok: false, message: WRONG }); });
+      await wait(500);
+      // Then the first check finishes.
+      await act(async () => { releaseTerms(); });
+      await wait(500);
+      setItem.mockImplementation(ordinarySetItem);
+
+      expect(showAlert).not.toHaveBeenCalled();
+      expect(pathname()).toBe('/facilities');
+      expect(rootRoutes()).toEqual(['facilities']);
+      expect(mountedFacilities()).toBe(1);
+      expect(router.canGoBack()).toBe(false);
+      // One navigation to My facilities: the shown step's; the step that is gone adds none.
+      expect(navigations.filter(([, href]) => href === '/facilities')).toHaveLength(1);
+      // My facilities had its one chance to skip the list; nothing set it free again afterwards.
+      expect(getCentralState().autoOpenSpent).toBe(true);
+      expect(await hasAcceptedTerms(PHONE)).toBe(true);
+    });
+
     it('with one approved facility, then a correct code: the facility opens by itself, once', async () => {
       await updateMyFacility('asha', ORIGIN, { status: 'approved', opened: true });
       answerWith(LOGIN, DURING_SPLASH);

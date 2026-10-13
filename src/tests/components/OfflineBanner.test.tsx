@@ -72,7 +72,7 @@ afterEach(async () => {
   tree = undefined;
 });
 const OFFLINE_MESSAGE = "You're offline. Actions that need the server will work again when you reconnect.";
-const visible = () => tree!.root.findAllByType('Text').some(node => node.props.children === OFFLINE_MESSAGE);
+const visible = () => tree!.root.findAllByType('Text' as unknown as React.ElementType).some(node => node.props.children === OFFLINE_MESSAGE);
 async function setOffline(value: boolean) {
   mockOffline = value;
   await act(async () => { tree!.update(<OfflineBanner />); });

@@ -160,7 +160,9 @@ export function useColdStartDeepLink(
       setPendingAuth(false);
       setProcessed(true);
 
-      if (currentPath !== routePath) {
+      // `currentPath` has no query or fragment: compare the link's path alone, or a link with a
+      // query (a report with its filters) that expo-router has already opened is opened again.
+      if (currentPath !== routePath.split(/[?#]/)[0]) {
         router.replace(routePath as Href);
       }
     });
@@ -248,8 +250,9 @@ export function useColdStartDeepLink(
 
       // Expo Router may already hold the native target while the root auth
       // gate is mounted. Avoid remounting the same detail screen and issuing
-      // its protected requests twice.
-      if (currentPath !== pendingRoute) {
+      // its protected requests twice. `currentPath` has no query or fragment: the link's path
+      // alone is compared, or a link with a query is opened a second time.
+      if (currentPath !== pendingRoute.split(/[?#]/)[0]) {
         router.replace(pendingRoute as Href);
       }
     } else if (!isLoading) {

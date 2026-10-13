@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — backlog fixes outside central login (2026-10-13)
+
+No backend change.
+
+- **A link with a query is opened once (backlog A26).** A link into the running app that
+  carries a query (for example `warehousemanager://reports/stock-aging?customerId=…`) was
+  handled twice: expo-router opened the route, then `useColdStartDeepLink` compared the shown
+  path (which has no query) with the link including its query, found them different and
+  replaced the screen, which mounted and fetched again. The same happened to a link that
+  started the app, once the sign-in was restored. Both comparisons now use the link's path
+  alone. A link to another path is still opened.
+- **`npm run typecheck:tests` reports no errors (backlog A6).** The 50 type errors left in 22
+  test files of the reports work and of shared code are typed away: casts of the mocked
+  component tags (as `OperatorServerSelectionKeyboard.test.tsx` does), `jest.mocked(...)` for
+  mocked functions, typed fake answers and props the components no longer take. No assertion
+  changed, no test removed or skipped, and each of the 22 files runs the same 380 tests as
+  before.
+
 ## Unreleased — reports (2026-10-12)
 
 No backend change is needed for the entries below unless an entry says so
@@ -690,6 +708,48 @@ listed under "Not tested" there.
   at once and released when the check ends, as the central code step does; the linking step
   (`app/facility-link.tsx`, central login only) the same. A wrong code can still be tried
   again. Nothing else on the screen changes.
+- **Sign-out's own refresh follows the one-refresh-at-a-time rule (backlog A20, central login
+  only).** With an expired access token, sign-out read the stored pair and then sent its
+  refresh token by itself: while a refresh was running it presented the same token a second
+  time, and a pair stored between its read and its clear made it present a token already
+  replaced. It now reads the pair in the queued step that removes it, waits for a running
+  refresh, and uses that refresh's new pair for the revocation instead of sending the token
+  again. Test: A20 to A20c in `centralSessionRace.test.ts` (before: two refresh requests with
+  the same token).
+- **A name the phone cannot store is not reported as saved (backlog A24, central login
+  only).** When the secure store failed to write the profile the service answered with, memory
+  and store kept the old name while "Save" (and the profile read on My facilities) answered
+  success, so the account screen said "Name saved" and showed the new name until the next read. The
+  call now answers `unavailable` ("Couldn't save the name" with its message) and nothing changes on the
+  phone. Test: A24 to A24c in `centralSessionRace.test.ts`.
+- Tests for six parts of the refresh rule that no test held (backlog A23, no change in
+  behaviour): A23a (a refresh that wrote its pair after a sign-out began answers
+  `session_ended`), A23c (a refresh waiting behind one that throws still runs), A23d (a waiting
+  refresh runs under the epoch current when it begins), A23e (a refusal that arrives after a
+  code check began ends nothing), A23f (a profile answer is not written over a user key left
+  without a session) and A24 (memory takes the new name only after the store did). Each fails
+  when its part is taken out of `centralSession.ts`.
+- **A late correct code no longer removes a code step that is checking its own code (backlog
+  A1, central login only).** After Back during a check and a new code step, the first check
+  stores the session and then remembers the terms tick; if the shown code step checked a code
+  of its own in that moment, the first check took that step off the stack under its check, or,
+  when that code was wrong, the person stayed signed in on the code step with "wrong code". Now
+  the first check leaves the shown step alone while that step is checking, and the shown step
+  goes on to My facilities after a wrong code too when the person is signed in by then, without
+  a message; `autoOpenSpent` is set before the terms wait, so nothing sets My facilities' one
+  chance free again after it was spent. Test: "(A1)" in `CentralOpenRemount.test.tsx` (before:
+  the wrong-code message over a signed-in person).
+- **Also in a build without central login: no "Failed to set initial Realtime auth token"
+  warning after a sign-in (backlog A19).** The live order updates (`src/services/order-live-updates.ts`)
+  create a Supabase client whose constructor reads the token at once and logs a warning (the
+  debug banner) when the read is refused. The read was refused with `SIGN_IN_REQUIRED` when the
+  subscription had ended while it was on its way (its screen went, or the session changed),
+  which is what was seen about 4 s after a facility sign-in by code on the phone (D20). That
+  first read is now left unanswered for an ended subscription (the client is disconnected and
+  gets no token; null would give it the public key); a current subscription without a session
+  is refused as before. Test: the A19 cases in `order-live-updates.test.ts` (before: the
+  warning was logged). Which remount ends the first subscription during the sign-in on the
+  phone was not reproduced off the device.
 - English and Gujarati text in the new area `central` (and five screen titles in `nav`); the
   Gujarati is a draft for the owner's wording review.
 - Still open: passcode and biometrics, SMS auto-read, passkeys, shared devices, removing a

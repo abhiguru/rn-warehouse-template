@@ -51,7 +51,8 @@ interface ItemCatalogBrowserProps {
   isVisible: boolean;
   onClose: () => void;
   onAddItems: (items: Array<{ grnItemId: string; quantity: number }>) => void;
-  currentOrderId: string;
+  /** Passed by OrderManagement; not read by the browser. */
+  currentOrderId?: string;
   customerId: string;
   currentOrderItems?: Array<{ grnItemId: string; quantity: number; item: GRNItem }>;
 }
@@ -96,7 +97,6 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   isVisible,
   onClose,
   onAddItems,
-  currentOrderId,
   customerId,
   currentOrderItems = [],
 }) => {

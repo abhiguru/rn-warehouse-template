@@ -3,7 +3,7 @@ import { Text } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import { OrderService } from '@/services/order-service';
-import type { Order } from '@/types/order.types';
+import type { Order, OrderServiceResponse } from '@/types/order.types';
 
 jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
 jest.mock('react-native-paper', () => Object.fromEntries(
@@ -38,7 +38,7 @@ jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: je
 
 it('marks retained orders stale after failure, even after the snackbar closes and while retry is pending', async () => {
   const orders = [{ id: 'fictional-order', customer_id: 'fictional-customer', status: 'EMPTY' }] as Order[];
-  jest.mocked(OrderService.getOrdersList).mockResolvedValueOnce({ success: true, data: orders });
+  jest.mocked(OrderService.getOrdersList).mockResolvedValueOnce({ success: true, data: orders } as OrderServiceResponse<Order[]>);
   let renderer!: ReturnType<typeof create>;
   await act(async () => { renderer = create(<OrderFlashList />); });
   const warning = () => renderer.root.findAllByType(Text)
@@ -54,7 +54,9 @@ it('marks retained orders stale after failure, even after the snackbar closes an
   const retained = () => renderer.root.findByType('FlashList' as unknown as React.ElementType).props.data;
   expect(retained().some((row: { data?: Order }) => row.data?.id === 'fictional-order')).toBe(true);
   let complete!: (value: { success: boolean; data: Order[] }) => void;
-  jest.mocked(OrderService.getOrdersList).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  jest.mocked(OrderService.getOrdersList).mockImplementationOnce(
+    () => new Promise<OrderServiceResponse<Order[]>>(resolve => { complete = resolve as typeof complete; })
+  );
   await act(async () => { refresh(); });
   expect(warning()).toBe(true);
   await act(async () => { complete({ success: true, data: [{ ...orders[0], id: 'fresh-order' }] }); });

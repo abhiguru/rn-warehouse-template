@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppState } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { subscribeToOrderChanges } from '@/services/order-live-updates';
 import { useOrderLiveUpdates } from '../useOrderLiveUpdates';
@@ -13,7 +13,7 @@ jest.mock('@/services/order-live-updates', () => ({ subscribeToOrderChanges: jes
 test('background/offline stop subscriptions; foreground/reconnect and account changes create new ones', async () => {
   const stop = jest.fn();
   (subscribeToOrderChanges as jest.Mock).mockReturnValue(stop);
-  let change!: (state: string) => void;
+  let change!: (state: AppStateStatus) => void;
   const remove = jest.fn();
   const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, callback) => {
     change = callback;

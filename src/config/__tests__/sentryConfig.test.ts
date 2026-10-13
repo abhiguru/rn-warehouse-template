@@ -190,7 +190,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
 
   describe('sanitizeEvent & beforeSend', () => {
     it('redacts user PII and sensitive request headers/query/extra', () => {
-      const event: Sentry.ErrorEvent = {
+      // An error event without its `type` (undefined for an error event), as the SDK hands it over.
+      const event = {
         user: {
           id: 'user-uuid-123',
           phone: '+919876543210',
@@ -218,7 +219,7 @@ describe('sentryConfig - Telemetry and Redaction', () => {
           component: 'auth',
           token: 'sensitive-token',
         },
-      };
+      } as unknown as Sentry.ErrorEvent;
 
       const sanitized = beforeSend(event);
       expect(sanitized).not.toBeNull();

@@ -30,9 +30,11 @@ const invoice = {
   grn: { gr_no: 'FXG001' },
 } as unknown as Invoice;
 
-const colors = {} as MemoizedInvoiceItemProps['colors'];
+// The item no longer takes `colors`; the props still carry the empty object they always had.
+type PropsAsTested = MemoizedInvoiceItemProps & { colors: Record<string, never> };
+const colors: PropsAsTested['colors'] = {};
 const onPress = jest.fn();
-const props = (overrides: Partial<Invoice> = {}): MemoizedInvoiceItemProps => ({
+const props = (overrides: Partial<Invoice> = {}): PropsAsTested => ({
   invoice: { ...invoice, ...overrides },
   onPress,
   canPrint: true,

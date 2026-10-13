@@ -55,24 +55,40 @@ export function subscribeToOrderChanges(refresh: () => void | Promise<void>) {
     client?.realtime.disconnect();
     void client?.removeAllChannels().catch(() => {});
   };
+  // supabase-js asks for the token once inside createClient and logs a warning ("Failed to set
+  // initial Realtime auth token", backlog A19, seen just after a facility sign-in) when that
+  // read is refused. When the subscription ended while that first read was on its way (its
+  // screen went, or the session changed), the read is left unanswered instead: the client is
+  // already disconnected and must get no token, and null would give it the public key. A read
+  // made for a subscription that is still current and finds no session is refused as before.
+  let constructing = false;
+  const ended = () => new Promise<never>(() => {});
   const start = () => {
     if (!current()) return;
     const config = getCurrentConfig();
-    client = createClient(config.url, config.anonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-      accessToken: async () => {
-        if (!current() || !(await ensureValidTokens()))
-          throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
-        const token = await getStoredToken();
-        if (!current() || !token.isValid || !token.authToken)
-          throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
-        return token.authToken;
-      },
-    });
+    constructing = true;
+    try {
+      client = createClient(config.url, config.anonKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+        accessToken: async () => {
+          const first = constructing;
+          const refuse = () => {
+            if (first && !current()) return ended();
+            throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
+          };
+          if (!current() || !(await ensureValidTokens())) return refuse();
+          const token = await getStoredToken();
+          if (!current() || !token.isValid || !token.authToken) return refuse();
+          return token.authToken;
+        },
+      });
+    } finally {
+      constructing = false;
+    }
     const channel = client
       .channel('warehouse-orders')
       .on(

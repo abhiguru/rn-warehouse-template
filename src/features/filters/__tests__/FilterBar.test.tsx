@@ -14,6 +14,11 @@ import { countActiveFilters, currentSort, hasAnyFilter, visibleFields } from '..
 import type { FilterContext, FilterValues, SortState } from '../types';
 import type { useListFilters } from '../useListFilters';
 
+// The mocked react-native components are plain strings in the tree, so the tag names are cast
+// to the element type the renderer's nodes carry (as in OperatorServerSelectionKeyboard.test.tsx).
+const tag = (name: string) => name as unknown as React.ElementType;
+const VIEW = tag('View');
+
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -189,7 +194,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     const t = getTokens(brand, mode);
     const { renderer } = renderBar(makeFilters({ stock: 'in_stock' }));
     const backgrounds = renderer.root
-      .findAll(node => node.type === 'View')
+      .findAll(node => node.type === VIEW)
       .map(node => (StyleSheet.flatten(node.props.style) ?? {}).backgroundColor);
     expect(backgrounds).toContain(t.surface.header);
     expect(backgrounds).toContain(t.brand.subtle);

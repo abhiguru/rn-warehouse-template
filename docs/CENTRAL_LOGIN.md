@@ -158,10 +158,18 @@ the next need refreshes again with the same token. If the lost request had reach
 service, that next refresh is reuse: the service revokes the session family and the person
 signs in again; if it had not (the connection failed before it arrived), the next refresh
 simply succeeds. When the service refuses the refresh token the person is signed out
-centrally, told why, and returned to central sign-in. One deliberate exception: sign-out with
-an expired access token sends the stored refresh token once more, outside the refresh path,
-to obtain a token for the revocation; the family is being revoked in the same breath, so a
-reuse refusal there changes nothing. A secure store
+centrally, told why, and returned to central sign-in. Sign-out with an expired access token
+needs a new one for the revocation and keeps the same rule (backlog A20): it reads the pair in
+the same queued step that removes it, so no newer pair can be stored after the one it reads;
+it waits for a refresh that is running; and if a refresh has already exchanged that refresh
+token for a new pair, the revocation uses that pair and the token is not sent again. Only
+without such an answer does sign-out send the token itself, as the next refresh would; the
+family is being revoked in the same breath, so a reuse refusal there changes nothing.
+Accepted: when the running refresh's answer is lost (or it was refused), sign-out sends that
+token a second time. If the lost request had reached the service, that is a reuse: it is
+refused, the family is revoked by it, and no revocation call is made (A20e); after a refusal
+the token was already dead (A20d). If it had not, the refresh simply succeeds and its new
+access token carries the revocation. A secure store
 that does not answer is not "no session": nothing is cleared, the store is read again once
 2 seconds later and on each return to the foreground, and the next call reads again.
 
@@ -286,7 +294,7 @@ under one another:
 | A forced sign-out after that sign-in (`facilitySmsOrigin` is cleared when it finishes) | My facilities alone |
 | "My facilities" on the waiting screen after a facility's own SMS sign-in | My facilities alone: that facility's sign-in is taken off the stack, so Back has nothing to go back to |
 | The facility session ends on a screen pushed over its home after the central session has ended | Central sign-in alone (and the same for the facility's own sign-in, where the person is sent to it) |
-| Hardware Back while the central code is being checked, then a correct code | My facilities alone, once: the session is stored and the guard shows My facilities in place of central sign-in; the removed code step does not navigate again. A wrong code is not said over the screen that is shown by then. If the person asked for a code again meanwhile, so that another code step is shown, the guard leaves that screen alone for a person who is signed in, so the first check's correct answer takes the stack down to My facilities alone itself |
+| Hardware Back while the central code is being checked, then a correct code | My facilities alone, once: the session is stored and the guard shows My facilities in place of central sign-in; the removed code step does not navigate again. A wrong code is not said over the screen that is shown by then. If the person asked for a code again meanwhile, so that another code step is shown, the guard leaves that screen alone for a person who is signed in, so the first check's correct answer takes the stack down to My facilities alone itself, unless that code step is checking a code of its own: it is left alone, and its own answer decides; a wrong code there, with the person signed in by then, goes on to My facilities as a correct one would, with no message (backlog A1) |
 
 The route guard does this (`src/navigation/RouteGuard.tsx`, central login only): a refused
 screen on top of My facilities goes back to that My facilities; a session that ends on a
