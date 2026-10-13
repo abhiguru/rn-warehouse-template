@@ -23,8 +23,12 @@ function withEnv(values, callback) {
   }
 }
 
+// app.config.js adds one plugin of its own after app.json's: it drops the Play install-referrer
+// permission (see scripts/install-referrer-permission.test.mjs).
+const plugins = [...base.plugins, configure.withoutInstallReferrerPermission];
+
 test('native identity defaults preserve existing configuration', () => {
-  withEnv({}, () => assert.deepEqual(configure({ config: base }), base));
+  withEnv({}, () => assert.deepEqual(configure({ config: base }), { ...base, plugins }));
 });
 
 test('isolated identity preserves permission and plugin requirements', () => {
@@ -35,7 +39,7 @@ test('isolated identity preserves permission and plugin requirements', () => {
     assert.equal(actual.name, 'Test Warehouse');
     assert.equal(actual.scheme, 'warehouse-test1');
     assert.deepEqual(actual.android.blockedPermissions, base.android.blockedPermissions);
-    assert.deepEqual(actual.plugins, base.plugins);
+    assert.deepEqual(actual.plugins, plugins);
     assert.equal(base.android.package, 'com.example.warehousemanager');
   });
 });

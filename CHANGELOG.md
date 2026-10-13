@@ -40,7 +40,7 @@ Backend PR #96 (report PDF filters) merges first; the app falls back with consen
 
 - **The print range dialog keeps Print above the keyboard (SR-15 follow-up):** the two number fields scroll and the buttons stay below them, as in the deletion confirmation.
 - **Operations no longer says "in this period" when the latest activity is empty (SR-14 follow-up):** that list is of any date, so it now reads "No GRNs or dispatches yet. The latest ones appear here."
-- **The version footer shows the version and build of the installed app (SR-12 follow-up),** read with the new dependency `expo-application` (~57.0.3), not the embedded app.json number an EAS build with remote versions may leave at 1; Expo Go and missing values fall back to the embedded config.
+- **The version footer shows the version and build of the installed app (SR-12 follow-up),** read with the new dependency `expo-application` (~57.0.3), not the embedded app.json number an EAS build with remote versions may leave at 1; Expo Go and missing values fall back to the embedded config. The Play install-referrer permission its Android library asks for (`com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE`) is removed from the manifest by a config plugin in `app.config.js`.
 - **Stacked customer cards no longer leave a wide gap above the PDF button (SR-O10 follow-up):** the icon sits a small gap under the facts; its touch area is still full size, below the row.
 
 ## Unreleased — performance review fixes (2026-10-13)
