@@ -3,7 +3,7 @@
  * themes and checks the token roles the guide assigns to them.
  */
 import React from 'react';
-import { StyleSheet, Switch as RNSwitch, Text } from 'react-native';
+import { StyleSheet, Switch as RNSwitch, Text, type StyleProp, type TextStyle } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
@@ -74,7 +74,8 @@ function render(brand: Brand, mode: Mode, element: React.ReactElement): ReactTes
   return tree;
 }
 
-const flat = (style: unknown) => StyleSheet.flatten(style as never) ?? {};
+// The rendered style, flattened, typed as the style of a text (it has the view's fields too).
+const flat = (style: unknown): TextStyle => StyleSheet.flatten(style as StyleProp<TextStyle>) ?? {};
 
 const steps = [{ label: 'Customer' }, { label: 'Items' }, { label: 'Review' }];
 

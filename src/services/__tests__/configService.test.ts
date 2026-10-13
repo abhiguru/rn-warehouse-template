@@ -142,7 +142,7 @@ it('discards a late response after logout and removes authenticated persistent c
   let resolve!: (value: unknown) => void;
   global.fetch = jest.fn(
     () =>
-      new Promise(r => {
+      new Promise<unknown>(r => {
         resolve = r;
       })
   ) as typeof fetch;
@@ -160,7 +160,7 @@ it('discards account A response after account B config loads', async () => {
   let resolve!: (value: unknown) => void;
   jest.mocked(global.fetch).mockImplementationOnce(
     () =>
-      new Promise(r => {
+      new Promise<unknown>(r => {
         resolve = r;
       }) as Promise<Response>
   );

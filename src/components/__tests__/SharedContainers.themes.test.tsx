@@ -238,7 +238,7 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         <Table
           columns={tableColumns}
           data={tableData}
-          keyExtractor={(row: { id: string }) => row.id}
+          keyExtractor={(row: Record<string, unknown>) => row.id as string}
           sortColumn="bags"
           sortDirection="asc"
           onSort={jest.fn()}

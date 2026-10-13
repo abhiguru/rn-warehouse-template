@@ -20,7 +20,7 @@ it('opens the linked GRN Overview and preserves manual tab changes until a new r
   await act(async () => { renderer.unmount(); });
 });
 
-it.each([['overview'], ['overview', 'items']])('unwraps a repeated tab parameter %j to its first value', async tab => {
+it.each<string[]>([['overview'], ['overview', 'items']])('unwraps a repeated tab parameter %j to its first value', async tab => {
   let renderer!: ReturnType<typeof create>;
   await act(async () => { renderer = create(<Harness id="grn" tab={tab} />); });
   expect(renderer.root.findByType(Text).props.children).toBe('overview');

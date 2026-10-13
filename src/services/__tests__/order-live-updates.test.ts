@@ -11,6 +11,8 @@ jest.mock('@/config/supabaseConfig', () => ({
   getStoredToken: jest.fn(),
 }));
 
+/** The part of a Realtime channel the service uses; each method returns the channel. */
+type FakeChannel = { on: jest.Mock; subscribe: jest.Mock };
 const handlers: Record<string, (...args: any[]) => void> = {};
 let status: (status: string) => void;
 let accessToken: () => Promise<string>;
@@ -26,7 +28,7 @@ beforeEach(() => {
   (getStoredToken as jest.Mock).mockResolvedValue({ isValid: true, authToken: 'session-one' });
   (createClient as jest.Mock).mockImplementation((_url, _key, options) => {
     accessToken = options.accessToken;
-    const channel = {
+    const channel: FakeChannel = {
       on: jest.fn((event, _filter, callback) => { handlers[event] = callback; return channel; }),
       subscribe: jest.fn(callback => { status = callback; return channel; }),
     };
@@ -121,4 +123,70 @@ test('a changed session during discovery cannot construct a socket for the old a
   advanceSessionGeneration(); release(true);
   await operatorResumeGate.ensureVerified(); await Promise.resolve();
   expect(createClient).not.toHaveBeenCalled(); remove();
+});
+
+describe("the client's own first token read (backlog A19)", () => {
+  const setAuth = jest.fn();
+  let warn: jest.SpyInstance;
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // As supabase-js's SupabaseClient constructor does when given `accessToken`: it reads the
+    // token at once and logs a warning when that read is refused.
+    (createClient as jest.Mock).mockImplementation((_url, _key, options) => {
+      accessToken = options.accessToken;
+      Promise.resolve(options.accessToken())
+        .then((token: string) => setAuth(token))
+        // eslint-disable-next-line no-console -- the library's own call, which the test watches
+        .catch((e: unknown) => console.warn('Failed to set initial Realtime auth token:', e));
+      const channel: FakeChannel = {
+        on: jest.fn((event: string, _filter: unknown, callback: (...args: unknown[]) => void) => { handlers[event] = callback; return channel; }),
+        subscribe: jest.fn((callback: (value: string) => void) => { status = callback; return channel; }),
+      };
+      return { channel: () => channel, realtime: { disconnect }, removeAllChannels };
+    });
+  });
+  afterEach(() => { warn.mockRestore(); });
+
+  test('the subscription ends while that read waits for the session check: no warning, and no token', async () => {
+    let finish!: (value: boolean) => void;
+    (ensureValidTokens as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    stop = subscribeToOrderChanges(jest.fn());
+    expect(createClient).toHaveBeenCalledTimes(1);
+    stop(); // the screen went while the first read was on its way
+    finish(true);
+    await flush();
+    expect(warn).not.toHaveBeenCalled();
+    expect(setAuth).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test('the session changes while that read reads the stored token: no warning, and no token', async () => {
+    let finish!: (value: { isValid: boolean; authToken: string }) => void;
+    (getStoredToken as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    stop = subscribeToOrderChanges(jest.fn());
+    await flush(); // the session check has answered; the stored token is being read
+    advanceSessionGeneration();
+    finish({ isValid: true, authToken: 'session-one' });
+    await flush();
+    expect(warn).not.toHaveBeenCalled();
+    expect(setAuth).not.toHaveBeenCalled();
+  });
+
+  test('nothing changes for a current subscription: the token is handed over, and a read after the end is still refused', async () => {
+    stop = subscribeToOrderChanges(jest.fn());
+    await flush();
+    expect(setAuth).toHaveBeenCalledWith('session-one');
+    expect(warn).not.toHaveBeenCalled();
+    stop();
+    await expect(accessToken()).rejects.toThrow('Sign in required');
+  });
+
+  test('nothing changes for a current subscription without a session: its first read is refused, as before', async () => {
+    (ensureValidTokens as jest.Mock).mockResolvedValue(false);
+    stop = subscribeToOrderChanges(jest.fn());
+    await flush();
+    expect(setAuth).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('Failed to set initial Realtime auth token:', expect.objectContaining({ message: 'Sign in required' }));
+  });
 });

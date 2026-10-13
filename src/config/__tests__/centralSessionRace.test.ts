@@ -28,6 +28,7 @@ import {
   resetCentralSessionForTests,
   restoreCentralSession,
   signOutCentral,
+  updateCentralName,
   verifyCentralCode,
 } from '../centralSession';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '../centralState';
@@ -1055,5 +1056,234 @@ describe('the sign-out marker after the review of central-b4', () => {
     await settle();
     expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x' } });
     expect(stored().refresh).toBe(refreshToken('1'));
+  });
+});
+
+describe('sign-out with an expired access token while a refresh is in flight (backlog A20)', () => {
+  const sentRefreshTokens = () =>
+    callsOf('POST /v1/session/refresh').map(([, init]) => JSON.parse(String((init as RequestInit).body)).refresh_token);
+
+  it('A20. ONE refresh request, with the token the store holds; the revocation carries that refresh\'s answer', async () => {
+    await signedInAsX(-60);
+    const answerRefresh = expectCall('POST /v1/session/refresh');
+    const refreshing = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    expect(sentRefreshTokens()).toEqual([refreshToken('1')]);
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-other', '3') })); // would answer a second request
+    expectCall('POST /v1/session/signout').resolve(reply(200, { ok: true }));
+    const leaving = signOutCentral();
+    await settle();
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect([...secure.keys()]).toEqual([]);
+    answerRefresh.resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    expect(await leaving).toBe(true);
+    await refreshing;
+    await settle();
+    expect(sentRefreshTokens()).toEqual([refreshToken('1')]);
+    expect(callsOf('POST /v1/session/signout').map(bearerOf)).toEqual(['x-new']);
+    expect([...secure.keys()]).toEqual([]);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+  });
+
+  it('A20b. no refresh in flight: the sign-out refreshes once with the stored token and revokes with the new access token', async () => {
+    await signedInAsX(-60);
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    expectCall('POST /v1/session/signout').resolve(reply(200, { ok: true }));
+    expect(await signOutCentral()).toBe(true);
+    expect(sentRefreshTokens()).toEqual([refreshToken('1')]);
+    expect(callsOf('POST /v1/session/signout').map(bearerOf)).toEqual(['x-new']);
+    expect([...secure.keys()]).toEqual([]);
+  });
+
+  it('A20d. the running refresh is refused (401) while sign-out waits: sign-out sends the token once more, the service refuses it too, and no revocation is sent', async () => {
+    await signedInAsX(-60);
+    const answerRefresh = expectCall('POST /v1/session/refresh');
+    const refreshing = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    expectCall('POST /v1/session/refresh').resolve(reply(401, { error: { code: 'invalid_refresh_token', message: 'x' } }));
+    const leaving = signOutCentral();
+    await settle();
+    answerRefresh.resolve(reply(401, { error: { code: 'invalid_refresh_token', message: 'x' } }));
+    expect(await leaving).toBe(true);
+    await refreshing;
+    expect(sentRefreshTokens()).toEqual([refreshToken('1'), refreshToken('1')]);
+    expect(callsOf('POST /v1/session/signout')).toHaveLength(0);
+    expect([...secure.keys()]).toEqual([]);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+  });
+
+  it('A20e. ACCEPTED: the running refresh gets no answer while sign-out waits: sign-out sends the token again, the service counts it as reuse (401), and no revocation is sent', async () => {
+    await signedInAsX(-60);
+    const answerRefresh = expectCall('POST /v1/session/refresh');
+    const refreshing = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    expectCall('POST /v1/session/refresh').resolve(reply(401, { error: { code: 'invalid_refresh_token', message: 'reuse' } }));
+    const leaving = signOutCentral();
+    await settle();
+    answerRefresh.reject(new TypeError('Network request failed'));
+    expect(await leaving).toBe(true);
+    expect(await refreshing).toMatchObject({ kind: 'unavailable' });
+    expect(sentRefreshTokens()).toEqual([refreshToken('1'), refreshToken('1')]);
+    expect(callsOf('POST /v1/session/signout')).toHaveLength(0);
+    expect([...secure.keys()]).toEqual([]);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+  });
+
+  it('A20c. the refresh that sent the stored token got no answer: the sign-out sends it as the next refresh would, and revokes with its answer', async () => {
+    await signedInAsX(-60);
+    // No answer is queued: the refresh request fails as without a connection, and the session is kept.
+    expect(await refreshCentralSession()).toMatchObject({ kind: 'unavailable' });
+    expect(stored().refresh).toBe(refreshToken('1'));
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    expectCall('POST /v1/session/signout').resolve(reply(200, { ok: true }));
+    expect(await signOutCentral()).toBe(true);
+    expect(sentRefreshTokens()).toEqual([refreshToken('1'), refreshToken('1')]);
+    expect(callsOf('POST /v1/session/signout').map(bearerOf)).toEqual(['x-new']);
+    expect([...secure.keys()]).toEqual([]);
+  });
+});
+
+/** The next write of `key` fails once; every other write is the ordinary one. */
+function failNextWrite(key: string) {
+  const ordinary = jest.mocked(SecureStore.setItemAsync).getMockImplementation() as (key: string, value: string) => Promise<void>;
+  let armed = true;
+  jest.mocked(SecureStore.setItemAsync).mockImplementation(async (k, value) => {
+    if (armed && k === key) {
+      armed = false;
+      throw new Error('keystore');
+    }
+    return ordinary(k, value);
+  });
+}
+
+describe('a profile answer whose store write fails (backlog A24)', () => {
+  it('A24. a new name the store cannot keep: the call answers unavailable, and memory and store keep the old name', async () => {
+    await signedInAsX(600);
+    expectCall('PATCH /v1/me').resolve(reply(200, { user: { ...USER_X, name: 'Asha Fictional' } }));
+    failNextWrite(CENTRAL_SECURE_KEYS.USER);
+    expect(await updateCentralName('Asha Fictional')).toMatchObject({ ok: false, code: 'unavailable' });
+    await settle();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x', name: null } });
+    expect(JSON.parse(secure.get(CENTRAL_SECURE_KEYS.USER) as string)).toMatchObject({ id: 'user-x', name: null });
+  });
+
+  it('A24b. the same for a profile read: unavailable, nothing changed', async () => {
+    await signedInAsX(600);
+    expectCall('GET /v1/me').resolve(reply(200, { user: { ...USER_X, name: 'Asha Fictional' } }));
+    failNextWrite(CENTRAL_SECURE_KEYS.USER);
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'unavailable' });
+    await settle();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x', name: null } });
+    expect(JSON.parse(secure.get(CENTRAL_SECURE_KEYS.USER) as string)).toMatchObject({ id: 'user-x', name: null });
+  });
+
+  it('A24c. nothing changes when the write succeeds: the new name is answered, in memory and stored', async () => {
+    await signedInAsX(600);
+    expectCall('PATCH /v1/me').resolve(reply(200, { user: { ...USER_X, name: 'Asha Fictional' } }));
+    expect(await updateCentralName('Asha Fictional')).toMatchObject({ ok: true, user: { id: 'user-x', name: 'Asha Fictional' } });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x', name: 'Asha Fictional' } });
+    expect(JSON.parse(secure.get(CENTRAL_SECURE_KEYS.USER) as string)).toMatchObject({ id: 'user-x', name: 'Asha Fictional' });
+  });
+});
+
+describe('the refresh rule, case by case (backlog A23: each case fails if one part of the rule is taken out)', () => {
+  // (The sixth part, memory updated only after the profile is stored, is pinned by A24 above.)
+  const sentRefreshTokens = () =>
+    callsOf('POST /v1/session/refresh').map(([, init]) => JSON.parse(String((init as RequestInit).body)).refresh_token);
+
+  it('A23a. a sign-out begins while the refresh writes its pair: the refresh looks again and answers session_ended, not the pair', async () => {
+    await signedInAsX(30);
+    const answerRefresh = expectCall('POST /v1/session/refresh');
+    const hold = holdWrite(CENTRAL_SECURE_KEYS.ACCESS_TOKEN, accessToken('x-new'));
+    const refreshing = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    answerRefresh.resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    await hold.reached.promise; // inside the write of the new pair
+    expectCall('POST /v1/session/signout').resolve(reply(200, { ok: true }));
+    const leaving = signOutCentral(); // memory is signed out at once; its clear waits behind the write
+    hold.gate.resolve();
+    expect(await refreshing).toMatchObject({ kind: 'unavailable', failure: { code: 'session_ended' } });
+    expect(await leaving).toBe(true);
+    await settle();
+    expect([...secure.keys()]).toEqual([]);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+  });
+
+  it('A23c. the running refresh fails with an error: the refresh that waits behind it still runs and answers', async () => {
+    await signedInAsX(30);
+    const answerFirst = expectCall('POST /v1/session/refresh');
+    const first = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    const answerB = expectCall('POST /v1/otp/verify');
+    const checkB = verifyCentralCode(PHONE_X, '222222', '2025-12'); // moves the epoch; fails below
+    answerB.resolve(wrongCode());
+    await checkB;
+    const second = refreshCentralSession(); // another epoch: it waits for the first
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    // An answer that cannot even be read: reading its session throws.
+    answerFirst.resolve(reply(200, { get session(): unknown { throw new Error('unreadable answer'); } }));
+    await expect(first).rejects.toThrow('unreadable answer');
+    expect(await second).toMatchObject({ kind: 'ok', session: { refreshToken: refreshToken('2') } });
+    await settle();
+    expect(stored()).toEqual({ access: accessToken('x-new'), refresh: refreshToken('2'), expires: true, userId: 'user-x' });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x' } });
+  });
+
+  it('A23d. the epoch moves again while a refresh waits: it runs under the epoch current when it begins, and sends the NEW token', async () => {
+    await signedInAsX(30);
+    const answerFirst = expectCall('POST /v1/session/refresh');
+    const first = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    const answerB = expectCall('POST /v1/otp/verify');
+    const checkB = verifyCentralCode(PHONE_X, '222222', '2025-12');
+    answerB.resolve(wrongCode());
+    await checkB;
+    const second = refreshCentralSession(); // asked under this epoch; it waits for the first
+    const answerC = expectCall('POST /v1/otp/verify');
+    const checkC = verifyCentralCode(PHONE_X, '333333', '2025-12'); // the epoch moves again while it waits
+    answerC.resolve(wrongCode());
+    await checkC;
+    expectCall('POST /v1/session/refresh').resolve(reply(200, { session: sessionOf('x-newer', '3') }));
+    answerFirst.resolve(reply(200, { session: sessionOf('x-new', '2') }));
+    expect(await first).toMatchObject({ kind: 'ok', session: { refreshToken: refreshToken('2') } });
+    expect(await second).toMatchObject({ kind: 'ok', session: { refreshToken: refreshToken('3') } });
+    expect(sentRefreshTokens()).toEqual([refreshToken('1'), refreshToken('2')]);
+    await settle();
+    expect(stored().refresh).toBe(refreshToken('3'));
+  });
+
+  it('A23e. a refusal that arrives after a code check began does not end the session, and the check then signs in', async () => {
+    await signedInAsX(30);
+    setCentralState({ signInPhone: PHONE_X });
+    const answerRefresh = expectCall('POST /v1/session/refresh');
+    const refreshing = refreshCentralSession();
+    await settle(); // token 1 has been sent
+    const answerV = expectCall('POST /v1/otp/verify');
+    const check = verifyCentralCode(PHONE_X, '111111', '2025-12'); // the epoch moves; nothing is written yet
+    answerRefresh.resolve(reply(401, { error: { code: 'invalid_refresh_token', message: 'x' } }));
+    expect(await refreshing).toMatchObject({ kind: 'unavailable', failure: { code: 'session_ended' } });
+    await settle();
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x' }, signInPhone: PHONE_X, endedMessage: null });
+    answerV.resolve(reply(200, { user: USER_X, session: sessionOf('x-b', 'b') }));
+    expect(await check).toMatchObject({ ok: true, user: { id: 'user-x' } });
+    await settle();
+    expect(stored()).toEqual({ access: accessToken('x-b'), refresh: refreshToken('b'), expires: true, userId: 'user-x' });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', user: { id: 'user-x' } });
+  });
+
+  it('A23f. a profile answer after a sign-out that left only the user key: it is not written over that leftover', async () => {
+    await signedInAsX(600);
+    const answerMe = expectCall('GET /v1/me');
+    const profile = fetchCentralProfile();
+    await settle(); // X's access token is on its way
+    const disarm = failDeletes([CENTRAL_SECURE_KEYS.USER]);
+    expect(await signOutCentral()).toBe(false); // the token keys are gone, the user key stays
+    disarm();
+    expect(stored()).toEqual({ access: null, refresh: null, expires: false, userId: 'user-x' });
+    answerMe.resolve(reply(200, { user: { ...USER_X, name: 'Asha Fictional' } }));
+    expect(await profile).toMatchObject({ ok: true, user: { id: 'user-x' } });
+    await settle();
+    expect(JSON.parse(secure.get(CENTRAL_SECURE_KEYS.USER) as string)).toMatchObject({ id: 'user-x', name: null });
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
   });
 });

@@ -218,7 +218,7 @@ describe('TabsLayout authentication gate', () => {
         unwrap: jest.fn(() => restore.promise),
       });
     });
-    initializeAuth.mockImplementation(() => ({
+    (initializeAuth as unknown as jest.Mock).mockImplementation(() => ({
       __initializeAuthThunk: true,
     }));
     (loadAuthSlice as jest.Mock).mockResolvedValue({ initializeAuth });
@@ -426,7 +426,7 @@ describe('TabsLayout authentication gate', () => {
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     await settleRestore(restore);
 
-    expect(StatusBar.setBarStyle.mock.calls).toEqual([
+    expect(jest.mocked(StatusBar.setBarStyle).mock.calls).toEqual([
       ['light-content', false],
     ]);
     expect(StatusBar.setBarStyle).toHaveBeenCalledWith(

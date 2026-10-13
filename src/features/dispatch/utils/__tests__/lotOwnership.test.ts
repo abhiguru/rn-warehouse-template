@@ -24,7 +24,7 @@ describe('linesFromOtherCustomers', () => {
   it("returns only the lines known to be another customer's", () => {
     const own = { grns_gr_no: 'A0010', grns_customer_id: CUSTOMER_A };
     const other = { grns_gr_no: 'B0007', grns_customer_id: CUSTOMER_B };
-    const unknown = { grns_gr_no: 'A0011' };
+    const unknown: { grns_gr_no: string; grns_customer_id?: string } = { grns_gr_no: 'A0011' };
 
     expect(linesFromOtherCustomers(CUSTOMER_A, [own, other, unknown])).toEqual([other]);
     expect(linesFromOtherCustomers(CUSTOMER_A, [own, unknown])).toEqual([]);

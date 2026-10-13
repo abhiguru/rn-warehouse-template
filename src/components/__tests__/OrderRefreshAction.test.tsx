@@ -11,7 +11,8 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (sel: (state: unknown) => unknown) => sel({ theme: mockTheme }),
 }));
 
-function renderAction(props: React.ComponentProps<typeof OrderRefreshAction>) {
+// `color` is a prop the action no longer takes: one test still passes it to show it is ignored.
+function renderAction(props: React.ComponentProps<typeof OrderRefreshAction> & { color?: string }) {
   let renderer!: ReactTestRenderer;
   act(() => { renderer = create(<OrderRefreshAction {...props} />); });
   return renderer.root.findByType('IconButton' as never);

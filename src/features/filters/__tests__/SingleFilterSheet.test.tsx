@@ -7,6 +7,11 @@ import { currentSort, visibleFields } from '../filterModel';
 import type { FilterContext, FilterValues } from '../types';
 import type { useListFilters } from '../useListFilters';
 
+// The mocked react-native components are plain strings in the tree, so the tag names are cast
+// to the element type the renderer's nodes carry (as in OperatorServerSelectionKeyboard.test.tsx).
+const tag = (name: string) => name as unknown as React.ElementType;
+const TEXT_INPUT = tag('TextInput');
+
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
@@ -44,7 +49,7 @@ function setup(values: FilterValues) {
     renderer = TestRenderer.create(element(null));
   });
   const input = (label: string) =>
-    renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === label)[0];
+    renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === label)[0];
   const press = (label: string) =>
     act(() =>
       renderer.root

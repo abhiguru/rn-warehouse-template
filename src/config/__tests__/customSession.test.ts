@@ -504,7 +504,7 @@ test('authenticated HTTP waits for foreground identity discovery before forwardi
   const verification = new Promise<boolean>(resolve => { release = resolve; });
   const remove = operatorResumeGate.installVerifier(() => verification);
   operatorResumeGate.suspend();
-  jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: true }));
+  jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: true }) as unknown as Response);
   const request = createSessionReadFetch()('https://warehouse.example.test/rest/v1/rpc/get_orders_list');
   expect(global.fetch).not.toHaveBeenCalled();
   release(true); await request;
