@@ -91,7 +91,19 @@ function zeroChargeHeader(payload: CreateInvoicePayload): { zero_charge_reason?:
   return { zero_charge_reason: payload.header.zero_charge_reason?.trim() || null };
 }
 
-function invoiceSaveMessage(text: unknown, fallback: string): string {
+/**
+ * An invoice number outside 1 to 99999999 (backend migration 73, SQLSTATE
+ * WH422). The three-argument save_invoice sends it as the error's code,
+ * update_invoice as `error_code` in its answer, save_invoice(jsonb) inside its
+ * text ("Database error: … (SQLState: WH422)").
+ */
+const INVOICE_NUMBER_RANGE = 'WH422';
+const isInvoiceNumberRange = (text: unknown, code: unknown): boolean =>
+  code === INVOICE_NUMBER_RANGE ||
+  (typeof text === 'string' && /\(SQLState:\s*WH422\)/i.test(text));
+
+function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): string {
+  if (isInvoiceNumberRange(text, code)) return t('invoice.validation.invoiceNumberRange');
   if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
     return serverReason(text) ?? serverText(text, fallback);
   }
@@ -588,11 +600,11 @@ export const createInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
-      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed')));
+      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
     }
 
     if (!data || !data.success) {
-      const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'));
+      const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
       throw new Error(errorMsg);
     }
 
@@ -893,14 +905,14 @@ export const updateInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
-      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed')));
+      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed'), error.code));
     }
 
     // RPC returns an object directly
     const result = data;
 
     if (!result || !result.success) {
-      const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'));
+      const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'), result?.error_code);
       return {
         success: false,
         data: { invoice_id: '', invoice_no: 0 },

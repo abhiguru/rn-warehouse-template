@@ -19,6 +19,23 @@ const moneyField = (messages: { negative: TranslationKey; tooLarge: TranslationK
     .max(999999, msg(messages.tooLarge))
     .required(msg(messages.required));
 
+/**
+ * The largest number a new invoice may have: the server refuses a save outside
+ * 1 to 99999999 with WH422 (backend migration 73). One invoice numbered
+ * 2147483647, typed by hand, had made every later invoice of its financial
+ * year fail. The number field of a new invoice takes this many digits.
+ */
+export const INVOICE_NUMBER_MAX = 99999999;
+export const INVOICE_NUMBER_DIGITS = String(INVOICE_NUMBER_MAX).length;
+
+const invoiceNumberField = () =>
+  yup
+    .number()
+    .required(msg('invoice.validation.invoiceNumberRequired'))
+    .positive(msg('invoice.validation.invoiceNumberPositive'))
+    .integer(msg('invoice.validation.invoiceNumberWhole'))
+    .min(1, msg('invoice.validation.invoiceNumberMin'));
+
 // Step 1: Invoice Header Schema
 export const step1Schema = yup.object().shape({
   // "Today" is worked out when the form is checked. A limit fixed when this
@@ -39,12 +56,7 @@ export const step1Schema = yup.object().shape({
     .required(msg('invoice.validation.financialYearRequired'))
     .matches(/^\d{4}-\d{2}$/, msg('invoice.validation.financialYearFormat', { example: '2025-26' })),
 
-  inv_no: yup
-    .number()
-    .required(msg('invoice.validation.invoiceNumberRequired'))
-    .positive(msg('invoice.validation.invoiceNumberPositive'))
-    .integer(msg('invoice.validation.invoiceNumberWhole'))
-    .min(1, msg('invoice.validation.invoiceNumberMin')),
+  inv_no: invoiceNumberField(),
 
   gr_id: yup.string().uuid(msg('invoice.validation.grnInvalid')).required(msg('invoice.validation.grnRequired')),
 
@@ -121,6 +133,16 @@ export const step2Schema = yup.object().shape({
     .required(msg('invoice.validation.itemsRequired')),
 });
 
+/**
+ * Step 1 of a new invoice: the number also has the server's ceiling. An edit
+ * keeps the checks of step1Schema, because the server lets an invoice saved
+ * before the ceiling keep its larger number (it refuses only a change to
+ * another number outside the range, and that refusal is shown as this message).
+ */
+export const newInvoiceStep1Schema = step1Schema.shape({
+  inv_no: invoiceNumberField().max(INVOICE_NUMBER_MAX, msg('invoice.validation.invoiceNumberRange')),
+});
+
 // Step 3: Full Invoice Schema (for final validation)
 // The total must be more than 0, with one exception: an invoice on which
 // nothing is charged (every line has a charge of 0, allowed since the owner
@@ -128,8 +150,8 @@ export const step2Schema = yup.object().shape({
 // saved. That is a total of 0 before any discount. A charged invoice that a
 // discount takes down to 0 is refused as before, also when one of its lines is
 // free.
-export const fullInvoiceSchema = yup.object().shape({
-  header: step1Schema.concat(
+const fullSchemaWith = (header: typeof step1Schema) => yup.object().shape({
+  header: header.concat(
     yup.object().shape({
       labour: yup
         .number()
@@ -156,6 +178,11 @@ export const fullInvoiceSchema = yup.object().shape({
   return this.createError({ path: 'header.total', message: t('invoice.validation.totalPositive') });
 });
 
+export const fullInvoiceSchema = fullSchemaWith(step1Schema);
+
+/** The whole of a new invoice, with the ceiling on its number. */
+export const newInvoiceSchema = fullSchemaWith(newInvoiceStep1Schema);
+
 // ============================================================================
 // VALIDATION HELPERS (using createStepValidator factory - J16 fix)
 // ============================================================================
@@ -170,5 +197,11 @@ export const validateStep2 = async (data: unknown): Promise<ValidationResult> =>
 export const validateStep3 = createStepValidator(fullInvoiceSchema);
 
 export const validateFullInvoice = createStepValidator(fullInvoiceSchema);
+
+/** Step 1 of a new invoice (the number has the server's ceiling). */
+export const validateNewInvoiceStep1 = createStepValidator(newInvoiceStep1Schema);
+
+/** The whole of a new invoice (the number has the server's ceiling). */
+export const validateNewInvoice = createStepValidator(newInvoiceSchema);
 
 export const validateItemPricing = createStepValidator(itemPricingSchema);

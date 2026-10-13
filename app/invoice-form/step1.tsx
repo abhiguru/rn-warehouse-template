@@ -33,6 +33,7 @@ import {
 } from '@/constants/invoiceSteps';
 import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
+import { INVOICE_NUMBER_DIGITS } from '@/features/invoice/schemas/invoiceValidation';
 
 export default function InvoiceFormStep1() {
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -112,7 +113,9 @@ export default function InvoiceFormStep1() {
   const isGettingNumber = isLoading || isGettingNextNumber;
 
   const handleInvoiceNumberChange = (text: string) => {
-    const numValue = parseInt(normalizeDigits(text));
+    // At most as many digits as the largest number the server accepts (maxLength
+    // below does the same as the user types; this also covers a paste).
+    const numValue = parseInt(normalizeDigits(text).slice(0, INVOICE_NUMBER_DIGITS));
     if (!isNaN(numValue) && numValue > 0) {
       updateHeaderField('inv_no', numValue);
     } else if (text === '') {
@@ -121,9 +124,12 @@ export default function InvoiceFormStep1() {
   };
 
   // The step header already asks "Discard this invoice?" before calling this.
+  // The Invoices tab, named: `back()` only took off the top entry, and when the
+  // stack held a second step 1 (step 2's Back key replaces step 2 with one) it
+  // showed that step 1, emptied by the reset.
   const handleCancel = () => {
     resetFormState();
-    router.back();
+    router.dismissTo('/(tabs)/invoices');
   };
 
   const handleNext = async () => {
@@ -250,6 +256,7 @@ export default function InvoiceFormStep1() {
               placeholderTextColor={t.text.placeholder}
               keyboardType="number-pad"
               returnKeyType="done"
+              maxLength={INVOICE_NUMBER_DIGITS}
               // Stays editable while the number is asked for: a typed number is kept and ends the wait.
               editable={!isLoading}
               // An emptied field that is left gets the suggestion again.

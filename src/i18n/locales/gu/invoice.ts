@@ -388,6 +388,7 @@ export const invoice: Translation<typeof source> = {
     invoiceNumberPositive: 'ઇન્વૉઇસ નંબર શૂન્યથી મોટો હોવો જોઈએ',
     invoiceNumberWhole: 'ઇન્વૉઇસ નંબર પૂર્ણ સંખ્યા હોવો જોઈએ',
     invoiceNumberMin: 'ઇન્વૉઇસ નંબર ઓછામાં ઓછો ૧ હોવો જોઈએ',
+    invoiceNumberRange: 'ઇન્વૉઇસ નંબર ૧ થી ૯૯૯૯૯૯૯૯ સુધીનો હોવો જોઈએ',
     grnInvalid: 'આવક પાવતીની પસંદગી બરાબર નથી',
     grnRequired: 'આવક પાવતી જરૂરી છે',
     grnNumberRequired: 'આવક પાવતી નંબર જરૂરી છે',

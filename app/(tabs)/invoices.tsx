@@ -6,9 +6,9 @@
  * Auth is handled by the parent (tabs)/_layout.tsx.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { InvoiceFlashList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -31,7 +31,19 @@ export default function InvoicesTab() {
   const dispatch = useAppDispatch();
   const { canCreate } = usePermissions();
 
+  // Set by the first tap on "Create invoice" until this tab is in front again:
+  // a second tap opened a second step 1 and reset the form the first one had
+  // started (its suggested number was lost).
+  const isOpening = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      isOpening.current = false;
+    }, [])
+  );
+
   const handleCreateInvoice = useCallback(() => {
+    if (isOpening.current) return;
+    isOpening.current = true;
     // Reset form state before creating a new invoice
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');

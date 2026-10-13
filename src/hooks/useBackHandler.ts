@@ -198,9 +198,14 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
       // Multi-step form navigation
       if (step !== undefined && basePath) {
         if (step > 1) {
-          // Go to previous step
+          // Back to the previous step that is already in the stack: the steps
+          // above it are taken off. `replace` put a second entry of that step
+          // on top of the first ([step1, step1]), and the form's Discard then
+          // showed the one under it, emptied (review 2026-10-13). When the
+          // step is not in the stack, dismissTo replaces this one with it, as
+          // `replace` did.
           const previousStep = step - 1;
-          nav.replace(`${basePath}${previousStep}` as Href);
+          nav.dismissTo(`${basePath}${previousStep}` as Href);
         } else {
           // On first step, exit the form
           if (exit) {

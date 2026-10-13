@@ -42,7 +42,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('expo-router', () => {
-  const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismiss: jest.fn(), canGoBack: jest.fn(() => true) };
+  const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismiss: jest.fn(), dismissTo: jest.fn(), canGoBack: jest.fn(() => true) };
   return {
     router: mockRouter,
     useRouter: () => mockRouter,
@@ -144,10 +144,12 @@ describe('Back on step 1 of a new invoice', () => {
     await answer('Discard');
     const afterX = {
       reset: mockForm.resetFormState.mock.calls.length,
+      // The Invoices tab, named (src/tests/navigation/InvoiceFormStack.test.tsx).
+      dismissTo: jest.mocked(router.dismissTo).mock.calls,
       back: jest.mocked(router.back).mock.calls.length,
       replace: jest.mocked(router.replace).mock.calls,
     };
-    expect(afterX).toEqual({ reset: 1, back: 1, replace: [] });
+    expect(afterX).toEqual({ reset: 1, dismissTo: [['/(tabs)/invoices']], back: 0, replace: [] });
     jest.clearAllMocks();
 
     // Back: the same question, and the same on "Discard".
@@ -155,7 +157,8 @@ describe('Back on step 1 of a new invoice', () => {
     expect(question()).toEqual(fromX);
     await answer('Discard');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
-    expect(router.back).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
+    expect(router.back).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
@@ -234,8 +237,10 @@ describe('Back on step 2 of a new invoice', () => {
     expect(await pressBack()).toBe(true);
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledWith('/invoice-form/step1');
+    // To the step 1 already in the stack (src/tests/navigation/InvoiceFormStack.test.tsx).
+    expect(router.dismissTo).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith('/invoice-form/step1');
+    expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });

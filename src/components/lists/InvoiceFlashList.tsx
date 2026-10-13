@@ -233,10 +233,16 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     fetchInvoices(0, false);
   }, [fetchInvoices]);
 
+  // Set by the first tap on "Create invoice" until the list is in front again:
+  // a second tap opened a second step 1 and reset the form the first one had
+  // started (its suggested number was lost).
+  const openingFormRef = useRef(false);
+
   // A real return to the screen (after a blur, e.g. back from an invoice) loads once.
   useFocusEffect(
     useCallback(() => {
       screenFocusedRef.current = true;
+      openingFormRef.current = false;
       if (blurredRef.current) {
         // Filters applied while away are served like an inline change (fresh=false);
         // a revisit with the same request reads the server again.
@@ -278,6 +284,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   }, [onItemPress]);
 
   const handleCreateInvoice = useCallback(() => {
+    if (openingFormRef.current) return;
+    openingFormRef.current = true;
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
   }, [dispatch]);
