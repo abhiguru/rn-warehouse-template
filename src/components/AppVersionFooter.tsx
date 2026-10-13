@@ -4,7 +4,13 @@
  *
  * The version and build come from the app's own metadata (expo-constants: the
  * `version` of app.json, `android.versionCode` or `ios.buildNumber`), so a new
- * release needs no change here. Both are identifiers: their digits stay 0-9 in
+ * release needs no change here. On iOS the build is the installed binary's own
+ * (`Constants.platform.ios.buildNumber`, its CFBundleVersion), which an EAS build
+ * with `appVersionSource: "remote"` sets even when the embedded config still says
+ * app.json's 1; the embedded config is the fallback (Expo Go has no native value).
+ * expo-constants 57 has no native version or Android versionCode any more
+ * (`nativeAppVersion` / `nativeBuildVersion` were removed), so Android reads the
+ * embedded config. Both are identifiers: their digits stay 0-9 in
  * Gujarati (`formatIdentifier`).
  *
  * The support details name the app, version, build, the phone's system, the
@@ -35,9 +41,14 @@ export interface AppVersionInfo {
 export function getAppVersionInfo(): AppVersionInfo {
   const config = Constants.expoConfig;
   const version = config?.version || '0.1.0';
-  const raw = Platform.OS === 'ios' ? config?.ios?.buildNumber : config?.android?.versionCode;
-  const build = raw === undefined || raw === null || String(raw).trim() === '' ? null : String(raw);
+  const native = Platform.OS === 'ios' ? present(Constants.platform?.ios?.buildNumber) : null;
+  const build = native ?? present(Platform.OS === 'ios' ? config?.ios?.buildNumber : config?.android?.versionCode);
   return { version, build };
+}
+
+/** The value as text, or null when it is missing or blank. */
+function present(raw: string | number | null | undefined): string | null {
+  return raw === undefined || raw === null || String(raw).trim() === '' ? null : String(raw);
 }
 
 const appName = (): string => process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';

@@ -10,11 +10,16 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
 
 let mockConfig: Record<string, unknown> | null = null;
+// What the native module reports about the installed binary (iOS: CFBundleVersion; Android: nothing).
+let mockPlatform: Record<string, unknown> | undefined;
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: {
     get expoConfig() {
       return mockConfig;
+    },
+    get platform() {
+      return mockPlatform;
     },
   },
 }));
@@ -41,6 +46,7 @@ let share: jest.SpyInstance;
 
 beforeEach(() => {
   mockConfig = ANDROID;
+  mockPlatform = undefined;
   mockServer.mockReturnValue(FACILITY);
   Platform.OS = 'android';
   setLanguage('en');
@@ -75,6 +81,43 @@ describe('getAppVersionInfo', () => {
   it('reads the iOS build from buildNumber', () => {
     Platform.OS = 'ios';
     expect(getAppVersionInfo()).toEqual({ version: '2.3.4', build: '3' });
+  });
+
+  // SR-12 (L4): an EAS build with appVersionSource "remote" numbers the binary itself and may
+  // leave the embedded config at app.json's build 1. iOS tells the installed build natively.
+  describe('the build of the installed app', () => {
+    const EMBEDDED = { version: '0.1.0', android: { versionCode: 1 }, ios: { buildNumber: '1' } };
+
+    it('on iOS, the native build wins over the embedded config', () => {
+      Platform.OS = 'ios';
+      mockConfig = EMBEDDED;
+      mockPlatform = { ios: { buildNumber: '42' } };
+      expect(getAppVersionInfo()).toEqual({ version: '0.1.0', build: '42' });
+    });
+
+    it('on iOS, falls back to the embedded config when the native build is null or missing (Expo Go)', () => {
+      Platform.OS = 'ios';
+      mockConfig = EMBEDDED;
+      mockPlatform = { ios: { buildNumber: null } };
+      expect(getAppVersionInfo()).toEqual({ version: '0.1.0', build: '1' });
+      mockPlatform = undefined;
+      expect(getAppVersionInfo()).toEqual({ version: '0.1.0', build: '1' });
+    });
+
+    it('on Android, where the native module reports no build, reads the embedded versionCode', () => {
+      mockConfig = EMBEDDED;
+      mockPlatform = { android: {}, ios: { buildNumber: '42' } };
+      expect(getAppVersionInfo()).toEqual({ version: '0.1.0', build: '1' });
+    });
+
+    it('the footer and the support details follow the native build', async () => {
+      Platform.OS = 'ios';
+      mockConfig = EMBEDDED;
+      mockPlatform = { ios: { buildNumber: '42' } };
+      expect(buildDiagnostics().split('\n')[1]).toBe('Version: 0.1.0 (build 42)');
+      const tree = await render(<AppVersionFooter />);
+      expect(texts(tree)).toContain('Management System v0.1.0 (build 42)');
+    });
   });
 
   it('falls back to the app.json version and no build when the metadata is missing', () => {
