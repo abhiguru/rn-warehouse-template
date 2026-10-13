@@ -2,15 +2,15 @@
  * The app's name and installed version at the foot of Settings and Profile, and
  * the "Details for support" block of Help (SR-12).
  *
- * The version and build come from the app's own metadata (expo-constants: the
- * `version` of app.json, `android.versionCode` or `ios.buildNumber`), so a new
- * release needs no change here. On iOS the build is the installed binary's own
- * (`Constants.platform.ios.buildNumber`, its CFBundleVersion), which an EAS build
- * with `appVersionSource: "remote"` sets even when the embedded config still says
- * app.json's 1; the embedded config is the fallback (Expo Go has no native value).
- * expo-constants 57 has no native version or Android versionCode any more
- * (`nativeAppVersion` / `nativeBuildVersion` were removed), so Android reads the
- * embedded config. Both are identifiers: their digits stay 0-9 in
+ * The version and build are the installed binary's own (expo-application:
+ * `nativeApplicationVersion`, `nativeBuildVersion` = Android versionName and
+ * versionCode, iOS CFBundleShortVersionString and CFBundleVersion), which an EAS
+ * build with `appVersionSource: "remote"` sets even when the embedded config still
+ * says app.json's build 1. So a new release needs no change here. Where the native
+ * values are missing, and in Expo Go (whose native values are Expo Go's own), the
+ * iOS `Constants.platform.ios.buildNumber` and then the embedded config
+ * (`Constants.expoConfig`: app.json's `version`, `android.versionCode`,
+ * `ios.buildNumber`) are used. Both are identifiers: their digits stay 0-9 in
  * Gujarati (`formatIdentifier`).
  *
  * The support details name the app, version, build, the phone's system, the
@@ -21,6 +21,7 @@
 import React, { useCallback } from 'react';
 import { Platform, Pressable, Share, Text, View } from 'react-native';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText, type ThemeTokens } from '@/theme/tokens';
@@ -37,12 +38,17 @@ export interface AppVersionInfo {
   build: string | null;
 }
 
-/** The installed app's version and build, from its own metadata. */
+/** The installed app's version and build: the binary's own, else its embedded metadata. */
 export function getAppVersionInfo(): AppVersionInfo {
   const config = Constants.expoConfig;
-  const version = config?.version || '0.1.0';
-  const native = Platform.OS === 'ios' ? present(Constants.platform?.ios?.buildNumber) : null;
-  const build = native ?? present(Platform.OS === 'ios' ? config?.ios?.buildNumber : config?.android?.versionCode);
+  // In Expo Go the native values are Expo Go's, not this app's.
+  // (Compared as text so that a test's stand-in for expo-constants needs no enum.)
+  const binary = String(Constants.executionEnvironment) !== 'storeClient';
+  const version = (binary ? present(Application.nativeApplicationVersion) : null) ?? present(config?.version) ?? '0.1.0';
+  const build =
+    (binary ? present(Application.nativeBuildVersion) : null) ??
+    (Platform.OS === 'ios' ? present(Constants.platform?.ios?.buildNumber) : null) ??
+    present(Platform.OS === 'ios' ? config?.ios?.buildNumber : config?.android?.versionCode);
   return { version, build };
 }
 
