@@ -136,6 +136,17 @@ describe('how high the sheet is', () => {
 });
 
 describe('choosing and closing', () => {
+  it('tags a deactivated business in its row and its spoken label, and still lets it be picked', async () => {
+    mockRead.mockResolvedValue([
+      { id: 'b1', name: 'Amber Field Traders', city: 'Northgate', active: false },
+      { id: 'b2', name: 'Birchwood Produce', city: 'Southmere', active: true },
+    ]);
+    const { onPick } = await open();
+    expect(rows().map(row => row.props.accessibilityLabel)).toEqual(['Amber Field Traders, Northgate, Deactivated', 'Birchwood Produce, Southmere']);
+    act(() => rows()[0].props.onPress());
+    expect(onPick).toHaveBeenCalledWith({ id: 'b1', name: 'Amber Field Traders', city: 'Northgate' });
+  });
+
   it('hands back the business pressed, and reads its city with its name', async () => {
     mockRead.mockResolvedValue(TWO);
     const { onPick, onClose } = await open();

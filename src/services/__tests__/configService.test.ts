@@ -183,12 +183,15 @@ it('enforces public memory TTL, scopes origin and rejects legacy caches', async 
       timestamp: Date.now(),
     })
   );
+  // A pinned clock: the first answer is stored at exactly `now`, so the next read is exactly
+  // 3600001 ms later whatever the machine load (a real clock could tick between the two).
   const now = Date.now();
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
   jest
     .mocked(global.fetch)
     .mockResolvedValue(response(publicData()) as Response);
   await ConfigService.getPublicConfig();
-  jest.spyOn(Date, 'now').mockReturnValue(now + 3600001);
+  clock.mockReturnValue(now + 3600001);
   await ConfigService.getPublicConfig();
   server.getActiveOperatorOrigin.mockReturnValue('http://localhost:28000');
   jest

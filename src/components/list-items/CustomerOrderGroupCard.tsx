@@ -203,6 +203,8 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
   }, [order.customer_id, router]);
 
   const customerName = order.customer?.name || translate('lists.orderGroup.unknownCustomer');
+  // Backend migration 82 adds customer.active to each row; an older backend has no field, so no tag.
+  const deactivated = order.customer?.active === false;
   // Same wording as the order rows: "3 items · 45 units".
   const itemsLabel = formatCount(itemCount, 'item');
   const unitsLabel = formatCount(totalQty, 'unit');
@@ -214,7 +216,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
         onPress={handleToggle}
         style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         accessibilityRole="button"
-        accessibilityLabel={translate('lists.orderGroup.headerLabel', { customer: customerName, items: itemsLabel, units: unitsLabel })}
+        accessibilityLabel={translate('lists.orderGroup.headerLabel', { customer: customerName, items: itemsLabel, units: unitsLabel }) + (deactivated ? `, ${translate('lists.order.accessibilityDeactivated')}` : '')}
         accessibilityState={{ expanded: isExpanded }}
       >
         {/* Customer Avatar */}
@@ -231,11 +233,16 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
             <Text style={styles.metaText}>·</Text>
             <Text style={styles.metaText}>{unitsLabel}</Text>
           </View>
+          {/* Status tags under the counts, in the text column: at large text sizes they wrap
+              here instead of crushing the name beside them. */}
+          <View style={styles.tagRow} testID="queue-card-tags">
+            {deactivated ? <StatusTag status="neutral" label={translate('lists.order.statusDeactivated')} /> : null}
+            <StatusTag status="neutral" label={translate('lists.order.statusOpen')} />
+          </View>
         </View>
 
-        {/* Status Tag + Chevron */}
+        {/* Chevron */}
         <View style={styles.rightSection}>
-          <StatusTag status="neutral" label={translate('lists.order.statusOpen')} />
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
             size={iconSize.lg}
@@ -403,6 +410,7 @@ const areEqual = (
     prevProps.order.item_count === nextProps.order.item_count &&
     prevProps.order.quantity_sum === nextProps.order.quantity_sum &&
     prevProps.order.updated_at === nextProps.order.updated_at &&
+    prevProps.order.customer?.active === nextProps.order.customer?.active &&
     prevProps.isExpanded === nextProps.isExpanded &&
     prevProps.onToggleExpand === nextProps.onToggleExpand
   );
@@ -451,6 +459,12 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     color: t.text.secondary,
     fontVariant: ['tabular-nums' as const],
+  },
+  tagRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
   rightSection: {
     flexDirection: 'row' as const,

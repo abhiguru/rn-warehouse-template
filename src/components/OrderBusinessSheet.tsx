@@ -29,7 +29,7 @@ import { layout, space } from '@/theme/tokens';
 export interface OrderBusinessSheetProps {
   visible: boolean;
   onClose: () => void;
-  onPick: (business: OwnBusiness) => void;
+  onPick: (business: Pick<OwnBusiness, 'id' | 'name' | 'city'>) => void;
 }
 
 /** More businesses than this and the sheet is tall with a scrolling list. */
@@ -118,7 +118,7 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
   } else {
     body = (
       <CustomerChoiceRows
-        customers={businesses.data.map((business) => ({ ...business, detail: business.city }))}
+        customers={businesses.data.map((business) => ({ ...business, detail: business.city, tag: business.active === false ? tr('lists.order.statusDeactivated') : undefined }))}
         onPick={({ id, name, city }) => onPick({ id, name, city })}
         hint={tr('lists.order.chooseBusinessHint')}
         testIDPrefix="order-business-"

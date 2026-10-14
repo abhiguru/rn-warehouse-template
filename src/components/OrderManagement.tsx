@@ -90,10 +90,12 @@ interface OrderManagementProps {
   onCloseItemCatalog?: () => void;
   /** A warehouse login (admin, supervisor, staff), not a customer's own. */
   staffView?: boolean;
-  /** The customer record says the business is turned off or deleted. */
-  businessInactive?: boolean;
-  /** The facility refused to open an order because the business is not active. */
-  onBusinessInactive?: () => void;
+  /** The customer record says the business is deactivated in Customers (it can still order its goods out). */
+  businessDeactivated?: boolean;
+  /** The customer record could not be read, so the refusal screen cannot tell deleted from deactivated. */
+  businessRecordUnread?: boolean;
+  /** The facility refused to open an order because the business was deleted. */
+  onBusinessDeleted?: () => void;
 }
 
 const OrderManagement: React.FC<OrderManagementProps> = ({
@@ -102,8 +104,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   itemCatalogOpen,
   onCloseItemCatalog,
   staffView = false,
-  businessInactive: businessOff = false,
-  onBusinessInactive,
+  businessDeactivated = false,
+  businessRecordUnread = false,
+  onBusinessDeleted,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -117,8 +120,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const [showItemCatalogInternal, setShowItemCatalogInternal] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState<SearchResult[]>([]);
-  // The facility refused to open an order because the business is no longer active.
-  const [businessInactive, setBusinessInactive] = useState(false);
+  // The facility refused to open an order because the business was deleted.
+  const [businessRefused, setBusinessRefused] = useState(false);
+  const businessDeleted = businessRefused;
 
   // Each start of an order read is numbered; an answer that is not the latest one is dropped,
   // so a slow answer for a business the screen has left never becomes the order shown.
@@ -132,7 +136,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     initRun.current += 1;
     setOrder(null);
     setSelectedCustomer(null);
-    setBusinessInactive(false);
+    setBusinessRefused(false);
     setLoading(Boolean(customerId));
   }
 
@@ -151,7 +155,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     const run = initRun.current;
     try {
       setLoading(true);
-      setBusinessInactive(false);
+      setBusinessRefused(false);
       if (__DEV__) console.log('[OrderManagement] Initializing order for customer:', custId);
 
       // Get or create order
@@ -160,8 +164,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
       if (!orderResult.success) {
         if (isBusinessInactive(orderResult)) {
-          setBusinessInactive(true);
-          onBusinessInactive?.();
+          setBusinessRefused(true);
+          onBusinessDeleted?.();
           return;
         }
         showAlert(tr('orders.manage.couldNotOpenTitle'), serverText(orderResult.message, tr('common.checkConnection')));
@@ -221,6 +225,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       setShowItemCatalog(false);
     }
     if (customerId) {
+      // Always the server's answer: on an older facility a deactivated business has `deleted_at`
+      // set, and the server still lets an existing order be opened there.
       initializeOrder(customerId);
     } else {
       // Show customer search if no customerId provided
@@ -519,12 +525,12 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     );
   }
 
-  if (businessInactive) {
+  if (businessDeleted) {
     return (
       <View style={styles.emptyState}>
         <Icon name="store-off-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyText} accessibilityRole="header">{tr('orders.manage.couldNotOpenTitle')}</Text>
-        <Text style={styles.emptySubtext}>{tr(staffView ? 'orders.manage.businessOff' : 'orders.manage.businessInactive')}</Text>
+        <Text style={styles.emptySubtext}>{tr(!staffView || businessRecordUnread ? 'orders.manage.businessInactive' : 'orders.manage.businessDeactivatedStaff')}</Text>
       </View>
     );
   }
@@ -539,11 +545,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   return (
     <Surface style={styles.container} elevation={0}>
 
-      {/* A turned-off business can still be opened by the warehouse, but takes no new items */}
-      {staffView && businessOff && (
-        <View style={styles.offBanner}>
+      {/* A deactivated business only drops out of new GRNs and staff pickers; its orders work as before */}
+      {businessDeactivated && (
+        <View style={styles.offBanner} accessible accessibilityRole="summary">
           <Icon name="store-off-outline" size={iconSize.md} color={t.status.neutral.text} />
-          <Text style={styles.offBannerText}>{tr('orders.manage.businessOff')}</Text>
+          <View style={styles.offBannerBody}>
+            <Text style={styles.offBannerTitle}>{tr('orders.manage.deactivatedTitle')}</Text>
+            <Text style={styles.offBannerText}>{tr(staffView ? 'orders.manage.deactivatedStaff' : 'orders.manage.deactivatedCustomer')}</Text>
+          </View>
         </View>
       )}
 
@@ -591,7 +600,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               type="primary"
               size="standalone"
               leftIcon="plus"
-              disabled={businessOff}
               onPress={() => setShowItemCatalog(true)}
               accessibilityLabel={tr('orders.screen.addItemsToOrder')}
             >
@@ -723,9 +731,16 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.sm,
     backgroundColor: t.status.neutral.background,
   },
+  offBannerBody: {
+    flex: 1,
+  },
+  offBannerTitle: {
+    ...typography.subhead,
+    fontWeight: '600' as const,
+    color: t.status.neutral.text,
+  },
   offBannerText: {
     ...typography.subhead,
-    flex: 1,
     color: t.status.neutral.text,
   },
   emptyState: {

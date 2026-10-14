@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased — open items (2026-10-15)
+
+Needs backend migration 82 (supabase-warehouse-template `fix/open-items-2026-10-15`): it adds
+`set_customer_active`, refuses an order only for a deleted business, refuses to delete a business
+that has data (a soft delete of a business with data deactivates it instead, answer
+`delete_type: 'deactivated'`), makes `restore_customer` re-activate deleted or inactive businesses,
+stops staff reports hiding deactivated businesses, and adds `customer.active` to each Orders list
+row. Older facilities:
+
+- **The app always asks the server to open an order**; the customer record only chooses the wording
+  and the banner.
+- **On migration 80 or 81:** the server refuses an order of a deactivated (soft-deleted) business
+  with "Business is not active". A customer login is always refused; staff can still open an
+  existing OPEN order. The Orders list and Queue show no "Deactivated" tag (no
+  `customer.active`).
+- **Before migration 80:** the server refuses nothing, so both roles open the order as they always
+  did.
+- **Deactivate on an older facility** falls back to the old soft delete (`safe_delete_customer`),
+  so it is still refused while the business has stock, and it marks the business deleted
+  (`deleted_at` set). Its customer logins then cannot open its orders (the server refuses) and
+  Create order hides it. Activate falls back to `restore_customer`.
+- **Staff refused on such a facility** see "This business is deactivated. Turn it on in Customers
+  to take orders." (Customers shows both soft-deleted and deactivated businesses as "Deactivated",
+  so there is no separate "deleted" wording). If the record could not be read they get the
+  customer sentence.
+
+### Customers and Orders
+
+- **Deactivate only switches a business off; it never deletes it** (owner decision 2026-10-15).
+  Customers → Deactivate and Activate call `set_customer_active`; it is allowed even with stock.
+  The confirmation stays. A deactivated business is hidden from staff pickers for new GRNs,
+  dispatches and orders, but its customer logins still see all past GRNs, dispatches, invoices,
+  stock and reports and can order their goods out. A business with any data can never be deleted.
+- **A deactivated business can still order its goods out.** Its order opens normally for customer
+  logins and staff, the header "+" and Add stay on, and a neutral banner says "Deactivated at the
+  cold storage" with "You can still order your goods out." (customer login) or "No new goods are
+  taken in. Turn it on in Customers to change that." (staff). This replaces the 2026-10-14 "turned
+  off" banner and the disabled "+" and Add; `orders.manage.businessOff` is removed.
+- **A deleted business** is still refused by the server: customer logins see "This business is no
+  longer active. Ask your cold storage."; staff see "This business is deactivated. Turn it on in
+  Customers to take orders." The header "+" is disabled only after such a refusal.
+- **Orders → Create order lists a customer's deactivated businesses too**, with a "Deactivated" tag
+  (before, a customer with several businesses could not reach one). Only deleted businesses are left
+  out; on an older facility a deactivated business counts as deleted, so it stays hidden there.
+- **Customers shows "Deactivated"** (was "Inactive") on the row and the customer page.
+- **Orders tab and Queue cards of a deactivated business show a small "Deactivated" tag** next to
+  the status tag, and the spoken label ends with ", deactivated".
+
+### Tests
+
+- Two timing flakes under full parallel load are fixed: the ItemCatalogBrowser "loads the next
+  browse page" test has its own timeout, and the configService public-cache TTL test pins the clock.
+
+### Gujarati, for review
+
+Drafts in the glossary's words (વેપારી = business or customer); the owner has not reviewed them.
+
+- `orders.manage.deactivatedTitle`: કોલ્ડ સ્ટોરેજમાં નિષ્ક્રિય
+- `orders.manage.deactivatedCustomer`: તમે હજુ પણ તમારો માલ ઑર્ડર કરીને બહાર લઈ જઈ શકો છો.
+- `orders.manage.deactivatedStaff`: નવો માલ લેવાતો નથી. બદલવા માટે વેપારીઓમાં તેને ચાલુ કરો.
+- `orders.manage.businessDeactivatedStaff`: આ વેપારી નિષ્ક્રિય છે. ઑર્ડર લેવા માટે વેપારીઓમાં તેને ચાલુ કરો.
+- `lists.order.statusDeactivated`: નિષ્ક્રિય
+- `lists.order.accessibilityDeactivated`: નિષ્ક્રિય
+- `customers.list.statusDeactivated`: નિષ્ક્રિય
+
 ## Unreleased — backlog fixes (2026-10-14)
 
 Needs backend migration 80 (supabase-warehouse-template `fix/backlog-2026-10-14`) for the

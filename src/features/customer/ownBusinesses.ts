@@ -8,10 +8,11 @@
  * and the ids the phone holds can be out of date or missing: a sign-in whose
  * lookup failed stores none.
  *
- * That policy looks at the assignment only, so a business the facility has
- * deactivated or deleted (`active = false`, `deleted_at` set) would still come
- * back while its assignment stands. Those are left out here, as the staff search
- * (`search_customers`) leaves them out.
+ * That policy looks at the assignment only. A DEACTIVATED business (`active = false`) stays
+ * in the list: its customer logins can still order their goods out (owner decision
+ * 2026-10-15), and `active` is handed back so the chooser can tag it. Only a deleted
+ * business (`deleted_at` set) is left out. The staff search (`search_customers`) is
+ * where deactivated businesses are hidden.
  */
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
@@ -22,10 +23,12 @@ export interface OwnBusiness {
   name: string;
   /** Empty when the facility holds none. */
   city: string;
+  /** False for a deactivated business. */
+  active?: boolean;
 }
 
 /**
- * The account's own businesses that are in use, ordered by name. Throws when the
+ * The account's own businesses that are not deleted (deactivated ones included), ordered by name. Throws when the
  * read fails, and when the session changed while it was out: rows read for one
  * account or facility are never handed to the next.
  */
@@ -34,16 +37,16 @@ export async function readOwnBusinesses(): Promise<OwnBusiness[]> {
   const client = await getAuthenticatedClient();
   const { data, error } = await client
     .from('customers')
-    .select('id, name, city')
-    .eq('active', true)
+    .select('id, name, city, active')
     .is('deleted_at', null)
     .order('name');
   if (error) throw error;
   if (session !== getSessionGeneration()) throw new Error('Session changed');
-  return ((data ?? []) as { id: string; name: string | null; city: string | null }[]).map((row) => ({
+  return ((data ?? []) as { id: string; name: string | null; city: string | null; active: boolean | null }[]).map((row) => ({
     id: row.id,
     name: row.name ?? '',
     city: row.city ?? '',
+    active: row.active !== false,
   }));
 }
 

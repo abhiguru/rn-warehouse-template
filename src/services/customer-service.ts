@@ -500,8 +500,9 @@ class CustomerService {
   // ===========================================================================
 
   /**
-   * Inactivate (soft delete) a customer
-   * Uses safe_delete_customer RPC
+   * Deactivate a customer: only `active` goes off, nothing is deleted (backend migration 82,
+   * `set_customer_active`). A facility without that function (PGRST202) still has the
+   * old `safe_delete_customer`, which is used there.
    */
   async inactivateCustomer(
     customerId: string
@@ -518,10 +519,16 @@ class CustomerService {
       }
 
       const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('safe_delete_customer', {
+      let { data, error } = await client.rpc('set_customer_active', {
         p_customer_id: customerId,
-        p_permanent: false,
+        p_active: false,
       });
+      if (error && isMissingFunction(error)) {
+        ({ data, error } = await client.rpc('safe_delete_customer', {
+          p_customer_id: customerId,
+          p_permanent: false,
+        }));
+      }
 
       if (error) {
         handleGlobalAuthError(error);
@@ -562,8 +569,8 @@ class CustomerService {
   }
 
   /**
-   * Restore an inactivated customer
-   * Uses restore_customer RPC
+   * Activate a customer again (`set_customer_active`, backend migration 82; an older facility
+   * has `restore_customer`, which is used there).
    */
   async restoreCustomer(customerId: string): Promise<CustomerServiceResponse> {
     try {
@@ -578,9 +585,15 @@ class CustomerService {
       }
 
       const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('restore_customer', {
+      let { data, error } = await client.rpc('set_customer_active', {
         p_customer_id: customerId,
+        p_active: true,
       });
+      if (error && isMissingFunction(error)) {
+        ({ data, error } = await client.rpc('restore_customer', {
+          p_customer_id: customerId,
+        }));
+      }
 
       if (error) {
         handleGlobalAuthError(error);
@@ -618,6 +631,11 @@ class CustomerService {
       };
     }
   }
+}
+
+/** PostgREST found no such function (PGRST202): an older facility. */
+function isMissingFunction(error: { code?: string; message?: string }): boolean {
+  return error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
 }
 
 // =============================================================================

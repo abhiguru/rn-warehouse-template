@@ -106,6 +106,8 @@ export const lists: Translation<typeof source> = {
     emptySection: 'ખાલી ઑર્ડર',
     statusOpen: 'બાકી',
     statusEmpty: 'ખાલી',
+    statusDeactivated: 'નિષ્ક્રિય',
+    accessibilityDeactivated: 'નિષ્ક્રિય',
     statusDispatched: 'જાવક થઈ',
     summary: '{{items}} · {{units}}',
     noItemsYet: 'હજુ કોઈ આઇટમ નથી',

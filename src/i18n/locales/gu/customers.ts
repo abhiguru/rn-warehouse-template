@@ -17,6 +17,7 @@ export const customers: Translation<typeof source> = {
     deactivateName: '{{name}} ને નિષ્ક્રિય કરો',
     rowHint: 'વેપારી ખોલે છે.',
     deactivateConfirmTitle: '{{name}} ને નિષ્ક્રિય કરવા છે?',
+    statusDeactivated: 'નિષ્ક્રિય',
     deactivateConfirmMessage: 'નવી આવક પાવતી, જાવક કે ઑર્ડર માટે વેપારી પસંદ કરતી વખતે તેઓ દેખાશે નહીં. તેમના રેકૉર્ડ જળવાઈ રહેશે અને તમે તેમને ફરી સક્રિય કરી શકશો.',
     deactivateCustomer: 'વેપારી નિષ્ક્રિય કરો',
     couldNotActivateTitle: 'વેપારીને સક્રિય કરી શકાયા નથી',

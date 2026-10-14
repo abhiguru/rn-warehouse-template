@@ -25,7 +25,7 @@ jest.mock('@/components/ChangeLogBottomSheet', () => ({ __esModule: true, defaul
 jest.mock('@/services/change-log-service', () => ({ ChangeLogService: { getCustomerChangeLog: jest.fn() } }));
 
 // The editor is a stand-in that counts how often it is mounted and unmounted.
-const mockEditor = { mounts: 0, unmounts: 0, props: undefined as undefined | { customerId?: string; itemCatalogOpen?: boolean; staffView?: boolean; businessInactive?: boolean; onBusinessInactive?: () => void } };
+const mockEditor = { mounts: 0, unmounts: 0, props: undefined as undefined | { customerId?: string; itemCatalogOpen?: boolean; staffView?: boolean; businessDeactivated?: boolean; businessRecordUnread?: boolean; onBusinessDeleted?: () => void } };
 jest.mock('@/components/OrderManagement', () => {
   const ReactActual = jest.requireActual('react');
   return {
@@ -179,24 +179,28 @@ it('shows the spinner at once for another business, closes the picker and drops 
   expect(screenText()).toContain('Second Traders');
 });
 
-describe('a business that is turned off', () => {
+describe('a business that is deactivated or deleted', () => {
   const plus = () => renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && typeof node.props.onPress === 'function')[0];
 
   it('leaves the header Add items button on for an active business', async () => {
     mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: true, deleted_at: null }, error: null });
     await act(async () => { renderer = create(<CustomerOrderScreen />); });
     expect(plus().props.disabled).toBeFalsy();
-    expect(mockEditor.props?.businessInactive).toBe(false);
+    expect(mockEditor.props?.businessDeactivated).toBe(false);
   });
 
-  it.each([
-    ['deactivated', { active: false, deleted_at: null }],
-    ['deleted', { active: true, deleted_at: '2026-10-01T00:00:00Z' }],
-  ])('turns the header Add items button off and tells the editor when the record says %s', async (_name, record) => {
-    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', ...record }, error: null });
+  it('keeps the header Add items button on for a deactivated business and tells the editor to show the tag', async () => {
+    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: false, deleted_at: null }, error: null });
     await act(async () => { renderer = create(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBe(true);
-    expect(mockEditor.props?.businessInactive).toBe(true);
+    expect(plus().props.disabled).toBeFalsy();
+    expect(mockEditor.props?.businessDeactivated).toBe(true);
+  });
+
+  it('keeps the header Add items button on and the banner flag set when the record says deleted and inactive: only the server refusal turns it off', async () => {
+    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: false, deleted_at: '2026-10-01T00:00:00Z' }, error: null });
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    expect(plus().props.disabled).toBeFalsy();
+    expect(mockEditor.props?.businessDeactivated).toBe(true);
   });
 
   it('turns it off when the facility refuses the order, and tells the editor who is looking', async () => {
@@ -204,8 +208,48 @@ describe('a business that is turned off', () => {
     await act(async () => { renderer = create(<CustomerOrderScreen />); });
     expect(plus().props.disabled).toBeFalsy();
     expect(mockEditor.props?.staffView).toBe(true);
-    await act(async () => { mockEditor.props?.onBusinessInactive?.(); });
+    await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
     expect(plus().props.disabled).toBe(true);
+  });
+
+  it('keeps telling the editor the business is deactivated after the server refuses it (older facility)', async () => {
+    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: false, deleted_at: null }, error: null });
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
+    expect(mockEditor.props?.businessDeactivated).toBe(true);
+    expect(plus().props.disabled).toBe(true);
+  });
+
+  it('tells the editor the record could not be read, so a staff refusal gets the plain sentence', async () => {
+    mockNameRead.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    expect(mockEditor.props?.businessRecordUnread).toBe(true);
+    expect(mockEditor.props?.businessDeactivated).toBe(false);
+  });
+
+  it('clears the earlier refusal when a fresh record read for that business succeeds', async () => {
+    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: true, deleted_at: null }, error: null });
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
+    expect(plus().props.disabled).toBe(true);
+    // Another business and back: the record is read again and decides.
+    mockParams.customerId = 'customer-fictional-2';
+    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    mockParams.customerId = 'customer-fictional-1';
+    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    expect(plus().props.disabled).toBeFalsy();
+  });
+
+  it('clears the earlier refusal on a fresh read of that business even when the read fails', async () => {
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
+    expect(plus().props.disabled).toBe(true);
+    mockNameRead.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    mockParams.customerId = 'customer-fictional-2';
+    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    mockParams.customerId = 'customer-fictional-1';
+    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    expect(plus().props.disabled).toBeFalsy();
   });
 
   it('is a customer view for a customer login', async () => {

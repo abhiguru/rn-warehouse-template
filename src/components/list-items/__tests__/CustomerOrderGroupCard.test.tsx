@@ -98,3 +98,34 @@ it('asks for nothing while the card is closed', async () => {
   await render(false);
   expect(getOrderWithItems).not.toHaveBeenCalled();
 });
+
+describe('Queue card of a deactivated business', () => {
+  const withActive = (active?: boolean) => ({ ...order, customer: { ...order.customer, ...(active === undefined ? {} : { active }) } }) as unknown as Order;
+  const label = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityState?.expanded !== undefined)[0].props.accessibilityLabel as string;
+  const draw = async (o: Order) => {
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = create(<CustomerOrderGroupCard order={o} isExpanded={false} onToggleExpand={jest.fn()} />); });
+    return tree;
+  };
+
+  it('shows the Deactivated tag and says so in the header label', async () => {
+    const tree = await draw(withActive(false));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Deactivated', 'Open']));
+    expect(label(tree).endsWith(', deactivated')).toBe(true);
+  });
+
+  it.each([[true], [undefined]])('shows no tag when active is %s', async (active) => {
+    const tree = await draw(withActive(active));
+    expect(texts(tree)).not.toContain('Deactivated');
+    expect(label(tree)).not.toContain('deactivated');
+  });
+
+  it('redraws when only customer.active changes on the same order', async () => {
+    const onToggleExpand = jest.fn();
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = create(<CustomerOrderGroupCard order={withActive(true)} isExpanded={false} onToggleExpand={onToggleExpand} />); });
+    expect(texts(tree)).not.toContain('Deactivated');
+    await act(async () => { tree.update(<CustomerOrderGroupCard order={withActive(false)} isExpanded={false} onToggleExpand={onToggleExpand} />); });
+    expect(texts(tree)).toContain('Deactivated');
+  });
+});

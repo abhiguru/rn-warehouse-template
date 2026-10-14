@@ -734,42 +734,88 @@ describe('when customerId changes while the editor is mounted', () => {
   });
 });
 
-// Backlog 2026-10-14, item 3: migration 80 refuses a business that is not active.
-describe('a business that is not active', () => {
-  const inactive = { success: false, message: "Couldn't open the order.", error: 'Business is not active' } as never;
+// Open items 2026-10-15: the server now refuses only a DELETED business; a deactivated one orders as before.
+describe('a business that is deleted or deactivated', () => {
+  const deleted = { success: false, message: "Couldn't open the order.", error: 'Business is not active' } as never;
   const text = () => renderer!.root.findAll(node => node.type === 'Text' as never).map(node => [node.props.children].flat().join('')).join(' | ');
+  const addButton = () => renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && 'disabled' in node.props)[0];
 
-  it('shows the message for exactly that answer', async () => {
-    service.getOrCreateOrder.mockResolvedValue(inactive);
+  it('shows the customer message for exactly the server refusal', async () => {
+    service.getOrCreateOrder.mockResolvedValue(deleted);
     await act(async () => { renderer = create(editor()); });
     expect(text()).toContain('This business is no longer active. Ask your cold storage.');
     expect(showAlert).not.toHaveBeenCalled();
     expect(service.getOrderWithItems).not.toHaveBeenCalled();
   });
 
-  it('says the business is turned off, in the staff wording, when staff are refused', async () => {
-    service.getOrCreateOrder.mockResolvedValue(inactive);
-    const onBusinessInactive = jest.fn();
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView onBusinessInactive={onBusinessInactive} />); });
-    expect(text()).toContain('This business is turned off. Turn it on in Customers to take new orders.');
+  it('gives staff the deactivated wording when they are refused, as the server only refuses deactivated or deleted', async () => {
+    service.getOrCreateOrder.mockResolvedValue(deleted);
+    const onBusinessDeleted = jest.fn();
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView onBusinessDeleted={onBusinessDeleted} />); });
+    expect(text()).toContain('This business is deactivated. Turn it on in Customers to take orders.');
     expect(text()).not.toContain('Ask your cold storage');
-    expect(onBusinessInactive).toHaveBeenCalledTimes(1);
+    expect(onBusinessDeleted).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the existing order for staff with a banner, and the empty-state Add button is off', async () => {
+  it('older facility: staff refused for a business the record says is deactivated get the deactivated wording', async () => {
+    service.getOrCreateOrder.mockResolvedValue(deleted);
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
+    expect(text()).toContain('This business is deactivated. Turn it on in Customers to take orders.');
+    expect(text()).not.toContain('was deleted');
+  });
+
+  it('older facility: a customer login refused for a deactivated business keeps the customer wording', async () => {
+    service.getOrCreateOrder.mockResolvedValue(deleted);
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessDeactivated />); });
+    expect(text()).toContain('This business is no longer active. Ask your cold storage.');
+  });
+
+  it('always asks the server, even when the record says deleted (an older facility marks deactivated businesses so)', async () => {
     server.items = [];
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessInactive />); });
-    expect(text()).toContain('This business is turned off. Turn it on in Customers to take new orders.');
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
+    expect(service.getOrCreateOrder).toHaveBeenCalledWith('customer-fictional-1');
+    expect(service.getOrderWithItems).toHaveBeenCalled();
+    expect(text()).toContain('Deactivated at the cold storage');
     expect(text()).toContain('No items in this order');
-    const add = renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && 'disabled' in node.props)[0];
-    expect(add.props.disabled).toBe(true);
+    expect(text()).not.toContain('was deleted');
   });
 
-  it('shows no banner to a customer login or for an active business', async () => {
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessInactive />); });
-    expect(text()).not.toContain('turned off');
-    await act(async () => { renderer!.update(<OrderManagement customerId="customer-fictional-1" staffView />); });
-    expect(text()).not.toContain('turned off');
+  it('gives staff the deactivated wording after a refusal whenever the record says active=false (deleted or not)', async () => {
+    service.getOrCreateOrder.mockResolvedValue(deleted);
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
+    expect(service.getOrCreateOrder).toHaveBeenCalledTimes(1);
+    expect(text()).toContain('This business is deactivated. Turn it on in Customers to take orders.');
+    expect(text()).not.toContain('was deleted');
+  });
+
+  it('gives staff the plain sentence, not "was deleted", when the record could not be read', async () => {
+    service.getOrCreateOrder.mockResolvedValue(deleted);
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessRecordUnread />); });
+    expect(text()).toContain('This business is no longer active. Ask your cold storage.');
+    expect(text()).not.toContain('was deleted');
+  });
+
+  it('opens a deactivated business for staff with the banner, and the empty-state Add button stays on', async () => {
+    server.items = [];
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
+    expect(text()).toContain('Deactivated at the cold storage');
+    expect(text()).toContain('No new goods are taken in. Turn it on in Customers to change that.');
+    expect(text()).toContain('No items in this order');
+    expect(addButton().props.disabled).toBeFalsy();
+  });
+
+  it('opens a deactivated business for a customer login with the customer wording and Add on', async () => {
+    server.items = [];
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessDeactivated />); });
+    expect(text()).toContain('Deactivated at the cold storage');
+    expect(text()).toContain('You can still order your goods out.');
+    expect(text()).not.toContain('Turn it on in Customers');
+    expect(addButton().props.disabled).toBeFalsy();
+  });
+
+  it('shows no banner for an active business', async () => {
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView />); });
+    expect(text()).not.toContain('Deactivated');
   });
 
   it('keeps the current handling for any other error', async () => {

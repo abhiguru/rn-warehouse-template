@@ -14,6 +14,7 @@ export const customers = {
     deactivateName: 'Deactivate {{name}}',
     rowHint: 'Opens the customer.',
     deactivateConfirmTitle: 'Deactivate {{name}}?',
+    statusDeactivated: 'Deactivated',
     deactivateConfirmMessage: "They won't appear when you choose a customer for a new GRN, dispatch or order. Their records stay, and you can activate them again.",
     deactivateCustomer: 'Deactivate customer',
     couldNotActivateTitle: "Couldn't activate the customer",

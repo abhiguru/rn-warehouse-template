@@ -94,7 +94,7 @@ it('asks before deactivating, in words that say what it does, and then deactivat
   expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
   await act(async () => { (buttons as { text: string; onPress?: () => void }[]).find(b => b.text === 'Deactivate customer')?.onPress?.(); });
   expect(customerService.inactivateCustomer).toHaveBeenCalledWith('c1');
-  expect(shownText(screen)).toContain('Inactive');
+  expect(shownText(screen)).toContain('Deactivated');
   expect(shownText(screen)).toContain('Activate customer');
 });
 

@@ -14,7 +14,8 @@ export interface Customer {
   email?: string;
   gst?: string;
   pan?: string;
-  active: boolean;
+  /** On the Orders list rows only from backend migration 82; absent on an older backend. */
+  active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
