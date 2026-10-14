@@ -42,7 +42,7 @@ import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
-import { cartFailureReason, isAlreadyRemoved, isConnectionFailure } from '@/features/orders/cartFailureReason';
+import { cartFailureReason, isAlreadyRemoved, isBusinessInactive, isConnectionFailure } from '@/features/orders/cartFailureReason';
 import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
 
 const NO_LINES: OrderItem[] = [];
@@ -108,6 +108,24 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const [showItemCatalogInternal, setShowItemCatalogInternal] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState<SearchResult[]>([]);
+  // The facility refused to open an order because the business is no longer active.
+  const [businessInactive, setBusinessInactive] = useState(false);
+
+  // Each start of an order read is numbered; an answer that is not the latest one is dropped,
+  // so a slow answer for a business the screen has left never becomes the order shown.
+  const initRun = useRef(0);
+  // Another business in the same editor: the previous order is cleared in this very render
+  // (React renders again before anything is shown), so no quantity change, removal or Add
+  // can reach it while the new order loads.
+  const [orderFor, setOrderFor] = useState(customerId);
+  if (orderFor !== customerId) {
+    setOrderFor(customerId);
+    initRun.current += 1;
+    setOrder(null);
+    setSelectedCustomer(null);
+    setBusinessInactive(false);
+    setLoading(Boolean(customerId));
+  }
 
   // Use external control if provided, otherwise internal state
   const showItemCatalog = itemCatalogOpen !== undefined ? itemCatalogOpen : showItemCatalogInternal;
@@ -120,14 +138,22 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
   // Initialize order for customer
   const initializeOrder = useCallback(async (custId: string) => {
+    initRun.current += 1;
+    const run = initRun.current;
     try {
       setLoading(true);
+      setBusinessInactive(false);
       if (__DEV__) console.log('[OrderManagement] Initializing order for customer:', custId);
 
       // Get or create order
       const orderResult = await OrderService.getOrCreateOrder(custId);
-      
+      if (run !== initRun.current) return;
+
       if (!orderResult.success) {
+        if (isBusinessInactive(orderResult)) {
+          setBusinessInactive(true);
+          return;
+        }
         showAlert(tr('orders.manage.couldNotOpenTitle'), serverText(orderResult.message, tr('common.checkConnection')));
         return;
       }
@@ -136,7 +162,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
       // Fetch order with items
       const orderDetailsResult = await OrderService.getOrderWithItems(orderResult.data!.cart_id);
-      
+      if (run !== initRun.current) return;
+
       if (__DEV__) console.log('[OrderManagement] Order details result:', {
         success: orderDetailsResult.success,
         hasData: !!orderDetailsResult.data,
@@ -168,15 +195,21 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         showAlert(tr('orders.manage.couldNotLoadTitle'), tr('common.checkConnection'));
       }
     } catch (error) {
+      if (run !== initRun.current) return;
       console.error('[OrderManagement] Error initializing order:', error);
       showAlert(tr('orders.manage.couldNotOpenTitle'), tr('common.checkConnection'));
     } finally {
-      setLoading(false);
+      if (run === initRun.current) setLoading(false);
     }
   }, []);
 
-  // Load initial data
+  // Load initial data. A change of business also closes the Add items picker of the old one.
+  const loadedCustomerId = useRef(customerId);
   useEffect(() => {
+    if (loadedCustomerId.current !== customerId) {
+      loadedCustomerId.current = customerId;
+      setShowItemCatalog(false);
+    }
     if (customerId) {
       initializeOrder(customerId);
     } else {
@@ -465,6 +498,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('orders.manage.loadingLabel')} />
         <Text style={styles.loadingText}>{tr('orders.manage.loading')}</Text>
+      </View>
+    );
+  }
+
+  if (businessInactive) {
+    return (
+      <View style={styles.emptyState}>
+        <Icon name="store-off-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyText} accessibilityRole="header">{tr('orders.manage.couldNotOpenTitle')}</Text>
+        <Text style={styles.emptySubtext}>{tr('orders.manage.businessInactive')}</Text>
       </View>
     );
   }

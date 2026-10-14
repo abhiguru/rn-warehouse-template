@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, ActivityIndicator, Text, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
@@ -29,7 +29,13 @@ export default function CustomerOrderScreen() {
   );
   const insets = useSafeAreaInsets();
   const [customerName, setCustomerName] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  // The business whose name has been read. `loading` follows from it, so on a change of
+  // `customerId` the very next render is the spinner: the editor of the old business is
+  // unmounted at once, with its order and its picker, and no action can reach that order.
+  const [loadedFor, setLoadedFor] = useState<string | undefined>(undefined);
+  const loading = loadedFor !== customerId;
+  const latestCustomerId = useRef(customerId);
+  latestCustomerId.current = customerId;
   const [showItemCatalog, setShowItemCatalog] = useState(false);
 
   // Changelog state
@@ -58,6 +64,8 @@ export default function CustomerOrderScreen() {
 
     try {
       const result = await ChangeLogService.getCustomerChangeLog(customerId, 20, offset);
+      // History read for a business the screen has left is dropped.
+      if (latestCustomerId.current !== customerId) return;
 
       if (result.success && result.data) {
         setChangelogEntries(prev =>
@@ -71,6 +79,7 @@ export default function CustomerOrderScreen() {
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Error fetching changelog:', error);
+      if (latestCustomerId.current !== customerId) return;
       setChangelogError(tr('orders.screen.historyError'));
     } finally {
       setChangelogLoading(false);
@@ -93,26 +102,45 @@ export default function CustomerOrderScreen() {
   // `loading` starts true and ends with the first name. Reading the name again
   // never brings the spinner back: it would unmount the order and its picker.
   const fetchCustomerName = useCallback(async () => {
+    const requestedFor = customerId;
+    let name = tr('common.customer');
     try {
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error } = await authenticatedClient
         .from('customers')
         .select('name')
-        .eq('id', customerId)
+        .eq('id', requestedFor)
         .single();
 
       if (error) {
         console.error('[CustomerOrderScreen] Error fetching customer:', error);
-        setCustomerName(tr('common.customer'));
       } else {
-        setCustomerName(data?.name || tr('common.customer'));
+        name = data?.name || name;
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Exception:', error);
-      setCustomerName(tr('common.customer'));
-    } finally {
-      setLoading(false);
     }
+    // The answer for a business the screen has left is dropped.
+    if (latestCustomerId.current !== requestedFor) return;
+    setCustomerName(name);
+    setLoadedFor(requestedFor);
+  }, [customerId]);
+
+  // Another business in the same screen: nothing of the previous one stays. The editor is
+  // already gone (`loading`); the picker's flag and the history sheet are closed here, so
+  // the new order does not open with the old business's picker.
+  const shownFor = useRef(customerId);
+  useEffect(() => {
+    if (shownFor.current === customerId) return;
+    shownFor.current = customerId;
+    setShowItemCatalog(false);
+    setChangelogVisible(false);
+    setChangelogEntries([]);
+    setChangelogAnalytics(undefined);
+    setChangelogHasMore(false);
+    setChangelogOffset(0);
+    setChangelogError(undefined);
+    setCustomerName('');
   }, [customerId]);
 
   useEffect(() => {

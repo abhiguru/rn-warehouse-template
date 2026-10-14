@@ -697,3 +697,60 @@ it('keeps the newer lines when an older read answers last', async () => {
   await settle();
   expect(quantities()).toEqual([['lot-kept', 7], ['lot-open', 5]]);
 });
+
+// Backlog 2026-10-14, item 1: another business in the same editor.
+describe('when customerId changes while the editor is mounted', () => {
+  it('drops the old order at once: no Add or quantity change reaches it, and the picker is closed', async () => {
+    const onClose = jest.fn();
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />); });
+    const oldAdd = mockPicker.props!.onAddItems;
+    // The next business's order never answers during the test.
+    service.getOrCreateOrder.mockReturnValue(new Promise(() => undefined) as never);
+    mockPicker.props = undefined;
+
+    await act(async () => { renderer!.update(<OrderManagement customerId="customer-fictional-2" itemCatalogOpen onCloseItemCatalog={onClose} />); });
+
+    // The picker of the old order is gone and the parent was told to close it.
+    expect(mockPicker.props).toBeUndefined();
+    expect(onClose).toHaveBeenCalled();
+    // A late tap on the old picker's Add sends nothing to the old order.
+    let results!: PickerResult[];
+    await act(async () => { results = await oldAdd(asked([{ grnItemId: 'lot-new', quantity: 3 }])); });
+    expect(service.addItemToOrder).not.toHaveBeenCalled();
+    expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+    expect(results).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
+  });
+
+  it('ignores the answer of the business it left', async () => {
+    const slow = waiting<never>();
+    service.getOrCreateOrder.mockReturnValueOnce(slow.promise as never);
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />); });
+    expect(mockPicker.props).toBeUndefined();
+    await act(async () => { renderer!.update(<OrderManagement customerId="customer-fictional-2" itemCatalogOpen onCloseItemCatalog={jest.fn()} />); });
+    // The first business answers late; its order must not be shown.
+    await act(async () => { slow.answer({ success: true, data: { cart_id: 'order-old' } } as never); });
+    await settle();
+    expect(service.getOrderWithItems.mock.calls.map(call => call[0])).not.toContain('order-old');
+  });
+});
+
+// Backlog 2026-10-14, item 3: migration 80 refuses a business that is not active.
+describe('a business that is not active', () => {
+  const inactive = { success: false, message: "Couldn't open the order.", error: 'Business is not active' } as never;
+  const text = () => renderer!.root.findAll(node => node.type === 'Text' as never).map(node => [node.props.children].flat().join('')).join(' | ');
+
+  it('shows the message for exactly that answer', async () => {
+    service.getOrCreateOrder.mockResolvedValue(inactive);
+    await act(async () => { renderer = create(editor()); });
+    expect(text()).toContain('This business is no longer active. Ask your cold storage.');
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(service.getOrderWithItems).not.toHaveBeenCalled();
+  });
+
+  it('keeps the current handling for any other error', async () => {
+    service.getOrCreateOrder.mockResolvedValue({ success: false, message: "Couldn't open the order.", error: 'permission denied' } as never);
+    await act(async () => { renderer = create(editor()); });
+    expect(text()).not.toContain('no longer active');
+    expect(showAlert).toHaveBeenCalledTimes(1);
+  });
+});

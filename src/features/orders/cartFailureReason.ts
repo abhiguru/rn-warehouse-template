@@ -97,3 +97,13 @@ export function isConnectionFailure(failure: CartFailure | null | undefined): bo
 export function isAlreadyRemoved(failure: CartFailure | null | undefined): boolean {
   return [sentence(failure?.message), sentence(failure?.error)].some(text => text !== undefined && /^Order item not found$/i.test(text));
 }
+
+/**
+ * True when `get_or_create_cart` refused because the business is deactivated or deleted
+ * (backend migration 80: `RAISE EXCEPTION 'Business is not active'`, SQLSTATE P0001).
+ * `OrderService.getOrCreateOrder` hands back the raised text in `error`. Only that
+ * sentence counts; any other failure keeps the generic handling.
+ */
+export function isBusinessInactive(failure: CartFailure | null | undefined): boolean {
+  return [sentence(failure?.message), sentence(failure?.error)].some(text => text !== undefined && /^Business is not active$/i.test(text));
+}

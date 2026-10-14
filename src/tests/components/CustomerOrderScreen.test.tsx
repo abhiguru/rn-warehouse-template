@@ -154,3 +154,27 @@ it('counts a session without a profile yet as signed in, as before', async () =>
   expect(router.replace).not.toHaveBeenCalled();
   expect(editors()).toBe(1);
 });
+
+it('shows the spinner at once for another business, closes the picker and drops the old name', async () => {
+  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  await act(async () => {
+    renderer!.root.findAll(candidate =>
+      candidate.props.accessibilityLabel === 'Add items to order' && typeof candidate.props.onPress === 'function')[0].props.onPress();
+  });
+  expect(mockEditor.props?.itemCatalogOpen).toBe(true);
+
+  let arrive!: (answer: { data: { name: string }; error: null }) => void;
+  mockNameRead.mockReturnValue(new Promise(resolve => { arrive = resolve; }));
+  mockParams.customerId = 'customer-fictional-2';
+  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  expect(spinners()).toBe(1);
+  expect(editors()).toBe(0);
+  expect(screenText()).not.toContain('Fictional Farms');
+
+  // When the name arrives, the editor is for the new business and its picker is closed.
+  await act(async () => { arrive({ data: { name: 'Second Traders' }, error: null }); });
+  expect(spinners()).toBe(0);
+  expect(mockEditor.props?.customerId).toBe('customer-fictional-2');
+  expect(mockEditor.props?.itemCatalogOpen).toBe(false);
+  expect(screenText()).toContain('Second Traders');
+});

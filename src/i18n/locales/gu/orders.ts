@@ -14,6 +14,7 @@ export const orders: Translation<typeof source> = {
     loading: 'ઑર્ડર લોડ થઈ રહ્યો છે…',
     loadingLabel: 'ઑર્ડર લોડ થઈ રહ્યો છે',
     couldNotOpenTitle: 'ઑર્ડર ખોલી શકાયો નથી',
+    businessInactive: 'આ વેપારી હવે સક્રિય નથી. તમારા કોલ્ડ સ્ટોરેજને પૂછો.',
     couldNotLoadTitle: 'ઑર્ડર લોડ કરી શકાયો નથી',
     couldNotChangeQuantityTitle: 'નંગ બદલી શકાયા નથી',
     removeTitle: '{{name}} કાઢી નાખવી છે?',

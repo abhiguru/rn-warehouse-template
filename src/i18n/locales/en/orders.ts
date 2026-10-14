@@ -11,6 +11,7 @@ export const orders = {
     loading: 'Loading order…',
     loadingLabel: 'Loading order',
     couldNotOpenTitle: "Couldn't open the order",
+    businessInactive: 'This business is no longer active. Ask your cold storage.',
     couldNotLoadTitle: "Couldn't load the order",
     couldNotChangeQuantityTitle: "Couldn't change the quantity",
     removeTitle: 'Remove {{name}}?',
