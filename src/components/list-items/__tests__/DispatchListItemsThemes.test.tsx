@@ -236,4 +236,24 @@ describe('weights on the dispatch cards', () => {
     expect((recentColumn.width as number) - (recentColumn.paddingRight as number)).toBeGreaterThanOrEqual(64);
     expect(recentColumn.width).toBeLessThanOrEqual(72);
   });
+
+  // Review 2026-10-14, finding 2. The 72 dp weight column leaves the name about 70 dp on a
+  // 360 dp phone (about 54 dp in Gujarati): on one line it was cut to a few letters.
+  it('dispatch card, open: the item name may take two lines, as on the GRN list, and the row centres its one-line cells on it', () => {
+    const name = 'Fictional long-grain basmati rice';
+    tree = open(fiveBags({ item_name: name }));
+
+    const nameText = tree.root.find(node => (node.type as unknown) === 'Text' && [node.props.children].flat().join('') === name);
+    expect(nameText.props.numberOfLines).toBe(2);
+    // The name may shrink to its column and wrap there; it is not cut by a fixed width.
+    expect(StyleSheet.flatten(nameText.props.style)).toMatchObject({ flexShrink: 1 });
+
+    const row = tree.root.find(node => typeof node.type === 'string' && node.props.accessible === true && String(node.props.accessibilityLabel).startsWith(name));
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row', alignItems: 'center' });
+    // The numbers beside it stay on one line each.
+    for (const value of ['50', '311/200', '5']) {
+      const cell = tree.root.find(node => (node.type as unknown) === 'Text' && [node.props.children].flat().join('') === value);
+      expect(cell.props.numberOfLines).toBe(1);
+    }
+  });
 });
