@@ -207,10 +207,10 @@ describe('weights on the dispatch cards', () => {
     expect(labels(tree)).toContain('Potatoes, GRN 311, 5 dispatched');
   });
 
-  it('in Gujarati: "દરેક kg" over ૫૦, read as દરેક ૫૦ કિલો, and without a weight read without one', () => {
+  it('in Gujarati: "નંગ દીઠ kg" over ૫૦, read as દરેક ૫૦ કિલો, and without a weight read without one', () => {
     setLanguage('gu');
     tree = open(fiveBags());
-    expect(texts(tree)).toEqual(expect.arrayContaining(['દરેક kg', '૫૦']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['નંગ દીઠ kg', '૫૦']));
     expect(labels(tree)).toContain('Potatoes, રેક B-14, દરેક ૫૦ કિલો, આવક પાવતી 311, ૫ નંગ જાવક');
     act(() => tree.unmount());
 

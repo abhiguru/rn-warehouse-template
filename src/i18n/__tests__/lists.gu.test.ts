@@ -27,7 +27,7 @@ describe('lists in Gujarati', () => {
       'બટાકા, રેક B7, દરેક ૫૦ કિલો, આવક પાવતી Z0797, ૧,૨૦૦ નંગ જાવક'
     );
     // The column over the bare number says "each" too; "kg" stays in Latin letters there (glossary).
-    expect(t('lists.card.colKgEach')).toBe('દરેક kg');
+    expect(t('lists.card.colKgEach')).toBe('નંગ દીઠ kg');
     expect(t('lists.grn.stockCount', { stock: formatNumber(4500) })).toBe('સ્ટોકમાં ૪,૫૦૦');
     expect(t('lists.orderGroup.itemRowLow', { item: 'લસણ', stock: 5, quantity: 40 })).toBe('લસણ, સ્ટોક ૫, નંગ ૪૦, ઓછો સ્ટોક');
   });
