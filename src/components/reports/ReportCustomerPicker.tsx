@@ -6,23 +6,18 @@
  * The picker lists the account's own customers and nothing else.
  */
 
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useLoadWithRetry } from '@/hooks/useLoadWithRetry';
 import { useRoleBasedAccess, type AssignedCustomerRef } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
-import { Avatar } from '@/components/ui';
+import { layout, space, type ThemeTokens } from '@/theme/tokens';
+import { CustomerChoiceRows } from '@/components/common/CustomerChoiceRows';
 import { t as tr } from '@/i18n';
 import { readCustomerNames } from '@/features/reports/customerNames';
 import { ReportEmptyState } from './ReportEmptyState';
 import { ReportHeader } from './ReportHeader';
-
-type NameLoad =
-  | { state: 'loading' }
-  | { state: 'failed' }
-  | { state: 'loaded'; names: Record<string, string> };
 
 export interface ReportCustomerPickerProps {
   /** The report's title, shown above the picker */
@@ -35,26 +30,7 @@ const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: t.background.base },
     section: { marginTop: space.lg, paddingHorizontal: layout.marginCompact },
-    card: { backgroundColor: t.surface.card, borderRadius: radius.card, ...t.shadow[2] },
-    cardClip: { borderRadius: radius.card, overflow: 'hidden' },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: layout.objectCellMinHeight,
-      paddingVertical: space.md,
-      paddingLeft: layout.marginCompact,
-      paddingRight: space.sm,
-      gap: space.md,
-      backgroundColor: t.surface.card,
-    },
-    rowPressed: { backgroundColor: t.surface.cardPressed },
-    name: { ...typography.headline, color: t.text.primary, flex: 1 },
     loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    divider: {
-      height: StyleSheet.hairlineWidth,
-      marginLeft: layout.marginCompact + layout.avatar.md + space.md,
-      backgroundColor: t.border.divider,
-    },
   });
 
 export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ title, onPick }) => {
@@ -68,20 +44,7 @@ export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ titl
   const unnamedKey = assignedCustomerIds
     .filter((id) => !assignedCustomers.find((customer) => customer.id === id)?.name)
     .join(',');
-  const [nameLoad, setNameLoad] = useState<NameLoad>({ state: 'loading' });
-  const [nameAttempt, setNameAttempt] = useState(0);
-  useEffect(() => {
-    if (!unnamedKey) return undefined;
-    let current = true;
-    setNameLoad({ state: 'loading' });
-    readCustomerNames(unnamedKey.split(',')).then(
-      (names) => current && setNameLoad({ state: 'loaded', names }),
-      () => current && setNameLoad({ state: 'failed' })
-    );
-    return () => {
-      current = false;
-    };
-  }, [unnamedKey, nameAttempt]);
+  const nameLoad = useLoadWithRetry(unnamedKey || null, () => readCustomerNames(unnamedKey.split(',')));
 
   // A row that only says "Customer" cannot be told from the next one, so the
   // picker waits for the names and says so when they cannot be read.
@@ -100,7 +63,7 @@ export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ titl
             message={tr('reports.shared.customerNamesFailed')}
             description={tr('reports.shared.customerNamesFailedDescription')}
             actionLabel={tr('common.retry')}
-            onAction={() => setNameAttempt((attempt) => attempt + 1)}
+            onAction={nameLoad.retry}
           />
         )}
       </View>
@@ -109,7 +72,7 @@ export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ titl
 
   // Names come with the profile or from the read above; a customer the server
   // returned without a name still gets a row.
-  const loadedNames = nameLoad.state === 'loaded' ? nameLoad.names : {};
+  const loadedNames = nameLoad.state === 'loaded' ? nameLoad.data : {};
   const customers: AssignedCustomerRef[] = assignedCustomerIds.map((id) => ({
     id,
     name: assignedCustomers.find((customer) => customer.id === id)?.name || loadedNames[id] || '',
@@ -121,32 +84,13 @@ export const ReportCustomerPicker: React.FC<ReportCustomerPickerProps> = ({ titl
       {/* The last row clears the system navigation bar. */}
       <ScrollView contentContainerStyle={{ paddingBottom: space.xxxl + insets.bottom }} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
-          <View style={styles.card}>
-            <View style={styles.cardClip}>
-              {customers.map((customer, index) => {
-                const name = customer.name || tr('reports.shared.unnamedCustomer');
-                return (
-                  <React.Fragment key={customer.id}>
-                    <Pressable
-                      testID={`report-customer-${customer.id}`}
-                      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                      onPress={() => onPick(customer)}
-                      accessibilityRole="button"
-                      accessibilityLabel={name}
-                      accessibilityHint={tr('reports.shared.chooseCustomerHint')}
-                    >
-                      <Avatar name={name} id={customer.id} />
-                      <Text style={styles.name} numberOfLines={2}>
-                        {name}
-                      </Text>
-                      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-                    </Pressable>
-                    {index < customers.length - 1 && <View style={styles.divider} />}
-                  </React.Fragment>
-                );
-              })}
-            </View>
-          </View>
+          <CustomerChoiceRows
+            customers={customers}
+            onPick={onPick}
+            hint={tr('reports.shared.chooseCustomerHint')}
+            testIDPrefix="report-customer-"
+            unnamedLabel={tr('reports.shared.unnamedCustomer')}
+          />
         </View>
       </ScrollView>
     </View>
