@@ -11,6 +11,7 @@ import {
   formatTemperature,
   formatTime,
   formatWeight,
+  formatWeightEach,
   indiaDay,
 } from '../formatters';
 import { avatarColors, avatarIndex, avatarInitials } from '../avatar';
@@ -86,6 +87,17 @@ describe('style guide §12.3 formats', () => {
     expect(formatTemperature(-18.5)).toBe('−18.5°C');
     expect(formatTemperature(4)).toBe('4.0°C');
     expect(formatTemperature(-0.01)).toBe('0.0°C');
+  });
+
+  it('words the weight of one package "each", and shows nothing when there is no weight', () => {
+    expect(formatWeightEach(50)).toBe('50 kg each');
+    expect(formatWeightEach(1250.5)).toBe('1,250.5 kg each');
+    // Grouping, decimals and the unit are formatWeight's.
+    expect(formatWeightEach(12.345)).toBe(`${formatWeight(12.345)} each`);
+    expect(formatWeightEach(12.345, 0)).toBe('12 kg each');
+    for (const none of [0, null, undefined, NaN, -5]) {
+      expect(formatWeightEach(none)).toBeNull();
+    }
   });
 });
 

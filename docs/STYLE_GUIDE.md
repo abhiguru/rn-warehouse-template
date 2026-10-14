@@ -404,7 +404,7 @@ Show every status with the `StatusTag` component (`@/components/ui`), which pair
 Not statuses, so never status-coloured by meaning:
 
 - **Categories** such as user roles, price types or packaging: neutral tags (`status="neutral"`, usually `icon={null}`). At most one category in a set may use informative to stand out. Never brand colours.
-- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "1,250.5 kg", "Rack B-14", "Mark PT", "3 photos". On object pages, contact and metadata facts use `InfoChip`.
+- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "50 kg each", "Rack B-14", "Mark PT", "3 photos". A weight is always the weight of one bag, box or crate and always says "each" (`formatWeightEach`); a line with no weight has no weight tag. On object pages, contact and metadata facts use `InfoChip`.
 - **A row being edited** in a list: `surface.selected` background and an informative "Editing" tag.
 - **A row already in the current order**: `brand.subtle` background, a 4 px `brand.tint` bar on the leading edge and an "In order" tag with a check.
 - **A value changed from its default**: a "Custom" tag in `brand.subtle` with `brand.tint` text and `pencil-outline`.
@@ -707,7 +707,7 @@ Confirmation buttons repeat the verb: "Delete GRN" and "Cancel", never "Yes" and
 | Mobile number | +91 prefix shown separately, number grouped 5 + 5 | +91 98765 43210 |
 | Money | Indian grouping, rupee sign, two decimals in invoices, none in summaries | ₹1,23,456.50 and ₹1,23,457 |
 | Quantity | Number, then unit, singular when 1 | 1 bag, 120 bags |
-| Weight | Up to two decimals, unit kg or quintal as the facility sets | 1,250.5 kg |
+| Weight | The weight of one bag, box or crate, in kg, up to two decimals, then "each". The entry field is labelled "Weight each" with kg as its suffix; a narrow column is headed "Kg each" and holds the plain number. Total weights are not shown. | 50 kg each |
 | Date | Day, short month, year | 9 Oct 2026 |
 | Date and time | Date, then 12-hour time | 9 Oct 2026, 4:05 pm |
 | Relative time | Under 24 hours only | 5 min ago, 3 h ago, then the date |
@@ -730,7 +730,8 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 | `formatMobile(n)` | +91 98765 43210 |
 | `formatCount(n, 'item')` | 1 item, 12 items (`formatCount(n, 'dispatch', 'dispatches')`) |
 | `formatCurrency(n, { maximumFractionDigits: 0 })` / invoice `formatInvoiceAmount(n)` | ₹1,23,457 in summaries and KPIs / ₹1,23,456.50 on invoices and their rows |
-| `formatWeight(n)` | 1,250.5 kg |
+| `formatWeightEach(n)` | 50 kg each; nothing for an empty or zero weight |
+| `formatWeight(n)` | 1,250.5 kg (inside `formatWeightEach` and filter ranges only) |
 | `formatTemperature(n)` | −18.5°C |
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
@@ -797,7 +798,7 @@ Rules: label above the field, never only a placeholder. Height 44 minimum, radiu
 | `features/filters/components/editors/DateRangeEditor.tsx` | Quick ranges as chips (Today, Yesterday, Last 7 days, This month, Last month), then From and To date fields; "To" covers the whole of its day. |
 | `ui/CompoundRackInput.tsx` | Rack, floor and chamber pickers side by side, stacked at large text sizes; values shown as "Chamber 2 · Rack B-14". The Android picker dropdown follows the system theme, not the app's. |
 | `fiori/StepperInput.tsx` | Minus and plus buttons in `border.button` with `brand.tint` icons, `brand.subtle` while pressed; value in `body` with tabular numbers; the buttons disable at min and max; layouts `stacked`, `inline`, `compact`. |
-| `grn/components/item-form/QuantityWeightFields.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. |
+| `grn/components/HorizontalItemForm.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. The weight field is labelled "Weight each". |
 | `grn/components/item-form/RackChamberPicker.tsx` | Floor and chamber are single-choice chips with radio semantics (`brand.subtle` and a check when selected); use a bottom sheet only when there are more than eight options. Wrapping choice chips are at least 36 tall with an 8 gap and `hitSlop` up to `touchTarget`. |
 | `grn/components/item-form/ItemSearchField.tsx`, `ItemAutocomplete`, `invoice/components/GRNAutocomplete` | Search field plus suggestion list; recent picks first; empty state "No matches". |
 | `grn/components/ImageUploadButton.tsx`, `item-form/MarkImageField.tsx`, `CameraModal.tsx` | Dashed `border.field` tile with `camera-outline` icon and label; upload progress uses `FioriLinearProgress`; failure shows a retry action. |

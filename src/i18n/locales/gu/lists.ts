@@ -14,6 +14,7 @@ export const lists: Translation<typeof source> = {
     vehicle: 'વાહન {{number}}',
     grnRef: 'આવક પાવતી {{number}}',
     colKg: 'kg',
+    colKgEach: 'દરેક kg',
     colQty: 'નંગ',
     colGrn: 'આવક',
   },

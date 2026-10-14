@@ -13,6 +13,7 @@ export const lists = {
     vehicle: 'Vehicle {{number}}',
     grnRef: 'GRN {{number}}',
     colKg: 'Kg',
+    colKgEach: 'Kg each',
     colQty: 'Qty',
     colGrn: 'GRN',
   },

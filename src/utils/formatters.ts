@@ -82,6 +82,23 @@ export const formatWeight = (
 };
 
 /**
+ * The weight of one bag, box or crate, which is the only weight a lot stores,
+ * worded so it cannot be read as a total (style guide §12.3): "50 kg each".
+ * Null when there is no weight to show (missing, zero or negative): the caller
+ * then shows no weight at all.
+ *
+ * @param weight - Weight of one package in kg
+ * @param decimals - Maximum number of decimal places (default 2)
+ */
+export const formatWeightEach = (
+  weight: number | null | undefined,
+  decimals: number = 2
+): string | null => {
+  if (weight === null || weight === undefined || isNaN(weight) || weight <= 0) return null;
+  return words().each.replace('{w}', formatWeight(weight, decimals));
+};
+
+/**
  * Format quantity with optional unit
  *
  * @param qty - The quantity
