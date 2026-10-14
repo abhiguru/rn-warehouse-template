@@ -62,7 +62,7 @@ jest.mock('@/hooks', () => ({
 }));
 // Children are stand-ins that keep their props, so the test can call their handlers.
 // The form's stand-in also takes what the step asks of the form through its ref.
-const mockFormRef = { focusQty: jest.fn(), resetScroll: jest.fn(), revealField: jest.fn() };
+const mockFormRef = { focusField: jest.fn(), resetScroll: jest.fn(), revealField: jest.fn() };
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
   HorizontalItemForm: require('react').forwardRef((props: object, ref: React.Ref<unknown>) => {
     require('react').useImperativeHandle(ref, () => mockFormRef);
@@ -326,12 +326,38 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     expect(lastAlert()?.[0]).toBe('Save changes to this item?');
   });
 
+  // Phone run 2026-10-14, plan B step B16: after OK the Quantity field was left
+  // with the cursor drawn in it and no keyboard, so the worker had to tap it
+  // again. Now the step asks the form to bring it into view and give it the
+  // cursor with the keyboard open (the form's own test covers what that does).
+  it('a correction with the quantity cleared: OK on the refusal brings Quantity into view and gives it the cursor', async () => {
+    const tree = await render('edit', lines(10));
+    await openRow(tree, 5);
+    set(tree, 'qty', '');
+    await pressNext(tree);
+    await answer('Save changes');
+    expect(lastAlert()?.slice(0, 2)).toEqual(['Check the item details', 'Fix the highlighted fields, then save the item.']);
+    // The stock is checked from the quantity; it has no field of its own.
+    expect(Object.keys(form(tree).props.currentItem.errors)).toEqual(['qty', 'stock']);
+    // Not while the alert is still open.
+    expect(mockFormRef.revealField).not.toHaveBeenCalled();
+    expect(mockFormRef.focusField).not.toHaveBeenCalled();
+
+    await answer('OK');
+
+    expect(mockFormRef.revealField.mock.calls).toEqual([['qty']]);
+    expect(mockFormRef.focusField.mock.calls).toEqual([['qty']]);
+    expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
+    // The error stays shown in the form until the worker types.
+    expect(form(tree).props.currentItem.errors.qty).toBe('Quantity is required');
+  });
+
   // The form is one sideways row: Weight, Rack and Mark are out of view while Item and Quantity are shown.
   it.each([
     ['a weight that is not a whole number', 'weight', '12.5'],
     ['a rack of more than 30 characters', 'rack', 'R'.repeat(31)],
     ['a mark of more than 60 characters', 'package_mark', 'M'.repeat(61)],
-  ])('a correction with %s: OK on the refusal brings that field into view', async (_what, field, value) => {
+  ])('a correction with %s: OK on the refusal brings that field into view and gives it the cursor', async (_what, field, value) => {
     const tree = await render('edit', lines(10));
     await openRow(tree, 5);
     set(tree, field, value);
@@ -341,11 +367,11 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     expect(lastAlert()?.[1]).toBe('Fix the highlighted fields, then save the item.');
     expect(Object.keys(form(tree).props.currentItem.errors)).toEqual([field]);
     expect(mockFormRef.revealField).not.toHaveBeenCalled();
+    expect(mockFormRef.focusField).not.toHaveBeenCalled();
     await answer('OK');
 
-    expect(mockFormRef.revealField).toHaveBeenCalledTimes(1);
-    expect(mockFormRef.revealField).toHaveBeenCalledWith(field);
-    expect(mockFormRef.focusQty).not.toHaveBeenCalled();
+    expect(mockFormRef.revealField.mock.calls).toEqual([[field]]);
+    expect(mockFormRef.focusField.mock.calls).toEqual([[field]]);
     expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
   });
 
@@ -360,15 +386,16 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
 
     // Weight is drawn before Rack.
     expect(mockFormRef.revealField.mock.calls).toEqual([['weight']]);
+    expect(mockFormRef.focusField.mock.calls).toEqual([['weight']]);
 
-    // Quantity is drawn before both, and is given the cursor as before.
+    // Quantity is drawn before both.
     set(tree, 'qty', '');
     await pressNext(tree);
     await answer('Save changes');
     await answer('OK');
 
-    expect(mockFormRef.focusQty).toHaveBeenCalledTimes(1);
-    expect(mockFormRef.revealField.mock.calls).toEqual([['weight']]);
+    expect(mockFormRef.revealField.mock.calls).toEqual([['weight'], ['qty']]);
+    expect(mockFormRef.focusField.mock.calls).toEqual([['weight'], ['qty']]);
     expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
   });
 
