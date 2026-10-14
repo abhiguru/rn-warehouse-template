@@ -152,7 +152,7 @@ describe('what was chosen is seeded once', () => {
     // Add sends the one lot the user chose: not the other user's line, and no removal of it.
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(1);
-    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1 }]);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0 }]);
   });
 
   it('shows the "In order" badge from the saved lines as they are now', async () => {
@@ -176,8 +176,8 @@ describe('what was chosen is seeded once', () => {
     expect(addButtonText()).toBe('Add (2)');
     await pressAdd();
     expect(onAddItems.mock.calls[0][0]).toEqual([
-      { grnItemId: 'lot-c', quantity: 1 },
-      { grnItemId: 'lot-a', quantity: 0 },
+      { grnItemId: 'lot-c', quantity: 1, expected: 0 },
+      { grnItemId: 'lot-a', quantity: 0, expected: 2 },
     ]);
   });
 
@@ -312,7 +312,7 @@ describe('Add waits for the server', () => {
     await pressAdd();
 
     expect(onAddItems).toHaveBeenCalledTimes(1);
-    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1 }, { grnItemId: 'lot-b', quantity: 1 }]);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0 }, { grnItemId: 'lot-b', quantity: 1, expected: 0 }]);
     expect(onClose).not.toHaveBeenCalled();
     expect(addButtonText()).toBe('Saving 1 of 2…');
     // The Add button is a busy, polite live region with nothing to press: a second tap cannot send again.
@@ -374,7 +374,7 @@ describe('Add waits for the server', () => {
 
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(2);
-    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 1 }]);
+    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 1, expected: 0 }]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

@@ -90,5 +90,9 @@ export const orders = {
     reasonBelowDispatched: '{{bags}} already dispatched. Choose that many or more.',
     reasonOrderClosed: 'This order is closed. Go back and open it again.',
     reasonNotSaved: 'Not saved. Check your connection and try again.',
+    // Someone else changed the lot while the picker was open; nothing was overwritten.
+    reasonChangedMeanwhile: 'Changed by someone else: now {{bags}} in the order. Tap Add again to make it {{chosen}}.',
+    reasonRemovedMeanwhile: 'Removed by someone else. Tap Add again to add {{chosen}}.',
+    reasonChangedMeanwhileRemove: 'Changed by someone else: now {{bags}} in the order. Tap Add again to remove it.',
   },
 };

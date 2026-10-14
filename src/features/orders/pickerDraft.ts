@@ -19,17 +19,29 @@ export interface PickerLine {
   item: GRNItem;
 }
 
-/** One thing to save: the quantity a lot should have. Quantity 0 takes the lot off the order. */
+/**
+ * One thing to save: the quantity a lot should have. Quantity 0 takes the lot off
+ * the order. `expected` is the quantity the picker believes is saved for the lot
+ * (its base quantity, 0 when the lot is not in the base): the save is applied only
+ * while the order still holds that, so a line someone else changed is never
+ * overwritten unseen.
+ */
 export interface PickerChange {
   grnItemId: string;
   quantity: number;
+  expected: number;
 }
 
-/** The answer for one change: saved, or not saved with the reason to show on the lot. */
+/**
+ * The answer for one change: saved, or not saved with the reason to show on the
+ * lot. `savedQuantity` is set when the change was not applied because the lot
+ * is saved with another quantity than the picker expected (0: no open line).
+ */
 export interface PickerResult {
   grnItemId: string;
   ok: boolean;
   reason?: string;
+  savedQuantity?: number;
 }
 
 export interface PickerDraft {
@@ -76,10 +88,11 @@ export function withoutReasons(draft: PickerDraft): PickerDraft {
 export function changesOf(draft: PickerDraft): PickerChange[] {
   const changes: PickerChange[] = [];
   draft.selection.forEach((line, grnItemId) => {
-    if (draft.base.get(grnItemId)?.quantity !== line.quantity) changes.push({ grnItemId, quantity: line.quantity });
+    const expected = draft.base.get(grnItemId)?.quantity ?? 0;
+    if (expected !== line.quantity) changes.push({ grnItemId, quantity: line.quantity, expected });
   });
-  draft.base.forEach((_line, grnItemId) => {
-    if (!draft.selection.has(grnItemId)) changes.push({ grnItemId, quantity: 0 });
+  draft.base.forEach((line, grnItemId) => {
+    if (!draft.selection.has(grnItemId)) changes.push({ grnItemId, quantity: 0, expected: line.quantity });
   });
   return changes;
 }
@@ -89,7 +102,9 @@ export const isDirty = (draft: PickerDraft): boolean => changesOf(draft).length 
 /**
  * The draft after an Add was answered. A saved lot moves into `base` (or leaves
  * it, when the change was a removal), so it is no longer a change. A lot that was
- * not saved stays as the user chose it and takes its reason.
+ * not saved stays as the user chose it and takes its reason. A lot that was not
+ * applied because it is saved with another quantity (`savedQuantity`) also takes
+ * that quantity as its base, so the next Add knowingly applies the user's number.
  */
 export function applyResults(draft: PickerDraft, results: readonly PickerResult[]): PickerDraft {
   const base = new Map(draft.base);
@@ -101,6 +116,11 @@ export function applyResults(draft: PickerDraft, results: readonly PickerResult[
       else base.delete(result.grnItemId);
       failed.delete(result.grnItemId);
     } else {
+      if (result.savedQuantity !== undefined) {
+        const item = draft.selection.get(result.grnItemId)?.item ?? draft.base.get(result.grnItemId)?.item;
+        if (result.savedQuantity > 0 && item) base.set(result.grnItemId, { grnItemId: result.grnItemId, quantity: result.savedQuantity, item });
+        else base.delete(result.grnItemId);
+      }
       failed.set(result.grnItemId, result.reason ?? '');
     }
   }
