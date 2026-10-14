@@ -468,7 +468,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
                   <HighlightedText style={styles.tableCellItemName} numberOfLines={2} ellipsizeMode="tail" text={item.item_name ?? ''} words={words} />
                   {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
                   {item.package_mark ? (
-                    <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
+                    <HighlightedText style={styles.tableCellItemMark} text={item.package_mark} words={words} />
                   ) : null}
                 </View>
                 <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
