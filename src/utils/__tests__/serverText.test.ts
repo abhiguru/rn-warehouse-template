@@ -200,3 +200,26 @@ describe('a failed request with a raw error and the app message', () => {
     expect(failureText(undefined, '  ', 'fallback')).toBe('fallback');
   });
 });
+
+describe('business state refusals (migrations 82 and 83)', () => {
+  const DEACTIVATED = 'This business is deactivated. Activate it in Customers to receive new goods.';
+  it('says the same clear sentence in English', () => {
+    expect(serverText(DEACTIVATED, 'x')).toBe(DEACTIVATED);
+    expect(serverText('Business is not active', 'x')).toBe(
+      'This business is not active, so nothing new can be added for it. Activate it in Customers first.',
+    );
+  });
+  it('words both in Gujarati, not the fallback', () => {
+    setLanguage('gu');
+    expect(serverText(DEACTIVATED, 'FALLBACK')).toBe('આ વેપારી નિષ્ક્રિય છે. નવો માલ લેવા માટે વેપારીઓમાં તેને સક્રિય કરો.');
+    expect(serverText('Business is not active', 'FALLBACK')).toContain('વેપારી');
+    expect(serverText('Business is not active', 'FALLBACK')).not.toBe('FALLBACK');
+  });
+  it('leaves a longer message that only contains those words as it was', () => {
+    const longer = 'Cannot continue: business is not active for this facility';
+    expect(serverText(longer, 'x')).toBe(longer);
+    setLanguage('gu');
+    expect(serverText(longer, 'FALLBACK')).toBe('FALLBACK');
+    expect(serverText(`Error creating GRN: ${DEACTIVATED}`, 'FALLBACK')).toBe('FALLBACK');
+  });
+});

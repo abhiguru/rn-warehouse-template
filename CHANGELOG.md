@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — GRN for a deactivated business (2026-10-15)
+
+Needs backend migration 83 (same batch as 82): `save_grn` refuses a new GRN for a business that is
+deactivated in Customers, answer `This business is deactivated. Activate it in Customers to receive
+new goods.` (P0001). A GRN form can already be open when the business is deactivated, so this can
+show on GRN → step 3 Review → Create.
+
+- **The refusal is shown in the app's words** in the existing "could not save" alert, in English and
+  Gujarati (the server answers with the bare sentence). Only that exact sentence is replaced; any other
+  text that merely contains those words is left as before. The form is not reset: the
+  user's input stays, and Create works once the business is activated.
+- **"Business is not active"** (deleted business, migration 82) is worded the same way, in both
+  languages, wherever the app shows a server text (it was shown bare in English and as the generic
+  message in Gujarati).
+- On a facility before migration 83 nothing changes: the server creates the GRN as before.
+
+### Gujarati, for review
+
+- New Gujarati strings are drafts that await the owner's review: `errors.parsed.businessDeactivated`
+  ("આ વેપારી નિષ્ક્રિય છે. નવો માલ લેવા માટે વેપારીઓમાં તેને સક્રિય કરો."),
+  `errors.parsed.businessNotActive` ("આ વેપારી સક્રિય નથી, તેથી તેના માટે નવું કંઈ ઉમેરી શકાતું નથી. પહેલા વેપારીઓમાં તેને સક્રિય કરો.").
+  "Customers" is written વેપારીઓ, as on the tab.
+
 ## Unreleased — open items (2026-10-15)
 
 Needs backend migration 82 (supabase-warehouse-template `fix/open-items-2026-10-15`): it adds

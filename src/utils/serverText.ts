@@ -14,6 +14,9 @@ import { getLanguage } from '@/i18n/language';
 const REASONS: [RegExp, TranslationKey][] = [
   // "X not found or access denied": the record is missing as far as this person can tell.
   [/not found or access denied/, 'errors.parsed.itemNotFound'],
+  // Business state (server migrations 80, 82 and 83). Both are also worded in English (see APP_WORDED).
+  [/^this business is deactivated\. activate it in customers to receive new goods\.?$/, 'errors.parsed.businessDeactivated'],
+  [/^business is not active\.?$/, 'errors.parsed.businessNotActive'],
   [/session expired|not authenticated|authentication required|active account required|invalid refresh token/, 'errors.code.sessionExpired'],
   [
     /access denied|permission|only admins?\b|only administrators|only supervisors|supervisors cannot|staff access required|administrator required|you cannot change your own|self_edit_forbidden|cannot_modify_admin|cannot_promote_to_admin/,
@@ -57,6 +60,11 @@ const REASONS: [RegExp, TranslationKey][] = [
 ];
 
 /**
+ * Server sentences the app words itself in English too: the bare "Business is not active" says little.
+ */
+const APP_WORDED: TranslationKey[] = ['errors.parsed.businessDeactivated', 'errors.parsed.businessNotActive'];
+
+/**
  * True for a sentence written in Gujarati: more Gujarati letters than Latin
  * ones. An English server sentence that only names a Gujarati item or customer
  * ('Cannot delete item "લસણ" - has 3 existing dispatches') is not one, and a
@@ -79,7 +87,7 @@ function unwrapDatabaseError(text: string): string {
 
 /** The reason a server text names, in the app's language; undefined when it names none the app knows. */
 export function serverReason(text: string): string | undefined {
-  const lower = text.toLowerCase();
+  const lower = unwrapDatabaseError(text).trim().toLowerCase();
   const match = REASONS.find(([pattern]) => pattern.test(lower));
   return match ? t(match[1]) : undefined;
 }
@@ -94,7 +102,11 @@ export function serverText(text: unknown, fallback: string): string {
   if (typeof text !== 'string' || text.trim() === '') return fallback;
   // English keeps the server's wording; text the app wrote in Gujarati is already right.
   if (writtenInGujarati(text)) return text;
-  if (getLanguage() === 'en') return unwrapDatabaseError(text) || fallback;
+  if (getLanguage() === 'en') {
+    const lower = unwrapDatabaseError(text).trim().toLowerCase();
+    const worded = REASONS.find(([pattern, key]) => APP_WORDED.includes(key) && pattern.test(lower));
+    return worded ? t(worded[1]) : unwrapDatabaseError(text) || fallback;
+  }
   return serverReason(text) ?? fallback;
 }
 

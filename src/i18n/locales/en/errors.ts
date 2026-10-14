@@ -163,6 +163,8 @@ export const errors = {
     lineOnOtherInvoice: 'A dispatch on this invoice is already on another invoice, so it cannot be invoiced again.',
     invoiceHasPayments: 'This invoice has payments recorded against it, so it cannot be deleted.',
     busy: 'The server is busy. Please try again in a moment.',
+    businessDeactivated: 'This business is deactivated. Activate it in Customers to receive new goods.',
+    businessNotActive: 'This business is not active, so nothing new can be added for it. Activate it in Customers first.',
   },
   auth: {
     authenticationFailed: 'Authentication failed. Please sign in again.',
