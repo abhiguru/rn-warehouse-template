@@ -1,5 +1,5 @@
 import { setLanguage, t } from '..';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 
 afterEach(() => setLanguage('en'));
 
@@ -22,9 +22,12 @@ describe('lists in Gujarati', () => {
     setLanguage('gu');
     expect(t('lists.grn.cardTitle', { number: 'Z0797' })).toBe('આવક પાવતી Z0797');
     expect(t('lists.card.vehicle', { number: 'GJ01AB1234' })).toBe('વાહન GJ01AB1234');
-    expect(t('lists.dispatch.itemRowRack', { item: 'બટાકા', rack: 'B7', weight: formatWeight(50, 0), grn: 'Z0797', quantity: 1200 })).toBe(
-      'બટાકા, રેક B7, ૫૦ કિલો, આવક પાવતી Z0797, ૧,૨૦૦ નંગ જાવક'
+    // The weight is given as the row gives it: the weight of one package, worded "each".
+    expect(t('lists.dispatch.itemRowRack', { item: 'બટાકા', rack: 'B7', weight: formatWeightEach(50, 0), grn: 'Z0797', quantity: 1200 })).toBe(
+      'બટાકા, રેક B7, દરેક ૫૦ કિલો, આવક પાવતી Z0797, ૧,૨૦૦ નંગ જાવક'
     );
+    // The column over the bare number says "each" too; "kg" stays in Latin letters there (glossary).
+    expect(t('lists.card.colKgEach')).toBe('દરેક kg');
     expect(t('lists.grn.stockCount', { stock: formatNumber(4500) })).toBe('સ્ટોકમાં ૪,૫૦૦');
     expect(t('lists.orderGroup.itemRowLow', { item: 'લસણ', stock: 5, quantity: 40 })).toBe('લસણ, સ્ટોક ૫, નંગ ૪૦, ઓછો સ્ટોક');
   });
