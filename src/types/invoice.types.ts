@@ -101,7 +101,13 @@ export interface GroupedInvoiceItems {
   item_id: string;           // grnItems_id - Unique ID for this GRN line item
   item_name: string;         // grnItems_itemName - Item name (e.g., "Gur")
   package_mark: string;      // grnItems_packageMark - Package marking to differentiate items
-  total_weight: number;      // grnItems_weight - Weight per unit
+  /**
+   * grnItems_weight of the group's lines: the weight of one bag, box or crate in kg (not a
+   * total), which picks the price band of a line. A group is an item and a mark, not a lot, so
+   * its lots can weigh differently: every distinct weight, lightest first. A line without a
+   * weight adds none; the list is empty when no line has one.
+   */
+  weights_each: number[];
   gr_quantity: number;       // grnItems_originalQty - Total quantity in GRN for this item
   total_dispatched: number;  // grnItems_totalDispatched - Total dispatched quantity
   rack: string;             // grnItems_rack - Storage rack location

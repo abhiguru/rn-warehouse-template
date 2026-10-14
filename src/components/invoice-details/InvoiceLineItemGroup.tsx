@@ -21,7 +21,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
+import { formatNumber, formatDate, formatCount, formatWeightEach } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { t as tr, formatIdentifier } from '@/i18n';
 
@@ -311,6 +311,9 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
   const dispatchItems = group.dispatch_items ?? [];
   const dispatchCount = dispatchItems.length;
   const dispatchCountText = formatCount(dispatchCount, 'dispatch', 'dispatches');
+  // The weight of one bag, box or crate of the lot ("50 kg each"), the number that picked
+  // the price band; a lot without a weight shows none.
+  const weightEach = formatWeightEach(group.weight);
 
   return (
     <View style={styles.card}>
@@ -349,12 +352,12 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
 
           {/* Key metrics */}
           <View style={styles.metricsRow}>
-            {group.weight > 0 && (
+            {weightEach ? (
               <View style={styles.metricItem}>
                 <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.metricValue}>{formatWeight(group.weight)}</Text>
+                <Text style={styles.metricValue}>{weightEach}</Text>
               </View>
-            )}
+            ) : null}
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>{tr('invoice.lineItem.received')}</Text>
               <Text style={styles.metricValue}>{formatNumber(group.grn_quantity)}</Text>

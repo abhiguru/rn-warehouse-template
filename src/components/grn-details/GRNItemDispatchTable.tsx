@@ -27,7 +27,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 interface GRNItemDispatchTableProps {
@@ -69,11 +69,16 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.headline,
     color: t.text.primary,
   },
+  // Wraps, so at large text "1,250 kg each" goes under the mark instead of being cut by
+  // the container's overflow: hidden.
   itemMeta: {
     flexDirection: 'row' as const,
-    gap: space.sm,
+    flexWrap: 'wrap' as const,
+    columnGap: space.sm,
+    rowGap: space.xxs,
   },
   metaText: {
+    flexShrink: 1,
     ...typography.footnote,
     color: t.text.secondary,
   },
@@ -172,6 +177,8 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
   const totalDispatched = dispatches.reduce((sum, d) => sum + d.disp_quantity, 0);
   const totalQty = item.qty || 0;
   const countLabel = formatCount(dispatches.length, 'dispatch', 'dispatches');
+  // The weight of one package ("50 kg each"); null when the line has none.
+  const weightText = formatWeightEach(Number(item.weight));
 
   return (
     <View style={styles.container}>
@@ -197,9 +204,9 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
               {item.package_mark ? (
                 <Text style={styles.metaText}>{item.package_mark}</Text>
               ) : null}
-              {/* A number is never the left side of && here: 0 would be rendered as text. */}
-              {Number(item.weight) > 0 ? (
-                <Text style={styles.metaText}>{formatWeight(Number(item.weight))}</Text>
+              {/* A line without a weight (0) shows none; a number is never the left side of && here. */}
+              {weightText !== null ? (
+                <Text style={styles.metaText}>{weightText}</Text>
               ) : null}
             </View>
           </View>

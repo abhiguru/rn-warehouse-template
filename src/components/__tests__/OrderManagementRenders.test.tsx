@@ -32,6 +32,8 @@ jest.mock('@/hooks/useOrderLiveUpdates', () => ({
   useOrderLiveUpdates: (refresh: () => Promise<void> | void) => { mockLive.refresh = refresh; },
 }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+// The editor asks whether the phone has a network before it saves the picker's changes.
+jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),

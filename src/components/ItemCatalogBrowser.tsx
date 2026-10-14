@@ -29,7 +29,7 @@ import {
   type ThemeTokens,
   singleLineText,
 } from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { OrderService } from '@/services/order-service';
 import { StockService } from '@/services/stock-service';
@@ -37,9 +37,20 @@ import { SessionRecentItemsService } from '@/services/session-recent-items-servi
 import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types/order.types';
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
+import {
+  applyResults,
+  changesOf,
+  seedDraft,
+  withQuantity,
+  withoutReasons,
+  type PickerChange,
+  type PickerLine,
+  type PickerResult,
+} from '@/features/orders/pickerDraft';
 type StockStatus = 'positive' | 'critical' | 'negative';
 
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
@@ -47,21 +58,36 @@ const stockLabel = (status: StockStatus): string =>
   status === 'negative' ? tr('common.outOfStock') : status === 'critical' ? tr('common.lowStock') : tr('common.inStock');
 const formatBags = (n: number) => formatCount(n, 'bag');
 
+/**
+ * The Add items picker of one order. Mount it once per opening (OrderManagement
+ * renders it only while it is shown): what the user chooses is seeded from the
+ * saved lines when it mounts and then belongs to the user until it is added or
+ * discarded. It is kept in memory only.
+ */
 interface ItemCatalogBrowserProps {
   isVisible: boolean;
   onClose: () => void;
-  onAddItems: (items: Array<{ grnItemId: string; quantity: number }>) => void;
+  /**
+   * Saves what the user changed (quantity 0 = take the lot off the order) and
+   * answers for each lot. Must not reject. `onProgress` reports the lot being
+   * saved, counted from 1.
+   */
+  onAddItems: (
+    changes: PickerChange[],
+    onProgress: (position: number, total: number) => void
+  ) => Promise<PickerResult[]>;
   /** Passed by OrderManagement; not read by the browser. */
   currentOrderId?: string;
   customerId: string;
-  currentOrderItems?: Array<{ grnItemId: string; quantity: number; item: GRNItem }>;
+  /**
+   * The order's saved open lines. Read once, when the picker mounts, to seed the
+   * selection; afterwards they only say which rows carry the "In order" badge.
+   */
+  currentOrderItems?: PickerLine[];
 }
 
-interface SelectedItem {
-  grnItemId: string;
-  quantity: number;
-  item: GRNItem;
-}
+/** How the user asked to leave the picker. */
+type CloseSource = 'cancel' | 'back' | 'scrim' | 'swipe';
 
 // Rows requested per page in browse and search mode.
 const CATALOG_PAGE_SIZE = 50;
@@ -93,12 +119,14 @@ const appendUnique = (current: GRNItem[], page: GRNItem[]): GRNItem[] => {
   return fresh.length > 0 ? [...current, ...fresh] : current;
 };
 
+const NO_ORDER_ITEMS: PickerLine[] = [];
+
 const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   isVisible,
   onClose,
   onAddItems,
   customerId,
-  currentOrderItems = [],
+  currentOrderItems = NO_ORDER_ITEMS,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -113,7 +141,30 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const [customerAllItems, setCustomerAllItems] = useState<GRNItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [inStockOnly, setInStockOnly] = useState(true);
-  const [selectedItems, setSelectedItems] = useState<Map<string, SelectedItem>>(new Map());
+  // Seeded once, when the picker opens, and never from the prop again: a new
+  // `currentOrderItems` array (a refresh, a return from the background, a line
+  // someone else added) must not wipe what the user chose.
+  const [draft, setDraft] = useState(() => seedDraft(currentOrderItems));
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const selectedItems = draft.selection;
+  // The lot being saved and how many there are, while Add waits for the server.
+  const [saving, setSaving] = useState<{ position: number; total: number } | null>(null);
+  const isSaving = saving !== null;
+  const savingRef = useRef(false);
+  // The callers pass new functions on every render; handlers read the latest.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const onAddItemsRef = useRef(onAddItems);
+  onAddItemsRef.current = onAddItems;
+  // onClose has been called for this opening; it is called once.
+  const closedRef = useRef(false);
+  // "Discard selections?" is on screen.
+  const askingRef = useRef(false);
+  // The sheet is off the screen (a swipe took it) while the picker itself is still
+  // open. Set by every dismissal the library reports for an open picker, cleared
+  // by `presentSheet`.
+  const sheetDownRef = useRef(false);
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
   const [selectedCatalog, setSelectedCatalog] = useState<string | null>(null);
   const [showSelectedItems, setShowSelectedItems] = useState(false);
@@ -181,10 +232,17 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     loadPersistedRecentItems();
   }, [isVisible, customerId]);
 
+  // Puts the sheet on the screen, the first time and after a swipe took it away.
+  const presentSheet = useCallback(() => {
+    sheetDownRef.current = false;
+    sheet.present();
+  }, [sheet]);
+
   // Handle bottom sheet visibility
   useEffect(() => {
     if (isVisible) {
-      sheet.present();
+      closedRef.current = false;
+      presentSheet();
     } else {
       sheet.dismiss();
     }
@@ -490,32 +548,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     }
   }, [isVisible, fetchItems]);
 
-  // Initialize selected items with current order items when modal opens
-  useEffect(() => {
-    if (isVisible && currentOrderItems.length > 0) {
-      const initialSelectedItems = new Map<string, SelectedItem>();
-      currentOrderItems.forEach(orderItem => {
-        initialSelectedItems.set(orderItem.grnItemId, {
-          grnItemId: orderItem.grnItemId,
-          quantity: orderItem.quantity,
-          item: orderItem.item
-        });
-      });
-      setSelectedItems(initialSelectedItems);
-    } else if (isVisible) {
-      // Clear selected items if no current order items
-      setSelectedItems(new Map());
-    }
-  }, [isVisible, currentOrderItems]);
-
   // Handle quantity change
   const handleQuantityChange = useCallback((item: GRNItem, quantity: number) => {
+    // Nothing changes while an Add is being saved.
+    if (savingRef.current) return;
     if (quantity === 0) {
-      setSelectedItems(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(item.id);
-        return newMap;
-      });
+      setDraft(prev => withQuantity(prev, item, 0));
 
       // Also remove from recently added items if it was there (by name for consistency)
       setRecentlyAddedItems(prevRecent => {
@@ -544,46 +582,38 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         });
       }, 2050); // 2000ms red background + 50ms buffer
     } else {
-      setSelectedItems(prev => {
-        const newMap = new Map(prev);
-        const wasNew = !newMap.has(item.id);
-        newMap.set(item.id, { grnItemId: item.id, quantity, item });
+      // New in this opening: not chosen yet and not a saved line when the picker opened.
+      const current = draftRef.current;
+      const wasNew = !current.selection.has(item.id);
+      const isNewInSession = wasNew && !current.base.has(item.id);
+      setDraft(prev => withQuantity(prev, item, quantity));
 
-        // Check if this item is new in THIS SESSION (not in currentOrderItems initially)
-        const wasInInitialOrder = currentOrderItems.some(orderItem => orderItem.grnItemId === item.id);
-        const isNewInSession = wasNew && !wasInInitialOrder;
+      if (isNewInSession) {
+        if (__DEV__) console.log('[ItemCatalogBrowser] 🆕 NEW ITEM ADDED IN SESSION:', item.name, 'ID:', item.id);
 
-        if (isNewInSession) {
-          if (__DEV__) console.log('[ItemCatalogBrowser] 🆕 NEW ITEM ADDED IN SESSION:', item.name, 'ID:', item.id);
+        // Update local state
+        setRecentlyAddedItems(prevRecent => {
+          // Remove if already exists BY NAME (not ID) - same item can have different IDs across GRN records
+          const filtered = prevRecent.filter(i => i.name.toLowerCase() !== item.name.toLowerCase());
+          const updated = [item, ...filtered];
+          if (__DEV__) console.log('[ItemCatalogBrowser] 📋 Updated recentlyAddedItems:', updated.map(i => i.name));
 
-          // Update local state
-          setRecentlyAddedItems(prevRecent => {
-            // Remove if already exists BY NAME (not ID) - same item can have different IDs across GRN records
-            const filtered = prevRecent.filter(i => i.name.toLowerCase() !== item.name.toLowerCase());
-            const updated = [item, ...filtered];
-            if (__DEV__) console.log('[ItemCatalogBrowser] 📋 Updated recentlyAddedItems:', updated.map(i => i.name));
+          // Persist to AsyncStorage
+          SessionRecentItemsService.saveRecentlyAddedItems(customerId, updated)
+            .then(() => {
+              if (__DEV__) console.log('[ItemCatalogBrowser] ✅ Persisted recently added items');
+            })
+            .catch(error => {
+              console.error('[ItemCatalogBrowser] ❌ Failed to persist recently added items:', error);
+            });
 
-            // Persist to AsyncStorage
-            SessionRecentItemsService.saveRecentlyAddedItems(customerId, updated)
-              .then(() => {
-                if (__DEV__) console.log('[ItemCatalogBrowser] ✅ Persisted recently added items');
-              })
-              .catch(error => {
-                console.error('[ItemCatalogBrowser] ❌ Failed to persist recently added items:', error);
-              });
-
-            return updated;
-          });
-        } else {
-          if (__DEV__) console.log('[ItemCatalogBrowser] 🔢 Quantity changed for existing item:', item.name, 'wasNew:', wasNew, 'wasInInitialOrder:', wasInInitialOrder);
-        }
-
-        return newMap;
-      });
+          return updated;
+        });
+      }
       // Trigger refresh of recent items when quantity is added/changed
       setRecentItemsRefreshTrigger(prev => prev + 1);
     }
-  }, [currentOrderItems, customerId]);
+  }, [customerId]);
 
   // Handle recent item selection - just search for the item
   const handleRecentItemSelected = useCallback((item: QuickAddItem) => {
@@ -595,21 +625,107 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setSearchQuery(item.name);
   }, []);
 
-  // Handle add items
-  const handleAddItems = useCallback(() => {
-    const itemsToAdd = Array.from(selectedItems.values()).map(({ grnItemId, quantity }) => ({
-      grnItemId,
-      quantity,
-    }));
+  // Leaves the picker: tells the owner once per opening, whichever way it closed.
+  const finishClose = useCallback(() => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    if (isMountedRef.current) {
+      setSearchQuery('');
+      setSelectedCatalog(null);
+      setShowWeightSlider(false);
+      setShowSelectedItems(false);
+    }
+    onCloseRef.current();
+  }, []);
 
-    if (itemsToAdd.length === 0) {
-      showAlert(tr('orders.catalog.noneSelectedTitle'), tr('orders.catalog.noneSelectedMessage'));
+  // Every way out goes through here: Cancel, the Back key, a tap outside and a
+  // swipe down. Nothing unsaved: the picker closes at once. Otherwise it asks
+  // first. While an Add is being saved it does nothing.
+  const requestClose = useCallback(async (source: CloseSource) => {
+    if (savingRef.current || closedRef.current || askingRef.current) return;
+    const unsaved = changesOf(draftRef.current).length;
+    if (unsaved === 0) {
+      finishClose();
+      return;
+    }
+    askingRef.current = true;
+    const discard = await askAlert(
+      tr('orders.catalog.discardTitle'),
+      tr('orders.catalog.discardMessage', { count: unsaved }),
+      [
+        { text: tr('common.keepEditing'), style: 'cancel', value: false },
+        { text: tr('orders.catalog.discardSelections'), style: 'destructive', value: true },
+      ],
+      false
+    );
+    askingRef.current = false;
+    if (!isMountedRef.current) return;
+    if (discard) {
+      finishClose();
+    } else if (source === 'swipe' || sheetDownRef.current) {
+      // A swipe took the sheet away: show it again with what was chosen. That is so
+      // also when another way out asked first: the sheet was flung down, Back or
+      // Cancel was pressed before it was gone, and its dismissal came while the
+      // question was open (and was not asked about a second time).
+      presentSheet();
+    }
+  }, [finishClose, presentSheet]);
+
+  // Add: sends only what changed since the picker opened and waits for the
+  // answer. Everything saved: the picker closes. Otherwise it stays open with
+  // the lots that were not saved, each with its reason.
+  const handleAddItems = useCallback(async () => {
+    // A second tap while saving is ignored.
+    if (savingRef.current || closedRef.current) return;
+    const current = draftRef.current;
+    const changes = changesOf(current);
+
+    if (changes.length === 0) {
+      if (current.selection.size === 0) {
+        showAlert(tr('orders.catalog.noneSelectedTitle'), tr('orders.catalog.noneSelectedMessage'));
+        return;
+      }
+      // Only saved lines, none of them changed: nothing to send.
+      finishClose();
       return;
     }
 
-    onAddItems(itemsToAdd);
-    onClose();
-  }, [selectedItems, onAddItems, onClose]);
+    savingRef.current = true;
+    setSaving({ position: 1, total: changes.length });
+    const sent = withoutReasons(current);
+    setDraft(sent);
+
+    let answers: PickerResult[] = [];
+    try {
+      answers = await onAddItemsRef.current(changes, (position, total) => {
+        if (isMountedRef.current) setSaving({ position, total });
+      });
+    } catch (error) {
+      // The owner answers for every lot and does not reject; this is the guard for one that does.
+      console.error('[ItemCatalogBrowser] Add items error:', error);
+    }
+    savingRef.current = false;
+    if (!isMountedRef.current) return;
+
+    // A lot without an answer was not saved.
+    const answered = Array.isArray(answers) ? answers : [];
+    const results = changes.map(change => {
+      const answer = answered.find(candidate => candidate.grnItemId === change.grnItemId);
+      if (answer?.ok) return answer;
+      return { grnItemId: change.grnItemId, ok: false, reason: answer?.reason || tr('orders.catalog.reasonNotSaved') };
+    });
+    const next = applyResults(sent, results);
+    setDraft(next);
+    setSaving(null);
+    if (results.every(result => result.ok)) {
+      finishClose();
+      return;
+    }
+    // The lots that were not saved are listed first, under a summary line.
+    setSearchQuery('');
+    setShowSelectedItems(false);
+    if (sheetDownRef.current) presentSheet();
+  }, [finishClose, presentSheet]);
 
   // Helper functions for search UI
   const getSearchPlaceholder = useCallback(() => {
@@ -702,14 +818,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setShowWeightSlider(false);
   }, []);
 
-  // Calculate selection summary
-  const selectionSummary = useMemo(() => {
-    const items = Array.from(selectedItems.values());
-    return {
-      count: items.length,
-      totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-    };
-  }, [selectedItems]);
+  // The number on the Add button: what would be sent, not what is selected. An
+  // order with saved lots opens its picker with "Add" and no number.
+  const changeCount = useMemo(() => changesOf(draft).length, [draft]);
+  const failedReasons = draft.failed;
 
   // Compute display items: merge filtered items with selected items
   // This ensures items with quantity > 0 always show, even if they don't match current filters
@@ -743,8 +855,18 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       }
     });
 
-    return Array.from(itemMap.values());
-  }, [filteredItems, selectedItems, showSelectedItems, searchQuery]);
+    if (failedReasons.size === 0) return Array.from(itemMap.values());
+
+    // Lots that were not saved come first. One whose removal was refused is no
+    // longer selected; its row comes from the saved line.
+    const notSaved: GRNItem[] = [];
+    failedReasons.forEach((_reason, itemId) => {
+      const item = itemMap.get(itemId) ?? draft.base.get(itemId)?.item;
+      if (item) notSaved.push(item);
+    });
+    const first = new Set(notSaved.map(item => item.id));
+    return [...notSaved, ...Array.from(itemMap.values()).filter(item => !first.has(item.id))];
+  }, [filteredItems, selectedItems, showSelectedItems, searchQuery, failedReasons, draft.base]);
 
   // Get stock status for Fiori semantic styling - memoized to prevent recreation
   // @see PO1 - FlashList renderItem Inline Function Anti-Pattern
@@ -760,6 +882,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const renderItem = useCallback(({ item }: { item: GRNItem }) => {
     const selected = selectedItems.get(item.id);
     const quantity = selected?.quantity || 0;
+    // Why this lot was not saved by the last Add, if it was not.
+    const reason = failedReasons.get(item.id);
+    // Quantities stay as they are while an Add is being saved.
+    const locked = isSaving;
 
     // Check if this item is already in the existing order
     const isInExistingOrder = currentOrderItems.some(
@@ -770,7 +896,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const status = t.status[stockStatus];
     const stockWord = stockLabel(stockStatus);
     const grnDate = item.grn_date ? formatDate(item.grn_date, 'short') : null;
-    const weightText = item.weight ? formatWeight(item.weight) : null;
+    // The weight of one package, "50 kg each"; none for a lot without a weight.
+    const weightText = formatWeightEach(item.weight);
     const rowLabel = [
       item.name,
       item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
@@ -787,12 +914,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const preset = (amount: number, label: string, a11y: string, disabled = false) => (
       <Pressable
         key={label}
-        style={({ pressed }) => [styles.presetButton, pressed && styles.secondaryPressed, disabled && styles.disabled]}
+        style={({ pressed }) => [styles.presetButton, pressed && styles.secondaryPressed, (disabled || locked) && styles.disabled]}
         onPress={() => handleQuantityChange(item, amount)}
-        disabled={disabled}
+        disabled={disabled || locked}
         accessibilityRole="button"
         accessibilityLabel={a11y}
-        accessibilityState={{ disabled }}
+        accessibilityState={{ disabled: disabled || locked }}
       >
         <Text style={styles.presetButtonText}>{localizeDigits(label)}</Text>
       </Pressable>
@@ -801,12 +928,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const stepper = (next: number, label: string, a11y: string, disabled: boolean) => (
       <Pressable
         key={label}
-        style={({ pressed }) => [styles.quantityButton, pressed && styles.secondaryPressed, disabled && styles.disabled]}
+        style={({ pressed }) => [styles.quantityButton, pressed && styles.secondaryPressed, (disabled || locked) && styles.disabled]}
         onPress={() => handleQuantityChange(item, next)}
-        disabled={disabled}
+        disabled={disabled || locked}
         accessibilityRole="button"
         accessibilityLabel={a11y}
-        accessibilityState={{ disabled }}
+        accessibilityState={{ disabled: disabled || locked }}
       >
         <Text style={label.length > 1 ? styles.smallButtonText : styles.quantityButtonText}>{localizeDigits(label)}</Text>
       </Pressable>
@@ -878,6 +1005,13 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           </View>
         </View>
 
+        {/* Why the last Add did not save this lot */}
+        {reason ? (
+          <View style={styles.rowReason} testID={`catalog-reason-${item.id}`}>
+            <InlineValidation variant="error" message={reason} />
+          </View>
+        ) : null}
+
         {/* Quantity Section with Presets + Stepper */}
         <View style={styles.quantitySection}>
           {/* Preset Buttons Row */}
@@ -916,38 +1050,56 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         </View>
       </View>
     );
-  }, [selectedItems, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
+  }, [selectedItems, failedReasons, isSaving, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
 
-  const handleDismiss = useCallback(() => {
-    // Reset state when dismissed
-    setSearchQuery('');
-    setSelectedCatalog(null);
-    setShowWeightSlider(false);
-    setShowSelectedItems(false);
-    onClose();
-  }, [onClose]);
-
-  // Android back closes the sheet before anything else (guide §13.9, §15).
+  // Android back asks to leave the picker before anything else (guide §13.9, §15).
   useEffect(() => {
     if (!isVisible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      sheet.dismiss();
+      void requestClose('back');
       return true;
     });
     return () => sub.remove();
-  }, [isVisible]);
+  }, [isVisible, requestClose]);
 
-  // Scrim behind the sheet; tapping it closes the sheet.
+  // The library dismissed the sheet by itself: a swipe down, which it gives no
+  // way to refuse (@gorhom/bottom-sheet 5.2). The picker is still mounted and
+  // still holds what was chosen, so with unsaved selections it asks, and "Keep
+  // editing" presents the sheet again. With nothing unsaved it closes.
+  const handleSheetDismissed = useCallback(() => {
+    sheet.onDismissed();
+    if (!isMountedRef.current || closedRef.current) return;
+    // Noted before anything else, also while a question is open or an Add is being saved.
+    sheetDownRef.current = true;
+    // An Add is being saved: its answer decides (handleAddItems shows the sheet again for lots not saved).
+    if (savingRef.current) return;
+    // A question that is already open answers for this dismissal too ("Keep editing" shows the sheet again).
+    void requestClose('swipe');
+  }, [sheet, requestClose]);
+
+  // Scrim behind the sheet. The library's own press handling is off: with
+  // `pressBehavior="none"` it attaches no tap gesture at all (and so never calls
+  // `onPress`), and any other value moves the sheet by itself. The tap is taken
+  // by a pressable laid over the scrim, which asks to leave like every other way out.
   const renderBackdrop = useCallback((props: BottomSheetBackdropProps) => (
     <BottomSheetBackdrop
       {...props}
       appearsOnIndex={0}
       disappearsOnIndex={-1}
       opacity={1}
-      pressBehavior="close"
+      pressBehavior="none"
+      accessible={false}
       style={[props.style, styles.backdrop]}
-    />
-  ), [styles]);
+    >
+      <Pressable
+        testID="catalog-scrim"
+        style={StyleSheet.absoluteFill}
+        onPress={() => { void requestClose('scrim'); }}
+        accessibilityRole="button"
+        accessibilityLabel={tr('orders.catalog.cancelAdding')}
+      />
+    </BottomSheetBackdrop>
+  ), [styles, requestClose]);
 
   // Memoized keyExtractor for FlatList performance
   const keyExtractor = useCallback((item: GRNItem) => item.id, []);
@@ -965,28 +1117,50 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       {/* SAP Fiori Bottom Sheet Header */}
       <View style={styles.bottomSheetHeader}>
         <Pressable
-          onPress={onClose}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
+          testID="catalog-cancel"
+          onPress={() => { void requestClose('cancel'); }}
+          disabled={isSaving}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed, isSaving && styles.disabled]}
           accessibilityRole="button"
           accessibilityLabel={tr('orders.catalog.cancelAdding')}
+          accessibilityState={{ disabled: isSaving }}
         >
           <Text style={styles.headerButtonTextCancel} {...singleLineText()}>{tr('common.cancel')}</Text>
         </Pressable>
         <Text style={styles.headerTitle} accessibilityRole="header">{tr('orders.catalog.addItems')}</Text>
-        <Pressable
-          onPress={handleAddItems}
-          style={({ pressed }) => [styles.headerButton, styles.headerButtonEnd, pressed && styles.headerButtonPressed]}
-          accessibilityRole="button"
-          accessibilityLabel={
-            selectionSummary.count === 0
-              ? tr('orders.screen.addItemsToOrder')
-              : tr('orders.catalog.addCountToOrder', { items: formatCount(selectionSummary.count, 'item') })
-          }
-        >
-          <Text style={styles.headerButtonTextAction} {...singleLineText()}>
-            {selectionSummary.count > 0 ? tr('orders.catalog.addCount', { count: selectionSummary.count }) : tr('common.add')}
-          </Text>
-        </Pressable>
+        {saving !== null ? (
+          // Add waits for the server: the button shows which lot is being saved.
+          <View
+            testID="catalog-add"
+            style={[styles.headerButton, styles.headerButtonEnd, styles.headerSaving]}
+            accessible
+            accessibilityRole="button"
+            accessibilityState={{ disabled: true, busy: true }}
+            accessibilityLabel={tr('orders.catalog.savingProgress', { done: saving.position, total: saving.total })}
+            accessibilityLiveRegion="polite"
+          >
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.headerButtonTextAction} numberOfLines={1} {...singleLineText()}>
+              {tr('orders.catalog.savingProgress', { done: saving.position, total: saving.total })}
+            </Text>
+          </View>
+        ) : (
+          <Pressable
+            testID="catalog-add"
+            onPress={() => { void handleAddItems(); }}
+            style={({ pressed }) => [styles.headerButton, styles.headerButtonEnd, pressed && styles.headerButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={
+              changeCount === 0
+                ? tr('orders.screen.addItemsToOrder')
+                : tr('orders.catalog.addCountToOrder', { items: formatCount(changeCount, 'item') })
+            }
+          >
+            <Text style={styles.headerButtonTextAction} {...singleLineText()}>
+              {changeCount > 0 ? tr('orders.catalog.addCount', { count: changeCount }) : tr('common.add')}
+            </Text>
+          </Pressable>
+        )}
       </View>
       {/* Fiori Divider */}
       <View style={styles.headerDivider} />
@@ -1030,8 +1204,18 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         refreshTrigger={recentItemsRefreshTrigger}
         recentlyAddedItems={recentlyAddedItems.map(item => ({ id: item.id, name: item.name }))}
       />
+
+      {/* What the last Add did not save; those lots are the first rows below. */}
+      {failedReasons.size > 0 ? (
+        <View style={styles.notSavedSummary} testID="catalog-not-saved-summary">
+          <InlineValidation
+            variant="error"
+            message={tr('orders.catalog.notSavedSummary', { count: failedReasons.size })}
+          />
+        </View>
+      ) : null}
     </>
-  ), [styles, t, onClose, handleAddItems, selectionSummary.count, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
+  ), [styles, t, requestClose, handleAddItems, changeCount, saving, failedReasons.size, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
 
   // Memoized ListEmptyComponent
   const listEmptyComponent = useMemo(() => {
@@ -1113,11 +1297,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     <BottomSheetModal
       ref={bottomSheetModalRef}
       snapPoints={snapPoints}
-      onDismiss={() => {
-        sheet.onDismissed();
-        handleDismiss();
-      }}
-      enablePanDownToClose
+      onDismiss={handleSheetDismissed}
+      // No swipe down while an Add is being saved.
+      enablePanDownToClose={!isSaving}
       keyboardBehavior="extend"
       // SAP Fiori Bottom Sheet styling
       backdropComponent={renderBackdrop}
@@ -1143,7 +1325,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           maxToRenderPerBatch={10}
           windowSize={5}
           removeClippedSubviews={Platform.OS === 'android'}
-          getItemLayout={getItemLayout}
+          // A row with a reason on it is taller than the fixed estimate.
+          getItemLayout={failedReasons.size > 0 ? undefined : getItemLayout}
           ListHeaderComponent={listHeaderComponent}
           ListEmptyComponent={listEmptyComponent}
           ListFooterComponent={listFooterComponent}
@@ -1247,6 +1430,9 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
   },
   headerButtonEnd: { alignItems: 'flex-end' as const },
+  headerSaving: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, flexShrink: 1 },
+  notSavedSummary: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
+  rowReason: { paddingHorizontal: space.lg, paddingBottom: space.md },
   headerButtonPressed: { backgroundColor: t.brand.subtle },
   headerButtonTextCancel: { ...typography.body, color: t.brand.tint },
   headerButtonTextAction: { ...typography.headline, color: t.brand.tint },

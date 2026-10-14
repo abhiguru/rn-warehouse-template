@@ -858,6 +858,29 @@ describe('the GRNs of an item', () => {
     expect(screen.texts()).not.toContain("Couldn't load the GRNs for this item.");
   });
 
+  it('a GRN line gives the weight of one bag as "50 kg each" after its rack; a line without a weight gives none', async () => {
+    serve(facility(FEW, { sorts: true }));
+    // get_all_grn_items sends the line's own weight (grt.weight): kg for one bag, not for the 200 received.
+    grnItems.mockResolvedValueOnce({
+      success: true,
+      message: '',
+      data: {
+        items: [
+          { ...GRN, rack: 'B-14', weight: 50 },
+          { ...GRN, id: 'gi-2', grn_id: 'g2', gr_no: '312', rack: 'C-02', weight: 0 },
+          { ...GRN, id: 'gi-3', grn_id: 'g3', gr_no: '313', rack: 'D-07', weight: null },
+        ],
+      },
+    } as never);
+    const screen = await open();
+    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    expect(screen.texts()).toEqual(expect.arrayContaining(['GRN 311', 'Rack B-14 · 50 kg each', 'GRN 312', 'Rack C-02', 'GRN 313', 'Rack D-07']));
+    // The one weight on the screen, worded "each": no bare "50 kg", no "0 kg", and no total (200 bags × 50 kg).
+    expect(screen.texts().filter(text => /kg/.test(text))).toEqual(['Rack B-14 · 50 kg each']);
+    expect(screen.has('GRN 311, Fictional Traders, Received 1 Oct, Rack B-14 · 50 kg each, 30 of 200 in stock')).toBe(true);
+    expect(screen.has('GRN 312, Fictional Traders, Received 1 Oct, Rack C-02, 30 of 200 in stock')).toBe(true);
+  });
+
   /**
    * The GRN lines of an item as the drill-down answers: `count` rows from `offset`, `total` in all
    * (no pagination at all when `total` is left out); `has_more` as the server says it, by default

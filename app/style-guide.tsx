@@ -46,6 +46,7 @@ import {
   formatSectionDate,
   formatTemperature,
   formatWeight,
+  formatWeightEach,
 } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
@@ -398,6 +399,7 @@ export default function StyleGuideScreen() {
           <KeyValueCell keyLabel="formatMobile" value={formatMobile('9876543210')} showDivider />
           <KeyValueCell keyLabel="formatCurrency" value={formatCurrency(123456.5, { minimumFractionDigits: 2 })} showDivider />
           <KeyValueCell keyLabel="formatWeight" value={formatWeight(1250.5)} showDivider />
+          <KeyValueCell keyLabel="formatWeightEach" value={formatWeightEach(50) ?? '—'} showDivider />
           <KeyValueCell keyLabel="formatTemperature" value={formatTemperature(-18.5)} showDivider />
           <KeyValueCell keyLabel="formatCount" value={`${formatCount(1, 'item')} · ${formatCount(120, 'bag')}`} />
         </Section>

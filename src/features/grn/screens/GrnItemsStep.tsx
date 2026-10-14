@@ -3,6 +3,7 @@ import {
   View,
   Keyboard,
   Vibration,
+  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -20,6 +21,7 @@ import {
   completeItemImageUpload,
   failItemImageUpload,
   removeItemImage,
+  restoreItemImages,
   setCurrentStep,
   setValidationErrors,
   selectGRNFormItems,
@@ -38,7 +40,12 @@ import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/feat
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
-import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
+import {
+  HorizontalItemForm,
+  ItemFormData,
+  HorizontalItemFormRef,
+  ItemFormFieldName,
+} from '@/features/grn/components/HorizontalItemForm';
 import {
   validateStep2,
   isValidReceiptQuantity,
@@ -65,11 +72,82 @@ const EMPTY_GRN_ITEM = (): ItemFormData => ({
   errors: {},
 });
 
-type GrnItemsStepProps = {
-  mode: 'create' | 'edit';
+/** A new, empty item for the form. It starts with the rack of the first saved item. */
+const freshItem = (lines: readonly ItemFormData[]): ItemFormData => {
+  const item = EMPTY_GRN_ITEM();
+  if (lines.length > 0 && lines[0].rack) item.rack = lines[0].rack;
+  return item;
 };
 
-export function GrnItemsStep({ mode }: GrnItemsStepProps) {
+/** The fields the row draws after Item, in its order. Their names are also their error keys. */
+const FIELDS_AFTER_ITEM = ['qty', 'weight', 'rack', 'package_mark'] as const satisfies readonly ItemFormFieldName[];
+
+const photosOf = (item: ItemFormData): GRNImageData[] => item.trl_images || [];
+const photoIds = (item: ItemFormData) => photosOf(item).map((img) => img.id).join('|');
+
+/**
+ * Whether the item in the form is open: it differs from the item that was put
+ * into the form (`baseline`) in its item, quantity, weight, mark, rack (spaces
+ * at the ends do not count) or photos. A new form that holds only the rack it
+ * was given, and a saved item that was opened and not changed, are not open.
+ */
+const isItemDirty = (item: ItemFormData, baseline: ItemFormData): boolean =>
+  item.item_table_id !== baseline.item_table_id ||
+  item.qty !== baseline.qty ||
+  item.weight !== baseline.weight ||
+  item.package_mark !== baseline.package_mark ||
+  (item.rack || '').trim() !== (baseline.rack || '').trim() ||
+  photoIds(item) !== photoIds(baseline);
+
+/** The field errors of one item, or null when it can be saved. */
+const validateItem = async (item: ItemFormData): Promise<Record<string, string> | null> => {
+  const validation = await validateStep2({
+    items: [{
+      item_table_id: item.item_table_id,
+      item_name: item.item_name,
+      packaging: item.packaging,
+      // The typed text goes to the schema unchanged: its whole-number
+      // transform reports empty, fractional, signed or garbled input instead
+      // of coercing it to a number first.
+      qty: item.qty,
+      stock: item.qty,
+      weight: item.weight,
+      rack: item.rack,
+      package_mark: item.package_mark,
+      trl_images: photosOf(item),
+    }],
+  });
+  if (validation.isValid) return null;
+
+  const itemErrors: Record<string, string> = {};
+  Object.keys(validation.errors).forEach((errorKey) => {
+    if (errorKey.startsWith('items[0]')) {
+      itemErrors[errorKey.replace('items[0].', '')] = validation.errors[errorKey];
+    }
+  });
+  return itemErrors;
+};
+
+/** Where the worker is going when the item in the form is left. */
+type Exit =
+  | { to: 'review' }
+  /** `leave` is what going back does; without it, one step back in the stack. */
+  | { to: 'details'; leave?: () => void }
+  | { to: 'row'; row: ItemFormData };
+
+/**
+ * What the route asks of the step when the phone's Back key is pressed: the
+ * step calls `leave` once the item in the form may be left.
+ */
+export type GrnItemsBackGuard = (leave: () => void) => void;
+
+type GrnItemsStepProps = {
+  mode: 'create' | 'edit';
+  /** The step puts its guard here while it is shown (see the two step-2 routes). */
+  backGuard?: React.RefObject<GrnItemsBackGuard | null>;
+};
+
+export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   const styles = useThemedStyles(makeStyles);
 
   // Extract ID from URL params for edit mode
@@ -87,7 +165,6 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const dispatch = useAppDispatch();
 
-  const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
   const [showItemsSummarySheet, setShowItemsSummarySheet] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentItem, setCurrentItem] = useState<ItemFormData>(EMPTY_GRN_ITEM);
@@ -99,13 +176,32 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   const hasSyncedFromRedux = useRef(false);
   const formRef = useRef<HorizontalItemFormRef>(null);
 
-  const getNewItemWithRack = useCallback(() => {
-    const newItem = EMPTY_GRN_ITEM();
-    if (savedItems.length > 0 && savedItems[0].rack) {
-      newItem.rack = savedItems[0].rack;
-    }
-    return newItem;
-  }, [savedItems]);
+  // The item as it was put into the form; `isItemDirty` compares the form with it.
+  const baseline = useRef<ItemFormData>(currentItem);
+  // The "Save this item?" question is on screen, or its answer is still being carried out.
+  const promptOpen = useRef(false);
+  // The item in the form is being stored (a second tap on the checkmark does nothing).
+  const committing = useRef(false);
+  // Photos that were picked for an item and left with it when it was discarded, by their
+  // temporary id. One of them may still be in preparation (processPickedImage). Not read from
+  // `latest`: that is only as new as the last draw, which a quick preparation can beat.
+  const discardedPhotoIds = useRef(new Set<string>());
+
+  // What the step holds, as it was last drawn. Every way out of the step reads
+  // it when it is used, so none of them works on the values of an older draw
+  // (the pattern of src/hooks/useBackHandler.ts). It is written while drawing:
+  // right after a `set…` call it still holds the values from before. That is
+  // why `discardOpenItem` and `commitOpenItem` return the lines they leave and
+  // `continueTo` is given them, instead of reading them from here.
+  const latest = useRef({ currentItem, editingItemId, savedItems, items, isNavigating, isCreateMode, grnId, itemsWithDispatchesOnLoad });
+  latest.current = { currentItem, editingItemId, savedItems, items, isNavigating, isCreateMode, grnId, itemsWithDispatchesOnLoad };
+
+  /** Puts an item into the form: a new one (`editingId` null) or a saved one to correct. */
+  const loadForm = useCallback((item: ItemFormData, editingId: string | null) => {
+    baseline.current = item;
+    setCurrentItem(item);
+    setEditingItemId(editingId);
+  }, []);
 
   const isCurrentItemValid = useMemo(() => {
     return !!(
@@ -143,10 +239,15 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     router.replace('/grn');
   };
 
+  // Back on this step (from Review, or a failed opening of it): Next works again.
   useFocusEffect(
     useCallback(() => {
       setIsNavigating(false);
+    }, [])
+  );
 
+  useFocusEffect(
+    useCallback(() => {
       if (items.length > 0) {
         // Update dispatched items map, preserving existing entries (original stock values)
         if (!isCreateMode) {
@@ -177,19 +278,20 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         setSavedItems(syncedItems);
         hasSyncedFromRedux.current = true;
 
-        if (!editingItemId) {
-          const newItem = EMPTY_GRN_ITEM();
-          if (syncedItems.length > 0 && syncedItems[0].rack) {
-            newItem.rack = syncedItems[0].rack;
-          }
-          setCurrentItem(newItem);
+        // A form nobody typed into is made new again (it takes the first item's
+        // rack). A saved item being corrected, or a new item with something
+        // typed, stays: the stored lines also change when another item is
+        // deleted or a photo is added.
+        const now = latest.current;
+        if (!now.editingItemId && !isItemDirty(now.currentItem, baseline.current)) {
+          loadForm(freshItem(syncedItems), null);
         }
       } else if (!isCreateMode) {
         setItemsWithDispatchesOnLoad(new Map());
       }
 
       return () => { };
-    }, [items, editingItemId, isCreateMode])
+    }, [items, isCreateMode, loadForm])
   );
 
   const zeroItemsHandledRef = useRef(false);
@@ -201,17 +303,17 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       }
       zeroItemsHandledRef.current = true;
 
-      const defaultRack = savedItems.length > 0 ? savedItems[0].rack : '';
+      const emptied = freshItem(savedItems);
       setSavedItems([]);
-      const newItem = EMPTY_GRN_ITEM();
-      if (defaultRack) {
-        newItem.rack = defaultRack;
+      // As above: what was typed for a new item outlives the deletion of the last saved one.
+      const now = latest.current;
+      if (!now.editingItemId && !isItemDirty(now.currentItem, baseline.current)) {
+        loadForm(emptied, null);
       }
-      setCurrentItem(newItem);
     } else {
       zeroItemsHandledRef.current = false;
     }
-  }, [items.length, savedItems]);
+  }, [items.length, savedItems, loadForm]);
 
   const updateFormField = (field: keyof ItemFormData, value: string) => {
     setCurrentItem((prev) => {
@@ -225,112 +327,340 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     });
   };
 
-  const validateCurrentItem = async (): Promise<boolean> => {
-    const itemsForValidation = [{
-      item_table_id: currentItem.item_table_id,
-      item_name: currentItem.item_name,
-      packaging: currentItem.packaging,
-      // The typed text goes to the schema unchanged: its whole-number
-      // transform reports empty, fractional, signed or garbled input instead
-      // of coercing it to a number first.
-      qty: currentItem.qty,
-      stock: currentItem.qty,
-      weight: currentItem.weight,
-      rack: currentItem.rack,
-      package_mark: currentItem.package_mark,
-      trl_images: currentItem.trl_images || [],
-    }];
+  /**
+   * Brings the first field with an error into view (the form is one sideways
+   * row: Weight, Rack and Mark are out of view while Item and Quantity are
+   * shown) and gives it the cursor with the keyboard open, so the worker can
+   * type at once. Called from the OK of the alert that names the error.
+   */
+  const showFirstError = (errors: Record<string, string>) => {
+    if (errors.item_table_id || errors.item_name) {
+      formRef.current?.resetScroll();
+      return;
+    }
+    const field = FIELDS_AFTER_ITEM.find((name) => errors[name]);
+    if (field) {
+      formRef.current?.revealField(field);
+      formRef.current?.focusField(field);
+    }
+  };
 
-    const validation = await validateStep2({ items: itemsForValidation });
+  /**
+   * Stores the item in the form: the checkmark, and "Save" in the question
+   * asked before the item is left. Returns the step's lines with the item in
+   * them, or null when it cannot be saved: then it stays in the form as typed,
+   * with its errors shown.
+   */
+  const commitOpenItem = async (): Promise<ItemFormData[] | null> => {
+    if (committing.current) return null;
+    committing.current = true;
+    try {
+      const { currentItem: item, editingItemId: editingId } = latest.current;
 
-    if (!validation.isValid) {
-      const itemErrors: Record<string, string> = {};
-      Object.keys(validation.errors).forEach((errorKey) => {
-        if (errorKey.startsWith('items[0]')) {
-          const fieldName = errorKey.replace('items[0].', '');
-          itemErrors[fieldName] = validation.errors[errorKey];
+      const errors = await validateItem(item);
+      if (errors) {
+        // Only the errors are written: the typed values, the item being corrected and the baseline stay.
+        setCurrentItem((prev) => ({ ...prev, errors }));
+        showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedSave'), [
+          { text: tr('common.ok'), onPress: () => showFirstError(errors) },
+        ]);
+        return null;
+      }
+
+      const { savedItems: lines, isCreateMode: creating, itemsWithDispatchesOnLoad: dispatched } = latest.current;
+      const hasDispatches = !creating && item.grn_trl_id && dispatched.has(item.grn_trl_id);
+      const parsedQty = parseReceiptQuantity(item.qty);
+      if (parsedQty === null) {
+        showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.quantityWhole'));
+        return null;
+      }
+      // Use the original stock value from the Map (preserved from initial load)
+      const originalStock = dispatched.get(item.grn_trl_id);
+      const preservedStock = hasDispatches && originalStock !== undefined ? originalStock : parsedQty;
+
+      // The rack is free text; only the spaces typed at its ends are dropped.
+      const savedItem: ItemFormData = { ...item, rack: (item.rack || '').trim(), errors: {} };
+      const storeItem: GRNItemData = {
+        grn_trl_id: savedItem.grn_trl_id,
+        item_table_id: savedItem.item_table_id,
+        item_name: savedItem.item_name,
+        packaging: savedItem.packaging,
+        qty: parsedQty,
+        stock: preservedStock,
+        weight: parseReceiptWeight(savedItem.weight) ?? 0,
+        rack: savedItem.rack,
+        package_mark: savedItem.package_mark,
+        trl_images: photosOf(savedItem),
+      };
+
+      let next: ItemFormData[];
+      if (editingId !== null) {
+        dispatch(updateItem({ grn_trl_id: editingId, item: storeItem }));
+        next = lines.map((line) => (line.grn_trl_id === editingId ? savedItem : line));
+        // Photos the saved item had and this correction took off: only now are
+        // their files on the phone not needed any more (see handleImageRemove).
+        const kept = new Set(photosOf(savedItem).map((img) => img.id));
+        const takenOff = photosOf(baseline.current).filter((img) => !kept.has(img.id) && isTemporaryGRNImageId(img.id));
+        if (takenOff.length > 0) void releaseLocalPhotos(takenOff.map((img) => img.imageUrl));
+      } else {
+        dispatch(addItem(storeItem));
+        next = [...lines, savedItem];
+      }
+      setSavedItems(next);
+      loadForm(freshItem(next), null);
+      Vibration.vibrate(10);
+
+      // Reset scroll to Item field for next entry
+      formRef.current?.resetScroll();
+      return next;
+    } finally {
+      committing.current = false;
+    }
+  };
+
+  /**
+   * Drops what was typed and not checkmarked. A new item leaves the form; a
+   * saved item keeps its stored values. Returns the step's lines as they are
+   * without that input.
+   */
+  const discardOpenItem = (): ItemFormData[] => {
+    const { currentItem: item, editingItemId: editingId, savedItems: lines } = latest.current;
+    const before = baseline.current;
+    let next = lines;
+
+    if (photoIds(item) !== photoIds(before)) {
+      // A photo that was picked for this item and never reached the server: its file is not needed.
+      const kept = new Set(photosOf(before).map((img) => img.id));
+      const picked = photosOf(item).filter((img) => !kept.has(img.id) && isTemporaryGRNImageId(img.id));
+      if (picked.length > 0) void releaseLocalPhotos(picked.map((img) => img.imageUrl));
+      picked.forEach((img) => discardedPhotoIds.current.add(img.id));
+
+      // Photos are the one part of a correction that reaches the store before
+      // the checkmark (handleImageUploadStart, handleImageRemove), and a saved
+      // photo that was removed waits to be deleted when the GRN is saved. Both
+      // are taken back, here and in the lines that go on to Review.
+      if (editingId !== null) {
+        dispatch(restoreItemImages({ itemId: editingId, images: photosOf(before) }));
+        next = lines.map((line) => (line.grn_trl_id === editingId ? { ...line, trl_images: photosOf(before) } : line));
+        setSavedItems(next);
+      }
+    }
+
+    loadForm(freshItem(next), null);
+    return next;
+  };
+
+  /** Stores the step's lines and opens Review. It is given the lines and never looks at the form. */
+  const proceedToReview = (lines: ItemFormData[]) => {
+    const { items: storedItems, isCreateMode: creating, grnId: editedGrnId, itemsWithDispatchesOnLoad: dispatched } = latest.current;
+
+    if (lines.length === 0) {
+      showAlert(tr('grn.itemsStep.addItemTitle'), tr('grn.itemsStep.addItemMessage'));
+      return;
+    }
+
+    // Every saved item passed the schema when it was added; a quantity that no
+    // longer parses must stop the step rather than be stored as 0.
+    const parsedItems = lines.map((itemToSave) => ({
+      itemToSave,
+      parsedQty: parseReceiptQuantity(itemToSave.qty),
+    }));
+    const unparsable = parsedItems.find(({ parsedQty }) => parsedQty === null);
+    if (unparsable) {
+      showAlert(
+        tr('grn.itemsStep.checkItemTitle'),
+        unparsable.itemToSave.item_name
+          ? tr('grn.itemsStep.quantityWholeForItem', { item: unparsable.itemToSave.item_name })
+          : tr('grn.itemsStep.quantityWholeEachItem')
+      );
+      return;
+    }
+
+    dispatch(setValidationErrors({}));
+
+    // One lookup of the stored lines, and one action for all of them: a line
+    // that did not change keeps its stored object.
+    const storedById = new Map<string, GRNItemData>();
+    storedItems.forEach((item) => {
+      if (!storedById.has(item.grn_trl_id)) storedById.set(item.grn_trl_id, item);
+    });
+    const storeItems: GRNItemData[] = [];
+    parsedItems.forEach(({ itemToSave, parsedQty }) => {
+      if (parsedQty === null) return;
+      const existingInStore = storedById.get(itemToSave.grn_trl_id);
+      const hasDispatches = !creating && dispatched.has(itemToSave.grn_trl_id);
+      // A line with dispatches keeps its stored stock; any other line's stock is its quantity.
+      const stockValue = hasDispatches
+        ? existingInStore?.stock ?? parsedQty
+        : parsedQty;
+
+      storeItems.push({
+        grn_trl_id: itemToSave.grn_trl_id,
+        item_table_id: itemToSave.item_table_id,
+        item_name: itemToSave.item_name,
+        packaging: itemToSave.packaging,
+        qty: parsedQty,
+        stock: stockValue,
+        weight: parseReceiptWeight(itemToSave.weight) ?? 0,
+        rack: itemToSave.rack,
+        package_mark: itemToSave.package_mark,
+        trl_images: itemToSave.trl_images || [],
+      });
+    });
+    dispatch(reconcileItems(storeItems));
+
+    dispatch(setCurrentStep(3));
+    setIsNavigating(true);
+
+    // On the next frame, so the button shows "Opening review…" first.
+    const open = (go: () => void) => {
+      requestAnimationFrame(() => {
+        try {
+          go();
+        } catch (error) {
+          log.error('Navigation error', loggableError(error));
+          setIsNavigating(false);
         }
       });
-      setCurrentItem((prev) => ({ ...prev, errors: itemErrors }));
-      setLocalValidationErrors(validation.errors);
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleAddItem = async () => {
-    const isEditing = editingItemId !== null;
-
-    const isValid = await validateCurrentItem();
-    if (!isValid) {
-      showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fillRequired'));
-      return;
-    }
-
-    const hasDispatches = !isCreateMode && currentItem.grn_trl_id && itemsWithDispatchesOnLoad.has(currentItem.grn_trl_id);
-    const parsedQty = parseReceiptQuantity(currentItem.qty);
-    if (parsedQty === null) {
-      showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.quantityWhole'));
-      return;
-    }
-    // Use the original stock value from the Map (preserved from initial load)
-    const originalStock = itemsWithDispatchesOnLoad.get(currentItem.grn_trl_id);
-    const preservedStock = hasDispatches && originalStock !== undefined ? originalStock : parsedQty;
-
-    // The rack is free text; only the spaces typed at its ends are dropped.
-    const savedItem: ItemFormData = { ...currentItem, rack: (currentItem.rack || '').trim() };
-    const storeItem: GRNItemData = {
-      grn_trl_id: savedItem.grn_trl_id,
-      item_table_id: savedItem.item_table_id,
-      item_name: savedItem.item_name,
-      packaging: savedItem.packaging,
-      qty: parsedQty,
-      stock: preservedStock,
-      weight: parseReceiptWeight(savedItem.weight) ?? 0,
-      rack: savedItem.rack,
-      package_mark: savedItem.package_mark,
-      trl_images: savedItem.trl_images || [],
     };
 
-    if (isEditing) {
-      dispatch(updateItem({ grn_trl_id: editingItemId!, item: storeItem }));
-      setSavedItems((prev) => prev.map((item) => (item.grn_trl_id === editingItemId ? savedItem : item)));
+    if (creating) {
+      open(() => router.push('/grn-form/step3'));
     } else {
-      dispatch(addItem(storeItem));
-      setSavedItems((prev) => [...prev, savedItem]);
+      if (!editedGrnId) {
+        showAlert(tr('grn.itemsStep.reviewFailedTitle'), tr('grn.form.reopenMessage'));
+        setIsNavigating(false);
+        return;
+      }
+      open(() => router.push(`/grn-edit/${editedGrnId}/step3`));
     }
-
-    setEditingItemId(null);
-    setCurrentItem(getNewItemWithRack());
-    setLocalValidationErrors({});
-    Vibration.vibrate(10);
-
-    // Reset scroll to Item field for next entry
-    formRef.current?.resetScroll();
   };
 
-  const handleEditItem = useCallback((item: ItemFormData) => {
-    setEditingItemId(item.grn_trl_id);
-    setCurrentItem({ ...item });
-    setLocalValidationErrors({});
-    Vibration.vibrate(10);
-  }, []);
+  /** Goes where the worker was going. `lines` are the step's lines as they now stand. */
+  const continueTo = (exit: Exit, lines: ItemFormData[]) => {
+    if (exit.to === 'row') {
+      const row = lines.find((line) => line.grn_trl_id === exit.row.grn_trl_id) ?? exit.row;
+      loadForm({ ...row }, row.grn_trl_id);
+      Vibration.vibrate(10);
+      return;
+    }
+
+    // The form is closed before the step is left: coming back never shows an item that was left open.
+    loadForm(freshItem(lines), null);
+    if (exit.to === 'review') {
+      proceedToReview(lines);
+      return;
+    }
+    dispatch(setCurrentStep(1));
+    if (exit.leave) {
+      exit.leave();
+    } else {
+      router.back();
+    }
+  };
+
+  /**
+   * Every way out of the item in the form comes through here: footer Next and
+   * Back, both step circles, the phone's Back key and opening another saved
+   * item. An item that was not checkmarked is asked about first.
+   */
+  const requestExit = (exit: Exit) => {
+    const now = latest.current;
+    if (promptOpen.current || now.isNavigating) return;
+    // A tap on the saved item that is already in the form.
+    if (exit.to === 'row' && exit.row.grn_trl_id === now.editingItemId) return;
+    if (!isItemDirty(now.currentItem, baseline.current)) {
+      continueTo(exit, now.savedItems);
+      return;
+    }
+
+    const correcting = now.editingItemId !== null;
+    const position = now.savedItems.findIndex((line) => line.grn_trl_id === now.editingItemId) + 1;
+    const name = now.currentItem.item_name || baseline.current.item_name;
+    // Every button and closing the dialog without one (AlertHost then also runs "Keep editing") ends here.
+    const closed = () => {
+      promptOpen.current = false;
+    };
+    promptOpen.current = true;
+    showAlert(
+      correcting ? tr('grn.itemsStep.saveChangesTitle') : tr('grn.itemsStep.saveItemTitle'),
+      correcting ? tr('grn.itemsStep.saveChangesMessage', { position, name }) : tr('grn.itemsStep.saveItemMessage'),
+      [
+        { text: tr('common.keepEditing'), style: 'cancel', onPress: closed },
+        {
+          text: correcting ? tr('grn.itemsStep.discardChanges') : tr('grn.itemsStep.discardItem'),
+          style: 'destructive',
+          onPress: () => {
+            closed();
+            continueTo(exit, discardOpenItem());
+          },
+        },
+        {
+          text: correcting ? tr('grn.itemsStep.saveChanges') : tr('grn.itemsStep.saveItem'),
+          onPress: async () => {
+            try {
+              const lines = await commitOpenItem();
+              if (lines) continueTo(exit, lines);
+            } finally {
+              closed();
+            }
+          },
+        },
+      ],
+      { cancelable: true, onDismiss: closed }
+    );
+  };
+
+  // The phone's Back key: the route owns the key and asks here (app/grn-form/step2.tsx, app/grn-edit/[id]/step2.tsx).
+  const requestExitRef = useRef(requestExit);
+  requestExitRef.current = requestExit;
+
+  // A saved item that was tapped in the sheet while the form holds an unsaved
+  // item. The question about the form is drawn in a Modal, and iOS cannot
+  // present one over the sheet's Modal while that is still being dismissed
+  // (nothing appears and the question stays "open"). So the question waits
+  // until the sheet is gone: the sheet's `onDismissed` on iOS, which is the
+  // only platform that has one, and the sheet becoming hidden on Android.
+  const rowAfterSheet = useRef<ItemFormData | null>(null);
+  const openRowAfterSheet = () => {
+    const row = rowAfterSheet.current;
+    rowAfterSheet.current = null;
+    if (row) requestExitRef.current({ to: 'row', row });
+  };
+  const openRowAfterSheetRef = useRef(openRowAfterSheet);
+  openRowAfterSheetRef.current = openRowAfterSheet;
+  useEffect(() => {
+    if (!showItemsSummarySheet && Platform.OS !== 'ios') openRowAfterSheetRef.current();
+  }, [showItemsSummarySheet]);
+  const handleSheetEditItem = (row: ItemFormData) => {
+    const now = latest.current;
+    // With nothing typed the row opens at once, as before; no question is drawn.
+    if (isItemDirty(now.currentItem, baseline.current) && row.grn_trl_id !== now.editingItemId) {
+      rowAfterSheet.current = row;
+      return;
+    }
+    requestExit({ to: 'row', row });
+  };
+  useEffect(() => {
+    if (!backGuard) return undefined;
+    const guard: GrnItemsBackGuard = (leave) => requestExitRef.current({ to: 'details', leave });
+    backGuard.current = guard;
+    return () => {
+      if (backGuard.current === guard) backGuard.current = null;
+    };
+  }, [backGuard]);
 
   const handleRemoveItem = useCallback((itemId: string) => {
-    const updatedItems = savedItems.filter((item) => item.grn_trl_id !== itemId);
+    const now = latest.current;
+    const updatedItems = now.savedItems.filter((item) => item.grn_trl_id !== itemId);
     setSavedItems(updatedItems);
     dispatch(removeItem(itemId));
 
-    if (editingItemId === itemId) {
-      setEditingItemId(null);
-      const newItem = EMPTY_GRN_ITEM();
-      if (updatedItems.length > 0 && updatedItems[0].rack) {
-        newItem.rack = updatedItems[0].rack;
-      }
-      setCurrentItem(newItem);
+    // The item being corrected was deleted: the form has nothing left to correct.
+    if (now.editingItemId === itemId) {
+      loadForm(freshItem(updatedItems), null);
     }
-  }, [dispatch, editingItemId, savedItems]);
+  }, [dispatch, loadForm]);
 
   const handleImageUploadStart = (tempImageData: GRNImageData) => {
     dispatch(addItemImage({ itemId: currentItem.grn_trl_id, imageData: tempImageData }));
@@ -338,6 +668,18 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       ...prev,
       trl_images: [...(prev.trl_images || []), tempImageData],
     }));
+  };
+
+  /**
+   * Makes a change to the photos of the item as it was put into the form. A
+   * saved item can be opened again while one of its photos is still being
+   * prepared, and "Discard changes" restores the photos from `baseline`: so
+   * what the preparation does to that photo afterwards is done there too, or
+   * the photo would be restored as it was before it. The form gets the same
+   * change, so this alone never makes the item count as changed.
+   */
+  const changeBaselinePhotos = (change: (photos: GRNImageData[]) => GRNImageData[]) => {
+    baseline.current = { ...baseline.current, trl_images: change(photosOf(baseline.current)) };
   };
 
   const handleImageUploadComplete = (imageData: GRNImageData, tempImageId: string) => {
@@ -350,10 +692,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       fileSize: imageData.fileSize,
       mimeType: imageData.mimeType
     }));
-    setCurrentItem((prev) => ({
-      ...prev,
-      trl_images: (prev.trl_images || []).map((img) => (img.id === tempImageId ? { ...img, ...imageData } : img)),
-    }));
+    const prepared = (photos: GRNImageData[]) => photos.map((img) => (img.id === tempImageId ? { ...img, ...imageData } : img));
+    changeBaselinePhotos(prepared);
+    setCurrentItem((prev) => ({ ...prev, trl_images: prepared(photosOf(prev)) }));
   };
 
   const handleImageUploadError = (error: string) => {
@@ -366,11 +707,24 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     const removed = currentItem.trl_images?.find((img) => img.id === imageId);
     dispatch(removeItemImage({ itemId: currentItem.grn_trl_id, imageId }));
     // A photo that never reached the server: its file on the phone is not needed.
-    if (removed && isTemporaryGRNImageId(imageId)) void releaseLocalPhotos([removed.imageUrl]);
+    // A photo the saved item already had when it was opened is the exception:
+    // "Discard changes" puts it back, so its file stays until the correction is
+    // checkmarked (commitOpenItem).
+    const canComeBack = photosOf(baseline.current).some((img) => img.id === imageId);
+    if (removed && isTemporaryGRNImageId(imageId) && !canComeBack) void releaseLocalPhotos([removed.imageUrl]);
     setCurrentItem((prev) => ({
       ...prev,
       trl_images: (prev.trl_images || []).filter((img) => img.id !== imageId),
     }));
+  };
+
+  /**
+   * A photo that could not be prepared leaves the item for good. Unlike a
+   * photo the worker took off, "Discard changes" must not put it back.
+   */
+  const dropUnpreparedPhoto = (imageId: string) => {
+    changeBaselinePhotos((photos) => photos.filter((img) => img.id !== imageId));
+    handleImageRemove(imageId);
   };
 
   const processPickedImage = async (result: ImagePicker.ImagePickerResult) => {
@@ -401,9 +755,15 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       const deferredUploadId = tempGrnId || generateTempGRNId();
       try {
         const uploadResult = await uploadGRNItemImage(asset, deferredUploadId, currentItem.grn_trl_id);
+        // The item may have been discarded while the photo was being prepared: then the photo
+        // is nobody's (discardOpenItem). No message about it, and its prepared copy is given up like the original.
+        if (discardedPhotoIds.current.has(tempImageData.id)) {
+          if (uploadResult.success && uploadResult.imageUrl) void releaseLocalPhotos([uploadResult.imageUrl]);
+          return;
+        }
         if (!uploadResult.success) {
           // The photo could not be prepared (too large, unreadable): say so and take it out again.
-          handleImageRemove(tempImageData.id);
+          dropUnpreparedPhoto(tempImageData.id);
           showAlert(
             tr('grn.photos.captureFailedTitle'),
             serverText(uploadResult.error, tr('grn.photos.captureFailedMessage'))
@@ -423,8 +783,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         handleImageUploadComplete(uploadedImageData, tempImageData.id);
       } catch (error) {
         log.error('Upload failed', loggableError(error));
+        if (discardedPhotoIds.current.has(tempImageData.id)) return;
         // The entry still points at the original file: it is taken out, like a refused photo.
-        handleImageRemove(tempImageData.id);
+        dropUnpreparedPhoto(tempImageData.id);
         showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
       }
     }
@@ -482,187 +843,13 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     ]);
   };
 
-  const handlePrevious = () => {
-    dispatch(setCurrentStep(1));
-    router.back();
-  };
-
-  const handleNext = async () => {
-    if (isNavigating) {
-      return;
-    }
-
-    let allItemsToSave: ItemFormData[] = [...savedItems];
-
-    if (currentItem.item_table_id && currentItem.qty) {
-      const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
-      if (!alreadySaved) {
-        const isValid = await validateCurrentItem();
-        if (!isValid) {
-          showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedAdding'));
-          return;
-        }
-        const typedItem: ItemFormData = { ...currentItem, rack: (currentItem.rack || '').trim() };
-        allItemsToSave.push(typedItem);
-        setSavedItems((prev) => [...prev, typedItem]);
-      }
-    }
-
-    if (allItemsToSave.length === 0) {
-      showAlert(tr('grn.itemsStep.addItemTitle'), tr('grn.itemsStep.addItemMessage'));
-      return;
-    }
-
-    // Every saved item passed the schema when it was added; a quantity that no
-    // longer parses must stop the step rather than be stored as 0.
-    const parsedItems = allItemsToSave.map((itemToSave) => ({
-      itemToSave,
-      parsedQty: parseReceiptQuantity(itemToSave.qty),
-    }));
-    const unparsable = parsedItems.find(({ parsedQty }) => parsedQty === null);
-    if (unparsable) {
-      showAlert(
-        tr('grn.itemsStep.checkItemTitle'),
-        unparsable.itemToSave.item_name
-          ? tr('grn.itemsStep.quantityWholeForItem', { item: unparsable.itemToSave.item_name })
-          : tr('grn.itemsStep.quantityWholeEachItem')
-      );
-      return;
-    }
-
-    setLocalValidationErrors({});
-    dispatch(setValidationErrors({}));
-
-    // One lookup of the stored lines, and one action for all of them: a line
-    // that did not change keeps its stored object.
-    const storedById = new Map<string, GRNItemData>();
-    items.forEach((item) => {
-      if (!storedById.has(item.grn_trl_id)) storedById.set(item.grn_trl_id, item);
-    });
-    const storeItems: GRNItemData[] = [];
-    parsedItems.forEach(({ itemToSave, parsedQty }) => {
-      if (parsedQty === null) return;
-      const existingInStore = storedById.get(itemToSave.grn_trl_id);
-      const hasDispatches = !isCreateMode && itemsWithDispatchesOnLoad.has(itemToSave.grn_trl_id);
-      // A line with dispatches keeps its stored stock; any other line's stock is its quantity.
-      const stockValue = hasDispatches
-        ? existingInStore?.stock ?? parsedQty
-        : parsedQty;
-
-      storeItems.push({
-        grn_trl_id: itemToSave.grn_trl_id,
-        item_table_id: itemToSave.item_table_id,
-        item_name: itemToSave.item_name,
-        packaging: itemToSave.packaging,
-        qty: parsedQty,
-        stock: stockValue,
-        weight: parseReceiptWeight(itemToSave.weight) ?? 0,
-        rack: itemToSave.rack,
-        package_mark: itemToSave.package_mark,
-        trl_images: itemToSave.trl_images || [],
-      });
-    });
-    dispatch(reconcileItems(storeItems));
-
-    dispatch(setCurrentStep(3));
-    setIsNavigating(true);
-
-    if (isCreateMode) {
-      try {
-        requestAnimationFrame(() => {
-          router.push('/grn-form/step3');
-        });
-      } catch (error) {
-        log.error('Navigation error', loggableError(error));
-        setIsNavigating(false);
-      }
-    } else {
-      if (!grnId) {
-        showAlert(tr('grn.itemsStep.reviewFailedTitle'), tr('grn.form.reopenMessage'));
-        setIsNavigating(false);
-        return;
-      }
-      try {
-        requestAnimationFrame(() => {
-          router.push(`/grn-edit/${grnId}/step3`);
-        });
-      } catch (error) {
-        log.error('Navigation error', loggableError(error));
-        setIsNavigating(false);
-      }
-    }
-  };
-
-  const handleSwipeLeft = () => {
-    if (currentItem.item_table_id && currentItem.qty) {
-      const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
-      if (!alreadySaved && !editingItemId) {
-        showAlert(tr('grn.itemsStep.saveItemTitle'), tr('grn.itemsStep.saveItemMessage'), [
-          { text: tr('common.keepEditing'), style: 'cancel' },
-          {
-            text: tr('grn.itemsStep.discardItem'),
-            style: 'destructive',
-            onPress: () => {
-              setCurrentItem(getNewItemWithRack());
-              if (savedItems.length === 0) {
-                showAlert(tr('grn.itemsStep.addItemTitle'), tr('grn.itemsStep.addItemMessage'));
-              } else {
-                handleNext();
-              }
-            },
-          },
-          {
-            text: tr('grn.itemsStep.saveItem'),
-            onPress: handleNext,
-          },
-        ]);
-        return;
-      }
-    }
-    handleNext();
-  };
-
-  const handleSwipeRight = () => {
-    if (currentItem.item_table_id && currentItem.qty) {
-      const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
-      if (!alreadySaved && !editingItemId) {
-        showAlert(tr('grn.itemsStep.saveItemTitle'), tr('grn.itemsStep.saveItemMessage'), [
-          { text: tr('common.keepEditing'), style: 'cancel' },
-          {
-            text: tr('grn.itemsStep.discardItem'),
-            style: 'destructive',
-            onPress: () => {
-              setCurrentItem(getNewItemWithRack());
-              handlePrevious();
-            },
-          },
-          {
-            text: tr('grn.itemsStep.saveItem'),
-            onPress: async () => {
-              const isValid = await validateCurrentItem();
-              if (isValid) {
-                await handleAddItem();
-                handlePrevious();
-              } else {
-                showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedSave'));
-              }
-            },
-          },
-        ]);
-        return;
-      }
-    }
-    handlePrevious();
-  };
-
-  const handleStepIndicatorPress = useCallback((stepNumber: number) => {
-    if (stepNumber === STEP_NUMBERS.ITEMS) return;
+  const handleStepIndicatorPress = (stepNumber: number) => {
     if (stepNumber === STEP_NUMBERS.HEADER) {
-      handleSwipeRight();
+      requestExit({ to: 'details' });
     } else if (stepNumber === STEP_NUMBERS.REVIEW) {
-      handleSwipeLeft();
+      requestExit({ to: 'review' });
     }
-  }, [handleSwipeLeft, handleSwipeRight]);
+  };
 
   return (
     <View style={styles.container}>
@@ -688,7 +875,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           onFieldChange={updateFormField}
           onImagePick={handleCameraIconPress}
           onImageRemove={handleImageRemove}
-          onSaveItem={handleAddItem}
+          onSaveItem={commitOpenItem}
           isQtyLocked={!isCreateMode && currentItemHasDispatches}
           onQtyLockedPress={handleQtyLockedPress}
           isValid={isCurrentItemValid}
@@ -702,12 +889,12 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         />
       </View>
 
-      {/* Back and Next run the same checks as the swipe (unsaved item, validation) */}
+      {/* Back and Next ask about an item that was not checkmarked, as the step circles do */}
       <WizardBottomBar
         currentStep={STEP_NUMBERS.ITEMS}
         totalSteps={GRN_STEP_COUNT}
-        onPrevious={handleSwipeRight}
-        onNext={handleSwipeLeft}
+        onPrevious={() => requestExit({ to: 'details' })}
+        onNext={() => requestExit({ to: 'review' })}
         isLoading={isNavigating}
         loadingLabel={tr('grn.itemsStep.openingReview')}
       />
@@ -717,7 +904,8 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         onClose={() => setShowItemsSummarySheet(false)}
         items={savedItems}
         onRemoveItem={handleRemoveItem}
-        onEditItem={handleEditItem}
+        onEditItem={handleSheetEditItem}
+        onDismissed={() => openRowAfterSheetRef.current()}
         editingItemId={editingItemId ?? undefined}
         dispatchedItemIds={isCreateMode ? undefined : new Set(itemsWithDispatchesOnLoad.keys())}
       />

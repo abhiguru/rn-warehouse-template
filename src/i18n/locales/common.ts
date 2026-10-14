@@ -19,6 +19,8 @@ export interface CommonWords {
   am: string;
   pm: string;
   kg: string;
+  /** The weight of one bag, box or crate. "{w}" is replaced by the weight with its unit. */
+  each: string;
   /** Nouns after a count, by their English singular: [one, many]. */
   nouns: Record<string, [string, string]>;
 }
@@ -38,6 +40,7 @@ const en: CommonWords = {
   am: 'am',
   pm: 'pm',
   kg: 'kg',
+  each: '{w} each',
   // English builds its plurals in formatCount; only the Gujarati table needs entries.
   nouns: {},
 };
@@ -60,6 +63,7 @@ const gu: CommonWords = {
   am: 'AM',
   pm: 'PM',
   kg: 'કિલો',
+  each: 'દરેક {w}',
   nouns: {
     item: same('આઇટમ'),
     bag: same('નંગ'),

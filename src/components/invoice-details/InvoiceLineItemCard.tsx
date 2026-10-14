@@ -12,7 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
+import { formatNumber, formatDate, formatCount, formatWeightEach } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { t as tr, formatIdentifier } from '@/i18n';
 
@@ -186,6 +186,8 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
   const isGrnClickable = !!(grNo && onViewGRN);
   const isDispatchClickable = !!(onViewDispatch && dispatchId);
   const durationText = formatCount(Math.round(durationNum * 10) / 10, 'month');
+  // The weight of one bag, box or crate of the lot ("50 kg each"); none for a lot without a weight.
+  const weightEach = formatWeightEach(weight);
 
   return (
     <View style={styles.card}>
@@ -231,13 +233,13 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
               <Text style={styles.storageValue}>{rack}</Text>
             </View>
           )}
-          {weight !== undefined && weight > 0 && (
+          {weightEach ? (
             <View style={styles.storageItem}>
               <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.storageLabel}>{tr('common.weight')}</Text>
-              <Text style={styles.storageValue}>{formatWeight(weight)}</Text>
+              <Text style={styles.storageValue}>{weightEach}</Text>
             </View>
-          )}
+          ) : null}
         </View>
       )}
 

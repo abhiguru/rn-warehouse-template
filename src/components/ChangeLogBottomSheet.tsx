@@ -29,7 +29,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
-import { formatRelativeTime, formatWeight } from '@/utils/formatters';
+import { formatRelativeTime, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 
@@ -194,6 +194,8 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     const hasQuantityChange = entry.change_details?.quantity_change;
     const hasStockInfo = entry.change_details?.stock_info;
     const itemDetails = entry.change_details?.item_details || entry.change_details?.grn_details;
+    // The lot's weight is the weight of one bag, box or crate ("50 kg each"); a lot without one shows none.
+    const weightEach = formatWeightEach(Number(itemDetails?.weight || itemDetails?.grn_item_weight));
 
     return (
       <View style={styles.timelineEntry}>
@@ -236,7 +238,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           )}
 
           {/* Item details display - only show if we have rack, weight, or package_mark */}
-          {itemDetails && (itemDetails.rack || itemDetails.grn_item_rack || itemDetails.weight || itemDetails.grn_item_weight || itemDetails.package_mark || itemDetails.grn_item_package_mark) && (
+          {itemDetails && (itemDetails.rack || itemDetails.grn_item_rack || weightEach || itemDetails.package_mark || itemDetails.grn_item_package_mark) && (
             <View style={styles.itemDetailsContainer}>
               {(itemDetails.rack || itemDetails.grn_item_rack) && (
                 <View style={dynamicStyles.itemDetailRow}>
@@ -246,14 +248,14 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
                   </Text>
                 </View>
               )}
-              {(itemDetails.weight || itemDetails.grn_item_weight) && (
+              {weightEach ? (
                 <View style={dynamicStyles.itemDetailRow}>
                   <MaterialCommunityIcons name="scale" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={dynamicStyles.itemDetail} numberOfLines={1}>
-                    {formatWeight(Number(itemDetails.weight || itemDetails.grn_item_weight))}
+                    {weightEach}
                   </Text>
                 </View>
-              )}
+              ) : null}
               {(itemDetails.package_mark || itemDetails.grn_item_package_mark) && (
                 <View style={dynamicStyles.itemDetailRow}>
                   <MaterialCommunityIcons name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />

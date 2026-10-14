@@ -51,7 +51,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 
 import { showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -827,8 +827,8 @@ interface GrnReviewItemCellProps {
 /** One line of the review's item list; drawn again only when its own props change. */
 const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, isLast, isProtected, styles }: GrnReviewItemCellProps) {
   const qty = item.qty || 0;
-  const weight = item.weight || 0;
-  const hasWeight = weight > 0;
+  // The weight of one package ("50 kg each"); null when the line has none, and then nothing is shown or said.
+  const weightText = formatWeightEach(item.weight);
   const rack = item.rack?.trim();
   const packageMark = item.package_mark?.trim();
   const imageCount = item.trl_images?.length || 0;
@@ -837,7 +837,7 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, i
     item.item_name,
     item.packaging,
     tr('grn.item.a11yQuantity', { quantity: formatNumber(qty) }),
-    hasWeight ? tr('grn.review.weightEach', { weight: formatWeight(weight) }) : undefined,
+    weightText,
     rack ? tr('grn.item.a11yRack', { rack }) : undefined,
     packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
     imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
@@ -866,7 +866,7 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, i
         ) : null}
 
         <View style={styles.objectCellFootnote}>
-          {hasWeight && <StatusTag status="neutral" label={formatWeight(weight)} icon="weight-kilogram" />}
+          {weightText !== null && <StatusTag status="neutral" label={weightText} icon="weight-kilogram" />}
           {rack ? <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
           {packageMark ? <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
           {imageCount > 0 && (

@@ -60,6 +60,8 @@ export interface ItemsSummaryBottomSheetProps<T> {
   getTotals: (items: T[]) => TotalBadge[];
   /** Called when an item is deleted */
   onDeleteItem: (itemKey: string) => void;
+  /** Called once the modal is fully gone (iOS only; React Native has no such event on Android) */
+  onDismissed?: () => void;
   /** Called when an item is tapped for editing */
   onEditItem?: (item: T) => void;
   /** Currently editing item key */
@@ -96,6 +98,7 @@ function ItemsSummaryBottomSheetInner<T>(
     getTotals,
     onDeleteItem,
     onEditItem,
+    onDismissed,
     editingItemKey,
     isItemProtected,
     title: titleProp,
@@ -230,6 +233,7 @@ function ItemsSummaryBottomSheetInner<T>(
       transparent={true}
       animationType="slide"
       onRequestClose={onClose}
+      onDismiss={onDismissed}
       statusBarTranslucent={false}
       accessibilityViewIsModal
     >
