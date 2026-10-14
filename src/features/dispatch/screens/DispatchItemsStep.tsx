@@ -568,7 +568,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         []
     );
 
-    // Handle cancel edit (edit mode only)
+    // "Stop editing this item" in the strip above the form, in a new dispatch and in an
+    // edited one: the correction is given up (after a question when the bags were changed)
+    // and the saved item stays as it was saved.
     const handleCancelEdit = useCallback(async () => {
         const originalItem = savedItems.find((item) => item.unique_id === editingItemId);
 
@@ -618,6 +620,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         });
         setSelectedGRN(null);
         setValidationErrors({});
+        // With the item, so the new form is never drawn with the text of the one it replaces.
+        setRejectedQuantityText(null);
     };
 
     // Check if user has entered significant data (lot + quantity)
@@ -702,7 +706,14 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         // the correction, without a word.
         if (isEditing && !isCurrentItemValid) {
             const validation = await validateSingleItem(currentItem);
-            setValidationErrors(validation.errors);
+            // Text that is not a whole number ("12.5") is still in the field, with its reason
+            // under it. The check sees the 0 bags it counts as and would say "at least 1" in
+            // place of that reason, so the reason already shown is kept.
+            setValidationErrors((shown) =>
+                rejectedQuantityText !== null && shown.disp_quantity
+                    ? { ...validation.errors, disp_quantity: shown.disp_quantity }
+                    : validation.errors
+            );
             showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
             return;
         }
@@ -912,8 +923,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     keyboardOpeningTime={0}
                     extraHeight={300}
                 >
-                    {/* Edit Mode message strip (edit mode only) */}
-                    {!isCreateMode && isEditingItem && (
+                    {/* A saved item is being corrected, in a new dispatch or an edited one: the
+                        strip names it and holds the one control that gives the correction up */}
+                    {isEditingItem && (
                         <View style={styles.editModeBanner}>
                             <Icon name="pencil-outline" size={iconSize.md} color={t.status.informative.text} />
                             <View style={styles.editModeBannerText}>

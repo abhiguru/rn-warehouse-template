@@ -372,6 +372,26 @@ describe('Next stops on a correction that cannot be saved', () => {
     expect(texts(tree)).toContain('Quantity must be at least 1');
   });
 
+  // "12.5" counts as no bags, and the check of that 0 used to put "at least 1" in place of the reason shown.
+  it('with "12.5" typed: the text stays in the field with the reason it was already given', async () => {
+    mockForm.items = [saved()];
+    await mount(<DispatchItemsStep mode="create" />);
+    await correct(tree, mockForm.items[0]);
+    await type(tree, '12.5');
+    expect(texts(tree)).toContain('Quantity must be a whole number');
+
+    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
+    expect(mockForm.navigateToStep).not.toHaveBeenCalled();
+    expect(mockForm.updateFormItem).not.toHaveBeenCalled();
+    expect(bags(tree).props.value).toBe('12.5');
+    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
+    expect(texts(tree)).toContain('Quantity must be a whole number');
+    expect(texts(tree)).not.toContain('Quantity must be at least 1');
+  });
+
   it('a corrected number of bags within the limit goes on after the stop', async () => {
     mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
     mockForm.isCreateMode = false;
@@ -402,5 +422,116 @@ describe('Next stops on a correction that cannot be saved', () => {
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
     expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
+  });
+});
+
+// The stop above left a new dispatch with no way on: Next, the Review circle and
+// a swipe left all stopped, "Clear this item" is not offered for a correction,
+// and the strip with "Stop editing this item" was drawn for an edited dispatch only.
+describe('a correction can be given up, in a new dispatch as in an edited one', () => {
+  const stopEditing = (step: ReactTestRenderer) =>
+    step.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Stop editing this item');
+  /** The "Discard changes to this item?" question, as the step hands it to ConfirmDialog. */
+  const discardQuestion = (step: ReactTestRenderer) =>
+    step.root.find((node) => (node.type as unknown) === 'ConfirmDialog' && node.props.title === 'Discard changes to this item?');
+  const next = () => button(tree, 'Next, review dispatch').props.onPress();
+
+  /** The step of a dispatch with one saved line: 5 bags of a lot that has 95 more in stock. */
+  const withSavedLine = async (isCreateMode: boolean) => {
+    mockForm.items = [saved()];
+    mockForm.isCreateMode = isCreateMode;
+    await mount(<DispatchItemsStep mode={isCreateMode ? 'create' : 'edit'} />);
+  };
+  /** That line opened in the form. */
+  const correcting = async (isCreateMode: boolean) => {
+    await withSavedLine(isCreateMode);
+    await correct(tree, mockForm.items[0]);
+  };
+  /** The form as it is for a new, second item: nothing chosen, nothing typed, nothing marked. */
+  const expectNewItemForm = () => {
+    expect(stopEditing(tree)).toHaveLength(0);
+    expect(texts(tree)).toContain('Adding item 2');
+    expect(texts(tree)).not.toContain('Editing item 1');
+    expect(texts(tree)).toContain('Choose GRN');
+    expect(bags(tree).props.value).toBe('');
+    expect(bags(tree).props.editable).toBe(false);
+    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+    expect(texts(tree).filter((text) => text.startsWith('Quantity must') || text.startsWith('Enter '))).toEqual([]);
+  };
+
+  it.each([
+    ['a new dispatch', true],
+    ['an edited dispatch', false],
+  ])('%s: the strip names the item being corrected and offers "Stop editing this item"', async (_name, isCreateMode) => {
+    await withSavedLine(isCreateMode);
+    // Not while the form holds a new item.
+    expect(stopEditing(tree)).toHaveLength(0);
+
+    await correct(tree, mockForm.items[0]);
+
+    expect(stopEditing(tree)).toHaveLength(1);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Editing item 1', 'Editing item', 'Example Potatoes (GRN G0311)']));
+  });
+
+  it.each([
+    ['more bags than the lot holds', '96', 'Enter 95 bags or fewer. That is the original stock.'],
+    ['the bags cleared', '', 'Quantity must be at least 1'],
+    ['bags that are not a whole number', '12.5', 'Quantity must be a whole number'],
+  ])('a new dispatch, %s: Next stops, the correction is given up, and Next opens Review', async (_what, typed, reason) => {
+    await correcting(true);
+    await type(tree, typed);
+
+    await press(tree, next);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
+    expect(mockForm.navigateToStep).not.toHaveBeenCalled();
+    expect(texts(tree)).toContain(reason);
+    expect(bags(tree).props.value).toBe(typed);
+
+    // The way out: it asks first, because the number of bags was changed.
+    expect(discardQuestion(tree).props.visible).toBe(false);
+    await press(tree, () => stopEditing(tree)[0].props.onPress());
+    expect(discardQuestion(tree).props).toMatchObject({ visible: true, confirmText: 'Discard changes', cancelText: 'Keep editing' });
+    expect(bags(tree).props.value).toBe(typed);
+    await press(tree, () => discardQuestion(tree).props.onConfirm());
+
+    expect(discardQuestion(tree).props.visible).toBe(false);
+    expectNewItemForm();
+    // The saved line was not written to: it still holds its 5 bags.
+    expect(mockForm.updateFormItem).not.toHaveBeenCalled();
+    expect(mockForm.removeFormItem).not.toHaveBeenCalled();
+    expect(mockForm.addFormItems).not.toHaveBeenCalled();
+    expect(mockForm.items).toEqual([saved()]);
+
+    await press(tree, next);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
+    expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
+    expect(mockForm.updateFormItem).not.toHaveBeenCalled();
+    expect(mockForm.addFormItems).not.toHaveBeenCalled();
+  });
+
+  it('a new dispatch: "Keep editing" leaves the correction in the form as typed', async () => {
+    await correcting(true);
+    await type(tree, '96');
+    await press(tree, () => stopEditing(tree)[0].props.onPress());
+
+    await press(tree, () => discardQuestion(tree).props.onCancel());
+
+    expect(discardQuestion(tree).props.visible).toBe(false);
+    expect(stopEditing(tree)).toHaveLength(1);
+    expect(texts(tree)).toContain('Editing item 1');
+    expect(bags(tree).props.value).toBe('96');
+  });
+
+  it('a new dispatch: a correction with nothing changed is given up without a question', async () => {
+    await correcting(true);
+    expect(bags(tree).props.value).toBe('5');
+
+    await press(tree, () => stopEditing(tree)[0].props.onPress());
+
+    expect(discardQuestion(tree).props.visible).toBe(false);
+    expectNewItemForm();
+    expect(mockForm.updateFormItem).not.toHaveBeenCalled();
   });
 });
