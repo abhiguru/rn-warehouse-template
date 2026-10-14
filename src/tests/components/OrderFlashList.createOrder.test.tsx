@@ -26,6 +26,7 @@ jest.mock('react-native-paper', () => Object.fromEntries(
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => {} }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: (reason: string) => ({ type: 'test/forceLogout', reason }) }));
 jest.mock('@/features/filters/configs', () => ({ ORDER_FILTERS: { listKey: 'order-list' } }));
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
   FilteredListHeader: () => null,
@@ -55,7 +56,8 @@ jest.mock('@/components/CustomerSearchBottomSheet', () => {
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: jest.fn() } }));
 // The facility's answer to "which businesses are this account's own".
 const mockReadOwnBusinesses = jest.fn<Promise<OwnBusiness[]>, []>();
-jest.mock('@/features/customer/ownBusinesses', () => ({ readOwnBusinesses: () => mockReadOwnBusinesses() }));
+// No clear answer about the account's access (an older facility): the guidance for an empty list stays.
+jest.mock('@/features/customer/ownBusinesses', () => ({ readOwnBusinesses: () => mockReadOwnBusinesses(), readAccessStatus: async () => null }));
 
 const AMBER: OwnBusiness = { id: 'business-amber', name: 'Amber Field Traders', city: 'Northgate' };
 const BIRCH: OwnBusiness = { id: 'business-birch', name: 'Birchwood Produce', city: 'Southmere' };
