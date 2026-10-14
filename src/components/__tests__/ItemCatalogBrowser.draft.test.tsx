@@ -181,6 +181,18 @@ describe('what was chosen is seeded once', () => {
     ]);
   });
 
+  it('does not remove every line of the order when all saved lots are deselected: it says nothing is selected', async () => {
+    await open([saved('lot-a', 1)]);
+    await pressLabel('Remove 1 bag of Fictional potatoes');
+    // The change is counted, so the button reads Add (1) ...
+    expect(addButtonText()).toBe('Add (1)');
+    await pressAdd();
+    // ... but nothing is sent: removing a line is asked for on its card.
+    expect(onAddItems).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(alertTexts(jest.mocked(showAlert))).toEqual([['No items selected', 'Choose a quantity for at least one item, then tap Add.']]);
+  });
+
   it('stores a new lot\'s name as before and nothing of the selection', async () => {
     await open([]);
     await choose('Fictional potatoes');

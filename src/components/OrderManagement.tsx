@@ -221,24 +221,37 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const orderRef = useRef(order);
   orderRef.current = order;
 
+  // Reads can overlap (a live update, a quantity save, the picker's read after a save). They are
+  // numbered when they start; an answer older than one already applied is dropped, so a slow
+  // read that started before a write never puts the lines from before the write back.
+  const refreshStarted = useRef(0);
+  const refreshApplied = useRef(0);
+  const refreshesRunning = useRef(0);
+
   // Handle refresh. Stable, so the line cards keep their props while it runs.
   const onRefresh = useCallback(async () => {
     const current = orderRef.current;
     if (!current) return;
 
     const sessionGeneration = getSessionGeneration();
+    refreshStarted.current += 1;
+    const sequence = refreshStarted.current;
+    refreshesRunning.current += 1;
     setRefreshing(true);
     try {
       const result = await OrderService.getOrderWithItems(current.id);
       if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return;
+      if (sequence < refreshApplied.current) return;
       if (result.success && result.data) {
         const next = result.data;
+        refreshApplied.current = sequence;
         setOrder(previous => keepUnchanged(previous, next));
       }
     } catch (error) {
       console.error('[OrderManagement] Refresh error:', error);
     } finally {
-      setRefreshing(false);
+      refreshesRunning.current -= 1;
+      if (refreshesRunning.current === 0) setRefreshing(false);
     }
   }, []);
 

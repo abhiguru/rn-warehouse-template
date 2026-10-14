@@ -663,3 +663,37 @@ it('stops when the session changes: the lots not sent are not saved, and the ord
   ]);
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads);
 });
+
+// F63: a lot whose only line is dispatched is never rewritten; the quantity is ordered anew.
+it.each([[6], [9], [2]])('does not rewrite the dispatched line of a lot when %i bags are chosen', async (quantity) => {
+  await openPicker();
+  await send([{ grnItemId: 'lot-done', quantity }]);
+
+  expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+  expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-done', quantity]]);
+});
+
+// F64: a read that started before another one is not applied after it.
+it('keeps the newer lines when an older read answers last', async () => {
+  await openPicker();
+  const older = waiting<never>();
+  const newer = waiting<never>();
+  service.getOrderWithItems
+    .mockImplementationOnce(() => older.promise)
+    .mockImplementationOnce(() => newer.promise);
+  const quantities = () => mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity]);
+  const before = copy(server);
+  const after = copy(server);
+  after.items![0].requested_quantity = 7;
+
+  await act(async () => { void mockLive.refresh?.(); });
+  await act(async () => { void mockLive.refresh?.(); });
+  await act(async () => { newer.answer({ success: true, data: after } as never); });
+  await settle();
+  expect(quantities()).toEqual([['lot-kept', 7], ['lot-open', 5]]);
+
+  // The first read, which started before the write, answers last.
+  await act(async () => { older.answer({ success: true, data: before } as never); });
+  await settle();
+  expect(quantities()).toEqual([['lot-kept', 7], ['lot-open', 5]]);
+});
