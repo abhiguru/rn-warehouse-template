@@ -16,7 +16,7 @@
  * native modules.
  */
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, ScrollView } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { configureStore, type UnknownAction } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
@@ -167,6 +167,14 @@ const pressNext = (tree: ReactTestRenderer) =>
   act(async () => { await control(tree, (label) => label === 'Next').props.onPress(); });
 
 const alerts = () => jest.mocked(Alert.alert).mock.calls;
+/** Presses a button of the dialog shown last. */
+const answer = async (text: string) => {
+  const button = alerts().at(-1)?.[2]?.find((candidate) => candidate.text === text);
+  expect(button).toBeDefined();
+  await act(async () => { await button!.onPress?.(); });
+};
+// The entry row's ref is the jest mock's instance, whose scrollTo is one shared jest.fn (react-native's jest preset).
+const mockScrollTo = ScrollView.prototype.scrollTo as unknown as jest.Mock;
 const sentToReview = () => mockActions.find((action) => action.type === reconcileItems.type)?.payload as GRNItemData[] | undefined;
 
 beforeEach(() => {
@@ -227,5 +235,23 @@ describe.each([
     expect(router.push).not.toHaveBeenCalled();
     expect(sentToReview()).toBeUndefined();
     expect(mockStore.getState().grnForm.items).toBe(before);
+  });
+
+  // Weight is a screen's width to the right of Item and Quantity: its error was marked out of view.
+  it('a weight that is not a whole number: OK on the refusal scrolls the row to the Weight field', async () => {
+    const tree = await render(mode);
+    await reopenRowOne(tree);
+    await act(async () => { field(tree, 'Weight each, in kilograms').props.onChangeText('12.5'); });
+    await pressNext(tree);
+    await answer('Save changes');
+    expect(alerts().at(-1)?.slice(0, 2)).toEqual(['Check the item details', 'Fix the highlighted fields, then save the item.']);
+    expect(texts(tree)).toContain('Weight must be a whole number');
+    mockScrollTo.mockClear();
+
+    await answer('OK');
+
+    // Item (220) and Quantity (117) are drawn before it.
+    expect(mockScrollTo.mock.calls).toEqual([[{ x: 337, animated: true }]]);
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

@@ -61,9 +61,13 @@ jest.mock('@/hooks', () => ({
   },
 }));
 // Children are stand-ins that keep their props, so the test can call their handlers.
+// The form's stand-in also takes what the step asks of the form through its ref.
+const mockFormRef = { focusQty: jest.fn(), resetScroll: jest.fn(), revealField: jest.fn() };
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
-  HorizontalItemForm: require('react').forwardRef((props: object, _ref: unknown) =>
-    require('react').createElement('HorizontalItemForm', props)),
+  HorizontalItemForm: require('react').forwardRef((props: object, ref: React.Ref<unknown>) => {
+    require('react').useImperativeHandle(ref, () => mockFormRef);
+    return require('react').createElement('HorizontalItemForm', props);
+  }),
 }));
 jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({ __esModule: true, default: 'ItemsSummaryBottomSheet' }));
 jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
@@ -320,6 +324,52 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     // Still a correction that was not checkmarked: it is asked about again.
     await pressNext(tree);
     expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+  });
+
+  // The form is one sideways row: Weight, Rack and Mark are out of view while Item and Quantity are shown.
+  it.each([
+    ['a weight that is not a whole number', 'weight', '12.5'],
+    ['a rack of more than 30 characters', 'rack', 'R'.repeat(31)],
+    ['a mark of more than 60 characters', 'package_mark', 'M'.repeat(61)],
+  ])('a correction with %s: OK on the refusal brings that field into view', async (_what, field, value) => {
+    const tree = await render('edit', lines(10));
+    await openRow(tree, 5);
+    set(tree, field, value);
+    await pressNext(tree);
+
+    await answer('Save changes');
+    expect(lastAlert()?.[1]).toBe('Fix the highlighted fields, then save the item.');
+    expect(Object.keys(form(tree).props.currentItem.errors)).toEqual([field]);
+    expect(mockFormRef.revealField).not.toHaveBeenCalled();
+    await answer('OK');
+
+    expect(mockFormRef.revealField).toHaveBeenCalledTimes(1);
+    expect(mockFormRef.revealField).toHaveBeenCalledWith(field);
+    expect(mockFormRef.focusQty).not.toHaveBeenCalled();
+    expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
+  });
+
+  it('with several fields wrong, the first of the row is the one brought into view', async () => {
+    const tree = await render('edit', lines(10));
+    await openRow(tree, 5);
+    set(tree, 'rack', 'R'.repeat(31));
+    set(tree, 'weight', '12.5');
+    await pressNext(tree);
+    await answer('Save changes');
+    await answer('OK');
+
+    // Weight is drawn before Rack.
+    expect(mockFormRef.revealField.mock.calls).toEqual([['weight']]);
+
+    // Quantity is drawn before both, and is given the cursor as before.
+    set(tree, 'qty', '');
+    await pressNext(tree);
+    await answer('Save changes');
+    await answer('OK');
+
+    expect(mockFormRef.focusQty).toHaveBeenCalledTimes(1);
+    expect(mockFormRef.revealField.mock.calls).toEqual([['weight']]);
+    expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
   });
 
   it('a saved item that was opened and not changed is not asked about: the form closes and Review opens', async () => {
@@ -750,6 +800,133 @@ describe('GRN items step, photos of an item that is left', () => {
     expect(form(tree).props.currentItem.trl_images).toEqual([]);
     expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/prepared.webp']);
     expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+  });
+
+  // An item can be checkmarked, and opened again, while its photo is still being
+  // prepared. "Discard changes" restores the photos the item had when it was
+  // opened: it used to restore that photo as it was then, still "uploading" and
+  // pointing at the camera's file, and Review's Save refused the GRN for it.
+  describe('a photo that is still being prepared when its item is opened again', () => {
+    const preparedAs = (imageUrl: string) => ({
+      success: true,
+      imageId: undefined,
+      imageUrl,
+      metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z', storagePath: undefined },
+    });
+
+    /**
+     * A third item is typed and given a photo, and it is checkmarked and opened
+     * again before the photo has been prepared. `finish` ends the preparation
+     * with the result it is given.
+     */
+    async function reopenedWhilePreparing() {
+      // A photo's id is made from the time it is picked at: no two picks in one millisecond.
+      let now = Date.parse('2026-10-10T08:00:00.000Z');
+      jest.spyOn(Date, 'now').mockImplementation(() => (now += 1000));
+      let endPreparation!: (result: unknown) => void;
+      (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+        canceled: false,
+        assets: [{ uri: 'file:///camera/raw.jpg', fileName: 'raw.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
+      });
+      (uploadGRNItemImage as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { endPreparation = resolve; }));
+
+      const tree = await render('create', lines(2));
+      set(tree, 'item_table_id', NEW_ITEM_ID);
+      set(tree, 'item_name', 'Fictional garlic');
+      set(tree, 'qty', '7');
+      act(() => form(tree).props.onImagePick());
+      const gallery = lastAlert()?.[2]?.find((candidate) => candidate.text === 'Choose from gallery');
+      let picking!: Promise<unknown>;
+      await act(async () => {
+        // Not waited for: it ends when the photo has been prepared.
+        picking = Promise.resolve(gallery!.onPress?.());
+        for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      });
+      await act(async () => { await form(tree).props.onSaveItem(); });
+      await openRow(tree, 3);
+
+      const unprepared = { uploadStatus: 'uploading', imageUrl: 'file:///camera/raw.jpg' };
+      expect(storedItems()[2].trl_images).toMatchObject([unprepared]);
+      expect(form(tree).props.currentItem.trl_images).toMatchObject([unprepared]);
+      expect(inForm(tree)).toMatchObject({ id: storedItems()[2].grn_trl_id, isEditing: true, editingItemNumber: 3 });
+
+      const finish = (result: unknown) => act(async () => { endPreparation(result); await picking; });
+      return { tree, photoId: storedItems()[2].trl_images[0].id, finish };
+    }
+    /** Everywhere the third item's photos are held once the step is left for Review. */
+    const photosOfItemThree = (tree: ReactTestRenderer) => ({
+      stored: storedItems()[2].trl_images,
+      sentToReview: sentToReview()?.[2].trl_images,
+      inSavedItemsSheet: sheet(tree).props.items[2].trl_images,
+    });
+
+    it('Discard changes keeps the photo as it is stored once it was prepared, and takes off only the photo added since', async () => {
+      const { tree, photoId, finish } = await reopenedWhilePreparing();
+
+      await finish(preparedAs('file:///cache/prepared.webp'));
+      const prepared = { id: photoId, uploadStatus: 'completed', imageUrl: 'file:///cache/prepared.webp' };
+      expect(storedItems()[2].trl_images).toMatchObject([prepared]);
+      expect(form(tree).props.currentItem.trl_images).toMatchObject([prepared]);
+
+      // A second photo is the correction.
+      (uploadGRNItemImage as jest.Mock).mockResolvedValueOnce(preparedAs('file:///cache/second.webp'));
+      await pickFromGallery(tree);
+      expect(storedItems()[2].trl_images).toMatchObject([prepared, { uploadStatus: 'completed', imageUrl: 'file:///cache/second.webp' }]);
+
+      await pressNext(tree);
+      expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+      await answer('Discard changes');
+
+      expect(photosOfItemThree(tree)).toMatchObject({ stored: [prepared], sentToReview: [prepared], inSavedItemsSheet: [prepared] });
+      // Nothing waits to be deleted by the save, and only the second photo's file is given up.
+      expect(removedImages()).toEqual([]);
+      expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+      expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/second.webp']);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+
+    it('the photo becoming ready is not a change: Next asks nothing', async () => {
+      const { tree, photoId, finish } = await reopenedWhilePreparing();
+      await finish(preparedAs('file:///cache/prepared.webp'));
+      const asked = alerts().length;
+
+      await pressNext(tree);
+
+      expect(alerts()).toHaveLength(asked);
+      expect(sentToReview()?.[2].trl_images).toMatchObject([{ id: photoId, uploadStatus: 'completed', imageUrl: 'file:///cache/prepared.webp' }]);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+
+    it('a photo that could not be prepared is gone, which is not a change either: Next asks nothing', async () => {
+      const { tree, finish } = await reopenedWhilePreparing();
+
+      await finish({ success: false, error: 'The photo is too large.' });
+      expect(lastAlert()?.[0]).toBe("Couldn't use the photo");
+      expect(storedItems()[2].trl_images).toEqual([]);
+      expect(form(tree).props.currentItem.trl_images).toEqual([]);
+      const asked = alerts().length;
+
+      await pressNext(tree);
+
+      expect(alerts()).toHaveLength(asked);
+      expect(sentToReview()?.[2].trl_images).toEqual([]);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+
+    it('Discard changes does not bring back a photo that could not be prepared', async () => {
+      const { tree, finish } = await reopenedWhilePreparing();
+      await finish({ success: false, error: 'The photo is too large.' });
+
+      set(tree, 'package_mark', 'OTHER');
+      await pressNext(tree);
+      expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+      await answer('Discard changes');
+
+      expect(photosOfItemThree(tree)).toEqual({ stored: [], sentToReview: [], inSavedItemsSheet: [] });
+      // The checkmark that saved the item, then Next: no photos were put back in between.
+      expect(itemActions().map((action) => action.type)).toEqual([addItem.type, reconcileItems.type]);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
   });
 });
 

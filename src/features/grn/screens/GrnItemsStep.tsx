@@ -39,7 +39,12 @@ import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/feat
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
-import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
+import {
+  HorizontalItemForm,
+  ItemFormData,
+  HorizontalItemFormRef,
+  ItemFormFieldName,
+} from '@/features/grn/components/HorizontalItemForm';
 import {
   validateStep2,
   isValidReceiptQuantity,
@@ -72,6 +77,9 @@ const freshItem = (lines: readonly ItemFormData[]): ItemFormData => {
   if (lines.length > 0 && lines[0].rack) item.rack = lines[0].rack;
   return item;
 };
+
+/** The fields the row draws after Item and Quantity, in its order. Their names are also their error keys. */
+const FIELDS_AFTER_QUANTITY = ['weight', 'rack', 'package_mark'] as const satisfies readonly ItemFormFieldName[];
 
 const photosOf = (item: ItemFormData): GRNImageData[] => item.trl_images || [];
 const photoIds = (item: ItemFormData) => photosOf(item).map((img) => img.id).join('|');
@@ -320,6 +328,10 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       formRef.current?.resetScroll();
     } else if (errors.qty) {
       formRef.current?.focusQty();
+    } else {
+      // Weight, Rack and Mark are out of view while Item and Quantity are shown.
+      const field = FIELDS_AFTER_QUANTITY.find((name) => errors[name]);
+      if (field) formRef.current?.revealField(field);
     }
   };
 
@@ -620,6 +632,18 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     }));
   };
 
+  /**
+   * Makes a change to the photos of the item as it was put into the form. A
+   * saved item can be opened again while one of its photos is still being
+   * prepared, and "Discard changes" restores the photos from `baseline`: so
+   * what the preparation does to that photo afterwards is done there too, or
+   * the photo would be restored as it was before it. The form gets the same
+   * change, so this alone never makes the item count as changed.
+   */
+  const changeBaselinePhotos = (change: (photos: GRNImageData[]) => GRNImageData[]) => {
+    baseline.current = { ...baseline.current, trl_images: change(photosOf(baseline.current)) };
+  };
+
   const handleImageUploadComplete = (imageData: GRNImageData, tempImageId: string) => {
     dispatch(completeItemImageUpload({
       itemId: currentItem.grn_trl_id,
@@ -630,10 +654,9 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       fileSize: imageData.fileSize,
       mimeType: imageData.mimeType
     }));
-    setCurrentItem((prev) => ({
-      ...prev,
-      trl_images: (prev.trl_images || []).map((img) => (img.id === tempImageId ? { ...img, ...imageData } : img)),
-    }));
+    const prepared = (photos: GRNImageData[]) => photos.map((img) => (img.id === tempImageId ? { ...img, ...imageData } : img));
+    changeBaselinePhotos(prepared);
+    setCurrentItem((prev) => ({ ...prev, trl_images: prepared(photosOf(prev)) }));
   };
 
   const handleImageUploadError = (error: string) => {
@@ -655,6 +678,15 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       ...prev,
       trl_images: (prev.trl_images || []).filter((img) => img.id !== imageId),
     }));
+  };
+
+  /**
+   * A photo that could not be prepared leaves the item for good. Unlike a
+   * photo the worker took off, "Discard changes" must not put it back.
+   */
+  const dropUnpreparedPhoto = (imageId: string) => {
+    changeBaselinePhotos((photos) => photos.filter((img) => img.id !== imageId));
+    handleImageRemove(imageId);
   };
 
   const processPickedImage = async (result: ImagePicker.ImagePickerResult) => {
@@ -687,7 +719,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         const uploadResult = await uploadGRNItemImage(asset, deferredUploadId, currentItem.grn_trl_id);
         if (!uploadResult.success) {
           // The photo could not be prepared (too large, unreadable): say so and take it out again.
-          handleImageRemove(tempImageData.id);
+          dropUnpreparedPhoto(tempImageData.id);
           showAlert(
             tr('grn.photos.captureFailedTitle'),
             serverText(uploadResult.error, tr('grn.photos.captureFailedMessage'))
@@ -708,7 +740,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       } catch (error) {
         log.error('Upload failed', loggableError(error));
         // The entry still points at the original file: it is taken out, like a refused photo.
-        handleImageRemove(tempImageData.id);
+        dropUnpreparedPhoto(tempImageData.id);
         showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
       }
     }

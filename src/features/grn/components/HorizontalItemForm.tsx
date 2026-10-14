@@ -33,15 +33,15 @@ const FIELD_WIDTHS = {
     rack: 196, // the chips wrap
     package_mark: 270,
 } as const;
-type FieldName = keyof typeof FIELD_WIDTHS;
-const FIELD_ORDER: readonly FieldName[] = ['item', 'qty', 'weight', 'rack', 'package_mark'];
+export type ItemFormFieldName = keyof typeof FIELD_WIDTHS;
+const FIELD_ORDER: readonly ItemFormFieldName[] = ['item', 'qty', 'weight', 'rack', 'package_mark'];
 
 /**
  * Where the row scrolls to when a field takes focus: the widths of the fields
  * before it. Worked out from the table above, so a width cannot change without
  * the offsets following it.
  */
-const scrollOffsetOf = (field: FieldName): number =>
+const scrollOffsetOf = (field: ItemFormFieldName): number =>
     FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce((sum, name) => sum + FIELD_WIDTHS[name], 0);
 
 // Floor and Chamber options
@@ -116,6 +116,8 @@ export interface ItemFormData {
 export interface HorizontalItemFormRef {
     focusQty: () => void;
     resetScroll: () => void;
+    /** Scrolls the row to a field, as when it takes focus, so the error under it is in view. */
+    revealField: (field: ItemFormFieldName) => void;
 }
 
 interface HorizontalItemFormProps {
@@ -175,6 +177,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             },
             resetScroll: () => {
                 scrollRef.current?.scrollTo({ x: 0, animated: true });
+            },
+            revealField: (field) => {
+                scrollToField(scrollOffsetOf(field));
             },
         }), [scrollToField]);
 
