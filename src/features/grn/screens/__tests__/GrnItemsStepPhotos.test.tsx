@@ -8,8 +8,8 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import * as ImagePicker from 'expo-image-picker';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
 import { deleteGRNImage, uploadGRNItemImage } from '@/features/grn/services/imageUploadService';
-import { removeItemImage } from '@/store/slices/grnFormSlice';
-import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
+import { addItemImage, completeItemImageUpload, removeItemImage } from '@/store/slices/grnFormSlice';
+import { registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const LINE_ID = '55555555-2222-4333-8444-555555555555';
@@ -73,7 +73,11 @@ jest.mock('@/features/grn/services/imageUploadService', () => ({
   validateImageFile: () => ({ valid: true }),
 }));
 
-jest.mock('@/utils/localPhotoFiles', () => ({ releaseLocalPhotos: jest.fn(async () => 0) }));
+jest.mock('@/utils/localPhotoFiles', () => ({
+  LOCAL_PHOTO_OWNERS: { grnForm: 'grn-form' },
+  registerLocalPhoto: jest.fn(async () => true),
+  releaseLocalPhotos: jest.fn(async () => 0),
+}));
 
 async function render() {
   let tree!: ReactTestRenderer;
@@ -163,13 +167,83 @@ describe('GRN items step photos while editing', () => {
     act(() => form(tree).props.onImagePick());
     await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
     const picked = form(tree).props.currentItem.trl_images[0];
-    expect(releaseLocalPhotos).not.toHaveBeenCalled();
+    // Only the picked original has gone, once the prepared copy took its place.
+    expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///camera/raw.jpg']);
 
     await act(async () => { await form(tree).props.onImageRemove(picked.id); });
 
     expect(form(tree).props.currentItem.trl_images).toEqual([]);
-    expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
-    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/prepared.webp']);
+    expect(releaseLocalPhotos).toHaveBeenCalledTimes(2);
+    expect(releaseLocalPhotos).toHaveBeenLastCalledWith(['file:///cache/prepared.webp']);
+    await act(async () => { tree.unmount(); });
+  });
+
+  // F57: the picker writes the original into the app's cache; it is registered and released.
+  it('registers the picked original and releases it once the prepared copy has replaced it', async () => {
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///cache/ImagePicker/shot.jpg', fileName: 'shot.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
+    });
+    (ImagePicker.requestCameraPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+    (uploadGRNItemImage as jest.Mock).mockResolvedValue({
+      success: true,
+      imageUrl: 'file:///cache/prepared.webp',
+      metadata: { fileName: 'shot.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z' },
+    });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    act(() => form(tree).props.onImagePick());
+    await act(async () => { await alert.mock.calls[0][2]![0].onPress!(); });
+
+    expect(registerLocalPhoto).toHaveBeenCalledWith('file:///cache/ImagePicker/shot.jpg', 'grn-form', 'capture');
+    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/ImagePicker/shot.jpg']);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('releases the picked original when the photo could not be prepared', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///cache/ImagePicker/big.jpg', fileName: 'big.jpg', fileSize: 12000000, mimeType: 'image/jpeg' }],
+    });
+    (uploadGRNItemImage as jest.Mock).mockResolvedValue({ success: false, error: 'Too large' });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    act(() => form(tree).props.onImagePick());
+    await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
+
+    expect(form(tree).props.currentItem.trl_images).toEqual([]);
+    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/ImagePicker/big.jpg']);
+    await act(async () => { tree.unmount(); });
+  });
+
+  // F60: the photo is recorded under the item that is in the form when the picker returns.
+  it('records the photo under the item now in the form, not the one the dialog was opened for', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///cache/ImagePicker/raw.jpg', fileName: 'raw.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
+    });
+    (uploadGRNItemImage as jest.Mock).mockResolvedValue({
+      success: true,
+      imageUrl: 'file:///cache/prepared.webp',
+      metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z' },
+    });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    const freshItemId = form(tree).props.currentItem.grn_trl_id;
+    expect(freshItemId).toMatch(/^item-/);
+    // The dialog is opened for the new item ...
+    act(() => form(tree).props.onImagePick());
+    // ... and while it is open the form moves to the saved line.
+    await editSavedLine(tree);
+    expect(form(tree).props.currentItem.grn_trl_id).toBe(LINE_ID);
+    await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
+
+    const added = mockDispatch.mock.calls.map(([action]) => action).find((action) => action.type === addItemImage.type);
+    expect(added.payload.itemId).toBe(LINE_ID);
+    const completed = mockDispatch.mock.calls.map(([action]) => action).find((action) => action.type === completeItemImageUpload.type);
+    expect(completed.payload.itemId).toBe(LINE_ID);
+    expect((uploadGRNItemImage as jest.Mock).mock.calls[0][2]).toBe(LINE_ID);
     await act(async () => { tree.unmount(); });
   });
 });
