@@ -31,20 +31,20 @@ describe('seedDraft', () => {
 describe('changesOf', () => {
   it('sends a lot that was chosen and not saved', () => {
     const draft = withQuantity(seedDraft([line('a', 2)]), lot('new'), 3);
-    expect(changesOf(draft)).toEqual([{ grnItemId: 'new', quantity: 3 }]);
+    expect(changesOf(draft)).toEqual([{ grnItemId: 'new', quantity: 3, expected: 0 }]);
     expect(isDirty(draft)).toBe(true);
   });
 
   it('sends a saved lot whose quantity changed, and not one set back to what is saved', () => {
     const opened = seedDraft([line('a', 2), line('b', 5)]);
     const changed = withQuantity(opened, lot('a'), 7);
-    expect(changesOf(changed)).toEqual([{ grnItemId: 'a', quantity: 7 }]);
+    expect(changesOf(changed)).toEqual([{ grnItemId: 'a', quantity: 7, expected: 2 }]);
     expect(changesOf(withQuantity(changed, lot('a'), 2))).toEqual([]);
   });
 
   it('sends quantity 0 for a saved lot that is no longer chosen', () => {
     const draft = withQuantity(seedDraft([line('a', 2), line('b', 5)]), lot('b'), 0);
-    expect(changesOf(draft)).toEqual([{ grnItemId: 'b', quantity: 0 }]);
+    expect(changesOf(draft)).toEqual([{ grnItemId: 'b', quantity: 0, expected: 5 }]);
   });
 
   it('sends nothing for a lot chosen and deselected again, and never a lot that was not touched', () => {
@@ -54,9 +54,9 @@ describe('changesOf', () => {
     const mixed = withQuantity(withQuantity(withQuantity(opened, lot('b'), 0), lot('new'), 4), lot('a'), 3);
     // Quantities first, removals last; the untouched lot is not there.
     expect(changesOf(mixed)).toEqual([
-      { grnItemId: 'a', quantity: 3 },
-      { grnItemId: 'new', quantity: 4 },
-      { grnItemId: 'b', quantity: 0 },
+      { grnItemId: 'a', quantity: 3, expected: 2 },
+      { grnItemId: 'new', quantity: 4, expected: 0 },
+      { grnItemId: 'b', quantity: 0, expected: 5 },
     ]);
   });
 });
@@ -79,7 +79,7 @@ describe('applyResults', () => {
       { grnItemId: 'two', ok: false, reason: 'Only 3 bags in stock.' },
       { grnItemId: 'gone', ok: true },
     ]);
-    expect(changesOf(after)).toEqual([{ grnItemId: 'two', quantity: 8 }]);
+    expect(changesOf(after)).toEqual([{ grnItemId: 'two', quantity: 8, expected: 0 }]);
     expect(after.selection.get('two')?.quantity).toBe(8);
     expect([...after.failed]).toEqual([['two', 'Only 3 bags in stock.']]);
     expect(after.base.has('one')).toBe(true);
@@ -92,7 +92,7 @@ describe('applyResults', () => {
       { grnItemId: 'two', ok: true },
       { grnItemId: 'gone', ok: false, reason: 'This order is closed. Go back and open it again.' },
     ]);
-    expect(changesOf(after)).toEqual([{ grnItemId: 'gone', quantity: 0 }]);
+    expect(changesOf(after)).toEqual([{ grnItemId: 'gone', quantity: 0, expected: 5 }]);
     expect(after.failed.get('gone')).toBe('This order is closed. Go back and open it again.');
   });
 
@@ -110,12 +110,42 @@ describe('reasons', () => {
     const two = applyResults(withQuantity(failed, lot('two'), 1), [{ grnItemId: 'two', ok: false, reason: 'This lot is already in the order.' }]);
     const edited = withQuantity(two, lot('one'), 3);
     expect([...edited.failed.keys()]).toEqual(['two']);
-    expect(changesOf(edited)).toEqual([{ grnItemId: 'one', quantity: 3 }, { grnItemId: 'two', quantity: 1 }]);
+    expect(changesOf(edited)).toEqual([{ grnItemId: 'one', quantity: 3, expected: 0 }, { grnItemId: 'two', quantity: 1, expected: 0 }]);
   });
 
   it('are cleared for the next Add without touching what is chosen', () => {
     const cleared = withoutReasons(failed);
     expect(cleared.failed.size).toBe(0);
-    expect(changesOf(cleared)).toEqual([{ grnItemId: 'one', quantity: 9 }]);
+    expect(changesOf(cleared)).toEqual([{ grnItemId: 'one', quantity: 9, expected: 0 }]);
+  });
+});
+
+describe('a lot saved with another quantity than the picker expected', () => {
+  const REASON = 'Changed by someone else: now 6 bags in the order. Tap Add again to make it 1.';
+
+  it('takes the saved quantity as its base, keeps the user\'s choice and its reason, and then expects what is saved', () => {
+    // No lot B when the picker opened; someone else added 6; the user chose 1.
+    const chosen = withQuantity(seedDraft([line('a', 2)]), lot('b'), 1);
+    expect(changesOf(chosen)).toEqual([{ grnItemId: 'b', quantity: 1, expected: 0 }]);
+    const after = applyResults(chosen, [{ grnItemId: 'b', ok: false, reason: REASON, savedQuantity: 6 }]);
+    expect(after.base.get('b')?.quantity).toBe(6);
+    expect(after.selection.get('b')?.quantity).toBe(1);
+    expect(after.failed.get('b')).toBe(REASON);
+    expect(changesOf(after)).toEqual([{ grnItemId: 'b', quantity: 1, expected: 6 }]);
+  });
+
+  it('moves a seeded lot to the saved quantity, and a removal then expects it too', () => {
+    const chosen = withQuantity(seedDraft([line('a', 5)]), lot('a'), 0);
+    expect(changesOf(chosen)).toEqual([{ grnItemId: 'a', quantity: 0, expected: 5 }]);
+    const after = applyResults(chosen, [{ grnItemId: 'a', ok: false, reason: 'Changed', savedQuantity: 8 }]);
+    expect(after.base.get('a')?.quantity).toBe(8);
+    expect(changesOf(after)).toEqual([{ grnItemId: 'a', quantity: 0, expected: 8 }]);
+  });
+
+  it('drops the lot from the base when nothing is saved any more', () => {
+    const chosen = withQuantity(seedDraft([line('a', 5)]), lot('a'), 7);
+    const after = applyResults(chosen, [{ grnItemId: 'a', ok: false, reason: 'Removed', savedQuantity: 0 }]);
+    expect(after.base.has('a')).toBe(false);
+    expect(changesOf(after)).toEqual([{ grnItemId: 'a', quantity: 7, expected: 0 }]);
   });
 });

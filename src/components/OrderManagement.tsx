@@ -40,6 +40,7 @@ import { searchService, SearchResult } from '@/services/search-service';
 
 import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
+import { formatCount } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 import { cartFailureReason, isAlreadyRemoved, isConnectionFailure } from '@/features/orders/cartFailureReason';
 import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
@@ -305,16 +306,24 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
   // True while the phone reports no network at all (aeroplane mode, no Wi-Fi and
   // no mobile data). "Connected, but the internet is not reachable" does not
-  // count: a facility's own server can still answer on its local network.
-  const { isConnected } = useNetworkStatus();
+  // count: a facility's own server can still answer on its local network. Nor
+  // does an unknown reading (the hook gives `isConnected` false and type
+  // 'unknown' while NetInfo has not decided): the save is tried then.
+  const { isConnected, type: networkType } = useNetworkStatus();
   const noNetworkRef = useRef(false);
-  noNetworkRef.current = isConnected === false;
+  noNetworkRef.current = isConnected === false && networkType === 'none';
 
   // Saves what the Add items picker changed, one lot after another, and answers
   // for each lot. A lot the user did not touch is not in `changes`, so a line
   // another user added meanwhile is never removed. Each change is resolved
   // against the lines as they are saved now, not as they were when the picker
-  // opened. Never rejects and shows no alert: the picker shows each reason on its lot.
+  // opened, but never over a change the user has not seen: when the open line
+  // holds neither the asked-for quantity nor the one the picker expected
+  // (`expected`), someone else changed it meanwhile. Nothing is sent and the lot
+  // comes back with that reason and the saved quantity; the picker takes it as
+  // the new base, so a second Add applies the user's number knowingly. Only open
+  // lines count: a fully dispatched line is neither "already saved" nor updated.
+  // Never rejects and shows no alert: the picker shows each reason on its lot.
   //
   // The picker has no way out while this runs, so it must not wait long. A lot the
   // server refuses is an answer, and the next lot is sent. A call that got no
@@ -343,15 +352,25 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       if (!current || sessionGeneration !== getSessionGeneration()) break;
       onProgress?.(index + 1, ordered.length);
 
-      const line =
-        current.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item)) ??
-        current.items?.find(item => item.grn_item_id === change.grnItemId);
+      const line = current.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item));
+      const savedQuantity = line?.requested_quantity ?? 0;
       try {
+        if (savedQuantity === change.quantity) {
+          // Already as asked (also a removal of a lot with no open line): no call.
+          results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
+          continue;
+        }
+        if (savedQuantity !== change.expected) {
+          const bagsNow = formatCount(savedQuantity, 'bag');
+          const reason = change.quantity <= 0
+            ? tr('orders.catalog.reasonChangedMeanwhileRemove', { bags: bagsNow })
+            : savedQuantity === 0
+              ? tr('orders.catalog.reasonRemovedMeanwhile', { chosen: formatCount(change.quantity, 'bag') })
+              : tr('orders.catalog.reasonChangedMeanwhile', { bags: bagsNow, chosen: formatCount(change.quantity, 'bag') });
+          results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: false, reason, savedQuantity });
+          continue;
+        }
         if (change.quantity > 0) {
-          if (line && line.requested_quantity === change.quantity) {
-            results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
-            continue;
-          }
           // No network: this lot and the rest are not sent.
           if (noNetworkRef.current) {
             noAnswer = true;
@@ -370,17 +389,13 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             break;
           }
         } else {
-          // Nothing to remove when the line is gone or no longer open.
-          if (!line || !isOpenLine(line)) {
-            results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
-            continue;
-          }
           if (noNetworkRef.current) {
             noAnswer = true;
             break;
           }
           anyCall = true;
-          const result = await OrderService.removeItemFromOrder(line.id, current.id);
+          // A removal that reaches here has an open line: with none, the saved quantity is 0, answered above.
+          const result = await OrderService.removeItemFromOrder(line!.id, current.id);
           // "Order item not found": someone else removed it first, which is what was asked for.
           const removed = result.success || isAlreadyRemoved(result);
           if (!removed) console.error('[OrderManagement] Item not removed:', result.message, result.error);

@@ -6,6 +6,7 @@
  * each" (owner's decision of 2026-10-14). A line without one shows no weight.
  */
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import GRNItemDispatchTable from '@/components/grn-details/GRNItemDispatchTable';
 import { GRNItemCard } from '@/components/grn-details/GRNItemCard';
@@ -48,6 +49,21 @@ const mounted: ReactTestRenderer[] = [];
 afterEach(() => act(() => mounted.splice(0).forEach(tree => tree.unmount())));
 
 describe('GRN Dispatches tab, item header', () => {
+  // Review 2026-10-14, finding 7. At font scale 2.0 on a 360 dp phone the mark and
+  // "1,250 kg each" do not fit side by side; the row must wrap, not clip the weight.
+  it('the mark and the weight wrap onto a second line instead of being cut', () => {
+    const tree = render(<GRNItemDispatchTable item={item(1250)} dispatches={[]} />);
+    const mark = tree.root.find(node => (node.type as unknown) === 'Text' && node.props.children === 'M1');
+    let row = mark.parent!;
+    while (typeof row.type !== 'string') row = row.parent!;
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
+    // Neither text is cut: no line limit, and each may shrink to the row's width.
+    for (const text of [mark, tree.root.find(node => (node.type as unknown) === 'Text' && /1,250 kg each/.test([].concat(node.props.children).join('')))]) {
+      expect(text.props.numberOfLines).toBeUndefined();
+      expect(StyleSheet.flatten(text.props.style).flexShrink).toBe(1);
+    }
+  });
+
   it.each([[0], [null], [undefined]])('renders nothing for a weight of %p, not a bare 0', (weight) => {
     const tree = render(<GRNItemDispatchTable item={item(weight)} dispatches={[]} />);
     expect(looseText(tree)).toEqual([]);
