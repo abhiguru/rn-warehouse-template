@@ -759,7 +759,11 @@ function GRNDetailScreen() {
                 : tr('grn.details.printJobSent')
             );
           } else {
-            setSnackbarMessage(serverText(result.error, tr('grn.details.printFailed')));
+            setSnackbarMessage(
+              result.unconfirmed
+                ? tr('grn.details.printUnconfirmed')
+                : serverText(result.error, tr('grn.details.printFailed'))
+            );
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

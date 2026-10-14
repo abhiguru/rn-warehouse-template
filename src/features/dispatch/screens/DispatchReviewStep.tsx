@@ -851,7 +851,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                                     : tr('dispatch.review.printSent')
                             );
                         } else {
-                            setSnackbarMessage(tr('dispatch.review.printFailed'));
+                            setSnackbarMessage(tr(result.unconfirmed ? 'dispatch.review.printUnconfirmed' : 'dispatch.review.printFailed'));
                         }
                         setSnackbarVisible(true);
                         setShowPrintDialog(false);

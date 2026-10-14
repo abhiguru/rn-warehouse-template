@@ -642,7 +642,7 @@ function DispatchDetailScreen() {
                 : tr('dispatch.details.printSent')
             );
           } else {
-            setSnackbarMessage(tr('dispatch.details.printFailed'));
+            setSnackbarMessage(tr(result.unconfirmed ? 'dispatch.details.printUnconfirmed' : 'dispatch.details.printFailed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
