@@ -1,8 +1,8 @@
 /**
  * The weight bands of a rate: one card per band with a read-only "From", an "Up to" in whole
  * kilograms, the rent, and (only when the loaded bands differ) a labour and tax of its own.
- * A band starts where the one before ends, so the person never types a "From" (no gap, no
- * overlap). Built from ui/Input only, with no field or dialog of its own (P-26).
+ * In a default rate a band starts where the one before ends (no gap, no overlap, the server
+ * refuses a gap). In a customer rate the "From" can be typed above that, which leaves a gap whose weights pay the default rate. Built from ui/Input only, with no field or dialog of its own (P-26).
  */
 import React from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
@@ -14,8 +14,10 @@ import { radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import {
   MAX_BANDS,
   fromOf,
+  gapBefore,
   nowText,
   setBandField,
+  setBandFrom,
   setFirstFrom,
   setUpTo,
   splitLastBand,
@@ -96,6 +98,11 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
                 </Button>
               )}
             </View>
+            {ctx.customerId && gapBefore(draft, i) ? (
+              <Text style={styles.note} testID={`band-${i}-gap`}>
+                {t('pricing.edit.gapHint', { band: bandText(gapBefore(draft, i)!.from, gapBefore(draft, i)!.to) })}
+              </Text>
+            ) : null}
             <View style={stacked ? styles.spanStacked : styles.span} testID={`band-${i}-span`}>
               {i === 0 && ctx.customerId ? (
                 <View style={styles.upTo}>
@@ -111,6 +118,22 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
                     error={errors.firstFrom}
                     rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
                     testID="first-from"
+                  />
+                </View>
+              ) : i > 0 && ctx.customerId ? (
+                <View style={styles.upTo}>
+                  <Input
+                    label={t('pricing.edit.firstFrom')}
+                    required
+                    numeric
+                    selectTextOnFocus
+                    value={band.fromText ?? String(from ?? '')}
+                    onChangeText={text => onChange(setBandFrom(draft, i, text))}
+                    keyboardType="number-pad"
+                    returnKeyType="next"
+                    error={errors[`band.${i}.from`]}
+                    rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
+                    testID={`band-${i}-from`}
                   />
                 </View>
               ) : (

@@ -60,6 +60,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
       return ReactMock.createElement('BottomSheetModal', props, props.children);
     }),
     BottomSheetView: passthrough('BottomSheetView'),
+    BottomSheetScrollView: passthrough('BottomSheetScrollView'),
     BottomSheetBackdrop: passthrough('BottomSheetBackdrop'),
     BottomSheetTextInput: ReactMock.forwardRef((props: object, _ref: unknown) =>
       ReactMock.createElement('BottomSheetTextInput', props)),
