@@ -34,6 +34,7 @@ import { ErrorStateView } from '@/components/ErrorBoundary';
 import { formatCount, formatNumber } from '@/utils/formatters';
 import { t as translate } from '@/i18n';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
+import { OrderBusinessSheet } from '@/components/OrderBusinessSheet';
 
 // Types and utilities
 import {
@@ -43,7 +44,7 @@ import {
   DEFAULT_LIST_CONFIG,
   SectionData,
 } from './types';
-import { resolveCustomerOrderTarget } from './orderCustomerTarget';
+import { createOrderAction } from './createOrderAction';
 
 // Services
 import { OrderService } from '@/services/order-service';
@@ -60,7 +61,7 @@ import { searchWords } from '@/features/filters/components/HighlightedText';
 import { MemoizedOrderItem } from '@/components/list-items';
 
 // State
-import { useAppSelector } from '@/store/hooks';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -133,8 +134,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // User state
-  const { userProfile } = useAppSelector(state => state.auth);
+  // Who is signed in, and the customers linked to a customer account
+  const { role, assignedCustomerIds } = useRoleBasedAccess();
+  // The business chooser of a customer account that has not exactly one business
+  const [businessSheetOpen, setBusinessSheetOpen] = useState(false);
 
   // List state
   const [orders, setOrders] = useState<Order[]>([]);
@@ -395,33 +398,30 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     setSnackbarVisible(false);
   }, []);
 
-  // Handle add order button press
+  // Create order: the staff search, the account's one business, or its chooser
+  // (createOrderAction). It never depends on the orders already in the list.
   const handleAddOrder = useCallback(() => {
-    if (userProfile?.role === 'customer') {
-      const targetCustomerId = resolveCustomerOrderTarget({
-        explicitCustomerId: customerId,
-        assignedCustomerIds: userProfile.assignedCustomerIds,
-        orderCustomerIds: orders.map((order) => order.customer_id),
-      });
-      if (targetCustomerId) {
-        router.push(`/orders/${targetCustomerId}`);
-        return;
-      }
-      setSnackbarMessage(
-        userProfile.assignedCustomerIds?.length
-          ? translate('lists.order.selectExisting')
-          : translate('lists.order.noAssignedCustomer')
-      );
-      setSnackbarVisible(true);
-      return;
-    }
-    customerSearchRef.current?.open();
-  }, [customerId, orders, userProfile]);
+    const action = createOrderAction({ role, explicitCustomerId: customerId, assignedCustomerIds });
+    if (action.kind === 'open') router.push(`/orders/${action.customerId}`);
+    else if (action.kind === 'choose') setBusinessSheetOpen(true);
+    else customerSearchRef.current?.open();
+  }, [role, customerId, assignedCustomerIds]);
 
   // Handle customer selection - navigate to order screen
   const handleCustomerSelect = useCallback((customer: { id: string; name: string }) => {
     customerSearchRef.current?.close();
     router.push(`/orders/${customer.id}`);
+  }, []);
+
+  const closeBusinessSheet = useCallback(() => {
+    setBusinessSheetOpen(false);
+  }, []);
+
+  // A business was chosen: close the sheet, then open that business's order.
+  // The order route makes the open order when there is none yet.
+  const handleBusinessPick = useCallback((business: { id: string }) => {
+    setBusinessSheetOpen(false);
+    router.push(`/orders/${business.id}`);
   }, []);
 
   // ============================================================================
@@ -618,6 +618,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         onSelect={handleCustomerSelect}
         title={translate('lists.order.selectCustomer')}
       />
+
+      {/* A customer account's own businesses, to pick the one to order for */}
+      <OrderBusinessSheet visible={businessSheetOpen} onClose={closeBusinessSheet} onPick={handleBusinessPick} />
     </View>
   );
 };
