@@ -101,7 +101,7 @@ export interface GroupedInvoiceItems {
   item_id: string;           // grnItems_id - Unique ID for this GRN line item
   item_name: string;         // grnItems_itemName - Item name (e.g., "Gur")
   package_mark: string;      // grnItems_packageMark - Package marking to differentiate items
-  total_weight: number;      // grnItems_weight - Weight per unit
+  weight_each: number;       // grnItems_weight - Weight of one bag, box or crate in kg (not a total); it picks the price band
   gr_quantity: number;       // grnItems_originalQty - Total quantity in GRN for this item
   total_dispatched: number;  // grnItems_totalDispatched - Total dispatched quantity
   rack: string;             // grnItems_rack - Storage rack location

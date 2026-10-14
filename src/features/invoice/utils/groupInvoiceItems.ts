@@ -47,7 +47,8 @@ export function groupInvoiceItems(
         item_id: item.item_id,
         item_name: item.item_name,
         package_mark: item.package_mark,
-        total_weight: item.weight,
+        // The lot's stored weight: the weight of one bag, box or crate, never a total.
+        weight_each: item.weight,
         gr_quantity: item.grn_original_qty,
         total_dispatched: 0,
         rack: item.rack,

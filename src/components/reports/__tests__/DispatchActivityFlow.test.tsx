@@ -103,39 +103,45 @@ const answerCustomers = (rows: ReturnType<typeof customer>[]) => ({
 });
 
 const item = (name: string, over: Record<string, unknown> = {}) => ({ item_name: name, qty: 10, source_grn: 'A0001', ...over });
-// A server without the weights migration sends no weight for a dispatch (the service maps it to 0): these
-// are its dispatches. DISPATCHES_WITH_WEIGHTS, below, are a server that has it.
-const dispatch = (id: string, number: string, date: string, bags: number, supervisor: string, items: unknown[]) => ({
+const dispatch = (id: string, number: string, date: string, bags: number, supervisor: string, kg: number, items: unknown[]) => ({
   disp_id: id,
   disp_no: number,
   disp_date: date,
   supervisor_name: supervisor,
   total_qty: bags,
-  total_weight: 0,
+  total_weight: kg,
   items,
 });
+// What a server sends today (backend migration 58): every dispatch has `total_weight` and every
+// line `weight`, and both are TOTALS: the bags times the weight of one bag (Garlic: 50 bags of
+// 52 kg = 2,600 kg). Total weights are not shown, so none of these numbers may reach the screen,
+// drawn or read. By weight the dispatches would be DD0100, DD0010, DD0050, DD0009 (highest first),
+// an order no other sort gives: DD0010, DD0009, DD0100, DD0050 by date, DD0100, DD0050, DD0010,
+// DD0009 by number and DD0009, DD0100, DD0010, DD0050 by bags.
 const DISPATCHES = [
-  dispatch('d1', 'DD0010', '2026-10-12', 50, 'Asha Example', [
+  dispatch('d1', 'DD0010', '2026-10-12', 50, 'Asha Example', 2600, [
     item('Garlic', { qty: 50, orig_qty: 60, weight: 2600, source_grn: 'A0010', source_grn_id: 'g1', rack: 'B-14', package_mark: 'GV' }),
   ]),
-  dispatch('d2', 'DD0009', '2026-10-11', 200, 'Ravi Example', [item('Red chilli', { qty: 200, source_grn: 'A0009' })]),
-  dispatch('d3', 'DD0100', '2026-10-11', 120, 'Asha Example', [item('Cumin', { qty: 120, source_grn: 'A0100' })]),
-  dispatch('d4', 'DD0050', '2026-09-20', 20, 'Meera Example', [item('Turmeric', { qty: 20, source_grn: 'A0050' })]),
+  dispatch('d2', 'DD0009', '2026-10-11', 200, 'Ravi Example', 900, [item('Red chilli', { qty: 200, weight: 900, source_grn: 'A0009' })]),
+  dispatch('d3', 'DD0100', '2026-10-11', 120, 'Asha Example', 6100.5, [item('Cumin', { qty: 120, weight: 6100.5, source_grn: 'A0100' })]),
+  dispatch('d4', 'DD0050', '2026-09-20', 20, 'Meera Example', 2000, [item('Turmeric', { qty: 20, weight: 2000, source_grn: 'A0050' })]),
 ];
 const answerDispatches = {
   success: true,
   message: '',
-  data: { summary: { total_dispatches: 4, total_quantity: 390, total_weight: 0 }, dispatches: DISPATCHES },
+  data: { summary: { total_dispatches: 4, total_quantity: 390, total_weight: 11600.5 }, dispatches: DISPATCHES },
 };
-// The same four dispatches from a server that sends their weights. Weight gives an order none of the other
-// sorts gives: DD0100, DD0010, DD0050, DD0009 (highest first), against DD0010, DD0009, DD0100, DD0050 by date,
-// DD0100, DD0050, DD0010, DD0009 by number and DD0009, DD0100, DD0010, DD0050 by bags.
-const WEIGHT_KG: Record<string, number> = { d1: 2600, d2: 900, d3: 6100.5, d4: 2000 };
-const DISPATCHES_WITH_WEIGHTS = DISPATCHES.map(row => ({ ...row, total_weight: WEIGHT_KG[row.disp_id] }));
-const answerWeighted = {
+/** Every weight in `answerDispatches`, as the screen would have worded it: the dispatches' and the lines'. */
+const TOTAL_WEIGHTS = ['2,600 kg', '900 kg', '6,100.5 kg', '2,000 kg'];
+// The same four dispatches from a server without that migration: no weight on a dispatch (the
+// service maps it to 0) or on a line. The report must look the same for both.
+const answerUnweighed = {
   success: true,
   message: '',
-  data: { summary: { total_dispatches: 4, total_quantity: 390, total_weight: 11600.5 }, dispatches: DISPATCHES_WITH_WEIGHTS },
+  data: {
+    summary: { total_dispatches: 4, total_quantity: 390, total_weight: 0 },
+    dispatches: DISPATCHES.map(row => ({ ...row, total_weight: 0, items: row.items.map(line => ({ ...(line as Record<string, unknown>), weight: undefined })) })),
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -242,8 +248,11 @@ async function open(store: Store) {
         .map(node => node.props.accessibilityLabel as string),
     /** The accessibility label of every dispatch card, in the order they are drawn. */
     cardLabels: () => [...new Set(controls(label => /^Dispatch DD\d+,/.test(label)).map(node => node.props.accessibilityLabel as string))],
-    /** The weights drawn on the cards (the items are closed), in the order they are drawn. */
-    weights: () => texts().filter(text => / kg$/.test(text)),
+    /** Every text on the screen that states a weight, in the order they are drawn. There must be none. */
+    weights: () => texts().filter(text => /\bkg\b|કિલો/.test(text)),
+    /** The same in what a screen reader says: every label on the screen that states a weight. */
+    spokenWeights: () =>
+      [...new Set(tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && /\bkg\b|કિલો/.test(node.props.accessibilityLabel)).map(node => node.props.accessibilityLabel as string))],
     refresh: () => run(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
     bold: () =>
       tree.root
@@ -401,53 +410,52 @@ describe('dispatch activity, one customer', () => {
     expect(customerActivity).toHaveBeenCalledTimes(1);
   });
 
-  it('zero weights (a server without them): three sorts, no weight on any card, and a card reads as it always did', async () => {
+  const CARD_LABELS = [
+    'Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags',
+    'Dispatch DD0009, 11 Oct 2026, Ravi Example, 200 bags',
+    'Dispatch DD0100, 11 Oct 2026, Asha Example, 120 bags',
+    'Dispatch DD0050, 20 Sep 2026, Meera Example, 20 bags',
+  ];
+
+  it('total weights in the answer (a dispatch\'s and each line\'s): none is drawn or read, closed or open, and the sorts are Date, Dispatch number and Bags', async () => {
     mockParams = GREEN;
     const screen = await open(makeStore());
+    // The answer does carry them: 2,600 kg, 900 kg, 6,100.5 kg and 2,000 kg, on the dispatch and on its line.
+    expect(customerActivity).toHaveBeenCalledTimes(1);
+    expect(DISPATCHES.map(row => row.total_weight)).toEqual([2600, 900, 6100.5, 2000]);
+    expect(DISPATCHES.map(row => (row.items[0] as { weight: number }).weight)).toEqual([2600, 900, 6100.5, 2000]);
+
     expect(screen.weights()).toEqual([]);
-    expect(screen.cardLabels()).toEqual([
-      'Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags',
-      'Dispatch DD0009, 11 Oct 2026, Ravi Example, 200 bags',
-      'Dispatch DD0100, 11 Oct 2026, Asha Example, 120 bags',
-      'Dispatch DD0050, 20 Sep 2026, Meera Example, 20 bags',
-    ]);
+    expect(screen.spokenWeights()).toEqual([]);
+    expect(screen.cardLabels()).toEqual(CARD_LABELS);
+
+    // Open every card: the lines show their bags, GRN and rack, and no weight either.
+    for (const label of CARD_LABELS) await screen.press(label);
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Garlic', 'Red chilli', 'Cumin', 'Turmeric', 'GRN A0010 · B-14', 'of 60']));
+    expect(screen.weights()).toEqual([]);
+    expect(screen.spokenWeights()).toEqual([]);
+    for (const weight of TOTAL_WEIGHTS) expect(screen.texts().some(text => text.includes(weight))).toBe(false);
+    expect(screen.has('Garlic, 50 bags of 60, GRN A0010, Rack B-14, mark GV')).toBe(true);
 
     await screen.press('Sorted by Date, newest first. Change sort');
     expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags']);
     expect(screen.has('Weight')).toBe(false);
   });
 
-  it('weights (a server that sends them): four sorts, Weight highest first then lowest first, and the weight on each card', async () => {
+  it('a server that sends no weights: the same cards, labels and sorts', async () => {
     mockParams = GREEN;
-    customerActivity.mockResolvedValue(answerWeighted as never);
+    customerActivity.mockResolvedValue(answerUnweighed as never);
     const screen = await open(makeStore());
-    // The default is unchanged, and each card has its weight (formatted, with the unit) after its bags.
-    expect(screen.has('Sorted by Date, newest first. Change sort')).toBe(true);
     expect(screen.dispatchRows()).toEqual(BY_DATE);
-    expect(screen.weights()).toEqual(['2,600 kg', '900 kg', '6,100.5 kg', '2,000 kg']);
-    expect(screen.cardLabels()).toEqual([
-      'Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags, 2,600 kg',
-      'Dispatch DD0009, 11 Oct 2026, Ravi Example, 200 bags, 900 kg',
-      'Dispatch DD0100, 11 Oct 2026, Asha Example, 120 bags, 6,100.5 kg',
-      'Dispatch DD0050, 20 Sep 2026, Meera Example, 20 bags, 2,000 kg',
-    ]);
+    expect(screen.weights()).toEqual([]);
+    expect(screen.cardLabels()).toEqual(CARD_LABELS);
 
     await screen.press('Sorted by Date, newest first. Change sort');
-    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags', 'Weight']);
-    // The field changes and the direction is kept (newest first was descending): highest first.
-    await screen.press('Weight');
-    expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050', 'Dispatch DD0009']);
-    expect(screen.weights()).toEqual(['6,100.5 kg', '2,600 kg', '2,000 kg', '900 kg']);
-    await screen.press('Lowest first');
-    expect(screen.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0100']);
-    expect(screen.weights()).toEqual(['900 kg', '2,000 kg', '2,600 kg', '6,100.5 kg']);
-    await screen.press('Done');
-    expect(screen.has('Sorted by Weight, lowest first. Change sort')).toBe(true);
-    // Sorting is done on the rows already read: nothing more is asked.
-    expect(customerActivity).toHaveBeenCalledTimes(1);
+    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags']);
+    expect(screen.has('Weight')).toBe(false);
   });
 
-  it('a weight sort remembered earlier: with zero weights it opens on date, newest first (screen, sort sheet, PDF); with weights it opens on Weight', async () => {
+  it('a Weight sort this phone remembers from an earlier version: the report opens on Date, newest first (chip, order, sort sheet, PDF), though the answer has weights', async () => {
     mockParams = GREEN;
     const remembered = sanitizeReportPrefs({
       byScope: { [SCOPE]: { sort: { 'report-dispatch-activity-customer': { field: 'weight', order: 'asc' } }, usedAt: 1 } },
@@ -455,9 +463,12 @@ describe('dispatch activity, one customer', () => {
     // The stored choice is read back as it was written (a sort by weight, lowest first)...
     expect(remembered.byScope[SCOPE].sort['report-dispatch-activity-customer']).toEqual({ field: 'weight', order: 'asc' });
     const screen = await open(makeStore(STAFF, remembered));
-    // ...but with no weights the report offers no such sort, so it opens on its default.
+    // ...but the report offers no such sort any more, so it opens on its default. Had the weight sort been
+    // applied, the order would be DD0009, DD0050, DD0010, DD0100 with no date headings.
     expect(screen.has('Sorted by Date, newest first. Change sort')).toBe(true);
+    expect(screen.has('Sorted by Weight, lowest first. Change sort')).toBe(false);
     expect(screen.dispatchRows()).toEqual(BY_DATE);
+    expect(screen.dispatchRows()).not.toEqual(['Dispatch DD0009', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0100']);
 
     await screen.press('Sorted by Date, newest first. Change sort');
     expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags']);
@@ -468,40 +479,13 @@ describe('dispatch activity, one customer', () => {
     await screen.press('Share PDF');
     expect(makePdf.mock.calls).toEqual([[{ report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'date', order: 'desc' } }]]);
 
-    // The same remembered choice, now on a server that sends weights: the sort is offered, so it is used.
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
-    forgetQueries();
-    customerActivity.mockResolvedValue(answerWeighted as never);
-    const weighted = await open(makeStore(STAFF, remembered));
-    expect(weighted.has('Sorted by Weight, lowest first. Change sort')).toBe(true);
-    expect(weighted.has('Sorted by Date, newest first. Change sort')).toBe(false);
-    expect(weighted.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0100']);
-    await weighted.press('Sorted by Weight, lowest first. Change sort');
-    expect(weighted.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags', 'Weight']);
-  });
-
-  it('Weight is offered only while the dispatches shown have weights: a period without them falls back to date, and the choice returns with them', async () => {
-    mockParams = GREEN;
-    // The last 120 days have weights; the 240 days (older dispatches the server never weighed) have none.
-    customerActivity.mockImplementation((async ({ fromDate }: { fromDate: string }) => (fromDate < '2026-06-15' ? answerDispatches : answerWeighted)) as never);
-    const screen = await open(makeStore());
+    // A sort chosen now replaces the remembered one, and is what the next opening finds.
     await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Weight');
+    await screen.press('Bags');
     await screen.press('Done');
-    expect(screen.has('Sorted by Weight, highest first. Change sort')).toBe(true);
-    expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050', 'Dispatch DD0009']);
-
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last 240 days');
-    expect(customerActivity).toHaveBeenCalledTimes(2);
-    expect(screen.has('Sorted by Date, newest first. Change sort')).toBe(true);
-    expect(screen.dispatchRows()).toEqual(BY_DATE);
-    expect(screen.weights()).toEqual([]);
-
-    await screen.press('Period: Last 240 days. Change');
-    await screen.press('Last 120 days');
-    expect(screen.has('Sorted by Weight, highest first. Change sort')).toBe(true);
-    expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050', 'Dispatch DD0009']);
+    expect(screen.has('Sorted by Bags, highest first. Change sort')).toBe(true);
+    expect(screen.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050']);
+    expect(mockStore.getState().reportPrefs.byScope[SCOPE].sort['report-dispatch-activity-customer']).toEqual({ field: 'bags', order: 'desc' });
   });
 
   it('finds dispatches by supervisor and by an item inside the card, names that item, and Clear all keeps the sort', async () => {
@@ -543,9 +527,12 @@ describe('dispatch activity, one customer', () => {
 
     await screen.press('Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags');
     expect(screen.control('Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags').props.accessibilityState).toEqual({ expanded: true });
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Garlic', 'GV', 'GRN A0010 · B-14', 'of 60', '2,600 kg']));
-    // The item row reads everything it shows.
-    await screen.press('Garlic, 50 bags of 60, 2,600 kg, GRN A0010, Rack B-14, mark GV');
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Garlic', 'GV', 'GRN A0010 · B-14', 'of 60']));
+    // The line's 2,600 kg (50 bags × 52 kg) is a total: not drawn.
+    expect(screen.texts()).not.toContain('2,600 kg');
+    expect(screen.weights()).toEqual([]);
+    // The item row reads everything it shows, and no weight.
+    await screen.press('Garlic, 50 bags of 60, GRN A0010, Rack B-14, mark GV');
     expect(mockRouterPush).toHaveBeenLastCalledWith('/grn-details/g1');
     // An item without a source GRN id is read but opens nothing.
     await screen.press('Dispatch DD0009, 11 Oct 2026, Ravi Example, 200 bags');
@@ -637,7 +624,9 @@ describe('dispatch activity, the layout of a dispatch card', () => {
   const text = (within: ReactTestInstance, words: string) => within.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === words)[0];
   const AVATAR = ['icon truck-delivery-outline'];
 
-  it('a card without a weight is built as it always was: the texts in one column, the bags in theirs, nothing more', async () => {
+  // The card had a second shape for a dispatch with a weight (the weight on a line of its own under
+  // the title and the bags). Total weights are not shown, so the shape below is the only one.
+  it('a card is built in one shape though the answer has total weights: the texts in one column, the bags in theirs, nothing more', async () => {
     mockParams = GREEN;
     const screen = await open(makeStore());
     // Sorted by date the heading above gives the day; any other sort puts it on the card.
@@ -647,85 +636,43 @@ describe('dispatch activity, the layout of a dispatch card', () => {
     await screen.press('Done');
     const card = head(screen, 'DD0009');
     expect(outline(card)).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct'], ['200', 'bags'], 'icon chevron-down']);
+    // Every card of the list has that shape, whatever its total weight (900 kg to 6,100.5 kg).
+    const shape = (value: Outline): Outline => (typeof value === 'string' ? (value.startsWith('icon ') ? value : 'text') : value.map(shape));
+    const shapes = ['DD0100', 'DD0010', 'DD0050', 'DD0009'].map(number => JSON.stringify(shape(outline(head(screen, number)))));
+    expect(new Set(shapes)).toEqual(new Set([JSON.stringify([['icon truck-delivery-outline'], ['text', 'text', 'text'], ['text', 'text'], 'icon chevron-down'])]));
 
     // The row and its two columns: the texts take the room the bags leave, the bags end at the right.
     const [, texts, bags] = hostChildren(card);
     expect(styleOf(card)).toMatchObject({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 16, paddingRight: 4, minHeight: 72 });
     expect(styleOf(texts)).toEqual({ flex: 1, gap: 2 });
     expect(styleOf(bags)).toEqual({ alignItems: 'flex-end' });
-    // No line of the card wraps as a row, and nothing is pushed to an edge by a margin.
+    expect(bags.findAll(node => (node.type as unknown) === 'Text').map(textOf)).toEqual(['200', 'bags']);
+    // No line of the card wraps as a row, and nothing is pushed to an edge by a margin: the
+    // weight's own line, which did both, is gone.
     for (const box of card.findAll(node => (node.type as unknown) === 'View' || (node.type as unknown) === 'Text')) {
       expect(styleOf(box).flexWrap).toBeUndefined();
       expect(styleOf(box).marginLeft).toBeUndefined();
     }
-    // A found item is named under the date, in the texts' column.
-    await screen.search('chilli');
-    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct', 'Red chilli'], ['200', 'bags'], 'icon chevron-down']);
-  });
-
-  it('a card with a weight: the title and the bags stay where they are, and the weight has the line under them', async () => {
-    mockParams = GREEN;
-    customerActivity.mockResolvedValue(answerWeighted as never);
-    const screen = await open(makeStore());
-    // Sorted by date: no date on the card, the weight alone on its line.
-    expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, [[['Dispatch DD0010', 'Asha Example'], ['50', 'bags']], ['2,600 kg']], 'icon chevron-down']);
-
-    await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Weight');
-    await screen.press('Done');
-    // Sorted by weight: the date shares the weight's line, the date first.
-    const card = head(screen, 'DD0100');
-    expect(outline(card)).toEqual([AVATAR, [[['Dispatch DD0100', 'Asha Example'], ['120', 'bags']], ['11 Oct', '6,100.5 kg']], 'icon chevron-down']);
-    // Every card of the list has that shape, whatever the digits of its weight (900 kg to 6,100.5 kg).
-    const shape = (value: Outline): Outline => (typeof value === 'string' ? (value.startsWith('icon ') ? value : 'text') : value.map(shape));
-    const shapes = ['DD0100', 'DD0010', 'DD0050', 'DD0009'].map(number => JSON.stringify(shape(outline(head(screen, number)))));
-    expect(new Set(shapes).size).toBe(1);
-
-    // The text block takes the room between the avatar and the expand arrow. In it, the title's
-    // column takes what the bags leave, exactly as on a card without a weight...
-    const [, block] = hostChildren(card);
-    const [top, weightLine] = hostChildren(block);
-    const [texts, bags] = hostChildren(top);
-    expect(styleOf(block)).toEqual({ flex: 1, gap: 2 });
-    expect(styleOf(top)).toEqual({ flexDirection: 'row', alignItems: 'flex-start', gap: 12 });
-    expect(styleOf(texts)).toEqual({ flex: 1, gap: 2 });
-    expect(styleOf(bags)).toEqual({ alignItems: 'flex-end' });
-    // ...so the weight is not in the bags' column, whose width is that of its widest line.
-    expect(hostParent(text(card, '6,100.5 kg'))).toBe(weightLine);
-    expect(hostParent(text(card, 'bags'))).toBe(bags);
-    expect(bags.findAll(node => (node.type as unknown) === 'Text').map(textOf)).toEqual(['120', 'bags']);
-
-    // The weight's line: the weight at the right edge (the edge the bags end at) in tabular
-    // figures, and a line that wraps instead of squeezing or cutting when both do not fit.
-    expect(styleOf(weightLine)).toEqual({ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12, rowGap: 2 });
-    const weight = text(card, '6,100.5 kg');
-    expect(styleOf(weight)).toMatchObject({ marginLeft: 'auto', textAlign: 'right', fontVariant: ['tabular-nums'], fontSize: 12, lineHeight: 16 });
-    // No number is cut: neither the weight, the bags nor the dispatch number has a line limit.
-    for (const words of ['6,100.5 kg', '120', 'Dispatch DD0100']) {
+    // No number is cut: neither the bags nor the dispatch number has a line limit.
+    for (const words of ['200', 'Dispatch DD0009']) {
       expect(text(card, words).props.numberOfLines).toBeUndefined();
       expect(text(card, words).props.ellipsizeMode).toBeUndefined();
     }
-
-    // A found item is named under the weight's line, across the text block.
+    // A found item is named under the date, in the texts' column.
     await screen.search('chilli');
-    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, [[['Dispatch DD0009', 'Ravi Example'], ['200', 'bags']], ['11 Oct', '900 kg'], 'Red chilli'], 'icon chevron-down']);
+    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct', 'Red chilli'], ['200', 'bags'], 'icon chevron-down']);
+    expect(screen.weights()).toEqual([]);
   });
 
-  it('the two controls at the right keep their targets, and the card reads the same, with a weight and without', async () => {
+  it.each([
+    ['total weights in the answer', answerDispatches],
+    ['a server that sends no weights', answerUnweighed],
+  ])('the two controls at the right keep their targets, and the card is the same card: %s', async (_name, answer) => {
     mockParams = GREEN;
-    // One dispatch the server has no weight for, among dispatches with weights.
-    const mixed = DISPATCHES_WITH_WEIGHTS.map(row => (row.disp_id === 'd2' ? { ...row, total_weight: 0 } : row));
-    customerActivity.mockResolvedValue({ ...answerWeighted, data: { ...answerWeighted.data, dispatches: mixed } } as never);
+    customerActivity.mockResolvedValue(answer as never);
     const screen = await open(makeStore());
-    expect(screen.cardLabels()).toEqual([
-      'Dispatch DD0010, 12 Oct 2026, Asha Example, 50 bags, 2,600 kg',
-      'Dispatch DD0009, 11 Oct 2026, Ravi Example, 200 bags',
-      'Dispatch DD0100, 11 Oct 2026, Asha Example, 120 bags, 6,100.5 kg',
-      'Dispatch DD0050, 20 Sep 2026, Meera Example, 20 bags, 2,000 kg',
-    ]);
-    // In one list, the card without a weight is the card it always was.
     expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example'], ['200', 'bags'], 'icon chevron-down']);
-    expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, [[['Dispatch DD0010', 'Asha Example'], ['50', 'bags']], ['2,600 kg']], 'icon chevron-down']);
+    expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, ['Dispatch DD0010', 'Asha Example'], ['50', 'bags'], 'icon chevron-down']);
 
     for (const number of ['DD0009', 'DD0010']) {
       // Showing the items is the whole head (at least an object cell high); opening the dispatch is its own target.
@@ -813,33 +760,6 @@ describe('dispatch activity, the report PDF', () => {
   });
 });
 
-describe('dispatch activity, the report PDF sorted by weight', () => {
-  it('one customer sorted by Weight: the PDF has no weight column, so the request carries sort: undefined', async () => {
-    mockParams = GREEN;
-    customerActivity.mockResolvedValue(answerWeighted as never);
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Weight');
-    await screen.press('Done');
-    expect(screen.has('Sorted by Weight, highest first. Change sort')).toBe(true);
-    expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050', 'Dispatch DD0009']);
-
-    makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
-    await screen.press('Share PDF');
-    expect(makePdf.mock.calls).toEqual([[{ report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: undefined }]]);
-    // The key is there and empty: not a weight sort, and not the date sort it had before.
-    expect(makePdf.mock.calls[0][0]).toHaveProperty('sort', undefined);
-
-    // A sort the PDF has a column for is still sent.
-    await screen.press('Sorted by Weight, highest first. Change sort');
-    await screen.press('Bags');
-    await screen.press('Done');
-    makePdf.mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
-    await screen.press('Share PDF');
-    expect(makePdf.mock.calls[1]).toEqual([{ report: 'dispatch-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'quantity', order: 'desc' } }]);
-  });
-});
-
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('dispatch activity in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
   const flat = (node: ReactTestInstance) =>
@@ -863,12 +783,11 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(mark).color).toBe(t.status.neutral.text);
   });
 
-  it('draws a card with a weight on theme tokens: the title and the bags in the primary text colour, the unit, the date and the weight in the secondary', async () => {
+  it('draws a card on theme tokens: the title and the bags in the primary text colour, the supervisor, the unit and the date in the secondary', async () => {
     mockParams = GREEN;
-    customerActivity.mockResolvedValue(answerWeighted as never);
     const one = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
     await one.press('Sorted by Date, newest first. Change sort');
-    await one.press('Weight');
+    await one.press('Bags');
     await one.press('Done');
     const text = (words: string) => one.tree.root.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === words)[0];
     expect(flat(text('Dispatch DD0100'))).toMatchObject({ color: t.text.primary, fontWeight: fontWeight.semibold });
@@ -876,14 +795,10 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(text('120'))).toMatchObject({ color: t.text.primary, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] });
     expect(flat(text('bags')).color).toBe(t.text.secondary);
     expect(flat(text('11 Oct')).color).toBe(t.text.secondary);
-    expect(flat(text('6,100.5 kg'))).toMatchObject({ color: t.text.secondary, fontVariant: ['tabular-nums'] });
-    // The card itself, and no colour of its own on the boxes the weight's layout adds.
+    // The dispatch's 6,100.5 kg is in the answer and not on the card.
+    expect(text('6,100.5 kg')).toBeUndefined();
+    expect(one.weights()).toEqual([]);
     const card = one.tree.root.findAll(node => (node.type as unknown) === 'View' && flat(node).borderRadius !== undefined && flat(node).backgroundColor === t.surface.card);
     expect(card.length).toBeGreaterThan(0);
-    let box = text('6,100.5 kg').parent!;
-    while (typeof box.props.onPress !== 'function') {
-      if (typeof box.type === 'string') expect(flat(box).backgroundColor).toBeUndefined();
-      box = box.parent!;
-    }
   });
 });

@@ -5,6 +5,7 @@ import OrderItemCard from '../OrderItemCard';
 import type { OrderItem } from '@/types/order.types';
 import { getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { formatDate } from '@/utils/formatters';
+import { setLanguage } from '@/i18n';
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('../StockIndicator', () => 'StockIndicator');
@@ -92,10 +93,50 @@ it.each([
   await act(async () => { tree = create(<OrderItemCard item={{ ...item, grn_item: { ...item.grn_item!, weight: 1250.5, grn_date: '2026-10-09' } }} onQuantityChange={jest.fn()} onRemove={jest.fn()} />); });
   const container = tree.root.findAll(node => node.props.style?.backgroundColor === tokens.surface.card);
   expect(container.length).toBeGreaterThan(0);
-  expect(texts(tree)).toContain('1,250.5 kg');
+  expect(texts(tree)).toContain('1,250.5 kg each');
+  expect(texts(tree)).not.toContain('1,250.5 kg');
   expect(texts(tree)).toContain(formatDate('2026-10-09', 'short'));
   const remove = byLabel(tree, 'Remove Fictional Onions from order');
   expect(remove.findByProps({ name: 'trash-can-outline' }).props.color).toBe(tokens.status.negative.text);
   await act(async () => { tree.unmount(); });
   mockTheme = { preference: 'light', brand: 'orange' };
+});
+
+// The lot stores one weight: the weight of one bag, box or crate. It says "each", so it is
+// never read as the line's total, and a lot without a weight shows no weight at all.
+describe('the weight of the lot', () => {
+  const withWeight = (weight: number | null | undefined): OrderItem =>
+    ({ ...item, grn_item: { ...item.grn_item!, package_mark: 'PT', weight } }) as OrderItem;
+  const weightIcons = (tree: ReturnType<typeof create>) => tree.root.findAll(node => node.props.name === 'weight-kilogram');
+  /** Text drawn outside a Text (a `0` left behind by `weight && …`), which a phone refuses to draw. */
+  const bareTexts = (tree: ReturnType<typeof create>) =>
+    tree.root.findAll(node => (node.type as unknown) === 'View').flatMap(node => node.children.filter(child => typeof child === 'string'));
+  const render = async (weight: number | null | undefined) => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<OrderItemCard item={withWeight(weight)} onQuantityChange={jest.fn()} onRemove={jest.fn()} />); });
+    return tree;
+  };
+  afterEach(() => setLanguage('en'));
+
+  it('reads "50 kg each" beside the mark, and "દરેક ૫૦ કિલો" in Gujarati', async () => {
+    const tree = await render(50);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['PT', '50 kg each']));
+    expect(texts(tree)).not.toContain('50 kg');
+    expect(weightIcons(tree)).toHaveLength(1);
+    await act(async () => { tree.unmount(); });
+
+    setLanguage('gu');
+    const gujarati = await render(50);
+    expect(texts(gujarati)).toContain('દરેક ૫૦ કિલો');
+    await act(async () => { gujarati.unmount(); });
+  });
+
+  it.each([[0], [null], [undefined], [-5]])('shows no weight, no weight icon and no stray text for a lot with weight %s', async weight => {
+    const tree = await render(weight);
+    expect(texts(tree)).toContain('PT');
+    expect(texts(tree).filter(text => /kg|each/.test(text))).toEqual([]);
+    expect(weightIcons(tree)).toEqual([]);
+    expect(bareTexts(tree)).toEqual([]);
+    await act(async () => { tree.unmount(); });
+  });
 });

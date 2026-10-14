@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { CUSTOMER_ACTIVITY_CUSTOMER } from '@/features/filters/configs/reports/customerActivity';
-import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT } from '@/features/filters/configs/reports/dispatchActivity';
+import { DISPATCH_ACTIVITY_CUSTOMER } from '@/features/filters/configs/reports/dispatchActivity';
 import { GRN_ACTIVITY_CUSTOMER } from '@/features/filters/configs/reports/grnActivity';
 import { INVOICE_HISTORY_CUSTOMER } from '@/features/filters/configs/reports/invoiceHistory';
 import { ITEM_STOCK } from '@/features/filters/configs/reports/itemStock';
@@ -43,8 +43,11 @@ describe('report customer list keys', () => {
     for (const name of CONFIGS[reportId].names) expect(source).toContain(name);
   });
 
-  it('the two dispatch configurations share one list key', () => {
-    expect(DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT.listKey).toBe(DISPATCH_ACTIVITY_CUSTOMER.listKey);
+  it('one customer\'s dispatches keep the list key their remembered search and sort are stored under', () => {
+    // One configuration now (the one with a Weight sort is gone); the key did not change, so what a
+    // phone remembers for this list is still found, and a remembered weight sort is dropped on reading.
+    expect(DISPATCH_ACTIVITY_CUSTOMER.listKey).toBe('report-dispatch-activity-customer');
+    expect(screenSource('dispatch-activity')).not.toContain('WITH_WEIGHT');
   });
 
   it('answers undefined for a report without a customer level, and for inherited names', () => {

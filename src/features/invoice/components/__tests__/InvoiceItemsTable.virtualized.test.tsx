@@ -9,14 +9,17 @@
  * typed text, cursor and error when it comes back.
  *
  * The FlashList stand-in draws a window of rows that the test sets (with the
- * window open it draws every row, like flashListMock). formatWeight (one call
- * set per group drawn) and formatDate (one call per line drawn) are the probes.
+ * window open it draws every row, like flashListMock). formatWeightEach (one
+ * call per group drawn: the group's "50 kg each") and formatDate (one call per
+ * line drawn) are the probes. formatWeightEach is the export the table calls;
+ * it reaches formatWeight inside the module, where a mock of that export is
+ * not seen.
  */
 import React from 'react';
 import { TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { InvoiceItemsTable } from '../InvoiceItemsTable';
-import { formatDate, formatWeight } from '@/utils/formatters';
+import { formatDate, formatWeightEach } from '@/utils/formatters';
 import { resetFlashListWindow, setFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
@@ -32,7 +35,7 @@ jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashLis
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ listenToKeyboardEvents: () => (component: unknown) => component }));
 jest.mock('@/utils/formatters', () => {
   const actual = jest.requireActual('@/utils/formatters');
-  return { ...actual, formatWeight: jest.fn(actual.formatWeight), formatDate: jest.fn(actual.formatDate) };
+  return { ...actual, formatWeightEach: jest.fn(actual.formatWeightEach), formatDate: jest.fn(actual.formatDate) };
 });
 
 /** Day n after 1 Jan 2025 as YYYY-MM-DD: every line gets its own date. */
@@ -73,7 +76,7 @@ const field = (tree: ReactTestRenderer, label: string) =>
 const shownErrors = (tree: ReactTestRenderer) =>
   tree.root.findAllByType('InlineValidation' as never).filter((node) => node.props.visible && node.props.message).map((node) => node.props.message);
 const datesDrawn = () => jest.mocked(formatDate).mock.calls.map(([date]) => date);
-const weightsDrawn = () => jest.mocked(formatWeight).mock.calls.map(([weight]) => weight);
+const weightsDrawn = () => jest.mocked(formatWeightEach).mock.calls.map(([weight]) => weight);
 
 async function render(items: InvoiceItemData[], props: Partial<React.ComponentProps<typeof InvoiceItemsTable>> = {}) {
   let tree!: ReactTestRenderer;
@@ -106,7 +109,7 @@ describe('the invoice items table as a list', () => {
 
   it('opens a group as one more row with 50 lines, and "Show more" adds the next 50', async () => {
     const tree = await render(fixture());
-    jest.mocked(formatWeight).mockClear();
+    jest.mocked(formatWeightEach).mockClear();
 
     await act(async () => { groupHeader(tree, 40).props.onPress(); });
 
@@ -135,7 +138,7 @@ describe('the invoice items table as a list', () => {
     const items = fixture();
     const onBulkEdit = jest.fn();
     const tree = await render(items, { onBulkEdit });
-    jest.mocked(formatWeight).mockClear();
+    jest.mocked(formatWeightEach).mockClear();
 
     await act(async () => { field(tree, 'Storage charge for Fictional item 7')!.props.onChangeText('6'); });
     expect(onBulkEdit).toHaveBeenLastCalledWith('item-7:::M7', { charge: 6 });

@@ -24,7 +24,7 @@ import { InvoiceItemData, type GroupRates } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
 import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { InlineValidation } from '@/components/fiori';
 import { RateInput, type RateDraftChange, type RateSelection } from '@/features/invoice/components/RateInput';
@@ -785,7 +785,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
         open({
           item_id: itemGroup.item_id,
           item_name: itemGroup.item_name,
-          weight: itemGroup.total_weight,
+          weight: itemGroup.weight_each,
           charge: firstItem.charge,
           labour_rate: firstItem.labour_rate,
           tax: firstItem.tax,
@@ -1021,6 +1021,16 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
   // An empty group field says why it is empty: the lines have 0, or they differ.
   const groupPlaceholder = (field: RateField) => (fields[field].mixed ? tr('invoice.table.mixed') : localizeDigits('0'));
   const toggle = () => actions.toggle(groupKey);
+  // The weight of one bag, box or crate ("50 kg each"): the number that picks the price band.
+  // A lot without a weight shows and reads none.
+  const weightEach = formatWeightEach(itemGroup.weight_each);
+  const spoken = {
+    item: itemGroup.item_name,
+    mark: itemGroup.package_mark,
+    grnQty: formatNumber(itemGroup.gr_quantity),
+    dispatched: formatNumber(itemGroup.total_dispatched),
+    total: groupTotalText,
+  };
 
   return (
     <View style={[styles.groupCard, isExpanded && styles.groupCardOpen]}>
@@ -1030,14 +1040,11 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
         onPress={toggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
-        accessibilityLabel={tr('invoice.table.groupA11y', {
-          item: itemGroup.item_name,
-          mark: itemGroup.package_mark,
-          weight: formatWeight(itemGroup.total_weight),
-          grnQty: formatNumber(itemGroup.gr_quantity),
-          dispatched: formatNumber(itemGroup.total_dispatched),
-          total: groupTotalText,
-        })}
+        accessibilityLabel={
+          weightEach
+            ? tr('invoice.table.groupA11y', { ...spoken, weight: weightEach })
+            : tr('invoice.table.groupA11yNoWeight', spoken)
+        }
       >
         <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={iconSize.lg} color={t.icon.secondary} />
         <View style={styles.groupHeaderContent}>
@@ -1049,10 +1056,12 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
               <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
               <Text style={styles.metaText}>{itemGroup.package_mark}</Text>
             </View>
-            <View style={styles.metaBadge}>
-              <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.metaText}>{formatWeight(itemGroup.total_weight)}</Text>
-            </View>
+            {weightEach ? (
+              <View style={styles.metaBadge}>
+                <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
+                <Text style={styles.metaText}>{weightEach}</Text>
+              </View>
+            ) : null}
             <View style={styles.metaBadge}>
               <Text style={styles.metaText}>{tr('invoice.table.grnQty', { qty: formatNumber(itemGroup.gr_quantity) })}</Text>
             </View>
