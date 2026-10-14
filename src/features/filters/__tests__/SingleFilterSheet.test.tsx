@@ -67,8 +67,8 @@ describe('single filter sheet', () => {
   it('opens a typed field with the value in effect', () => {
     const sheet = setup({ weight: { min: 50 } });
     sheet.open({ type: 'field', key: 'weight' });
-    expect(sheet.input('Weight, minimum, in kg').props.value).toBe('50');
-    expect(sheet.input('Weight, maximum, in kg').props.value).toBe('');
+    expect(sheet.input('Weight each, minimum, in kg').props.value).toBe('50');
+    expect(sheet.input('Weight each, maximum, in kg').props.value).toBe('');
   });
 
   it('shows the value of the filter just opened, not of the one before', () => {
@@ -77,14 +77,14 @@ describe('single filter sheet', () => {
     expect(sheet.input('Package').props.value).toBe('Crate');
     sheet.open(null);
     sheet.open({ type: 'field', key: 'weight' });
-    expect(sheet.input('Weight, minimum, in kg').props.value).toBe('50');
+    expect(sheet.input('Weight each, minimum, in kg').props.value).toBe('50');
   });
 
   it('empties the field on Reset and changes nothing until the button', () => {
     const sheet = setup({ weight: { min: 50 } });
     sheet.open({ type: 'field', key: 'weight' });
     sheet.press('Reset');
-    expect(sheet.input('Weight, minimum, in kg').props.value).toBe('');
+    expect(sheet.input('Weight each, minimum, in kg').props.value).toBe('');
     expect(sheet.filters.setField).not.toHaveBeenCalled();
   });
 

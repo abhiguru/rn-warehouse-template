@@ -381,12 +381,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 
-  weightText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    fontVariant: tabular,
-  },
-
   // =========================================================================
   // Expanded items table (guide 13.7)
   // =========================================================================
@@ -439,8 +433,9 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     textAlign: 'right' as const,
   },
 
+  // Wide enough for the header "Kg each" on one line at font scales 1.0 and 1.3.
   colWeight: {
-    width: 56,
+    width: 72,
     textAlign: 'right' as const,
     marginLeft: space.sm,
   },

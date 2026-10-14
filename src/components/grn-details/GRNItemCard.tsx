@@ -12,7 +12,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
-import { formatNumber, formatWeight } from '@/utils/formatters';
+import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr } from '@/i18n';
 
@@ -114,8 +114,9 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
   // Fully dispatched is neutral; otherwise the app-wide low-stock rule.
   const stockStatus = getGRNStockStatus(stock, qty);
   const hasDetails = package_mark || packaging || rack;
-  // A line saved without a weight carries 0; that is "no weight", not "0 kg".
-  const showWeight = Number(weight) > 0;
+  // The weight of one package ("50 kg each"). A line saved without a weight
+  // carries 0: that is "no weight", so nothing is shown or said.
+  const weightText = formatWeightEach(Number(weight));
 
   const details = [
     package_mark ? { icon: 'label-outline', text: tr('grn.item.markWithValue', { mark: package_mark }) } : null,
@@ -129,7 +130,7 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
     stockStatus?.label,
     tr('grn.stock.inStockCount', { quantity: formatNumber(stock) }),
     tr('grn.stock.dispatchedCount', { quantity: formatNumber(total_dispatched) }),
-    showWeight ? formatWeight(Number(weight)) : null,
+    weightText,
     ...details.map(d => d.text),
   ]
     .filter(Boolean)
@@ -166,10 +167,10 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
           <Text style={styles.metricLabel}>{tr('grn.stock.dispatched')}</Text>
           <Text style={styles.metricValue}>{formatNumber(total_dispatched)}</Text>
         </View>
-        {showWeight && (
+        {weightText !== null && (
           <View style={styles.metricItem}>
             <Text style={styles.metricLabel}>{tr('common.weight')}</Text>
-            <Text style={styles.metricValue}>{formatWeight(Number(weight))}</Text>
+            <Text style={styles.metricValue}>{weightText}</Text>
           </View>
         )}
       </View>

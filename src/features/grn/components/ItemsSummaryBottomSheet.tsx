@@ -14,9 +14,9 @@ import {
 } from '@/components/common/ItemsSummaryBottomSheet';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { SavedItemCard } from '@/features/grn/components/SavedItemCard';
-import { parseReceiptQuantity, parseReceiptWeight } from '@/features/grn/schemas/grnValidation';
+import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 import { useTokens } from '@/hooks/useTheme';
-import { formatNumber, formatWeight } from '@/utils/formatters';
+import { formatNumber } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 
 
@@ -70,7 +70,8 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
     [dispatchedItemIds]
   );
 
-  // Calculate totals
+  // The one total: the quantity. A total weight is not shown (style guide 12.3);
+  // each line's card says what one package weighs.
   const getTotals = useCallback((itemsList: ItemFormData[]): TotalBadge[] => {
     // Entries that do not parse as whole numbers contribute nothing instead of
     // a truncated prefix ('12bags' is not 12).
@@ -78,11 +79,6 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       (sum, item) => sum + (parseReceiptQuantity(item.qty) ?? 0),
       0
     );
-    const totalWeight = itemsList.reduce((sum, item) => {
-      const qty = parseReceiptQuantity(item.qty) ?? 0;
-      const weight = parseReceiptWeight(item.weight) ?? 0;
-      return sum + weight * qty;
-    }, 0);
 
     return [
       {
@@ -90,12 +86,6 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
         iconColor: t.icon.secondary,
         label: tr('grn.item.totalQuantityLabel'),
         value: formatNumber(totalQuantity),
-      },
-      {
-        icon: 'weight',
-        iconColor: t.icon.secondary,
-        label: tr('grn.item.totalWeightLabel'),
-        value: formatWeight(totalWeight),
       },
     ];
   }, [t]);

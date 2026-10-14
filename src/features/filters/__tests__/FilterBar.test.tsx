@@ -112,8 +112,8 @@ describe('FilterBar chips', () => {
       'Sorted by Date, oldest first. Change sort',
       'Stock: In stock. Change',
       'Remove filter Stock In stock',
-      'Weight: 50 kg or more. Change',
-      'Remove filter Weight 50 kg or more',
+      'Weight each: 50 kg or more. Change',
+      'Remove filter Weight each 50 kg or more',
       'Filter by date',
       'Filter by customer',
       'Clear all filters and the search',
@@ -123,7 +123,7 @@ describe('FilterBar chips', () => {
   it('removes only the filter whose close button was pressed', () => {
     const filters = makeFilters({ stock: 'in_stock', weight: { min: 50 } });
     const bar = renderBar(filters);
-    bar.press('Remove filter Weight 50 kg or more');
+    bar.press('Remove filter Weight each 50 kg or more');
     expect(filters.setField.mock.calls).toEqual([['weight', undefined]]);
     expect(filters.clear).not.toHaveBeenCalled();
   });

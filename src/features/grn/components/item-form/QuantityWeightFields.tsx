@@ -154,10 +154,10 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
           {renderError(qtyError)}
         </View>
 
-        {/* Weight Field */}
-        <View style={styles.fieldContainer}>
+        {/* Weight of one bag, box or crate */}
+        <View style={[styles.fieldContainer, styles.weightFieldContainer]}>
           <View style={styles.labelRow}>
-            <Text style={styles.label}>{tr('common.weight')}</Text>
+            <Text style={styles.label}>{tr('common.weightEach')}</Text>
           </View>
           <View
             style={[
@@ -198,7 +198,10 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
 // STYLES
 // ============================================================================
 
-const FIELD_WIDTH_QTY_WEIGHT = 117;
+// The same widths as the row in HorizontalItemForm.tsx: "Weight each" needs the
+// wider field to stay on one line at font scale 2.0.
+const FIELD_WIDTH_QTY = 117;
+const FIELD_WIDTH_WEIGHT = 152;
 
 const androidText = Platform.select({
   android: { textAlignVertical: 'center' as const, includeFontPadding: false },
@@ -207,8 +210,11 @@ const androidText = Platform.select({
 
 const makeStyles = (t: ThemeTokens) => ({
   fieldContainer: {
-    width: FIELD_WIDTH_QTY_WEIGHT,
+    width: FIELD_WIDTH_QTY,
     marginRight: space.md,
+  },
+  weightFieldContainer: {
+    width: FIELD_WIDTH_WEIGHT,
   },
   labelRow: {
     flexDirection: 'row' as const,
