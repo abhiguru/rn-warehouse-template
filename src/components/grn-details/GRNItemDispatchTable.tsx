@@ -69,11 +69,16 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.headline,
     color: t.text.primary,
   },
+  // Wraps, so at large text "1,250 kg each" goes under the mark instead of being cut by
+  // the container's overflow: hidden.
   itemMeta: {
     flexDirection: 'row' as const,
-    gap: space.sm,
+    flexWrap: 'wrap' as const,
+    columnGap: space.sm,
+    rowGap: space.xxs,
   },
   metaText: {
+    flexShrink: 1,
     ...typography.footnote,
     color: t.text.secondary,
   },
