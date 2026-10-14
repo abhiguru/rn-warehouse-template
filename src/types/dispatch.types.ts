@@ -301,8 +301,6 @@ export interface BackendDispatchData {
   total_items?: number;
   totalQty?: number;
   total_qty?: number;
-  totalWeight?: number;
-  total_weight?: number;
   items?: Array<{
     itemId?: string;
     item_id?: string;

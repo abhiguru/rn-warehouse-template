@@ -135,8 +135,9 @@ async function submitPrintJob(
       return {
         success: false,
         error: serverText(data.error, t('errors.print.httpError', { status: String(response.status) })),
-        // A 502 that names a recorded job: the printer did not confirm it. Never resubmit on a guess.
-        ...(response.status === 502 && data.print_job_id ? { unconfirmed: true } : {}),
+        // The backend says so (`unconfirmed: true`), or a 502 names a recorded job: the printer did
+        // not confirm it. Never resubmit on a guess.
+        ...(data.unconfirmed === true || (response.status === 502 && data.print_job_id) ? { unconfirmed: true } : {}),
       };
     }
 

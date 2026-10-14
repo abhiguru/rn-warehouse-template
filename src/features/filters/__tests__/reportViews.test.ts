@@ -353,7 +353,9 @@ describe('one customer\'s dispatches: no sort by weight', () => {
   const BY_WEIGHT = ['d3', 'd1', 'd2', 'd4'];
 
   it('the rows could be told apart by weight: that order, in either direction, is no other sort\'s', () => {
-    const byWeight = [...rows].sort((a, b) => b.total_weight - a.total_weight).map(row => row.disp_id);
+    // The app no longer types the server's total weight; the fixture still carries it.
+    const weightOf = (row: object) => (row as { total_weight: number }).total_weight;
+    const byWeight = [...rows].sort((a, b) => weightOf(b) - weightOf(a)).map(row => row.disp_id);
     expect(byWeight).toEqual(BY_WEIGHT);
     const others = DISPATCH_ACTIVITY_CUSTOMER.sort!.options.flatMap(option => [ids({ field: option.field, order: 'desc' }), ids({ field: option.field, order: 'asc' })]);
     expect(others).toHaveLength(6);

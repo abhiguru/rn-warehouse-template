@@ -298,6 +298,9 @@ export const grn = {
     confirmSave: { one: 'Save this GRN with {{count}} item?', other: 'Save this GRN with {{count}} items?' },
     printSent: 'Print job sent to the printer.',
     printFailed: "Couldn't send the print job. Check the printer and try again.",
+    printUnconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',
+    printFailedTitle: "Couldn't print",
+    printUnconfirmedTitle: 'Print not confirmed',
   },
 
   // Validation messages (src/features/grn/schemas/grnValidation.ts)
@@ -394,6 +397,7 @@ export const grn = {
     printJobSent: 'Print job sent.',
     printJobSentWithId: 'Print job sent (job {{jobId}}).',
     printFailed: "Couldn't send the print job. Try again.",
+    printUnconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',
   },
 
   // Tabs of the details screen

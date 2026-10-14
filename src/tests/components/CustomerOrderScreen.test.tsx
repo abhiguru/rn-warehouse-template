@@ -25,7 +25,7 @@ jest.mock('@/components/ChangeLogBottomSheet', () => ({ __esModule: true, defaul
 jest.mock('@/services/change-log-service', () => ({ ChangeLogService: { getCustomerChangeLog: jest.fn() } }));
 
 // The editor is a stand-in that counts how often it is mounted and unmounted.
-const mockEditor = { mounts: 0, unmounts: 0, props: undefined as undefined | { customerId?: string; itemCatalogOpen?: boolean } };
+const mockEditor = { mounts: 0, unmounts: 0, props: undefined as undefined | { customerId?: string; itemCatalogOpen?: boolean; staffView?: boolean; businessInactive?: boolean; onBusinessInactive?: () => void } };
 jest.mock('@/components/OrderManagement', () => {
   const ReactActual = jest.requireActual('react');
   return {
@@ -153,4 +153,63 @@ it('counts a session without a profile yet as signed in, as before', async () =>
   await act(async () => { renderer = create(<CustomerOrderScreen />); });
   expect(router.replace).not.toHaveBeenCalled();
   expect(editors()).toBe(1);
+});
+
+it('shows the spinner at once for another business, closes the picker and drops the old name', async () => {
+  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  await act(async () => {
+    renderer!.root.findAll(candidate =>
+      candidate.props.accessibilityLabel === 'Add items to order' && typeof candidate.props.onPress === 'function')[0].props.onPress();
+  });
+  expect(mockEditor.props?.itemCatalogOpen).toBe(true);
+
+  let arrive!: (answer: { data: { name: string }; error: null }) => void;
+  mockNameRead.mockReturnValue(new Promise(resolve => { arrive = resolve; }));
+  mockParams.customerId = 'customer-fictional-2';
+  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  expect(spinners()).toBe(1);
+  expect(editors()).toBe(0);
+  expect(screenText()).not.toContain('Fictional Farms');
+
+  // When the name arrives, the editor is for the new business and its picker is closed.
+  await act(async () => { arrive({ data: { name: 'Second Traders' }, error: null }); });
+  expect(spinners()).toBe(0);
+  expect(mockEditor.props?.customerId).toBe('customer-fictional-2');
+  expect(mockEditor.props?.itemCatalogOpen).toBe(false);
+  expect(screenText()).toContain('Second Traders');
+});
+
+describe('a business that is turned off', () => {
+  const plus = () => renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && typeof node.props.onPress === 'function')[0];
+
+  it('leaves the header Add items button on for an active business', async () => {
+    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: true, deleted_at: null }, error: null });
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    expect(plus().props.disabled).toBeFalsy();
+    expect(mockEditor.props?.businessInactive).toBe(false);
+  });
+
+  it.each([
+    ['deactivated', { active: false, deleted_at: null }],
+    ['deleted', { active: true, deleted_at: '2026-10-01T00:00:00Z' }],
+  ])('turns the header Add items button off and tells the editor when the record says %s', async (_name, record) => {
+    mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', ...record }, error: null });
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    expect(plus().props.disabled).toBe(true);
+    expect(mockEditor.props?.businessInactive).toBe(true);
+  });
+
+  it('turns it off when the facility refuses the order, and tells the editor who is looking', async () => {
+    mockState = { ...mockState, auth: { ...mockState.auth, userProfile: { id: 'profile-fictional', role: 'staff' } } };
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    expect(plus().props.disabled).toBeFalsy();
+    expect(mockEditor.props?.staffView).toBe(true);
+    await act(async () => { mockEditor.props?.onBusinessInactive?.(); });
+    expect(plus().props.disabled).toBe(true);
+  });
+
+  it('is a customer view for a customer login', async () => {
+    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    expect(mockEditor.props?.staffView).toBe(false);
+  });
 });

@@ -19,9 +19,9 @@ import React from 'react';
 import { ActivityIndicator, ScrollView, useWindowDimensions, View } from 'react-native';
 import { CustomerChoiceRows } from '@/components/common/CustomerChoiceRows';
 import { ReportEmptyState } from '@/components/reports/ReportEmptyState';
-import { readOwnBusinesses, type OwnBusiness } from '@/features/customer/ownBusinesses';
+import { readAccessStatus, readOwnBusinesses, type OwnBusiness } from '@/features/customer/ownBusinesses';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
-import { useLoadWithRetry } from '@/hooks/useLoadWithRetry';
+import { useLoadWithRetry, type LoadWithRetry } from '@/hooks/useLoadWithRetry';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { layout, space } from '@/theme/tokens';
@@ -55,6 +55,13 @@ const makeStyles = () => ({
   },
 });
 
+/** The businesses, and for an empty list whether the facility revoked the account. */
+async function readChoices(): Promise<{ businesses: OwnBusiness[]; revoked: boolean }> {
+  const businesses = await readOwnBusinesses();
+  if (businesses.length > 0) return { businesses, revoked: false };
+  return { businesses, revoked: (await readAccessStatus()) === 'revoked' };
+}
+
 type SheetBodyProps = Pick<OrderBusinessSheetProps, 'onClose' | 'onPick'>;
 
 /** The open sheet. Mounted only while open, so every opening asks the facility again. */
@@ -62,8 +69,12 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const { height: windowHeight } = useWindowDimensions();
-  const businesses = useLoadWithRetry('own-businesses', readOwnBusinesses);
+  const choices = useLoadWithRetry('own-businesses', readChoices);
+  const businesses: LoadWithRetry<OwnBusiness[]> =
+    choices.state === 'loaded' ? { state: 'loaded', data: choices.data.businesses, retry: choices.retry } : choices;
   const tall = businesses.state === 'loaded' && businesses.data.length > SHORT_SHEET_MAX_ROWS;
+  // The facility has removed this account's businesses: said in the sheet, no sign-out.
+  const revoked = choices.state === 'loaded' && choices.data.revoked;
 
   let body: React.ReactNode;
   if (businesses.state === 'loading') {
@@ -86,6 +97,14 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
         description={tr('common.checkConnection')}
         actionLabel={tr('common.retry')}
         onAction={businesses.retry}
+      />
+    );
+  } else if (revoked) {
+    body = (
+      <ReportEmptyState
+        icon="account-off-outline"
+        message={tr('lists.order.noBusinessTitle')}
+        description={tr('lists.order.businessesRemoved')}
       />
     );
   } else if (businesses.data.length === 0) {

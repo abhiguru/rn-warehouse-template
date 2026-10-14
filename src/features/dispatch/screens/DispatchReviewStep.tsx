@@ -850,13 +850,17 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                                     ? tr('dispatch.review.printSentWithJob', { job: String(result.print_job.cups_job_id) })
                                     : tr('dispatch.review.printSent')
                             );
+                            setSnackbarVisible(true);
                         } else {
-                            setSnackbarMessage(tr('dispatch.review.printFailed'));
+                            // A dialog, not the snackbar: the step is left at once, and a failure is
+                            // something the person must act on. The unconfirmed one must not invite a reprint.
+                            showAlert(
+                                tr(result.unconfirmed ? 'dispatch.review.printUnconfirmedTitle' : 'dispatch.review.printFailedTitle'),
+                                tr(result.unconfirmed ? 'dispatch.review.printUnconfirmed' : 'dispatch.review.printFailed')
+                            );
                         }
-                        setSnackbarVisible(true);
+                        // Leaving the step is the dialog's onDismiss above, which the dialog calls after this.
                         setShowPrintDialog(false);
-                        resetFormState();
-                        router.replace('/dispatch');
                     }}
                     title={tr('dispatch.review.printTitle')}
                     defaultNumber={createdDispatchNumber}

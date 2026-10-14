@@ -48,7 +48,6 @@ export interface StockItemSummary {
   item_id: string;
   item_name: string;
   total_stock: number;
-  total_weight: number;
   grn_count: number;
   grns: StockGRNDetail[];
 }
@@ -59,7 +58,6 @@ export interface StockItemSummary {
 export interface StockSummaryKPIs {
   total_items: number;
   total_quantity: number;
-  total_weight_kg: number;
   oldest_stock_date: string | null;
   grn_count: number;
   grn_count_empty: number;
@@ -90,7 +88,6 @@ export interface AllStockSummaryKPIs {
   total_customers_with_stock: number;
   total_items: number;
   total_quantity: number;
-  total_weight_kg: number;
 }
 
 /**
@@ -100,7 +97,6 @@ export interface CustomerStockRow {
   customer_id: string;
   customer_name: string;
   total_stock: number;
-  total_weight: number;
   item_count: number;
   grn_count: number;
 }
@@ -145,7 +141,6 @@ export interface DispatchActivityRecord {
   disp_date: string;
   supervisor_name: string;
   total_qty: number;
-  total_weight: number;
   items: DispatchItemDetail[];
 }
 
@@ -155,7 +150,6 @@ export interface DispatchActivityRecord {
 export interface DispatchActivityKPIs {
   total_dispatches: number;
   total_quantity: number;
-  total_weight: number;
 }
 
 /**
@@ -182,7 +176,6 @@ export interface AllDispatchActivityKPIs {
   total_dispatches: number;
   total_customers: number;
   total_quantity: number;
-  total_weight: number;
 }
 
 /**
@@ -193,7 +186,6 @@ export interface CustomerDispatchRow {
   customer_name: string;
   dispatch_count: number;
   total_quantity: number;
-  total_weight: number;
 }
 
 /**
@@ -222,7 +214,6 @@ export interface OperationsKPIs {
   pending_orders: number;
   active_customers: number;
   total_stock_qty: number;
-  total_stock_weight: number;
 }
 
 /**
@@ -275,7 +266,6 @@ export type OperationsDashboardResponse = ServiceResponse<OperationsDashboardDat
 export interface StockAgingKPIs {
   total_items: number;
   total_quantity: number;
-  total_weight_kg: number;
   oldest_stock_days: number;
   average_age_days: number;
   items_over_365_days: number;
@@ -290,7 +280,6 @@ export interface StockAgingKPIs {
 export interface AgingBucketData {
   item_count: number;
   total_quantity: number;
-  total_weight: number;
   percentage: number;
 }
 
@@ -385,7 +374,6 @@ export interface GRNActivityKPIs {
   total_grns: number;
   total_items: number;
   total_quantity: number;
-  total_weight_kg: number;
   total_invoiced_grns: number;
   total_images: number;
 }
@@ -437,7 +425,6 @@ export interface GRNActivityRecord {
   note: string | null;
   total_items: number;
   total_qty: number;
-  total_weight: number;
   image_count: number;
   invoice_status: GRNInvoiceStatus;
   dispatch_summary: GRNDispatchSummary;
@@ -460,7 +447,6 @@ export interface AllGRNActivityKPIs {
   total_customers: number;
   total_items: number;
   total_quantity: number;
-  total_weight_kg: number;
 }
 
 /**
@@ -471,7 +457,6 @@ export interface CustomerGRNSummary {
   customer_name: string;
   grn_count: number;
   total_quantity: number;
-  total_weight: number;
   latest_grn_date: string;
 }
 

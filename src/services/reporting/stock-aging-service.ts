@@ -30,7 +30,6 @@ const EMPTY_RESPONSE: StockAgingData = {
   summary: {
     total_items: 0,
     total_quantity: 0,
-    total_weight_kg: 0,
     oldest_stock_days: 0,
     average_age_days: 0,
     items_over_365_days: 0,
@@ -134,7 +133,6 @@ export async function getCustomerStockAging(
     const summary: StockAgingKPIs = {
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight_kg: responseData?.summary?.total_weight_kg ?? 0,
       oldest_stock_days: responseData?.summary?.oldest_stock_days ?? 0,
       average_age_days: responseData?.summary?.average_age_days ?? 0,
       items_over_365_days: responseData?.summary?.items_over_365_days ?? 0,
@@ -153,7 +151,6 @@ export async function getCustomerStockAging(
           byBucket[key] = {
             item_count: value?.item_count ?? 0,
             total_quantity: value?.total_quantity ?? 0,
-            total_weight: value?.total_weight ?? 0,
             percentage: value?.percentage ?? 0,
           };
         }

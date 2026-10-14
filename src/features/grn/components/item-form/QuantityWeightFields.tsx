@@ -9,7 +9,7 @@
  */
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
-import { View, Text, TextInput, Keyboard, Platform } from 'react-native';
+import { View, Text, TextInput, Keyboard, Platform, Pressable, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
@@ -128,29 +128,42 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
               />
             )}
           </View>
-          <TextInput
-            ref={qtyInputRef}
-            accessibilityLabel={tr('grn.item.quantityInputLabel')}
-            accessibilityHint={isQtyLocked ? tr('grn.item.quantityLockedHint') : undefined}
-            style={[
-              styles.input,
-              !!qtyError && styles.inputError,
-              isQtyLocked && styles.inputReadOnly,
-              focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
-            ]}
-            value={localizeDigits(qty ?? '')}
-            onChangeText={handleQtyChange}
-            placeholder={formatNumber(0)}
-            placeholderTextColor={t.text.placeholder}
-            keyboardType="numeric"
-            returnKeyType="next"
-            onSubmitEditing={handleQtySubmit}
-            blurOnSubmit={false}
-            onFocus={handleQtyFocus}
-            onBlur={() => setFocusedField(null)}
-            selectTextOnFocus={!isQtyLocked}
-            editable={!isQtyLocked}
-          />
+          <View>
+            <TextInput
+              ref={qtyInputRef}
+              accessibilityLabel={tr('grn.item.quantityInputLabel')}
+              accessibilityHint={isQtyLocked ? tr('grn.item.quantityLockedHint') : undefined}
+              style={[
+                styles.input,
+                !!qtyError && styles.inputError,
+                isQtyLocked && styles.inputReadOnly,
+                focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
+              ]}
+              value={localizeDigits(qty ?? '')}
+              onChangeText={handleQtyChange}
+              placeholder={formatNumber(0)}
+              placeholderTextColor={t.text.placeholder}
+              keyboardType="numeric"
+              returnKeyType="next"
+              onSubmitEditing={handleQtySubmit}
+              blurOnSubmit={false}
+              onFocus={handleQtyFocus}
+              onBlur={() => setFocusedField(null)}
+              selectTextOnFocus={!isQtyLocked}
+              editable={!isQtyLocked}
+            />
+            {isQtyLocked && (
+              // A non-editable Android field never gets focus, so onFocus cannot explain
+              // the lock; a tap on this overlay does, on both platforms.
+              <Pressable
+                testID="grn-qty-locked-overlay"
+                style={StyleSheet.absoluteFill}
+                onPress={() => onQtyLockedPress?.()}
+                accessible={false}
+                importantForAccessibility="no"
+              />
+            )}
+          </View>
           {renderError(qtyError)}
         </View>
 

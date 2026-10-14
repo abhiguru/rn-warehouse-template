@@ -55,7 +55,8 @@ jest.mock('@/components/CustomerSearchBottomSheet', () => {
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: jest.fn() } }));
 // The facility's answer to "which businesses are this account's own".
 const mockReadOwnBusinesses = jest.fn<Promise<OwnBusiness[]>, []>();
-jest.mock('@/features/customer/ownBusinesses', () => ({ readOwnBusinesses: () => mockReadOwnBusinesses() }));
+// No clear answer about the account's access (an older facility): the guidance for an empty list stays.
+jest.mock('@/features/customer/ownBusinesses', () => ({ readOwnBusinesses: () => mockReadOwnBusinesses(), readAccessStatus: async () => null }));
 
 const AMBER: OwnBusiness = { id: 'business-amber', name: 'Amber Field Traders', city: 'Northgate' };
 const BIRCH: OwnBusiness = { id: 'business-birch', name: 'Birchwood Produce', city: 'Southmere' };

@@ -33,7 +33,7 @@ interface OrderItemCardProps {
    * every card and the memoized card skips renders. Resolves true once the server
    * stored the quantity.
    */
-  onQuantityChange: (itemId: string, newQuantity: number) => Promise<boolean> | boolean | void;
+  onQuantityChange: (itemId: string, newQuantity: number, orderId?: string) => Promise<boolean> | boolean | void;
   /** Called with this card's line id. */
   onRemove: (itemId: string) => void;
 }
@@ -89,6 +89,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   onQuantityChangeRef.current = onQuantityChange;
   const itemIdRef = useRef(item.id);
   itemIdRef.current = item.id;
+  // The order this line belongs to: a save that runs after the editor moved on still goes there.
+  const orderIdRef = useRef(item.order_id);
+  orderIdRef.current = item.order_id;
 
   // Track if item is being removed (to skip force-save on unmount)
   const isRemovingRef = useRef(false);
@@ -107,7 +110,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         const lastSavedQty = lastSavedQuantityRef.current;
         if (currentLocalQty !== lastSavedQty && !isRemovingRef.current) {
           if (__DEV__) console.log(`[OrderItemCard] Force saving on unmount: ${lastSavedQty} → ${currentLocalQty}`);
-          void onQuantityChangeRef.current(itemIdRef.current, currentLocalQty);
+          void onQuantityChangeRef.current(itemIdRef.current, currentLocalQty, orderIdRef.current || undefined);
         }
       }
     };
@@ -134,7 +137,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
       let saved: boolean;
       try {
-        saved = (await onQuantityChange(itemIdRef.current, newQuantity)) !== false;
+        saved = (await onQuantityChange(itemIdRef.current, newQuantity, orderIdRef.current || undefined)) !== false;
       } catch {
         saved = false;
       }

@@ -34,6 +34,8 @@ export interface BandDraft {
    * the default rate). The editor keeps the gap; a band that starts right after the one before has none.
    */
   gapFrom?: number;
+  /** A customer band's "From" as typed (not the first band, which has firstFromText). Set only when the person typed a start other than the end of the band before plus one. */
+  fromText?: string;
 }
 
 export interface Draft {
@@ -188,13 +190,60 @@ export function fromOf(draft: Draft, index: number): number | null {
   if (index <= 0) return draft.firstFrom;
   const before = typedKg(draft.bands[index - 1]?.upTo);
   if (before === null) return null;
+  // A typed start is read as typed; the checks refuse one that overlaps the band before.
+  const typed = draft.bands[index]?.fromText;
+  if (typed !== undefined) return wholeKg(typed);
   // A stored gap stays until the band before grows over it.
   return Math.max(before + 1, draft.bands[index]?.gapFrom ?? 0);
+}
+
+/**
+ * The editor's fields in the order the keyboard's Next key visits them (and the first error is
+ * looked for). A customer rate has a "From" on every band: `firstFrom`, then `band.<i>.from`.
+ */
+export function fieldOrder(draft: Draft, customerId: string | null): string[] {
+  const perBand = draft.bands.some(b => b.labour !== undefined);
+  const keys = draft.bands.flatMap((b, i) => [
+    ...(customerId ? [i === 0 ? 'firstFrom' : `band.${i}.from`] : []),
+    `band.${i}.upTo`,
+    `band.${i}.rent`,
+    ...(perBand ? [`band.${i}.labour`, `band.${i}.tax`] : []),
+  ]);
+  if (!perBand) keys.push(...(draft.priceType === 'one_time' ? [] : ['labour']), 'tax');
+  return keys;
 }
 
 /** Sets where the first band of a customer rate starts, as typed. */
 export function setFirstFrom(draft: Draft, text: string): Draft {
   return { ...draft, firstFromText: text, firstFrom: wholeKg(text) ?? 0 };
+}
+
+/**
+ * Sets where band `index` (not the first) of a customer rate starts, as typed. A start above the end
+ * of the band before leaves a gap; those weights pay the default rate. A start equal to that end
+ * plus one is no gap: the band goes back to following on from the band before.
+ */
+export function setBandFrom(draft: Draft, index: number, text: string): Draft {
+  if (index <= 0) return draft;
+  const before = typedKg(draft.bands[index - 1]?.upTo);
+  const kg = wholeKg(text);
+  return {
+    ...draft,
+    bands: draft.bands.map((b, i) => {
+      if (i !== index) return b;
+      const { gapFrom: _gap, fromText: _text, ...rest } = b;
+      return before !== null && kg === before + 1 ? rest : { ...rest, fromText: text };
+    }),
+  };
+}
+
+/** The weights a customer rate leaves to the default rate just before band `index` (null when none, or not a number yet). */
+export function gapBefore(draft: Draft, index: number): { from: number; to: number } | null {
+  const from = fromOf(draft, index);
+  if (from === null) return null;
+  const end = index <= 0 ? -1 : typedKg(draft.bands[index - 1]?.upTo);
+  if (end === null || from <= end + 1) return null;
+  return { from: end + 1, to: from - 1 };
 }
 
 export function setUpTo(draft: Draft, index: number, text: string): Draft {
@@ -213,7 +262,7 @@ export function splitLastBand(draft: Draft): Draft {
   if (draft.bands.length >= MAX_BANDS || from === null || upTo === null || upTo - from < 1) return draft;
   const mid = Math.floor((from + upTo) / 2);
   const band = draft.bands[last];
-  const { gapFrom: _gap, ...rest } = band;
+  const { gapFrom: _gap, fromText: _text, ...rest } = band;
   return { ...draft, bands: [...draft.bands.slice(0, last), { ...band, upTo: String(mid) }, { ...rest, upTo: String(upTo) }] };
 }
 
@@ -302,9 +351,9 @@ function withBandFor(draft: Draft, weight: number): Draft {
   // A fraction between two whole-kg bands has no whole-kg band of its own.
   if (after > 0 && upTo < (ends[after - 1] as number) + 1) return draft;
   if (after === 0) {
-    return { ...draft, firstFrom: 0, firstFromText: undefined, bands: [fresh(upTo), { ...bands[0], gapFrom: undefined }, ...bands.slice(1)] };
+    return { ...draft, firstFrom: 0, firstFromText: undefined, bands: [fresh(upTo), { ...bands[0], gapFrom: undefined, fromText: undefined }, ...bands.slice(1)] };
   }
-  return { ...draft, bands: [...bands.slice(0, after), fresh(upTo), { ...bands[after], gapFrom: undefined }, ...bands.slice(after + 1)] };
+  return { ...draft, bands: [...bands.slice(0, after), fresh(upTo), { ...bands[after], gapFrom: undefined, fromText: undefined }, ...bands.slice(after + 1)] };
 }
 
 /** The invoice line's rent, labour and tax go into the band that holds the line's weight. */
@@ -581,6 +630,21 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
         });
       }
     }
+    if (i > 0 && band.fromText !== undefined) {
+      const start = wholeKg(band.fromText);
+      const before = wholeKg(draft.bands[i - 1].upTo);
+      if (!ctx.customerId) {
+        // The server refuses a default rate with a gap (BANDS_GAP): weights without a rate would have no price.
+        errors[`band.${i}.from`] = t('pricing.edit.err.gapDefault');
+      } else if (start === null) {
+        errors[`band.${i}.from`] = t('pricing.edit.err.wholeKg');
+      } else if (before !== null && start <= before) {
+        errors[`band.${i}.from`] = t('pricing.edit.err.fromOverlap', {
+          kg: localizeDigits(String(before)),
+          next: localizeDigits(String(before + 1)),
+        });
+      }
+    }
     if (priceNumber(band.rent, 2) === null) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
     if (band.labour !== undefined && !oneTime && priceNumber(band.labour, 2) === null) {
       errors[`band.${i}.labour`] = t('pricing.edit.err.labour');
@@ -603,10 +667,17 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
   return { ok: Object.keys(errors).length === 0, errors };
 }
 
+/** Where band `i` starts for the change check: the number typed or stored, else the text if it is not a number. */
+function startOf(d: Draft, i: number): number | string | null {
+  const b = d.bands[i];
+  if (b.fromText !== undefined) return wholeKg(b.fromText) ?? `text:${b.fromText}`;
+  return b.gapFrom ?? null;
+}
+
 /** True when the draft differs from the one the form opened with (any field). */
 export function hasChanges(draft: Draft, initial: Draft): boolean {
   const key = (d: Draft) =>
-    JSON.stringify([d.priceType, d.startsOn, d.startsOnChoice, d.firstFrom, d.firstFromText ?? null, d.labour, d.tax, d.bands.map(b => [b.upTo, b.rent, b.labour ?? null, b.tax ?? null, b.gapFrom ?? null])]);
+    JSON.stringify([d.priceType, d.startsOn, d.startsOnChoice, d.firstFrom, d.firstFromText !== undefined && wholeKg(d.firstFromText) === null ? d.firstFromText : null, d.labour, d.tax, d.bands.map((b, i) => [b.upTo, b.rent, b.labour ?? null, b.tax ?? null, startOf(d, i)])]);
   return key(draft) !== key(initial);
 }
 

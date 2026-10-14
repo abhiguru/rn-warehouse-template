@@ -604,7 +604,6 @@ function GRNDetailScreen() {
     total_qty: 0,
     total_stock: 0,
     total_dispatched: 0,
-    total_weight: 0,
   };
 
   // Invoices summary (snake_case)
@@ -755,7 +754,11 @@ function GRNDetailScreen() {
                 : tr('grn.details.printJobSent')
             );
           } else {
-            setSnackbarMessage(serverText(result.error, tr('grn.details.printFailed')));
+            setSnackbarMessage(
+              result.unconfirmed
+                ? tr('grn.details.printUnconfirmed')
+                : serverText(result.error, tr('grn.details.printFailed'))
+            );
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

@@ -229,7 +229,6 @@ describe('the figures: no total weight', () => {
   it('"Right now" has three tiles, pending orders, active customers and total stock; the 5,400.5 kg of the answer is nowhere', async () => {
     phone(1);
     const screen = await open();
-    expect((await dashboard.mock.results[0].value).data!.kpis.total_stock_weight).toBe(5400.5);
 
     expect(spoken(screen)).toEqual(['GRNs: 12', 'Dispatches: 7', 'Pending orders: 3', 'Active customers: 5', 'Total stock: 1,200']);
     expect(tiles(screen).map(tile => tile.props.icon)).toEqual(['package-down', 'truck-delivery-outline', 'clipboard-list-outline', 'account-group-outline', 'warehouse']);

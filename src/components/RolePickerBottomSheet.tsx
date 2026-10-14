@@ -6,11 +6,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, BackHandler } from 'react-native';
+import { View, Text, Pressable, StyleSheet, BackHandler, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -61,6 +61,15 @@ const ALL_ROLES: RoleOption[] = [
   },
 ];
 
+/**
+ * The tallest the sheet's content may be: the window between the status bar and the navigation bar, minus a margin so the
+ * backdrop stays visible above it. The sheet is as tall as its content up to this height and the
+ * content scrolls only beyond it (large text sizes), instead of a fixed half of the screen.
+ */
+export function roleSheetMaxContent(windowHeight: number, topInset: number, bottomInset = 0): number {
+  return Math.max(0, Math.round(windowHeight - topInset - bottomInset - space.xxl * 2));
+}
+
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -88,6 +97,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
   const t = useTokens();
   const dynamicStyles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const avatarIconColor = t.mode === 'dark' ? t.overlay.onImage : t.text.primary;
 
   // Android back closes the sheet first (style guide 15)
@@ -154,14 +164,15 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
     <BottomSheet
       ref={bottomSheetRef}
       index={0}
-      snapPoints={['50%']}
+      enableDynamicSizing
+      maxDynamicContentSize={roleSheetMaxContent(windowHeight, insets.top, insets.bottom)}
       onChange={handleSheetChanges}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
       handleIndicatorStyle={dynamicStyles.handleIndicator}
       backgroundStyle={dynamicStyles.bottomSheetBackground}
     >
-      <BottomSheetView style={[styles.container, { paddingBottom: insets.bottom + space.lg }]}>
+      <BottomSheetScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + space.lg }]}>
         {/* Header */}
         <View style={dynamicStyles.header}>
           <Text style={dynamicStyles.title} accessibilityRole="header">{tr('users.rolePicker.title')}</Text>
@@ -221,7 +232,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
             {tr('users.rolePicker.adminOnly')}
           </Text>
         )}
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 };
@@ -282,7 +293,6 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     paddingHorizontal: space.lg,
   },
   closeButton: {

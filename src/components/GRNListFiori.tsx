@@ -348,7 +348,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                     <View style={[styles.tableCell, styles.colItem]}>
                       <Text style={styles.itemName} numberOfLines={2}>{item.item_name}</Text>
                       {item.package_mark && (
-                        <Text style={styles.itemMark} numberOfLines={1}>{item.package_mark}</Text>
+                        <Text style={styles.itemMark}>{item.package_mark}</Text>
                       )}
                     </View>
                     <Text style={[styles.tableCell, styles.colQty, styles.cellValue]}>{formatNumber(item.qty)}</Text>
@@ -632,7 +632,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         );
       } else {
         logger.warn('Print failed:', result.error);
-        setSnackbarMessage(translate('lists.grn.printFailedPrinter'));
+        setSnackbarMessage(
+          result.unconfirmed ? translate('grn.details.printUnconfirmed') : translate('lists.grn.printFailedPrinter')
+        );
       }
       setSnackbarVisible(true);
     } catch (error) {

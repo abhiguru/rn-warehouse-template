@@ -32,6 +32,7 @@ export const pricingEdit: Translation<typeof source> = {
     addBand: 'વજન મર્યાદા ઉમેરો',
     removeBand: '{{band}} ની મર્યાદા કાઢો',
     outsidePay: 'આ વજનની બહારના નંગ મૂળ દર ભરે છે.',
+    gapHint: '{{band}}: મૂળ દર',
     labour: 'નંગ દીઠ મજૂરી',
     tax: 'ટેક્સ',
     oneTimeLabour: 'એક વખતના દરમાં મજૂરી સામેલ છે.',
@@ -66,6 +67,8 @@ export const pricingEdit: Translation<typeof source> = {
     err: {
       rent: '૦ કે તેથી વધુ ભાડું લખો.',
       wholeKg: 'પૂરા કિલો લખો, દા.ત. ૪૦.',
+      fromOverlap: 'આગળની મર્યાદા {{kg}} કિલો પર પૂરી થાય છે. {{next}} કિલો કે તેથી વધુથી શરૂ કરો.',
+      gapDefault: 'મૂળ દરમાં ખાલી જગ્યા ન હોઈ શકે: દરેક વજનનો દર હોવો જોઈએ.',
       afterStart: '{{kg}} કિલોથી વધુ હોવું જોઈએ; આ મર્યાદા {{start}} કિલોથી શરૂ થાય છે.',
       labour: 'મજૂરીનો દર શૂન્ય અથવા તેથી વધુ લખો.',
       tax: 'ટેક્સનો દર શૂન્યથી સો ટકા વચ્ચે લખો.',

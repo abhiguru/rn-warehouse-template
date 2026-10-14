@@ -130,7 +130,6 @@ export interface Dispatch {
   supervisor_name?: string | null;
   total_items?: number;
   total_qty?: number;
-  total_weight?: number | null;
   item_summary?: DispatchItemSummary[];
   grn_summary?: {
     unique_grns: number;
@@ -176,7 +175,6 @@ export interface DispatchItemDetail {
 export interface DispatchAggregations {
   total_dispatches: number;
   total_dispatched_qty: number;
-  total_weight: number | null;
   unique_customers: number;
   unique_grns: number;
 }
@@ -253,10 +251,6 @@ export const mapBackendDispatch = (dispatch: BackendDispatchData): Dispatch => {
     (sum, item) => sum + (Number(item.dispQty || item.disp_qty) || 0),
     0
   );
-  const calculatedTotalWeight = items.reduce(
-    (sum, item) => sum + (Number(item.weight) || 0),
-    0
-  );
 
   return {
     id: dispatch.id,
@@ -277,7 +271,6 @@ export const mapBackendDispatch = (dispatch: BackendDispatchData): Dispatch => {
     supervisor_name: dispatch.supervisorName || dispatch.supervisor_name || null,
     total_items: dispatch.totalItems || dispatch.total_items || calculatedTotalItems,
     total_qty: dispatch.totalQty || dispatch.total_qty || calculatedTotalQty,
-    total_weight: dispatch.totalWeight || dispatch.total_weight || calculatedTotalWeight,
     items: items.map(item => ({
       item_id: item.itemId || item.item_id || '',
       item_name: item.itemName || item.item_name || '',
@@ -459,7 +452,7 @@ export const getDispatchList = async (
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
-          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
           filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: p_sort_by, sort_order: p_sort_order },
           user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
         }
@@ -473,7 +466,7 @@ export const getDispatchList = async (
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
-          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
           filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: p_sort_by, sort_order: p_sort_order },
           user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
         }
@@ -492,7 +485,7 @@ export const getDispatchList = async (
       data: {
         dispatches: [],
         pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0, has_more: false },
-        aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+        aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
         filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: params.p_sort_by || 'disp_date', sort_order: params.p_sort_order || 'desc' },
         user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
       }
@@ -599,7 +592,7 @@ export const getDispatchListWithItems = async (
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
-          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
           filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: p_sort_order },
           user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
         }
@@ -614,7 +607,7 @@ export const getDispatchListWithItems = async (
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
-          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
           filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: p_sort_order },
           user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
         }
@@ -699,7 +692,7 @@ export const getDispatchListWithItems = async (
       data: {
         dispatches: [],
         pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.offset || 0, has_more: false },
-        aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+        aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
         filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: params.p_sort_order || 'desc' },
         user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
       }
@@ -718,7 +711,6 @@ export const getCustomerDispatchList = async (
     aggregations: {
       total_dispatches: 0,
       total_dispatched_qty: 0,
-      total_weight: null,
       unique_customers: 0,
       unique_grns: 0,
     },
@@ -803,10 +795,6 @@ export const getCustomerDispatchList = async (
           total_dispatches: totalCount,
           total_dispatched_qty: dispatches.reduce(
             (total, dispatch) => total + (dispatch.total_qty || 0),
-            0
-          ),
-          total_weight: dispatches.reduce(
-            (total, dispatch) => total + (dispatch.total_weight || 0),
             0
           ),
           unique_customers: dispatches.length > 0 ? 1 : 0,
@@ -978,7 +966,7 @@ export const getAssignedCustomerDispatchList = async (
     data: {
       dispatches: [],
       pagination: { total_count: 0, limit, offset, has_more: false },
-      aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+      aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
       filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: sortOrder },
       user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 },
     },
@@ -1042,7 +1030,6 @@ export const getAssignedCustomerDispatchList = async (
   result.data.aggregations = {
     total_dispatches: matching.length,
     total_dispatched_qty: matching.reduce((total, dispatch) => total + (dispatch.total_qty || 0), 0),
-    total_weight: matching.reduce((total, dispatch) => total + (dispatch.total_weight || 0), 0),
     unique_customers: new Set(matching.map(dispatch => dispatch.customer_id)).size,
     unique_grns: new Set(matching.flatMap(dispatch => dispatch.items?.map(item => item.gr_no) || [])).size,
   };
