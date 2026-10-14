@@ -84,8 +84,9 @@ export const orders: Translation<typeof source> = {
     discardSelections: 'પસંદગી છોડી દો',
     // Add waits for the server; a lot that was not saved keeps its reason.
     savingProgress: '{{total}} માંથી {{done}} સાચવી રહ્યા છીએ…',
+    // Shown only when at least one lot was not saved, so `one` (0 and 1 in Gujarati) is written for 1.
     notSavedSummary: {
-      one: '{{count}} જથ્થા સચવાયા નથી. દરેક પર કારણ જુઓ.',
+      one: '{{count}} જથ્થો સચવાયો નથી. તેના પર કારણ જુઓ.',
       other: '{{count}} જથ્થા સચવાયા નથી. દરેક પર કારણ જુઓ.',
     },
     reasonStock: 'સ્ટોકમાં ફક્ત {{bags}} છે.',
