@@ -320,7 +320,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // server refuses is an answer, and the next lot is sent. A call that got no
   // answer (a timeout, no connection, a call that threw) ends the save: every
   // further write could wait its own full time limit on the same dead connection.
-  // The lots not sent come back not saved and stay selected in the picker.
+  // The lots not sent come back not saved and stay selected in the picker. For
+  // the same reason the read after such a save is started and not waited for.
   const handleItemsAdded = useCallback(async (
     changes: PickerChange[],
     onProgress?: (position: number, total: number) => void,
@@ -332,6 +333,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     const ordered = [...changes.filter(change => change.quantity > 0), ...changes.filter(change => change.quantity <= 0)];
     const results = new Map<string, PickerResult>();
     let anyCall = false;
+    // The save ended for want of a connection, before its last lot.
+    let noAnswer = false;
 
     for (let index = 0; index < ordered.length; index += 1) {
       const change = ordered[index];
@@ -350,7 +353,10 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             continue;
           }
           // No network: this lot and the rest are not sent.
-          if (noNetworkRef.current) break;
+          if (noNetworkRef.current) {
+            noAnswer = true;
+            break;
+          }
           anyCall = true;
           const result = line
             ? await OrderService.updateOrderItemQuantity(line.id, current.id, change.quantity)
@@ -359,14 +365,20 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           results.set(change.grnItemId, result.success
             ? { grnItemId: change.grnItemId, ok: true }
             : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
-          if (!result.success && isConnectionFailure(result)) break;
+          if (!result.success && isConnectionFailure(result)) {
+            noAnswer = true;
+            break;
+          }
         } else {
           // Nothing to remove when the line is gone or no longer open.
           if (!line || !isOpenLine(line)) {
             results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
             continue;
           }
-          if (noNetworkRef.current) break;
+          if (noNetworkRef.current) {
+            noAnswer = true;
+            break;
+          }
           anyCall = true;
           const result = await OrderService.removeItemFromOrder(line.id, current.id);
           // "Order item not found": someone else removed it first, which is what was asked for.
@@ -375,11 +387,15 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           results.set(change.grnItemId, removed
             ? { grnItemId: change.grnItemId, ok: true }
             : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
-          if (!removed && isConnectionFailure(result)) break;
+          if (!removed && isConnectionFailure(result)) {
+            noAnswer = true;
+            break;
+          }
         }
       } catch (error) {
         console.error('[OrderManagement] Save item error:', error);
         results.set(change.grnItemId, notSaved(change.grnItemId));
+        noAnswer = true;
         break;
       }
     }
@@ -390,11 +406,13 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     // timed out but was applied, a line someone else removed): without this read
     // the next Add would fail on it the same way.
     if (anyCall && sessionGeneration === getSessionGeneration()) {
-      try {
-        await onRefresh();
-      } catch (error) {
+      const read = onRefresh().catch(error => {
         console.error('[OrderManagement] Refresh after save error:', error);
-      }
+      });
+      // A save that ended for want of a connection answers now: the read would
+      // wait its own time limit on the same connection. It goes on by itself, and
+      // the next Add takes the lines as they are saved by then.
+      if (!noAnswer) await read;
     }
 
     return changes.map(change => results.get(change.grnItemId) ?? notSaved(change.grnItemId));

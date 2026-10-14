@@ -13,6 +13,8 @@
  *  - A call that got no answer (a timeout, no connection, a call that threw) ends
  *    the save; the lots not sent come back not saved.
  *  - The order is read again after any call, saved or not.
+ *  - That read is waited for when the server answered every call, and only
+ *    started when the save ended for want of a connection.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -104,8 +106,9 @@ let server: Order;
 let renderer: ReactTestRenderer | undefined;
 let logged: jest.SpyInstance;
 
+const editor = () => <OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />;
 async function openPicker() {
-  await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />); });
+  await act(async () => { renderer = create(editor()); });
   expect(mockPicker.props).toBeDefined();
   return mockPicker.props!;
 }
@@ -113,6 +116,21 @@ async function send(changes: PickerChange[], onProgress?: (position: number, tot
   let results!: PickerResult[];
   await act(async () => { results = await mockPicker.props!.onAddItems(changes, onProgress); });
   return results;
+}
+// Lets everything that is not waiting for a call run to its end.
+const settle = () => act(async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); });
+// Starts a save without waiting for it: `results` is there once the save has answered.
+async function start(changes: PickerChange[]) {
+  const save: { results?: PickerResult[] } = {};
+  await act(async () => { void mockPicker.props!.onAddItems(changes).then(results => { save.results = results; }); });
+  await settle();
+  return save;
+}
+// A call that answers when the test says so.
+function waiting<T>() {
+  let answer!: (value: T) => void;
+  const promise = new Promise<T>(resolve => { answer = resolve; });
+  return { promise, answer };
 }
 
 beforeEach(() => {
@@ -397,6 +415,105 @@ it('sends a change again as an add once the line someone else removed is known t
   expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([{ grnItemId: 'lot-open', ok: true }]);
   expect(service.updateOrderItemQuantity).toHaveBeenCalledTimes(1);
   expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-open', 8]]);
+});
+
+describe('the read after the save', () => {
+  const TWO = [{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }];
+  // A read on a connection that stopped answering: it is started and never answers.
+  const readNeverAnswers = () => service.getOrderWithItems.mockImplementationOnce(() => new Promise<never>(() => undefined));
+  const orderRead = () => ({ success: true, data: copy(server) }) as never;
+
+  it.each([
+    ['timed out', () => service.addItemToOrder.mockResolvedValueOnce(timedOut)],
+    ['threw', () => service.addItemToOrder.mockRejectedValueOnce(new Error('fictional failure'))],
+  ])('is started and not waited for when the first call %s: the save answers while the read is out', async (_name, fail) => {
+    await openPicker();
+    fail();
+    const reads = service.getOrderWithItems.mock.calls.length;
+    readNeverAnswers();
+
+    const save = await start(TWO);
+
+    expect(save.results).toEqual([
+      { grnItemId: 'lot-one', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED },
+    ]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('is not waited for when the phone lost its network after a lot was saved', async () => {
+    await openPicker();
+    const write = waiting<never>();
+    service.addItemToOrder.mockImplementationOnce(() => write.promise);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    readNeverAnswers();
+
+    const save = await start(TWO);
+    expect(save.results).toBeUndefined();
+    // The phone reports no network while the first lot is being saved; then that lot's answer arrives.
+    mockNetwork.isConnected = false;
+    await act(async () => { renderer!.update(editor()); });
+    await act(async () => { write.answer(saved); });
+    await settle();
+
+    expect(save.results).toEqual([
+      { grnItemId: 'lot-one', ok: true },
+      { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED },
+    ]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+  });
+
+  it.each([
+    ['saved every lot', saved, [{ grnItemId: 'lot-one', ok: true }, { grnItemId: 'lot-two', ok: true }]],
+    ['refused every lot', refusal('Item already exists in order'), [
+      { grnItemId: 'lot-one', ok: false, reason: 'This lot is already in the order.' },
+      { grnItemId: 'lot-two', ok: false, reason: 'This lot is already in the order.' },
+    ]],
+  ])('is waited for when the server %s: the save answers once the order has been read', async (_name, answer, expected) => {
+    await openPicker();
+    service.addItemToOrder.mockResolvedValue(answer);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    const read = waiting<never>();
+    service.getOrderWithItems.mockImplementationOnce(() => read.promise);
+
+    const save = await start(TWO);
+    // Both lots were sent and answered, the read is out, and the picker is still waiting.
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(2);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+    expect(save.results).toBeUndefined();
+
+    await act(async () => { read.answer(orderRead()); });
+    await settle();
+    expect(save.results).toEqual(expected);
+  });
+
+  it('spares the next Add a write that was applied, also when it arrives after the save has answered', async () => {
+    await openPicker();
+    // The server stores the line; its answer never arrives.
+    service.addItemToOrder.mockImplementationOnce(async (_order, lot, quantity) => {
+      server.items!.push(line(lot, quantity));
+      return timedOut;
+    });
+    const read = waiting<never>();
+    service.getOrderWithItems.mockImplementationOnce(() => read.promise);
+
+    const save = await start([{ grnItemId: 'lot-new', quantity: 3 }]);
+    expect(save.results).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
+    // The read is still out: the picker has not been told of the lot.
+    expect(mockPicker.props!.currentOrderItems.map(item => item.grnItemId)).not.toContain('lot-new');
+
+    await act(async () => { read.answer(orderRead()); });
+    await settle();
+    expect(mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity])).toContainEqual(['lot-new', 3]);
+
+    // Add again: the lot is there with that quantity, so nothing is sent and it counts as saved.
+    expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: true }]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+  });
 });
 
 describe('with no network at all', () => {
