@@ -22,7 +22,11 @@ export default function CustomerOrderScreen() {
   const styles = useThemedStyles(makeStyles);
 
   const { customerId } = useLocalSearchParams<{ customerId: string }>();
-  const { user, session, userProfile } = useAppSelector((state) => state.auth);
+  // A yes or no, not the auth objects: a token renewal or a profile read gives
+  // new objects for the same person, and nothing here should run again for that.
+  const signedIn = useAppSelector(
+    (state) => Boolean(state.auth.userProfile) || Boolean(state.auth.user && state.auth.session)
+  );
   const insets = useSafeAreaInsets();
   const [customerName, setCustomerName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -86,9 +90,10 @@ export default function CustomerOrderScreen() {
     }
   }, [fetchChangelog, changelogLoading, changelogHasMore, changelogOffset]);
 
+  // `loading` starts true and ends with the first name. Reading the name again
+  // never brings the spinner back: it would unmount the order and its picker.
   const fetchCustomerName = useCallback(async () => {
     try {
-      setLoading(true);
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error } = await authenticatedClient
         .from('customers')
@@ -111,7 +116,7 @@ export default function CustomerOrderScreen() {
   }, [customerId]);
 
   useEffect(() => {
-    if (!userProfile && (!user || !session)) {
+    if (!signedIn) {
       router.replace('/login');
       return;
     }
@@ -122,9 +127,9 @@ export default function CustomerOrderScreen() {
     }
 
     fetchCustomerName();
-  }, [user, session, userProfile, customerId, fetchCustomerName]);
+  }, [signedIn, customerId, fetchCustomerName]);
 
-  if (!userProfile && (!user || !session)) {
+  if (!signedIn) {
     return null; // Will redirect in useEffect
   }
 
