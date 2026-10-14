@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — phone review fixes (2026-10-14)
+
+No backend migration is needed. The PDFs a facility's server makes are not changed by this app change.
+
+### Orders
+
+- **A customer account with several businesses chooses one on Create order (PW-01).** Create order on the Orders tab opens a bottom sheet, "Choose a business", that lists the account's own businesses by name, each with its city; picking one opens that business's order. It no longer matters whether an order already exists. An account with exactly one business still goes straight to its order, and admin, supervisor and staff keep the customer search sheet. The businesses are asked of the facility each time the sheet opens, without the deactivated or deleted ones, so an account with none is told "No business linked" there; a failed read says "Couldn't load your businesses" and offers "Try again". The two four-second messages that used to answer the button are gone.
+- **The Add items picker keeps its selections (OI-01).** The picker takes the order's saved lines once, when it opens. Coming back from the background, a refresh, a live update or a line another user adds no longer changes what was chosen, and a renewed sign-in token or a profile read no longer puts the order screen back to its loading spinner, which used to take the open picker and its selections with it. Selections are kept in memory only; nothing is stored on the phone.
+- **Closing the picker with unsaved selections asks first.** Cancel, the Back key, a tap outside and a swipe down show "Discard selections?" with "Keep editing" and "Discard selections" when something was chosen and not added, and close at once when nothing was. After a swipe down, "Keep editing" brings the sheet back with what was chosen.
+- **Add waits for the server and shows the reason on a lot that failed.** The picker stays open with "Saving 1 of 3…" until the server has answered for every lot; meanwhile Cancel, the quantity buttons and every way of closing do nothing. When every lot was saved the picker closes. Otherwise the saved lots are done and the lots that were not saved stay selected, listed first under a summary line, each with its reason: "Only 5 bags in stock.", "This lot is already in the order.", "5 bags already dispatched. Choose that many or more.", "This order is closed. Go back and open it again." or "Not saved. Check your connection and try again." No database text is shown. The two general alerts after a failed Add are gone.
+- **Add sends only what was changed.** A saved line the user did not touch is never sent and never removed, so a line another user added while the picker was open stays on the order.
+- **The number on the Add button counts unsaved changes.** An order with 20 saved lots opens its picker with "Add", not "Add (20)"; choosing one more lot gives "Add (1)".
+
+### GRN
+
+- **The Items step asks before an item that was not checkmarked is left (UX-01),** on every way out: the footer's Next and Back, both step circles, the phone's Back key (new GRN and edit) and opening another saved item. A new item is asked about with "Save this item?", a correction of a saved item with "Save changes to this item?", which names the item ("Your changes to item 5 (Potato) haven't been saved yet."); the buttons are Keep editing, Discard and Save. Before, Next with a correction in the form asked nothing and Review showed the old values. A new item that is only partly filled is asked about too. A saved item that was opened and not changed is not asked about. Save is the checkmark's own action: an item that cannot be saved stays in the form as typed, with its errors shown.
+- **Discard really discards.** "Discard item" used to store the item it had just discarded. Now a discarded new item is gone, and "Discard changes" leaves the saved item as it was, its photos included: a photo added to the correction is taken off again and a photo removed from it is put back.
+- **The item name and quantity show in the strip above the entry row (UX-04).** The row of fields still scrolls sideways and the save button is still a bare checkmark. The fixed strip above it now reads "Editing item" or "New item" with the "10 saved" link at the end of that line, then "Item 5 · Potato" ("Item 5" until an item is chosen; a long name wraps to three lines), then the quantity with its packaging, "99 Bag", following the Quantity field as it is typed. A screen reader hears "Editing item 5, Potato, quantity 99, Bag, View 10 saved items".
+
+### Dispatch
+
+- **The Review step circle saves like Next (UX-01).** On the Items step the circle used to open Review directly, which showed a corrected item with its old value. It now does what the footer's Next does: an item in the form, new or a correction, is saved first. With no item at all it says "Add an item first". Dispatch still asks nothing before it saves.
+- **The Details circle, a swipe right and the Back key ask before going back.** They show "Go back to details?" as the footer's Back does, when there are saved items or a valid item in the form. They used to go back at once.
+- **Next stops on an invalid correction.** A correction that cannot be saved (no bags, or more than the lot holds) stays on the Items step with "Check the item" and its field marked; it used to go on to Review with the old value. Above the lot's limit the field shows the one message that names the limit.
+
+### Weights
+
+- **A weight is the weight of one package and reads "50 kg each" on every screen (UX-06).** A lot stores one weight, that of one bag, box or crate, and "50 kg" beside a quantity read like a total. It now says "each" wherever it is shown or read out: the GRN saved-items sheet, Review and details; the Dispatch Items step, lot picker, saved-items sheet, Review ("Weight 50 kg each", was "Unit weight") and details tabs; the order item card, the Add items picker and the order's change history; the invoice items table and invoice details; the stock summary and item stock summary reports. One helper, `formatWeightEach`, writes it in both languages (Gujarati "દરેક ૫૦ કિલો").
+- **The GRN entry field is "Weight each",** read out as "Weight each, in kilograms", and it is wider (152, was 117) so the label stays on one line at large text. The GRN list's weight filter is "Weight each" too. The narrow weight column of the GRN list, the dispatch card and the recent dispatched order card is headed "Kg each" over the plain number, with a dash for a lot without a weight.
+- **Total weights are no longer shown.** Removed: the "Total weight" badge of the GRN saved-items sheet and the total under the stock tag of a GRN list card; the "Weight" badge of the Dispatch saved-items sheet, "Total weight" in Dispatch Review (details card, summary and each opened item) and the total under the bags on a dispatch card; the weight of each dispatch and of each line in the Dispatch activity report, with its Weight sort (a Weight sort a phone still remembers opens on date, newest first); and the "Total weight" tile of the Operations dashboard, which leaves three tiles under "Right now".
+- **A lot without a weight shows none.** No weight tag, row or spoken part is drawn for a missing or zero weight; several Dispatch screens used to print "0 kg".
+- No price changes: the weight of one package still picks the price band of an invoice line (the grouped line's field is renamed `weight_each`; it never held a total).
+
+### Gujarati, for review
+
+- New or changed Gujarati strings await the owner's review: `common.weightEach`, `lists.card.colKgEach`, `lists.order.chooseBusiness`, `lists.order.chooseBusinessHint`, `lists.order.businessesFailed`, `lists.order.noBusinessTitle`, `lists.order.noBusinessMessage`, `orders.catalog.discardTitle`, `orders.catalog.discardMessage`, `orders.catalog.discardSelections`, `orders.catalog.savingProgress`, `orders.catalog.notSavedSummary`, `orders.catalog.reasonStock`, `orders.catalog.reasonAlreadyInOrder`, `orders.catalog.reasonBelowDispatched`, `orders.catalog.reasonOrderClosed`, `orders.catalog.reasonNotSaved`, `grn.item.itemNumberWithName`, `grn.item.quantityWithPackaging`, `grn.item.a11yViewSaved`, `grn.item.weightInputLabel` (changed), `grn.itemsStep.saveChangesTitle`, `grn.itemsStep.saveChangesMessage`, `grn.itemsStep.discardChanges`, `grn.itemsStep.saveChanges`, `dispatch.listRow.noWeight`, `dispatch.listRow.noWeightRack`, `invoice.table.groupA11yNoWeight`, and the word `each` ("દરેક {w}") in `src/i18n/locales/common.ts`. The glossary has two new Draft rows: દરેક for "each" and દરેકનું વજન for "Weight each".
+- Text keys nothing reads any more are deleted in both languages: `grn.review.weightEach`, `grn.item.totalWeightLabel`, `grn.itemsStep.fillRequired`, `grn.itemsStep.fixHighlightedAdding`, `reports.stockSummary.weightEach`, `reports.operations.totalWeight`, `reports.operations.kg`, `dispatch.review.totalWeight`, `dispatch.review.unitWeight`, `lists.card.colKg`, `lists.order.selectExisting`, `lists.order.noAssignedCustomer`, `orders.manage.couldNotUpdateTitle`, `orders.manage.someNotUpdatedTitle`, `orders.manage.someNotUpdatedMessage`.
+
 ## Unreleased — live sensors (2026-10-13)
 
 Needs backend migration 74 (`sensor_latest`, `get_sensor_device`, the new `get_sensor_polling_data`): merge and deploy the backend first.
@@ -398,6 +436,8 @@ After the device runs (2026-10-12):
   sort remembered from before opens on date, newest first. Since changed: the
   Weight sort is offered again when the server sends weights (see "Dispatch
   activity: weights" below).
+  Note (2026-10-14): removed again, see the note under "Dispatch activity:
+  weights" below.
 - **Dispatch activity: opening a dispatch.** The control that opens a dispatch
   from its card appears only when the server sends the dispatch's id, which
   **needs backend migration 57**; against an older backend the cards open and
@@ -414,6 +454,10 @@ After the device runs (2026-10-12):
   date, newest first (the remembered choice is kept and comes back once weights
   are sent). The report PDF has no weight column, so a PDF shared while sorted
   by Weight is in its own order.
+  Note (2026-10-14): the weights on the cards and lines and the Weight sort
+  were removed on 2026-10-14, because they are totals (bags × the weight of
+  one bag) and total weights are no longer shown; see "phone review fixes
+  (2026-10-14)" above. The report sorts by Date, Dispatch number and Bags.
 - **Start-up.** Neither `reportPrefsSlice` nor `listFilterSlice` imports
   `authSlice` any more. Both react to sign-out by the action's type string,
   `'auth/logout/fulfilled'`, so the "Require cycle" warning at start-up
