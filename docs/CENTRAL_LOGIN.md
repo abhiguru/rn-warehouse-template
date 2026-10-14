@@ -38,7 +38,9 @@ keeps all of its data, and alone decides who may see it.
   (audience = the facility's origin, as in RFC 8707 resource indicators), valid for a few
   minutes and usable once. Central does not log which facility was requested.
 - Publishes the **facility catalogue**: a public, signed list of member facilities
-  (id, name, city, origin, operator). It is not tied to any user.
+  (id, name, town and district, origin, operator, and from central 0.8.0 whether the service
+  reached the facility at its last check). A member with no app server yet is listed with no
+  origin. It is not tied to any user.
 
 ### Facility backend (this template's backend)
 - Operator setting: trust the association issuer and its JWKS (off for installs that are
@@ -59,7 +61,7 @@ The target; what exists is under [The app as built](#the-app-as-built).
 2. **Verify code**: auto-read on Android (SMS Retriever), resend timer, change number.
 3. **My facilities**: the person's own list, kept on the device per central user, with a
    status per facility: Approved, Requested, Revoked. "Add facility" opens the catalogue
-   (search by name or city) or scans a facility QR code. With exactly one approved facility
+   (search by name, town or district) or scans a facility QR code. With exactly one approved facility
    the list is skipped; the last facility used is preselected.
 4. **Inside a facility**: the facility name is always visible in the header with a one-tap
    switcher. Switching clears that facility's caches and navigation, reusing today's
@@ -215,11 +217,46 @@ person's access, and a single network blip must not stop the start-up skip. With
 facility and nothing waiting, the list is skipped once at start (and after a new central
 sign-in) and that facility is opened; "Switch facility" always shows the list.
 
-**Add facility** (`app/facility-catalogue.tsx`, `app/facility-address.tsx`). The catalogue
-from `GET /v1/facilities`, searched by name or city, with loading, empty, no-match and error
-states. "Enter address" reuses the server address screen (typed or scanned from the
+**Add facility** (`app/facility-catalogue.tsx`, `src/config/catalogueView.ts`,
+`app/facility-address.tsx`). The catalogue from `GET /v1/facilities`, searched by name, town
+or district (and the older `city`), with loading, empty, no-match and error states and pull to
+refresh. "Enter address" reuses the server address screen (typed or scanned from the
 facility's QR code) for a facility that is not listed. Either way the facility goes on the
 list and is opened.
+
+What the app reads from each catalogue entry (`readCatalogueToken` in
+`src/config/centralSession.ts`); it reads the catalogue of central 0.8.0 and the older one:
+
+| Field | Read as |
+|---|---|
+| `id` | A non-empty string; a second entry with the same id is dropped |
+| `name` | Trimmed; an entry without a name is dropped |
+| `town`, `city` | The same place (0.8.0 sends both, the older catalogue only `city`); each falls back to the other |
+| `district` | `''` when missing or null |
+| `origin` | A bare lower-case `https://` origin, or `null` for a member with no app server yet. Anything else (missing, `http://`, a path, upper case) drops the entry: a mistake at the association is never shown as "No app server yet". A second entry with the same origin is dropped |
+| `online` | Only a real boolean; `null` (not reported) when missing, not a boolean, or the entry has no origin |
+| `last_seen_at` | Kept when `Date.parse` reads it, otherwise `null` |
+
+Each row has one tag (style guide §3.5), the place as "Town, District" (the district left out
+when there is none or it is the town), and the rows are in this order:
+
+| Availability | Tag | Order | Tap |
+|---|---|---|---|
+| `online: true` | Online (positive) | first, by name | Added to My facilities and opened |
+| `online` not reported (older catalogue) | none | first, by name, with the online ones | Added and opened |
+| `online: false` | Offline (negative), with "Last seen 5 min ago" (or "Last seen just now", or "Not reached yet" when `last_seen_at` is null) | after them, by name | Added and opened: the check may be a minute old, and a facility that cannot be reached gets the message of the table under Opening a facility |
+| `origin: null` | No app server yet (neutral), the row greyed with `text.secondary` and `icon.secondary`, an information icon in place of the chevron | last, by name | Only a dialog, "<name> is not on the app yet", which says the cold storage has not set up its app server; nothing is added, opened or navigated to |
+
+Names are compared without regard to case or accents, then by id. "On your list" is a
+footnote line with a check under a row already on My facilities, not a second tag.
+
+The catalogue is kept in memory for 60 seconds (it was 10 minutes while it said nothing about
+availability); "Try again" and pull to refresh always ask the service. Every catalogue request carries
+`Cache-Control: no-cache`: Android's HTTP cache (OkHttp) honours the service's `max-age` (30
+seconds from central 0.8.0) and would otherwise answer a forced read with its stored copy.
+Pull to refresh keeps the rows while it waits; when it fails the rows stay and one line under
+the search field says "Couldn't refresh the list." with the reason. Picking a facility puts it
+on My facilities with its town as the place.
 
 **Opening a facility** (`src/config/openFacility.ts`), in this order:
 
@@ -375,6 +412,11 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   hand-over through the real router, route guard and screens, and the ways back from the
   waiting screen and the code step; none of it has been re-run on a device since the fixes.
 - The Gujarati text is a draft for the owner's wording review.
+- The catalogue's availability (2026-10-14) rests on the Jest tests (`src/config/__tests__/catalogueView.test.ts`,
+  the catalogue part of `centralSession.test.ts` and of `src/tests/components/CentralLoginScreens.test.tsx`).
+  Not run on a phone yet: a facility going Offline and back Online through the service's check
+  and pull to refresh (how fresh the tag is on a real phone, with Android's HTTP cache), the
+  greyed rows and their dialog, and the new catalogue texts in Gujarati.
 
 ## Open questions
 

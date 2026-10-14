@@ -86,6 +86,7 @@ in Gujarati script; **English** = left in English letters.
 | Stock summary | સ્ટોકનો સારાંશ | translate | Checked |
 | Stock aging | માલ કેટલા દિવસથી પડ્યો છે | translate | Owner's choice |
 | Facility (one cold storage) | કોલ્ડ સ્ટોરેજ | Gujarati letters | Owner's choice |
+| District | જિલ્લો | translate | Draft |
 | Warehouse, godown | વખાર | translate | Owner's choice |
 | Photo | ફોટો | Gujarati letters | Checked |
 | Order status: open | બાકી | translate | Owner's choice |

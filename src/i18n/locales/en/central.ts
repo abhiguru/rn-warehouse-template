@@ -34,19 +34,36 @@ export const central = {
     },
   },
   catalogue: {
-    searchPlaceholder: 'Search by name or city',
+    searchPlaceholder: 'Search by name, town or district',
     searchLabel: 'Search facilities',
     loading: 'Loading facilities',
     emptyTitle: 'No facilities listed yet',
     emptyMessage: 'The association has not listed any cold storage yet. You can enter a facility address instead.',
     noMatchTitle: 'No facility matches "{{search}}"',
-    noMatchMessage: 'Check the spelling, or search by city.',
+    noMatchMessage: 'Check the spelling, or search by town or district.',
     errorTitle: "Couldn't load the facilities",
+    // Pull to refresh failed; the list stays. {{message}} is the reason (central.errors).
+    refreshFailed: "Couldn't refresh the list. {{message}}",
     enterAddress: 'Enter address',
     enterAddressHint: 'For a facility that is not in the list',
+    // A footnote line on a row the person already has on My facilities.
     onYourList: 'On your list',
-    cellLabel: '{{name}}, {{city}}',
+    // Whether the association's service reached the facility at its last check, about once a
+    // minute (style guide §3.5). A screen reader hears the row as its visible lines, joined by commas.
+    status: {
+      online: 'Online',
+      offline: 'Offline',
+      noServer: 'No app server yet',
+    },
+    // Under an Offline row: when the association's service last reached the facility.
+    lastSeen: 'Last seen {{time}}',
+    lastSeenJustNow: 'Last seen just now',
+    neverSeen: 'Not reached yet',
     cellHint: 'Adds this facility to your list and opens it',
+    // A member with no app server yet: shown greyed, never added or opened. {{name}} is its name.
+    noServerTitle: '{{name}} is not on the app yet',
+    noServerMessage: "This cold storage hasn't set up its app server yet, so it can't be added. When it has, it shows here as Online.",
+    noServerHint: "Explains why this cold storage can't be added yet",
   },
   link: {
     // {{facility}} is the facility's name.

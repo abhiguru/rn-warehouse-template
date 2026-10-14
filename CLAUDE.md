@@ -35,6 +35,7 @@ opening a facility (`src/config/openFacility.ts`: discover, the shared switch se
 that screens and the route guard share is in `src/config/centralState.ts`, outside React,
 because a server change rebuilds the navigation tree. With central login off every screen and
 route decision must stay exactly as described below; keep both paths tested.
+The catalogue (`app/facility-catalogue.tsx`, `src/config/catalogueView.ts`) reads central 0.8.0 and older catalogues: Online/Offline/No app server yet tags, and an entry with `origin: null` is never added or opened.
 
 ## How it works without central login
 
