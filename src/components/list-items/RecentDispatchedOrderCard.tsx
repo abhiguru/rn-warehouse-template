@@ -396,7 +396,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
                   </Text>
                   {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
                   {item.package_mark ? (
-                    <Text style={styles.tableCellItemMark} numberOfLines={1}>
+                    <Text style={styles.tableCellItemMark}>
                       {item.package_mark}
                     </Text>
                   ) : null}

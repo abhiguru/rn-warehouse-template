@@ -766,7 +766,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           if (result.success) {
             setSnackbarMessage(tr('grn.review.printSent'));
           } else {
-            setSnackbarMessage(tr('grn.review.printFailed'));
+            setSnackbarMessage(tr(result.unconfirmed ? 'grn.review.printUnconfirmed' : 'grn.review.printFailed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

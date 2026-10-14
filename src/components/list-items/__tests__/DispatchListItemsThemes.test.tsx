@@ -307,6 +307,8 @@ describe('the item cell of the dispatch cards', () => {
     expect(nameText.props.numberOfLines).toBe(2);
     expect(nameText.props.ellipsizeMode).toBe('tail');
     expect(rackText.props.numberOfLines).toBeUndefined();
+    // The mark wraps onto a second line; it is not cut with an ellipsis.
+    expect(textNode(tree, 'PM').props.numberOfLines).toBeUndefined();
     expect(StyleSheet.flatten(rackText.props.style)).toMatchObject({ fontSize: 12 });
     // What the row says is unchanged.
     expect(labels(tree)).toContain(`${name}, rack B-14, 50 kg each, GRN 311, 5 dispatched`);

@@ -31,7 +31,6 @@ const EMPTY_RESPONSE: GRNActivityData = {
     total_grns: 0,
     total_items: 0,
     total_quantity: 0,
-    total_weight_kg: 0,
     total_invoiced_grns: 0,
     total_images: 0,
   },
@@ -47,7 +46,6 @@ const EMPTY_ALL_RESPONSE: AllGRNActivityData = {
     total_customers: 0,
     total_items: 0,
     total_quantity: 0,
-    total_weight_kg: 0,
   },
   by_customer: [],
 };
@@ -131,7 +129,6 @@ export async function getCustomerGRNActivity(
       total_grns: responseData?.summary?.total_grns ?? 0,
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight_kg: responseData?.summary?.total_weight_kg ?? 0,
       total_invoiced_grns: responseData?.summary?.total_invoiced_grns ?? 0,
       total_images: responseData?.summary?.total_images ?? 0,
     };
@@ -147,7 +144,6 @@ export async function getCustomerGRNActivity(
         note: grn.note ?? null,
         total_items: grn.total_items ?? 0,
         total_qty: grn.total_qty ?? 0,
-        total_weight: grn.total_weight ?? 0,
         image_count: grn.image_count ?? 0,
         invoice_status: {
           is_invoiced: grn.invoice_status?.is_invoiced ?? false,
@@ -250,7 +246,6 @@ export async function getAllGRNActivity(
       total_customers: responseData?.summary?.total_customers ?? 0,
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight_kg: responseData?.summary?.total_weight ?? 0, // Backend uses total_weight
     };
 
     const byCustomer: CustomerGRNSummary[] = (
@@ -260,7 +255,6 @@ export async function getAllGRNActivity(
       customer_name: customer.customer_name,
       grn_count: customer.grn_count ?? 0,
       total_quantity: customer.total_qty ?? 0, // Backend uses total_qty
-      total_weight: customer.total_weight ?? 0,
       latest_grn_date: customer.latest_grn ?? '', // Backend uses latest_grn
     }));
 

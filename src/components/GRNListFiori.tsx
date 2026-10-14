@@ -632,7 +632,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         );
       } else {
         logger.warn('Print failed:', result.error);
-        setSnackbarMessage(translate('lists.grn.printFailedPrinter'));
+        setSnackbarMessage(
+          result.unconfirmed ? translate('grn.details.printUnconfirmed') : translate('lists.grn.printFailedPrinter')
+        );
       }
       setSnackbarVisible(true);
     } catch (error) {

@@ -29,6 +29,7 @@ export const pricingEdit = {
     addBand: 'Add weight band',
     removeBand: 'Remove the {{band}} band',
     outsidePay: 'Bags outside these weights pay the default rate.',
+    gapHint: '{{band}}: default rate',
     labour: 'Labour per bag',
     tax: 'Tax',
     oneTimeLabour: 'Labour is included in a one-time rate.',
@@ -63,6 +64,8 @@ export const pricingEdit = {
     err: {
       rent: 'Enter a rent of 0 or more.',
       wholeKg: 'Enter whole kilograms, for example 40.',
+      fromOverlap: 'The band before ends at {{kg}} kg. Start at {{next}} kg or more.',
+      gapDefault: 'A default rate cannot have a gap: every weight needs a rate.',
       afterStart: 'Must be more than {{kg}} kg; this band starts at {{start}} kg.',
       labour: 'Enter a labour rate of 0 or more.',
       tax: 'Enter a tax rate from 0 to 100.',

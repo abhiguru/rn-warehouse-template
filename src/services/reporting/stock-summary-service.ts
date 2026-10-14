@@ -29,7 +29,6 @@ const EMPTY_RESPONSE: StockSummaryData = {
   summary: {
     total_items: 0,
     total_quantity: 0,
-    total_weight_kg: 0,
     oldest_stock_date: null,
     grn_count: 0,
     grn_count_empty: 0,
@@ -46,7 +45,6 @@ const EMPTY_ALL_RESPONSE: AllStockSummaryData = {
     total_customers_with_stock: 0,
     total_items: 0,
     total_quantity: 0,
-    total_weight_kg: 0,
   },
   customers: [],
 };
@@ -110,7 +108,6 @@ export async function getCustomerStockSummary(
     const summary: StockSummaryKPIs = {
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight_kg: responseData?.summary?.total_weight_kg ?? 0,
       oldest_stock_date: responseData?.summary?.oldest_stock_date ?? null,
       grn_count: responseData?.summary?.grn_count ?? 0,
       grn_count_empty: responseData?.summary?.grn_count_empty ?? 0,
@@ -137,7 +134,6 @@ export async function getCustomerStockSummary(
         item_id: item.item_id,
         item_name: item.item_name,
         total_stock: item.total_stock ?? 0,
-        total_weight: item.total_weight ?? 0,
         grn_count: item.grn_count ?? 0,
         grns: mapGrns(item.grns),
       }));
@@ -204,7 +200,6 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
         responseData?.summary?.total_customers_with_stock ?? 0,
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight_kg: responseData?.summary?.total_weight_kg ?? 0,
     };
 
     const customers: CustomerStockRow[] = (responseData?.customers ?? []).map(
@@ -212,7 +207,6 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
         customer_id: customer.customer_id,
         customer_name: customer.customer_name,
         total_stock: customer.total_stock ?? 0,
-        total_weight: customer.total_weight ?? 0,
         item_count: customer.item_count ?? 0,
         grn_count: customer.grn_count ?? 0,
       })
