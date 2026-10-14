@@ -173,7 +173,8 @@ describe('GRN items step, Next', () => {
     expect(after[0]).toBe(beforeNext[0]);
     expect(after[1]).toBe(beforeNext[1]);
     expect(after[2]).toBe(beforeNext[2]);
-    expect(itemActions()).toHaveLength(1);
+    // "Save item" stores the typed line as the checkmark does, then Next stores the step's lines in one action.
+    expect(itemActions().map((action) => action.type)).toEqual([addItem.type, reconcileItems.type]);
     expect(router.push).toHaveBeenCalledWith(`/grn-edit/${GRN_ID}/step3`);
     await act(async () => { tree.unmount(); });
   });

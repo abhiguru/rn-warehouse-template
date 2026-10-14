@@ -336,6 +336,19 @@ const grnFormSlice = createSlice({
         item.trl_images = item.trl_images.filter(img => img.id !== action.payload.imageId);
       }
     },
+    /**
+     * "Discard changes" on a saved line: its photos are put back as they were when
+     * the line was opened, and none of them is deleted by the save any more.
+     */
+    restoreItemImages: (state, action: PayloadAction<{ itemId: string; images: GRNImageData[] }>) => {
+      const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
+      if (!item) return;
+      item.trl_images = action.payload.images;
+      const restored = new Set(action.payload.images.map(img => img.id));
+      if (state.removedImages.some(removed => restored.has(removed.id))) {
+        state.removedImages = state.removedImages.filter(removed => !restored.has(removed.id));
+      }
+    },
 
     // UI state management
     setCurrentStep: (state, action: PayloadAction<number>) => {
@@ -451,6 +464,7 @@ export const {
   completeItemImageUpload,
   failItemImageUpload,
   removeItemImage,
+  restoreItemImages,
   setCurrentStep,
   setIsLoading,
   setIsSaving,
@@ -492,7 +506,6 @@ export const selectGRNFormTotals = createSelector(
   [selectGRNFormItems],
   (items) => ({
     totalQty: items.reduce((sum, item) => sum + (item.qty || 0), 0),
-    totalWeight: items.reduce((sum, item) => sum + ((item.qty || 0) * (item.weight || 0)), 0),
     itemCount: items.length,
   })
 );

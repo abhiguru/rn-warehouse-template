@@ -140,7 +140,6 @@ export const grn = {
     quantityWhole: 'Enter a whole number of 1 or more for the quantity.',
     quantityWholeForItem: 'Enter a whole number of 1 or more for the quantity of {{item}}.',
     quantityWholeEachItem: 'Enter a whole number of 1 or more for the quantity of each item.',
-    fixHighlightedAdding: 'Fix the highlighted fields in the item you are adding.',
     fixHighlightedSave: 'Fix the highlighted fields, then save the item.',
     photoRemovedTitle: 'Photo removed',
     photoRemovedPartial: "The photo is removed from this item, but we couldn't confirm the stored copy was deleted.",
@@ -153,6 +152,10 @@ export const grn = {
     saveItemMessage: "The item you're adding hasn't been saved yet.",
     discardItem: 'Discard item',
     saveItem: 'Save item',
+    saveChangesTitle: 'Save changes to this item?',
+    saveChangesMessage: "Your changes to item {{position}} ({{name}}) haven't been saved yet.",
+    discardChanges: 'Discard changes',
+    saveChanges: 'Save changes',
     openingReview: 'Opening review…',
   },
 
