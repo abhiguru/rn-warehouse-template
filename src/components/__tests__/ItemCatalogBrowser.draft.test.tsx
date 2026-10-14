@@ -260,6 +260,35 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
   });
 });
 
+// The sheet is flung down and, before its closing animation ends, another way out is
+// pressed: that one asks, and the library reports the dismissal while the question is open.
+it.each(['Back', 'Cancel', 'scrim'])('shows the sheet again on "Keep editing" when a swipe took it away while the %s question was open', async way => {
+  await open([saved('lot-b', 2)]);
+  await choose('Fictional potatoes');
+  await leaveBy(way);
+  expect(showAlert).toHaveBeenCalledTimes(1);
+  const presented = mockSheet.present.mock.calls.length;
+  await act(async () => { mockSheet.props.onDismiss?.(); });
+  // The question on screen answers for the swipe too: it is not asked a second time.
+  expect(showAlert).toHaveBeenCalledTimes(1);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(mockSheet.present.mock.calls.length - presented).toBe(0);
+
+  await answer('Keep editing');
+  expect(mockSheet.present.mock.calls.length - presented).toBe(1);
+  expect(mockSheet.dismiss).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+  expect(addButtonText()).toBe('Add (1)');
+  expect(selectedText('Fictional potatoes')).toBe(true);
+
+  // The sheet is up again, so the same answer the next time does not present it once more.
+  await leaveBy(way);
+  expect(showAlert).toHaveBeenCalledTimes(2);
+  await answer('Keep editing');
+  expect(mockSheet.present.mock.calls.length - presented).toBe(1);
+  expect(addButtonText()).toBe('Add (1)');
+});
+
 it('takes the tap outside itself: the library\'s backdrop is told not to close the sheet', async () => {
   await open([]);
   const backdrop = tree!.root.findByType('Backdrop' as never);
