@@ -290,7 +290,7 @@ describe('GRN rows', () => {
     expect(grnButtons()).toHaveLength(1);
     const row = grnButtons()[0];
     expect(row.props.accessibilityLabel).toBe(
-      `GRN 311, mark RS, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg, 60 of 100 in stock`
+      `GRN 311, mark RS, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg each, 60 of 100 in stock`
     );
     expect(pressedStyle(row, false).minHeight).toBeGreaterThanOrEqual(touchTarget);
     act(() => row.props.onPress());
@@ -335,19 +335,19 @@ describe('GRN rows', () => {
     // No status tag in the row: a tag is one line and shrinks, so it would cut the mark.
     expect(tree.root.findAllByType(StatusTag)).toHaveLength(0);
     const line = textNodes().find(node => [].concat(node.props.children).join('').includes(LONG_MARK)) as ReactTestInstance;
-    expect([].concat(line.props.children).join('')).toBe(`Mark ${LONG_MARK} · Rack B-14 · 1,250.5 kg`);
+    expect([].concat(line.props.children).join('')).toBe(`Mark ${LONG_MARK} · Rack B-14 · 1,250.5 kg each`);
     expect(line.props.numberOfLines).toBeUndefined();
     expect(line.props.ellipsizeMode).toBeUndefined();
     expect(flat(line.props.style)).toMatchObject({ fontSize: typography.footnote.fontSize, color: t.text.secondary });
     // The row's label names the mark once, after the GRN number.
     expect(grnButtons()[0].props.accessibilityLabel).toBe(
-      `GRN 311, mark ${LONG_MARK}, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg, 60 of 100 in stock`
+      `GRN 311, mark ${LONG_MARK}, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg each, 60 of 100 in stock`
     );
   });
 
   it('a row without a mark has no mark fact', () => {
     const { texts } = render(baseProps({ isExpanded: true, grns: { status: 'loaded', rows: [{ ...ROWS[0], packageMark: null }] } }));
-    expect(texts()).toContain('Rack B-14 · 1,250.5 kg');
+    expect(texts()).toContain('Rack B-14 · 1,250.5 kg each');
     expect(texts().filter(text => text.startsWith('Mark '))).toEqual([]);
   });
 
@@ -513,5 +513,48 @@ describe('in Gujarati', () => {
     const { texts } = render(baseProps({ stock: 1250, total: 4000, isExpanded: true }));
     expect(texts()).toEqual(expect.arrayContaining(['૧,૨૫૦', '૪,૦૦૦માંથી', '૬૦', 'આવક પાવતી 311', `આવક પાવતી ${LONG_GR_NO}`]));
     expect(texts()).not.toContain('1,250');
+  });
+});
+
+// A lot stores one weight, the weight of one bag, box or crate. Both reports say "each":
+// the item stock summary gives it as `weight` (a fact of the footnote line), the stock
+// summary as `weightEach` (under the stock figure). Neither is ever a total.
+describe('the weight of a lot', () => {
+  const lot = (over: Partial<StockGRNRowData>): StockGRNRowData => ({ key: 'w', grnId: 'g-9', grNo: 'A0042', rack: 'B-14', stock: 10, total: 100, ...over });
+  const open = (over: Partial<StockGRNRowData>) => render(baseProps({ isExpanded: true, grns: { status: 'loaded', rows: [lot(over)] } }));
+  const weightWords = (texts: string[]) => texts.filter(text => /kg|each|કિલો|દરેક/.test(text) && text !== '50 kg bag · 2 GRNs' && text !== '50 kg bag');
+
+  it('item stock summary: "Rack B-14 · 50 kg each" on the footnote line, and read so', () => {
+    const { texts, grnButtons } = open({ weight: 50 });
+    expect(texts()).toContain('Rack B-14 · 50 kg each');
+    expect(texts()).not.toContain('Rack B-14 · 50 kg');
+    expect(grnButtons()[0].props.accessibilityLabel).toBe('GRN A0042, Rack B-14 · 50 kg each, 10 of 100 in stock');
+  });
+
+  it('stock summary: "50 kg each" under the stock figure, and read last', () => {
+    const { texts, grnButtons } = open({ weightEach: 50 });
+    expect(texts()).toEqual(expect.arrayContaining(['Rack B-14', '10', 'of 100', '50 kg each']));
+    expect(grnButtons()[0].props.accessibilityLabel).toBe('GRN A0042, Rack B-14, 10 of 100 in stock, 50 kg each');
+  });
+
+  it.each([
+    ['weight 0', { weight: 0 }],
+    ['weight null', { weight: null }],
+    ['a negative weight', { weight: -5 }],
+    ['weightEach 0', { weightEach: 0 }],
+    ['weightEach null', { weightEach: null }],
+    ['no weight field', {}],
+  ])('a lot with %s shows and reads no weight', (_name, over) => {
+    const { texts, grnButtons } = open(over);
+    expect(texts()).toContain('Rack B-14');
+    expect(weightWords(texts())).toEqual([]);
+    expect(grnButtons()[0].props.accessibilityLabel).toBe('GRN A0042, Rack B-14, 10 of 100 in stock');
+  });
+
+  it('in Gujarati both read "દરેક ૫૦ કિલો"', () => {
+    setLanguage('gu');
+    // Gujarati stacks the facts: the rack and the weight each have a line.
+    expect(open({ weight: 50 }).texts()).toEqual(expect.arrayContaining(['રેક B-14', 'દરેક ૫૦ કિલો']));
+    expect(open({ weightEach: 1250.5 }).texts()).toContain('દરેક ૧,૨૫૦.૫ કિલો');
   });
 });

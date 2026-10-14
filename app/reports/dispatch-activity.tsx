@@ -27,12 +27,9 @@ import { HighlightedText, matchesAnyWord } from '@/features/filters/components/H
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports';
 import {
   DISPATCH_ACTIVITY_CUSTOMER,
-  DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT,
   DISPATCH_ACTIVITY_CUSTOMERS,
   dispatchCustomersView,
   dispatchRecordsView,
-  dispatchWeight,
-  hasDispatchWeights,
 } from '@/features/filters/configs/reports/dispatchActivity';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
@@ -45,9 +42,9 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/reporting';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
-import { fontWeight, iconSize, layout, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'dispatch-activity';
 
@@ -90,29 +87,6 @@ const makeStyles = (t: ThemeTokens) => ({
   figures: { alignItems: 'flex-end' as const },
   figureValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   figureLabel: { ...typography.caption1, color: t.text.secondary },
-  // A card with a weight. The weight is not in the figures column: a column is as wide as its
-  // widest line, so "1,280 kg" took from the title the width that "960 kg" left it, and cards in one
-  // list had different shapes. The title, the supervisor and the bags keep the places they have on a
-  // card without a weight; the weight has the line under them, across the whole text block, ending
-  // at the right edge the bags end at, on every card (tabular: the digits line up down the list).
-  weighed: { flex: 1, gap: space.xxs },
-  weighedTop: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.md },
-  // The date (when no heading gives it) shares the weight's line. At a large font a long date and a
-  // long weight do not fit side by side: the weight then drops to a line of its own, whole.
-  weightLine: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    alignItems: 'baseline' as const,
-    columnGap: space.md,
-    rowGap: space.xxs,
-  },
-  figureWeight: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-    textAlign: 'right' as const,
-    marginLeft: 'auto' as const,
-  },
   openButton: {
     width: touchTarget,
     minHeight: touchTarget,
@@ -313,13 +287,9 @@ interface CustomerReportProps {
 }
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
-  // Weight is a sort only while the dispatches have weights (an older server sends none, and a sort over
-  // zeros orders nothing). The answer decides, but it is asked for with the period the filters hold, so the
-  // choice between the two configurations (one list key: the stored search and sort carry over) is state,
-  // updated during the render that first sees the answer so that no frame is drawn with the wrong sort.
-  const [offerWeight, setOfferWeight] = useState(false);
-  const config = offerWeight ? DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT : DISPATCH_ACTIVITY_CUSTOMER;
-  const filters = useReportFilters(config, { scope: customerId });
+  // Date, Dispatch number and Bags. A sort by weight that this phone remembers from an earlier
+  // version is no longer offered, so the report opens on its default (useReportFilters → currentSort).
+  const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<DispatchActivityData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
@@ -327,9 +297,6 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     fallbackError: tr('reports.dispatchActivity.loadError'),
   });
   const { data } = query;
-  // With no answer (the first load, or a new period's) the choice stays as it was: the sort chip must not flicker.
-  const answeredWithWeights = data ? hasDispatchWeights(data.dispatches) : offerWeight;
-  if (answeredWithWeights !== offerWeight) setOfferWeight(answeredWithWeights);
   const dispatches = useMemo(() => dispatchRecordsView(data?.dispatches ?? [], view), [data, view]);
   // Headings by day only make sense while the dispatches are in date order (§14.5).
   const byDate = view.sort?.field === 'date';
@@ -402,7 +369,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       title={tr('reports.titles.dispatchActivity')}
       subtitle={customerName || undefined}
       actions={actions}
-      filters={{ config, state: filters }}
+      filters={{ config: DISPATCH_ACTIVITY_CUSTOMER, state: filters }}
       query={query}
       kpis={kpis}
       status={{ range: period, shown: dispatches.length, total: data?.dispatches.length }}
@@ -451,9 +418,8 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
   const title = tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.disp_no) });
   const supervisor = dispatch.supervisor_name || '—';
   const items = dispatch.items ?? [];
-  // The weight when the server gave one (above zero); a card without one shows and reads as it always did.
-  const weightKg = dispatchWeight(dispatch);
-  const weight = weightKg === null ? null : formatWeight(weightKg);
+  // No weight: the one the server sends for a dispatch is a total (bags × the weight of one bag),
+  // and total weights are not shown (style guide §12.3).
   // With the items open, the search's words show in them; closed, the card names the items it found.
   const matched = expanded ? [] : hiddenMatches(dispatch, words, [title, supervisor]);
   const label = [
@@ -463,7 +429,6 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
       supervisor,
       bags: formatCount(dispatch.total_qty, 'bag'),
     }),
-    weight,
     ...matched,
   ]
     .filter(Boolean)
@@ -499,35 +464,13 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
             <View style={styles.objectIcon}>
               <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
             </View>
-            {weight ? (
-              <View style={styles.weighed}>
-                <View style={styles.weighedTop}>
-                  <View style={styles.objectContent}>
-                    {titleText}
-                    {supervisorText}
-                  </View>
-                  {bags}
-                </View>
-                <View style={styles.weightLine}>
-                  {dateText}
-                  <Text style={styles.figureWeight} {...singleLineText()}>
-                    {weight}
-                  </Text>
-                </View>
-                {matchedText}
-              </View>
-            ) : (
-              // No weight (an older server, or a dispatch it has none for): the card as it always was.
-              <>
-                <View style={styles.objectContent}>
-                  {titleText}
-                  {supervisorText}
-                  {dateText}
-                  {matchedText}
-                </View>
-                {bags}
-              </>
-            )}
+            <View style={styles.objectContent}>
+              {titleText}
+              {supervisorText}
+              {dateText}
+              {matchedText}
+            </View>
+            {bags}
             <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
           {dispatch.disp_id ? (
@@ -567,13 +510,12 @@ function ItemRow({ item, words, isLast, onOpenGrn }: ItemRowProps) {
   const grn = tr('reports.shared.grnNumber', { number: formatIdentifier(item.source_grn) });
   // Numbers are compared, never used as the left side of &&: 0 would be drawn as text.
   const ofQuantity = Number(item.orig_qty) > 0 && item.orig_qty !== item.qty ? formatNumber(item.orig_qty) : null;
-  const weight = Number(item.weight) > 0 ? formatWeight(item.weight) : null;
   const bags = formatCount(item.qty, 'bag');
-  // Everything the row shows, in the order it shows it.
+  // Everything the row shows, in the order it shows it. The line's weight is not among it: the
+  // server sends the line's total (bags × the weight of one bag), and total weights are not shown.
   const label = [
     item.item_name,
     ofQuantity ? tr('reports.dispatchActivity.bagsOf', { bags, quantity: ofQuantity }) : bags,
-    weight,
     grn,
     item.rack ? tr('reports.shared.rack', { rack: item.rack }) : null,
     item.package_mark ? tr('reports.shared.markA11y', { mark: item.package_mark }) : null,
@@ -603,7 +545,6 @@ function ItemRow({ item, words, isLast, onOpenGrn }: ItemRowProps) {
           <Text style={styles.itemQty}>{formatNumber(item.qty)}</Text>
           {ofQuantity ? <Text style={styles.itemSecondary}>{tr('reports.dispatchActivity.ofQuantity', { quantity: ofQuantity })}</Text> : null}
         </View>
-        {weight ? <Text style={styles.itemSecondary}>{weight}</Text> : null}
       </View>
       {item.source_grn_id ? <Icon name="chevron-right" size={iconSize.sm} color={t.icon.secondary} /> : null}
     </>

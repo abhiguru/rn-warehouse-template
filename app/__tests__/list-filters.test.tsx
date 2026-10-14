@@ -184,7 +184,7 @@ describe('Sort and filter page', () => {
   it('keeps a number field mounted while typing, so the keyboard stays on it', () => {
     const page = open();
     const input = () =>
-      page.renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === 'Weight, minimum, in kg')[0];
+      page.renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === 'Weight each, minimum, in kg')[0];
     const mounts = () => mockMounts.mock.calls.filter(([key]) => key === 'weight').length;
     expect(mounts()).toBe(1);
     // The first character turns the filter on; the field must be the same one, not a new copy.
@@ -198,7 +198,7 @@ describe('Sort and filter page', () => {
   it('empties a typed number field on Reset', () => {
     const page = open();
     const input = () =>
-      page.renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === 'Weight, minimum, in kg')[0];
+      page.renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === 'Weight each, minimum, in kg')[0];
     act(() => input().props.onChangeText('50'));
     expect(input().props.value).toBe('50');
     page.press('Reset all filters and the sort on this page');

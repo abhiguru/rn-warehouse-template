@@ -70,6 +70,7 @@ export const common: Translation<typeof source> = {
   total: 'કુલ',
   amount: 'રકમ',
   weight: 'વજન',
+  weightEach: 'દરેકનું વજન',
   quantity: 'નંગ',
   bags: 'નંગ',
   rack: 'રેક',

@@ -60,8 +60,8 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
     },
     { kind: 'picker', key: 'items', get label() { return t('common.item'); }, icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
     { kind: 'textRange', key: 'numberRange', get label() { return t('common.grnNumber'); }, icon: 'file-document-outline', get placeholder(): [string, string] { return [t('filters.range.from'), t('filters.range.to')]; } },
-    // Whole kilograms: the backend column is an integer.
-    { kind: 'numberRange', key: 'weight', get label() { return t('common.weight'); }, icon: 'weight-kilogram', get unit() { return t('filters.unit.kg'); }, integer: true },
+    // The weight of one package, in whole kilograms: the backend column is an integer.
+    { kind: 'numberRange', key: 'weight', get label() { return t('common.weightEach'); }, icon: 'weight-kilogram', get unit() { return t('filters.unit.kg'); }, integer: true },
     { kind: 'text', key: 'package', get label() { return t('filters.field.package'); }, icon: 'tag-outline', get placeholder() { return t('filters.placeholder.packageName'); } },
   ],
   fastFilters: ['stock', 'date', 'customers'],

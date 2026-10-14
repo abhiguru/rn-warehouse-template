@@ -9,7 +9,12 @@ import { groupInvoiceItems, invoiceGroupTotal, invoiceGroupTotals } from '../gro
 
 type OldGroup = GroupedInvoiceItems & { allItems: InvoiceItemData[] };
 
-/** The grouping as InvoiceItemsTable did it before (main 92a2a09), copied unchanged. */
+/**
+ * The grouping as InvoiceItemsTable did it before (main 92a2a09), copied unchanged but for the
+ * weight. The old group held one weight, the first line's, in a field called `total_weight`. A
+ * group can hold lots of different weights, so it now carries the distinct weights of its lines
+ * (`weights_each`), worked out here in another way than the grouping does.
+ */
 function oldGrouping(items: InvoiceItemData[]): OldGroup[] {
   const groups: OldGroup[] = [];
   const itemMap = new Map<string, OldGroup>();
@@ -20,7 +25,7 @@ function oldGrouping(items: InvoiceItemData[]): OldGroup[] {
         item_id: item.item_id,
         item_name: item.item_name,
         package_mark: item.package_mark,
-        total_weight: item.weight,
+        weights_each: [],
         gr_quantity: item.grn_original_qty,
         total_dispatched: 0,
         rack: item.rack,
@@ -38,7 +43,13 @@ function oldGrouping(items: InvoiceItemData[]): OldGroup[] {
     itemGroup.allItems.push(item);
     itemGroup.total_dispatched += item.qty;
   });
-  itemMap.forEach((group) => groups.push(group));
+  itemMap.forEach((group) => {
+    group.weights_each = group.allItems
+      .map((item) => item.weight)
+      .filter((weight, index, all) => weight > 0 && all.indexOf(weight) === index)
+      .sort((a, b) => a - b);
+    groups.push(group);
+  });
   return groups;
 }
 const oldTotal = (group: GroupedInvoiceItems) =>
@@ -127,5 +138,56 @@ describe('groupInvoiceItems', () => {
     expect(second[3]).not.toBe(first[3]);
     expect(second[3].allItems).toHaveLength(first[3].allItems.length - 1);
     second.forEach((group, i) => { if (i !== 3) expect(group).toBe(first[i]); });
+  });
+});
+
+/**
+ * Lines are grouped by catalogue item and mark, not by lot, so one group can hold lots whose
+ * bags weigh differently (a GRN with a 50 kg line and a 25 kg line of the same item and mark).
+ * The group took its one weight from the first line, and the header said "50 kg each" over the
+ * 25 kg lot too. The server prices every line by its own weight.
+ */
+describe('the weights of a group', () => {
+  /** One group (same item and mark) with a line for each given weight, in that order. */
+  const groupOf = (...lots: (number | null | undefined)[]) => {
+    const groups = groupInvoiceItems(lots.map((weight, n) => line(n, { weight: weight as number })));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].allItems).toHaveLength(lots.length);
+    return groups[0];
+  };
+
+  it.each<[string, (number | null | undefined)[], number[]]>([
+    ['lots of 50 kg and 25 kg: both weights, lightest first', [50, 25], [25, 50]],
+    ['two lots of 50 kg: the one weight, once', [50, 50], [50]],
+    ['a lot without a weight and a lot of 50 kg: the 50 kg alone', [0, 50], [50]],
+    ['three lots, one weight twice', [50, 25, 37.5, 25], [25, 37.5, 50]],
+    ['no lot with a weight: none', [0, null, undefined, NaN, Infinity, -5], []],
+    ['a weight sent as text is its number: "50" and 50 are one weight', ['50' as unknown as number, 50, '25' as unknown as number], [25, 50]],
+  ])('%s', (_name, lots, expected) => {
+    expect(groupOf(...lots).weights_each).toEqual(expected);
+  });
+
+  it('holds no single weight that could stand for every lot', () => {
+    const group = groupOf(50, 25);
+    expect(group).not.toHaveProperty('weight_each');
+    expect(group).not.toHaveProperty('total_weight');
+  });
+
+  it('keeps the lines, their order and the dispatched quantity as they were', () => {
+    const group = groupOf(50, 25);
+    expect(group.allItems.map((item) => item.weight)).toEqual([50, 25]);
+    expect(group.total_dispatched).toBe(group.allItems[0].qty + group.allItems[1].qty);
+  });
+
+  it('a group that is reused keeps its weights, and a changed line gives the new ones', () => {
+    const items = [line(0, { weight: 50 }), line(1, { weight: 25 })];
+    const first = groupInvoiceItems(items);
+    const again = groupInvoiceItems([...items], first);
+    expect(again[0]).toBe(first[0]);
+    expect(again[0].weights_each).toEqual([25, 50]);
+
+    const changed = groupInvoiceItems([items[0], { ...items[1], weight: 50 }], first);
+    expect(changed[0]).not.toBe(first[0]);
+    expect(changed[0].weights_each).toEqual([50]);
   });
 });

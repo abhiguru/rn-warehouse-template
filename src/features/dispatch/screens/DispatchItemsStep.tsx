@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import type { MutableRefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -56,13 +57,19 @@ import { isOtherCustomersStock } from '@/features/dispatch/utils/lotOwnership';
 import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQuantityInput';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
+    /**
+     * The phone's Back key. The route owns the key (`useBackHandler`); while this
+     * step is mounted it puts its own way back here, the one the footer's Back
+     * button takes, so the key asks "Go back to details?" as the button does.
+     */
+    backGuard?: MutableRefObject<(() => void) | null>;
 };
 
-export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
+export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
     const insets = useSafeAreaInsets();
@@ -561,7 +568,9 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         []
     );
 
-    // Handle cancel edit (edit mode only)
+    // "Stop editing this item" in the strip above the form, in a new dispatch and in an
+    // edited one: the correction is given up (after a question when the bags were changed)
+    // and the saved item stays as it was saved.
     const handleCancelEdit = useCallback(async () => {
         const originalItem = savedItems.find((item) => item.unique_id === editingItemId);
 
@@ -611,6 +620,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         });
         setSelectedGRN(null);
         setValidationErrors({});
+        // With the item, so the new form is never drawn with the text of the one it replaces.
+        setRejectedQuantityText(null);
     };
 
     // Check if user has entered significant data (lot + quantity)
@@ -669,12 +680,41 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         await navigateToStep(1);
     };
 
+    // The Back key takes the same way back. Set again after every drawing, so the
+    // key always asks about the items and the form as they are now.
+    useEffect(() => {
+        if (backGuard) backGuard.current = handleBack;
+    });
+    useEffect(() => {
+        if (!backGuard) return undefined;
+        return () => {
+            backGuard.current = null;
+        };
+    }, [backGuard]);
+
     // Handle next navigation
     const handleNext = async () => {
         const isEditing = editingItemId !== null;
 
         if (savedItems.length === 0 && !isCurrentItemValid) {
             showAlert(tr('dispatch.items.addFirstTitle'), tr('dispatch.items.addFirstMessage'));
+            return;
+        }
+
+        // A correction that cannot be saved (no bags, or more than the lot holds) stays
+        // here with its fields marked. Going on would review the item as it was before
+        // the correction, without a word.
+        if (isEditing && !isCurrentItemValid) {
+            const validation = await validateSingleItem(currentItem);
+            // Text that is not a whole number ("12.5") is still in the field, with its reason
+            // under it. The check sees the 0 bags it counts as and would say "at least 1" in
+            // place of that reason, so the reason already shown is kept.
+            setValidationErrors((shown) =>
+                rejectedQuantityText !== null && shown.disp_quantity
+                    ? { ...validation.errors, disp_quantity: shown.disp_quantity }
+                    : validation.errors
+            );
+            showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
             return;
         }
 
@@ -733,19 +773,20 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     const handleStepIndicatorPress = async (stepNumber: number) => {
         if (stepNumber === DISPATCH_STEP_NUMBERS.ITEMS) return; // Already on this step
         if (stepNumber === DISPATCH_STEP_NUMBERS.INFO) {
-            // Go back to step 1
-            await navigateToStep(1);
+            // As the footer's Back: asks first when items would be left behind.
+            handleBack();
         } else if (stepNumber === DISPATCH_STEP_NUMBERS.REVIEW) {
-            // Go to step 3 if we have items
-            if (savedItems.length > 0) {
-                await navigateToStep(3);
-            }
+            // As the footer's Next: an item in the form is saved first, and with
+            // no item at all it says so.
+            await handleNext();
         }
     };
 
     const exceedsMax = (currentItem.disp_quantity ?? 0) > maxAllowedQty;
     const quantityHasError = !!validationErrors.disp_quantity || exceedsMax;
     const canSaveItem = !!isCurrentItemValid && !isAddingItem;
+    // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+    const lotWeightEach = formatWeightEach(currentItem.grnItems_weight);
     const itemTitle = isEditingItem
         ? tr('dispatch.items.editingItem', { number: editingItemNumber })
         : tr('dispatch.items.addingItem', { number: savedItems.length + 1 });
@@ -866,7 +907,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <SwipeableFormStep
                 onSwipeLeft={handleNext}
-                onSwipeRight={() => navigateToStep(1)}
+                onSwipeRight={handleBack}
                 canSwipeLeft={true}
                 canSwipeRight={true}
             >
@@ -882,8 +923,9 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     keyboardOpeningTime={0}
                     extraHeight={300}
                 >
-                    {/* Edit Mode message strip (edit mode only) */}
-                    {!isCreateMode && isEditingItem && (
+                    {/* A saved item is being corrected, in a new dispatch or an edited one: the
+                        strip names it and holds the one control that gives the correction up */}
+                    {isEditingItem && (
                         <View style={styles.editModeBanner}>
                             <Icon name="pencil-outline" size={iconSize.md} color={t.status.informative.text} />
                             <View style={styles.editModeBannerText}>
@@ -1124,11 +1166,17 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         </View>
                         {exceedsMax &&
                             renderError(
-                                tr(isEditingItem ? 'dispatch.items.maxBagsOriginal' : 'dispatch.items.maxBagsAvailable', {
+                                // The limit includes bags this dispatch already holds only for a line
+                                // loaded from a saved dispatch; a line of a new dispatch is limited by
+                                // the available stock alone.
+                                tr(isEditingItem && (currentItem.original_disp_quantity ?? 0) > 0
+                                    ? 'dispatch.items.maxBagsOriginal'
+                                    : 'dispatch.items.maxBagsAvailable', {
                                     count: maxAllowedQty,
                                 })
                             )}
-                        {renderError(validationErrors.disp_quantity)}
+                        {/* Above the limit the line above already gives the reason, with the number. */}
+                        {!exceedsMax && renderError(validationErrors.disp_quantity)}
                     </View>
 
                     {/* Lot Details */}
@@ -1157,11 +1205,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                         <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                                     </View>
                                 )}
-                                <View style={styles.detailItem}>
-                                    <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                                    <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
-                                    <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
-                                </View>
+                                {lotWeightEach !== null && (
+                                    <View style={styles.detailItem}>
+                                        <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                                        <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
+                                        <Text style={styles.detailValue}>{lotWeightEach}</Text>
+                                    </View>
+                                )}
                             </View>
                         </View>
                     )}

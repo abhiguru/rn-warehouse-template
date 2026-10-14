@@ -9,6 +9,7 @@ import {
   formatSectionDate,
   formatTime,
   formatWeight,
+  formatWeightEach,
 } from '@/utils/formatters';
 import { setLanguage } from '../language';
 import { commonWords } from '../locales/common';
@@ -20,6 +21,7 @@ describe('formatters in English (unchanged)', () => {
     expect(formatNumber(1234567)).toBe('12,34,567');
     expect(formatCurrency(1906)).toBe('₹1,906');
     expect(formatWeight(4000, 0)).toBe('4,000 kg');
+    expect(formatWeightEach(50)).toBe('50 kg each');
     expect(formatCount(1, 'item')).toBe('1 item');
     expect(formatCount(1200, 'bag')).toBe('1,200 bags');
     expect(formatCount(2, 'dispatch', 'dispatches')).toBe('2 dispatches');
@@ -45,6 +47,12 @@ describe('formatters in Gujarati', () => {
   it('writes weight in કિલો', () => {
     expect(formatWeight(4000, 0)).toBe('૪,૦૦૦ કિલો');
     expect(formatWeight(null)).toBe('૦ કિલો');
+  });
+  it('says a weight is the weight of each package, with દરેક before it', () => {
+    expect(formatWeightEach(50)).toBe('દરેક ૫૦ કિલો');
+    expect(formatWeightEach(1250.5)).toBe('દરેક ૧,૨૫૦.૫ કિલો');
+    expect(formatWeightEach(0)).toBeNull();
+    expect(formatWeightEach(null)).toBeNull();
   });
   it('names counted things in Gujarati, the same after 1 and after many', () => {
     expect(formatCount(1, 'item')).toBe('૧ આઇટમ');

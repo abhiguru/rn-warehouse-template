@@ -45,7 +45,7 @@ import { LotBottomSheet } from './LotBottomSheet';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 const addItemBottomSheetLogger = createLogger('AddItemBottomSheet');
@@ -560,6 +560,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
   }, [isVisible]);
 
   const exceedsStock = (currentItem.disp_quantity || 0) > (currentItem.grnItems_stock || 0);
+  // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+  const lotWeightEach = formatWeightEach(currentItem.grnItems_weight);
 
   const renderError = (message?: string) =>
     message ? (
@@ -721,11 +723,13 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                       <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                     </View>
                   )}
-                  <View style={styles.detailItem}>
-                    <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                    <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
-                    <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
-                  </View>
+                  {lotWeightEach !== null && (
+                    <View style={styles.detailItem}>
+                      <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                      <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
+                      <Text style={styles.detailValue}>{lotWeightEach}</Text>
+                    </View>
+                  )}
                   <View style={styles.detailItem}>
                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
                     <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>

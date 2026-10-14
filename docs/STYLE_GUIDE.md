@@ -404,7 +404,7 @@ Show every status with the `StatusTag` component (`@/components/ui`), which pair
 Not statuses, so never status-coloured by meaning:
 
 - **Categories** such as user roles, price types or packaging: neutral tags (`status="neutral"`, usually `icon={null}`). At most one category in a set may use informative to stand out. Never brand colours.
-- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "1,250.5 kg", "Rack B-14", "Mark PT", "3 photos". On object pages, contact and metadata facts use `InfoChip`.
+- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "50 kg each", "Rack B-14", "Mark PT", "3 photos". A weight is always the weight of one bag, box or crate and always says "each" (`formatWeightEach`); a line with no weight has no weight tag. A header over several lots (a group on the invoice form, which is an item and a mark) has one weight tag for each distinct weight, lightest first ("25 kg each", "50 kg each"), never one lot's weight for all of them. On object pages, contact and metadata facts use `InfoChip`.
 - **A row being edited** in a list: `surface.selected` background and an informative "Editing" tag.
 - **A row already in the current order**: `brand.subtle` background, a 4 px `brand.tint` bar on the leading edge and an "In order" tag with a check.
 - **A value changed from its default**: a "Custom" tag in `brand.subtle` with `brand.tint` text and `pencil-outline`.
@@ -707,7 +707,7 @@ Confirmation buttons repeat the verb: "Delete GRN" and "Cancel", never "Yes" and
 | Mobile number | +91 prefix shown separately, number grouped 5 + 5 | +91 98765 43210 |
 | Money | Indian grouping, rupee sign, two decimals in invoices, none in summaries | ₹1,23,456.50 and ₹1,23,457 |
 | Quantity | Number, then unit, singular when 1 | 1 bag, 120 bags |
-| Weight | Up to two decimals, unit kg or quintal as the facility sets | 1,250.5 kg |
+| Weight | The weight of one bag, box or crate, in kg, up to two decimals, then "each". The entry field is labelled "Weight each" with kg as its suffix; a narrow column is headed "Kg each" and holds the plain number. Over lots of different weights every weight is given, lightest first. Total weights are not shown. | 50 kg each |
 | Date | Day, short month, year | 9 Oct 2026 |
 | Date and time | Date, then 12-hour time | 9 Oct 2026, 4:05 pm |
 | Relative time | Under 24 hours only | 5 min ago, 3 h ago, then the date |
@@ -730,7 +730,8 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 | `formatMobile(n)` | +91 98765 43210 |
 | `formatCount(n, 'item')` | 1 item, 12 items (`formatCount(n, 'dispatch', 'dispatches')`) |
 | `formatCurrency(n, { maximumFractionDigits: 0 })` / invoice `formatInvoiceAmount(n)` | ₹1,23,457 in summaries and KPIs / ₹1,23,456.50 on invoices and their rows |
-| `formatWeight(n)` | 1,250.5 kg |
+| `formatWeightEach(n)` | 50 kg each; nothing (`null`) for a weight that is missing, is not a finite number, or rounds to zero or less |
+| `formatWeight(n)` | 1,250.5 kg (the number and unit inside `formatWeightEach`; nothing else calls it but the style gallery, for one sample) |
 | `formatTemperature(n)` | −18.5°C |
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
@@ -797,7 +798,7 @@ Rules: label above the field, never only a placeholder. A tap places the cursor;
 | `features/filters/components/editors/DateRangeEditor.tsx` | Quick ranges as chips (Today, Yesterday, Last 7 days, This month, Last month), then From and To date fields; "To" covers the whole of its day. |
 | `ui/CompoundRackInput.tsx` | Rack, floor and chamber pickers side by side, stacked at large text sizes; values shown as "Chamber 2 · Rack B-14". The Android picker dropdown follows the system theme, not the app's. |
 | `fiori/StepperInput.tsx` | Minus and plus buttons in `border.button` with `brand.tint` icons, `brand.subtle` while pressed; value in `body` with tabular numbers; the buttons disable at min and max; layouts `stacked`, `inline`, `compact`. |
-| `grn/components/item-form/QuantityWeightFields.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. |
+| `grn/components/HorizontalItemForm.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. The weight field is labelled "Weight each". The fields are one sideways row, so a save that was refused brings the row to its first field with an error (`revealField`). |
 | `grn/components/item-form/RackChamberPicker.tsx` | Floor and chamber are single-choice chips with radio semantics (`brand.subtle` and a check when selected); use a bottom sheet only when there are more than eight options. Wrapping choice chips are at least 36 tall with an 8 gap and `hitSlop` up to `touchTarget`. |
 | `grn/components/item-form/ItemSearchField.tsx`, `ItemAutocomplete`, `invoice/components/GRNAutocomplete` | Search field plus suggestion list; recent picks first; empty state "No matches". |
 | `grn/components/ImageUploadButton.tsx`, `item-form/MarkImageField.tsx`, `CameraModal.tsx` | Dashed `border.field` tile with `camera-outline` icon and label; upload progress uses `FioriLinearProgress`; failure shows a retry action. |
@@ -941,6 +942,7 @@ More rules:
 | Component | Spec |
 |---|---|
 | `ItemCatalogBrowser.tsx`, `RecentItemsQuickAdd.tsx`, `RecentDispatchesSection.tsx`, `RecentDispatchedOrdersSection.tsx`, `CustomerOrderSummary.tsx`, `DispatchHistorySummary.tsx`, `OrderManagement.tsx` | Composed of the cells, chips, section headers and cards above; no local colours. Quick-add tiles use `brand.subtle` with `brand.tint` text. |
+| `ItemCatalogBrowser.tsx` (the Add items picker of an order) | Closing with selections that were not added asks "Discard selections?" first, whichever way it is closed (Cancel, Back, a tap outside, a swipe down); with none it closes at once. "Keep editing" leaves the sheet on screen, also when a swipe had taken it away. Add waits for the server ("Saving 1 of 3…"), closes when every lot was saved and otherwise keeps the lots that were not, listed first, each with its reason. The picker has no way out while Add saves, so the save (`OrderManagement.tsx`) must not wait on a dead connection: a refusal is an answer and the next lot is sent, the first call without an answer (a timeout, no connection) ends the save with the lots not sent marked not saved, and the read of the order that follows any call is waited for only when every call was answered. The number on Add counts unsaved changes. |
 | `OrderRefreshAction.tsx` | Header icon button `refresh` in `brand.tint`; spins during refresh; label "Refresh orders". |
 | `OperatorServerSelection.tsx` | Facility list pattern, see [14.8](#148-sign-in-and-facility-selection). |
 | `AppStateManager.tsx`, `EdgeToEdgeStatusBar.tsx` | No visible UI; the status bar style comes from tokens. |
@@ -957,7 +959,7 @@ The main pattern for orders, GRNs, dispatches, invoices, customers, items and us
 2. Quick filter chips under the header (period or status).
 3. Applied filters bar when any filter is set.
 4. The list of object cells, newest first, with pull to refresh and infinite scroll.
-5. A primary create action: the shared `ui/Fab` (`brand.fill` with a `plus` in `brand.onFill`, `shadow[3]`, 56 px, bottom right above the tab bar, label "Create GRN" and so on) for the roles that can create, hidden for others; the list adds `FAB_CLEARANCE` to its bottom padding. Customers create their own orders, so the Orders button shows for every role. Lists with an A–Z index rail (customers, items) put Create in the header instead, because a floating button would cover the rail.
+5. A primary create action: the shared `ui/Fab` (`brand.fill` with a `plus` in `brand.onFill`, `shadow[3]`, 56 px, bottom right above the tab bar, label "Create GRN" and so on) for the roles that can create, hidden for others; the list adds `FAB_CLEARANCE` to its bottom padding. Customers create their own orders, so the Orders button shows for every role: warehouse roles get the customer search sheet, a customer account with one business goes straight to its order, and one with several picks the business in the bottom sheet `OrderBusinessSheet` (name and city; loading, failed with "Try again", and "No business linked"). Lists with an A–Z index rail (customers, items) put Create in the header instead, because a floating button would cover the rail.
 6. Empty, filtered-empty, loading (skeleton), error and offline states.
 
 Customers, Items and Users: the stack header carries the title only; `common/MasterListHeader` under it holds the search field, the count line and the refresh-failed strip.
@@ -978,6 +980,9 @@ GRN, dispatch and invoice creation.
 - A step indicator at the top; step names are nouns ("Customer", "Items", "Review").
 - One topic per step. The last step is always Review, with an edit link per section.
 - Every step has the same bottom bar on `surface.card` with `shadow[3]` and the bottom inset, laid out below the scrolling content (it never floats over it): the first step shows Next, middle steps Back and Next, the review step Back and the save action ("Create GRN", "Save dispatch"). Next validates only the current step. Swiping between steps is a shortcut, never the only way.
+- An item in a step's entry form that was not checkmarked is never dropped without a word. GRN Items asks first ("Save this item?", or "Save changes to this item?" for a correction: Keep editing, Discard, Save) on every way out: Next, Back, both step circles, the phone's Back key and opening another saved item. An item that was opened and not changed is not asked about. "Discard changes" leaves a saved item as it is stored, its photos included.
+- Dispatch Items asks nothing before it saves: Next and the Review circle save a valid item in the form, and stop on a correction that cannot be saved. A correction always has a way out: the strip above the form ("Editing item", with "Stop editing this item") shows whenever a saved item is in the form, in a new dispatch and in an edited one. Its ways back (Back, the Details circle, a swipe right, the Back key) ask "Go back to details?" when there are saved items or a valid item in the form.
+- The GRN and Dispatch stacks, new and edit, switch the edge swipe off for all their steps (`gestureEnabled: false`): on iOS it would take the Items step away without its question.
 - Section edit links on the review step are tertiary "Edit" buttons in `brand.tint`.
 - Drafts are kept on the phone. Leaving with unsaved changes asks "Discard this GRN?".
 - After saving, show a success dialog with the document number and actions (Print, Share, View, Create another).
@@ -1042,7 +1047,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 
 - The Reports tab lists, each under a `ui/SectionHeader`: Pinned (the reports this account pinned, in pin order), Recent (up to three opened last, most recent first, none that is pinned), then Stock, Movement, Financial and Operations from each report's `category` in the registry, in registry order. A report stays in its category when it is also pinned or recent; a section with nothing to show is left out. Every report, including a stored pinned or recent id, passes its role gate when the tab is drawn. Pins and recents are kept per facility and account (`useReportPrefs`); opening a report from the tab notes it as recent.
 - Built with `ReportScaffold` (`src/components/reports`), which owns the layout and every state: first load, failed, failed with earlier rows still shown, nothing there, nothing matching. Top to bottom: header (title, whose data, at most one export action) → search → filter bar with sort, period and filters → figures → status line "dates · showing X of Y · last updated" → charts, if any → rows. The figures cover the whole period, not the rows a search leaves.
-- Whose data comes from `useReportScope`. A warehouse role starts on every customer and opens one as a route parameter (the same route pushed with `?customerId=`), so the phone's back button and the header's agree. A customer account with several customers chooses one first (`ReportCustomerPicker`) and can change it from the header. While no search is typed, the customers list offers the customer opened last as one row above it. The name under a report's title is the facility's own (`customerNames.ts`: the tapped row, the picker's list, the account's assigned customers, or one lookup by id); a route's `customerName` is never shown, and the title has no name until the facility has answered.
+- Whose data comes from `useReportScope`. A warehouse role starts on every customer and opens one as a route parameter (the same route pushed with `?customerId=`), so the phone's back button and the header's agree. A customer account with several customers chooses one first (`ReportCustomerPicker`) and can change it from the header. Create order on the Orders tab asks the same question in a bottom sheet (`OrderBusinessSheet`, §14.1); both draw their rows with `common/CustomerChoiceRows`. While no search is typed, the customers list offers the customer opened last as one row above it. The name under a report's title is the facility's own (`customerNames.ts`: the tapped row, the picker's list, the account's assigned customers, or one lookup by id); a route's `customerName` is never shown, and the title has no name until the facility has answered.
 - The period is the filter bar's period chip (§14.5). All eight reports use `ReportScaffold`.
 - Date headings between rows only while the rows are sorted by date, drawn by `ReportDateHeading`. A customer account with no customer linked sees `ReportNoCustomer`: the report's title over one wording ("No customer linked", "No customer is linked to your account. Ask your facility to link one.") on every report.
 - When a period report has nothing in its period, its empty state offers "Show last 420 days" (`longestPeriodAction`, which sets the period chip to that preset) until the longest period is chosen; then it offers nothing and no longer suggests a longer period.

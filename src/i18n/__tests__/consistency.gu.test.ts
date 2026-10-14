@@ -85,6 +85,7 @@ describe('one word per idea', () => {
       'order': 'a customer order and the sort order (ક્રમ)',
       'invoices': 'the bottom tab only is બિલ: glossary',
       'kg': 'kg stays in narrow columns: glossary',
+      'from {{from}}': 'a filter chip and "valid from" on a price',
       'recent': 'agrees with a different noun in each place',
       'latest {{date}}': 'agrees with the document: the latest GRN (પાવતી, feminine) and the latest invoice',
       'from': 'start date and start number: glossary rule 4',

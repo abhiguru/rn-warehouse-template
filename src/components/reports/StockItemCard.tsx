@@ -54,7 +54,7 @@ import {
 } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
-import { formatCount, formatIndiaDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { FactLines, joinFacts } from './FactLines';
@@ -80,9 +80,16 @@ export interface StockGRNRowData {
   emptiedDate?: string | null;
   packaging?: string | null;
   rack?: string | number | null;
-  /** Total weight in kg; shown when above 0. */
+  /**
+   * Weight of one bag, box or crate in kg: the lot's stored weight, never a total. Drawn as a
+   * fact of the footnote line ("Rack B-14 · 50 kg each") when above 0. The item stock summary
+   * gives the weight here.
+   */
   weight?: number | null;
-  /** Weight of one unit in kg; shown when above 0. */
+  /**
+   * The same weight of one bag, box or crate in kg, drawn under the stock figure instead
+   * ("50 kg each") when above 0. The stock summary gives the weight here.
+   */
   weightEach?: number | null;
   /** Units still in stock. */
   stock: number;
@@ -384,11 +391,11 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
     grn.packageMark ? tr('reports.stockSummary.packageMark', { mark: grn.packageMark }) : null,
     grn.packaging || null,
     grn.rack ? tr('reports.shared.rack', { rack: formatIdentifier(grn.rack) }) : null,
-    grn.weight && grn.weight > 0 ? formatWeight(grn.weight) : null,
+    // "50 kg each": null when the lot has no weight, and the fact is then left out.
+    formatWeightEach(grn.weight),
   ];
   const hasTotal = !!grn.total && grn.total > 0;
-  const weightEach =
-    grn.weightEach && grn.weightEach > 0 ? tr('reports.stockSummary.weightEach', { weight: formatWeight(grn.weightEach) }) : null;
+  const weightEach = formatWeightEach(grn.weightEach);
 
   // The mark is read once, after the title, in its own words; the other facts after the dates.
   const a11yLabel = [

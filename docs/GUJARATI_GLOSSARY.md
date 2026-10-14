@@ -56,6 +56,9 @@ in Gujarati script; **English** = left in English letters.
 | Rack | રેક | Gujarati letters | Owner's choice |
 | Weight | વજન | translate | Checked |
 | kg | કિલો (kg in narrow columns) | translate | Checked |
+| each (weight of one package) | દરેક | translate | Draft |
+| Weight each | દરેકનું વજન | translate | Draft |
+| Kg each (heading of a narrow weight column) | દરેકના kg | translate, kg in English letters | Owner's choice (2026-10-14), shorter than the first choice નંગ દીઠ kg, which wrapped onto two lines; the draft દરેક kg could be read as "per kg" |
 | Quantity (a count of bags) | નંગ | translate | Checked |
 | Quantity (a general amount) | નંગ | translate | Follows from the owner's "નંગ everywhere"; જથ્થો now means a lot |
 | Lot (one GRN line that stock is taken from) | જથ્થો | translate | Owner's choice (wording review) |
@@ -161,6 +164,8 @@ From the Unicode locale data that Android uses.
 ## Open points
 
 - સુપરવાઇઝર, સ્ટાફ and પેકિંગ are drafts with no source found.
+- દરેક for "each" after the weight of one package (દરેક ૫૦ કિલો) and દરેકનું વજન ("Weight each")
+  are drafts (2026-10-14).
 - Whether "૧ નંગ" reads naturally with the number one was not seen in a source.
 - The web check found Gujarati business text mostly writes amounts in 0-9. The owner chose
   ૦-૯; the receipt-list pilot is where that choice is looked at again on a real screen.

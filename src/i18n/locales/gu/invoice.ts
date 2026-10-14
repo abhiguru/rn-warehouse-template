@@ -141,6 +141,9 @@ export const invoice: Translation<typeof source> = {
     emptyText: 'પસંદ કરેલી જાવકની આઇટમ અહીં દેખાશે.',
     groupA11y:
       '{{item}}, માર્કો {{mark}}, {{weight}}, આવક પાવતીના નંગ {{grnQty}}, જાવક થયેલા નંગ {{dispatched}}, કુલ {{total}}',
+    // The same for a lot that has no weight: nothing is read where the weight would be.
+    groupA11yNoWeight:
+      '{{item}}, માર્કો {{mark}}, આવક પાવતીના નંગ {{grnQty}}, જાવક થયેલા નંગ {{dispatched}}, કુલ {{total}}',
     grnQty: 'આવકના નંગ {{qty}}',
     dispatchedQty: 'જાવકના નંગ {{qty}}',
     groupPricing: 'ગ્રુપના દર',

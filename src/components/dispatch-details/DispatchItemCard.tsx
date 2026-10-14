@@ -24,7 +24,7 @@ import {
   trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, toDate, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, toDate, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
@@ -173,7 +173,10 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
   }, [grn_id, onViewGRN]);
 
   const formattedGrnDate = useMemo(() => (toDate(grn_date) ? formatDate(grn_date, 'short') : ''), [grn_date]);
-  const hasDetails = original_quantity !== undefined || weight !== undefined || package_mark;
+  // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+  const weightEach = formatWeightEach(weight);
+  // A boolean: an empty mark must not reach the View as a bare string.
+  const hasDetails = original_quantity !== undefined || weightEach !== null || !!package_mark;
   const isGrnClickable = !!(grn_id && onViewGRN);
 
   return (
@@ -235,11 +238,11 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
                 </Text>
               </View>
             )}
-            {weight !== undefined && (
+            {weightEach !== null && (
               <View style={styles.detailChip}>
                 <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
                 <Text style={styles.detailChipText} maxFontSizeMultiplier={1.6}>
-                  {formatWeight(weight)}
+                  {weightEach}
                 </Text>
               </View>
             )}

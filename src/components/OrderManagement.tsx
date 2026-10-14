@@ -1,4 +1,5 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
@@ -31,7 +32,6 @@ import {
 } from '@/theme/tokens';
 import { OrderService } from '@/services/order-service';
 import { Order, OrderItem, Customer } from '@/types/order.types';
-import { useAppSelector } from '@/store/hooks';
 import ItemCatalogBrowser from './ItemCatalogBrowser';
 import OrderItemCard from './OrderItemCard';
 import CustomerOrderSummary from './CustomerOrderSummary';
@@ -40,7 +40,10 @@ import { searchService, SearchResult } from '@/services/search-service';
 
 import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
+import { formatCount } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
+import { cartFailureReason, isAlreadyRemoved, isConnectionFailure } from '@/features/orders/cartFailureReason';
+import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
 
 const NO_LINES: OrderItem[] = [];
 const isOpenLine = (item: OrderItem) => (item.item_status || '').toLowerCase() !== 'fulfilled';
@@ -96,7 +99,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 
-  const { userProfile } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -302,93 +304,148 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     );
   }, [onRefresh]);
 
-  // Handle items updated from catalog (sync quantities, don't add)
-  const handleItemsAdded = useCallback(async (items: Array<{grnItemId: string, quantity: number}>) => {
-    if (!order) return;
+  // True while the phone reports no network at all (aeroplane mode, no Wi-Fi and
+  // no mobile data). "Connected, but the internet is not reachable" does not
+  // count: a facility's own server can still answer on its local network. Nor
+  // does an unknown reading (the hook gives `isConnected` false and type
+  // 'unknown' while NetInfo has not decided): the save is tried then.
+  const { isConnected, type: networkType } = useNetworkStatus();
+  const noNetworkRef = useRef(false);
+  noNetworkRef.current = isConnected === false && networkType === 'none';
 
-    try {
-      let successCount = 0;
-      let failureCount = 0;
+  // Saves what the Add items picker changed, one lot after another, and answers
+  // for each lot. A lot the user did not touch is not in `changes`, so a line
+  // another user added meanwhile is never removed. Each change is resolved
+  // against the lines as they are saved now, not as they were when the picker
+  // opened, but never over a change the user has not seen: when the open line
+  // holds neither the asked-for quantity nor the one the picker expected
+  // (`expected`), someone else changed it meanwhile. Nothing is sent and the lot
+  // comes back with that reason and the saved quantity; the picker takes it as
+  // the new base, so a second Add applies the user's number knowingly. Only open
+  // lines count: a fully dispatched line is neither "already saved" nor updated.
+  // Never rejects and shows no alert: the picker shows each reason on its lot.
+  //
+  // The picker has no way out while this runs, so it must not wait long. A lot the
+  // server refuses is an answer, and the next lot is sent. A call that got no
+  // answer (a timeout, no connection, a call that threw) ends the save: every
+  // further write could wait its own full time limit on the same dead connection.
+  // The lots not sent come back not saved and stay selected in the picker. For
+  // the same reason the read after such a save is started and not waited for.
+  const handleItemsAdded = useCallback(async (
+    changes: PickerChange[],
+    onProgress?: (position: number, total: number) => void,
+  ): Promise<PickerResult[]> => {
+    const notSaved = (grnItemId: string): PickerResult =>
+      ({ grnItemId, ok: false, reason: tr('orders.catalog.reasonNotSaved') });
+    const sessionGeneration = getSessionGeneration();
+    // Quantities first, removals last.
+    const ordered = [...changes.filter(change => change.quantity > 0), ...changes.filter(change => change.quantity <= 0)];
+    const results = new Map<string, PickerResult>();
+    let anyCall = false;
+    // The save ended for want of a connection, before its last lot.
+    let noAnswer = false;
 
-      // Create a map of current order items for easy lookup
-      const currentOrderItemsMap = new Map();
-      order.items?.forEach(orderItem => {
-        currentOrderItemsMap.set(orderItem.grn_item_id, orderItem);
-      });
+    for (let index = 0; index < ordered.length; index += 1) {
+      const change = ordered[index];
+      const current = orderRef.current;
+      // A sign-out or a change of facility ends the save; the rest is not sent.
+      if (!current || sessionGeneration !== getSessionGeneration()) break;
+      onProgress?.(index + 1, ordered.length);
 
-      for (const item of items) {
-        const existingOrderItem = currentOrderItemsMap.get(item.grnItemId);
-        
-        if (existingOrderItem) {
-          // Update existing item quantity
-          if (existingOrderItem.requested_quantity !== item.quantity) {
-            const result = await OrderService.updateOrderItemQuantity(
-              existingOrderItem.id,
-              order.id,
-              item.quantity
-            );
-            
-            if (result.success) {
-              successCount++;
-            } else {
-              failureCount++;
-              console.error('[OrderManagement] Failed to update item:', result.message);
-            }
+      const line = current.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item));
+      const savedQuantity = line?.requested_quantity ?? 0;
+      try {
+        if (savedQuantity === change.quantity) {
+          // Already as asked (also a removal of a lot with no open line): no call.
+          results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
+          continue;
+        }
+        if (savedQuantity !== change.expected) {
+          const bagsNow = formatCount(savedQuantity, 'bag');
+          const reason = change.quantity <= 0
+            ? tr('orders.catalog.reasonChangedMeanwhileRemove', { bags: bagsNow })
+            : savedQuantity === 0
+              ? tr('orders.catalog.reasonRemovedMeanwhile', { chosen: formatCount(change.quantity, 'bag') })
+              : tr('orders.catalog.reasonChangedMeanwhile', { bags: bagsNow, chosen: formatCount(change.quantity, 'bag') });
+          results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: false, reason, savedQuantity });
+          continue;
+        }
+        if (change.quantity > 0) {
+          // No network: this lot and the rest are not sent.
+          if (noNetworkRef.current) {
+            noAnswer = true;
+            break;
+          }
+          anyCall = true;
+          const result = line
+            ? await OrderService.updateOrderItemQuantity(line.id, current.id, change.quantity)
+            : await OrderService.addItemToOrder(current.id, change.grnItemId, change.quantity);
+          if (!result.success) console.error('[OrderManagement] Item not saved:', result.message, result.error);
+          results.set(change.grnItemId, result.success
+            ? { grnItemId: change.grnItemId, ok: true }
+            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+          if (!result.success && isConnectionFailure(result)) {
+            noAnswer = true;
+            break;
           }
         } else {
-          // Add new item to order
-          const result = await OrderService.addItemToOrder(
-            order.id,
-            item.grnItemId,
-            item.quantity
-          );
-
-          if (result.success) {
-            successCount++;
-          } else {
-            failureCount++;
-            console.error('[OrderManagement] Failed to add item:', result.message);
+          if (noNetworkRef.current) {
+            noAnswer = true;
+            break;
+          }
+          anyCall = true;
+          // A removal that reaches here has an open line: with none, the saved quantity is 0, answered above.
+          const result = await OrderService.removeItemFromOrder(line!.id, current.id);
+          // "Order item not found": someone else removed it first, which is what was asked for.
+          const removed = result.success || isAlreadyRemoved(result);
+          if (!removed) console.error('[OrderManagement] Item not removed:', result.message, result.error);
+          results.set(change.grnItemId, removed
+            ? { grnItemId: change.grnItemId, ok: true }
+            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+          if (!removed && isConnectionFailure(result)) {
+            noAnswer = true;
+            break;
           }
         }
+      } catch (error) {
+        console.error('[OrderManagement] Save item error:', error);
+        results.set(change.grnItemId, notSaved(change.grnItemId));
+        noAnswer = true;
+        break;
       }
-
-      // Handle items that were removed (exist in order but not in selected items)
-      const selectedItemIds = new Set(items.map(item => item.grnItemId));
-      // The catalog only sees open lines, so only open lines can be deselected.
-      const itemsToRemove = order.items?.filter(orderItem =>
-        (orderItem.item_status || '').toLowerCase() !== 'fulfilled' &&
-        !selectedItemIds.has(orderItem.grn_item_id)
-      ) || [];
-
-      for (const orderItem of itemsToRemove) {
-        const result = await OrderService.removeItemFromOrder(orderItem.id, order.id);
-        if (result.success) {
-          successCount++;
-        } else {
-          failureCount++;
-          console.error('[OrderManagement] Failed to remove item:', result.message);
-        }
-      }
-
-      if (successCount > 0) {
-        await onRefresh();
-      }
-
-      if (failureCount > 0) {
-        showAlert(
-          tr('orders.manage.someNotUpdatedTitle'),
-          tr('orders.manage.someNotUpdatedMessage')
-        );
-      }
-    } catch (error) {
-      console.error('[OrderManagement] Update items error:', error);
-      showAlert(tr('orders.manage.couldNotUpdateTitle'), tr('common.checkConnection'));
     }
-  }, [order, onRefresh]);
+
+    // The order is read again after any call, saved or not. A saved lot shows
+    // before the picker closes or lists what was not saved. A lot that was not
+    // saved may have failed because the lines here are out of date (a write that
+    // timed out but was applied, a line someone else removed): without this read
+    // the next Add would fail on it the same way.
+    if (anyCall && sessionGeneration === getSessionGeneration()) {
+      const read = onRefresh().catch(error => {
+        console.error('[OrderManagement] Refresh after save error:', error);
+      });
+      // A save that ended for want of a connection answers now: the read would
+      // wait its own time limit on the same connection. It goes on by itself, and
+      // the next Add takes the lines as they are saved by then.
+      if (!noAnswer) await read;
+    }
+
+    return changes.map(change => results.get(change.grnItemId) ?? notSaved(change.grnItemId));
+  }, [onRefresh]);
 
 
   // The open lines, kept while the order's lines are unchanged.
   const openItems = useMemo(() => order?.items?.filter(isOpenLine) ?? NO_LINES, [order?.items]);
+  // The same lines as the picker takes them. Kept while the lines are unchanged:
+  // the picker seeds its selection from them once, when it opens.
+  const pickerLines = useMemo(
+    () => openItems.map(item => ({
+      grnItemId: item.grn_item_id,
+      quantity: item.requested_quantity,
+      item: item.grn_item!,
+    })),
+    [openItems]
+  );
 
   if (loading && !order) {
     return (
@@ -545,11 +602,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           onAddItems={handleItemsAdded}
           currentOrderId={order.id}
           customerId={selectedCustomer.id}
-          currentOrderItems={openItems.map(item => ({
-            grnItemId: item.grn_item_id,
-            quantity: item.requested_quantity,
-            item: item.grn_item!
-          }))}
+          currentOrderItems={pickerLines}
         />
       )}
     </Surface>

@@ -161,6 +161,42 @@ it('loads the next search page from the current result count', async () => {
   } finally { await act(async () => { tree.unmount(); }); }
 });
 
+// The texts drawn inside one lot's row, and the label the row is read out with.
+const rowOf = (tree: ReturnType<typeof create>, id: string, name: string) => {
+  const row = tree.root.findByProps({ testID: `catalog-item-${id}` });
+  const texts = row.findAll(node => (node.type as unknown) === 'Text')
+    .map(node => (Array.isArray(node.props.children) ? node.props.children.join('') : String(node.props.children ?? '')));
+  // The object cell row carries the whole row's label, which starts with the lot's name;
+  // the status tag, the steppers and the presets have labels of their own.
+  const spoken = [...new Set(row.findAll(node => node.props.accessible === true && typeof node.props.accessibilityLabel === 'string'
+    && node.props.accessibilityLabel.startsWith(`${name}, `)).map(node => String(node.props.accessibilityLabel)))];
+  return { texts, spoken };
+};
+
+it('shows a lot\'s weight as the weight of one package, and none for a lot without a weight', async () => {
+  jest.mocked(OrderService.getAvailableItems).mockResolvedValueOnce({
+    success: true, message: '',
+    data: [{ ...catalogItem('lot-50', 'Fictional potatoes'), weight: 50 }, { ...catalogItem('lot-0', 'Fictional onions'), weight: 0 }],
+  } as never);
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
+  try {
+    const weighed = rowOf(tree, 'lot-50', 'Fictional potatoes');
+    expect(weighed.texts).toContain('50 kg each');
+    expect(weighed.texts).not.toContain('50 kg');
+    // The row is read out with the same words.
+    expect(weighed.spoken).toHaveLength(1);
+    expect(weighed.spoken[0].split(', ')).toContain('50 kg each');
+
+    const unweighed = rowOf(tree, 'lot-0', 'Fictional onions');
+    expect(unweighed.texts.some(text => /\bkg\b/.test(text))).toBe(false);
+    expect(unweighed.spoken).toHaveLength(1);
+    expect(unweighed.spoken[0]).not.toMatch(/\bkg\b/);
+    // The row itself is drawn: only the weight is missing.
+    expect(unweighed.texts).toContain('Fictional onions');
+  } finally { await act(async () => { tree.unmount(); }); }
+});
+
 const MODES: Mode[] = ['light', 'dark'];
 
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('in %s %s', (brand, mode) => {

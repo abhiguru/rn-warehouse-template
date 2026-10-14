@@ -205,7 +205,6 @@ export const dispatch: Translation<typeof source> = {
     totalQuantityLabel: 'કુલ {{bags}}',
     editDetails: 'જાવકની વિગતોમાં ફેરફાર કરો',
     vehicle: 'વાહન',
-    totalWeight: 'કુલ વજન',
     itemRowLabel: 'આઇટમ {{index}}, {{item}}, આવક પાવતી {{grn}}, નંગ {{quantity}}',
     itemRowLabelWithMark: 'આઇટમ {{index}}, {{item}}, માર્કો {{mark}}, આવક પાવતી {{grn}}, નંગ {{quantity}}',
     hidesDetails: 'આઇટમની વિગતો છુપાવે છે',
@@ -213,7 +212,6 @@ export const dispatch: Translation<typeof source> = {
     grnBadge: 'આવક {{number}}/{{quantity}}',
     qty: 'નંગ {{quantity}}',
     grnDate: 'આવક પાવતીની તારીખ',
-    unitWeight: 'એક નંગનું વજન',
     originalQuantity: 'આવક પાવતીના મૂળ નંગ',
     stockAfter: 'જાવક પછીનો સ્ટોક',
     itemsTitle: 'આઇટમ ({{count}})',
@@ -431,5 +429,11 @@ export const dispatch: Translation<typeof source> = {
     loading: 'જાવક લોડ થઈ રહી છે…',
     loadingLabel: 'જાવક લોડ થઈ રહી છે',
     retryLoad: 'જાવક ફરીથી લોડ કરો',
+  },
+  // A line of the table on a dispatch card, as a screen reader says it, when the
+  // lot has no weight (with a weight: lists.dispatch.itemRow and itemRowRack)
+  listRow: {
+    noWeight: '{{item}}, આવક પાવતી {{grn}}, {{quantity}} નંગ જાવક',
+    noWeightRack: '{{item}}, રેક {{rack}}, આવક પાવતી {{grn}}, {{quantity}} નંગ જાવક',
   },
 };

@@ -39,6 +39,8 @@ export default function GRNFormLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+        // As the Dispatch wizard: an edge swipe (iOS) would leave a step without its question.
+        gestureEnabled: false,
       }}
     >
       <Stack.Screen name="step1" />

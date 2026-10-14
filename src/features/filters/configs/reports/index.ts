@@ -5,7 +5,7 @@
  */
 import type { FilterListConfig } from '../../types';
 import { CUSTOMER_ACTIVITY_CUSTOMERS, customerActivityCustomersView } from './customerActivity';
-import { DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT, DISPATCH_ACTIVITY_CUSTOMERS, dispatchCustomersView, dispatchRecordsView } from './dispatchActivity';
+import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMERS, dispatchCustomersView, dispatchRecordsView } from './dispatchActivity';
 import { GRN_ACTIVITY_CUSTOMER, GRN_ACTIVITY_CUSTOMERS, grnCustomersView, grnRecordsView } from './grnActivity';
 import { INVOICE_HISTORY_CUSTOMER, INVOICE_HISTORY_CUSTOMERS, invoiceCustomersView, invoiceRecordsView } from './invoiceHistory';
 import { ITEM_STOCK, itemStockFallbackView } from './itemStock';
@@ -33,8 +33,7 @@ export const REPORT_VIEW_CONFIGS: ReportViewConfig[] = [
   pair(CUSTOMER_ACTIVITY_CUSTOMERS, customerActivityCustomersView),
   pair(ITEM_STOCK, itemStockFallbackView),
   pair(DISPATCH_ACTIVITY_CUSTOMERS, dispatchCustomersView),
-  // The one with Weight covers every sort; the one without is that minus Weight (reportViews.test.ts checks it).
-  pair(DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT, dispatchRecordsView),
+  pair(DISPATCH_ACTIVITY_CUSTOMER, dispatchRecordsView),
   pair(INVOICE_HISTORY_CUSTOMERS, invoiceCustomersView),
   pair(INVOICE_HISTORY_CUSTOMER, invoiceRecordsView),
 ];

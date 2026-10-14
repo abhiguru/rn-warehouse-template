@@ -15,7 +15,6 @@ export const orders: Translation<typeof source> = {
     loadingLabel: 'ઑર્ડર લોડ થઈ રહ્યો છે',
     couldNotOpenTitle: 'ઑર્ડર ખોલી શકાયો નથી',
     couldNotLoadTitle: 'ઑર્ડર લોડ કરી શકાયો નથી',
-    couldNotUpdateTitle: 'ઑર્ડરમાં ફેરફાર કરી શકાયો નથી',
     couldNotChangeQuantityTitle: 'નંગ બદલી શકાયા નથી',
     removeTitle: '{{name}} કાઢી નાખવી છે?',
     removeMessage: '{{name}} આ ઑર્ડરમાંથી નીકળી જશે.',
@@ -23,8 +22,6 @@ export const orders: Translation<typeof source> = {
     removeMessageNoName: 'આ આઇટમ આ ઑર્ડરમાંથી નીકળી જશે.',
     removeItem: 'આઇટમ કાઢી નાખો',
     couldNotRemoveTitle: 'આઇટમ કાઢી શકાઈ નથી',
-    someNotUpdatedTitle: 'અમુક આઇટમમાં ફેરફાર થયો નથી',
-    someNotUpdatedMessage: 'ઑર્ડર તપાસો અને ફરી પ્રયાસ કરો.',
     emptyTitle: 'આ ઑર્ડરમાં કોઈ આઇટમ નથી',
     emptyMessage: 'આ વેપારીના સ્ટોકમાંથી તમે ઉમેરેલી આઇટમ અહીં દેખાશે.',
     labelDetail: '{{label}}, {{detail}}',
@@ -78,5 +75,28 @@ export const orders: Translation<typeof source> = {
     loadingMore: 'વધુ આઇટમ લોડ થઈ રહી છે…',
     catalogName: 'કેટલોગ {{name}}',
     allCatalogs: 'બધા કેટલોગ',
+    // Leaving with selections that were not added.
+    discardTitle: 'પસંદગી છોડી દેવી છે?',
+    discardMessage: {
+      one: '{{count}} જથ્થાના ફેરફાર સચવાયા નથી.',
+      other: '{{count}} જથ્થાના ફેરફાર સચવાયા નથી.',
+    },
+    discardSelections: 'પસંદગી છોડી દો',
+    // Add waits for the server; a lot that was not saved keeps its reason.
+    savingProgress: '{{total}} માંથી {{done}} સાચવી રહ્યા છીએ…',
+    // Shown only when at least one lot was not saved, so `one` (0 and 1 in Gujarati) is written for 1.
+    notSavedSummary: {
+      one: '{{count}} જથ્થો સચવાયો નથી. તેના પર કારણ જુઓ.',
+      other: '{{count}} જથ્થા સચવાયા નથી. દરેક પર કારણ જુઓ.',
+    },
+    reasonStock: 'સ્ટોકમાં ફક્ત {{bags}} છે.',
+    reasonAlreadyInOrder: 'આ જથ્થો ઑર્ડરમાં પહેલેથી છે.',
+    reasonBelowDispatched: '{{bags}} ની જાવક થઈ ચૂકી છે. એટલા કે વધુ નંગ પસંદ કરો.',
+    reasonOrderClosed: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.',
+    reasonNotSaved: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    // Someone else changed the lot while the picker was open; nothing was overwritten.
+    reasonChangedMeanwhile: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonRemovedMeanwhile: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો.{{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonChangedMeanwhileRemove: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
   },
 };

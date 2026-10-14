@@ -14,7 +14,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -156,11 +156,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  weightText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-  },
   statusTag: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -194,6 +189,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
   },
+  // A row grows with its item cell (a two-line name, the rack, the mark); the
+  // cells beside it are centred on it, as on the GRN list.
   tableRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -213,16 +210,25 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     paddingRight: space.sm,
   },
+  // Wide enough for its heading on one line at font scales 1.0 and 1.3, "Kg each" and
+  // the Gujarati "દરેકના kg" (72 dp to write in, as on the GRN list: padding inside the
+  // column left 64 dp, and the Gujarati heading wrapped); the number under it is the
+  // weight of one bag. The weight is right-aligned to the column edge with no padding, so
+  // the gap to the GRN text is made on the GRN side (colGrn paddingLeft).
   colWeight: {
-    width: byLanguage(48, 56),
+    width: 72,
     textAlign: 'right' as const,
-    paddingRight: space.md,
   },
   // Gujarati digits are wider than Latin ones: "E0006/૧૦૦" needs more than "E0006/100".
+  // The cell has 92 dp to write in (108 in Gujarati): "RV15001/100" fits on one line
+  // at font scale 1.0; at larger text it goes onto two lines after the slash. The extra
+  // space.sm on the left is a gap to the weight number beside it ("50RV15001/100" otherwise,
+  // as the centred text has about 1 dp spare); the weight column is not narrowed for it.
   colGrn: {
-    width: byLanguage(96, 112),
+    width: byLanguage(104, 120),
     textAlign: 'center' as const,
-    paddingRight: space.sm,
+    paddingLeft: space.sm,
+    paddingRight: space.xs,
   },
   colQty: {
     width: 48,
@@ -239,22 +245,20 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  itemNameRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    gap: space.sm,
-  },
+  // The item cell is a column: the name, then the rack on its own line, then the
+  // mark. Beside the weight and GRN columns the name has about 70 dp on a 360 dp
+  // phone (about 54 dp in Gujarati); it may take two lines, as on the GRN list.
+  // The rack never shares the name's line: beside it, the name was drawn as one
+  // letter at large text sizes. A long rack wraps rather than being cut.
   tableCellItemName: {
     ...typography.subhead,
     fontWeight: fontWeight.medium,
     color: t.text.primary,
-    flex: 1,
   },
   tableCellRack: {
     ...typography.caption1,
     color: t.text.secondary,
-    flexShrink: 0,
+    marginTop: space.xxs,
   },
   tableCellItemMark: {
     ...typography.caption1,
@@ -292,8 +296,16 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const NO_WORDS: string[] = [];
 
-/** A table value stays on one line and shrinks to its column: "E0006/100" must not break after "/10". */
+/** A short table value (the weight, the quantity) stays on one line and shrinks to its column. */
 const TABLE_VALUE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
+
+/**
+ * Where the GRN cell "E0006/100" may break: after the slash, and nowhere else.
+ * Line breaking keeps "0006/100" together as one number, so a cell too narrow
+ * for it broke the number itself ("E0006/10" over "0"), and shrinking it to one
+ * line left it clipped on the phone. An invisible zero-width space marks the place.
+ */
+const BREAK_AFTER_SLASH = '\u200B';
 
 /** Where a search matched inside a collapsed card: item, package, rack or GRN number of a line. */
 function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
@@ -331,9 +343,9 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const statusConfig = getDispatchStatus(dispatch);
   const status = t.status[statusConfig.kind];
 
-  // Calculate totals (using snake_case properties)
+  // Calculate totals (using snake_case properties). No total weight: a lot stores
+  // the weight of one bag, and total weights are not shown (style guide 12.3).
   const totalQty = dispatch.total_qty || 0;
-  const totalWeight = dispatch.total_weight || 0;
   const totalItems = dispatch.total_items || (dispatch.items?.length ?? 0);
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemsLabel = formatCount(totalItems, 'item');
@@ -352,7 +364,6 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     dispatch.customer_name,
     itemsLabel,
     bagsLabel,
-    formatWeight(totalWeight, 0),
     dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
     dateLabel,
     statusConfig.label,
@@ -400,12 +411,9 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
             ) : null}
           </View>
 
-          {/* Attribute stack (right): main value, weight, status tag */}
+          {/* Attribute stack (right): main value, status tag */}
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
-            <Text style={styles.weightText}>
-              {formatWeight(totalWeight, 0)}
-            </Text>
             <View style={[styles.statusTag, { backgroundColor: status.background }]}>
               <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
               <Text
@@ -424,46 +432,57 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
             <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
             <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
           </View>
 
-          {dispatch.items!.map((item, idx) => (
-            <View
-              key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
-              style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
-              accessible
-              accessibilityLabel={translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
-                item: item.item_name,
-                rack: item.rack,
-                weight: formatWeight(item.weight, 0),
-                grn: formatIdentifier(item.gr_no),
-                quantity: item.disp_qty,
-              })}
-            >
-              <View style={[styles.tableCell, styles.colItem]}>
-                <View style={styles.itemNameRow}>
-                  <HighlightedText style={styles.tableCellItemName} numberOfLines={1} text={item.item_name ?? ''} words={words} />
-                  {item.rack && (
-                    <Text style={styles.tableCellRack}>({item.rack})</Text>
-                  )}
+          {dispatch.items!.map((item, idx) => {
+            // Whole kilograms of one bag, as the column shows them. A lot without a
+            // weight shows a dash and is read without one.
+            const kg = Math.round(Number(item.weight) || 0);
+            const weightEach = formatWeightEach(kg);
+            return (
+              <View
+                key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
+                style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
+                accessible
+                accessibilityLabel={
+                  weightEach === null
+                    ? translate(item.rack ? 'dispatch.listRow.noWeightRack' : 'dispatch.listRow.noWeight', {
+                      item: item.item_name,
+                      rack: item.rack,
+                      grn: formatIdentifier(item.gr_no),
+                      quantity: item.disp_qty,
+                    })
+                    : translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
+                      item: item.item_name,
+                      rack: item.rack,
+                      weight: weightEach,
+                      grn: formatIdentifier(item.gr_no),
+                      quantity: item.disp_qty,
+                    })
+                }
+              >
+                <View style={[styles.tableCell, styles.colItem]}>
+                  <HighlightedText style={styles.tableCellItemName} numberOfLines={2} ellipsizeMode="tail" text={item.item_name ?? ''} words={words} />
+                  {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
+                  {item.package_mark ? (
+                    <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
+                  ) : null}
                 </View>
-                {item.package_mark && (
-                  <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
-                )}
+                <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
+                  {weightEach === null ? '—' : formatNumber(kg)}
+                </Text>
+                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
+                  {`${item.gr_no ?? ''}/${BREAK_AFTER_SLASH}${formatNumber(item.grn_qty)}`}
+                </Text>
+                <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
+                  {formatNumber(item.disp_qty)}
+                </Text>
               </View>
-              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
-                {formatNumber(Math.round(item.weight || 0))}
-              </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} {...TABLE_VALUE}>
-                {item.gr_no}/{formatNumber(item.grn_qty)}
-              </Text>
-              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
-                {formatNumber(item.disp_qty)}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </Animated.View>
       )}
 
@@ -504,7 +523,6 @@ const areEqual = (
     prevDispatch.disp_no === nextDispatch.disp_no &&
     prevDispatch.customer_name === nextDispatch.customer_name &&
     prevDispatch.total_qty === nextDispatch.total_qty &&
-    prevDispatch.total_weight === nextDispatch.total_weight &&
     prevDispatch.total_items === nextDispatch.total_items &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&

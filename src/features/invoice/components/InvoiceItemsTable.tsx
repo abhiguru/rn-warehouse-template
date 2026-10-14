@@ -24,7 +24,7 @@ import { InvoiceItemData, type GroupRates } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
 import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { InlineValidation } from '@/components/fiori';
 import { RateInput, type RateDraftChange, type RateSelection } from '@/features/invoice/components/RateInput';
@@ -168,6 +168,8 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     marginBottom: space.xs,
   },
+  // The tags wrap onto as many lines as they need (a group of lots that weigh differently
+  // has a tag for each weight); the gap is between tags and between their lines.
   groupMeta: {
     flexDirection: 'row' as const,
     gap: space.xs,
@@ -781,14 +783,16 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
       editPricing: (groupKey) => {
         const { onEditPricing: open, groupsByKey: groups } = latest.current;
         const itemGroup = groups.get(groupKey);
-        // Get first item to extract pricing values (all items in group share same item)
+        // Get first item to extract pricing values (all items in group share same item).
+        // The weight is the first line's too, as it always was: the price that opens is the
+        // one of that weight, also in a group whose lots weigh differently.
         const firstItem = itemGroup?.allItems[0];
         if (!open || !itemGroup || !firstItem) return;
         open({
           item_id: itemGroup.item_id,
           item_name: itemGroup.item_name,
           package_mark: itemGroup.package_mark,
-          weight: itemGroup.total_weight,
+          weight: firstItem.weight,
           charge: firstItem.charge,
           labour_rate: firstItem.labour_rate,
           tax: firstItem.tax,
@@ -1024,6 +1028,21 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
   // An empty group field says why it is empty: the lines have 0, or they differ.
   const groupPlaceholder = (field: RateField) => (fields[field].mixed ? tr('invoice.table.mixed') : localizeDigits('0'));
   const toggle = () => actions.toggle(groupKey);
+  // The weight of one bag, box or crate ("50 kg each"): the number that picks a line's price
+  // band. A group is an item and a mark, not a lot, so its lots can weigh differently: one tag
+  // for each weight, lightest first ("25 kg each", "50 kg each"), never one weight over a lot
+  // it is not true of. Weights that are written the same are one tag. A lot without a weight
+  // adds none, and a group with no weight at all shows and reads none.
+  const weightTags = [
+    ...new Set(itemGroup.weights_each.map((weight) => formatWeightEach(weight)).filter((text): text is string => text !== null)),
+  ];
+  const spoken = {
+    item: itemGroup.item_name,
+    mark: itemGroup.package_mark,
+    grnQty: formatNumber(itemGroup.gr_quantity),
+    dispatched: formatNumber(itemGroup.total_dispatched),
+    total: groupTotalText,
+  };
 
   return (
     <View style={[styles.groupCard, isExpanded && styles.groupCardOpen]}>
@@ -1033,14 +1052,11 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
         onPress={toggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
-        accessibilityLabel={tr('invoice.table.groupA11y', {
-          item: itemGroup.item_name,
-          mark: itemGroup.package_mark,
-          weight: formatWeight(itemGroup.total_weight),
-          grnQty: formatNumber(itemGroup.gr_quantity),
-          dispatched: formatNumber(itemGroup.total_dispatched),
-          total: groupTotalText,
-        })}
+        accessibilityLabel={
+          weightTags.length > 0
+            ? tr('invoice.table.groupA11y', { ...spoken, weight: weightTags.join(', ') })
+            : tr('invoice.table.groupA11yNoWeight', spoken)
+        }
       >
         <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={iconSize.lg} color={t.icon.secondary} />
         <View style={styles.groupHeaderContent}>
@@ -1052,10 +1068,12 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
               <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
               <Text style={styles.metaText}>{itemGroup.package_mark}</Text>
             </View>
-            <View style={styles.metaBadge}>
-              <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.metaText}>{formatWeight(itemGroup.total_weight)}</Text>
-            </View>
+            {weightTags.map((weightEach) => (
+              <View key={weightEach} style={styles.metaBadge}>
+                <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
+                <Text style={styles.metaText}>{weightEach}</Text>
+              </View>
+            ))}
             <View style={styles.metaBadge}>
               <Text style={styles.metaText}>{tr('invoice.table.grnQty', { qty: formatNumber(itemGroup.gr_quantity) })}</Text>
             </View>

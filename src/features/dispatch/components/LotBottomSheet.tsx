@@ -42,7 +42,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
-import { formatCount, formatWeight } from '@/utils/formatters';
+import { formatCount, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useModalSheet } from '@/hooks/useModalSheet';
@@ -390,6 +390,8 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
           : tr('dispatch.lotSheet.stateInStock', { count: item.stock });
 
       const canViewGRN = !!grnInfo && !isDisabled;
+      // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+      const weightEach = formatWeightEach(item.weight);
 
       const lotContent = (
         <Pressable
@@ -445,11 +447,11 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
                 </View>
               )}
 
-              {item.weight > 0 && (
+              {weightEach !== null && (
                 <View style={styles.detailRow}>
                   <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
-                  <Text style={styles.detailValue}>{formatWeight(item.weight)}</Text>
+                  <Text style={styles.detailValue}>{weightEach}</Text>
                 </View>
               )}
             </View>

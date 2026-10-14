@@ -6,7 +6,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
-import { formatWeight } from '@/utils/formatters';
+import { formatWeightEach } from '@/utils/formatters';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
@@ -43,9 +43,11 @@ const LINES = Array.from({ length: 30 }, (_, n) => line(n));
 const WEIGHTS = new Set(LINES.map((item) => item.weight));
 let mockForm: Record<string, unknown>;
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
+// A line words its weight with formatWeightEach ("40 kg each"). That helper calls formatWeight
+// inside its own module, where a stand-in for the export is not seen, so it is the one watched.
 jest.mock('@/utils/formatters', () => {
   const actual = jest.requireActual('@/utils/formatters');
-  return { ...actual, formatWeight: jest.fn(actual.formatWeight) };
+  return { ...actual, formatWeightEach: jest.fn(actual.formatWeightEach) };
 });
 
 // Children are stand-ins that keep their props, so the test can press their buttons.
@@ -88,7 +90,7 @@ async function render(mode: 'create' | 'edit', items = LINES) {
   return tree;
 }
 /** The line weights formatted since the last clear: one per line drawn. */
-const linesDrawn = () => jest.mocked(formatWeight).mock.calls.map(([weight]) => weight).filter((weight) => WEIGHTS.has(weight as number));
+const linesDrawn = () => jest.mocked(formatWeightEach).mock.calls.map(([weight]) => weight).filter((weight) => WEIGHTS.has(weight as number));
 const visibleDialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never).filter((dialog) => dialog.props.visible);
 
 beforeEach(() => {
@@ -102,9 +104,10 @@ afterEach(() => jest.restoreAllMocks());
 describe('GRN review step lines', () => {
   it.each(['create', 'edit'] as const)('%s: opening the save dialog draws no line again', async (mode) => {
     const tree = await render(mode);
-    // Every line was drawn once (a line formats its weight for the tag and the label).
+    // Every line was drawn, and once: a line formats its weight one time, for the tag and the label.
     expect(new Set(linesDrawn())).toEqual(WEIGHTS);
-    jest.mocked(formatWeight).mockClear();
+    expect(linesDrawn()).toHaveLength(LINES.length);
+    jest.mocked(formatWeightEach).mockClear();
     expect(visibleDialogs(tree)).toHaveLength(0);
 
     await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
@@ -116,13 +119,48 @@ describe('GRN review step lines', () => {
 
   it('draws only the line that changed', async () => {
     const tree = await render('create');
-    jest.mocked(formatWeight).mockClear();
+    jest.mocked(formatWeightEach).mockClear();
 
     const changed = LINES.map((item, n) => (n === 7 ? { ...item, qty: 99, stock: 99 } : item));
     mockForm = { ...mockForm, items: changed };
     await act(async () => { tree.update(<GrnReviewStep mode="create" />); });
 
-    expect(new Set(linesDrawn())).toEqual(new Set([LINES[7].weight]));
+    expect(linesDrawn()).toEqual([LINES[7].weight]);
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+// A lot stores the weight of one package; the review says so and shows no total (owner's decision of 2026-10-14).
+describe('GRN review step weights', () => {
+  const texts = (tree: ReactTestRenderer) =>
+    tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => ([] as unknown[]).concat(node.props.children).join(''));
+  const cells = (tree: ReactTestRenderer) =>
+    tree.root
+      .findAll((node) => typeof node.type === 'string' && node.props.accessible === true && /^Item \d+, /.test(String(node.props.accessibilityLabel)))
+      .map((node) => node.props.accessibilityLabel as string);
+  const weightIcons = (tree: ReactTestRenderer) => tree.root.findAll((node) => (node.type as unknown) === 'Icon' && node.props.name === 'weight-kilogram');
+
+  it('words a line\'s weight "50 kg each" on its tag and aloud, and shows no total weight', async () => {
+    const tree = await render('create', [{ ...line(1), qty: 100, stock: 100, weight: 50 }]);
+
+    expect(texts(tree)).toContain('50 kg each');
+    expect(texts(tree)).not.toContain('50 kg');
+    expect(cells(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, 50 kg each, rack R1, mark M1']);
+    // 100 bags at 50 kg: no "5,000 kg" and no total weight anywhere on the step.
+    expect(texts(tree).filter((text) => /kg/i.test(text))).toEqual(['50 kg each']);
+    expect(texts(tree).some((text) => /total weight/i.test(text))).toBe(false);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Total items', 'Total quantity']));
+    await act(async () => { tree.unmount(); });
+  });
+
+  it.each([[0], [null], [undefined]])('shows no weight tag, and says no weight, for a line with weight %p', async (weight) => {
+    const tree = await render('create', [{ ...line(1), qty: 100, stock: 100, weight: weight as unknown as number }]);
+
+    expect(weightIcons(tree)).toHaveLength(0);
+    expect(texts(tree).filter((text) => /kg/i.test(text))).toEqual([]);
+    expect(cells(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, rack R1, mark M1']);
+    // The line's other tags are still drawn.
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Rack R1', 'Mark M1']));
     await act(async () => { tree.unmount(); });
   });
 });

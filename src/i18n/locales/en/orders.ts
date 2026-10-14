@@ -12,7 +12,6 @@ export const orders = {
     loadingLabel: 'Loading order',
     couldNotOpenTitle: "Couldn't open the order",
     couldNotLoadTitle: "Couldn't load the order",
-    couldNotUpdateTitle: "Couldn't update the order",
     couldNotChangeQuantityTitle: "Couldn't change the quantity",
     removeTitle: 'Remove {{name}}?',
     removeMessage: '{{name}} will be taken off this order.',
@@ -20,8 +19,6 @@ export const orders = {
     removeMessageNoName: 'this item will be taken off this order.',
     removeItem: 'Remove item',
     couldNotRemoveTitle: "Couldn't remove the item",
-    someNotUpdatedTitle: "Some items weren't updated",
-    someNotUpdatedMessage: 'Check the order and try again.',
     emptyTitle: 'No items in this order',
     emptyMessage: "Items you add from this customer's stock appear here.",
     labelDetail: '{{label}}, {{detail}}',
@@ -75,5 +72,27 @@ export const orders = {
     loadingMore: 'Loading more items…',
     catalogName: 'Catalog {{name}}',
     allCatalogs: 'All catalogs',
+    // Leaving with selections that were not added.
+    discardTitle: 'Discard selections?',
+    discardMessage: {
+      one: 'Changes to {{count}} lot have not been saved.',
+      other: 'Changes to {{count}} lots have not been saved.',
+    },
+    discardSelections: 'Discard selections',
+    // Add waits for the server; a lot that was not saved keeps its reason.
+    savingProgress: 'Saving {{done}} of {{total}}…',
+    notSavedSummary: {
+      one: '{{count}} lot was not saved. See the reason on it.',
+      other: '{{count}} lots were not saved. See the reason on each.',
+    },
+    reasonStock: 'Only {{bags}} in stock.',
+    reasonAlreadyInOrder: 'This lot is already in the order.',
+    reasonBelowDispatched: '{{bags}} already dispatched. Choose that many or more.',
+    reasonOrderClosed: 'This order is closed. Go back and open it again.',
+    reasonNotSaved: 'Not saved. Check your connection and try again.',
+    // Someone else changed the lot while the picker was open; nothing was overwritten.
+    reasonChangedMeanwhile: 'Changed by someone else: now {{bags}} in the order. Tap Add again to make it {{chosen}}.',
+    reasonRemovedMeanwhile: 'Removed by someone else. Tap Add again to add {{chosen}}.',
+    reasonChangedMeanwhileRemove: 'Changed by someone else: now {{bags}} in the order. Tap Add again to remove it.',
   },
 };

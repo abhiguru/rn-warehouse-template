@@ -202,7 +202,6 @@ export const dispatch = {
     totalQuantityLabel: 'Total quantity {{bags}}',
     editDetails: 'Edit dispatch details',
     vehicle: 'Vehicle',
-    totalWeight: 'Total weight',
     itemRowLabel: 'Item {{index}}, {{item}}, GRN {{grn}}, quantity {{quantity}}',
     itemRowLabelWithMark: 'Item {{index}}, {{item}}, mark {{mark}}, GRN {{grn}}, quantity {{quantity}}',
     hidesDetails: 'Hides item details',
@@ -210,7 +209,6 @@ export const dispatch = {
     grnBadge: 'GRN {{number}}/{{quantity}}',
     qty: 'Qty {{quantity}}',
     grnDate: 'GRN date',
-    unitWeight: 'Unit weight',
     originalQuantity: 'Original GRN quantity',
     stockAfter: 'Stock after dispatch',
     itemsTitle: 'Items ({{count}})',
@@ -428,5 +426,11 @@ export const dispatch = {
     loading: 'Loading dispatches…',
     loadingLabel: 'Loading dispatches',
     retryLoad: 'Try loading dispatches again',
+  },
+  // A line of the table on a dispatch card, as a screen reader says it, when the
+  // lot has no weight (with a weight: lists.dispatch.itemRow and itemRowRack)
+  listRow: {
+    noWeight: '{{item}}, GRN {{grn}}, {{quantity}} dispatched',
+    noWeightRack: '{{item}}, rack {{rack}}, GRN {{grn}}, {{quantity}} dispatched',
   },
 };
