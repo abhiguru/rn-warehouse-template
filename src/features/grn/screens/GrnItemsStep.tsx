@@ -78,8 +78,8 @@ const freshItem = (lines: readonly ItemFormData[]): ItemFormData => {
   return item;
 };
 
-/** The fields the row draws after Item and Quantity, in its order. Their names are also their error keys. */
-const FIELDS_AFTER_QUANTITY = ['weight', 'rack', 'package_mark'] as const satisfies readonly ItemFormFieldName[];
+/** The fields the row draws after Item, in its order. Their names are also their error keys. */
+const FIELDS_AFTER_ITEM = ['qty', 'weight', 'rack', 'package_mark'] as const satisfies readonly ItemFormFieldName[];
 
 const photosOf = (item: ItemFormData): GRNImageData[] => item.trl_images || [];
 const photoIds = (item: ItemFormData) => photosOf(item).map((img) => img.id).join('|');
@@ -322,16 +322,21 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     });
   };
 
-  /** Brings the first field with an error into view: the form is one sideways row. */
+  /**
+   * Brings the first field with an error into view (the form is one sideways
+   * row: Weight, Rack and Mark are out of view while Item and Quantity are
+   * shown) and gives it the cursor with the keyboard open, so the worker can
+   * type at once. Called from the OK of the alert that names the error.
+   */
   const showFirstError = (errors: Record<string, string>) => {
     if (errors.item_table_id || errors.item_name) {
       formRef.current?.resetScroll();
-    } else if (errors.qty) {
-      formRef.current?.focusQty();
-    } else {
-      // Weight, Rack and Mark are out of view while Item and Quantity are shown.
-      const field = FIELDS_AFTER_QUANTITY.find((name) => errors[name]);
-      if (field) formRef.current?.revealField(field);
+      return;
+    }
+    const field = FIELDS_AFTER_ITEM.find((name) => errors[name]);
+    if (field) {
+      formRef.current?.revealField(field);
+      formRef.current?.focusField(field);
     }
   };
 

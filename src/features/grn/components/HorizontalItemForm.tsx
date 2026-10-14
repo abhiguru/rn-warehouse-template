@@ -44,6 +44,14 @@ const FIELD_ORDER: readonly ItemFormFieldName[] = ['item', 'qty', 'weight', 'rac
 const scrollOffsetOf = (field: ItemFormFieldName): number =>
     FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce((sum, name) => sum + FIELD_WIDTHS[name], 0);
 
+/**
+ * How long `focusField` waits before it gives a field the cursor. The items
+ * step calls it from the OK of an alert, whose dialog fades out in 200 ms
+ * (Android's short animation time), and the keyboard opens only for a field in
+ * the window that has the focus.
+ */
+const FOCUS_AFTER_DIALOG_MS = 250;
+
 // Floor and Chamber options
 const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
 const CHAMBER_OPTIONS = ['C4', 'C7', 'C2', 'Anti-Ch'];
@@ -114,7 +122,12 @@ export interface ItemFormData {
 
 // Ref handle exposed to parent
 export interface HorizontalItemFormRef {
-    focusQty: () => void;
+    /**
+     * Gives a field the cursor with the keyboard open, after a short wait (see
+     * FOCUS_AFTER_DIALOG_MS). A field that still has the cursor lets go of it
+     * first, or the keyboard would not be asked for.
+     */
+    focusField: (field: Exclude<ItemFormFieldName, 'item'>) => void;
     resetScroll: () => void;
     /** Scrolls the row to a field, as when it takes focus, so the error under it is in view. */
     revealField: (field: ItemFormFieldName) => void;
@@ -169,11 +182,13 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
 
         // Expose methods to parent via ref
         useImperativeHandle(ref, () => ({
-            focusQty: () => {
-                setTimeout(() => {
-                    qtyInputRef.current?.focus();
-                    scrollToField(scrollOffsetOf('qty'));
-                }, 100);
+            focusField: (field) => {
+                const inputRef = { qty: qtyInputRef, weight: weightInputRef, rack: rackInputRef, package_mark: packageMarkInputRef }[field];
+                // A field keeps the cursor while a dialog is open over it, so to
+                // React Native it is still the focused field, and focus() on the
+                // focused field does nothing: no keyboard is asked for.
+                if (inputRef.current?.isFocused()) inputRef.current.blur();
+                setTimeout(() => inputRef.current?.focus(), FOCUS_AFTER_DIALOG_MS);
             },
             resetScroll: () => {
                 scrollRef.current?.scrollTo({ x: 0, animated: true });
@@ -204,6 +219,12 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
 
         // Fiori: Track focused field for blue border
         const [focusedField, setFocusedField] = useState<string | null>(null);
+
+        // A field's border: the error colour while it has an error, also with
+        // the cursor in it (the worker is sent there to fix it), else the focus
+        // colour while it has the cursor.
+        const borderOf = (field: ItemFormFieldName, error: string | undefined) =>
+            error ? styles.inputError : focusedField === field ? styles.inputFocused : null;
 
         // The text field and the chips are kept here while the line is in the
         // form. They are read from the rack only when a line is put into the
@@ -416,9 +437,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             style={[
                                 styles.input,
                                 styles.numericInput,
-                                !!currentItem.errors.qty && styles.inputError,
-                                isQtyLocked && styles.inputReadOnly,
-                                focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
+                                isQtyLocked ? styles.inputReadOnly : borderOf('qty', currentItem.errors.qty),
                             ]}
                             value={localizeDigits(currentItem.qty ?? '')}
                             onChangeText={(text) => {
@@ -459,8 +478,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             style={[
                                 styles.input,
                                 styles.suffixField,
-                                !!currentItem.errors.weight && styles.inputError,
-                                focusedField === 'weight' && styles.inputFocused,
+                                borderOf('weight', currentItem.errors.weight),
                             ]}
                         >
                             <TextInput
@@ -500,11 +518,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <TextInput
                             ref={rackInputRef}
                             accessibilityLabel={tr('common.rack')}
-                            style={[
-                                styles.input,
-                                !!currentItem.errors.rack && styles.inputError,
-                                focusedField === 'rack' && styles.inputFocused,
-                            ]}
+                            style={[styles.input, borderOf('rack', currentItem.errors.rack)]}
                             value={rackText}
                             onChangeText={handleRackTextChange}
                             placeholder={tr('grn.form.forExample', { example: '20B-20C' })}
@@ -566,10 +580,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <TextInput
                             ref={packageMarkInputRef}
                             accessibilityLabel={tr('grn.item.mark')}
-                            style={[
-                                styles.input,
-                                focusedField === 'package_mark' && styles.inputFocused,
-                            ]}
+                            style={[styles.input, borderOf('package_mark', currentItem.errors.package_mark)]}
                             value={currentItem.package_mark}
                             onChangeText={(text) => onFieldChange('package_mark', text)}
                             placeholder={tr('grn.form.forExample', { example: 'MARK001' })}
@@ -614,6 +625,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 )}
                             </View>
                         )}
+                        {renderError(currentItem.errors.package_mark)}
                     </View>
                 </ScrollView>
 
