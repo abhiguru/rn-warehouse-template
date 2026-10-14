@@ -1166,7 +1166,12 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         </View>
                         {exceedsMax &&
                             renderError(
-                                tr(isEditingItem ? 'dispatch.items.maxBagsOriginal' : 'dispatch.items.maxBagsAvailable', {
+                                // The limit includes bags this dispatch already holds only for a line
+                                // loaded from a saved dispatch; a line of a new dispatch is limited by
+                                // the available stock alone.
+                                tr(isEditingItem && (currentItem.original_disp_quantity ?? 0) > 0
+                                    ? 'dispatch.items.maxBagsOriginal'
+                                    : 'dispatch.items.maxBagsAvailable', {
                                     count: maxAllowedQty,
                                 })
                             )}

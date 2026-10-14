@@ -474,7 +474,8 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
   });
 
   it.each([
-    ['more bags than the lot holds', '96', 'Enter 95 bags or fewer. That is the original stock.'],
+    // A line of a new dispatch holds no bags yet: its limit is the stock still available.
+    ['more bags than the lot holds', '96', 'Enter 95 bags or fewer. That is the available stock.'],
     ['the bags cleared', '', 'Quantity must be at least 1'],
     ['bags that are not a whole number', '12.5', 'Quantity must be a whole number'],
   ])('a new dispatch, %s: Next stops, the correction is given up, and Next opens Review', async (_what, typed, reason) => {
