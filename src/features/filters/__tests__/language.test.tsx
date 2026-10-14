@@ -76,11 +76,15 @@ describe('a language switch at run time', () => {
   it('changes the copies in FILTER_CONFIGS too: they are not frozen in the language they were built in', () => {
     const config = FILTER_CONFIGS['grn-list'];
     expect(config.title).toBe('Filter GRNs');
+    // The weight filter is on the weight of one package, and says so.
+    expect(visibleFields(config, staff).map(candidate => candidate.label)).toEqual([
+      'Stock', 'Date', 'Customer', 'Item', 'GRN number', 'Weight each', 'Package',
+    ]);
     setLanguage('gu');
     expect(config.title).toBe('આવક પાવતી ફિલ્ટર કરો');
     expect(config.search?.placeholder).toBe('આવક પાવતી શોધો');
     expect(visibleFields(config, staff).map(candidate => candidate.label)).toEqual([
-      'સ્ટોક', 'તારીખ', 'વેપારી', 'આઇટમ', 'આવક પાવતી નંબર', 'વજન', 'માર્કો',
+      'સ્ટોક', 'તારીખ', 'વેપારી', 'આઇટમ', 'આવક પાવતી નંબર', 'દરેકનું વજન', 'માર્કો',
     ]);
     expect(typeof config.countResults).toBe('function');
   });
@@ -234,8 +238,8 @@ describe('the filter bar in Gujarati', () => {
       'આવક પાવતી નંબર મુજબ સૉર્ટ કરેલું, નંબર: ઉતરતા ક્રમમાં. સૉર્ટ બદલો',
       'સ્ટોક: સ્ટોકમાં છે. બદલો',
       'સ્ટોક: સ્ટોકમાં છે ફિલ્ટર કાઢી નાખો',
-      'વજન: ૧૦થી ૫૦ કિલો સુધી. બદલો',
-      'વજન: ૧૦થી ૫૦ કિલો સુધી ફિલ્ટર કાઢી નાખો',
+      'દરેકનું વજન: ૧૦થી ૫૦ કિલો સુધી. બદલો',
+      'દરેકનું વજન: ૧૦થી ૫૦ કિલો સુધી ફિલ્ટર કાઢી નાખો',
       'નંબર A0010થી A0012 સુધી, તમારી શોધમાંથી વાંચ્યા છે. તેના બદલે આ શબ્દોને લખાણ તરીકે શોધો',
       'તમારી શોધમાંથી વાંચેલા નંબર A0010થી A0012 સુધીનું ફિલ્ટર કાઢી નાખો',
       'તારીખ મુજબ ફિલ્ટર કરો',

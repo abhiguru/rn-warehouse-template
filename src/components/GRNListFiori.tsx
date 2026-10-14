@@ -66,7 +66,7 @@ import { HighlightedText, matchesAnyWord, searchWords } from '@/features/filters
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
-import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
@@ -194,16 +194,15 @@ const GRNCardFiori = memo<GRNCardProps>(({
   }, [globalExpandedKey, globalExpanded]);
   const swipeableRef = useRef<Swipeable>(null);
 
-  // Calculate totals
+  // Totals of the receipt: bags received and bags in stock. A total weight is
+  // not shown (style guide 12.3); the expanded table has each line's "Kg each".
   const totalQty = group.items.reduce((sum, item) => sum + (item.qty || 0), 0);
-  const totalWeight = group.items.reduce((sum, item) => sum + ((item.qty || 0) * (item.weight || 0)), 0);
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
   // Fiori semantic status for the whole GRN
   const stockStatus = stockStatusFor(totalStock, totalQty);
   const displayDate = formatDate(group.date, 'short');
   const itemCountLabel = formatCount(group.items.length, 'item');
-  const weightLabel = formatWeight(Math.round(totalWeight));
 
   const handleSwipeAction = (action: 'view' | 'edit' | 'print') => {
     swipeableRef.current?.close();
@@ -268,7 +267,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
               group.registration,
               itemCountLabel,
               translate('lists.grn.stockCount', { stock: formatNumber(totalStock) }),
-              weightLabel,
               stockStatus.label,
               matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
             ].filter(Boolean).join(', ')}
@@ -317,7 +315,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
               <Text style={styles.stockValueText}>{formatNumber(totalStock)}</Text>
               <Text style={styles.stockLabel}>{translate('lists.grn.stockLabel')}</Text>
               <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
-              <Text style={styles.weightText}>{weightLabel}</Text>
             </View>
           </Pressable>
 
@@ -327,12 +324,14 @@ const GRNCardFiori = memo<GRNCardProps>(({
               <View style={styles.tableHeader} accessibilityRole="header">
                 <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
                 <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('common.bags')}</Text>
-                <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+                <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
                 <Text style={[styles.tableHeaderCell, styles.colStock]}>{translate('common.stock')}</Text>
               </View>
 
               {group.items.map((item, idx) => {
                 const itemStatus = stockStatusFor(item.stock, item.qty);
+                // Whole kilograms, as the column always showed. A line without a weight has none to show or say.
+                const kgEach = Math.round(item.weight || 0);
                 return (
                   <View
                     key={`${item.id}-${idx}`}
@@ -342,7 +341,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                       item.item_name,
                       item.package_mark,
                       formatCount(item.qty || 0, 'bag'),
-                      formatWeight(Math.round(item.weight || 0)),
+                      formatWeightEach(kgEach),
                       translate('lists.grn.itemStock', { stock: formatNumber(item.stock || 0), status: itemStatus.label }),
                     ].filter(Boolean).join(', ')}
                   >
@@ -354,7 +353,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                     </View>
                     <Text style={[styles.tableCell, styles.colQty, styles.cellValue]}>{formatNumber(item.qty)}</Text>
                     <Text style={[styles.tableCell, styles.colWeight, styles.cellValue]}>
-                      {formatNumber(Math.round(item.weight || 0))}
+                      {kgEach > 0 ? formatNumber(kgEach) : '—'}
                     </Text>
                     <View style={[styles.tableCell, styles.colStock]}>
                       <StatusTag status={itemStatus.status} label={formatNumber(item.stock)} icon={itemStatus.icon} style={styles.stockTag} />

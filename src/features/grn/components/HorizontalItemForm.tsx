@@ -17,14 +17,32 @@ import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedTe
 import type { ThemeTokens } from '@/theme/tokens';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { searchItems } from '@/services/item-search-service';
+import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
 import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
-const FIELD_WIDTH_LARGE = 220; // Width for item name field
-const FIELD_WIDTH_QTY_WEIGHT = 117; // Qty & Weight reduced by 35% (was 180)
-const FIELD_WIDTH_RACK = 196; // Rack reduced by 30% (was 280), chips will wrap
-const FIELD_WIDTH_MARK = 270; // 50% wider mark field
+
+// The five fields of the row, in the order they are drawn, each with its width.
+const FIELD_WIDTHS = {
+    item: 220,
+    qty: 117,
+    // Wider than Quantity: "Weight each" has to stay on one line at font scale
+    // 2.0, or the weight box drops below the quantity box.
+    weight: 152,
+    rack: 196, // the chips wrap
+    package_mark: 270,
+} as const;
+type FieldName = keyof typeof FIELD_WIDTHS;
+const FIELD_ORDER: readonly FieldName[] = ['item', 'qty', 'weight', 'rack', 'package_mark'];
+
+/**
+ * Where the row scrolls to when a field takes focus: the widths of the fields
+ * before it. Worked out from the table above, so a width cannot change without
+ * the offsets following it.
+ */
+const scrollOffsetOf = (field: FieldName): number =>
+    FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce((sum, name) => sum + FIELD_WIDTHS[name], 0);
 
 // Floor and Chamber options
 const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
@@ -152,7 +170,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             focusQty: () => {
                 setTimeout(() => {
                     qtyInputRef.current?.focus();
-                    scrollToField(FIELD_WIDTH_LARGE);
+                    scrollToField(scrollOffsetOf('qty'));
                 }, 100);
             },
             resetScroll: () => {
@@ -221,6 +239,28 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const canViewAll = savedItemsCount > 0 && !!onViewAll;
         const itemNumber = isEditing ? editingItemNumber : savedItemsCount + 1;
 
+        // The fixed strip names the line in the form: which item and how many of
+        // what. Rack and Mark are a screen's width away from Item and Quantity,
+        // so without it a correction made there is made blind.
+        const itemName = currentItem.item_name?.trim() ?? '';
+        const packaging = currentItem.packaging?.trim() ?? '';
+        const typedQty = (currentItem.qty ?? '').trim();
+        const parsedQty = parseReceiptQuantity(typedQty);
+        // What is typed is shown even when it is not a quantity yet ("0", "12.5").
+        const quantityText = parsedQty !== null ? formatNumber(parsedQty) : localizeDigits(typedQty);
+        const quantityLine = quantityText && packaging
+            ? tr('grn.item.quantityWithPackaging', { quantity: quantityText, packaging })
+            : quantityText || packaging;
+        const stripLabel = [
+            tr(isEditing ? 'grn.item.a11yEditingItem' : 'grn.item.a11yNewItem', { number: itemNumber }),
+            itemName,
+            quantityText ? tr('grn.item.a11yQuantity', { quantity: quantityText }) : '',
+            packaging,
+            canViewAll ? tr('grn.item.a11yViewSaved', { count: savedItemsCount }) : '',
+        ]
+            .filter(Boolean)
+            .join(', ');
+
         const renderError = (message?: string) =>
             message ? (
                 <View style={styles.errorRow} accessibilityLiveRegion="polite">
@@ -261,15 +301,11 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         onPress={() => canViewAll && onViewAll?.()}
                         disabled={!canViewAll}
                         accessibilityRole={canViewAll ? 'button' : 'header'}
-                        accessibilityLabel={
-                            canViewAll
-                                ? tr(isEditing ? 'grn.item.a11yEditingItemViewSaved' : 'grn.item.a11yNewItemViewSaved', { number: itemNumber, count: savedItemsCount })
-                                : tr(isEditing ? 'grn.item.a11yEditingItem' : 'grn.item.a11yNewItem', { number: itemNumber })
-                        }
+                        accessibilityLabel={stripLabel}
                     >
-                        <Text style={styles.heroOverline}>{isEditing ? tr('grn.item.editingItem') : tr('grn.item.newItem')}</Text>
-                        <View style={styles.heroTitleRow}>
-                            <Text style={styles.heroTitle}>{tr('grn.item.itemNumber', { number: itemNumber })}</Text>
+                        {/* Line 1: new or correction, and the way to the saved items */}
+                        <View style={styles.heroOverlineRow}>
+                            <Text style={styles.heroOverline}>{isEditing ? tr('grn.item.editingItem') : tr('grn.item.newItem')}</Text>
                             {canViewAll && (
                                 <View style={styles.viewAll}>
                                     <Text style={styles.viewAllText}>{tr('grn.item.savedCount', { count: savedItemsCount })}</Text>
@@ -277,12 +313,14 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 </View>
                             )}
                         </View>
-                        {!!currentItem.packaging && (
-                            <View style={styles.packagingBadge}>
-                                <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.packagingText}>{currentItem.packaging}</Text>
-                            </View>
-                        )}
+                        {/* Line 2: the line's number and, once chosen, its item. A long name wraps, then ends in an ellipsis. */}
+                        <Text style={styles.heroTitle} numberOfLines={3} ellipsizeMode="tail">
+                            {itemName
+                                ? tr('grn.item.itemNumberWithName', { number: itemNumber, name: itemName })
+                                : tr('grn.item.itemNumber', { number: itemNumber })}
+                        </Text>
+                        {/* Line 3: how many of what, as typed so far. A value is never cut short. */}
+                        {!!quantityLine && <Text style={styles.heroQuantity}>{quantityLine}</Text>}
                     </Pressable>
                     <Pressable
                         style={({ pressed }) => [
@@ -311,7 +349,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     style={styles.scrollView}
                 >
                     {/* Field 1: Item Name (Dropdown Picker) */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTH_LARGE, zIndex: 1000 }]}>
+                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.item, zIndex: 1000 }]}>
                         <View style={styles.labelRow}>
                             <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.item')}<Text style={styles.required}> *</Text></Text>
@@ -330,7 +368,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                     // Focus Qty
                                     setTimeout(() => {
                                         qtyInputRef.current?.focus();
-                                        scrollToField(FIELD_WIDTH_LARGE);
+                                        scrollToField(scrollOffsetOf('qty'));
                                     }, 100);
                                 } else {
                                     // Clear
@@ -354,7 +392,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 2: Quantity */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTH_QTY_WEIGHT }]}>
+                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.qty }]}>
                         <View style={styles.labelRow}>
                             <Text style={styles.label}>{tr('grn.item.quantity')}<Text style={styles.required}> *</Text></Text>
                             {isQtyLocked && (
@@ -398,7 +436,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                     return;
                                 }
                                 setFocusedField('qty');
-                                scrollToField(FIELD_WIDTH_LARGE);
+                                scrollToField(scrollOffsetOf('qty'));
                             }}
                             onBlur={() => setFocusedField(null)}
                             selectTextOnFocus={!isQtyLocked}
@@ -407,10 +445,10 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         {renderError(currentItem.errors.qty)}
                     </View>
 
-                    {/* Field 3: Weight */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTH_QTY_WEIGHT }]}>
+                    {/* Field 3: Weight of one bag, box or crate */}
+                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.weight }]}>
                         <View style={styles.labelRow}>
-                            <Text style={styles.label}>{tr('common.weight')}</Text>
+                            <Text style={styles.label}>{tr('common.weightEach')}</Text>
                         </View>
                         <View
                             style={[
@@ -434,7 +472,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 blurOnSubmit={false}
                                 onFocus={() => {
                                     setFocusedField('weight');
-                                    scrollToField(FIELD_WIDTH_LARGE + FIELD_WIDTH_QTY_WEIGHT);
+                                    scrollToField(scrollOffsetOf('weight'));
                                 }}
                                 onBlur={() => setFocusedField(null)}
                                 selectTextOnFocus
@@ -445,7 +483,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 4: Rack with Floor/Chamber Chips */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTH_RACK }]}>
+                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.rack }]}>
                         <View style={styles.labelRow}>
                             <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.rack')}</Text>
@@ -471,7 +509,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             blurOnSubmit={false}
                             onFocus={() => {
                                 setFocusedField('rack');
-                                scrollToField(FIELD_WIDTH_LARGE + FIELD_WIDTH_QTY_WEIGHT * 2);
+                                scrollToField(scrollOffsetOf('rack'));
                             }}
                             onBlur={() => setFocusedField(null)}
                             autoCapitalize="characters"
@@ -501,7 +539,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 5: Package Mark + Image Upload */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTH_MARK }]}>
+                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.package_mark }]}>
                         <View style={styles.labelRow}>
                             <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('grn.item.mark')}</Text>
@@ -536,7 +574,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             blurOnSubmit={false}
                             onFocus={() => {
                                 setFocusedField('package_mark');
-                                scrollToField(FIELD_WIDTH_LARGE + FIELD_WIDTH_QTY_WEIGHT * 2 + FIELD_WIDTH_RACK);
+                                scrollToField(scrollOffsetOf('package_mark'));
                             }}
                             onBlur={() => setFocusedField(null)}
                             maxLength={60}
@@ -611,15 +649,21 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.footnote,
         color: t.text.secondary,
     },
-    heroTitleRow: {
+    heroOverlineRow: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
         flexWrap: 'wrap' as const,
-        gap: space.sm,
+        columnGap: space.sm,
     },
     heroTitle: {
         ...typography.headline,
         color: t.text.primary,
+    },
+    heroQuantity: {
+        ...typography.subhead,
+        color: t.text.primary,
+        fontVariant: ['tabular-nums' as const],
     },
     viewAll: {
         flexDirection: 'row' as const,
@@ -628,16 +672,6 @@ const makeStyles = (t: ThemeTokens) => ({
     viewAllText: {
         ...typography.subhead,
         color: t.brand.tint,
-    },
-    packagingBadge: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        marginTop: space.xxs,
-        gap: space.xs,
-    },
-    packagingText: {
-        ...typography.footnote,
-        color: t.text.secondary,
     },
     saveButton: {
         width: touchTarget,

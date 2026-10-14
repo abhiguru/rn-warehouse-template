@@ -63,7 +63,10 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     // Everything dispatched is the normal end of a GRN: neutral, not an error
     expect(all).toContain('Fully dispatched');
     expect(all).not.toContain('Out of stock');
-    expect(all).toContain('1,250.5 kg');
+    // The weight of one package, under the plain label.
+    expect(all).toContain('Weight');
+    expect(all).toContain('1,250.5 kg each');
+    expect(all).not.toContain('1,250.5 kg');
     expect(all).toContain('Rack B-14');
     const card = tree.root.findAll(n => (n.type as unknown) === 'View')[0];
     expect(StyleSheet.flatten(card.props.style).backgroundColor).toBe(t.surface.card);

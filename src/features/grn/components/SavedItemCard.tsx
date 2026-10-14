@@ -6,7 +6,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 
 export interface SavedItemCardData {
@@ -45,12 +45,13 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
   const styles = useThemedStyles(makeStyles);
   const qty = typeof item.quantity === 'string' ? parseReceiptQuantity(item.quantity) ?? 0 : item.quantity || 0;
   const weightValue = typeof item.weight === 'string' ? parseReceiptWeight(item.weight) : item.weight;
-  const hasWeight = !!weightValue && weightValue > 0;
+  // The weight of one package ("50 kg each"); null when the line has none, and then no tag is drawn.
+  const weightText = formatWeightEach(weightValue);
+  const hasWeight = weightText !== null;
   const rack = item.rack?.trim();
   const packageMark = item.packageMark?.trim();
   const imageCount = item.images?.length || 0;
   const qtyText = formatNumber(qty);
-  const weightText = hasWeight ? formatWeight(weightValue as number) : '';
   const photosText = formatCount(imageCount, 'photo');
 
   const a11yLabel = [
@@ -103,7 +104,7 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
       {/* Row 2: details */}
       {(hasWeight || !!rack || !!packageMark || imageCount > 0) && (
         <View style={styles.detailsRow}>
-          {hasWeight && <StatusTag status="neutral" label={weightText} icon="weight-kilogram" />}
+          {weightText !== null && <StatusTag status="neutral" label={weightText} icon="weight-kilogram" />}
           {!!rack && <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" />}
           {!!packageMark && <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" />}
           {imageCount > 0 && <StatusTag status="neutral" label={photosText} icon="camera-outline" />}
