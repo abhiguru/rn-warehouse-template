@@ -41,8 +41,12 @@ export const CENTRAL_REQUEST_TIMEOUT_MS = 15000;
 const RENEW_AHEAD_MS = 60 * 1000;
 /** A secure store that did not answer at start is read again this much later. */
 export const RESTORE_RETRY_MS = 2000;
-/** The catalogue may be reused for this long (the service says `max-age=600`). */
-const CATALOGUE_CACHE_MS = 10 * 60 * 1000;
+/**
+ * The catalogue may be reused for this long. It carries whether each facility was reachable a
+ * minute ago (central service 0.8.0, `max-age=30`), so it is not kept for long; pull to refresh
+ * and "Try again" ask the service again at once.
+ */
+const CATALOGUE_CACHE_MS = 60 * 1000;
 /** The longest wait the app will name; anything longer is not a wait the service sends. */
 const MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60;
 
@@ -72,13 +76,32 @@ export type CentralFailure = {
 };
 export type CentralResult<T> = ({ ok: true } & T) | CentralFailure;
 
+/**
+ * One member of the association's list (central service docs/API.md). A catalogue from before
+ * central service 0.8.0 sends only `id`, `name`, `city`, `origin` and `operator`; the other
+ * fields then take the value that shows nothing (no district, no availability).
+ */
 export type CatalogueFacility = {
   id: string;
   name: string;
+  /** The same place as `town` (the service's older name for it). */
   city: string;
-  /** The value sent as `audience` and the facility's server address. */
-  origin: string;
+  town: string;
+  /** '' when the catalogue names none. */
+  district: string;
+  /**
+   * The value sent as `audience` and the facility's server address. null: a member with no
+   * app server yet, listed so people can find it, never added or opened.
+   */
+  origin: string | null;
   operator: string;
+  /**
+   * Whether the association's service reached the facility at its last check (about once a
+   * minute). null: not reported (an older catalogue, or a member with no app server).
+   */
+  online: boolean | null;
+  /** When the service last reached the facility (ISO 8601); null: never, or not reported. */
+  lastSeenAt: string | null;
 };
 
 type StoredSession = { accessToken: string; refreshToken: string; expiresAt: number };
@@ -184,14 +207,14 @@ async function centralFetch(
   config: CentralLoginConfig | null,
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
-  options: { body?: Record<string, unknown>; accessToken?: string } = {}
+  options: { body?: Record<string, unknown>; accessToken?: string; headers?: Record<string, string> } = {}
 ): Promise<Answer> {
   if (!config) return { kind: 'transport', code: 'not_configured' };
   const controller = new AbortController();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { ...options.headers, Accept: 'application/json' };
     if (options.body) headers['Content-Type'] = 'application/json';
     if (options.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
     // The race ends the wait even when the platform's fetch does not settle on abort.
@@ -1027,26 +1050,54 @@ export function readCatalogueToken(token: unknown, issuer: string, now = Date.no
   const exp = Number(claims.exp);
   if (!Number.isFinite(exp) || exp * 1000 <= now) return null;
   if (!Array.isArray(claims.facilities)) return null;
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenOrigins = new Set<string>();
   const facilities: CatalogueFacility[] = [];
+  const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
   for (const entry of claims.facilities as unknown[]) {
-    const item = entry as { id?: unknown; name?: unknown; city?: unknown; origin?: unknown; operator?: unknown } | null;
+    const item = entry as {
+      id?: unknown;
+      name?: unknown;
+      city?: unknown;
+      town?: unknown;
+      district?: unknown;
+      origin?: unknown;
+      operator?: unknown;
+      online?: unknown;
+      last_seen_at?: unknown;
+    } | null;
     if (!item || typeof item !== 'object') continue;
-    if (typeof item.id !== 'string' || typeof item.name !== 'string' || !item.name.trim()) continue;
-    if (!isFacilityOrigin(item.origin) || seen.has(item.origin)) continue;
-    seen.add(item.origin);
+    if (typeof item.id !== 'string' || !item.id || typeof item.name !== 'string' || !item.name.trim()) continue;
+    // `null` is a member with no app server yet. Any other address that is not a bare https
+    // origin (a typing mistake at the association, a missing field) is dropped, never shown as
+    // "no app server yet".
+    if (item.origin !== null && !isFacilityOrigin(item.origin)) continue;
+    const origin = item.origin;
+    if (seenIds.has(item.id) || (origin !== null && seenOrigins.has(origin))) continue;
+    seenIds.add(item.id);
+    if (origin !== null) seenOrigins.add(origin);
+    const lastSeen = text(item.last_seen_at);
     facilities.push({
       id: item.id,
       name: item.name.trim(),
-      city: typeof item.city === 'string' ? item.city.trim() : '',
-      origin: item.origin,
-      operator: typeof item.operator === 'string' ? item.operator.trim() : '',
+      city: text(item.city) || text(item.town),
+      town: text(item.town) || text(item.city),
+      district: text(item.district),
+      origin,
+      operator: text(item.operator),
+      // Availability is reported only for a facility with an app server, and only as a real boolean.
+      online: origin !== null && typeof item.online === 'boolean' ? item.online : null,
+      lastSeenAt: lastSeen && Number.isFinite(Date.parse(lastSeen)) ? lastSeen : null,
     });
   }
   return facilities;
 }
 
-/** `GET /v1/facilities`: the association's list of member facilities. */
+/**
+ * `GET /v1/facilities`: the association's list of member facilities. Asked with
+ * `Cache-Control: no-cache`: Android's HTTP cache would otherwise answer a forced read (pull to
+ * refresh, "Try again") with its stored copy for as long as the service's `max-age` allows.
+ */
 export async function fetchFacilityCatalogue(
   options: { force?: boolean } = {}
 ): Promise<CentralResult<{ facilities: CatalogueFacility[] }>> {
@@ -1054,7 +1105,7 @@ export async function fetchFacilityCatalogue(
   if (!config) return failure('not_configured');
   if (!options.force && catalogueCache && Date.now() - catalogueCache.at < CATALOGUE_CACHE_MS && Date.now() >= catalogueCache.at)
     return { ok: true, facilities: catalogueCache.facilities };
-  const answer = await centralFetch(config, 'GET', '/v1/facilities');
+  const answer = await centralFetch(config, 'GET', '/v1/facilities', { headers: { 'Cache-Control': 'no-cache' } });
   if (answer.kind !== 'ok') return failureOf(answer);
   const facilities = readCatalogueToken(answer.body.catalogue, config.issuer);
   if (!facilities) return failure('catalogue_invalid');

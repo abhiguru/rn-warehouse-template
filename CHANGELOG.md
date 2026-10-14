@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — catalogue availability (2026-10-14)
+
+No backend migration is needed: nothing changes in the facility backend. The tags need central identity service 0.8.0, which publishes `town`, `district`, `online`, `last_seen_at` and members with `origin: null`; against an older central service the catalogue looks as before, sorted by name, with no tags.
+
+### Add facility (central login)
+
+- **Each member's availability.** Every row of the association's catalogue has one tag: Online, Offline or No app server yet, as the association's service last saw the facility (it checks about once a minute). An offline row says when the facility was last reached ("Last seen 5 min ago", "Last seen just now", "Not reached yet") and can still be picked. Online rows come first, then offline ones, then members with no app server, each group by name. A catalogue that reports nothing shows no tags.
+- **Members with no app server yet are listed.** They are greyed, end in an information icon, and a tap explains "<name> is not on the app yet" instead of adding or opening anything. A catalogue entry whose address is missing or not valid is still left out.
+- **Town and district.** The second line of a row is "Town, District" (the district left out when it is the town), and the search finds a facility by name, town or district: "Search by name, town or district".
+- **Pull to refresh** asks the association again without blanking the list; when it fails, the rows stay and one line under the search field says "Couldn't refresh the list." with the reason.
+- **"On your list"** is a footnote with a check under the row, no longer a second tag.
+- **Fresher list.** The app keeps the catalogue for 60 seconds (was 10 minutes) and asks for it with `Cache-Control: no-cache`, so Android's HTTP cache cannot answer pull to refresh or "Try again" with an old copy.
+- Picking a facility stores its town as the place shown on My facilities; "Enter address" is unchanged.
+
+### Gujarati, for review
+
+- New or changed Gujarati strings are drafts that await the owner's review: `central.catalogue.searchPlaceholder`, `central.catalogue.noMatchMessage`, `central.catalogue.refreshFailed`, `central.catalogue.status.online`, `central.catalogue.status.offline`, `central.catalogue.status.noServer`, `central.catalogue.lastSeen`, `central.catalogue.lastSeenJustNow`, `central.catalogue.neverSeen`, `central.catalogue.noServerTitle`, `central.catalogue.noServerMessage`, `central.catalogue.noServerHint`. The glossary has a new Draft row: જિલ્લો for "District".
+- `central.catalogue.cellLabel` is deleted in both languages: a row is now read out as its visible lines joined by commas.
+
 ## Unreleased — phone review fixes (2026-10-14)
 
 No backend migration is needed. The PDFs a facility's server makes are not changed by this app change.
