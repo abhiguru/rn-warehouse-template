@@ -15,15 +15,18 @@
  * what it holds, up to a share of the window, so at the largest text sizes the
  * rows or the message scroll instead of running off the sheet.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, ScrollView, useWindowDimensions, View } from 'react-native';
 import { CustomerChoiceRows } from '@/components/common/CustomerChoiceRows';
 import { ReportEmptyState } from '@/components/reports/ReportEmptyState';
-import { readOwnBusinesses, type OwnBusiness } from '@/features/customer/ownBusinesses';
+import { getActiveOperatorServer } from '@/config/operatorServer';
+import { readAccessStatus, readOwnBusinesses, type OwnBusiness } from '@/features/customer/ownBusinesses';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
-import { useLoadWithRetry } from '@/hooks/useLoadWithRetry';
+import { useLoadWithRetry, type LoadWithRetry } from '@/hooks/useLoadWithRetry';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
+import { useAppDispatch } from '@/store/hooks';
+import { forceLogoutOnInvalidToken } from '@/store/slices/authSlice';
 import { layout, space } from '@/theme/tokens';
 
 export interface OrderBusinessSheetProps {
@@ -55,6 +58,13 @@ const makeStyles = () => ({
   },
 });
 
+/** The businesses, and for an empty list whether the facility revoked the account. */
+async function readChoices(): Promise<{ businesses: OwnBusiness[]; revoked: boolean }> {
+  const businesses = await readOwnBusinesses();
+  if (businesses.length > 0) return { businesses, revoked: false };
+  return { businesses, revoked: (await readAccessStatus()) === 'revoked' };
+}
+
 type SheetBodyProps = Pick<OrderBusinessSheetProps, 'onClose' | 'onPick'>;
 
 /** The open sheet. Mounted only while open, so every opening asks the facility again. */
@@ -62,8 +72,24 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const { height: windowHeight } = useWindowDimensions();
-  const businesses = useLoadWithRetry('own-businesses', readOwnBusinesses);
+  const dispatch = useAppDispatch();
+  const choices = useLoadWithRetry('own-businesses', readChoices);
+  const businesses: LoadWithRetry<OwnBusiness[]> =
+    choices.state === 'loaded' ? { state: 'loaded', data: choices.data.businesses, retry: choices.retry } : choices;
   const tall = businesses.state === 'loaded' && businesses.data.length > SHORT_SHEET_MAX_ROWS;
+  const revoked = choices.state === 'loaded' && choices.data.revoked;
+
+  // The facility withdrew this account's access: the same message and sign-out as a
+  // revoked session elsewhere (central.open.revoked, forceLogoutOnInvalidToken).
+  useEffect(() => {
+    if (!revoked) return;
+    const server = getActiveOperatorServer();
+    const facility = server?.companyName || server?.displayName;
+    onClose();
+    void dispatch(
+      forceLogoutOnInvalidToken(facility ? tr('central.open.revoked', { facility }) : tr('central.errors.sessionEnded'))
+    );
+  }, [revoked]);
 
   let body: React.ReactNode;
   if (businesses.state === 'loading') {
@@ -88,6 +114,8 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
         onAction={businesses.retry}
       />
     );
+  } else if (revoked) {
+    body = null; // The sheet closes as the sign-out starts.
   } else if (businesses.data.length === 0) {
     body = (
       <ReportEmptyState
