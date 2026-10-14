@@ -110,7 +110,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     act(() => byId(tree, 'add-customer-rate')[0].props.onPress());
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/edit',
-      params: { mode: 'addCustomer', item_id: 'onion', item_name: 'Review Onion Red', customer_id: 'orchard-b', customer_name: 'Review Orchard B' },
+      params: { mode: 'addCustomer', item_id: 'onion', item_name: 'Review Onion Red', customer_id: 'orchard-b', customer_name: 'Review Orchard B', price_type: 'monthly' },
     });
   });
 
@@ -133,5 +133,26 @@ describe('another day than today', () => {
     await act(async () => { byId(tree, 'other-day-back')[0].props.onPress(); });
     expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);
     expect(texts(tree).some(s => s.startsWith("You're looking at rates"))).toBe(false);
+  });
+
+  describe('a customer left with no own rate keeps their name', () => {
+    it('names the customer, titles the page with them and offers Add customer rate', async () => {
+      mockParams = { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' };
+      await open('admin', data([]));
+      const s = texts(tree);
+      expect(s).toContain("Review Orchard B's own rate");
+      expect(s.some(x => x.startsWith('Review Orchard B has no rate of their own'))).toBe(true);
+      expect(byId(tree, 'add-customer-rate').length).toBeGreaterThan(0);
+    });
+
+    it('keeps the name read from the rows when a refresh leaves no row', async () => {
+      await open('admin');
+      jest.mocked(useItemRatesFor).mockReturnValue(data(F1.filter(r => r.item_id === 'onion' && r.customer_id !== 'orchard-b')));
+      await act(async () => { tree.update(<CustomerRatePage />); });
+      const s = texts(tree);
+      expect(s).toContain("Review Orchard B's own rate");
+      expect(s.some(x => x.includes('—'))).toBe(false);
+      expect(byId(tree, 'add-customer-rate').length).toBeGreaterThan(0);
+    });
   });
 });

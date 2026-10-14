@@ -16,8 +16,10 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -102,6 +104,12 @@ const RateEditorScreen: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [later, setLater] = useState<NonNullable<ReplaceRatesResult['later']> | null>(null);
   const checked = useRef(false);
+  // The sticky Save bar's measured height: the form scrolls clear of it, a field never ends under it.
+  const [barHeight, setBarHeight] = useState(0);
+  const barHeightRef = useRef(0);
+  const windowHeight = useWindowDimensions().height;
+  const windowHeightRef = useRef(windowHeight);
+  windowHeightRef.current = windowHeight;
 
   // ---- load the item's rates, fresh ----
   useEffect(() => {
@@ -153,9 +161,11 @@ const RateEditorScreen: React.FC = () => {
 
   const ensureVisible = useCallback((key: string) => {
     const node = nodes.current[key];
-    if (!node || keyboardTop.current === null) return;
+    if (!node) return;
     node.measureInWindow((_x, y, _w, h) => {
-      const hidden = y + h + ABOVE_KEYBOARD - (keyboardTop.current ?? Infinity);
+      // The Save bar sits on the keyboard's top edge, or on the window's bottom edge with no keyboard.
+      const barTop = (keyboardTop.current ?? windowHeightRef.current) - barHeightRef.current;
+      const hidden = y + h + ABOVE_KEYBOARD - barTop;
       if (hidden > 0) scrollRef.current?.scrollTo({ y: scrollY.current + hidden, animated: true });
     });
   }, []);
@@ -418,7 +428,7 @@ const RateEditorScreen: React.FC = () => {
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
-          contentContainerStyle={styles.body}
+          contentContainerStyle={[styles.body, { paddingBottom: Math.max(space.max, barHeight + space.lg) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -492,6 +502,7 @@ const RateEditorScreen: React.FC = () => {
               label={t('pricing.edit.labour')}
               required
               numeric
+              selectTextOnFocus
               value={current.labour}
               onChangeText={text => setDraft({ ...current, labour: text })}
               keyboardType="decimal-pad"
@@ -506,6 +517,7 @@ const RateEditorScreen: React.FC = () => {
               label={t('pricing.edit.tax')}
               required
               numeric
+              selectTextOnFocus
               value={current.tax}
               onChangeText={text => setDraft({ ...current, tax: text })}
               keyboardType="decimal-pad"
@@ -519,7 +531,14 @@ const RateEditorScreen: React.FC = () => {
           <ChangeSummary lines={lines} />
         </ScrollView>
 
-        <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, space.md) }]} testID="save-bar">
+        <View
+          style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, space.md) }]}
+          testID="save-bar"
+          onLayout={(e: LayoutChangeEvent) => {
+            barHeightRef.current = e.nativeEvent.layout.height;
+            setBarHeight(e.nativeEvent.layout.height);
+          }}
+        >
           {helper ? <Text style={styles.helper}>{helper}</Text> : null}
           <Button
             type="primary"

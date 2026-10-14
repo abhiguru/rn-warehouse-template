@@ -37,8 +37,11 @@ export type StopParams = {
 
 export const itemRatesPath = (itemId: string, on?: string) =>
   ({ pathname: '/item-rates/[itemId]', params: on ? { itemId, on } : { itemId } }) as const;
-export const customerRatePath = (itemId: string, customerId: string, on?: string) =>
-  ({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: on ? { itemId, customerId, on } : { itemId, customerId } }) as const;
+export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string) =>
+  ({
+    pathname: '/item-rates/[itemId]/customer/[customerId]',
+    params: { itemId, customerId, ...(on ? { on } : {}), ...(customerName ? { customer_name: customerName } : {}) },
+  }) as const;
 export const editorPath = (params: EditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
 export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string } = {}) =>

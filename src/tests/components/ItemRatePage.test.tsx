@@ -313,7 +313,7 @@ describe('item page states', () => {
     expect(s).toContain('0–100 kg · since 1 Jan 2026');
     expect(s).toContain('New rate from 1 Jan 2027');
     press(tree, 'customer-rate-row-orchard-b');
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: { itemId: 'onion', customerId: 'orchard-b' } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' } });
     void ORCHARD_B;
   });
 
@@ -376,7 +376,7 @@ describe('Add customer rate', () => {
     await open('admin', { itemRates: itemRows('onion') }, { itemId: 'onion' });
     const onSelect = tree.root.findByType(CustomerPickerSheet).props.onSelect;
     act(() => onSelect({ id: 'orchard-b', name: 'Review Orchard B' }));
-    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: { itemId: 'onion', customerId: 'orchard-b' } });
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' } });
     act(() => onSelect({ id: 'orchard-a', name: 'Review Orchard A' }));
     expect(router.push).toHaveBeenLastCalledWith(
       expect.objectContaining({ pathname: '/item-rates/edit', params: expect.objectContaining({ mode: 'addCustomer', customer_id: 'orchard-a' }) }),

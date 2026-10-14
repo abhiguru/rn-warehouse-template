@@ -137,3 +137,37 @@ it('a field already clear of the keypad does not scroll', async () => {
   await act(async () => { inputWithLabel(t, 'Tax')!.props.onFocus(); });
   expect(scroll.scrollTo).not.toHaveBeenCalled();
 });
+
+describe('the sticky Save bar never covers a field', () => {
+  it('pads the scroll content by at least the bar height once the bar is measured', async () => {
+    const t = await open();
+    const bar = t.root.findAll(n => n.props.testID === 'save-bar' && typeof n.props.onLayout === 'function')[0];
+    await act(async () => { bar.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 170 } } }); });
+    const scroll = t.root.findByType(ScrollView);
+    const padding = ([] as { paddingBottom?: number }[]).concat(scroll.props.contentContainerStyle).reduce((p, s) => s?.paddingBottom ?? p, 0);
+    expect(padding).toBeGreaterThanOrEqual(170);
+  });
+
+  it('scrolls a field that ends under the bar above it, with the keyboard closed', async () => {
+    const t = await open();
+    const bar = t.root.findAll(n => n.props.testID === 'save-bar' && typeof n.props.onLayout === 'function')[0];
+    await act(async () => { bar.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 170 } } }); });
+    const scroll = t.root.findByType(ScrollView).instance as { scrollTo: jest.Mock };
+    scroll.scrollTo = jest.fn();
+    const windowHeight = require('react-native').Dimensions.get('window').height;
+    // The field's bottom edge sits 10 above the window's bottom, inside the bar's 170.
+    native('Tax').measureInWindow.mockImplementation((cb: (x: number, y: number, w: number, h: number) => void) => cb(0, windowHeight - 60, 300, 50));
+    await act(async () => { inputWithLabel(t, 'Tax')!.props.onFocus(); });
+    // Bar top is windowHeight - 170; the field must end 24 above it: 60 - 10... bottom (wh-10) + 24 - (wh-170) = 184.
+    expect(scroll.scrollTo).toHaveBeenCalledWith({ y: 184, animated: true });
+  });
+});
+
+it('Labour and Tax select their text on focus, as Rent does', async () => {
+  const t = await open();
+  const sel = (label: string) => t.root.findAllByType(TextInput).filter(n => String(n.props.accessibilityLabel).startsWith(label)).map(n => n.props.selectTextOnFocus);
+  expect(sel('Labour per bag')).toEqual([true]);
+  expect(sel('Tax')).toEqual([true]);
+  expect(sel('Rent per bag, per month')).toEqual([true, true]);
+  expect(sel('Up to')).toEqual([true, true]);
+});

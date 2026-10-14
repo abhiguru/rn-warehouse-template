@@ -3,7 +3,7 @@
  * beside it. The same card and the same three actions as the item page; stopping this rate
  * puts the customer back on the default rate.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,7 +55,7 @@ const makeStyles = (th: ThemeTokens) => ({
 export default function CustomerRatePage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string }>();
   const itemId = String(params.itemId ?? '');
   const customerId = String(params.customerId ?? '');
   const today = todayDay();
@@ -72,7 +72,10 @@ export default function CustomerRatePage() {
   const actions = useRateActions(item);
   const rows = useMemo(() => itemRates?.rows ?? [], [itemRates]);
   const own = useMemo(() => rows.filter(r => r.customer_id === customerId), [rows, customerId]);
-  const customerName = own[0]?.customer_name ?? '';
+  // The name outlives the rows: cancelling or undoing the customer's last own rate leaves no row to read it from.
+  const knownName = useRef(typeof params.customer_name === 'string' ? params.customer_name : '');
+  if (own[0]?.customer_name) knownName.current = own[0].customer_name;
+  const customerName = knownName.current;
   const plan = useMemo(() => planScope(own, day), [own, day]);
   const defaultPlan = useMemo(() => planScope(rows.filter(r => r.customer_id === null), day), [rows, day]);
 
@@ -98,7 +101,7 @@ export default function CustomerRatePage() {
           <HeaderBackButton />
           <View style={styles.titles}>
             <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-              {customerName ? t('pricing.customerRate.title', { customer: customerName }) : ''}
+              {customerName ? t('pricing.customerRate.title', { customer: customerName }) : item.name}
             </Text>
             <Text style={styles.subtitle} numberOfLines={2}>{item.name}</Text>
           </View>
@@ -157,12 +160,12 @@ export default function CustomerRatePage() {
               {plan.plans.length === 0 ? (
                 <View style={styles.strip}>
                   <RateStrip variant="warning" message={t('pricing.customerRate.noneNow', { customer: customerName || '—' })} testID="no-own-rate" />
-                  {writable && customerName ? (
+                  {writable && customerId ? (
                     <Button
                       type="primary"
                       size="fullWidth"
                       disabled={offline}
-                      onPress={() => router.push(editorPath({ mode: 'addCustomer', item_id: itemId, item_name: item.name, customer_id: customerId, customer_name: customerName }))}
+                      onPress={() => router.push(editorPath({ mode: 'addCustomer', item_id: itemId, item_name: item.name, customer_id: customerId, customer_name: customerName, price_type: defaultPlan.plans[0]?.priceType ?? 'monthly' }))}
                       testID="add-customer-rate"
                     >
                       {t('pricing.action.addCustomer')}

@@ -129,7 +129,7 @@ export default function ItemRatesPage() {
     // A customer who already has an own rate of this type is edited on their own page: adding would end that rate.
     const hasOwn = planScope(rows.filter(r => r.customer_id === customer.id), today).plans.some(p => p.priceType === priceType);
     if (hasOwn) {
-      router.push(customerRatePath(itemId, customer.id));
+      router.push(customerRatePath(itemId, customer.id, undefined, customer.name));
       return;
     }
     router.push(editorPath({ mode: 'addCustomer', item_id: itemId, item_name: item.name, customer_id: customer.id, customer_name: customer.name, price_type: priceType }));
@@ -292,7 +292,7 @@ export default function ItemRatesPage() {
                       customerName={c.name}
                       bands={c.bands}
                       newRateFrom={c.newRateFrom}
-                      onPress={id => router.push(customerRatePath(itemId, id, day !== today ? day : undefined))}
+                      onPress={id => router.push(customerRatePath(itemId, id, day !== today ? day : undefined, c.name))}
                     />
                   ))}
                 </View>
