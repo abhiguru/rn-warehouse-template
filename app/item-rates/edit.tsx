@@ -184,17 +184,7 @@ const RateEditorScreen: React.FC = () => {
     };
   }, [ensureVisible]);
 
-  const order = useMemo(() => {
-    if (!draft) return [] as string[];
-    const perBand = draft.bands.some(b => b.labour !== undefined);
-    const keys = draft.bands.flatMap((b, i) => [
-      `band.${i}.upTo`,
-      `band.${i}.rent`,
-      ...(perBand ? [`band.${i}.labour`, `band.${i}.tax`] : []),
-    ]);
-    if (!perBand) keys.push(...(draft.priceType === 'one_time' ? [] : ['labour']), 'tax');
-    return keys;
-  }, [draft]);
+  const order = useMemo(() => (draft ? fieldOrder(draft, ready?.context.customerId ?? null) : []), [draft, ready]);
 
   const fields: FieldRegistry = useMemo(
     () => ({
