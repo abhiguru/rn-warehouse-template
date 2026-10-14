@@ -7,6 +7,8 @@ import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { printDispatchRange } from '@/services/print-service';
+import { showAlert } from '@/utils/alert';
+import { router } from 'expo-router';
 
 const item = (n: number) => ({
   unique_id: `u${n}`, grns_id: `g${n}`, grns_gr_no: `A${String(100 + n)}`, grns_date: '2026-09-01', grns_customer_name: 'Fictional Traders',
@@ -61,6 +63,7 @@ jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDispatchImage: jest.fn(),
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -78,18 +81,36 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-const snackbarText = (tree: ReactTestRenderer) =>
-  tree.root.findByType('Snackbar' as never).findAll((node) => (node.type as unknown) === 'Text').map((node) => ([] as unknown[]).concat(node.props.children).join(''));
+/** What the real PrintRangeDialog does on Print: onConfirm, then onDismiss. */
+const press = async (tree: ReactTestRenderer) => {
+  const dialog = tree.root.findByType('PrintRangeDialog' as never);
+  await act(async () => {
+    await dialog.props.onConfirm('I0042', 'I0042');
+    dialog.props.onDismiss();
+  });
+};
 
 it.each([
-  [{ success: false, error: 'x', unconfirmed: true }, 'The printer did not confirm the job. Check the printer before printing again.'],
-  [{ success: false, error: 'x' }, "Couldn't send to the printer. Check the printer and try again."],
-])('print answer %j shows "%s"', async (answer, text) => {
+  [{ success: false, error: 'x', unconfirmed: true }, 'Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'],
+  [{ success: false, error: 'x' }, "Couldn't print", "Couldn't send to the printer. Check the printer and try again."],
+])('print answer %j shows the dialog "%s" and leaves the step once', async (answer, title, text) => {
   jest.mocked(printDispatchRange).mockResolvedValue(answer as never);
   const tree = await render();
 
-  await act(async () => { await tree.root.findByType('PrintRangeDialog' as never).props.onConfirm('I0042', 'I0042'); });
+  await press(tree);
 
-  expect(snackbarText(tree)).toEqual([text]);
+  expect(showAlert).toHaveBeenCalledTimes(1);
+  expect(showAlert).toHaveBeenCalledWith(title, text);
+  expect(router.replace).toHaveBeenCalledTimes(1);
+  expect(router.replace).toHaveBeenCalledWith('/dispatch');
+  await act(async () => { tree.unmount(); });
+});
+
+it('a printed job shows no alert', async () => {
+  jest.mocked(printDispatchRange).mockResolvedValue({ success: true } as never);
+  const tree = await render();
+  await press(tree);
+  expect(showAlert).not.toHaveBeenCalled();
+  expect(router.replace).toHaveBeenCalledTimes(1);
   await act(async () => { tree.unmount(); });
 });

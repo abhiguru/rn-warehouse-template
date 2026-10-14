@@ -248,6 +248,8 @@ export const dispatch = {
     printSentWithJob: 'Sent to the printer (job {{job}}).',
     printFailed: "Couldn't send to the printer. Check the printer and try again.",
     printUnconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',
+    printFailedTitle: "Couldn't print",
+    printUnconfirmedTitle: 'Print not confirmed',
     printTitle: 'Print dispatch',
     printPlaceholder: 'For example, {{example}}',
     savedTitle: 'Dispatch {{number}} saved',

@@ -7,6 +7,8 @@ import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { printGRNRange } from '@/services/print-service';
+import { router } from 'expo-router';
+import { showAlert } from '@/utils/alert';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
@@ -90,20 +92,41 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-const snackbarText = (tree: ReactTestRenderer) =>
-  tree.root.findByType('Snackbar' as never).findAll((node) => (node.type as unknown) === 'Text').map((node) => ([] as unknown[]).concat(node.props.children).join(''));
+/** What the real PrintRangeDialog does on Print: onConfirm, then onDismiss. */
+const press = async (tree: ReactTestRenderer) => {
+  const dialog = tree.root.findByType('PrintRangeDialog' as never);
+  await act(async () => {
+    await dialog.props.onConfirm('A0010', 'A0010');
+    dialog.props.onDismiss();
+  });
+};
 
 describe('GRN review step printing', () => {
-  it.each([
-    [{ success: false, error: 'x', unconfirmed: true }, 'The printer did not confirm the job. Check the printer before printing again.'],
-    [{ success: false, error: 'x' }, "Couldn't send the print job. Check the printer and try again."],
-  ])('print answer %j shows "%s"', async (answer, text) => {
-    jest.mocked(printGRNRange).mockResolvedValue(answer as never);
-    const tree = await render('create');
+  it.each(['create', 'edit'] as const)('%s: an unconfirmed print and a plain failure each show a dialog', async (mode) => {
+    for (const [answer, title, text] of [
+      [{ success: false, error: 'x', unconfirmed: true }, 'Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'],
+      [{ success: false, error: 'x' }, "Couldn't print", "Couldn't send the print job. Check the printer and try again."],
+    ] as const) {
+      jest.clearAllMocks();
+      jest.mocked(printGRNRange).mockResolvedValue(answer as never);
+      const tree = await render(mode);
 
-    await act(async () => { await tree.root.findByType('PrintRangeDialog' as never).props.onConfirm('A0010', 'A0010'); });
+      await press(tree);
 
-    expect(snackbarText(tree)).toEqual([text]);
+      expect(showAlert).toHaveBeenCalledTimes(1);
+      expect(showAlert).toHaveBeenCalledWith(title, text);
+      // Edit leaves the step exactly once; create stays on the step (the success dialog opens).
+      expect(jest.mocked(router.replace).mock.calls).toEqual(mode === 'edit' ? [['/grn']] : []);
+      await act(async () => { tree.unmount(); });
+    }
+  });
+
+  it('a printed job shows no alert', async () => {
+    jest.mocked(printGRNRange).mockResolvedValue({ success: true } as never);
+    const tree = await render('edit');
+    await press(tree);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledTimes(1);
     await act(async () => { tree.unmount(); });
   });
 });

@@ -33,3 +33,8 @@ it('marks a 502 with a recorded job as unconfirmed, and a plain failure as not',
   mockFetch.mockResolvedValueOnce(answer(500, { success: false, error: 'boom' }));
   expect(await printInvoiceRange('412', '412', 2025)).not.toHaveProperty('unconfirmed');
 });
+
+it('marks an answer that says unconfirmed: true as unconfirmed, even without a job id', async () => {
+  mockFetch.mockResolvedValueOnce(answer(502, { success: false, error: 'The printer did not confirm the job', print_job_id: null, unconfirmed: true }));
+  expect(await printInvoiceRange('412', '412', 2025)).toMatchObject({ success: false, unconfirmed: true });
+});
