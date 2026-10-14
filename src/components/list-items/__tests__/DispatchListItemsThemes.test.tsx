@@ -332,6 +332,18 @@ describe('the item cell of the dispatch cards', () => {
   // The drawn width cannot be measured here. In the cell style (15 sp) "RV15001" needs about
   // 59 dp at font scale 1.0 and 77 dp at 1.3, "RV15001/" about 65 and 85 dp, and the whole of
   // "RV15001/100" about 90 dp at 1.0. Both cards give the GRN cell 92 dp to write in.
+  // Review 2026-10-14, finding 6. The weight is right-aligned flush to its 72 dp column, and
+  // the centred GRN text "RV15001/100" (about 90 dp) has about 1 dp spare in 92: the two ran
+  // together ("50RV15001/100"). The dispatch card's GRN cell has its own gap on the left.
+  it('dispatch card: the GRN cell keeps at least 8 dp between its text and the weight, and still has 92 dp', () => {
+    tree = open(fiveBags());
+    const column = headingColumn(tree, 'GRN');
+    expect(column.paddingLeft).toBeGreaterThanOrEqual(8);
+    expect((column.width as number) - (column.paddingLeft as number) - (column.paddingRight as number)).toBeGreaterThanOrEqual(92);
+    expect(weightColumn(tree).width).toBe(72);
+    expect(weightColumn(tree).paddingRight ?? 0).toBe(0);
+  });
+
   it.each(cards)('%s: the GRN cell has 92 dp to write in and wraps rather than shrinking or clipping', (_card, openCard) => {
     tree = openCard();
     const column = headingColumn(tree, 'GRN');

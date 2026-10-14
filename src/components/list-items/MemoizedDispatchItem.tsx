@@ -213,17 +213,21 @@ const makeStyles = (t: ThemeTokens) => ({
   // Wide enough for its heading on one line at font scales 1.0 and 1.3, "Kg each" and
   // the Gujarati "દરેકના kg" (72 dp to write in, as on the GRN list: padding inside the
   // column left 64 dp, and the Gujarati heading wrapped); the number under it is the
-  // weight of one bag. The GRN cell beside it is centred, so the two stay apart.
+  // weight of one bag. The weight is right-aligned to the column edge with no padding, so
+  // the gap to the GRN text is made on the GRN side (colGrn paddingLeft).
   colWeight: {
     width: 72,
     textAlign: 'right' as const,
   },
   // Gujarati digits are wider than Latin ones: "E0006/૧૦૦" needs more than "E0006/100".
   // The cell has 92 dp to write in (108 in Gujarati): "RV15001/100" fits on one line
-  // at font scale 1.0; at larger text it goes onto two lines after the slash.
+  // at font scale 1.0; at larger text it goes onto two lines after the slash. The extra
+  // space.sm on the left is a gap to the weight number beside it ("50RV15001/100" otherwise,
+  // as the centred text has about 1 dp spare); the weight column is not narrowed for it.
   colGrn: {
-    width: byLanguage(96, 112),
+    width: byLanguage(104, 120),
     textAlign: 'center' as const,
+    paddingLeft: space.sm,
     paddingRight: space.xs,
   },
   colQty: {
