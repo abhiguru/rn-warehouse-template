@@ -171,8 +171,9 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   });
   await settle();
   await act(async () => { join(0); });
+  // The first join of the live channel reads the order once more (nothing missed between the load and the join).
   await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
 
   // Start state: the picker is open on an order with no lines, nothing chosen.
   expect(addButtonText()).toBe('Add');
@@ -191,17 +192,17 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   expect(mockSockets).toHaveLength(2);
   await act(async () => { join(1); });
   await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(4);
   expect(addButtonText()).toBe('Add (1)');
   expect(isSelected('Fictional potatoes')).toBe(true);
 
-  // A change to some order arrives over the live connection: a third read.
+  // A change to some order arrives over the live connection: one more read.
   await act(async () => { mockSockets[1].change(); });
   await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(5);
   expect(addButtonText()).toBe('Add (1)');
 
-  // Another user saves a lot on this order: a fourth read. The picker marks that
+  // Another user saves a lot on this order: one more read. The picker marks that
   // lot "In order" and leaves the user's own choice alone.
   server.items = [{
     id: 'line-other', order_id: server.id, grn_item_id: 'lot-b', requested_quantity: 6, item_status: 'pending',
@@ -209,7 +210,7 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   } as OrderItem];
   await act(async () => { mockSockets[1].change(); });
   await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(4);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(6);
   expect(textOf(node('catalog-item-lot-b'))).toContain('In order');
   expect(addButtonText()).toBe('Add (1)');
   expect(isSelected('Fictional potatoes')).toBe(true);
@@ -224,7 +225,7 @@ it('closes on the next Add when the save that timed out was in fact applied', as
   await settle();
   await act(async () => { join(0); });
   await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
   const pressAdd = async () => {
     await act(async () => { node('catalog-add').props.onPress(); });
     await settle();
@@ -253,7 +254,7 @@ it('closes on the next Add when the save that timed out was in fact applied', as
   expect(service.addItemToOrder.mock.calls).toEqual([['order-fictional-1', 'lot-a', 1]]);
   expect(textOf(node('catalog-reason-lot-a'))).toBe('Not saved. Check your connection and try again.');
   expect(addButtonText()).toBe('Add (1)');
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
   expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
 
   // Add again: the lot is in the order with that quantity, so nothing is sent and the picker closes.

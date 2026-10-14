@@ -64,7 +64,7 @@ export const pricing: Translation<typeof source> = {
     oneTime: 'નંગ દીઠ, એક વખત',
   },
   band: {
-    weightEach: 'એક નંગનું વજન',
+    weightEach: 'દરેકનું વજન',
     rentMonthly: 'માસિક ભાડું',
     rentOnce: 'ભાડું',
   },

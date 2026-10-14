@@ -83,6 +83,11 @@ Requires backend migrations 76–78 (supabase-warehouse-template PR #101); merge
 - The pencil on an invoice line opens the same editor, and the rate saved there comes back to the invoice.
 - Rates stay on screen from the last load while they refresh and are forgotten at sign-out.
 
+### Photos and the Add items picker
+
+- GRN item photos: the file the picker or camera wrote into the cache is deleted once the prepared copy has taken its place, when the photo is refused or removed, and with the form; a photo is recorded under the item that is in the form when it comes back. A shot that finishes after the camera was closed is deleted.
+- The Add items picker asks "No items selected" when every saved lot was deselected, instead of removing every line of the order; an older order read that answers last no longer replaces newer lines.
+
 ### Gujarati, for review
 
 - New or changed Gujarati strings await the owner's review; see `review-2026-10-14-settings/fixes/gujarati-strings.md` (316 strings, about 200 of them Item pricing).

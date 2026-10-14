@@ -768,7 +768,6 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         // is nobody's (discardOpenItem). No message about it, and its prepared copy is given up like the original.
         if (discardedPhotoIds.current.has(tempImageData.id)) {
           if (uploadResult.success && uploadResult.imageUrl) void releaseLocalPhotos([uploadResult.imageUrl]);
-          void releaseLocalPhotos([asset.uri]);
           return;
         }
         if (!uploadResult.success) {
@@ -795,10 +794,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         if (uploadedImageData.imageUrl !== asset.uri) void releaseLocalPhotos([asset.uri]);
       } catch (error) {
         log.error('Upload failed', loggableError(error));
-        if (discardedPhotoIds.current.has(tempImageData.id)) {
-          void releaseLocalPhotos([asset.uri]);
-          return;
-        }
+        if (discardedPhotoIds.current.has(tempImageData.id)) return;
         // The entry still points at the original file: it is taken out, like a refused photo.
         dropUnpreparedPhoto(tempImageData.id, { itemId, imageUrl: asset.uri });
         showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
