@@ -152,7 +152,10 @@ describe('skipping the list', () => {
     ['one approved and one unavailable', [entry('a', 'approved'), entry('b', 'unavailable')], 'a'],
     ['two approved', [entry('a', 'approved'), entry('b', 'approved')], null],
     ['one approved and a request waiting', [entry('a', 'approved'), entry('b', 'requested')], null],
-    ['one approved and a number to confirm', [entry('a', 'approved'), entry('b', 'link_needed')], null],
+    ['one approved and one asking for its own code', [entry('a', 'approved'), entry('b', 'link_needed')], null],
+    ['only one asking for its own code', [entry('a', 'link_needed')], 'a'],
+    ['one asking for its own code and one revoked', [entry('a', 'link_needed'), entry('b', 'revoked')], 'a'],
+    ['two asking for their own code', [entry('a', 'link_needed'), entry('b', 'link_needed')], null],
     ['only a request', [entry('b', 'requested')], null],
     ['nothing', [], null],
   ])('%s', (_name, list, expected) => {

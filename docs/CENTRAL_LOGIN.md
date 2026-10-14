@@ -4,7 +4,7 @@ Status: **built in the app, off by default** (2026-10-12). The app has central s
 facilities, the catalogue, the exchange with a facility and the switcher (phase 5 below). It is
 on only in a build that names the central origin (see [Build settings](#build-settings));
 without it the app behaves exactly as before: one facility, that facility's own SMS login.
-It needs a facility backend with migration 49 (`central-exchange`) and a running central
+It needs a facility backend with migration 81 (`central-exchange`: the association sign-in opens existing profiles; the facility's own code is optional) and a running central
 identity service ([central-identity-template](https://github.com/abhiguru/central-identity-template),
 contract in its `docs/API.md`). On a phone against the development central service
 (2026-10-12): with central login on, the walkthrough of plan D17 by hand (44 of 45 steps, on an
@@ -47,10 +47,14 @@ keeps all of its data, and alone decides who may see it.
   not association members; local SMS login keeps working for them and for bootstrap).
 - New exchange endpoint: verify the central token (signature, issuer, audience = this
   facility, expiry, single use), then look up the local profile by central `sub` (or by the
-  verified phone number the first time):
+  verified phone number the first time, which also links that profile to the central identity):
   - no profile: create a **pending access request** (the existing enrollment review);
   - approved and active: issue the facility's **existing session** (custom JWT + refresh);
-  - disabled or rejected: refuse.
+  - disabled, rejected or a service account: refuse;
+  - **the facility's own code (optional, off by default; `--central-local-code on` at setup)**:
+    a facility that has switched it on answers `link_required` for an approved profile and
+    sends its own SMS code at **every new sign-in** there (not when a session is refreshed).
+    The association sign-in alone opens the facility otherwise.
 - Revocation is the existing local mechanism: disabling a profile revokes its sessions.
 
 ### App
@@ -61,8 +65,8 @@ The target; what exists is under [The app as built](#the-app-as-built).
 2. **Verify code**: auto-read on Android (SMS Retriever), resend timer, change number.
 3. **My facilities**: the person's own list, kept on the device per central user, with a
    status per facility: Approved, Requested, Revoked. "Add facility" opens the catalogue
-   (search by name, town or district) or scans a facility QR code. With exactly one approved facility
-   the list is skipped; the last facility used is preselected.
+   (search by name, town or district) or scans a facility QR code. With exactly one openable facility
+   (approved, or asking for its own code) the list is skipped; the last facility used is preselected.
 4. **Inside a facility**: the facility name is always visible in the header with a one-tap
    switcher. Switching clears that facility's caches and navigation, reusing today's
    server-switch cleanup.
@@ -206,15 +210,15 @@ sign-out and removed by "Delete my account".
 | `approved` | Approved (positive) | The facility answered with a session |
 | `requested` | Requested (critical) | The facility answered that the request waits |
 | `revoked` | Revoked (negative) | The facility answered `account_unavailable` |
-| `link_needed` | Confirm number (neutral) | The facility answered `link_required`, or a wrong code was entered |
+| `link_needed` | Code needed (neutral) | The facility answered `link_required` (it asks for its own code), or a wrong code was entered |
 | `unavailable` | Unavailable (neutral) | Just added and never opened; the facility refused the identity, a conflict, or it does not take association sign-in right now. A facility whose database did not answer keeps its status |
 
 A status is checked only when its facility is opened; no facility is contacted in the
 background, and pull to refresh reads the list and asks the central service who is signed in.
 A facility that cannot be reached, a lost connection, a rate limit, a failure of the central
 service, and `central_keys_unavailable` leave the status as it was: they say nothing about the
-person's access, and a single network blip must not stop the start-up skip. With exactly one approved
-facility and nothing waiting, the list is skipped once at start (and after a new central
+person's access, and a single network blip must not stop the start-up skip. With exactly one facility that can be opened (approved, or
+`link_needed`, which asks its code when opened) and no request waiting, the list is skipped once at start (and after a new central
 sign-in) and that facility is opened; "Switch facility" always shows the list.
 
 **Add facility** (`app/facility-catalogue.tsx`, `src/config/catalogueView.ts`,
@@ -285,7 +289,7 @@ and a code step begun for another number is not completed.
 |---|---|---|
 | `login` | The facility | approved |
 | `pending` | Waiting for approval | requested |
-| `link_required` | "Confirm your number at <facility> once": the facility sends its own code, and the code goes back with a fresh token (`app/facility-link.tsx`) | link_needed |
+| `link_required` | "Enter the code from <facility>": the facility asks for its own code each time you sign in; it sends the code, and the code goes back with a fresh token (`app/facility-link.tsx`) | link_needed |
 | `invalid_otp` (linking) | "That code is wrong or has expired…", still on the code step | link_needed |
 | `identity_conflict` | "This mobile number is linked to another sign-in at <facility>…" | unavailable |
 | `account_unavailable` | "<facility> has withdrawn your access…" | revoked |
@@ -304,8 +308,8 @@ and every way back returns to that same My facilities:
 | From | Hardware Back | The screen's "My facilities" |
 |---|---|---|
 | Waiting for approval | My facilities, tag Requested. Nothing is sent; the waiting-screen token stays until the next open or facility change deals with it | The same My facilities, tag Requested; the waiting-screen token is signed out at the facility first, as before |
-| The code step | My facilities, tag Confirm number; the pending link is forgotten | The same, by the same steps |
-| The code step, while a code is being checked | My facilities at once, the pending link forgotten. The answer then changes only the tag (a wrong code: Confirm number, with no message; a waiting request: Requested, with no waiting screen); a session enters the facility | |
+| The code step | My facilities, tag Code needed; the pending link is forgotten | The same, by the same steps |
+| The code step, while a code is being checked | My facilities at once, the pending link forgotten. The answer then changes only the tag (a wrong code: Code needed, with no message; a waiting request: Requested, with no waiting screen); a session enters the facility | |
 
 Both controls go back to the My facilities under the screen (`returnToMyFacilities` in
 `src/navigation/myFacilities.ts`); replacing the screen would leave two, both mounted. Where

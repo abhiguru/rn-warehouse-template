@@ -1,8 +1,8 @@
 /**
- * Linking an existing profile, the code step (docs/CENTRAL_LOGIN.md): the
- * facility already knows this mobile number from its own SMS sign-in, so it
- * asks once for a code that IT sent, and then links the profile to the
- * central account. The existing code screen with a heading that says why.
+ * The facility's own code, the code step (docs/CENTRAL_LOGIN.md): a facility
+ * that has switched its own code on asks for a code that IT sent, at each new
+ * sign-in there, on top of the association sign-in. The existing code screen
+ * with a heading that says whose code it is.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { router, useNavigation } from 'expo-router';

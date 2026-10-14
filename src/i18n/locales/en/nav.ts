@@ -27,7 +27,7 @@ export const nav = {
     addFacility: 'Add facility',
     facilityAddress: 'Facility address',
     account: 'Account',
-    confirmNumber: 'Confirm your number',
+    confirmNumber: 'Facility code',
   },
   // Starting the app against the chosen facility server
   bootstrap: {
