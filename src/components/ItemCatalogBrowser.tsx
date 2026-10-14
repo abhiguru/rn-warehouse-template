@@ -29,7 +29,7 @@ import {
   type ThemeTokens,
   singleLineText,
 } from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { OrderService } from '@/services/order-service';
 import { StockService } from '@/services/stock-service';
@@ -889,7 +889,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const status = t.status[stockStatus];
     const stockWord = stockLabel(stockStatus);
     const grnDate = item.grn_date ? formatDate(item.grn_date, 'short') : null;
-    const weightText = item.weight ? formatWeight(item.weight) : null;
+    // The weight of one package, "50 kg each"; none for a lot without a weight.
+    const weightText = formatWeightEach(item.weight);
     const rowLabel = [
       item.name,
       item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
