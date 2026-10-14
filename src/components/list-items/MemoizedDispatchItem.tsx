@@ -14,7 +14,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -156,11 +156,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  weightText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-  },
   statusTag: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -213,10 +208,12 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     paddingRight: space.sm,
   },
+  // Wide enough for its heading "Kg each" on one line at font scales 1.0 and 1.3
+  // (64 dp to write in); the number under it is the weight of one bag.
   colWeight: {
-    width: byLanguage(48, 56),
+    width: 72,
     textAlign: 'right' as const,
-    paddingRight: space.md,
+    paddingRight: space.sm,
   },
   // Gujarati digits are wider than Latin ones: "E0006/૧૦૦" needs more than "E0006/100".
   colGrn: {
@@ -239,17 +236,21 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
+  // The rack sits beside the name while both fit, and goes under it when they
+  // do not, so a narrow column never cuts the name down to a few letters.
   itemNameRow: {
     flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
-    gap: space.sm,
+    columnGap: space.sm,
   },
   tableCellItemName: {
     ...typography.subhead,
     fontWeight: fontWeight.medium,
     color: t.text.primary,
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   tableCellRack: {
     ...typography.caption1,
@@ -331,9 +332,9 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const statusConfig = getDispatchStatus(dispatch);
   const status = t.status[statusConfig.kind];
 
-  // Calculate totals (using snake_case properties)
+  // Calculate totals (using snake_case properties). No total weight: a lot stores
+  // the weight of one bag, and total weights are not shown (style guide 12.3).
   const totalQty = dispatch.total_qty || 0;
-  const totalWeight = dispatch.total_weight || 0;
   const totalItems = dispatch.total_items || (dispatch.items?.length ?? 0);
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemsLabel = formatCount(totalItems, 'item');
@@ -352,7 +353,6 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     dispatch.customer_name,
     itemsLabel,
     bagsLabel,
-    formatWeight(totalWeight, 0),
     dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
     dateLabel,
     statusConfig.label,
@@ -400,12 +400,9 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
             ) : null}
           </View>
 
-          {/* Attribute stack (right): main value, weight, status tag */}
+          {/* Attribute stack (right): main value, status tag */}
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
-            <Text style={styles.weightText}>
-              {formatWeight(totalWeight, 0)}
-            </Text>
             <View style={[styles.statusTag, { backgroundColor: status.background }]}>
               <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
               <Text
@@ -424,46 +421,61 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
             <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
             <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
           </View>
 
-          {dispatch.items!.map((item, idx) => (
-            <View
-              key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
-              style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
-              accessible
-              accessibilityLabel={translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
-                item: item.item_name,
-                rack: item.rack,
-                weight: formatWeight(item.weight, 0),
-                grn: formatIdentifier(item.gr_no),
-                quantity: item.disp_qty,
-              })}
-            >
-              <View style={[styles.tableCell, styles.colItem]}>
-                <View style={styles.itemNameRow}>
-                  <HighlightedText style={styles.tableCellItemName} numberOfLines={1} text={item.item_name ?? ''} words={words} />
-                  {item.rack && (
-                    <Text style={styles.tableCellRack}>({item.rack})</Text>
+          {dispatch.items!.map((item, idx) => {
+            // Whole kilograms of one bag, as the column shows them. A lot without a
+            // weight shows a dash and is read without one.
+            const kg = Math.round(Number(item.weight) || 0);
+            const weightEach = formatWeightEach(kg);
+            return (
+              <View
+                key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
+                style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
+                accessible
+                accessibilityLabel={
+                  weightEach === null
+                    ? translate(item.rack ? 'dispatch.listRow.noWeightRack' : 'dispatch.listRow.noWeight', {
+                      item: item.item_name,
+                      rack: item.rack,
+                      grn: formatIdentifier(item.gr_no),
+                      quantity: item.disp_qty,
+                    })
+                    : translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
+                      item: item.item_name,
+                      rack: item.rack,
+                      weight: weightEach,
+                      grn: formatIdentifier(item.gr_no),
+                      quantity: item.disp_qty,
+                    })
+                }
+              >
+                <View style={[styles.tableCell, styles.colItem]}>
+                  <View style={styles.itemNameRow}>
+                    <HighlightedText style={styles.tableCellItemName} numberOfLines={1} text={item.item_name ?? ''} words={words} />
+                    {item.rack && (
+                      <Text style={styles.tableCellRack}>({item.rack})</Text>
+                    )}
+                  </View>
+                  {item.package_mark && (
+                    <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
                   )}
                 </View>
-                {item.package_mark && (
-                  <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
-                )}
+                <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
+                  {weightEach === null ? '—' : formatNumber(kg)}
+                </Text>
+                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} {...TABLE_VALUE}>
+                  {item.gr_no}/{formatNumber(item.grn_qty)}
+                </Text>
+                <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
+                  {formatNumber(item.disp_qty)}
+                </Text>
               </View>
-              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
-                {formatNumber(Math.round(item.weight || 0))}
-              </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} {...TABLE_VALUE}>
-                {item.gr_no}/{formatNumber(item.grn_qty)}
-              </Text>
-              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
-                {formatNumber(item.disp_qty)}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </Animated.View>
       )}
 
@@ -504,7 +516,6 @@ const areEqual = (
     prevDispatch.disp_no === nextDispatch.disp_no &&
     prevDispatch.customer_name === nextDispatch.customer_name &&
     prevDispatch.total_qty === nextDispatch.total_qty &&
-    prevDispatch.total_weight === nextDispatch.total_weight &&
     prevDispatch.total_items === nextDispatch.total_items &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&

@@ -22,7 +22,7 @@ import {
   trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 // Using snake_case to match backend RPC types
@@ -267,45 +267,49 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
               <Text style={styles.itemsLabel}>{itemCount}</Text>
 
               <View style={styles.itemsContainer}>
-                {grn.items.map((item, index) => (
-                  <View key={index} style={styles.itemCard}>
-                    <View style={styles.itemRow}>
-                      <Text style={styles.itemName} numberOfLines={2}>
-                        {item.item_name}
-                      </Text>
-                      <Text style={styles.quantityText}>{bags(item.dispatch_quantity)}</Text>
-                    </View>
-                    {/* Item Details Row */}
-                    {(item.original_quantity !== undefined || item.weight !== undefined || item.package_mark) && (
-                      <View style={styles.itemDetailsRow}>
-                        {item.original_quantity !== undefined && (
-                          <View style={styles.detailPill}>
-                            <Icon name="package-variant-closed" size={iconSize.sm} color={t.status.neutral.text} />
-                            <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                              {tr('grn.sourceGrns.receivedBags', { bags: bags(item.original_quantity) })}
-                            </Text>
-                          </View>
-                        )}
-                        {item.weight !== undefined && (
-                          <View style={styles.detailPill}>
-                            <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
-                            <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                              {formatWeight(item.weight)}
-                            </Text>
-                          </View>
-                        )}
-                        {item.package_mark && (
-                          <View style={styles.detailPill}>
-                            <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
-                            <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                              {item.package_mark}
-                            </Text>
-                          </View>
-                        )}
+                {grn.items.map((item, index) => {
+                  // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+                  const weightEach = formatWeightEach(item.weight);
+                  return (
+                    <View key={index} style={styles.itemCard}>
+                      <View style={styles.itemRow}>
+                        <Text style={styles.itemName} numberOfLines={2}>
+                          {item.item_name}
+                        </Text>
+                        <Text style={styles.quantityText}>{bags(item.dispatch_quantity)}</Text>
                       </View>
-                    )}
-                  </View>
-                ))}
+                      {/* Item Details Row */}
+                      {(item.original_quantity !== undefined || weightEach !== null || !!item.package_mark) && (
+                        <View style={styles.itemDetailsRow}>
+                          {item.original_quantity !== undefined && (
+                            <View style={styles.detailPill}>
+                              <Icon name="package-variant-closed" size={iconSize.sm} color={t.status.neutral.text} />
+                              <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
+                                {tr('grn.sourceGrns.receivedBags', { bags: bags(item.original_quantity) })}
+                              </Text>
+                            </View>
+                          )}
+                          {weightEach !== null && (
+                            <View style={styles.detailPill}>
+                              <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
+                              <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
+                                {weightEach}
+                              </Text>
+                            </View>
+                          )}
+                          {item.package_mark && (
+                            <View style={styles.detailPill}>
+                              <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
+                              <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
+                                {item.package_mark}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
             </View>
           </Pressable>

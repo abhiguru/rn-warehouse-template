@@ -429,4 +429,10 @@ export const dispatch = {
     loadingLabel: 'Loading dispatches',
     retryLoad: 'Try loading dispatches again',
   },
+  // A line of the table on a dispatch card, as a screen reader says it, when the
+  // lot has no weight (with a weight: lists.dispatch.itemRow and itemRowRack)
+  listRow: {
+    noWeight: '{{item}}, GRN {{grn}}, {{quantity}} dispatched',
+    noWeightRack: '{{item}}, rack {{rack}}, GRN {{grn}}, {{quantity}} dispatched',
+  },
 };

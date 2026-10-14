@@ -18,7 +18,7 @@ import {
   ItemsSummaryBottomSheet as GenericItemsSummaryBottomSheet,
   TotalBadge,
 } from '@/components/common/ItemsSummaryBottomSheet';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 interface DispatchItemsSummaryBottomSheetProps {
@@ -138,6 +138,8 @@ const DispatchItemCard: React.FC<{
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const bags = formatCount(item.disp_quantity, 'bag');
+  // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+  const weightEach = formatWeightEach(item.grnItems_weight);
 
   return (
     <View
@@ -196,10 +198,12 @@ const DispatchItemCard: React.FC<{
             <Text style={styles.detailText}>{item.grnItems_rack}</Text>
           </View>
         )}
-        <View style={styles.detailRow}>
-          <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.detailText}>{formatWeight(item.grnItems_weight)}</Text>
-        </View>
+        {weightEach !== null && (
+          <View style={styles.detailRow}>
+            <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.detailText}>{weightEach}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -224,13 +228,10 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
     []
   );
 
-  // Calculate totals
+  // The totals under the list: bags and GRNs. No weight: a lot stores the weight
+  // of one bag, and total weights are not shown (style guide 12.3).
   const getTotals = useCallback((itemsList: DispatchItemData[]): TotalBadge[] => {
     const totalQuantity = itemsList.reduce((sum, item) => sum + item.disp_quantity, 0);
-    const totalWeight = itemsList.reduce(
-      (sum, item) => sum + item.grnItems_weight * item.disp_quantity,
-      0
-    );
     const uniqueGRNs = new Set(itemsList.map((item) => item.grns_gr_no)).size;
 
     return [
@@ -239,12 +240,6 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
         iconColor: t.icon.secondary,
         label: tr('common.bags'),
         value: formatNumber(totalQuantity),
-      },
-      {
-        icon: 'weight',
-        iconColor: t.icon.secondary,
-        label: tr('common.weight'),
-        value: formatWeight(totalWeight, 0),
       },
       {
         icon: 'package-down',
