@@ -162,6 +162,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
   },
+  // A row grows with its item cell (a two-line name, the rack, the mark); the
+  // cells beside it are centred on it, as on the GRN list.
   tableRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -188,10 +190,14 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'right' as const,
     paddingRight: space.sm,
   },
+  // As wide as on the dispatch card. At 60 dp (52 to write in) "RV15001" needs
+  // about 77 dp at font scale 1.3, more than shrinking to 0.7 could make room
+  // for; here it has 92 dp, and at larger text it wraps rather than being cut.
+  // GRN numbers keep the digits 0-9 in Gujarati too.
   colGrn: {
-    width: 60,
+    width: 96,
     textAlign: 'center' as const,
-    paddingRight: space.sm,
+    paddingRight: space.xs,
   },
   colQty: {
     width: 48,
@@ -208,26 +214,18 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  // The rack sits beside the name while both fit, and goes under it when they
-  // do not, so a narrow column never cuts the name down to a few letters.
-  itemNameRow: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    columnGap: space.sm,
-  },
+  // The item cell is a column: the name (up to two lines), then the rack on its
+  // own line, then the mark. The rack never shares the name's line: beside it,
+  // the name was drawn as one letter at large text sizes. A long rack wraps.
   tableCellItemName: {
     ...typography.subhead,
     fontWeight: fontWeight.medium,
     color: t.text.primary,
-    flexGrow: 1,
-    flexShrink: 1,
   },
   tableCellRack: {
     ...typography.caption1,
     color: t.text.secondary,
-    flexShrink: 0,
+    marginTop: space.xxs,
   },
   tableCellItemMark: {
     ...typography.caption1,
@@ -392,22 +390,20 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
                 }
               >
                 <View style={[styles.tableCell, styles.colItem]}>
-                  <View style={styles.itemNameRow}>
-                    <Text style={styles.tableCellItemName} numberOfLines={1}>
-                      {item.item_name}
-                    </Text>
-                    {item.rack && <Text style={styles.tableCellRack}>({item.rack})</Text>}
-                  </View>
-                  {item.package_mark && (
+                  <Text style={styles.tableCellItemName} numberOfLines={2} ellipsizeMode="tail">
+                    {item.item_name}
+                  </Text>
+                  {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
+                  {item.package_mark ? (
                     <Text style={styles.tableCellItemMark} numberOfLines={1}>
                       {item.package_mark}
                     </Text>
-                  )}
+                  ) : null}
                 </View>
                 <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
                   {weightEach === null ? '—' : formatNumber(kg)}
                 </Text>
-                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
                   {item.gr_no}
                 </Text>
                 <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>

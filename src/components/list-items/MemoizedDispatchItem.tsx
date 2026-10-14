@@ -190,7 +190,7 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
   // A row grows with its item cell (a two-line name, the rack, the mark); the
-  // one-line cells beside it are centred on it, as on the GRN list.
+  // cells beside it are centred on it, as on the GRN list.
   tableRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -218,10 +218,12 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingRight: space.sm,
   },
   // Gujarati digits are wider than Latin ones: "E0006/૧૦૦" needs more than "E0006/100".
+  // The cell has 92 dp to write in (108 in Gujarati): "RV15001/100" fits on one line
+  // at font scale 1.0; at larger text it goes onto two lines after the slash.
   colGrn: {
     width: byLanguage(96, 112),
     textAlign: 'center' as const,
-    paddingRight: space.sm,
+    paddingRight: space.xs,
   },
   colQty: {
     width: 48,
@@ -238,28 +240,20 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  // The rack sits beside the name while both fit, and goes under it when they
-  // do not, so a narrow column never cuts the name down to a few letters. The
-  // name itself may take two lines, as on the GRN list: beside the weight and
-  // GRN columns it has about 70 dp on a 360 dp phone (about 54 dp in Gujarati).
-  itemNameRow: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    columnGap: space.sm,
-  },
+  // The item cell is a column: the name, then the rack on its own line, then the
+  // mark. Beside the weight and GRN columns the name has about 70 dp on a 360 dp
+  // phone (about 54 dp in Gujarati); it may take two lines, as on the GRN list.
+  // The rack never shares the name's line: beside it, the name was drawn as one
+  // letter at large text sizes. A long rack wraps rather than being cut.
   tableCellItemName: {
     ...typography.subhead,
     fontWeight: fontWeight.medium,
     color: t.text.primary,
-    flexGrow: 1,
-    flexShrink: 1,
   },
   tableCellRack: {
     ...typography.caption1,
     color: t.text.secondary,
-    flexShrink: 0,
+    marginTop: space.xxs,
   },
   tableCellItemMark: {
     ...typography.caption1,
@@ -297,8 +291,16 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const NO_WORDS: string[] = [];
 
-/** A table value stays on one line and shrinks to its column: "E0006/100" must not break after "/10". */
+/** A short table value (the weight, the quantity) stays on one line and shrinks to its column. */
 const TABLE_VALUE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
+
+/**
+ * Where the GRN cell "E0006/100" may break: after the slash, and nowhere else.
+ * Line breaking keeps "0006/100" together as one number, so a cell too narrow
+ * for it broke the number itself ("E0006/10" over "0"), and shrinking it to one
+ * line left it clipped on the phone. An invisible zero-width space marks the place.
+ */
+const BREAK_AFTER_SLASH = '\u200B';
 
 /** Where a search matched inside a collapsed card: item, package, rack or GRN number of a line. */
 function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
@@ -458,21 +460,17 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
                 }
               >
                 <View style={[styles.tableCell, styles.colItem]}>
-                  <View style={styles.itemNameRow}>
-                    <HighlightedText style={styles.tableCellItemName} numberOfLines={2} text={item.item_name ?? ''} words={words} />
-                    {item.rack && (
-                      <Text style={styles.tableCellRack}>({item.rack})</Text>
-                    )}
-                  </View>
-                  {item.package_mark && (
+                  <HighlightedText style={styles.tableCellItemName} numberOfLines={2} ellipsizeMode="tail" text={item.item_name ?? ''} words={words} />
+                  {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
+                  {item.package_mark ? (
                     <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
-                  )}
+                  ) : null}
                 </View>
                 <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
                   {weightEach === null ? '—' : formatNumber(kg)}
                 </Text>
-                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} {...TABLE_VALUE}>
-                  {item.gr_no}/{formatNumber(item.grn_qty)}
+                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
+                  {`${item.gr_no ?? ''}/${BREAK_AFTER_SLASH}${formatNumber(item.grn_qty)}`}
                 </Text>
                 <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
                   {formatNumber(item.disp_qty)}
