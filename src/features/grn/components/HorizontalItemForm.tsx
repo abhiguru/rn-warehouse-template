@@ -430,42 +430,55 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 />
                             )}
                         </View>
-                        <TextInput
-                            ref={qtyInputRef}
-                            accessibilityLabel={tr('grn.item.quantityInputLabel')}
-                            accessibilityHint={isQtyLocked ? tr('grn.item.quantityLockedHint') : undefined}
-                            style={[
-                                styles.input,
-                                styles.numericInput,
-                                isQtyLocked ? styles.inputReadOnly : borderOf('qty', currentItem.errors.qty),
-                            ]}
-                            value={localizeDigits(currentItem.qty ?? '')}
-                            onChangeText={(text) => {
-                                if (isQtyLocked) {
-                                    onQtyLockedPress?.();
-                                    return;
-                                }
-                                onFieldChange('qty', normalizeDigits(text));
-                            }}
-                            placeholder={formatNumber(0)}
-                            placeholderTextColor={t.text.placeholder}
-                            keyboardType="numeric"
-                            returnKeyType="next"
-                            onSubmitEditing={() => focusNext('qty')}
-                            blurOnSubmit={false}
-                            onFocus={() => {
-                                if (isQtyLocked) {
-                                    onQtyLockedPress?.();
-                                    Keyboard.dismiss();
-                                    return;
-                                }
-                                setFocusedField('qty');
-                                scrollToField(scrollOffsetOf('qty'));
-                            }}
-                            onBlur={() => setFocusedField(null)}
-                            selectTextOnFocus={!isQtyLocked}
-                            editable={!isQtyLocked}
-                        />
+                        <View>
+                            <TextInput
+                                ref={qtyInputRef}
+                                accessibilityLabel={tr('grn.item.quantityInputLabel')}
+                                accessibilityHint={isQtyLocked ? tr('grn.item.quantityLockedHint') : undefined}
+                                style={[
+                                    styles.input,
+                                    styles.numericInput,
+                                    isQtyLocked ? styles.inputReadOnly : borderOf('qty', currentItem.errors.qty),
+                                ]}
+                                value={localizeDigits(currentItem.qty ?? '')}
+                                onChangeText={(text) => {
+                                    if (isQtyLocked) {
+                                        onQtyLockedPress?.();
+                                        return;
+                                    }
+                                    onFieldChange('qty', normalizeDigits(text));
+                                }}
+                                placeholder={formatNumber(0)}
+                                placeholderTextColor={t.text.placeholder}
+                                keyboardType="numeric"
+                                returnKeyType="next"
+                                onSubmitEditing={() => focusNext('qty')}
+                                blurOnSubmit={false}
+                                onFocus={() => {
+                                    if (isQtyLocked) {
+                                        onQtyLockedPress?.();
+                                        Keyboard.dismiss();
+                                        return;
+                                    }
+                                    setFocusedField('qty');
+                                    scrollToField(scrollOffsetOf('qty'));
+                                }}
+                                onBlur={() => setFocusedField(null)}
+                                selectTextOnFocus={!isQtyLocked}
+                                editable={!isQtyLocked}
+                            />
+                            {isQtyLocked && (
+                                // A non-editable Android field never gets focus, so onFocus cannot
+                                // explain the lock; a tap on this overlay does, on both platforms.
+                                <Pressable
+                                    testID="grn-qty-locked-overlay"
+                                    style={StyleSheet.absoluteFill}
+                                    onPress={() => onQtyLockedPress?.()}
+                                    accessible={false}
+                                    importantForAccessibility="no"
+                                />
+                            )}
+                        </View>
                         {renderError(currentItem.errors.qty)}
                     </View>
 
