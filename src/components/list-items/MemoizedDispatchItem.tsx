@@ -189,6 +189,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
   },
+  // A row grows with its item cell (a two-line name, the rack, the mark); the
+  // one-line cells beside it are centred on it, as on the GRN list.
   tableRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -237,7 +239,9 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   // The rack sits beside the name while both fit, and goes under it when they
-  // do not, so a narrow column never cuts the name down to a few letters.
+  // do not, so a narrow column never cuts the name down to a few letters. The
+  // name itself may take two lines, as on the GRN list: beside the weight and
+  // GRN columns it has about 70 dp on a 360 dp phone (about 54 dp in Gujarati).
   itemNameRow: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
@@ -455,7 +459,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
               >
                 <View style={[styles.tableCell, styles.colItem]}>
                   <View style={styles.itemNameRow}>
-                    <HighlightedText style={styles.tableCellItemName} numberOfLines={1} text={item.item_name ?? ''} words={words} />
+                    <HighlightedText style={styles.tableCellItemName} numberOfLines={2} text={item.item_name ?? ''} words={words} />
                     {item.rack && (
                       <Text style={styles.tableCellRack}>({item.rack})</Text>
                     )}

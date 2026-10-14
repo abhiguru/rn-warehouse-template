@@ -50,7 +50,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.md,
-    marginBottom: space.sm,
   },
   itemNumberBadge: {
     width: 32,
@@ -111,10 +110,13 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.status.neutral.text,
     fontVariant: ['tabular-nums' as const],
   },
+  // Drawn only when the lot has a mark, a rack or a weight. The space above it is
+  // its own, so an item without any of them ends at its header with no gap.
   itemDetails: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
     gap: space.md,
+    marginTop: space.sm,
     marginLeft: 44, // Align with item name
   },
   detailRow: {
@@ -140,6 +142,7 @@ const DispatchItemCard: React.FC<{
   const bags = formatCount(item.disp_quantity, 'bag');
   // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
   const weightEach = formatWeightEach(item.grnItems_weight);
+  const hasDetails = !!item.grnItems_package_mark || !!item.grnItems_rack || weightEach !== null;
 
   return (
     <View
@@ -182,29 +185,31 @@ const DispatchItemCard: React.FC<{
         </View>
       </View>
 
-      {/* Additional Details */}
-      <View style={styles.itemDetails}>
-        {item.grnItems_package_mark && (
-          <View style={styles.detailRow}>
-            <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.detailText} numberOfLines={1}>
-              {item.grnItems_package_mark}
-            </Text>
-          </View>
-        )}
-        {item.grnItems_rack && (
-          <View style={styles.detailRow}>
-            <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.detailText}>{item.grnItems_rack}</Text>
-          </View>
-        )}
-        {weightEach !== null && (
-          <View style={styles.detailRow}>
-            <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.detailText}>{weightEach}</Text>
-          </View>
-        )}
-      </View>
+      {/* Additional details: mark, rack, weight. A lot with none of them has no row for them. */}
+      {hasDetails && (
+        <View style={styles.itemDetails}>
+          {item.grnItems_package_mark && (
+            <View style={styles.detailRow}>
+              <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText} numberOfLines={1}>
+                {item.grnItems_package_mark}
+              </Text>
+            </View>
+          )}
+          {item.grnItems_rack && (
+            <View style={styles.detailRow}>
+              <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText}>{item.grnItems_rack}</Text>
+            </View>
+          )}
+          {weightEach !== null && (
+            <View style={styles.detailRow}>
+              <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText}>{weightEach}</Text>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 };

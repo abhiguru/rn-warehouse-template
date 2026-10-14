@@ -10,8 +10,9 @@
  *
  * The FlashList stand-in draws a window of rows that the test sets (with the
  * window open it draws every row, like flashListMock). formatWeightEach (one
- * call per group drawn: the group's "50 kg each") and formatDate (one call per
- * line drawn) are the probes. formatWeightEach is the export the table calls;
+ * call per group drawn: the group's "50 kg each"; every group here has lots of
+ * one weight) and formatDate (one call per line drawn) are the probes.
+ * formatWeightEach is the export the table calls;
  * it reaches formatWeight inside the module, where a mock of that export is
  * not seen.
  */

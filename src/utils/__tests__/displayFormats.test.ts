@@ -99,6 +99,35 @@ describe('style guide §12.3 formats', () => {
       expect(formatWeightEach(none)).toBeNull();
     }
   });
+
+  // Review 2026-10-14, finding 4: the zero check ran before the rounding, so 0.004 was
+  // written "0 kg each", and a number that is not finite "∞ kg each".
+  it.each<[number, number | undefined]>([
+    [0.004, undefined],
+    [0.4, 0],
+    [Infinity, undefined],
+    [-0.004, undefined],
+    [-Infinity, undefined],
+  ])('%p (decimals: %p) would be written as 0 or is not a finite number: it is no weight', (weight, decimals) => {
+    expect(formatWeightEach(weight, decimals)).toBeNull();
+  });
+
+  it('the smallest weights that are written, and an ordinary one, are still worded "each"', () => {
+    expect(formatWeightEach(0.5)).toBe('0.5 kg each');
+    expect(formatWeightEach(0.01)).toBe('0.01 kg each');
+    expect(formatWeightEach(0.6, 0)).toBe('1 kg each');
+    expect(formatWeightEach(50)).toBe('50 kg each');
+  });
+
+  // Some server answers carry a number as text, and several callers hand the helper what
+  // they were sent. The check for a finite number must not drop a weight that was shown before.
+  it('a weight that arrives as text is read as its number, as before', () => {
+    expect(formatWeightEach('50' as unknown as number)).toBe('50 kg each');
+    expect(formatWeightEach('12.5' as unknown as number)).toBe('12.5 kg each');
+    for (const none of ['', '0', 'heavy']) {
+      expect(formatWeightEach(none as unknown as number)).toBeNull();
+    }
+  });
 });
 
 describe('avatars', () => {

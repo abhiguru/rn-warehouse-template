@@ -404,7 +404,7 @@ Show every status with the `StatusTag` component (`@/components/ui`), which pair
 Not statuses, so never status-coloured by meaning:
 
 - **Categories** such as user roles, price types or packaging: neutral tags (`status="neutral"`, usually `icon={null}`). At most one category in a set may use informative to stand out. Never brand colours.
-- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "50 kg each", "Rack B-14", "Mark PT", "3 photos". A weight is always the weight of one bag, box or crate and always says "each" (`formatWeightEach`); a line with no weight has no weight tag. On object pages, contact and metadata facts use `InfoChip`.
+- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "50 kg each", "Rack B-14", "Mark PT", "3 photos". A weight is always the weight of one bag, box or crate and always says "each" (`formatWeightEach`); a line with no weight has no weight tag. A header over several lots (a group on the invoice form, which is an item and a mark) has one weight tag for each distinct weight, lightest first ("25 kg each", "50 kg each"), never one lot's weight for all of them. On object pages, contact and metadata facts use `InfoChip`.
 - **A row being edited** in a list: `surface.selected` background and an informative "Editing" tag.
 - **A row already in the current order**: `brand.subtle` background, a 4 px `brand.tint` bar on the leading edge and an "In order" tag with a check.
 - **A value changed from its default**: a "Custom" tag in `brand.subtle` with `brand.tint` text and `pencil-outline`.
@@ -707,7 +707,7 @@ Confirmation buttons repeat the verb: "Delete GRN" and "Cancel", never "Yes" and
 | Mobile number | +91 prefix shown separately, number grouped 5 + 5 | +91 98765 43210 |
 | Money | Indian grouping, rupee sign, two decimals in invoices, none in summaries | ₹1,23,456.50 and ₹1,23,457 |
 | Quantity | Number, then unit, singular when 1 | 1 bag, 120 bags |
-| Weight | The weight of one bag, box or crate, in kg, up to two decimals, then "each". The entry field is labelled "Weight each" with kg as its suffix; a narrow column is headed "Kg each" and holds the plain number. Total weights are not shown. | 50 kg each |
+| Weight | The weight of one bag, box or crate, in kg, up to two decimals, then "each". The entry field is labelled "Weight each" with kg as its suffix; a narrow column is headed "Kg each" and holds the plain number. Over lots of different weights every weight is given, lightest first. Total weights are not shown. | 50 kg each |
 | Date | Day, short month, year | 9 Oct 2026 |
 | Date and time | Date, then 12-hour time | 9 Oct 2026, 4:05 pm |
 | Relative time | Under 24 hours only | 5 min ago, 3 h ago, then the date |
@@ -730,8 +730,8 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 | `formatMobile(n)` | +91 98765 43210 |
 | `formatCount(n, 'item')` | 1 item, 12 items (`formatCount(n, 'dispatch', 'dispatches')`) |
 | `formatCurrency(n, { maximumFractionDigits: 0 })` / invoice `formatInvoiceAmount(n)` | ₹1,23,457 in summaries and KPIs / ₹1,23,456.50 on invoices and their rows |
-| `formatWeightEach(n)` | 50 kg each; nothing for an empty or zero weight |
-| `formatWeight(n)` | 1,250.5 kg (inside `formatWeightEach` and filter ranges only) |
+| `formatWeightEach(n)` | 50 kg each; nothing (`null`) for a weight that is missing, is not a finite number, or rounds to zero or less |
+| `formatWeight(n)` | 1,250.5 kg (the number and unit inside `formatWeightEach`; nothing else calls it but the style gallery, for one sample) |
 | `formatTemperature(n)` | −18.5°C |
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.

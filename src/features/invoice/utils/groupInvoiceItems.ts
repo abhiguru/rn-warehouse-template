@@ -6,6 +6,10 @@
  * Each group looks its dispatches up in a Map, so a group of n distinct
  * dispatches costs n lookups, not n(n-1)/2 comparisons.
  *
+ * A group is not a lot: two lots of the same item and mark are one group, and
+ * their bags can weigh differently. A group therefore carries every distinct
+ * weight of its lines (`weights_each`), never one weight for all of them.
+ *
  * A group whose lines are the same objects as in `previous` (Immer keeps the
  * lines it did not change) is returned as the previous object, so a memoized
  * row of a group that was not edited keeps its props.
@@ -30,6 +34,21 @@ export const groupKeyOf = (group: Pick<GroupedInvoiceItems, 'item_id' | 'package
 const sameLines = (a: InvoiceItemData[], b: InvoiceItemData[]): boolean =>
   a.length === b.length && a.every((line, index) => line === b[index]);
 
+/**
+ * The distinct weights of some lines, lightest first. A weight is the lot's
+ * stored one: the weight of one bag, box or crate, never a total. A line
+ * without a weight (none, 0, not a number) has none to add. A weight that
+ * arrives as text ("50" in a server answer) counts as its number.
+ */
+export const distinctWeights = (lines: readonly Pick<InvoiceItemData, 'weight'>[]): number[] => {
+  const weights = new Set<number>();
+  lines.forEach(({ weight }) => {
+    const kg = Number(weight);
+    if (Number.isFinite(kg) && kg > 0) weights.add(kg);
+  });
+  return [...weights].sort((a, b) => a - b);
+};
+
 export function groupInvoiceItems(
   items: readonly InvoiceItemData[],
   previous?: readonly InvoiceItemGroup[]
@@ -47,8 +66,8 @@ export function groupInvoiceItems(
         item_id: item.item_id,
         item_name: item.item_name,
         package_mark: item.package_mark,
-        // The lot's stored weight: the weight of one bag, box or crate, never a total.
-        weight_each: item.weight,
+        // Filled in below, once every line of the group is known.
+        weights_each: [],
         gr_quantity: item.grn_original_qty,
         total_dispatched: 0,
         rack: item.rack,
@@ -84,7 +103,12 @@ export function groupInvoiceItems(
   groups.forEach((group, groupKey) => {
     const old = before.get(groupKey);
     // Everything in a group follows from its lines, so the same lines are the same group.
-    result.push(old && sameLines(old.allItems, group.allItems) ? old : group);
+    if (old && sameLines(old.allItems, group.allItems)) {
+      result.push(old);
+      return;
+    }
+    group.weights_each = distinctWeights(group.allItems);
+    result.push(group);
   });
   return result;
 }
