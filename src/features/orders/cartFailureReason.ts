@@ -21,6 +21,7 @@
 import { t } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
 import { serverReason } from '@/utils/serverText';
+import { isOfflineFailure } from '@/utils/serviceErrorHandler';
 
 /** The failed answer of an `OrderService` cart call; only these two fields are read. */
 export interface CartFailure {
@@ -73,6 +74,23 @@ export function cartFailureReason(failure: CartFailure | null | undefined): stri
   const refused = match(ACCESS_REFUSED);
   if (refused) return serverReason(refused[0]) ?? t('orders.catalog.reasonNotSaved');
   return t('orders.catalog.reasonNotSaved');
+}
+
+/**
+ * True when a cart call failed without an answer from the server: the request
+ * timed out, could not be sent, or the connection broke. `OrderService` hands
+ * such a failure back with the transport's own text in `error` ("TimeoutError:
+ * Request timeout", "TypeError: Network request failed"), and the app's
+ * connectivity test classes that text as it does for every other service.
+ *
+ * A refusal is an answer and is never one of these: its `error` is the
+ * placeholder 'API_ERROR', a `{code}`, or the sentence the server raised.
+ * Neither is a session that ended or changed (`isOfflineFailure` excludes it).
+ */
+export function isConnectionFailure(failure: CartFailure | null | undefined): boolean {
+  const raw = sentence(failure?.error);
+  // As an error object, the shape the PostgREST client gave it: a bare string is not classed.
+  return raw !== undefined && isOfflineFailure({ message: raw });
 }
 
 /** True when a removal was refused because the line is already gone, which is what was asked for. */

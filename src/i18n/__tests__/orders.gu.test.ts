@@ -28,8 +28,10 @@ describe('orders in Gujarati', () => {
     expect(t('orders.catalog.savingProgress', { done: 3, total: 20 }, 'gu')).toBe('૨૦ માંથી ૩ સાચવી રહ્યા છીએ…');
     expect(t('orders.catalog.savingProgress', { done: 3, total: 20 })).toBe('Saving 3 of 20…');
   });
-  it('sums up the lots that were not saved', () => {
+  it('sums up the lots that were not saved, one lot in the singular', () => {
+    expect(t('orders.catalog.notSavedSummary', { count: 1 }, 'gu')).toBe('૧ જથ્થો સચવાયો નથી. તેના પર કારણ જુઓ.');
     expect(t('orders.catalog.notSavedSummary', { count: 2 }, 'gu')).toBe('૨ જથ્થા સચવાયા નથી. દરેક પર કારણ જુઓ.');
+    expect(t('orders.catalog.notSavedSummary', { count: 12 }, 'gu')).toBe('૧૨ જથ્થા સચવાયા નથી. દરેક પર કારણ જુઓ.');
     expect(t('orders.catalog.notSavedSummary', { count: 1 })).toBe('1 lot was not saved. See the reason on it.');
     expect(t('orders.catalog.notSavedSummary', { count: 2 })).toBe('2 lots were not saved. See the reason on each.');
   });

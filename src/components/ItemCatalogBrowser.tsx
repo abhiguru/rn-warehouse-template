@@ -161,7 +161,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const closedRef = useRef(false);
   // "Discard selections?" is on screen.
   const askingRef = useRef(false);
-  // A swipe took the sheet off the screen while the picker itself is still open.
+  // The sheet is off the screen (a swipe took it) while the picker itself is still
+  // open. Set by every dismissal the library reports for an open picker, cleared
+  // by `presentSheet`.
   const sheetDownRef = useRef(false);
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
   const [selectedCatalog, setSelectedCatalog] = useState<string | null>(null);
@@ -230,11 +232,17 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     loadPersistedRecentItems();
   }, [isVisible, customerId]);
 
+  // Puts the sheet on the screen, the first time and after a swipe took it away.
+  const presentSheet = useCallback(() => {
+    sheetDownRef.current = false;
+    sheet.present();
+  }, [sheet]);
+
   // Handle bottom sheet visibility
   useEffect(() => {
     if (isVisible) {
       closedRef.current = false;
-      sheet.present();
+      presentSheet();
     } else {
       sheet.dismiss();
     }
@@ -654,12 +662,14 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     if (!isMountedRef.current) return;
     if (discard) {
       finishClose();
-    } else if (source === 'swipe') {
-      // The swipe already took the sheet away; show it again with what was chosen.
-      sheetDownRef.current = false;
-      sheet.present();
+    } else if (source === 'swipe' || sheetDownRef.current) {
+      // A swipe took the sheet away: show it again with what was chosen. That is so
+      // also when another way out asked first: the sheet was flung down, Back or
+      // Cancel was pressed before it was gone, and its dismissal came while the
+      // question was open (and was not asked about a second time).
+      presentSheet();
     }
-  }, [finishClose, sheet]);
+  }, [finishClose, presentSheet]);
 
   // Add: sends only what changed since the picker opened and waits for the
   // answer. Everything saved: the picker closes. Otherwise it stays open with
@@ -714,11 +724,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     // The lots that were not saved are listed first, under a summary line.
     setSearchQuery('');
     setShowSelectedItems(false);
-    if (sheetDownRef.current) {
-      sheetDownRef.current = false;
-      sheet.present();
-    }
-  }, [finishClose, sheet]);
+    if (sheetDownRef.current) presentSheet();
+  }, [finishClose, presentSheet]);
 
   // Helper functions for search UI
   const getSearchPlaceholder = useCallback(() => {
@@ -1062,9 +1069,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const handleSheetDismissed = useCallback(() => {
     sheet.onDismissed();
     if (!isMountedRef.current || closedRef.current) return;
+    // Noted before anything else, also while a question is open or an Add is being saved.
     sheetDownRef.current = true;
     // An Add is being saved: its answer decides (handleAddItems shows the sheet again for lots not saved).
     if (savingRef.current) return;
+    // A question that is already open answers for this dismissal too ("Keep editing" shows the sheet again).
     void requestClose('swipe');
   }, [sheet, requestClose]);
 

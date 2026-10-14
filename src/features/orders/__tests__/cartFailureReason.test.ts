@@ -7,8 +7,10 @@
  * the answer has the server's sentence in `message`; a raised exception has the
  * app's own text in `message` and the raw text in `error`.
  */
-import { cartFailureReason, isAlreadyRemoved } from '../cartFailureReason';
+import { cartFailureReason, isAlreadyRemoved, isConnectionFailure } from '../cartFailureReason';
 import { setLanguage } from '@/i18n';
+import { AppError } from '@/utils/appError';
+import { executeRPC } from '@/utils/serviceErrorHandler';
 
 afterEach(() => setLanguage('en'));
 
@@ -73,4 +75,63 @@ it('tells a line that is already gone from any other refusal', () => {
   expect(isAlreadyRemoved(refused('Order not found'))).toBe(false);
   expect(isAlreadyRemoved(refused('Cannot remove items from DISPATCHED orders', { code: 'ORDER_NOT_OPEN' }))).toBe(false);
   expect(isAlreadyRemoved(undefined)).toBe(false);
+});
+
+describe('a call without an answer is told from a refusal', () => {
+  it.each([
+    ['a request that timed out', 'TimeoutError: Request timeout'],
+    ['a request that could not be sent', 'TypeError: Network request failed'],
+    ['a session that could not be renewed for want of a connection', 'Network request failed: session refresh unavailable'],
+    ['a connection the server dropped', 'Error: read ECONNRESET'],
+  ])('%s got no answer', (_name, text) => {
+    expect(isConnectionFailure(raised(text))).toBe(true);
+  });
+
+  it.each(CASES.filter(([name]) => name !== 'no connection'))('%s is an answer', (_name, failure) => {
+    expect(isConnectionFailure(failure)).toBe(false);
+  });
+
+  it.each([
+    ['the session changed', raised('Error: Session changed')],
+    ['the session ended', raised('Sign in required')],
+    ['a line that is already gone', refused('Order item not found')],
+    ['a missing failure', undefined],
+    ['null', null],
+  ])('%s is not a connection failure', (_name, failure) => {
+    expect(isConnectionFailure(failure)).toBe(false);
+  });
+
+  // What the service wrapper of the three cart calls makes of the PostgREST
+  // client's answers, in both languages: the text read here stays English.
+  describe.each(['en', 'gu'] as const)('through executeRPC in %s', language => {
+    let logged: jest.SpyInstance;
+    beforeEach(() => {
+      setLanguage(language);
+      logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    });
+    afterEach(() => logged.mockRestore());
+
+    const call = (client: () => Promise<unknown>) =>
+      executeRPC(client, 'add_item_to_order', {}, { context: 'fictional', errorMessage: "Couldn't add the item.", unwrapNested: false });
+    const answering = (answer: { data: unknown; error: unknown }) => async () => ({ rpc: async () => answer });
+    // A failed fetch, as postgrest-js 2 reports it: no status, the error's name and message as text.
+    const transport = (text: string) => answering({ data: null, error: { message: text, details: '', hint: '', code: '' } });
+
+    it.each([
+      ['a timeout of the gated fetch', transport('TimeoutError: Request timeout')],
+      ['a fetch that failed', transport('TypeError: Network request failed')],
+      ['no session for want of a connection', async () => { throw new AppError('NETWORK', 'Network request failed: session refresh unavailable'); }],
+    ])('%s got no answer', async (_name, client) => {
+      expect(isConnectionFailure(await call(client))).toBe(true);
+    });
+
+    it.each([
+      ['a refusal sent as the answer', answering({ data: { success: false, message: 'Insufficient stock. Available: 3, Requested: 10' }, error: null })],
+      ['an order that is not open', answering({ data: { success: false, message: 'Cannot add items to DISPATCHED orders', error: { code: 'ORDER_NOT_OPEN' } }, error: null })],
+      ['a raised access refusal', answering({ data: null, error: { message: 'Customer access denied', details: null, hint: null, code: '42501' } })],
+      ['an empty answer', answering({ data: null, error: null })],
+    ])('%s is an answer', async (_name, client) => {
+      expect(isConnectionFailure(await call(client))).toBe(false);
+    });
+  });
 });
