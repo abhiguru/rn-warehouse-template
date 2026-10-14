@@ -39,7 +39,12 @@ import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/feat
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
-import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
+import {
+  HorizontalItemForm,
+  ItemFormData,
+  HorizontalItemFormRef,
+  ItemFormFieldName,
+} from '@/features/grn/components/HorizontalItemForm';
 import {
   validateStep2,
   isValidReceiptQuantity,
@@ -72,6 +77,9 @@ const freshItem = (lines: readonly ItemFormData[]): ItemFormData => {
   if (lines.length > 0 && lines[0].rack) item.rack = lines[0].rack;
   return item;
 };
+
+/** The fields the row draws after Item and Quantity, in its order. Their names are also their error keys. */
+const FIELDS_AFTER_QUANTITY = ['weight', 'rack', 'package_mark'] as const satisfies readonly ItemFormFieldName[];
 
 const photosOf = (item: ItemFormData): GRNImageData[] => item.trl_images || [];
 const photoIds = (item: ItemFormData) => photosOf(item).map((img) => img.id).join('|');
@@ -320,6 +328,10 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       formRef.current?.resetScroll();
     } else if (errors.qty) {
       formRef.current?.focusQty();
+    } else {
+      // Weight, Rack and Mark are out of view while Item and Quantity are shown.
+      const field = FIELDS_AFTER_QUANTITY.find((name) => errors[name]);
+      if (field) formRef.current?.revealField(field);
     }
   };
 

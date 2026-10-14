@@ -61,9 +61,13 @@ jest.mock('@/hooks', () => ({
   },
 }));
 // Children are stand-ins that keep their props, so the test can call their handlers.
+// The form's stand-in also takes what the step asks of the form through its ref.
+const mockFormRef = { focusQty: jest.fn(), resetScroll: jest.fn(), revealField: jest.fn() };
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
-  HorizontalItemForm: require('react').forwardRef((props: object, _ref: unknown) =>
-    require('react').createElement('HorizontalItemForm', props)),
+  HorizontalItemForm: require('react').forwardRef((props: object, ref: React.Ref<unknown>) => {
+    require('react').useImperativeHandle(ref, () => mockFormRef);
+    return require('react').createElement('HorizontalItemForm', props);
+  }),
 }));
 jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({ __esModule: true, default: 'ItemsSummaryBottomSheet' }));
 jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
@@ -320,6 +324,52 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     // Still a correction that was not checkmarked: it is asked about again.
     await pressNext(tree);
     expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+  });
+
+  // The form is one sideways row: Weight, Rack and Mark are out of view while Item and Quantity are shown.
+  it.each([
+    ['a weight that is not a whole number', 'weight', '12.5'],
+    ['a rack of more than 30 characters', 'rack', 'R'.repeat(31)],
+    ['a mark of more than 60 characters', 'package_mark', 'M'.repeat(61)],
+  ])('a correction with %s: OK on the refusal brings that field into view', async (_what, field, value) => {
+    const tree = await render('edit', lines(10));
+    await openRow(tree, 5);
+    set(tree, field, value);
+    await pressNext(tree);
+
+    await answer('Save changes');
+    expect(lastAlert()?.[1]).toBe('Fix the highlighted fields, then save the item.');
+    expect(Object.keys(form(tree).props.currentItem.errors)).toEqual([field]);
+    expect(mockFormRef.revealField).not.toHaveBeenCalled();
+    await answer('OK');
+
+    expect(mockFormRef.revealField).toHaveBeenCalledTimes(1);
+    expect(mockFormRef.revealField).toHaveBeenCalledWith(field);
+    expect(mockFormRef.focusQty).not.toHaveBeenCalled();
+    expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
+  });
+
+  it('with several fields wrong, the first of the row is the one brought into view', async () => {
+    const tree = await render('edit', lines(10));
+    await openRow(tree, 5);
+    set(tree, 'rack', 'R'.repeat(31));
+    set(tree, 'weight', '12.5');
+    await pressNext(tree);
+    await answer('Save changes');
+    await answer('OK');
+
+    // Weight is drawn before Rack.
+    expect(mockFormRef.revealField.mock.calls).toEqual([['weight']]);
+
+    // Quantity is drawn before both, and is given the cursor as before.
+    set(tree, 'qty', '');
+    await pressNext(tree);
+    await answer('Save changes');
+    await answer('OK');
+
+    expect(mockFormRef.focusQty).toHaveBeenCalledTimes(1);
+    expect(mockFormRef.revealField.mock.calls).toEqual([['weight']]);
+    expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
   });
 
   it('a saved item that was opened and not changed is not asked about: the form closes and Review opens', async () => {

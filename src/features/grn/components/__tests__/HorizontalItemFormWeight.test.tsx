@@ -8,7 +8,7 @@ import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
-import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
+import { HorizontalItemForm, type HorizontalItemFormRef, type ItemFormData } from '../HorizontalItemForm';
 import { QuantityWeightFields } from '../item-form';
 
 jest.mock('@/store/hooks', () => ({
@@ -46,9 +46,10 @@ function mount(element: React.ReactElement) {
   return tree;
 }
 const onFieldChange = jest.fn();
-const renderForm = (item: ItemFormData = ITEM) =>
+const renderForm = (item: ItemFormData = ITEM, ref?: React.Ref<HorizontalItemFormRef>) =>
   mount(
     <HorizontalItemForm
+      ref={ref}
       currentItem={item}
       onFieldChange={onFieldChange}
       onImagePick={jest.fn()}
@@ -155,6 +156,25 @@ describe('GRN item form weight field', () => {
       });
 
       expect(scrolledTo()).toEqual([{ x: 220, animated: true }]);
+    });
+  });
+
+  // After a save that was refused the items step names the first field with an
+  // error: Weight, Rack and Mark are out of view while Item and Quantity are shown.
+  describe('scrolling to a field the items step names', () => {
+    it.each([
+      ['item', 0],
+      ['qty', 220],
+      ['weight', 337],
+      ['rack', 489],
+      ['package_mark', 685],
+    ] as const)('%s scrolls the row to %d, the place it has when it takes focus', (field, x) => {
+      const ref = React.createRef<HorizontalItemFormRef>();
+      renderForm(ITEM, ref);
+
+      act(() => ref.current!.revealField(field));
+
+      expect(scrolledTo()).toEqual([{ x, animated: true }]);
     });
   });
 
