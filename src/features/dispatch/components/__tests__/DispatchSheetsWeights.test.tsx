@@ -8,8 +8,10 @@
  * shows no weight at all (these sheets printed "0 kg").
  */
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
+import { space } from '@/theme/tokens';
 import type { DispatchItemData, GRNDetailItem } from '@/types/dispatch.types';
 import { LotBottomSheet } from '../LotBottomSheet';
 import { ItemsSummaryBottomSheet } from '../ItemsSummaryBottomSheet';
@@ -164,6 +166,47 @@ describe('the saved-items sheet', () => {
     expect(texts(tree)).toEqual(expect.arrayContaining(['Potatoes', '5 bags', 'PM', 'B-14']));
     expect(mentionsWeight(tree)).toBe(false);
     expect(badges()).toEqual(['Bags 5', 'GRNs 1']);
+  });
+
+  // Review 2026-10-14, finding 5. "0 kg" always filled the row of details under an item's
+  // header. With the weight gone, a lot with no mark, no rack and no weight left that row
+  // empty, and the header's bottom margin as a gap above the divider.
+  describe('the details under an item', () => {
+    /** The views of the one item row: the row itself and everything inside it. */
+    const rowViews = () =>
+      tree.root
+        .find((node) => typeof node.type === 'string' && node.props.accessible === true && String(node.props.accessibilityLabel).startsWith('Item 1, Potatoes'))
+        .findAll((node) => (node.type as unknown) === 'View');
+    const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
+    /** The wrapping row of mark, rack and weight. */
+    const details = () => rowViews().filter((node) => styleOf(node).flexWrap === 'wrap');
+    const sheetOf = (item: DispatchItemData) => <ItemsSummaryBottomSheet isVisible onClose={jest.fn()} items={[item]} onDeleteItem={jest.fn()} />;
+
+    it.each([[null], ['']])('a lot with no mark, no rack and no weight (%p) has no details row and no gap where it was', (none) => {
+      render(sheetOf({ ...line(null), grnItems_package_mark: none, grnItems_rack: none } as DispatchItemData));
+
+      expect(texts(tree)).toEqual(expect.arrayContaining(['Potatoes', 'G0311/100', '5 bags']));
+      expect(details().length).toBe(0);
+      // No view is drawn empty, and none leaves a margin under itself for a row that is not there.
+      expect(rowViews().filter((node) => node.children.length === 0).length).toBe(0);
+      expect(rowViews().filter((node) => styleOf(node).marginBottom).length).toBe(0);
+    });
+
+    it.each<[string, Partial<DispatchItemData>, string[]]>([
+      ['a mark alone', { grnItems_package_mark: 'PM', grnItems_rack: '', grnItems_weight: 0 }, ['PM']],
+      ['a rack alone', { grnItems_package_mark: '', grnItems_rack: 'B-14', grnItems_weight: 0 }, ['B-14']],
+      ['a weight alone', { grnItems_package_mark: '', grnItems_rack: '', grnItems_weight: 50 }, ['50 kg each']],
+      ['all three', { grnItems_weight: 50 }, ['PM', 'B-14', '50 kg each']],
+    ])('%s keeps the details row, the same distance under the header', (_name, over, shown) => {
+      render(sheetOf({ ...line(null), ...over } as DispatchItemData));
+
+      expect(details().length).toBe(1);
+      const [row] = details();
+      expect(row.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''))).toEqual(shown);
+      // 8 dp between the header and the details, as before: one margin, on one of the two.
+      const margins = rowViews().map((node) => Number(styleOf(node).marginBottom ?? 0) + Number(styleOf(node).marginTop ?? 0)).filter(Boolean);
+      expect(margins).toEqual([space.sm]);
+    });
   });
 });
 
