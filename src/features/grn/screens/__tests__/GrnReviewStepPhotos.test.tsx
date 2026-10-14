@@ -10,6 +10,7 @@ import { uploadGRNPhotos, unpreparedGRNPhotos } from '@/features/grn/services/im
 import { removeHeaderImage, adoptSavedLines, setSaveUnconfirmed } from '@/store/slices/grnFormSlice';
 import { showAlert } from '@/utils/alert';
 import { router } from 'expo-router';
+import { setLanguage } from '@/i18n/language';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
@@ -308,6 +309,31 @@ describe('GRN review step photos', () => {
       expect(unpreparedGRNPhotos).toHaveBeenCalledWith(mockHeader.gr_images, [{ images: [] }]);
       expect(createGRN).not.toHaveBeenCalled();
       expect(updateGRN).not.toHaveBeenCalled();
+    });
+  });
+
+  // Migration 83: a business deactivated while the form was open. The user keeps the form to save after activation.
+  describe('a deactivated business', () => {
+    afterEach(() => setLanguage('en'));
+    it.each([
+      ['en', 'This business is deactivated. Activate it in Customers to receive new goods.'],
+      ['gu', 'આ વેપારી નિષ્ક્રિય છે. નવો માલ લેવા માટે વેપારીઓમાં તેને સક્રિય કરો.'],
+    ])('shows the translated refusal (%s) and keeps the form', async (language, text) => {
+      setLanguage(language as 'en' | 'gu');
+      (createGRN as jest.Mock).mockResolvedValue({
+        success: false,
+        error: 'This business is deactivated. Activate it in Customers to receive new goods.',
+      });
+      const tree = await render('create');
+
+      await save(tree);
+
+      expect(createGRN).toHaveBeenCalledTimes(1);
+      expect(showAlert).toHaveBeenLastCalledWith(expect.any(String), text);
+      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(false);
+      expect(mockForm.resetFormState).not.toHaveBeenCalled();
+      expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: expect.stringMatching(/reset/i) }));
+      await act(async () => { tree.unmount(); });
     });
   });
 
