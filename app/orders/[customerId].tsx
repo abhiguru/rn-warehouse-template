@@ -16,6 +16,7 @@ import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } fr
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { t as tr } from '@/i18n';
+import { isWarehouseUser } from '@/config/roles';
 
 export default function CustomerOrderScreen() {
   const t = useTokens();
@@ -27,6 +28,7 @@ export default function CustomerOrderScreen() {
   const signedIn = useAppSelector(
     (state) => Boolean(state.auth.userProfile) || Boolean(state.auth.user && state.auth.session)
   );
+  const staffView = useAppSelector((state) => isWarehouseUser(state.auth.userProfile?.role));
   const insets = useSafeAreaInsets();
   const [customerName, setCustomerName] = useState<string>('');
   // The business whose name has been read. `loading` follows from it, so on a change of
@@ -36,6 +38,9 @@ export default function CustomerOrderScreen() {
   const loading = loadedFor !== customerId;
   const latestCustomerId = useRef(customerId);
   latestCustomerId.current = customerId;
+  // The business the customer record (or the facility's refusal) says is turned off or deleted.
+  const [inactiveFor, setInactiveFor] = useState<string | undefined>(undefined);
+  const businessInactive = inactiveFor !== undefined && inactiveFor === customerId;
   const [showItemCatalog, setShowItemCatalog] = useState(false);
 
   // Changelog state
@@ -104,11 +109,12 @@ export default function CustomerOrderScreen() {
   const fetchCustomerName = useCallback(async () => {
     const requestedFor = customerId;
     let name = tr('common.customer');
+    let off = false;
     try {
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error } = await authenticatedClient
         .from('customers')
-        .select('name')
+        .select('name, active, deleted_at')
         .eq('id', requestedFor)
         .single();
 
@@ -116,6 +122,7 @@ export default function CustomerOrderScreen() {
         console.error('[CustomerOrderScreen] Error fetching customer:', error);
       } else {
         name = data?.name || name;
+        off = data?.active === false || Boolean(data?.deleted_at);
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Exception:', error);
@@ -123,6 +130,7 @@ export default function CustomerOrderScreen() {
     // The answer for a business the screen has left is dropped.
     if (latestCustomerId.current !== requestedFor) return;
     setCustomerName(name);
+    setInactiveFor(off ? requestedFor : undefined);
     setLoadedFor(requestedFor);
   }, [customerId]);
 
@@ -199,10 +207,12 @@ export default function CustomerOrderScreen() {
             <Pressable
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={handleOpenItemCatalog}
+              disabled={businessInactive}
+              accessibilityState={{ disabled: businessInactive }}
               accessibilityLabel={tr('orders.screen.addItemsToOrder')}
               accessibilityRole="button"
             >
-              <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
+              <Icon name="plus" size={iconSize.lg} color={businessInactive ? t.text.disabled : t.brand.tint} />
             </Pressable>
           </View>
         </View>
@@ -214,6 +224,9 @@ export default function CustomerOrderScreen() {
             itemCatalogOpen={showItemCatalog}
             onOpenItemCatalog={handleOpenItemCatalog}
             onCloseItemCatalog={handleCloseItemCatalog}
+            staffView={staffView}
+            businessInactive={businessInactive}
+            onBusinessInactive={() => setInactiveFor(customerId)}
           />
         </View>
 

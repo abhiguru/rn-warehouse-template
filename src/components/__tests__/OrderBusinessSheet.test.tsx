@@ -12,9 +12,8 @@ import type { OwnBusiness } from '@/features/customer/ownBusinesses';
 import { OrderBusinessSheet } from '../OrderBusinessSheet';
 
 let mockState: Record<string, unknown> = {};
-const mockDispatch = jest.fn();
 jest.mock('@/store/hooks', () => ({
-  useAppDispatch: () => mockDispatch,
+  useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
@@ -23,8 +22,6 @@ const mockRead = jest.fn<Promise<OwnBusiness[]>, []>();
 // What the facility says about the account when the list is empty (null: no clear answer).
 const mockStatus = jest.fn<Promise<'active' | 'revoked' | 'none' | null>, []>();
 jest.mock('@/features/customer/ownBusinesses', () => ({ readOwnBusinesses: () => mockRead(), readAccessStatus: () => mockStatus() }));
-jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: (reason: string) => ({ type: 'test/forceLogout', reason }) }));
-jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => ({ companyName: 'North Cold Store', displayName: 'North' }) }));
 
 const business = (n: number): OwnBusiness => ({ id: `b${n}`, name: `Fictional Business ${n}`, city: `Town ${n}` });
 const TWO: OwnBusiness[] = [
@@ -38,7 +35,6 @@ afterEach(() => {
   tree = undefined;
   mockRead.mockReset();
   mockStatus.mockReset().mockResolvedValue(null);
-  mockDispatch.mockReset();
   setLanguage('en');
 });
 
@@ -210,16 +206,13 @@ it('speaks Gujarati', async () => {
 describe('an empty list: revoked or no business linked (migration 80, get_my_access_status)', () => {
   const NO_BUSINESS = ['No business linked', 'No business is linked to your account. Ask your facility to link one.'];
 
-  it("'revoked' closes the sheet and signs out with the revoked-access message", async () => {
+  it("'revoked' says so in the sheet: no sign-out, the sheet stays open", async () => {
     mockRead.mockResolvedValue([]);
     mockStatus.mockResolvedValue('revoked');
     const { onClose } = await open();
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(mockDispatch).toHaveBeenCalledWith({
-      type: 'test/forceLogout',
-      reason: "North Cold Store has withdrawn your access. Contact the facility's administrator if you think this is wrong.",
-    });
-    expect(texts()).not.toContain('No business linked');
+    expect(texts()).toContain('Your cold storage has removed your businesses. Ask them to add one.');
+    expect(texts()).not.toContain('No business is linked to your account. Ask your facility to link one.');
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -232,7 +225,7 @@ describe('an empty list: revoked or no business linked (migration 80, get_my_acc
     arrange();
     const { onClose } = await open();
     expect(texts()).toEqual(expect.arrayContaining(NO_BUSINESS));
-    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(texts()).not.toContain('Your cold storage has removed your businesses. Ask them to add one.');
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -242,6 +235,5 @@ describe('an empty list: revoked or no business linked (migration 80, get_my_acc
     await open();
     expect(mockStatus).not.toHaveBeenCalled();
     expect(rows()).toHaveLength(2);
-    expect(mockDispatch).not.toHaveBeenCalled();
   });
 });

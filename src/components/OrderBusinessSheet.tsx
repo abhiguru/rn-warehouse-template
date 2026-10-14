@@ -15,18 +15,15 @@
  * what it holds, up to a share of the window, so at the largest text sizes the
  * rows or the message scroll instead of running off the sheet.
  */
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ActivityIndicator, ScrollView, useWindowDimensions, View } from 'react-native';
 import { CustomerChoiceRows } from '@/components/common/CustomerChoiceRows';
 import { ReportEmptyState } from '@/components/reports/ReportEmptyState';
-import { getActiveOperatorServer } from '@/config/operatorServer';
 import { readAccessStatus, readOwnBusinesses, type OwnBusiness } from '@/features/customer/ownBusinesses';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { useLoadWithRetry, type LoadWithRetry } from '@/hooks/useLoadWithRetry';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
-import { useAppDispatch } from '@/store/hooks';
-import { forceLogoutOnInvalidToken } from '@/store/slices/authSlice';
 import { layout, space } from '@/theme/tokens';
 
 export interface OrderBusinessSheetProps {
@@ -72,24 +69,12 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const { height: windowHeight } = useWindowDimensions();
-  const dispatch = useAppDispatch();
   const choices = useLoadWithRetry('own-businesses', readChoices);
   const businesses: LoadWithRetry<OwnBusiness[]> =
     choices.state === 'loaded' ? { state: 'loaded', data: choices.data.businesses, retry: choices.retry } : choices;
   const tall = businesses.state === 'loaded' && businesses.data.length > SHORT_SHEET_MAX_ROWS;
+  // The facility has removed this account's businesses: said in the sheet, no sign-out.
   const revoked = choices.state === 'loaded' && choices.data.revoked;
-
-  // The facility withdrew this account's access: the same message and sign-out as a
-  // revoked session elsewhere (central.open.revoked, forceLogoutOnInvalidToken).
-  useEffect(() => {
-    if (!revoked) return;
-    const server = getActiveOperatorServer();
-    const facility = server?.companyName || server?.displayName;
-    onClose();
-    void dispatch(
-      forceLogoutOnInvalidToken(facility ? tr('central.open.revoked', { facility }) : tr('central.errors.sessionEnded'))
-    );
-  }, [revoked]);
 
   let body: React.ReactNode;
   if (businesses.state === 'loading') {
@@ -115,7 +100,13 @@ function OpenOrderBusinessSheet({ onClose, onPick }: SheetBodyProps) {
       />
     );
   } else if (revoked) {
-    body = null; // The sheet closes as the sign-out starts.
+    body = (
+      <ReportEmptyState
+        icon="account-off-outline"
+        message={tr('lists.order.noBusinessTitle')}
+        description={tr('lists.order.businessesRemoved')}
+      />
+    );
   } else if (businesses.data.length === 0) {
     body = (
       <ReportEmptyState

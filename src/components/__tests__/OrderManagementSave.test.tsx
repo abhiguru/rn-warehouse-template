@@ -747,6 +747,31 @@ describe('a business that is not active', () => {
     expect(service.getOrderWithItems).not.toHaveBeenCalled();
   });
 
+  it('says the business is turned off, in the staff wording, when staff are refused', async () => {
+    service.getOrCreateOrder.mockResolvedValue(inactive);
+    const onBusinessInactive = jest.fn();
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView onBusinessInactive={onBusinessInactive} />); });
+    expect(text()).toContain('This business is turned off. Turn it on in Customers to take new orders.');
+    expect(text()).not.toContain('Ask your cold storage');
+    expect(onBusinessInactive).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the existing order for staff with a banner, and the empty-state Add button is off', async () => {
+    server.items = [];
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessInactive />); });
+    expect(text()).toContain('This business is turned off. Turn it on in Customers to take new orders.');
+    expect(text()).toContain('No items in this order');
+    const add = renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && 'disabled' in node.props)[0];
+    expect(add.props.disabled).toBe(true);
+  });
+
+  it('shows no banner to a customer login or for an active business', async () => {
+    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessInactive />); });
+    expect(text()).not.toContain('turned off');
+    await act(async () => { renderer!.update(<OrderManagement customerId="customer-fictional-1" staffView />); });
+    expect(text()).not.toContain('turned off');
+  });
+
   it('keeps the current handling for any other error', async () => {
     service.getOrCreateOrder.mockResolvedValue({ success: false, message: "Couldn't open the order.", error: 'permission denied' } as never);
     await act(async () => { renderer = create(editor()); });

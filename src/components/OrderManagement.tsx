@@ -88,6 +88,12 @@ interface OrderManagementProps {
   onOpenItemCatalog?: () => void;
   itemCatalogOpen?: boolean;
   onCloseItemCatalog?: () => void;
+  /** A warehouse login (admin, supervisor, staff), not a customer's own. */
+  staffView?: boolean;
+  /** The customer record says the business is turned off or deleted. */
+  businessInactive?: boolean;
+  /** The facility refused to open an order because the business is not active. */
+  onBusinessInactive?: () => void;
 }
 
 const OrderManagement: React.FC<OrderManagementProps> = ({
@@ -95,6 +101,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   onOpenItemCatalog,
   itemCatalogOpen,
   onCloseItemCatalog,
+  staffView = false,
+  businessInactive: businessOff = false,
+  onBusinessInactive,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -152,6 +161,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       if (!orderResult.success) {
         if (isBusinessInactive(orderResult)) {
           setBusinessInactive(true);
+          onBusinessInactive?.();
           return;
         }
         showAlert(tr('orders.manage.couldNotOpenTitle'), serverText(orderResult.message, tr('common.checkConnection')));
@@ -292,20 +302,24 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
   // Handle quantity update for one line, by its id; one function for every card.
   // Resolves true only when the server stored the quantity.
-  const handleQuantityUpdate = useCallback(async (itemId: string, newQuantity: number): Promise<boolean> => {
-    const current = orderRef.current;
-    if (!current) return false;
+  // `lineOrderId` is the order the line belongs to, sent by the card. It is the order the
+  // write goes to even when the editor has moved on to another business meanwhile (a quantity
+  // still waiting to be saved when the card goes away is saved to its own order, never to the
+  // new one). Without it, the order shown now.
+  const handleQuantityUpdate = useCallback(async (itemId: string, newQuantity: number, lineOrderId?: string): Promise<boolean> => {
+    const orderId = lineOrderId || orderRef.current?.id;
+    if (!orderId) return false;
 
     try {
       const result = await OrderService.updateOrderItemQuantity(
         itemId,
-        current.id,
+        orderId,
         newQuantity
       );
 
       if (result.success) {
-        // Refresh order
-        await onRefresh();
+        // Refresh order, while it is still the one shown
+        if (activeOrderId.current === orderId) await onRefresh();
         return true;
       }
       showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), serverText(result.message, tr('common.checkConnection')));
@@ -384,6 +398,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     const notSaved = (grnItemId: string): PickerResult =>
       ({ grnItemId, ok: false, reason: tr('orders.catalog.reasonNotSaved') });
     const sessionGeneration = getSessionGeneration();
+    // The order the picker was opened for. Every lot goes to it, and the save stops when the
+    // editor has moved on (another business, or the screen closed: `activeOrderId` is cleared).
+    const startOrderId = orderRef.current?.id;
     // Quantities first, removals last.
     const ordered = [...changes.filter(change => change.quantity > 0), ...changes.filter(change => change.quantity <= 0)];
     const results = new Map<string, PickerResult>();
@@ -395,7 +412,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       const change = ordered[index];
       const current = orderRef.current;
       // A sign-out or a change of facility ends the save; the rest is not sent.
-      if (!current || sessionGeneration !== getSessionGeneration()) break;
+      if (!current || current.id !== startOrderId || activeOrderId.current !== startOrderId || sessionGeneration !== getSessionGeneration()) break;
       onProgress?.(index + 1, ordered.length);
 
       const line = current.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item));
@@ -466,7 +483,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     // saved may have failed because the lines here are out of date (a write that
     // timed out but was applied, a line someone else removed): without this read
     // the next Add would fail on it the same way.
-    if (anyCall && sessionGeneration === getSessionGeneration()) {
+    if (anyCall && sessionGeneration === getSessionGeneration() && activeOrderId.current === startOrderId) {
       const read = onRefresh().catch(error => {
         console.error('[OrderManagement] Refresh after save error:', error);
       });
@@ -507,7 +524,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       <View style={styles.emptyState}>
         <Icon name="store-off-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyText} accessibilityRole="header">{tr('orders.manage.couldNotOpenTitle')}</Text>
-        <Text style={styles.emptySubtext}>{tr('orders.manage.businessInactive')}</Text>
+        <Text style={styles.emptySubtext}>{tr(staffView ? 'orders.manage.businessOff' : 'orders.manage.businessInactive')}</Text>
       </View>
     );
   }
@@ -521,6 +538,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
   return (
     <Surface style={styles.container} elevation={0}>
+
+      {/* A turned-off business can still be opened by the warehouse, but takes no new items */}
+      {staffView && businessOff && (
+        <View style={styles.offBanner}>
+          <Icon name="store-off-outline" size={iconSize.md} color={t.status.neutral.text} />
+          <Text style={styles.offBannerText}>{tr('orders.manage.businessOff')}</Text>
+        </View>
+      )}
 
       {/* Order Items */}
       <ScrollView
@@ -566,6 +591,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               type="primary"
               size="standalone"
               leftIcon="plus"
+              disabled={businessOff}
               onPress={() => setShowItemCatalog(true)}
               accessibilityLabel={tr('orders.screen.addItemsToOrder')}
             >
@@ -689,6 +715,19 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingBottom: space.max + space.lg, // Space for the sticky summary bar
   },
   // Empty state (style guide §13.6)
+  offBanner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    backgroundColor: t.status.neutral.background,
+  },
+  offBannerText: {
+    ...typography.subhead,
+    flex: 1,
+    color: t.status.neutral.text,
+  },
   emptyState: {
     flex: 1,
     justifyContent: 'center' as const,

@@ -45,7 +45,7 @@ it('shows SAVED only after the server confirms the quantity', async () => {
   await act(async () => { tree = create(<OrderItemCard item={item} onQuantityChange={onQuantityChange} onRemove={jest.fn()} />); });
   await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
   await act(async () => { jest.advanceTimersByTime(2000); });
-  expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4);
+  expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4, 'order-1');
   expect(texts(tree)).toContain('Saving…');
   expect(texts(tree)).not.toContain('Saved');
   await act(async () => { save.resolve(true); await save.promise; });
@@ -61,7 +61,7 @@ it('reverts to the stored quantity when the server refuses the change', async ()
   await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
   expect(texts(tree)).toContain('4');
   await act(async () => { jest.advanceTimersByTime(2000); });
-  expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4);
+  expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4, 'order-1');
   expect(texts(tree)).toContain('3');
   expect(texts(tree)).not.toContain('4');
   expect(texts(tree)).not.toContain('Saved');
@@ -78,7 +78,7 @@ it('names its own line when it removes it or saves a pending change on unmount',
   await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
   expect(onQuantityChange).not.toHaveBeenCalled();
   await act(async () => { tree.unmount(); });
-  expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4);
+  expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4, 'order-1');
 });
 
 it.each([
