@@ -96,7 +96,7 @@ export const orders: Translation<typeof source> = {
     reasonNotSaved: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
     reasonChangedMeanwhile: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
-    reasonRemovedMeanwhile: 'બીજા કોઈએ દૂર કર્યો. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonRemovedMeanwhile: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો.{{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonChangedMeanwhileRemove: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
   },
 };
