@@ -71,8 +71,12 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     backgroundColor: t.background.base,
   },
+  // minHeight 0 lets the content give way to the hero and the tab strip at a large font;
+  // overflow hidden keeps a tab's content from painting over the strip.
   tabContent: {
     flex: 1,
+    minHeight: 0,
+    overflow: 'hidden' as const,
   },
   // Full-screen error and not-found states (style guide §13.6)
   stateContainer: {
