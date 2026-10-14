@@ -58,6 +58,7 @@ in Gujarati script; **English** = left in English letters.
 | kg | કિલો (kg in narrow columns) | translate | Checked |
 | each (weight of one package) | દરેક | translate | Draft |
 | Weight each | દરેકનું વજન | translate | Draft |
+| Kg each (heading of a narrow weight column) | નંગ દીઠ kg | translate, kg in English letters | Owner's choice (2026-10-14); the draft દરેક kg could be read as "per kg" |
 | Quantity (a count of bags) | નંગ | translate | Checked |
 | Quantity (a general amount) | નંગ | translate | Follows from the owner's "નંગ everywhere"; જથ્થો now means a lot |
 | Lot (one GRN line that stock is taken from) | જથ્થો | translate | Owner's choice (wording review) |
