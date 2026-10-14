@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased — backlog fixes (2026-10-14)
+
+Needs backend migration 80 (supabase-warehouse-template `fix/backlog-2026-10-14`) for the
+business-access message and the switched-off business rules; on an older facility those screens
+behave as before.
+
+### Orders
+
+- **A customer whose businesses were all removed is told so.** Orders tab → Create order → the
+  business sheet shows "Your cold storage has removed your businesses. Ask them to add one." instead
+  of "No business linked" (backend `get_my_access_status`). Nobody is signed out; an error or an
+  older facility keeps the old guidance.
+- **A switched-off business.** A customer login gets "This business is no longer active. Ask your
+  cold storage." instead of a general alert. Staff, supervisors and admins can still open an
+  existing order of such a business to look at it or clear it, with the banner "This business is
+  turned off. Turn it on in Customers to take new orders."; the header "+" and Add are disabled.
+- **Changing business on an open order screen drops the old order at once.** The spinner shows,
+  the Add items picker and history close, and late answers for the old business are ignored. A
+  write already started (a pending quantity, an Add items save, a removal) goes to the order it was
+  made for, never to the new business's order; an Add items save stops at the next lot.
+
+### GRN and Dispatch
+
+- **Edit GRN → Items: tapping a locked Quantity shows "Quantity locked" on Android too.** The
+  non-editable field never received the focus the alert relied on.
+- **Print results the printer did not confirm** now say "The printer did not confirm the job. Check
+  the printer before printing again." on the GRN list, GRN and Dispatch details and both Review
+  steps (as invoices did), also when the facility could not log the job. On the two Review steps
+  print failures are dialogs, so they are not lost when the step closes; the step now closes once.
+- **Package marks wrap** instead of ending in "…" on the GRN list and in the Dispatch list and
+  Recent dispatches item tables.
+
+### Settings and Item pricing
+
+- **Settings → Users → a user → Role:** the sheet fits its four options (Customer was below the fold
+  at large text) and scrolls only when they do not fit.
+- **Item pricing → a customer rate can leave a gap between weight bands.** Bands after the first have
+  an editable "From"; a gap shows "41–60 kg: default rate" (those bags pay the default rate, as the
+  facility prices them). A default rate still cannot have a gap. The From fields take part in "go to
+  the first error", the keyboard and Next; retyping a gap's own start is not a change.
+
+### Clean-up
+
+- Total weights that no screen shows are no longer computed or typed in the dispatch, order,
+  report and dashboard services (each screen showed only the weight of one package already).
+
+### Gujarati, for review
+
+- New: `orders.manage.businessInactive`, `orders.manage.businessOff`, `lists.order.businessesRemoved`,
+  `pricing.edit.gapHint`, `pricing.edit.err.fromOverlap`, `pricing.edit.err.gapDefault`,
+  `grn.review.printFailedTitle`, `grn.review.printUnconfirmedTitle`, `dispatch.review.printFailedTitle`,
+  `dispatch.review.printUnconfirmedTitle`. The four `*.printUnconfirmed` messages reuse the invoice's
+  existing Gujarati.
+
+### Not changed
+
+- GRN details → Dispatches at font scale 2.0 (first item under the tab strip): the first attempt did
+  not change the layout and was reverted; it is to be diagnosed on the phone.
+
 ## Unreleased — phone review fixes (2026-10-14)
 
 No backend migration is needed. The PDFs a facility's server makes are not changed by this app change.
