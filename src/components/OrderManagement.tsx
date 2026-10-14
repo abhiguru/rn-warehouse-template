@@ -31,7 +31,6 @@ import {
 } from '@/theme/tokens';
 import { OrderService } from '@/services/order-service';
 import { Order, OrderItem, Customer } from '@/types/order.types';
-import { useAppSelector } from '@/store/hooks';
 import ItemCatalogBrowser from './ItemCatalogBrowser';
 import OrderItemCard from './OrderItemCard';
 import CustomerOrderSummary from './CustomerOrderSummary';
@@ -41,6 +40,8 @@ import { searchService, SearchResult } from '@/services/search-service';
 import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { cartFailureReason, isAlreadyRemoved } from '@/features/orders/cartFailureReason';
+import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
 
 const NO_LINES: OrderItem[] = [];
 const isOpenLine = (item: OrderItem) => (item.item_status || '').toLowerCase() !== 'fulfilled';
@@ -96,7 +97,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 
-  const { userProfile } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -302,93 +302,93 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     );
   }, [onRefresh]);
 
-  // Handle items updated from catalog (sync quantities, don't add)
-  const handleItemsAdded = useCallback(async (items: Array<{grnItemId: string, quantity: number}>) => {
-    if (!order) return;
+  // Saves what the Add items picker changed, one lot after another, and answers
+  // for each lot. A lot the user did not touch is not in `changes`, so a line
+  // another user added meanwhile is never removed. Each change is resolved
+  // against the lines as they are saved now, not as they were when the picker
+  // opened. Never rejects and shows no alert: the picker shows each reason on its lot.
+  const handleItemsAdded = useCallback(async (
+    changes: PickerChange[],
+    onProgress?: (position: number, total: number) => void,
+  ): Promise<PickerResult[]> => {
+    const notSaved = (grnItemId: string): PickerResult =>
+      ({ grnItemId, ok: false, reason: tr('orders.catalog.reasonNotSaved') });
+    const sessionGeneration = getSessionGeneration();
+    // Quantities first, removals last.
+    const ordered = [...changes.filter(change => change.quantity > 0), ...changes.filter(change => change.quantity <= 0)];
+    const results = new Map<string, PickerResult>();
+    let anySaved = false;
 
-    try {
-      let successCount = 0;
-      let failureCount = 0;
+    for (let index = 0; index < ordered.length; index += 1) {
+      const change = ordered[index];
+      const current = orderRef.current;
+      // A sign-out or a change of facility ends the save; the rest is not sent.
+      if (!current || sessionGeneration !== getSessionGeneration()) break;
+      onProgress?.(index + 1, ordered.length);
 
-      // Create a map of current order items for easy lookup
-      const currentOrderItemsMap = new Map();
-      order.items?.forEach(orderItem => {
-        currentOrderItemsMap.set(orderItem.grn_item_id, orderItem);
-      });
-
-      for (const item of items) {
-        const existingOrderItem = currentOrderItemsMap.get(item.grnItemId);
-        
-        if (existingOrderItem) {
-          // Update existing item quantity
-          if (existingOrderItem.requested_quantity !== item.quantity) {
-            const result = await OrderService.updateOrderItemQuantity(
-              existingOrderItem.id,
-              order.id,
-              item.quantity
-            );
-            
-            if (result.success) {
-              successCount++;
-            } else {
-              failureCount++;
-              console.error('[OrderManagement] Failed to update item:', result.message);
-            }
+      const line =
+        current.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item)) ??
+        current.items?.find(item => item.grn_item_id === change.grnItemId);
+      try {
+        if (change.quantity > 0) {
+          if (line && line.requested_quantity === change.quantity) {
+            results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
+            continue;
           }
+          const result = line
+            ? await OrderService.updateOrderItemQuantity(line.id, current.id, change.quantity)
+            : await OrderService.addItemToOrder(current.id, change.grnItemId, change.quantity);
+          if (result.success) anySaved = true;
+          else console.error('[OrderManagement] Item not saved:', result.message, result.error);
+          results.set(change.grnItemId, result.success
+            ? { grnItemId: change.grnItemId, ok: true }
+            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
         } else {
-          // Add new item to order
-          const result = await OrderService.addItemToOrder(
-            order.id,
-            item.grnItemId,
-            item.quantity
-          );
-
-          if (result.success) {
-            successCount++;
-          } else {
-            failureCount++;
-            console.error('[OrderManagement] Failed to add item:', result.message);
+          // Nothing to remove when the line is gone or no longer open.
+          if (!line || !isOpenLine(line)) {
+            results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
+            continue;
           }
+          const result = await OrderService.removeItemFromOrder(line.id, current.id);
+          // "Order item not found": someone else removed it first, which is what was asked for.
+          const removed = result.success || isAlreadyRemoved(result);
+          if (removed) anySaved = true;
+          else console.error('[OrderManagement] Item not removed:', result.message, result.error);
+          results.set(change.grnItemId, removed
+            ? { grnItemId: change.grnItemId, ok: true }
+            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
         }
+      } catch (error) {
+        console.error('[OrderManagement] Save item error:', error);
+        results.set(change.grnItemId, notSaved(change.grnItemId));
       }
-
-      // Handle items that were removed (exist in order but not in selected items)
-      const selectedItemIds = new Set(items.map(item => item.grnItemId));
-      // The catalog only sees open lines, so only open lines can be deselected.
-      const itemsToRemove = order.items?.filter(orderItem =>
-        (orderItem.item_status || '').toLowerCase() !== 'fulfilled' &&
-        !selectedItemIds.has(orderItem.grn_item_id)
-      ) || [];
-
-      for (const orderItem of itemsToRemove) {
-        const result = await OrderService.removeItemFromOrder(orderItem.id, order.id);
-        if (result.success) {
-          successCount++;
-        } else {
-          failureCount++;
-          console.error('[OrderManagement] Failed to remove item:', result.message);
-        }
-      }
-
-      if (successCount > 0) {
-        await onRefresh();
-      }
-
-      if (failureCount > 0) {
-        showAlert(
-          tr('orders.manage.someNotUpdatedTitle'),
-          tr('orders.manage.someNotUpdatedMessage')
-        );
-      }
-    } catch (error) {
-      console.error('[OrderManagement] Update items error:', error);
-      showAlert(tr('orders.manage.couldNotUpdateTitle'), tr('common.checkConnection'));
     }
-  }, [order, onRefresh]);
+
+    // The order shows what was saved before the picker closes or lists what was not.
+    if (anySaved && sessionGeneration === getSessionGeneration()) {
+      try {
+        await onRefresh();
+      } catch (error) {
+        console.error('[OrderManagement] Refresh after save error:', error);
+      }
+    }
+
+    return changes.map(change => results.get(change.grnItemId) ?? notSaved(change.grnItemId));
+  }, [onRefresh]);
 
 
   // The open lines, kept while the order's lines are unchanged.
   const openItems = useMemo(() => order?.items?.filter(isOpenLine) ?? NO_LINES, [order?.items]);
+  // The same lines as the picker takes them. Kept while the lines are unchanged:
+  // the picker seeds its selection from them once, when it opens.
+  const pickerLines = useMemo(
+    () => openItems.map(item => ({
+      grnItemId: item.grn_item_id,
+      quantity: item.requested_quantity,
+      item: item.grn_item!,
+    })),
+    [openItems]
+  );
 
   if (loading && !order) {
     return (
@@ -545,11 +545,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           onAddItems={handleItemsAdded}
           currentOrderId={order.id}
           customerId={selectedCustomer.id}
-          currentOrderItems={openItems.map(item => ({
-            grnItemId: item.grn_item_id,
-            quantity: item.requested_quantity,
-            item: item.grn_item!
-          }))}
+          currentOrderItems={pickerLines}
         />
       )}
     </Surface>
