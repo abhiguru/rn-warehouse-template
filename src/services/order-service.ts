@@ -693,7 +693,6 @@ export class OrderService {
             aggregations: {
               total_initial_qty: 0,
               total_dispatch_qty: 0,
-              total_weight: 0,
               total_count: 0,
             },
           },

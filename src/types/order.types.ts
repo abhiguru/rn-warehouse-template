@@ -228,7 +228,6 @@ export interface CustomerDispatchItem {
 export interface CustomerDispatchAggregations {
   total_initial_qty: number;
   total_dispatch_qty: number;
-  total_weight: number;
   total_count: number;
 }
 

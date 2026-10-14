@@ -121,6 +121,7 @@ export const lists = {
     businessesFailed: "Couldn't load your businesses",
     noBusinessTitle: 'No business linked',
     noBusinessMessage: 'No business is linked to your account. Ask your facility to link one.',
+    businessesRemoved: 'Your cold storage has removed your businesses. Ask them to add one.',
     loadingMore: 'Loading more orders…',
     loadFailedTitle: "Couldn't load orders",
     loadFailed: "Couldn't load orders. Check your connection and try again.",

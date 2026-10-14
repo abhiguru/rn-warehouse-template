@@ -26,7 +26,6 @@ jest.mock('react-native-paper', () => Object.fromEntries(
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => {} }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
-jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: (reason: string) => ({ type: 'test/forceLogout', reason }) }));
 jest.mock('@/features/filters/configs', () => ({ ORDER_FILTERS: { listKey: 'order-list' } }));
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
   FilteredListHeader: () => null,

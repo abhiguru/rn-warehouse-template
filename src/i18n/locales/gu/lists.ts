@@ -121,6 +121,7 @@ export const lists: Translation<typeof source> = {
     businessesFailed: 'તમારા વેપારી લોડ કરી શકાયા નથી',
     noBusinessTitle: 'કોઈ વેપારી જોડાયેલ નથી',
     noBusinessMessage: 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી જોડવા કહો.',
+    businessesRemoved: 'તમારા કોલ્ડ સ્ટોરેજે તમારા વેપારી કાઢી નાખ્યા છે. તેમને વેપારી ઉમેરવા કહો.',
     loadingMore: 'વધુ ઑર્ડર લોડ થઈ રહ્યા છે…',
     loadFailedTitle: 'ઑર્ડર લોડ કરી શકાયા નથી',
     loadFailed: 'ઑર્ડર લોડ કરી શકાયા નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
