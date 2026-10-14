@@ -51,8 +51,8 @@ describe('central login in Gujarati', () => {
   });
 
   it('puts a facility name where the Gujarati sentence needs it and never translates it', () => {
-    expect(t('central.link.heading', { facility: 'North Cold Store' }, 'gu')).toBe('North Cold Storeમાં તમારો નંબર એક વાર કન્ફર્મ કરો');
-    expect(t('central.link.heading', { facility: 'North Cold Store' })).toBe('Confirm your number at North Cold Store once');
+    expect(t('central.link.heading', { facility: 'North Cold Store' }, 'gu')).toBe('North Cold Storeનો OTP નાખો');
+    expect(t('central.link.heading', { facility: 'North Cold Store' })).toBe('Enter the code from North Cold Store');
     expect(t('central.open.failedTitle', { facility: 'ગોંડલ કોલ્ડ સ્ટોરેજ' }, 'gu')).toBe('ગોંડલ કોલ્ડ સ્ટોરેજ ખોલી શકાયું નથી');
     expect(t('central.open.revoked', { facility: 'North Cold Store' }, 'gu')).toBe(
       'North Cold Storeએ તમારી મંજૂરી પાછી લઈ લીધી છે. આ ભૂલ લાગતી હોય તો કોલ્ડ સ્ટોરેજના એડમિનનો સંપર્ક કરો.'
@@ -77,7 +77,7 @@ describe('central login in Gujarati', () => {
       'North Cold Store, Rajkot, મંજૂર'
     );
     expect(t('central.facilities.cellLabel', { name: 'North Cold Store', status: t('central.facilities.status.linkNeeded', undefined, 'gu') }, 'gu')).toBe(
-      'North Cold Store, નંબર કન્ફર્મ કરો'
+      'North Cold Store, OTP જોઈએ'
     );
   });
 
@@ -94,6 +94,6 @@ describe('central login in Gujarati', () => {
     expect(t('nav.screens.addFacility', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજ ઉમેરો');
     expect(t('nav.screens.facilityAddress', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજનું સરનામું');
     expect(t('nav.screens.account', undefined, 'gu')).toBe('એકાઉન્ટ');
-    expect(t('nav.screens.confirmNumber', undefined, 'gu')).toBe('તમારો નંબર કન્ફર્મ કરો');
+    expect(t('nav.screens.confirmNumber', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજનો OTP');
   });
 });

@@ -24,7 +24,7 @@ export const central: Translation<typeof source> = {
     accountLabel: 'તમારું એકાઉન્ટ',
     accountHint: 'નામ, લૉગઆઉટ અને એકાઉન્ટ ડિલીટ',
     status: {
-      linkNeeded: 'નંબર કન્ફર્મ કરો',
+      linkNeeded: 'OTP જોઈએ',
       unavailable: 'ઉપલબ્ધ નથી',
     },
   },
@@ -56,11 +56,11 @@ export const central: Translation<typeof source> = {
     noServerHint: 'આ કોલ્ડ સ્ટોરેજ હજુ કેમ ઉમેરી શકાતું નથી તે જણાવે છે',
   },
   link: {
-    heading: '{{facility}}માં તમારો નંબર એક વાર કન્ફર્મ કરો',
-    lead: '{{facility}} પાસે આ મોબાઇલ નંબર પહેલેથી છે. તેણે આ નંબર પર મોકલેલો ૬ આંકડાનો OTP નાખો',
+    heading: '{{facility}}નો OTP નાખો',
+    lead: '{{facility}} દર વખતે લૉગિન કરો ત્યારે પોતાનો OTP માગે છે. તેણે આ નંબર પર મોકલેલો ૬ આંકડાનો OTP નાખો',
     notSentTitle: 'OTP મોકલી શકાયો નથી',
     backLabel: 'મારાં કોલ્ડ સ્ટોરેજ પર પાછા જાઓ',
-    backHint: 'નંબર કન્ફર્મ કર્યા વગર બહાર નીકળે છે',
+    backHint: 'OTP નાખ્યા વગર બહાર નીકળે છે',
   },
   account: {
     nameLabel: 'તમારું નામ',

@@ -28,7 +28,7 @@ export const nav: Translation<typeof source> = {
     addFacility: 'કોલ્ડ સ્ટોરેજ ઉમેરો',
     facilityAddress: 'કોલ્ડ સ્ટોરેજનું સરનામું',
     account: 'એકાઉન્ટ',
-    confirmNumber: 'તમારો નંબર કન્ફર્મ કરો',
+    confirmNumber: 'કોલ્ડ સ્ટોરેજનો OTP',
   },
   bootstrap: {
     unreachable: 'કોલ્ડ સ્ટોરેજના સર્વર સુધી પહોંચી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',

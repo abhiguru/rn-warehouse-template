@@ -202,7 +202,7 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
       facility('Central Cold Store', 'unavailable', 'Jamnagar'),
     ]);
     await render(<FacilitiesScreen />, brand, mode);
-    for (const words of ['My facilities', 'North Cold Store', 'Rajkot', 'Approved', 'Requested', 'Revoked', 'Confirm number', 'Unavailable', 'Add facility', 'Sign out', 'Asha Fictional', '+91 90000 00001']) {
+    for (const words of ['My facilities', 'North Cold Store', 'Rajkot', 'Approved', 'Requested', 'Revoked', 'Code needed', 'Unavailable', 'Add facility', 'Sign out', 'Asha Fictional', '+91 90000 00001']) {
       expect(texts()).toContain(words);
     }
     const tagBackground = (origin: string) =>
@@ -257,8 +257,8 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
   it('the linking step says why a code is asked for', async () => {
     setCentralState({ pendingLink: { origin: NORTH, name: 'North Cold Store', phoneNumber: '919000000001' } });
     await render(<FacilityLinkScreen />, brand, mode);
-    expect(texts()).toContain('Confirm your number at North Cold Store once');
-    expect(texts()).toContain('North Cold Store already knows this mobile number. Enter the 6-digit code it sent to');
+    expect(texts()).toContain('Enter the code from North Cold Store');
+    expect(texts()).toContain('North Cold Store asks for its own code each time you sign in. Enter the 6-digit code it sent to');
     expect(texts()).toContain('+91 90000 00001');
     expect(hasBackground(t.background.base)).toBe(true);
   });
@@ -472,7 +472,7 @@ describe('My facilities', () => {
     it.each([
       ['two approved facilities', [facility('North Cold Store', 'approved'), facility('South Cold Store', 'approved')]],
       ['an access request still waiting', [facility('North Cold Store', 'approved'), facility('South Cold Store', 'requested')]],
-      ['a number still to confirm', [facility('North Cold Store', 'approved'), facility('South Cold Store', 'link_needed')]],
+      ['another facility asking for its own code', [facility('North Cold Store', 'approved'), facility('South Cold Store', 'link_needed')]],
       ['no approved facility', [facility('South Cold Store', 'requested')]],
     ])('shows the list with %s', async (_name, list) => {
       setCentralState({ autoOpenSpent: false });
@@ -858,7 +858,7 @@ describe('the linking step', () => {
     await enter('000000');
     expect(alerts()[0]).toEqual(["Couldn't verify the code", 'That code is wrong or has expired. Check it, or ask for a new code.']);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(texts()).toContain('Confirm your number at North Cold Store once');
+    expect(texts()).toContain('Enter the code from North Cold Store');
   });
 
   it('a request that still waits goes to the waiting screen', async () => {
@@ -948,7 +948,7 @@ describe('in Gujarati', () => {
     setLanguage('gu');
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'link_needed')]);
     await render(<FacilitiesScreen />);
-    expect(texts()).toEqual(expect.arrayContaining(['મારાં કોલ્ડ સ્ટોરેજ', 'મંજૂર', 'નંબર કન્ફર્મ કરો', 'કોલ્ડ સ્ટોરેજ ઉમેરો', 'લૉગઆઉટ કરો']));
+    expect(texts()).toEqual(expect.arrayContaining(['મારાં કોલ્ડ સ્ટોરેજ', 'મંજૂર', 'OTP જોઈએ', 'કોલ્ડ સ્ટોરેજ ઉમેરો', 'લૉગઆઉટ કરો']));
     // A typed name is never translated, and a phone number keeps 0-9.
     expect(texts()).toContain('North Cold Store');
     expect(texts()).toContain('+91 90000 00001');

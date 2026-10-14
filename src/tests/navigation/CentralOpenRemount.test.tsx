@@ -384,7 +384,7 @@ describe.each([
     expect(signInWithPhone).toHaveBeenCalledWith(USER.phoneNumber);
     expect(getCentralState().pendingLink).toEqual({ origin: ORIGIN, name: NAME, phoneNumber: USER.phoneNumber });
     expect(pathname()).toBe('/facility-link');
-    expect(texts().join('\n')).toContain(`Confirm your number at ${NAME}`);
+    expect(texts().join('\n')).toContain(`Enter the code from ${NAME}`);
     expect(rootRoutes()).toEqual(['facilities', 'facility-link']);
     const last = navigations.map(([, href]) => href).lastIndexOf('/facility-link');
     expect(last).toBeGreaterThanOrEqual(0);
@@ -543,14 +543,14 @@ describe('back from the code step', () => {
     navigations = [];
   };
 
-  it('hardware Back: My facilities with "Confirm number", and the pending link is cleared as by the control', async () => {
+  it('hardware Back: My facilities with "Code needed", and the pending link is cleared as by the control', async () => {
     await openToCodeStep();
     await pressBack();
 
     expect(pathname()).toBe('/facilities');
     expect(rootRoutes()).toEqual(['facilities']);
     expect(mountedFacilities()).toBe(1);
-    expect(texts()).toContain('Confirm number');
+    expect(texts()).toContain('Code needed');
     expect(getCentralState().pendingLink).toBeNull();
     // Leaving is the only navigation: the cleared link does not send the person anywhere else.
     expect(navigations.filter(([, href]) => href !== '')).toEqual([]);
@@ -563,7 +563,7 @@ describe('back from the code step', () => {
     expect(pathname()).toBe('/facilities');
     expect(rootRoutes()).toEqual(['facilities']);
     expect(mountedFacilities()).toBe(1);
-    expect(texts()).toContain('Confirm number');
+    expect(texts()).toContain('Code needed');
     expect(getCentralState().pendingLink).toBeNull();
     expect(router.canGoBack()).toBe(false);
   });
@@ -626,7 +626,7 @@ describe('back from the code step', () => {
       expect(navigations).toEqual([]);
       expect(rootRoutes()).toEqual(['facilities']);
       expect(mountedFacilities()).toBe(1);
-      expect(texts()).toContain('Confirm number');
+      expect(texts()).toContain('Code needed');
     });
 
     it('then `pending`: My facilities stays, with "Requested"; the waiting screen does not take its place', async () => {

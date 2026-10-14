@@ -29,7 +29,7 @@ export const central = {
     accountHint: 'Name, sign out and account deletion',
     // Approved, Requested and Revoked use auth.enrollment.status.
     status: {
-      linkNeeded: 'Confirm number',
+      linkNeeded: 'Code needed',
       unavailable: 'Unavailable',
     },
   },
@@ -67,12 +67,12 @@ export const central = {
   },
   link: {
     // {{facility}} is the facility's name.
-    heading: 'Confirm your number at {{facility}} once',
+    heading: 'Enter the code from {{facility}}',
     // The phone number is shown on its own line below this text.
-    lead: '{{facility}} already knows this mobile number. Enter the 6-digit code it sent to',
+    lead: '{{facility}} asks for its own code each time you sign in. Enter the 6-digit code it sent to',
     notSentTitle: "Couldn't send the code",
     backLabel: 'Back to My facilities',
-    backHint: 'Leaves without confirming the number',
+    backHint: 'Leaves without entering the code',
   },
   account: {
     nameLabel: 'Your name',
