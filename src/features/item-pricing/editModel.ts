@@ -197,6 +197,22 @@ export function fromOf(draft: Draft, index: number): number | null {
   return Math.max(before + 1, draft.bands[index]?.gapFrom ?? 0);
 }
 
+/**
+ * The editor's fields in the order the keyboard's Next key visits them (and the first error is
+ * looked for). A customer rate has a "From" on every band: `firstFrom`, then `band.<i>.from`.
+ */
+export function fieldOrder(draft: Draft, customerId: string | null): string[] {
+  const perBand = draft.bands.some(b => b.labour !== undefined);
+  const keys = draft.bands.flatMap((b, i) => [
+    ...(customerId ? [i === 0 ? 'firstFrom' : `band.${i}.from`] : []),
+    `band.${i}.upTo`,
+    `band.${i}.rent`,
+    ...(perBand ? [`band.${i}.labour`, `band.${i}.tax`] : []),
+  ]);
+  if (!perBand) keys.push(...(draft.priceType === 'one_time' ? [] : ['labour']), 'tax');
+  return keys;
+}
+
 /** Sets where the first band of a customer rate starts, as typed. */
 export function setFirstFrom(draft: Draft, text: string): Draft {
   return { ...draft, firstFromText: text, firstFrom: wholeKg(text) ?? 0 };
@@ -651,10 +667,17 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
   return { ok: Object.keys(errors).length === 0, errors };
 }
 
+/** Where band `i` starts for the change check: the number typed or stored, else the text if it is not a number. */
+function startOf(d: Draft, i: number): number | string | null {
+  const b = d.bands[i];
+  if (b.fromText !== undefined) return wholeKg(b.fromText) ?? `text:${b.fromText}`;
+  return b.gapFrom ?? null;
+}
+
 /** True when the draft differs from the one the form opened with (any field). */
 export function hasChanges(draft: Draft, initial: Draft): boolean {
   const key = (d: Draft) =>
-    JSON.stringify([d.priceType, d.startsOn, d.startsOnChoice, d.firstFrom, d.firstFromText ?? null, d.labour, d.tax, d.bands.map(b => [b.upTo, b.rent, b.labour ?? null, b.tax ?? null, b.gapFrom ?? null, b.fromText ?? null])]);
+    JSON.stringify([d.priceType, d.startsOn, d.startsOnChoice, d.firstFrom, d.firstFromText !== undefined && wholeKg(d.firstFromText) === null ? d.firstFromText : null, d.labour, d.tax, d.bands.map((b, i) => [b.upTo, b.rent, b.labour ?? null, b.tax ?? null, startOf(d, i)])]);
   return key(draft) !== key(initial);
 }
 

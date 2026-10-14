@@ -765,17 +765,18 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           const result = await printGRNRange(start, end);
           if (result.success) {
             setSnackbarMessage(tr('grn.review.printSent'));
+            setSnackbarVisible(true);
           } else {
-            setSnackbarMessage(tr(result.unconfirmed ? 'grn.review.printUnconfirmed' : 'grn.review.printFailed'));
+            // A dialog, not the snackbar: the screen is left (edit) or covered by the success
+            // dialog (create) at once, and a failure is something the person must act on.
+            // The unconfirmed one must not invite a reprint.
+            showAlert(
+              tr(result.unconfirmed ? 'grn.review.printUnconfirmedTitle' : 'grn.review.printFailedTitle'),
+              tr(result.unconfirmed ? 'grn.review.printUnconfirmed' : 'grn.review.printFailed')
+            );
           }
-          setSnackbarVisible(true);
+          // Leaving the step is the dialog's onDismiss above, which the dialog calls after this.
           setShowPrintDialog(false);
-          if (!isCreateMode) {
-            resetFormState();
-            router.replace('/grn');
-          } else {
-            setShowSuccessDialog(true);
-          }
         }}
         title={tr('grn.details.printTitle')}
         defaultNumber={documentNumber || header.gr_no || ''}

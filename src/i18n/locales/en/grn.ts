@@ -299,6 +299,8 @@ export const grn = {
     printSent: 'Print job sent to the printer.',
     printFailed: "Couldn't send the print job. Check the printer and try again.",
     printUnconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',
+    printFailedTitle: "Couldn't print",
+    printUnconfirmedTitle: 'Print not confirmed',
   },
 
   // Validation messages (src/features/grn/schemas/grnValidation.ts)

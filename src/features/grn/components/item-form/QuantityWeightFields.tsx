@@ -152,17 +152,17 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
               selectTextOnFocus={!isQtyLocked}
               editable={!isQtyLocked}
             />
-              {isQtyLocked && (
-                // A non-editable Android field never gets focus, so onFocus cannot explain
-                // the lock; a tap on this overlay does, on both platforms.
-                <Pressable
-                  testID="grn-qty-locked-overlay"
-                  style={StyleSheet.absoluteFill}
-                  onPress={() => onQtyLockedPress?.()}
-                  accessible={false}
-                  importantForAccessibility="no"
-                />
-              )}
+            {isQtyLocked && (
+              // A non-editable Android field never gets focus, so onFocus cannot explain
+              // the lock; a tap on this overlay does, on both platforms.
+              <Pressable
+                testID="grn-qty-locked-overlay"
+                style={StyleSheet.absoluteFill}
+                onPress={() => onQtyLockedPress?.()}
+                accessible={false}
+                importantForAccessibility="no"
+              />
+            )}
           </View>
           {renderError(qtyError)}
         </View>

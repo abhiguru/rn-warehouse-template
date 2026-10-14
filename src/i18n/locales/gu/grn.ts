@@ -299,6 +299,8 @@ export const grn: Translation<typeof source> = {
     printSent: 'પ્રિન્ટ જૉબ પ્રિન્ટર પર મોકલી.',
     printFailed: 'પ્રિન્ટ જૉબ મોકલી શકાઈ નથી. પ્રિન્ટર તપાસો અને ફરી પ્રયાસ કરો.',
     printUnconfirmed: 'પ્રિન્ટરે જૉબની પુષ્ટિ કરી નથી. ફરી પ્રિન્ટ કરતાં પહેલાં પ્રિન્ટર તપાસો.',
+    printFailedTitle: 'પ્રિન્ટ કરી શકાયું નથી',
+    printUnconfirmedTitle: 'પ્રિન્ટની પુષ્ટિ થઈ નથી',
   },
 
   validation: {

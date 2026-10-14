@@ -251,6 +251,8 @@ export const dispatch: Translation<typeof source> = {
     printSentWithJob: 'પ્રિન્ટર પર મોકલ્યું (જૉબ {{job}}).',
     printFailed: 'પ્રિન્ટર પર મોકલી શકાયું નથી. પ્રિન્ટર તપાસો અને ફરી પ્રયાસ કરો.',
     printUnconfirmed: 'પ્રિન્ટરે જૉબની પુષ્ટિ કરી નથી. ફરી પ્રિન્ટ કરતાં પહેલાં પ્રિન્ટર તપાસો.',
+    printFailedTitle: 'પ્રિન્ટ કરી શકાયું નથી',
+    printUnconfirmedTitle: 'પ્રિન્ટની પુષ્ટિ થઈ નથી',
     printTitle: 'જાવક પ્રિન્ટ કરો',
     printPlaceholder: 'દાખલા તરીકે, {{example}}',
     savedTitle: 'જાવક {{number}} સચવાઈ ગઈ',

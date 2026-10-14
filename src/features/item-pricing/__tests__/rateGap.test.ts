@@ -5,7 +5,7 @@
  */
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { setLanguage } from '@/i18n';
-import { fromOf, gapBefore, initialDraft, setBandFrom, setStartsOn, setUpTo, splitLastBand, toReplaceInput, validate } from '../editModel';
+import { fieldOrder, fromOf, gapBefore, hasChanges, initialDraft, setFirstFrom, setBandFrom, setStartsOn, setUpTo, splitLastBand, toReplaceInput, validate } from '../editModel';
 
 const TODAY = '2026-10-14';
 const ITEM = 'onion';
@@ -90,5 +90,25 @@ describe('a gap typed into a customer rate', () => {
     expect(validate({ ...gap, bands: gap.bands.map(b => ({ ...b, rent: '4.00' })) }, context).errors['band.1.from']).toBe(
       'A default rate cannot have a gap: every weight needs a rate.',
     );
+  });
+});
+
+describe('field order and the leave guard', () => {
+  const rows = [row(null, 0, 100, 3.5, '2025-01-01', null), row(CUST, 0, 40, 3, '2026-01-01', null), row(CUST, 61, 100, 4, '2026-01-01', null)];
+
+  it('a customer rate visits From before Up to on every band; a default rate has no From', () => {
+    const { draft } = open('change', { customer_id: CUST, price_type: 'monthly' }, rows);
+    expect(fieldOrder(draft, CUST)).toEqual([
+      'firstFrom', 'band.0.upTo', 'band.0.rent', 'band.1.from', 'band.1.upTo', 'band.1.rent', 'labour', 'tax',
+    ]);
+    expect(fieldOrder(draft, null)).not.toContain('band.1.from');
+  });
+
+  it('retyping a stored gap\'s own start is not a change; a different start is', () => {
+    const { draft } = open('change', { customer_id: CUST, price_type: 'monthly' }, rows);
+    expect(draft.bands[1].gapFrom).toBe(61);
+    expect(hasChanges(setBandFrom(draft, 1, '61'), draft)).toBe(false);
+    expect(hasChanges(setBandFrom(draft, 1, '62'), draft)).toBe(true);
+    expect(hasChanges(setFirstFrom(draft, '0'), draft)).toBe(false);
   });
 });

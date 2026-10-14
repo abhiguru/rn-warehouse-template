@@ -711,7 +711,6 @@ export const getCustomerDispatchList = async (
     aggregations: {
       total_dispatches: 0,
       total_dispatched_qty: 0,
-     
       unique_customers: 0,
       unique_grns: 0,
     },

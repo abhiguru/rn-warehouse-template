@@ -113,7 +113,6 @@ export function GenericDetailTabNavigator<T extends string>({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={styles.strip}
         contentContainerStyle={styles.scrollContent}
         bounces={false}
       >
@@ -221,14 +220,6 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const styles = StyleSheet.create({
-  // A horizontal ScrollView is flexShrink 1 by default. At a large system font the screen above
-  // it can claim all the room, and a strip that shrinks below its content height is laid out
-  // shorter than it paints, so the content under it starts too high. The strip takes its
-  // content's height and never shrinks (tests: GenericDetailTabNavigatorLayout).
-  strip: {
-    flexGrow: 0,
-    flexShrink: 0,
-  },
   // Tabs share the width when they fit (up to four on phones) and scroll when they do not.
   scrollContent: {
     flexGrow: 1,

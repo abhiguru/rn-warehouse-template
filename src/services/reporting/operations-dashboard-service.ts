@@ -30,7 +30,6 @@ const EMPTY_RESPONSE: OperationsDashboardData = {
     pending_orders: 0,
     active_customers: 0,
     total_stock_qty: 0,
-    total_stock_weight: 0,
   },
   trends: {
     grn_daily: [],
@@ -127,7 +126,6 @@ export async function getOperationsDashboard(
       pending_orders: responseData?.kpis?.pending_orders ?? 0,
       active_customers: responseData?.kpis?.active_customers ?? 0,
       total_stock_qty: responseData?.kpis?.total_stock_qty ?? 0,
-      total_stock_weight: responseData?.kpis?.total_stock_weight ?? 0,
     };
 
     const trends: OperationsTrends = {

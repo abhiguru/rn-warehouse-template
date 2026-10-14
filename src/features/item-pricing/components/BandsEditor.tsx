@@ -118,6 +118,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
                     error={errors.firstFrom}
                     rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
                     testID="first-from"
+                    {...fieldLink(fields, 'firstFrom')}
                   />
                 </View>
               ) : i > 0 && ctx.customerId ? (
@@ -134,6 +135,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
                     error={errors[`band.${i}.from`]}
                     rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
                     testID={`band-${i}-from`}
+                    {...fieldLink(fields, `band.${i}.from`)}
                   />
                 </View>
               ) : (
