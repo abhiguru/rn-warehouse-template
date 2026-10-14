@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
+import { StatusTag } from '@/components/ui/StatusTag';
 import CentralLoginScreen from '../../../app/central-login';
 import CentralOtpScreen from '../../../app/central-otp';
 import FacilitiesScreen from '../../../app/facilities';
@@ -17,7 +18,14 @@ import FacilityCatalogueScreen, { matchesFacilitySearch } from '../../../app/fac
 import FacilityLinkScreen from '../../../app/facility-link';
 import CentralAccountScreen, { isValidCentralName } from '../../../app/central-account';
 import { resetCentralStateForTests, setCentralState, getCentralState, type OpenOutcome } from '@/config/centralState';
-import { fetchCentralProfile, fetchFacilityCatalogue, requestCentralCode, updateCentralName, verifyCentralCode } from '@/config/centralSession';
+import {
+  fetchCentralProfile,
+  fetchFacilityCatalogue,
+  requestCentralCode,
+  updateCentralName,
+  verifyCentralCode,
+  type CatalogueFacility,
+} from '@/config/centralSession';
 import { addMyFacility, loadMyFacilities, type MyFacility } from '@/config/centralFacilities';
 import { beginFacilitySmsSignIn, completeFacilityLink, openFacility, resendFacilityLinkCode } from '@/config/openFacility';
 import { deleteAccountEverywhere, signOutEverywhere } from '@/store/centralSignOut';
@@ -121,6 +129,19 @@ const facility = (name: string, status: MyFacility['status'], city = 'Rajkot'): 
   lastOpenedAt: null,
   addedAt: '',
 });
+/** A catalogue entry as centralSession.ts reads it; `online: null` is a catalogue from before central 0.8.0. */
+const entry = (id: string, name: string, town: string, extra: Partial<CatalogueFacility> = {}): CatalogueFacility => ({
+  id,
+  name,
+  city: town,
+  town,
+  district: '',
+  origin: `https://${id}.example.test`,
+  operator: 'Fictional Operator',
+  online: null,
+  lastSeenAt: null,
+  ...extra,
+});
 const publish = async (outcome: OpenOutcome, name = 'North Cold Store') => {
   await act(async () => { setCentralState({ outcome: { id: 7, origin: NORTH, name, outcome } }); });
 };
@@ -198,14 +219,38 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
     expect(hasBackground(t.surface.card)).toBe(true);
   });
 
-  it('Add facility: the catalogue with its search field', async () => {
+  it('Add facility: the catalogue with its search field, one tag per availability in its colour role, a greyed member with no app server', async () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({
       ok: true,
-      facilities: [{ id: 'north-cold', name: 'North Cold Store', city: 'Rajkot', origin: NORTH, operator: 'Fictional Operator' }],
+      facilities: [
+        entry('north-cold', 'North Cold Store', 'Rajkot', { origin: NORTH, online: true }),
+        entry('east-cold', 'East Cold Store', 'Morbi', { online: false }),
+        entry('gcsa-024', 'Fictional Sabar Cold', 'Himmatnagar', { district: 'Sabarkantha', origin: null }),
+      ],
     });
     await render(<FacilityCatalogueScreen />, brand, mode);
-    expect(texts()).toEqual(expect.arrayContaining(['Add facility', 'North Cold Store', 'Rajkot', 'Enter address']));
-    expect(tree!.root.findAll(node => node.props.placeholder === 'Search by name or city').length).toBeGreaterThan(0);
+    expect(texts()).toEqual(
+      expect.arrayContaining(['Add facility', 'North Cold Store', 'Rajkot', 'Himmatnagar, Sabarkantha', 'Online', 'Offline', 'No app server yet', 'Enter address'])
+    );
+    expect(tree!.root.findAll(node => node.props.placeholder === 'Search by name, town or district').length).toBeGreaterThan(0);
+    const tagBackground = (id: string) =>
+      ([] as Array<{ backgroundColor?: string }>)
+        .concat(tree!.root.find(node => node.props.testID === `catalogue-status-${id}` && (node.type as unknown) === 'View').props.style)
+        .flat(3)
+        .find(style => style?.backgroundColor)?.backgroundColor;
+    expect(tagBackground('north-cold')).toBe(t.status.positive.background);
+    expect(tagBackground('east-cold')).toBe(t.status.negative.background);
+    expect(tagBackground('gcsa-024')).toBe(t.status.neutral.background);
+    // Greyed with the secondary tokens, never with opacity.
+    const styleOf = (text: string) =>
+      Object.assign({}, ...[].concat(tree!.root.find(node => (node.type as unknown) === 'Text' && node.props.children === text).props.style).flat(3).filter(Boolean)) as {
+        color?: string;
+        opacity?: number;
+      };
+    expect(styleOf('Fictional Sabar Cold').color).toBe(t.text.secondary);
+    expect(styleOf('North Cold Store').color).toBe(t.text.primary);
+    expect(styleOf('Fictional Sabar Cold').opacity).toBeUndefined();
+    expect(byTestID('catalogue-gcsa-024').findAll(node => node.props.name === 'office-building-outline')[0].props.color).toBe(t.icon.secondary);
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
@@ -553,16 +598,36 @@ describe('My facilities', () => {
 });
 
 describe('Add facility', () => {
+  // An older catalogue: nothing reported about availability, so no tags and alphabetical order.
   const CATALOGUE = [
-    { id: 'north-cold', name: 'North Cold Store', city: 'Rajkot', origin: NORTH, operator: 'Fictional Operator' },
-    { id: 'gondal-agro', name: 'Gondal Agro Cold Storage', city: 'Gondal', origin: 'https://gondal-agro.example.test', operator: 'Fictional Operator' },
-    { id: 'morbi-ice', name: 'Fictional Ice Works', city: 'Morbi', origin: 'https://morbi-ice.example.test', operator: 'Fictional Operator' },
+    entry('north-cold', 'North Cold Store', 'Rajkot', { district: 'Rajkot', origin: NORTH }),
+    entry('gondal-agro', 'Gondal Agro Cold Storage', 'Gondal', { district: 'Rajkot' }),
+    entry('morbi-ice', 'Fictional Ice Works', 'Wankaner', { district: 'Morbi' }),
   ];
-  const names = () => texts().filter(text => CATALOGUE.some(entry => entry.name === text));
+  const NAMES = [...CATALOGUE.map(item => item.name), 'Fictional Sabar Cold', 'Review North Cold Storage', 'Review South Cold Storage', 'Riverbank Cold'];
+  const names = () => texts().filter(text => NAMES.includes(text));
   const search = async (value: string) => {
     const field = tree!.root.find(node => node.props.testID === 'catalogue-search' && typeof node.props.onChangeText === 'function');
     await act(async () => { field.props.onChangeText(value); });
   };
+  const tagOf = (id: string) => {
+    const found = tree!.root.findAllByType(StatusTag).filter(node => node.props.testID === `catalogue-status-${id}`);
+    return found.length ? found[0].props.label : null;
+  };
+  const list = () => tree!.root.findAll(node => typeof node.props.refreshControl?.props?.onRefresh === 'function')[0];
+  const pull = () => list().props.refreshControl.props.onRefresh() as void;
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
+  /**
+   * As central 0.8.0 publishes it: two online, two offline (one never reached), one member with
+   * no app server. Built in each test, so the last-seen times are minutes before that test runs.
+   */
+  const live = () => [
+    entry('review-south', 'Review South Cold Storage', 'Dehgam', { district: 'Gandhinagar', online: true }),
+    entry('gcsa-024', 'Fictional Sabar Cold', 'Himmatnagar', { district: 'Sabarkantha', origin: null }),
+    entry('riverbank', 'Riverbank Cold', 'Jamnagar', { district: 'Jamnagar', online: false }),
+    entry('review-north', 'Review North Cold Storage', 'Deesa', { district: 'Banaskantha', online: false, lastSeenAt: minutesAgo(5) }),
+    entry('north-cold', 'North Cold Store', 'Rajkot', { origin: NORTH, online: true }),
+  ];
 
   it('shows a spinner while the list loads', async () => {
     jest.mocked(fetchFacilityCatalogue).mockReturnValue(new Promise(() => undefined));
@@ -571,16 +636,21 @@ describe('Add facility', () => {
     expect(names()).toEqual([]);
   });
 
-  it('searches by name or by city, whatever the letter case', async () => {
+  it('searches by name, town or district, whatever the letter case', async () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: CATALOGUE });
     await render(<FacilityCatalogueScreen />);
-    expect(names()).toEqual(['North Cold Store', 'Gondal Agro Cold Storage', 'Fictional Ice Works']);
+    expect(names()).toEqual(['Fictional Ice Works', 'Gondal Agro Cold Storage', 'North Cold Store']);
     await search('cold');
-    expect(names()).toEqual(['North Cold Store', 'Gondal Agro Cold Storage']);
-    await search('MORBI');
+    expect(names()).toEqual(['Gondal Agro Cold Storage', 'North Cold Store']);
+    // A town.
+    await search('WANKANER');
     expect(names()).toEqual(['Fictional Ice Works']);
-    await search('  rajkot ');
-    expect(names()).toEqual(['North Cold Store']);
+    // A district that is in no name and no town.
+    await search('  morbi ');
+    expect(names()).toEqual(['Fictional Ice Works']);
+    // The town of one and the district of another.
+    await search('rajkot');
+    expect(names()).toEqual(['Gondal Agro Cold Storage', 'North Cold Store']);
     await search('');
     expect(names()).toHaveLength(3);
   });
@@ -591,7 +661,7 @@ describe('Add facility', () => {
     await search('Surat');
     expect(names()).toEqual([]);
     expect(texts()).toContain('No facility matches "Surat"');
-    expect(texts()).toContain('Check the spelling, or search by city.');
+    expect(texts()).toContain('Check the spelling, or search by town or district.');
   });
 
   it('says when the association has listed nothing, and still offers the address entry', async () => {
@@ -622,8 +692,12 @@ describe('Add facility', () => {
     expect(texts()).not.toContain("Couldn't load the facilities");
   });
 
-  it('picking a facility adds it to the list, returns to My facilities and opens it', async () => {
-    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: CATALOGUE });
+  it('picking a facility adds it to the list with its town, returns to My facilities and opens it', async () => {
+    // The town is what My facilities shows; `city` is only the older name of the same place.
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({
+      ok: true,
+      facilities: [entry('gondal-agro', 'Gondal Agro Cold Storage', 'Gondal', { city: 'Gondal (old name)', online: true })],
+    });
     await render(<FacilityCatalogueScreen />);
     await press(byTestID('catalogue-gondal-agro'));
     expect(addMyFacility).toHaveBeenCalledWith('asha', { origin: 'https://gondal-agro.example.test', name: 'Gondal Agro Cold Storage', city: 'Gondal' });
@@ -631,17 +705,131 @@ describe('Add facility', () => {
     expect(openFacility).toHaveBeenCalledWith('https://gondal-agro.example.test', 'Gondal Agro Cold Storage');
   });
 
-  it('marks a facility that is already on the list', async () => {
-    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: CATALOGUE });
+  it('shows one availability tag per row, none when nothing is reported, in the order online, offline, no app server', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: [...live(), entry('gondal-agro', 'Gondal Agro Cold Storage', 'Gondal')] });
+    await render(<FacilityCatalogueScreen />);
+    // Online and not reported by name, then offline by name, then the members with no app server.
+    expect(texts().filter(text => [...NAMES, 'Gondal Agro Cold Storage'].includes(text))).toEqual([
+      'Gondal Agro Cold Storage',
+      'North Cold Store',
+      'Review South Cold Storage',
+      'Review North Cold Storage',
+      'Riverbank Cold',
+      'Fictional Sabar Cold',
+    ]);
+    expect(tagOf('north-cold')).toBe('Online');
+    expect(tagOf('review-south')).toBe('Online');
+    expect(tagOf('review-north')).toBe('Offline');
+    expect(tagOf('riverbank')).toBe('Offline');
+    expect(tagOf('gcsa-024')).toBe('No app server yet');
+    expect(tagOf('gondal-agro')).toBeNull();
+    // One StatusTag per row that reports something, and no other tag.
+    expect(tree!.root.findAllByType(StatusTag)).toHaveLength(5);
+  });
+
+  it('adds "Town, District" under the name, and when an offline facility was last reached', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
+    await render(<FacilityCatalogueScreen />);
+    expect(texts()).toEqual(expect.arrayContaining(['Dehgam, Gandhinagar', 'Deesa, Banaskantha', 'Himmatnagar, Sabarkantha', 'Rajkot']));
+    // The district is not repeated when it is the town.
+    expect(texts()).toContain('Jamnagar');
+    expect(texts()).not.toContain('Jamnagar, Jamnagar');
+    expect(tree!.root.find(node => node.props.testID === 'catalogue-last-seen-review-north').props.children).toBe('Last seen 5 min ago');
+    expect(tree!.root.find(node => node.props.testID === 'catalogue-last-seen-riverbank').props.children).toBe('Not reached yet');
+    // Online rows and a member with no app server have no such line.
+    const lastSeenLines = tree!.root.findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('catalogue-last-seen-'), { deep: false });
+    expect(lastSeenLines.map(node => node.props.testID).sort()).toEqual(['catalogue-last-seen-review-north', 'catalogue-last-seen-riverbank']);
+    expect(byTestID('catalogue-review-north').props.accessibilityLabel).toBe('Review North Cold Storage, Deesa, Banaskantha, Offline, Last seen 5 min ago');
+  });
+
+  it('a member with no app server yet only explains why it cannot be added', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
+    await render(<FacilityCatalogueScreen />);
+    const row = byTestID('catalogue-gcsa-024');
+    expect(row.props.accessibilityLabel).toBe('Fictional Sabar Cold, Himmatnagar, Sabarkantha, No app server yet');
+    expect(row.props.accessibilityHint).toBe("Explains why this cold storage can't be added yet");
+    // An information icon in place of the chevron.
+    expect(row.findAll(node => node.props.name === 'information-outline')).toHaveLength(1);
+    expect(row.findAll(node => node.props.name === 'chevron-right')).toHaveLength(0);
+    expect(byTestID('catalogue-north-cold').findAll(node => node.props.name === 'chevron-right')).toHaveLength(1);
+
+    await press(row);
+    expect(alerts()).toEqual([
+      [
+        'Fictional Sabar Cold is not on the app yet',
+        "This cold storage hasn't set up its app server yet, so it can't be added. When it has, it shows here as Online.",
+      ],
+    ]);
+    expect(addMyFacility).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    expect(openFacility).not.toHaveBeenCalled();
+  });
+
+  it('an offline facility can still be picked: the check may be a minute old', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
+    await render(<FacilityCatalogueScreen />);
+    await press(byTestID('catalogue-review-north'));
+    expect(openFacility).toHaveBeenCalledWith('https://review-north.example.test', 'Review North Cold Storage');
+  });
+
+  it('pull to refresh asks the service again, keeps the rows while it waits, and shows the new availability', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
+    await render(<FacilityCatalogueScreen />);
+    expect(tagOf('review-south')).toBe('Online');
+
+    let answer: (value: Awaited<ReturnType<typeof fetchFacilityCatalogue>>) => void = () => undefined;
+    jest.mocked(fetchFacilityCatalogue).mockReturnValue(new Promise(resolve => { answer = resolve; }));
+    await act(async () => { pull(); });
+    expect(fetchFacilityCatalogue).toHaveBeenLastCalledWith({ force: true });
+    expect(list().props.refreshControl.props.refreshing).toBe(true);
+    // Not blanked: the rows stay while the answer is awaited.
+    expect(names()).toHaveLength(5);
+    expect(tree!.root.findAll(node => node.props.accessibilityLabel === 'Loading facilities')).toHaveLength(0);
+
+    const southOffline = live().map(item => (item.id === 'review-south' ? { ...item, online: false, lastSeenAt: minutesAgo(2) } : item));
+    await act(async () => { answer({ ok: true, facilities: southOffline }); });
+    expect(tagOf('review-south')).toBe('Offline');
+    expect(tree!.root.find(node => node.props.testID === 'catalogue-last-seen-review-south').props.children).toBe('Last seen 2 min ago');
+    expect(list().props.refreshControl.props.refreshing).toBe(false);
+  });
+
+  it('a failed refresh keeps the rows and says why under the search field, until a refresh succeeds', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
+    await render(<FacilityCatalogueScreen />);
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({
+      ok: false, code: 'network', message: "Couldn't reach the association's sign-in service. Check your connection and try again.",
+    });
+    await act(async () => { pull(); });
+    expect(names()).toHaveLength(5);
+    expect(tagOf('review-south')).toBe('Online');
+    const errorLine = () => tree!.root.findAll(node => node.props.testID === 'catalogue-refresh-error' && (node.type as unknown) === 'Text');
+    expect(errorLine()).toHaveLength(1);
+    expect([].concat(errorLine()[0].props.children).join('')).toBe(
+      "Couldn't refresh the list. Couldn't reach the association's sign-in service. Check your connection and try again."
+    );
+    expect(texts()).not.toContain("Couldn't load the facilities");
+
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
+    await act(async () => { pull(); });
+    expect(errorLine()).toHaveLength(0);
+  });
+
+  it('marks a facility that is already on the list with a footnote, not a second tag', async () => {
+    jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
     jest.mocked(loadMyFacilities).mockResolvedValue([{ ...facility('North Cold Store', 'approved'), origin: NORTH }]);
     await render(<FacilityCatalogueScreen />);
     expect(texts().filter(text => text === 'On your list')).toHaveLength(1);
+    const row = byTestID('catalogue-north-cold');
+    expect(row.findAll(node => node.props.name === 'check')).toHaveLength(1);
+    expect(row.findAllByType(StatusTag).map(node => node.props.label)).toEqual(['Online']);
+    expect(row.props.accessibilityLabel).toBe('North Cold Store, Rajkot, Online, On your list');
   });
 
   it('matches Gujarati names and digits typed in either script', () => {
     expect(matchesFacilitySearch({ name: 'ગોંડલ કોલ્ડ સ્ટોરેજ', city: 'ગોંડલ' }, 'ગોંડલ')).toBe(true);
     expect(matchesFacilitySearch({ name: 'Cold Store 2', city: 'Rajkot' }, '૨')).toBe(true);
     expect(matchesFacilitySearch({ name: 'Cold Store 2', city: 'Rajkot' }, 'Morbi')).toBe(false);
+    expect(matchesFacilitySearch({ name: 'Cold Store 2', city: '', town: 'Deesa', district: 'બનાસકાંઠા' }, 'બનાસ')).toBe(true);
   });
 });
 

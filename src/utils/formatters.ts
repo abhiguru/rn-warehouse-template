@@ -468,11 +468,13 @@ export const formatIndiaSectionDate = (value: string | Date | null | undefined, 
  * @param dateString - ISO date string
  * @param older - how a time a day or more ago is written. By default the date
  *   in the phone's zone; a report passes India's (`formatIndiaDate`).
+ * @param now - the time it is measured from (tests and callers that hold one clock reading)
  * @returns Relative time string
  */
 export const formatRelativeTime = (
   dateString: string,
-  older: (date: Date) => string = date => formatDate(date, 'short')
+  older: (date: Date) => string = date => formatDate(date, 'short'),
+  now: Date = new Date()
 ): string => {
   // Handle undefined/null/empty input
   if (!dateString) {
@@ -486,7 +488,6 @@ export const formatRelativeTime = (
     return '—';
   }
 
-  const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMins / 60);
