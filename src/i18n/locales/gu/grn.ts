@@ -136,7 +136,6 @@ export const grn: Translation<typeof source> = {
     quantityWhole: 'નંગમાં ૧ કે તેથી વધુનો પૂર્ણ આંકડો નાખો.',
     quantityWholeForItem: '{{item}} ના નંગમાં ૧ કે તેથી વધુનો પૂર્ણ આંકડો નાખો.',
     quantityWholeEachItem: 'દરેક આઇટમના નંગમાં ૧ કે તેથી વધુનો પૂર્ણ આંકડો નાખો.',
-    fixHighlightedAdding: 'તમે ઉમેરી રહ્યા છો તે આઇટમમાં ભૂલ બતાવેલી વિગતો સુધારો.',
     fixHighlightedSave: 'ભૂલ બતાવેલી વિગતો સુધારો, પછી આઇટમ સાચવો.',
     photoRemovedTitle: 'ફોટો કાઢી નાખ્યો',
     photoRemovedPartial:
@@ -150,6 +149,10 @@ export const grn: Translation<typeof source> = {
     saveItemMessage: 'તમે ઉમેરી રહ્યા છો તે આઇટમ હજુ સાચવી નથી.',
     discardItem: 'આઇટમ છોડી દો',
     saveItem: 'આઇટમ સાચવો',
+    saveChangesTitle: 'આ આઇટમના ફેરફાર સાચવવા છે?',
+    saveChangesMessage: 'આઇટમ {{position}} ({{name}}) માં કરેલા ફેરફાર હજુ સાચવ્યા નથી.',
+    discardChanges: 'ફેરફાર છોડી દો',
+    saveChanges: 'ફેરફાર સાચવો',
     openingReview: 'ચકાસણી ખૂલી રહી છે…',
   },
 
