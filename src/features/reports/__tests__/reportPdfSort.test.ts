@@ -16,12 +16,13 @@ import { REPORT_PDF_SORT_COLUMNS, reportPdfSort, type ReportPdfLevel } from '../
 /**
  * The column keys of each report level: the sorts the server accepts
  * (supabase-warehouse-template functions/_shared/report-definitions.ts,
- * `sortFields`; `customer` = one customer's level, `customers` = `all`).
+ * `sortFields`, as after PR #102, which removed the weight columns of grn-activity and
+ * stock-summary; `customer` = one customer's level, `customers` = `all`).
  */
 const BACKEND_COLUMNS: Record<ReportPdfName, Record<ReportPdfLevel, string[]>> = {
   'grn-activity': {
-    customer: ['gr_no', 'date', 'items', 'quantity', 'weight', 'stock', 'invoice'],
-    customers: ['customer', 'grns', 'quantity', 'weight', 'latest'],
+    customer: ['gr_no', 'date', 'items', 'quantity', 'stock', 'invoice'],
+    customers: ['customer', 'grns', 'quantity', 'latest'],
   },
   'dispatch-activity': {
     customer: ['disp_no', 'date', 'grn', 'items', 'quantity'],
@@ -32,8 +33,8 @@ const BACKEND_COLUMNS: Record<ReportPdfName, Record<ReportPdfLevel, string[]>> =
     customers: ['customer', 'invoices', 'amount', 'net', 'latest'],
   },
   'stock-summary': {
-    customer: ['item', 'gr_no', 'date', 'mark', 'rack', 'stock', 'weight'],
-    customers: ['customer', 'items', 'grns', 'stock', 'weight'],
+    customer: ['item', 'gr_no', 'date', 'mark', 'rack', 'stock'],
+    customers: ['customer', 'items', 'grns', 'stock'],
   },
   'stock-aging': {
     customer: ['item', 'gr_no', 'date', 'rack', 'stock', 'age', 'last_dispatch'],
@@ -108,6 +109,15 @@ describe('reportPdfSort', () => {
     expect(reportPdfSort('dispatch-activity', 'customer', { field: 'weight', order: 'desc' })).toBeUndefined();
     expect(reportPdfSort('dispatch-activity', 'customer', { field: 'weight', order: 'asc' })).toBeUndefined();
     expect(BACKEND_COLUMNS['dispatch-activity'].customer).not.toContain('weight');
+  });
+
+  it('no GRN activity or stock summary sort is mapped to a weight column, which the backend no longer has', () => {
+    for (const report of ['grn-activity', 'stock-summary'] as const) {
+      for (const level of ['customer', 'customers'] as const) {
+        expect(BACKEND_COLUMNS[report][level]).not.toContain('weight');
+        expect(Object.values(REPORT_PDF_SORT_COLUMNS[report][level])).not.toContain('weight');
+      }
+    }
   });
 
   it.each(CASES)('%s (%s): the table holds only sorts the screen offers', (report, level) => {
