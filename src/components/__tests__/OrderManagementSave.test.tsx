@@ -6,6 +6,13 @@
  *    the picker was open is not removed.
  *  - Each change is resolved against the lines as they are saved now.
  *  - A refusal comes back on its lot with the app's reason; no alert is shown.
+ *
+ * And how long it may take (review 2026-10-14): the picker has no way out while
+ * a save runs.
+ *  - A refusal is an answer: the next lot is sent.
+ *  - A call that got no answer (a timeout, no connection, a call that threw) ends
+ *    the save; the lots not sent come back not saved.
+ *  - The order is read again after any call, saved or not.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -38,6 +45,9 @@ jest.mock('@/hooks/useOrderLiveUpdates', () => ({
 }));
 const mockSession = { generation: 1 };
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => mockSession.generation }));
+// What the phone reports about its network; read when the editor renders.
+const mockNetwork = { isConnected: true };
+jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: mockNetwork.isConnected }) }));
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),
@@ -83,6 +93,11 @@ const makeOrder = (): Order => ({
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const saved = { success: true, message: '' } as never;
 const refusal = (message: string, error: unknown = 'API_ERROR') => ({ success: false, message, error }) as never;
+// A failure whose own text is in `error`, under the app's text for the action: how
+// OrderService hands back a call without an answer, and an exception the server raised.
+const failedWith = (error: string) => ({ success: false, message: "Couldn't save the item.", error }) as never;
+const timedOut = failedWith('TimeoutError: Request timeout');
+const NOT_SAVED = 'Not saved. Check your connection and try again.';
 
 const service = jest.mocked(OrderService);
 let server: Order;
@@ -104,6 +119,7 @@ beforeEach(() => {
   mockPicker.props = undefined;
   mockPicker.mounts = 0;
   mockSession.generation = 1;
+  mockNetwork.isConnected = true;
   server = makeOrder();
   service.getOrCreateOrder.mockReset().mockResolvedValue({ success: true, data: { cart_id: ORDER_ID } } as never);
   service.getOrderWithItems.mockReset().mockImplementation(async () => ({ success: true, data: copy(server) }) as never);
@@ -169,13 +185,13 @@ it('puts a refusal on its lot with the app\'s reason and shows no alert', async 
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
 });
 
-it('does not read the order again when nothing was saved', async () => {
+it('reads the order again after a refusal, also when nothing was saved', async () => {
   await openPicker();
   service.addItemToOrder.mockResolvedValue(refusal('Cannot add items to DISPATCHED orders', { code: 'ORDER_NOT_OPEN' }));
   const reads = service.getOrderWithItems.mock.calls.length;
   const results = await send([{ grnItemId: 'lot-new', quantity: 1 }]);
   expect(results).toEqual([{ grnItemId: 'lot-new', ok: false, reason: 'This order is closed. Go back and open it again.' }]);
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
   expect(showAlert).not.toHaveBeenCalled();
 });
 
@@ -250,17 +266,163 @@ describe('each change against the lines saved now', () => {
   });
 });
 
-it('never rejects: a call that throws is a lot not saved, and the rest goes on', async () => {
+describe('a call without an answer ends the save', () => {
+  // Three kinds of call are waiting behind the first lot: an add, a change and a removal.
+  const CHANGES = [
+    { grnItemId: 'lot-kept', quantity: 0 },
+    { grnItemId: 'lot-one', quantity: 1 },
+    { grnItemId: 'lot-two', quantity: 1 },
+    { grnItemId: 'lot-open', quantity: 7 },
+  ];
+  const noneSaved = CHANGES.map(change => ({ grnItemId: change.grnItemId, ok: false, reason: NOT_SAVED }));
+
+  it.each([
+    ['timed out', timedOut],
+    ['could not be sent', failedWith('TypeError: Network request failed')],
+    ['could not renew the session for want of a connection', failedWith('Network request failed: session refresh unavailable')],
+  ])('a call that %s: nothing more is sent, every lot left comes back not saved, and the order is read again', async (_name, failure) => {
+    await openPicker();
+    service.addItemToOrder.mockResolvedValueOnce(failure);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    const progress = jest.fn();
+
+    const results = await send(CHANGES, progress);
+
+    expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-one', 1]]);
+    expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+    expect(service.removeItemFromOrder).not.toHaveBeenCalled();
+    expect(results).toEqual(noneSaved);
+    expect(progress.mock.calls).toEqual([[1, 4]]);
+    // The one call may have been applied: the order is read again, once.
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('keeps what was saved before it, and stops at a change or a removal just the same', async () => {
+    await openPicker();
+    service.updateOrderItemQuantity.mockResolvedValueOnce(timedOut);
+    const results = await send(CHANGES);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(2);
+    expect(service.removeItemFromOrder).not.toHaveBeenCalled();
+    expect(results).toEqual([
+      { grnItemId: 'lot-kept', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-one', ok: true },
+      { grnItemId: 'lot-two', ok: true },
+      { grnItemId: 'lot-open', ok: false, reason: NOT_SAVED },
+    ]);
+
+    service.removeItemFromOrder.mockReset().mockResolvedValueOnce(timedOut);
+    expect(await send([{ grnItemId: 'lot-kept', quantity: 0 }, { grnItemId: 'lot-open', quantity: 0 }])).toEqual([
+      { grnItemId: 'lot-kept', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-open', ok: false, reason: NOT_SAVED },
+    ]);
+    expect(service.removeItemFromOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('never rejects: a call that throws is a lot not saved, and the rest is not sent', async () => {
+    await openPicker();
+    service.addItemToOrder
+      .mockRejectedValueOnce(new Error('fictional failure'))
+      .mockResolvedValueOnce(saved);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    const results = await send([{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([
+      { grnItemId: 'lot-one', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED },
+    ]);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('answers also when the read after it fails or throws', async () => {
+    await openPicker();
+    service.addItemToOrder.mockResolvedValue(timedOut);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    service.getOrderWithItems.mockResolvedValueOnce({ success: false, message: '', error: 'TimeoutError: Request timeout' } as never);
+    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: NOT_SAVED }]);
+    service.getOrderWithItems.mockRejectedValueOnce(new Error('fictional failure'));
+    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: NOT_SAVED }]);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 2);
+    // The editor still has its order: the next save is sent.
+    service.addItemToOrder.mockResolvedValue(saved);
+    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: true }]);
+  });
+});
+
+describe('a refusal is an answer: the next lot is sent', () => {
+  it.each([
+    ['not enough stock', refusal('Insufficient stock. Available: 3, Requested: 10'), 'Only 3 bags in stock.'],
+    ['already in the order', refusal('Item already exists in order'), 'This lot is already in the order.'],
+    ['below what was dispatched', refusal('Quantity cannot be below the 4 already dispatched'), '4 bags already dispatched. Choose that many or more.'],
+    ['the order is closed', refusal('Cannot add items to DISPATCHED orders', { code: 'ORDER_NOT_OPEN' }), 'This order is closed. Go back and open it again.'],
+    ['access refused (raised 42501)', failedWith('Customer access denied'), 'You do not have permission to perform this action.'],
+    ['database text', refusal('Error adding item: deadlock detected'), NOT_SAVED],
+  ])('%s', async (_name, failure, reason) => {
+    await openPicker();
+    service.addItemToOrder.mockResolvedValueOnce(failure).mockResolvedValueOnce(saved);
+    const results = await send([{ grnItemId: 'lot-one', quantity: 10 }, { grnItemId: 'lot-two', quantity: 1 }]);
+    expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-one', 10], [ORDER_ID, 'lot-two', 1]]);
+    expect(results).toEqual([{ grnItemId: 'lot-one', ok: false, reason }, { grnItemId: 'lot-two', ok: true }]);
+  });
+});
+
+it('finds a lot saved on the next Add when the write that timed out was in fact applied', async () => {
   await openPicker();
-  service.addItemToOrder
-    .mockRejectedValueOnce(new Error('fictional failure'))
-    .mockResolvedValueOnce(saved);
-  const results = await send([{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }]);
-  expect(results).toEqual([
-    { grnItemId: 'lot-one', ok: false, reason: 'Not saved. Check your connection and try again.' },
-    { grnItemId: 'lot-two', ok: true },
-  ]);
-  expect(showAlert).not.toHaveBeenCalled();
+  // The server stores the line; its answer never arrives.
+  service.addItemToOrder.mockImplementationOnce(async (_order, lot, quantity) => {
+    server.items!.push(line(lot, quantity));
+    return timedOut;
+  });
+  const reads = service.getOrderWithItems.mock.calls.length;
+
+  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+  // The picker is told the lot is in the order now.
+  expect(mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity])).toContainEqual(['lot-new', 3]);
+
+  // Add again: the lot is there with that quantity, so nothing is sent and it counts as saved.
+  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: true }]);
+  expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+  expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+});
+
+it('sends a change again as an add once the line someone else removed is known to be gone', async () => {
+  await openPicker();
+  // Someone else removed the line; this phone has not heard of it yet.
+  server.items = server.items!.filter(item => item.grn_item_id !== 'lot-open');
+  service.updateOrderItemQuantity.mockResolvedValueOnce(refusal('Order item not found'));
+
+  expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([{ grnItemId: 'lot-open', ok: false, reason: NOT_SAVED }]);
+  expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([{ grnItemId: 'lot-open', ok: true }]);
+  expect(service.updateOrderItemQuantity).toHaveBeenCalledTimes(1);
+  expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-open', 8]]);
+});
+
+describe('with no network at all', () => {
+  it('sends nothing and answers at once: not saved, except what needs no call', async () => {
+    mockNetwork.isConnected = false;
+    await openPicker();
+    const reads = service.getOrderWithItems.mock.calls.length;
+
+    const results = await send([
+      { grnItemId: 'lot-open', quantity: 5 },
+      { grnItemId: 'lot-new', quantity: 3 },
+      { grnItemId: 'lot-kept', quantity: 0 },
+    ]);
+
+    expect(service.addItemToOrder).not.toHaveBeenCalled();
+    expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+    expect(service.removeItemFromOrder).not.toHaveBeenCalled();
+    expect(results).toEqual([
+      // Saved with that quantity already: true without asking the server.
+      { grnItemId: 'lot-open', ok: true },
+      { grnItemId: 'lot-new', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-kept', ok: false, reason: NOT_SAVED },
+    ]);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
 });
 
 it('stops when the session changes: the lots not sent are not saved, and the order is not read', async () => {

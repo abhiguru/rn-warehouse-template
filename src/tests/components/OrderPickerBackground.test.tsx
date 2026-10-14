@@ -7,6 +7,10 @@
  *
  * The order has no saved lines, so a picker that re-seeded its selection from the
  * order on the second read would show "Add", not "Add (1)".
+ *
+ * On the same harness: a save that timed out although the server applied it
+ * (review 2026-10-14). The editor reads the order again after the failure, so the
+ * next Add finds the lot saved, sends nothing and closes the picker.
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -146,6 +150,9 @@ beforeEach(() => {
   service.getOrderWithItems.mockReset().mockImplementation(async () => ({ success: true, data: copy(server) }) as never);
   service.getAvailableItems.mockReset().mockResolvedValue({ success: true, message: '', data: LOTS } as never);
   service.searchCustomerItemsForOrder.mockReset().mockResolvedValue({ success: true, message: '', data: [] } as never);
+  service.addItemToOrder.mockReset();
+  service.updateOrderItemQuantity.mockReset();
+  service.removeItemFromOrder.mockReset();
   originalState = AppState.currentState;
   AppState.currentState = 'active';
 });
@@ -207,4 +214,52 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   expect(addButtonText()).toBe('Add (1)');
   expect(isSelected('Fictional potatoes')).toBe(true);
   expect(isSelected('Fictional onions')).toBe(false);
+});
+
+it('closes on the next Add when the save that timed out was in fact applied', async () => {
+  const onClose = jest.fn();
+  await act(async () => {
+    renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />);
+  });
+  await settle();
+  await act(async () => { join(0); });
+  await settle();
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
+  const pressAdd = async () => {
+    await act(async () => { node('catalog-add').props.onPress(); });
+    await settle();
+  };
+
+  await act(async () => {
+    renderer!.root.findAll(candidate =>
+      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes' && typeof candidate.props.onPress === 'function')[0].props.onPress();
+  });
+  expect(addButtonText()).toBe('Add (1)');
+
+  // The server stores the line; its answer never arrives and the write times out.
+  service.addItemToOrder.mockImplementationOnce(async (orderId, lotId, quantity) => {
+    server.items = [{
+      id: 'line-own', order_id: orderId, grn_item_id: lotId, requested_quantity: quantity, item_status: 'pending',
+      created_at: '2026-10-01T09:00:00Z', grn_item: LOTS[0],
+    } as OrderItem];
+    return { success: false, message: "Couldn't add the item.", error: 'TimeoutError: Request timeout' } as never;
+  });
+  // The failure is logged for the developer; it is not a test failure.
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  await pressAdd();
+
+  // The picker stays open with the lot and its reason, and the order was read again.
+  expect(onClose).not.toHaveBeenCalled();
+  expect(service.addItemToOrder.mock.calls).toEqual([['order-fictional-1', 'lot-a', 1]]);
+  expect(textOf(node('catalog-reason-lot-a'))).toBe('Not saved. Check your connection and try again.');
+  expect(addButtonText()).toBe('Add (1)');
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
+  expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
+
+  // Add again: the lot is in the order with that quantity, so nothing is sent and the picker closes.
+  await pressAdd();
+  expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+  expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
+  expect(service.removeItemFromOrder).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

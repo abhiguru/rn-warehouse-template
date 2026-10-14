@@ -1,4 +1,5 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
@@ -40,7 +41,7 @@ import { searchService, SearchResult } from '@/services/search-service';
 import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
-import { cartFailureReason, isAlreadyRemoved } from '@/features/orders/cartFailureReason';
+import { cartFailureReason, isAlreadyRemoved, isConnectionFailure } from '@/features/orders/cartFailureReason';
 import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
 
 const NO_LINES: OrderItem[] = [];
@@ -302,11 +303,24 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     );
   }, [onRefresh]);
 
+  // True while the phone reports no network at all (aeroplane mode, no Wi-Fi and
+  // no mobile data). "Connected, but the internet is not reachable" does not
+  // count: a facility's own server can still answer on its local network.
+  const { isConnected } = useNetworkStatus();
+  const noNetworkRef = useRef(false);
+  noNetworkRef.current = isConnected === false;
+
   // Saves what the Add items picker changed, one lot after another, and answers
   // for each lot. A lot the user did not touch is not in `changes`, so a line
   // another user added meanwhile is never removed. Each change is resolved
   // against the lines as they are saved now, not as they were when the picker
   // opened. Never rejects and shows no alert: the picker shows each reason on its lot.
+  //
+  // The picker has no way out while this runs, so it must not wait long. A lot the
+  // server refuses is an answer, and the next lot is sent. A call that got no
+  // answer (a timeout, no connection, a call that threw) ends the save: every
+  // further write could wait its own full time limit on the same dead connection.
+  // The lots not sent come back not saved and stay selected in the picker.
   const handleItemsAdded = useCallback(async (
     changes: PickerChange[],
     onProgress?: (position: number, total: number) => void,
@@ -317,7 +331,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     // Quantities first, removals last.
     const ordered = [...changes.filter(change => change.quantity > 0), ...changes.filter(change => change.quantity <= 0)];
     const results = new Map<string, PickerResult>();
-    let anySaved = false;
+    let anyCall = false;
 
     for (let index = 0; index < ordered.length; index += 1) {
       const change = ordered[index];
@@ -335,37 +349,47 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
             continue;
           }
+          // No network: this lot and the rest are not sent.
+          if (noNetworkRef.current) break;
+          anyCall = true;
           const result = line
             ? await OrderService.updateOrderItemQuantity(line.id, current.id, change.quantity)
             : await OrderService.addItemToOrder(current.id, change.grnItemId, change.quantity);
-          if (result.success) anySaved = true;
-          else console.error('[OrderManagement] Item not saved:', result.message, result.error);
+          if (!result.success) console.error('[OrderManagement] Item not saved:', result.message, result.error);
           results.set(change.grnItemId, result.success
             ? { grnItemId: change.grnItemId, ok: true }
             : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+          if (!result.success && isConnectionFailure(result)) break;
         } else {
           // Nothing to remove when the line is gone or no longer open.
           if (!line || !isOpenLine(line)) {
             results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true });
             continue;
           }
+          if (noNetworkRef.current) break;
+          anyCall = true;
           const result = await OrderService.removeItemFromOrder(line.id, current.id);
           // "Order item not found": someone else removed it first, which is what was asked for.
           const removed = result.success || isAlreadyRemoved(result);
-          if (removed) anySaved = true;
-          else console.error('[OrderManagement] Item not removed:', result.message, result.error);
+          if (!removed) console.error('[OrderManagement] Item not removed:', result.message, result.error);
           results.set(change.grnItemId, removed
             ? { grnItemId: change.grnItemId, ok: true }
             : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+          if (!removed && isConnectionFailure(result)) break;
         }
       } catch (error) {
         console.error('[OrderManagement] Save item error:', error);
         results.set(change.grnItemId, notSaved(change.grnItemId));
+        break;
       }
     }
 
-    // The order shows what was saved before the picker closes or lists what was not.
-    if (anySaved && sessionGeneration === getSessionGeneration()) {
+    // The order is read again after any call, saved or not. A saved lot shows
+    // before the picker closes or lists what was not saved. A lot that was not
+    // saved may have failed because the lines here are out of date (a write that
+    // timed out but was applied, a line someone else removed): without this read
+    // the next Add would fail on it the same way.
+    if (anyCall && sessionGeneration === getSessionGeneration()) {
       try {
         await onRefresh();
       } catch (error) {
