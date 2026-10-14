@@ -53,8 +53,8 @@ export type OpenOutcome =
   /** An access request is waiting at the facility: show the waiting screen. */
   | { kind: 'pending' }
   /**
-   * The facility has a profile for this number that is not linked yet. It was
-   * asked for a code; `codeSent` is false when that request failed (`message` says why).
+   * The facility asks for its own code (it has switched that on, at each new
+   * sign-in there). It was asked to send one; `codeSent` is false when that request failed (`message` says why).
    */
   | { kind: 'link_required'; codeSent: boolean; message?: string; retryAfterSeconds?: number }
   /** The facility does not accept association sign-in: offer its own SMS sign-in. */

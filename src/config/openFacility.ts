@@ -1,6 +1,6 @@
 /**
  * Opening a facility with the central sign-in (docs/CENTRAL_LOGIN.md): the one
- * function behind "My facilities", the catalogue and the linking step.
+ * function behind "My facilities", the catalogue and the facility-code step.
  *
  *   1. discover the facility and check that it trusts this build's issuer;
  *   2. switch the app to it with the shared server-switch sequence
@@ -8,8 +8,9 @@
  *      session and clears its state;
  *   3. ask the central service for a token for this facility only;
  *   4. hand the token to the facility (`central-exchange`);
- *   5. turn the answer into a session, a waiting request, the linking step or
- *      a plain message, and record the status on the person's own list.
+ *   5. turn the answer into a session, a waiting request, the facility's own code
+ *      step (asked when the facility has switched it on, at each new sign-in
+ *      there) or a plain message, and record the status on the person's own list.
  *
  * The result is also published in centralState, because step 2 rebuilds the
  * navigation tree: the screen that started the open may not be the one that
@@ -18,7 +19,7 @@
  * An open belongs to the person it began for (a `Ticket`: that person and the
  * identity generation of centralState.ts). Before each step that acts (the
  * switch, the token request, the exchange, every list write, the profile, the
- * linking code) it checks that the central person has not changed since; if it
+ * facility's code) it checks that the central person has not changed since; if it
  * has, it stops with "sign in again", and a facility session it got for the
  * previous person is left at once.
  */

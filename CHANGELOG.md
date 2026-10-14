@@ -65,6 +65,19 @@ Drafts in the glossary's words (વેપારી = business or customer); the 
 - `lists.order.accessibilityDeactivated`: નિષ્ક્રિય
 - `customers.list.statusDeactivated`: નિષ્ક્રિય
 
+## Unreleased — a facility's own code (2026-10-15)
+
+Pairs with backend migration 81 (supabase-warehouse-template `feat/central-single-sign-in`): one
+association sign-in opens existing profiles; a facility can ask for its own code too
+(`--central-local-code on`, off by default), and then asks at every new sign-in.
+
+- **The code step is the facility's own code, asked each time.** "Enter the code from <facility>"
+  with "<facility> asks for its own code each time you sign in" replaces "Confirm your number at
+  <facility> once". The My facilities tag "Confirm number" is now "Code needed" and the screen
+  title "Facility code". The Gujarati texts are drafts for review.
+- **The start-up skip opens a facility that asks for its code.** When it is the only facility that
+  can be opened, My facilities no longer waits on the list because its tag is "Code needed".
+
 ## Unreleased — backlog fixes (2026-10-14)
 
 Needs backend migration 80 (supabase-warehouse-template `fix/backlog-2026-10-14`) for the
