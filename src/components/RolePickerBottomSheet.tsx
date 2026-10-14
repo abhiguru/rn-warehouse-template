@@ -62,12 +62,12 @@ const ALL_ROLES: RoleOption[] = [
 ];
 
 /**
- * The tallest the sheet's content may be: the window below the status bar, minus a margin so the
+ * The tallest the sheet's content may be: the window between the status bar and the navigation bar, minus a margin so the
  * backdrop stays visible above it. The sheet is as tall as its content up to this height and the
  * content scrolls only beyond it (large text sizes), instead of a fixed half of the screen.
  */
-export function roleSheetMaxContent(windowHeight: number, topInset: number): number {
-  return Math.max(0, Math.round(windowHeight - topInset - space.xxl * 2));
+export function roleSheetMaxContent(windowHeight: number, topInset: number, bottomInset = 0): number {
+  return Math.max(0, Math.round(windowHeight - topInset - bottomInset - space.xxl * 2));
 }
 
 // =============================================================================
@@ -165,7 +165,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
       ref={bottomSheetRef}
       index={0}
       enableDynamicSizing
-      maxDynamicContentSize={roleSheetMaxContent(windowHeight, insets.top)}
+      maxDynamicContentSize={roleSheetMaxContent(windowHeight, insets.top, insets.bottom)}
       onChange={handleSheetChanges}
       backdropComponent={renderBackdrop}
       enablePanDownToClose

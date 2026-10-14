@@ -37,6 +37,8 @@ import { RolePickerBottomSheet, roleSheetMaxContent } from '../RolePickerBottomS
 describe('role sheet sizing', () => {
   it('limits the content to the window below the status bar, with a margin', () => {
     expect(roleSheetMaxContent(891, 24)).toBe(891 - 24 - 48);
+    // The navigation bar (bottom inset) is not part of the room: 48 dp more makes the limit 48 dp lower.
+    expect(roleSheetMaxContent(891, 24, 48)).toBe(891 - 24 - 48 - 48);
     expect(roleSheetMaxContent(10, 24)).toBe(0);
   });
 
