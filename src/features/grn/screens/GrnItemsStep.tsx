@@ -3,6 +3,7 @@ import {
   View,
   Keyboard,
   Vibration,
+  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -181,6 +182,10 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   const promptOpen = useRef(false);
   // The item in the form is being stored (a second tap on the checkmark does nothing).
   const committing = useRef(false);
+  // Photos that were picked for an item and left with it when it was discarded, by their
+  // temporary id. One of them may still be in preparation (processPickedImage). Not read from
+  // `latest`: that is only as new as the last draw, which a quick preparation can beat.
+  const discardedPhotoIds = useRef(new Set<string>());
 
   // What the step holds, as it was last drawn. Every way out of the step reads
   // it when it is used, so none of them works on the values of an older draw
@@ -428,6 +433,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       const kept = new Set(photosOf(before).map((img) => img.id));
       const picked = photosOf(item).filter((img) => !kept.has(img.id) && isTemporaryGRNImageId(img.id));
       if (picked.length > 0) void releaseLocalPhotos(picked.map((img) => img.imageUrl));
+      picked.forEach((img) => discardedPhotoIds.current.add(img.id));
 
       // Photos are the one part of a correction that reaches the store before
       // the checkmark (handleImageUploadStart, handleImageRemove), and a saved
@@ -608,6 +614,33 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   // The phone's Back key: the route owns the key and asks here (app/grn-form/step2.tsx, app/grn-edit/[id]/step2.tsx).
   const requestExitRef = useRef(requestExit);
   requestExitRef.current = requestExit;
+
+  // A saved item that was tapped in the sheet while the form holds an unsaved
+  // item. The question about the form is drawn in a Modal, and iOS cannot
+  // present one over the sheet's Modal while that is still being dismissed
+  // (nothing appears and the question stays "open"). So the question waits
+  // until the sheet is gone: the sheet's `onDismissed` on iOS, which is the
+  // only platform that has one, and the sheet becoming hidden on Android.
+  const rowAfterSheet = useRef<ItemFormData | null>(null);
+  const openRowAfterSheet = () => {
+    const row = rowAfterSheet.current;
+    rowAfterSheet.current = null;
+    if (row) requestExitRef.current({ to: 'row', row });
+  };
+  const openRowAfterSheetRef = useRef(openRowAfterSheet);
+  openRowAfterSheetRef.current = openRowAfterSheet;
+  useEffect(() => {
+    if (!showItemsSummarySheet && Platform.OS !== 'ios') openRowAfterSheetRef.current();
+  }, [showItemsSummarySheet]);
+  const handleSheetEditItem = (row: ItemFormData) => {
+    const now = latest.current;
+    // With nothing typed the row opens at once, as before; no question is drawn.
+    if (isItemDirty(now.currentItem, baseline.current) && row.grn_trl_id !== now.editingItemId) {
+      rowAfterSheet.current = row;
+      return;
+    }
+    requestExit({ to: 'row', row });
+  };
   useEffect(() => {
     if (!backGuard) return undefined;
     const guard: GrnItemsBackGuard = (leave) => requestExitRef.current({ to: 'details', leave });
@@ -722,6 +755,12 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       const deferredUploadId = tempGrnId || generateTempGRNId();
       try {
         const uploadResult = await uploadGRNItemImage(asset, deferredUploadId, currentItem.grn_trl_id);
+        // The item may have been discarded while the photo was being prepared: then the photo
+        // is nobody's (discardOpenItem). No message about it, and its prepared copy is given up like the original.
+        if (discardedPhotoIds.current.has(tempImageData.id)) {
+          if (uploadResult.success && uploadResult.imageUrl) void releaseLocalPhotos([uploadResult.imageUrl]);
+          return;
+        }
         if (!uploadResult.success) {
           // The photo could not be prepared (too large, unreadable): say so and take it out again.
           dropUnpreparedPhoto(tempImageData.id);
@@ -744,6 +783,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         handleImageUploadComplete(uploadedImageData, tempImageData.id);
       } catch (error) {
         log.error('Upload failed', loggableError(error));
+        if (discardedPhotoIds.current.has(tempImageData.id)) return;
         // The entry still points at the original file: it is taken out, like a refused photo.
         dropUnpreparedPhoto(tempImageData.id);
         showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
@@ -864,7 +904,8 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         onClose={() => setShowItemsSummarySheet(false)}
         items={savedItems}
         onRemoveItem={handleRemoveItem}
-        onEditItem={(row) => requestExit({ to: 'row', row })}
+        onEditItem={handleSheetEditItem}
+        onDismissed={() => openRowAfterSheetRef.current()}
         editingItemId={editingItemId ?? undefined}
         dispatchedItemIds={isCreateMode ? undefined : new Set(itemsWithDispatchesOnLoad.keys())}
       />

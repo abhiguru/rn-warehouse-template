@@ -11,7 +11,7 @@
  *     stored as if "Save item" had been chosen.
  */
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { configureStore, type UnknownAction } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
@@ -156,9 +156,13 @@ const inForm = (tree: ReactTestRenderer) => {
 const set = (tree: ReactTestRenderer, field: string, value: string) =>
   act(() => form(tree).props.onFieldChange(field, value));
 const pressNext = (tree: ReactTestRenderer) => act(async () => { await bar(tree).props.onNext(); });
-/** A tap on saved item n in the saved-items sheet. */
+/** A tap on saved item n in the saved-items sheet: it reports the row, closes, and (iOS) tells when it is gone. */
 const openRow = (tree: ReactTestRenderer, n: number) =>
-  act(async () => { sheet(tree).props.onEditItem(sheet(tree).props.items[n - 1]); });
+  act(async () => {
+    sheet(tree).props.onEditItem(sheet(tree).props.items[n - 1]);
+    sheet(tree).props.onClose();
+    sheet(tree).props.onDismissed?.();
+  });
 /** Saved item 5 in the form with quantity 99 and rack TEMP typed, not checkmarked. */
 async function correctRowFive(tree: ReactTestRenderer) {
   await openRow(tree, 5);
@@ -990,5 +994,129 @@ describe('GRN items step, deleting a saved item while a new one is being typed',
     await pressNext(tree);
     expect(alerts()).toHaveLength(0);
     expect(router.push).toHaveBeenCalledWith(`/grn-edit/${GRN_ID}/step3`);
+  });
+});
+
+describe('GRN items step, a saved item tapped in the sheet while an item is unsaved', () => {
+  /** What the sheet does when a row is tapped: it reports the row, then closes itself. */
+  const tapRowInSheet = (tree: ReactTestRenderer, n: number) =>
+    act(async () => {
+      sheet(tree).props.onEditItem(sheet(tree).props.items[n - 1]);
+      sheet(tree).props.onClose();
+    });
+  /** iOS tells when the sheet's Modal is fully gone. */
+  const sheetGone = (tree: ReactTestRenderer) => act(async () => { sheet(tree).props.onDismissed?.(); });
+
+  // iOS cannot present the question over a Modal that is still going away: it never appears
+  // and the step then refuses every way out.
+  it('iOS: the question is raised after the sheet has gone, not while it is closing', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const tree = await render('edit', lines(10));
+    await correctRowFive(tree);
+    await act(async () => { sheet(tree).props.onClose(); });
+
+    await tapRowInSheet(tree, 2);
+    expect(alerts()).toHaveLength(0);
+    expect(inForm(tree)).toMatchObject({ id: lineId(5), qty: '99' });
+
+    await sheetGone(tree);
+    expect(alerts()).toHaveLength(1);
+    expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+    await answer('Discard changes');
+    expect(inForm(tree)).toMatchObject({ id: lineId(2), qty: '12', isEditing: true, editingItemNumber: 2 });
+  });
+
+  it('Android: the question is raised once the sheet is hidden', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    jest.useFakeTimers();
+    const tree = await render('edit', lines(10));
+    await correctRowFive(tree);
+    // "View all" opens the sheet (after a short pause); Android has no event for its closing.
+    act(() => form(tree).props.onViewAll());
+    await act(async () => { jest.advanceTimersByTime(200); });
+
+    await tapRowInSheet(tree, 2);
+    jest.useRealTimers();
+
+    expect(alerts()).toHaveLength(1);
+    expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+  });
+
+  it('with nothing typed the row opens at once, without waiting for the sheet', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const tree = await render('edit', lines(10));
+
+    await tapRowInSheet(tree, 2);
+
+    expect(alerts()).toHaveLength(0);
+    expect(inForm(tree)).toMatchObject({ id: lineId(2), qty: '12', isEditing: true, editingItemNumber: 2 });
+  });
+
+  it('a tap on the row already in the form is ignored, also after the sheet has gone', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const tree = await render('edit', lines(10));
+    await correctRowFive(tree);
+
+    await tapRowInSheet(tree, 5);
+    await sheetGone(tree);
+
+    expect(alerts()).toHaveLength(0);
+    expect(inForm(tree)).toMatchObject({ id: lineId(5), qty: '99', rack: 'TEMP' });
+  });
+});
+
+describe('GRN items step, a photo still being prepared when its item is discarded', () => {
+  const pick = async (tree: ReactTestRenderer) => {
+    let now = Date.parse('2026-10-10T08:00:00.000Z');
+    jest.spyOn(Date, 'now').mockImplementation(() => (now += 1000));
+    let end!: (result: unknown) => void;
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///camera/raw.jpg', fileName: 'raw.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
+    });
+    (uploadGRNItemImage as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { end = resolve; }));
+    set(tree, 'item_table_id', NEW_ITEM_ID);
+    set(tree, 'item_name', 'Fictional garlic');
+    set(tree, 'qty', '7');
+    act(() => form(tree).props.onImagePick());
+    const gallery = lastAlert()?.[2]?.find((candidate) => candidate.text === 'Choose from gallery');
+    let picking!: Promise<unknown>;
+    await act(async () => {
+      picking = Promise.resolve(gallery!.onPress?.());
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    });
+    expect(form(tree).props.currentItem.trl_images).toMatchObject([{ uploadStatus: 'uploading' }]);
+    return (result: unknown) => act(async () => { end(result); await picking; });
+  };
+
+  it('a failed preparation after "Discard item" shows no message', async () => {
+    const tree = await render('create', lines(2));
+    const finish = await pick(tree);
+    await pressNext(tree);
+    await answer('Discard item');
+    const asked = alerts().length;
+
+    await finish({ success: false, error: 'The photo is too large.' });
+
+    expect(alerts()).toHaveLength(asked);
+    expect(alerts().some((call) => call[0] === 'Could not add photo' || String(call[1]).includes('too large'))).toBe(false);
+  });
+
+  it('a prepared copy that arrives after "Discard item" is released', async () => {
+    const tree = await render('create', lines(2));
+    const finish = await pick(tree);
+    await pressNext(tree);
+    await answer('Discard item');
+    expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///camera/raw.jpg']);
+
+    await finish({
+      success: true,
+      imageUrl: 'file:///cache/late.webp',
+      metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z' },
+    });
+
+    expect(releaseLocalPhotos).toHaveBeenCalledTimes(2);
+    expect(releaseLocalPhotos).toHaveBeenLastCalledWith(['file:///cache/late.webp']);
   });
 });

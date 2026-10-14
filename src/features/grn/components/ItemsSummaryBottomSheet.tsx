@@ -43,6 +43,8 @@ export interface ItemsSummaryBottomSheetProps {
   onRemoveItem: (itemId: string) => void;
   onEditItem?: (item: ItemFormData) => void;
   editingItemId?: string;
+  /** Called once the sheet is fully gone (iOS only; Android has no such event). */
+  onDismissed?: () => void;
   /** Item IDs that have dispatches and cannot be deleted */
   dispatchedItemIds?: Set<string>;
 }
@@ -54,6 +56,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
   onRemoveItem,
   onEditItem,
   editingItemId,
+  onDismissed,
   dispatchedItemIds,
 }) => {
   const t = useTokens();
@@ -128,6 +131,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       getTotals={getTotals}
       onDeleteItem={onRemoveItem}
       onEditItem={onEditItem}
+      onDismissed={onDismissed}
       editingItemKey={editingItemId}
       isItemProtected={isItemProtected}
       entity="item"
