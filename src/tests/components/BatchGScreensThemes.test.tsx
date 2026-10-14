@@ -16,10 +16,13 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
-  useLocalSearchParams: () => ({ id: 'i1', userId: 'u1' }),
+  useLocalSearchParams: () => ({ id: 'i1', userId: 'u1', itemId: 'i1', customerId: 'c1', item_id: 'i1', mode: 'change', price_type: 'monthly' }),
   Stack: { Screen: () => null },
   useIsFocused: () => true,
   useFocusEffect: jest.fn(),
+}));
+jest.mock('@/hooks/useLeaveGuard', () => ({
+  useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
@@ -36,6 +39,7 @@ jest.mock('react-native-gesture-handler', () => ({
 jest.mock('@/components/GenericStepIndicatorHeader', () => ({ GenericStepIndicatorHeader: () => null }));
 jest.mock('@/components/RolePickerBottomSheet', () => ({ RolePickerBottomSheet: () => null }));
 jest.mock('@/components/common', () => ({ SearchableBottomSheet: () => null }));
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({
   forceLogoutOnInvalidToken: jest.fn(),
@@ -47,7 +51,7 @@ jest.mock('@/store/slices/authSlice', () => ({
 const mockPrice = {
   id: 'p1', item_id: 'i1', item_name: 'Potato', customer_id: null, customer_name: null, price_type: 'monthly',
   unit_price: 12, weight_min: 0, weight_max: 50, labour_rate: 2, tax_percent: 18,
-  effective_from: '2026-01-01', effective_to: '2026-02-01',
+  effective_from: '2026-01-01', effective_to: null,
 };
 jest.mock('@/services/item-pricing-service', () => ({
   getItemStoragePrices: jest.fn(async () => ({
@@ -55,11 +59,16 @@ jest.mock('@/services/item-pricing-service', () => ({
     data: [mockPrice],
     pagination: { total_count: 1, limit: 50, offset: 0, has_more: false },
   })),
-  deleteItemStoragePrice: jest.fn(),
-  createItemStoragePrice: jest.fn(),
-  updateItemStoragePrice: jest.fn(),
+  replaceItemRates: jest.fn(),
+  // The item pricing list and pages read the active items and the rates of the facility.
+  listActiveItems: jest.fn(async () => [{ id: 'i1', name: 'Potato', packaging: 'Bag' }]),
+  listAllRates: jest.fn(async () => [mockPrice]),
+  listItemRates: jest.fn(async () => [mockPrice]),
 }));
 jest.mock('@/components/list/ListSkeletonCard', () => ({ ListSkeletonCard: () => null }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
+// The customer picker of the item page is a sheet opened on demand; its hook chain needs the whole store.
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@gorhom/bottom-sheet', () => {
   const RN = require('react-native');
   return {
@@ -72,7 +81,16 @@ jest.mock('@gorhom/bottom-sheet', () => {
 });
 jest.mock('@react-native-community/datetimepicker', () => () => null);
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
-jest.mock('@/services/customer-service', () => ({ customerService: { searchCustomers: jest.fn() } }));
+jest.mock('@/services/customer-service', () => ({
+  customerService: {
+    searchCustomers: jest.fn(),
+    getCustomerById: jest.fn(async () => ({
+      success: true,
+      message: '',
+      data: { id: 'i1', name: 'Patel Traders', mobile: '9876543210', city: 'Rajkot', state: 'Gujarat', pincode: '360001', active: true, created_at: '2026-01-01' },
+    })),
+  },
+}));
 jest.mock('@/services/item-service', () => ({
   itemService: {
     getItemById: jest.fn(async () => ({
@@ -119,21 +137,7 @@ jest.mock('@/services/user-service', () => ({
   },
 }));
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrderWithItems: jest.fn() } }));
-jest.mock('@/hooks/useCustomerForm', () => ({
-  useCustomerForm: () => ({
-    formData: {
-      name: 'Patel Traders', mobile: '9876543210', email: '', city: 'Rajkot', state: 'Gujarat', pincode: '360001',
-      address: '', gst: '', pan: '', contact_name: '', contact_mobile: '', contact_email: '',
-      document_images: [], document_urls: [],
-    },
-    currentStep: 1,
-    validationErrors: { email: 'Enter an email address like name@example.com.' },
-    isLoading: false,
-    isSubmitting: false,
-    isCreateMode: true,
-    isDirty: false,
-  }),
-}));
+jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
 import SettingsScreen from '../../../app/settings';
 import ProfileScreen from '../../../app/profile';
@@ -144,15 +148,18 @@ import ItemFormScreen from '../../../app/item-form';
 import UsersScreen from '../../../app/users';
 import ItemEditScreen from '../../../app/item-edit/[id]';
 import ItemPricingScreen from '../../../app/item-pricing';
-import ItemPricingFormScreen from '../../../app/item-pricing-form';
+import ItemRatesPageScreen from '../../../app/item-rates/[itemId]';
+import RateEditorScreen from '../../../app/item-rates/edit';
+import RateStopScreen from '../../../app/item-rates/stop';
+import CustomerRatePageScreen from '../../../app/item-rates/[itemId]/customer/[customerId]';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import OwnProfileEditScreen from '../../../app/user/edit/[userId]';
 import HelpScreen from '../../../app/help';
 import { clearOperatorServer, saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
-import { CustomerBasicInfoStep } from '@/features/customer/screens/CustomerBasicInfoStep';
-import { CustomerDetailsStep } from '@/features/customer/screens/CustomerDetailsStep';
-import { CustomerReviewStep } from '@/features/customer/screens/CustomerReviewStep';
+import CustomerPageScreen from '../../../app/customer/[id]';
+import CustomerFormScreen from '../../../app/customer-form';
+import CustomerEditScreen from '../../../app/customer-edit/[id]';
 import { CustomerOrderGroupCard } from '@/components/list-items/CustomerOrderGroupCard';
 
 const LEGACY = ['#f69000', '#fff4e6', '#ffffff', '#000000', '#000', '#fff'];
@@ -168,12 +175,15 @@ const SCREENS: Array<[string, () => React.ReactElement, string | ((t: ReturnType
   ['user edit', () => <UserEditScreen />, t => t.background.base],
   ['item edit', () => <ItemEditScreen />, t => t.background.base],
   ['item pricing', () => <ItemPricingScreen />, t => t.background.base],
-  ['item pricing form', () => <ItemPricingFormScreen />, t => t.background.base],
+  ['item rates page', () => <ItemRatesPageScreen />, t => t.background.base],
+  ['customer rate page', () => <CustomerRatePageScreen />, t => t.background.base],
+  ['rate editor', () => <RateEditorScreen />, t => t.background.base],
+  ['rate stop', () => <RateStopScreen />, t => t.background.base],
   ['own profile edit', () => <OwnProfileEditScreen />, t => t.background.base],
   ['help', () => <HelpScreen />, t => t.background.grouped],
-  ['customer basic info', () => <CustomerBasicInfoStep mode="create" />, t => t.background.base],
-  ['customer details', () => <CustomerDetailsStep mode="create" />, t => t.background.base],
-  ['customer review', () => <CustomerReviewStep mode="create" />, t => t.background.base],
+  ['customer page', () => <CustomerPageScreen />, t => t.background.base],
+  ['customer add form', () => <CustomerFormScreen />, t => t.background.base],
+  ['customer edit form', () => <CustomerEditScreen />, t => t.background.base],
   [
     'customer order group card',
     () => (
@@ -209,7 +219,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as [Brand,
       theme: { preference: mode, brand },
       auth: { user: { id: 'a1' }, userProfile: { id: 'u1', name: 'Asha', role: 'admin', mobile: '9876543210' } },
       // Item pricing reads its filters from here: one applied, as before.
-      listFilters: { lists: { 'item-pricing-list': { values: { priceType: 'monthly' } } } },
+      listFilters: { lists: { 'item-rates-list': { values: { priceType: 'monthly' } } } },
     };
     let tree!: ReactTestRenderer;
     await act(async () => {

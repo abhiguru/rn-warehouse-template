@@ -21,7 +21,7 @@ export const nav: Translation<typeof source> = {
     enterCode: 'OTP લખો',
     waitingForApproval: 'મંજૂરીની રાહ જોવાય છે',
     facility: 'કોલ્ડ સ્ટોરેજ',
-    enrollmentReview: 'અરજીની ચકાસણી',
+    enrollmentReview: 'મંજૂરીની અરજીઓ',
     editGrn: 'આવક પાવતીમાં ફેરફાર કરો',
     // Central login (docs/CENTRAL_LOGIN.md)
     myFacilities: 'મારાં કોલ્ડ સ્ટોરેજ',

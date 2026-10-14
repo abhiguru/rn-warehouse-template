@@ -297,6 +297,10 @@ export function peekReportAnswer<T>(key: readonly unknown[]): T | undefined {
   return queryClient.getQueryData<T>(['report', ...key]);
 }
 
+/** The newest request's turn per report key: older ones still running answer into nothing. */
+let requestTurn = 0;
+const latestTurn = new Map<string, number>();
+
 export function useReportQuery<T>({
   key,
   fetch,
@@ -313,6 +317,13 @@ export function useReportQuery<T>({
       queryFn: async () => {
         const generation = getSessionGeneration();
         const sentAt = refusalCount;
+        // A refetch that cancels this request (pull to refresh, Try again) lets it run on, its
+        // answer discarded by the library: it must not write the phone cache or drop the kept
+        // marker after the newer request has. The newest request per key owns both.
+        const hash = JSON.stringify(queryKey);
+        const turn = ++requestTurn;
+        latestTurn.set(hash, turn);
+        const newest = () => latestTurn.get(hash) === turn;
         const current = queryClient.getQueryCache().find<T, Error>({ queryKey, exact: true });
         if (current && persist) showKeptAnswer<T>(current, key, sentAt);
         const result = await fetch();
@@ -327,6 +338,8 @@ export function useReportQuery<T>({
         const refusal = refusedSince(key, sentAt);
         if (refusal) throw refusal;
         // The kept copy on screen is now confirmed or replaced (the library keeps the old object when equal).
+        if (!newest()) return result.data;
+        latestTurn.delete(hash);
         if (current && isObject(current.state.data)) keptAnswers.delete(current.state.data);
         // Not awaited. A failed request (thrown above) keeps the last good copy; a refused one removed it.
         if (persist) void writeReportCache(key, { data: result.data, updatedAt: Date.now() }, generation);

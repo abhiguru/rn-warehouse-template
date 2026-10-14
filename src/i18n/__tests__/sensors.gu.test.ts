@@ -18,7 +18,7 @@ describe('sensors in Gujarati', () => {
   });
 
   it('puts the period before its noun and writes its number in Gujarati digits', () => {
-    expect(t('sensors.period.summaryDays', { days: 30 }, 'gu')).toBe('છેલ્લા ૩૦ દિવસનો સારાંશ');
+    expect(t('sensors.period.summaryDays', { days: 30 }, 'gu')).toBe('છેલ્લા ૩૦ દિવસની બધી નોંધ');
     expect(t('sensors.period.loadingYear', undefined, 'gu')).toBe('૧ વર્ષનો ઇતિહાસ લોડ થઈ રહ્યો છે');
   });
 
@@ -36,7 +36,7 @@ describe('sensors in Gujarati', () => {
       { timestamp: '2026-10-02T00:00:00Z', temperature: 2.3, humidity: 90 },
     ] as SensorHistoryReading[];
     expect(summariseReadings(readings, '1 day')).toBe(
-      'તાપમાન −૧૮.૫°C થી ૨.૩°C સુધી, સરેરાશ −૮.૧°C. ભેજ ૮૦% થી ૯૦% સુધી, સરેરાશ ૮૫%. ૨ નોંધ, દરરોજની સરેરાશ.'
+      'તાપમાન −૧૮.૫°C થી ૨.૩°C સુધી. ભેજ ૮૦% થી ૯૦% સુધી. દરરોજની ૨ સરેરાશ.'
     );
   });
 });

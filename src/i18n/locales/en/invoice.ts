@@ -113,6 +113,8 @@ export const invoice = {
     selectCustomerTitle: 'Select a customer first',
     selectCustomerMessage: 'Select a GRN on the details step, then edit the pricing.',
     pricingOpenFailedTitle: "Couldn't open the pricing",
+    ratesNotAppliedTitle: 'Saved rate not applied',
+    ratesNotAppliedMessage: 'The rate was saved, but it could not be applied to the invoice lines. Check your connection, then leave this step and come back to try again.',
     openingPricing: 'Opening pricing…',
     openingPricingA11y: 'Opening pricing',
     backToDetails: 'Back to details',
@@ -287,6 +289,7 @@ export const invoice = {
     sentOne: 'Invoice {{number}} sent to the printer.',
     sentRange: 'Invoices {{start}} to {{end}} sent to the printer.',
     failed: "Couldn't print the invoice. Check the printer and try again.",
+    unconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',
   },
   // The invoice details screens
   tabs: {

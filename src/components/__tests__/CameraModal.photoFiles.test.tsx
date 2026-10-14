@@ -103,6 +103,26 @@ describe('CameraModal', () => {
     expect(onCapture).not.toHaveBeenCalled();
   });
 
+  it('closed while the shot is being saved: the late shot is deleted and is not shown on the next opening', async () => {
+    let finishShot!: (photo: { uri: string; width: number; height: number }) => void;
+    mockTakePicture.mockReturnValue(new Promise((resolve) => { finishShot = resolve; }));
+    const onCapture = jest.fn();
+    const tree = render(<CameraModal visible onClose={jest.fn()} onCapture={onCapture} />);
+
+    // The shutter is pressed, then X, before the shot is saved.
+    const shutter = tree.root.find((node) => node.props.accessibilityLabel === 'Take photo' && typeof node.props.onPress === 'function');
+    let taking!: Promise<void>;
+    act(() => { taking = shutter.props.onPress(); });
+    await press(tree, 'Close camera');
+    await act(async () => { finishShot({ uri: SHOT, width: 3024, height: 4032 }); await taking; });
+
+    expect(releaseLocalPhotos).toHaveBeenCalledWith([SHOT]);
+    // No preview: the screen still offers the shutter, not Retake / Use photo.
+    expect(tree.root.findAll((node) => node.props.accessibilityLabel === 'Use photo')).toHaveLength(0);
+    expect(tree.root.findAll((node) => node.props.accessibilityLabel === 'Take photo').length).toBeGreaterThan(0);
+    expect(onCapture).not.toHaveBeenCalled();
+  });
+
   it('does not invent a size the camera did not report', async () => {
     mockTakePicture.mockResolvedValue({ uri: SHOT, width: 0, height: 0 });
     const onCapture = jest.fn();

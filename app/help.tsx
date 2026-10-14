@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { AppVersionFooter } from '@/components/AppVersionFooter';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isCentralLoginConfigured } from '@/config/envConfig';
@@ -31,7 +32,6 @@ import {
   space,
   touchTarget,
   typography,
-  trackedText,
   type ThemeTokens,
 } from '@/theme/tokens';
 
@@ -46,9 +46,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionHeader} accessibilityRole="header">
-        {title}
-      </Text>
+      <SectionHeader title={title} style={styles.sectionHeader} />
       <View style={styles.sectionContent}>{children}</View>
     </View>
   );
@@ -101,8 +99,15 @@ export default function HelpScreen() {
 
         <Section title={t('settings.help.askTitle')}>
           <View style={styles.cell}>
-            <Text style={styles.body}>{t('settings.help.askAdmin')}</Text>
-            <Text style={styles.secondary}>{t('settings.help.noContact')}</Text>
+            {ownRole === 'admin' ? (
+              // An administrator has no administrator to ask: the details below go to whoever set up the server.
+              <Text style={styles.body}>{t('settings.help.askAdminSelf')}</Text>
+            ) : (
+              <>
+                <Text style={styles.body}>{t('settings.help.askAdmin')}</Text>
+                <Text style={styles.secondary}>{t('settings.help.noContact')}</Text>
+              </>
+            )}
           </View>
         </Section>
 
@@ -182,14 +187,10 @@ const makeStyles = (t: ThemeTokens) => ({
   section: {
     marginBottom: space.xxl,
   },
+  // SectionHeader brings its own top padding; the section's bottom margin already spaces it.
   sectionHeader: {
-    ...typography.footnote,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
     marginHorizontal: layout.marginCompact,
-    marginBottom: space.sm,
-    paddingHorizontal: space.lg,
+    paddingTop: 0,
   },
   sectionContent: {
     marginHorizontal: layout.marginCompact,

@@ -17,6 +17,16 @@ describe('auth, settings and users in Gujarati', () => {
     expect(t('users.list.customersAssigned', { count: 12 })).toBe('12 customers assigned');
   });
 
+  it('names the access requests screen once, with અરજી, and has the staff and supervisor wording', () => {
+    expect(t('auth.review.screenTitle', undefined, 'gu')).toBe('મંજૂરીની અરજીઓ');
+    expect(t('nav.screens.enrollmentReview', undefined, 'gu')).toBe(t('auth.review.screenTitle', undefined, 'gu'));
+    expect(t('auth.review.screenTitle')).toBe('Access requests');
+    expect(t('nav.screens.enrollmentReview')).toBe('Access requests');
+    expect(t('auth.review.approveTitleStaff', { name: 'મીરા' }, 'gu')).toBe('મીરાને સ્ટાફ તરીકે મંજૂરી આપવી છે?');
+    expect(t('auth.review.approveAsSupervisor', undefined, 'gu')).toBe('સુપરવાઇઝર તરીકે મંજૂર કરો');
+    expect(t('auth.review.removeCustomer', { name: 'પટેલ ટ્રેડર્સ' }, 'gu')).toBe('પટેલ ટ્રેડર્સ કાઢી નાખો');
+  });
+
   it('keeps a phone number as stored and puts it where the sentence needs it', () => {
     expect(t('auth.otp.codeSentMessage', { phone: '+91 98765 43210' }, 'gu')).toBe(
       '+91 98765 43210 પર નવો OTP મોકલવામાં આવ્યો છે.'

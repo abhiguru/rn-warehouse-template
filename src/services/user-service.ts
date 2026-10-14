@@ -11,6 +11,9 @@ import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
+import { cleanPersonName } from '@/utils/personName';
+
+const ACCESSIBLE_ID_CHUNK = 100;
 
 // Identifiers and error codes only; never a profile, a customer or the server's wording.
 const log = createLogger('user');
@@ -133,14 +136,19 @@ export class UserService {
       }
       if (!Array.isArray(ids) || ids.length === 0) return { status: 'loaded', customers: [] };
 
-      const { data: customers, error: customersError } = await db
-        .from('customers')
-        .select('id, name, mobile, city, active')
-        .in('id', ids);
-      if (customersError || !customers) {
-        if (customersError) handleGlobalAuthError(customersError);
-        log.warn('Accessible customers read error', loggableError(customersError));
-        return { status: 'failed', customers: [] };
+      // The ids go in chunks: one filter with every id of a large facility makes a request line the gateway refuses.
+      const customers: CustomerAssignment[] = [];
+      for (let start = 0; start < ids.length; start += ACCESSIBLE_ID_CHUNK) {
+        const { data: rows, error: customersError } = await db
+          .from('customers')
+          .select('id, name, mobile, city, active')
+          .in('id', ids.slice(start, start + ACCESSIBLE_ID_CHUNK));
+        if (customersError || !rows) {
+          if (customersError) handleGlobalAuthError(customersError);
+          log.warn('Accessible customers read error', loggableError(customersError));
+          return { status: 'failed', customers: [] };
+        }
+        customers.push(...(rows as CustomerAssignment[]));
       }
       return {
         status: 'loaded',
@@ -172,12 +180,14 @@ export class UserService {
       // Get authenticated client (handles JWT auth properly)
       const client = await getAuthenticatedClient();
 
-      // The name is the only column sent. The server grants UPDATE on
+      // The name and display_name are the only columns sent. The server grants UPDATE on
       // user_profiles for (name, display_name) only, and any other column in
       // the statement, updated_at included, makes it refuse the whole update;
       // a trigger keeps updated_at. Mobile, role and active are changed by
       // administrators through their own RPCs.
-      const dataToUpdate = { name: userData.name };
+      // display_name is what order cards and change logs show, so it follows the name.
+      const cleanName = cleanPersonName(userData.name);
+      const dataToUpdate = { name: cleanName, display_name: cleanName };
 
       // Update by the profile's primary key first, then by auth_user_id. The
       // updated rows are read back: an update that matches no row (the policy
@@ -286,7 +296,7 @@ export class UserService {
 
 
       // Check RPC response for success flag
-      const rpcResponse = data as { success: boolean; message?: string; error?: string; code?: string } | null;
+      const rpcResponse = data as { success: boolean; message?: string; error?: string; code?: string; error_code?: string } | null;
 
       // The only administrator cannot delete the account (backend migration 44).
       if (rpcResponse && !rpcResponse.success && rpcResponse.code === 'LAST_ADMIN') {
@@ -294,6 +304,16 @@ export class UserService {
           success: false,
           message: t('errors.user.lastAdminDelete'),
           error: t('errors.user.lastAdminDelete'),
+          outcome: 'refused',
+        };
+      }
+
+      // A service account such as the FAS sync cannot be deleted (backend migration 78).
+      if (rpcResponse && !rpcResponse.success && (rpcResponse.code === 'SERVICE_ACCOUNT_READ_ONLY' || rpcResponse.error_code === 'SERVICE_ACCOUNT_READ_ONLY')) {
+        return {
+          success: false,
+          message: t('users.edit.serviceAccountReadOnly'),
+          error: t('users.edit.serviceAccountReadOnly'),
           outcome: 'refused',
         };
       }

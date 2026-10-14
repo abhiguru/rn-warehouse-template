@@ -63,22 +63,22 @@ test('coalesces changes and refetches after each reconnect', async () => {
   expect(refresh).toHaveBeenCalledTimes(2);
 });
 
-test('the first join refetches nothing; a rejoin on the same subscription refetches once', async () => {
+test('the first join refetches once (covers the gap before it); a rejoin refetches once more', async () => {
   const refresh = jest.fn();
   stop = subscribeToOrderChanges(refresh);
   status('SUBSCRIBED');
   await flush();
-  expect(refresh).not.toHaveBeenCalled();
+  expect(refresh).toHaveBeenCalledTimes(1);
   status('CHANNEL_ERROR');
   status('SUBSCRIBED');
   await flush();
-  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(refresh).toHaveBeenCalledTimes(2);
 });
 
 test.each([
   ['SUBSCRIBED first', ['join', 'ok']],
   ['system ok first', ['ok', 'join']],
-])('the first join and first system ok refetch nothing (%s); later ones do, coalesced', async (_name, order) => {
+])('the first join refetches once and the first system ok adds nothing (%s); later ones do, coalesced', async (_name, order) => {
   const refresh = jest.fn();
   stop = subscribeToOrderChanges(refresh);
   for (const message of order) {
@@ -86,18 +86,18 @@ test.each([
     else handlers.system({ status: 'ok' });
   }
   await flush();
-  expect(refresh).not.toHaveBeenCalled();
+  expect(refresh).toHaveBeenCalledTimes(1);
   // A later system ok on its own: one refetch.
   handlers.system({ status: 'ok' });
   await flush();
-  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(refresh).toHaveBeenCalledTimes(2);
   // A rejoin and its system ok within the 150 ms debounce: one refetch.
   status('CHANNEL_ERROR');
   status('SUBSCRIBED');
   await jest.advanceTimersByTimeAsync(50);
   handlers.system({ status: 'ok' });
   await flush();
-  expect(refresh).toHaveBeenCalledTimes(2);
+  expect(refresh).toHaveBeenCalledTimes(3);
 });
 
 test('queues changes received during a slow refetch', async () => {

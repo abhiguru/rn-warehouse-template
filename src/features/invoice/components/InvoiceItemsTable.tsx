@@ -438,6 +438,8 @@ const makeStyles = (t: ThemeTokens) => ({
 interface EditPricingParams {
   item_id: string;
   item_name: string;
+  /** The tapped group's mark: with the item it tells the group's own lines (and their received days) from other groups. */
+  package_mark: string;
   weight: number;
   charge: number;
   labour_rate: number;
@@ -789,6 +791,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
         open({
           item_id: itemGroup.item_id,
           item_name: itemGroup.item_name,
+          package_mark: itemGroup.package_mark,
           weight: firstItem.weight,
           charge: firstItem.charge,
           labour_rate: firstItem.labour_rate,

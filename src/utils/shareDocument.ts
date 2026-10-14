@@ -1,6 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { REQUEST_TIME_LIMIT_MS, awaitIdentityGate } from '@/config/supabaseConfig';
+import { REQUEST_TIME_LIMIT_MS, awaitIdentityGate, trackReadRequest } from '@/config/supabaseConfig';
 import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { AppError } from '@/utils/appError';
@@ -187,13 +187,17 @@ async function downloadDocument(pdfUrl: string, filename: string): Promise<Downl
     controller.abort();
   };
   const stopOnSessionChange = onSessionChange(() => stop('session'));
+  // As a read through the gated fetch: refused while a server switch runs, aborted when one begins.
+  const tracked = trackReadRequest(controller);
+  if (!tracked.started) stop('session');
+  controller.signal.addEventListener('abort', () => stop('session'), { once: true });
   const timer = setTimeout(() => stop('timeout'), REQUEST_TIME_LIMIT_MS.read);
   // Under Node (tests) a waiting download must not keep the process alive.
   (timer as { unref?: () => void }).unref?.();
 
   log.debug('Downloading document', { name });
   try {
-    if (generation !== getSessionGeneration()) stop('session');
+    if (stopped || generation !== getSessionGeneration()) stop('session');
     else {
       await File.downloadFileAsync(pdfUrl, file, {
         idempotent: true,
@@ -219,6 +223,7 @@ async function downloadDocument(pdfUrl: string, filename: string): Promise<Downl
   } finally {
     clearTimeout(timer);
     stopOnSessionChange();
+    tracked.release();
   }
 
   if (stopped) {

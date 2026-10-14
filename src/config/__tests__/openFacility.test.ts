@@ -144,6 +144,22 @@ describe('a facility that approves', () => {
     expect((await loadMyFacilities('asha'))[0].instanceId).toBe('instance-north');
   });
 
+  it('stays a successful open when the list write after the sign-in fails', async () => {
+    const real = jest.requireActual('../centralFacilities').updateMyFacility;
+    const spy = jest
+      .spyOn(require('../centralFacilities'), 'updateMyFacility')
+      .mockImplementation(async (...args: any[]) => {
+        if (args[2]?.status === 'approved') throw new Error('SQLITE_FULL');
+        return real(...args);
+      });
+    try {
+      expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'login' });
+      expect(getCentralState().outcome).toMatchObject({ outcome: { kind: 'login' } });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('publishes the answer for whichever screen is mounted, until that screen has handled it', async () => {
     const opening = openFacility(ORIGIN, NAME);
     expect(getCentralState().opening).toBe(ORIGIN);

@@ -55,6 +55,8 @@ export function groupInvoiceItems(
 ): InvoiceItemGroup[] {
   const groups = new Map<string, InvoiceItemGroup>();
   const dispatchesByGroup = new Map<string, Map<string, DispatchGroup>>();
+  const lotsByGroup = new Map<string, Set<string>>();
+  const racksByGroup = new Map<string, string[]>();
 
   items.forEach((item) => {
     const groupKey = invoiceGroupKey(item);
@@ -94,6 +96,24 @@ export function groupInvoiceItems(
     dispatchGroup.items.push(item);
     group.allItems.push(item);
     group.total_dispatched += item.qty;
+
+    // The group's received quantity is that of every lot in it, each counted once however many
+    // dispatches it has; the racks of its lots are listed the same way.
+    const lotKey = item.grn_item_id || item.temp_id;
+    let lots = lotsByGroup.get(groupKey);
+    if (!lots) {
+      lots = new Set([lotKey]);
+      lotsByGroup.set(groupKey, lots);
+      racksByGroup.set(groupKey, item.rack ? [item.rack] : []);
+    } else if (!lots.has(lotKey)) {
+      lots.add(lotKey);
+      group.gr_quantity += item.grn_original_qty;
+      const racks = racksByGroup.get(groupKey)!;
+      if (item.rack && !racks.includes(item.rack)) {
+        racks.push(item.rack);
+        group.rack = racks.join(', ');
+      }
+    }
   });
 
   const before = new Map<string, InvoiceItemGroup>();

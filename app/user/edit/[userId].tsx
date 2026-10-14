@@ -35,6 +35,7 @@ import {
   trackedText,
 } from '@/theme/tokens';
 import { UserService } from '@/services/user-service';
+import { PERSON_NAME_MAX, cleanPersonName } from '@/utils/personName';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { setUserProfile } from '@/store/slices/authSlice';
 import {
@@ -44,8 +45,12 @@ import {
 } from '@/types/user.types';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
+import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
-import { formatMobile } from '@/utils/formatters';
+import { formatCount, formatMobile } from '@/utils/formatters';
 import { roleLabel } from '@/utils/roleLabel';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
@@ -86,6 +91,11 @@ const UserEditScreen: React.FC = () => {
     active: true,
     assignedCustomerIds: []
   });
+
+  // Ask before a typed name is dropped: header Back, the phone's Back key and the swipe all come through here.
+  const loadedName = (user?.name ?? '').trim();
+  const nameChanged = !!user && formData.name.trim() !== loadedName;
+  const { leaveWithoutAsking } = useLeaveGuard({ hasChanges: nameChanged });
 
   // Customer access (read-only), loaded with the profile and retried on its own
   const [customerAccess, setCustomerAccess] = useState<CustomerAccess>({ status: 'loading', customers: [] });
@@ -142,36 +152,38 @@ const UserEditScreen: React.FC = () => {
     if (!userId) return;
 
     // Basic validation
-    if (!formData.name.trim()) {
+    if (!cleanPersonName(formData.name)) {
       setNameError(tr('users.selfEdit.nameRequired'));
+      return;
+    }
+
+    // Nothing changed: there is nothing to save, so leave without a server call or a message.
+    if (!nameChanged) {
+      leaveWithoutAsking(() => router.back());
       return;
     }
 
     try {
       setSaving(true);
 
-      const result = await UserService.updateUser(userId, formData);
+      // The comparison above is on trimmed names: save and keep the trimmed one too.
+      const name = cleanPersonName(formData.name);
+      const result = await UserService.updateUser(userId, { ...formData, name });
 
       if (result.success) {
         // Update Redux state with new profile data
         if (currentUserProfile) {
           const updatedProfile = {
             ...currentUserProfile,
-            name: formData.name,
+            name,
+            display_name: name,
           };
           dispatch(setUserProfile(updatedProfile));
         }
 
-        showAlert(
-          tr('users.selfEdit.savedTitle'),
-          tr('users.selfEdit.savedMessage'),
-          [
-            {
-              text: tr('common.ok'),
-              onPress: () => router.back()
-            }
-          ]
-        );
+        // Go back at once; the toast stays on the screen this returns to.
+        leaveWithoutAsking(() => router.back());
+        showToast(tr('users.selfEdit.savedTitle'));
       } else {
         showAlert(tr('users.selfEdit.couldNotSaveTitle'), serverText(result.message, tr('users.edit.tryAgainSoon')));
       }
@@ -181,7 +193,7 @@ const UserEditScreen: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [userId, formData, currentUserProfile, dispatch]);
+  }, [userId, formData, nameChanged, leaveWithoutAsking, currentUserProfile, dispatch]);
 
   // Load data on mount
   useEffect(() => {
@@ -227,27 +239,43 @@ const UserEditScreen: React.FC = () => {
     );
   };
 
+  const header = (
+    <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
+      <HeaderBackButton style={styles.headerSide} />
+      <Text style={styles.title} accessibilityRole="header">
+        {tr('users.selfEdit.title')}
+      </Text>
+      <View style={styles.headerSide} />
+    </View>
+  );
+
   if (loading) {
     return (
-      <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel={tr('users.edit.loading')}>
-        <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>{tr('users.edit.loadingText')}</Text>
+      <View style={styles.container}>
+        {header}
+        <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel={tr('users.edit.loading')}>
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.loadingText}>{tr('users.edit.loadingText')}</Text>
+        </View>
       </View>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.centerContainer} accessibilityRole="alert">
-        <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-        <Text style={styles.errorTitle}>{tr('users.selfEdit.notFound')}</Text>
-        <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-        >
-          <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
-        </Pressable>
+      <View style={styles.container}>
+        {header}
+        <View style={styles.centerContainer} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.errorTitle}>{tr('users.selfEdit.notFound')}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -263,37 +291,11 @@ const UserEditScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
-          accessibilityRole="button"
-        >
-          <Text style={styles.cancelButtonText}>{tr('common.cancel')}</Text>
-        </Pressable>
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-          {tr('users.selfEdit.title')}
-        </Text>
-        <Pressable
-          onPress={handleSave}
-          style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
-          disabled={saving}
-          accessibilityRole="button"
-          accessibilityLabel={tr('users.selfEdit.saveLabel')}
-          accessibilityState={{ busy: saving }}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color={t.brand.onFill} />
-          ) : (
-            <Text style={styles.saveButtonText}>{tr('common.save')}</Text>
-          )}
-        </Pressable>
-      </View>
+      {header}
 
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxl }}
+        contentContainerStyle={{ paddingBottom: space.xxl }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -314,6 +316,7 @@ const UserEditScreen: React.FC = () => {
               onBlur={() => setNameFocused(false)}
               placeholder={tr('users.selfEdit.namePlaceholder')}
               placeholderTextColor={t.text.placeholder}
+              maxLength={PERSON_NAME_MAX}
               autoCapitalize="words"
               autoComplete="name"
               textContentType="name"
@@ -403,6 +406,17 @@ const UserEditScreen: React.FC = () => {
                     <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
                   </Pressable>
                 </View>
+              ) : customerAccess.customers.length > 0 && !isCustomer ? (
+                // The rule of the role is every active customer: one count, not a row for each.
+                <View
+                  style={styles.countRow}
+                  accessible
+                  accessibilityLabel={formatCount(customerAccess.customers.length, 'customer')}
+                  testID="self-edit-customer-count"
+                >
+                  <Icon name="account-multiple-outline" size={iconSize.md} color={t.icon.secondary} />
+                  <Text style={styles.countText}>{formatCount(customerAccess.customers.length, 'customer')}</Text>
+                </View>
               ) : customerAccess.customers.length > 0 ? (
                 customerAccess.customers.map((item, index) => (
                   <React.Fragment key={item.id}>
@@ -430,6 +444,13 @@ const UserEditScreen: React.FC = () => {
           </>
         )}
       </ScrollView>
+
+      {/* The save button sits under the form, not on it (style guide §14.4) */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving} testID="self-edit-save">
+          {tr('users.selfEdit.saveLabel')}
+        </Button>
+      </View>
     </View>
   );
 };
@@ -486,40 +507,32 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.divider,
   },
-  cancelButton: {
+  // Back on the left and an empty side of the same width on the right keep the title centred.
+  headerSide: {
+    width: 80,
     minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    justifyContent: 'center' as const,
-    borderRadius: radius.button,
-  },
-  cancelButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  cancelButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
   },
   title: {
     ...typography.headline,
     flexShrink: 1,
     color: t.text.primary,
+    textAlign: 'center' as const,
   },
-  saveButton: {
-    backgroundColor: t.brand.fill,
-    paddingHorizontal: space.lg,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    minWidth: 64,
+  bottomBar: {
+    backgroundColor: t.surface.card,
+    paddingTop: space.md,
+    paddingHorizontal: layout.marginCompact,
+    ...t.shadow[3],
+  },
+  countRow: {
+    flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    gap: space.md,
+    minHeight: layout.rowMinHeight,
   },
-  saveButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  saveButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
+  countText: {
+    ...typography.body,
+    color: t.text.primary,
   },
   sectionTitle: {
     ...typography.footnote,

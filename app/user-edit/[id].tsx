@@ -8,7 +8,7 @@
  * - Manage customer assignments
  */
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,10 +18,9 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { adminUserService } from '@/services/admin-user-service';
 import { customerService } from '@/services/customer-service';
 import {
@@ -31,9 +30,10 @@ import {
 } from '@/types/user.types';
 import { useAppSelector } from '@/store/hooks';
 import { RolePickerBottomSheet } from '@/components/RolePickerBottomSheet';
-import { SearchableBottomSheet } from '@/components/common';
+import { SearchableBottomSheet } from '@/components/common/SearchableBottomSheet';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
 import {
   fontWeight,
   iconSize,
@@ -43,12 +43,12 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
-  trackedText,
 } from '@/theme/tokens';
-import { Avatar, StatusTag } from '@/components/ui';
+import { Avatar, SectionHeader, StatusTag } from '@/components/ui';
 import { formatMobile } from '@/utils/formatters';
 
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { serverText } from '@/utils/serverText';
@@ -157,9 +157,9 @@ export default function UserEditScreen() {
   // HANDLERS
   // ===========================================================================
 
-  const handleRoleSelect = useCallback(
+  const applyRole = useCallback(
     async (newRole: UserRole) => {
-      if (!user || newRole === user.role) return;
+      if (!user) return;
 
       setSaving(true);
       try {
@@ -168,7 +168,7 @@ export default function UserEditScreen() {
         if (response.success) {
           setSelectedRole(newRole);
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
-          showAlert(tr('users.edit.roleChangedTitle'), tr(ROLE_CHANGED_KEYS[newRole], { name: user.name || tr('users.thisUser') }));
+          showToast(tr(ROLE_CHANGED_KEYS[newRole], { name: user.name || tr('users.thisUser') }));
         } else {
           showAlert(tr('users.edit.couldNotChangeRole'), serverText(response.error, tr('users.edit.tryAgainSoon')));
         }
@@ -180,6 +180,20 @@ export default function UserEditScreen() {
       }
     },
     [user]
+  );
+
+  // A role changes what the person can see and do, so it is asked first, with what the new role means.
+  const handleRoleSelect = useCallback(
+    (newRole: UserRole) => {
+      if (!user || newRole === user.role) return;
+
+      const name = user.name || tr('users.thisUser');
+      showAlert(tr(`users.edit.confirmRole.${newRole}.title`, { name }), tr(`users.roleDescription.${newRole}`), [
+        { text: tr('common.cancel'), style: 'cancel' },
+        { text: tr(`users.edit.confirmRole.${newRole}.action`), onPress: () => applyRole(newRole) },
+      ]);
+    },
+    [user, applyRole]
   );
 
   const handleStatusToggle = useCallback(
@@ -210,6 +224,25 @@ export default function UserEditScreen() {
     [user, deactivationIsFinalForCaller]
   );
 
+  const disconnect = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const response = await adminUserService.updateUserStatus(user.id, false);
+      if (response.success) {
+        setIsActive(false);
+        setUser((prev) => (prev ? { ...prev, active: false } : null));
+        showToast(tr('users.edit.disconnectedMessage', { name: user.name || tr('users.thisUser') }));
+      } else {
+        showAlert(tr('users.edit.couldNotDisconnect'), serverText(response.error, tr('users.edit.tryAgainSoon')));
+      }
+    } catch {
+      showAlert(tr('users.edit.couldNotDisconnect'), tr('common.checkConnection'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateStatus = async (active: boolean) => {
     if (!user) return;
 
@@ -220,10 +253,7 @@ export default function UserEditScreen() {
       if (response.success) {
         setIsActive(active);
         setUser((prev) => (prev ? { ...prev, active } : null));
-        showAlert(
-          tr(active ? 'users.edit.activatedTitle' : 'users.edit.deactivatedTitle'),
-          tr(active ? 'users.edit.activatedMessage' : 'users.edit.deactivatedMessage', { name: user.name || tr('users.thisUser') })
-        );
+        showToast(tr(active ? 'users.edit.activatedMessage' : 'users.edit.deactivatedMessage', { name: user.name || tr('users.thisUser') }));
       } else {
         showAlert(tr('users.edit.couldNotChangeStatus'), serverText(response.error, tr('users.edit.tryAgainSoon')));
       }
@@ -235,9 +265,13 @@ export default function UserEditScreen() {
     }
   };
 
+  // Customers whose assignment is on its way: a second tap on the same row must not assign it again.
+  const assigningRef = useRef<Set<string>>(new Set());
+
   const handleAddCustomer = useCallback(
     async (customer: CustomerSearchResult) => {
       if (!user) return;
+      if (assigningRef.current.has(customer.id)) return;
 
       // Check if already assigned
       if (assignedCustomers.some((c) => c.customer_id === customer.id)) {
@@ -245,6 +279,7 @@ export default function UserEditScreen() {
         return;
       }
 
+      assigningRef.current.add(customer.id);
       setSaving(true);
       try {
         const response = await adminUserService.assignCustomerToUser(
@@ -262,8 +297,10 @@ export default function UserEditScreen() {
             assigned_at: new Date().toISOString(),
             assigned_by_name: userProfile?.name || null,
           };
-          setAssignedCustomers((prev) => [...prev, newAssignment]);
-          showAlert(tr('users.edit.assignedTitle'), tr('users.edit.assignedMessage', { name: customer.name }));
+          setAssignedCustomers((prev) =>
+            prev.some((c) => c.customer_id === customer.id) ? prev : [...prev, newAssignment]
+          );
+          showToast(tr('users.edit.assignedMessage', { name: customer.name }));
         } else {
           showAlert(tr('users.edit.couldNotAssign'), serverText(response.error, tr('users.edit.tryAgainSoon')));
         }
@@ -271,6 +308,7 @@ export default function UserEditScreen() {
         console.error('[UserEdit] Assign customer error:', err);
         showAlert(tr('users.edit.couldNotAssign'), tr('common.checkConnection'));
       } finally {
+        assigningRef.current.delete(customer.id);
         setSaving(false);
         setShowCustomerSearch(false);
       }
@@ -302,7 +340,7 @@ export default function UserEditScreen() {
                   setAssignedCustomers((prev) =>
                     prev.filter((c) => c.customer_id !== customerId)
                   );
-                  showAlert(tr('users.edit.removedTitle'), tr('users.edit.removedMessage', { name: customerName }));
+                  showToast(tr('users.edit.removedMessage', { name: customerName }));
                 } else {
                   showAlert(
                     tr('users.edit.couldNotRemove'),
@@ -372,45 +410,40 @@ export default function UserEditScreen() {
   // RENDER
   // ===========================================================================
 
-  const headerOptions = {
-    headerShown: true,
-    headerStyle: { backgroundColor: t.surface.header },
-    headerShadowVisible: false,
-    headerTintColor: t.brand.tint,
-    headerTitleAlign: 'center' as const,
-    headerLeft: () => (
+  // The header is drawn here, as Edit item does, not through Stack.Screen options.
+  const header = (
+    <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
       <HeaderBackButton />
-    ),
-    headerTitle: () => (
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={styles.headerTitle} accessibilityRole="header">
         {tr('users.edit.title')}
       </Text>
-    ),
-  };
+      <View style={styles.headerSide} />
+    </View>
+  );
 
   // Loading state
   if (loading) {
     return (
-      <>
-        <Stack.Screen options={headerOptions} />
+      <View style={styles.container}>
+        {header}
         <View
-          style={[styles.container, styles.centerContainer]}
+          style={[styles.flex, styles.centerContainer]}
           accessibilityRole="progressbar"
           accessibilityLabel={tr('users.edit.loading')}
         >
           <ActivityIndicator size="large" color={t.brand.tint} />
           <Text style={styles.loadingText}>{tr('users.edit.loadingText')}</Text>
         </View>
-      </>
+      </View>
     );
   }
 
   // Error state
   if (error || !user) {
     return (
-      <>
-        <Stack.Screen options={headerOptions} />
-        <View style={[styles.container, styles.centerContainer]} accessibilityRole="alert">
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.flex, styles.centerContainer]} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
           <Text style={styles.errorTitle} accessibilityRole="header">
             {tr('users.edit.errorTitle')}
@@ -425,7 +458,7 @@ export default function UserEditScreen() {
             <Text style={styles.retryButtonText}>{tr('common.retry')}</Text>
           </Pressable>
         </View>
-      </>
+      </View>
     );
   }
 
@@ -434,169 +467,192 @@ export default function UserEditScreen() {
   const roleLocked = !canEdit;
 
   return (
-    <GestureHandlerRootView style={styles.flex}>
-      <Stack.Screen options={headerOptions} />
+    <View style={styles.container}>
+      {header}
 
       <ScrollView
-        style={styles.container}
+        style={styles.flex}
         contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}
       >
         {/* User Info Card */}
-        <View style={styles.card} accessible accessibilityLabel={`${displayName}, ${formatMobile(user.mobile)}`}>
+        <View style={styles.card} accessible accessibilityLabel={user.is_service_account ? displayName : `${displayName}, ${formatMobile(user.mobile)}`}>
           <View style={styles.userHeader}>
             <Avatar name={displayName} id={user.id} size="lg" style={styles.avatar} />
             <View style={styles.flex}>
               <Text style={styles.userName}>{displayName}</Text>
-              <Text style={styles.userMobile}>{formatMobile(user.mobile)}</Text>
+              {/* A connection has a placeholder number; the Users list hides it too (G-34). */}
+              {!user.is_service_account && <Text style={styles.userMobile}>{formatMobile(user.mobile)}</Text>}
             </View>
           </View>
         </View>
 
-        {/* Role Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.fields.role')}</Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.fieldRow,
-              pressed && !roleLocked && styles.rowPressed,
-            ]}
-            onPress={() => {
-              if (!roleLocked) {
-                setShowRolePicker(true);
-              }
-            }}
-            disabled={roleLocked}
-            accessibilityRole="button"
-            accessibilityLabel={tr('users.edit.roleFieldLabel', { role: roleLabel })}
-            accessibilityHint={roleLocked ? undefined : tr('users.edit.rolePickerHint')}
-            accessibilityState={{ disabled: roleLocked }}
-          >
-            <View style={styles.fieldLeft}>
-              <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
-              <Text style={styles.fieldLabel}>{tr('users.edit.roleField')}</Text>
-            </View>
-            <View style={styles.fieldRight}>
-              <StatusTag status={ROLE_TONE[selectedRole] ?? 'neutral'} label={roleLabel} icon={null} />
-              {!roleLocked && (
-                <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-              )}
-            </View>
-          </Pressable>
-          {isSelfEdit && (
-            <Text style={styles.helperText}>{tr('users.edit.ownRole')}</Text>
-          )}
-          {!canEdit && !isSelfEdit && !needsAdministrator && (
-            <Text style={styles.helperText}>{tr('users.edit.supervisorLimit')}</Text>
-          )}
-        </View>
-
-        {/* Status Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.fields.status')}</Text>
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldLeft}>
-              <Icon
-                name={isActive ? 'account-check-outline' : 'account-off-outline'}
-                size={iconSize.md}
-                color={isActive ? t.status.positive.text : t.status.negative.text}
-              />
-              <View style={styles.flex}>
-                <Text style={styles.fieldLabel}>{tr(isActive ? 'common.active' : 'common.inactive')}</Text>
-                <Text style={styles.fieldSubLabel}>
-                  {tr(isActive ? 'users.edit.canUse' : 'users.edit.cannotUse')}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={isActive}
-              onValueChange={handleStatusToggle}
-              disabled={roleLocked || saving}
-              trackColor={{ false: t.control.trackOff, true: t.status.positive.element }}
-              thumbColor={t.control.thumb}
-              ios_backgroundColor={t.control.trackOff}
-              style={(roleLocked || saving) && styles.disabled}
-              accessibilityLabel={tr('users.edit.accountActive')}
-              accessibilityState={{ checked: isActive, disabled: roleLocked || saving }}
-            />
-          </View>
-          {isSelfEdit && (
-            <Text style={styles.helperText}>{tr('users.edit.ownStatus')}</Text>
-          )}
-          {needsAdministrator && (
-            <Text style={styles.helperText}>{tr('users.edit.needsAdministrator')}</Text>
-          )}
-        </View>
-
-        {/* Customer Assignments Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, styles.sectionTitleInline]} accessibilityRole="header">
-              {tr('users.edit.assignments')}
-            </Text>
-            {canChangeAssignments && (
-              <Pressable
-                style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-                onPress={() => setShowCustomerSearch(true)}
+        {user.is_service_account ? (
+          // A connection (the FAS sync) is set up elsewhere: no role, status or customers to change here.
+          <View style={styles.section}>
+            <Text style={styles.managedText}>{tr('users.edit.managedByConnection')}</Text>
+            {isActive && (
+              <Button
+                type="secondary"
+                variant="negative"
                 disabled={saving}
-                accessibilityRole="button"
-                accessibilityLabel={tr('users.edit.assignCustomer')}
-                accessibilityState={{ disabled: saving }}
+                onPress={() => {
+                  const name = user.name || tr('users.thisUser');
+                  showAlert(tr('users.edit.disconnectTitle', { name }), tr('users.edit.disconnectMessage'), [
+                    { text: tr('common.cancel'), style: 'cancel' },
+                    { text: tr('users.edit.disconnectAction'), style: 'destructive', onPress: () => { void disconnect(); } },
+                  ]);
+                }}
               >
-                <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
-                <Text style={styles.addButtonText}>{tr('common.add')}</Text>
-              </Pressable>
+                {tr('users.edit.disconnectAction')}
+              </Button>
+            )}
+          </View>
+        ) : (
+          <>
+          {/* Role Section */}
+          <View style={styles.section}>
+            <SectionHeader title={tr('users.fields.role')} style={styles.sectionHeader} />
+            <Pressable
+              style={({ pressed }) => [
+                styles.fieldRow,
+                pressed && !roleLocked && styles.rowPressed,
+              ]}
+              onPress={() => {
+                if (!roleLocked) {
+                  setShowRolePicker(true);
+                }
+              }}
+              disabled={roleLocked}
+              accessibilityRole="button"
+              accessibilityLabel={tr('users.edit.roleFieldLabel', { role: roleLabel })}
+              accessibilityHint={roleLocked ? undefined : tr('users.edit.rolePickerHint')}
+              accessibilityState={{ disabled: roleLocked }}
+            >
+              <View style={styles.fieldLeft}>
+                <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.fieldLabel}>{tr('users.edit.roleField')}</Text>
+              </View>
+              <View style={styles.fieldRight}>
+                <StatusTag status={ROLE_TONE[selectedRole] ?? 'neutral'} label={roleLabel} icon={null} />
+                {!roleLocked && (
+                  <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+                )}
+              </View>
+            </Pressable>
+            {isSelfEdit && (
+              <Text style={styles.helperText}>{tr('users.edit.ownRole')}</Text>
+            )}
+            {!canEdit && !isSelfEdit && !needsAdministrator && (
+              <Text style={styles.helperText}>{tr('users.edit.supervisorLimit')}</Text>
             )}
           </View>
 
-          {assignedCustomers.length === 0 ? (
-            <View style={styles.emptyAssignments}>
-              <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
-              <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
-              {canChangeAssignments && (
-                <Text style={styles.emptySubText}>{tr('users.edit.addHint')}</Text>
-              )}
+          {/* Status Section */}
+          <View style={styles.section}>
+            <SectionHeader title={tr('users.fields.status')} style={styles.sectionHeader} />
+            <View style={styles.fieldRow}>
+              <View style={styles.fieldLeft}>
+                <Icon
+                  name={isActive ? 'account-check-outline' : 'account-off-outline'}
+                  size={iconSize.md}
+                  color={isActive ? t.status.positive.text : t.status.negative.text}
+                />
+                <View style={styles.flex}>
+                  <Text style={styles.fieldLabel}>{tr(isActive ? 'common.active' : 'common.inactive')}</Text>
+                  <Text style={styles.fieldSubLabel}>
+                    {tr(isActive ? 'users.edit.canUse' : 'users.edit.cannotUse')}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={isActive}
+                onValueChange={handleStatusToggle}
+                disabled={roleLocked || saving}
+                trackColor={{ false: t.control.trackOff, true: t.status.positive.element }}
+                thumbColor={t.control.thumb}
+                ios_backgroundColor={t.control.trackOff}
+                style={(roleLocked || saving) && styles.disabled}
+                accessibilityLabel={tr('users.edit.accountActive')}
+                accessibilityState={{ checked: isActive, disabled: roleLocked || saving }}
+              />
             </View>
-          ) : (
-            <View style={styles.assignmentsList}>
-              {assignedCustomers.map((customer, index) => {
-                const meta = [
-                  customer.customer_mobile && formatMobile(customer.customer_mobile),
-                  customer.customer_city,
-                ]
-                  .filter(Boolean)
-                  .join(' · ');
-                return (
-                  <View
-                    key={customer.customer_id}
-                    style={[
-                      styles.assignmentItem,
-                      index === assignedCustomers.length - 1 && styles.assignmentItemLast,
-                    ]}
-                  >
-                    <View style={styles.flex} accessible accessibilityLabel={meta ? `${customer.customer_name}, ${meta}` : customer.customer_name}>
-                      <Text style={styles.assignmentName}>{customer.customer_name}</Text>
-                      {!!meta && <Text style={styles.assignmentMeta}>{meta}</Text>}
+            {isSelfEdit && (
+              <Text style={styles.helperText}>{tr('users.edit.ownStatus')}</Text>
+            )}
+            {needsAdministrator && (
+              <Text style={styles.helperText}>{tr('users.edit.needsAdministrator')}</Text>
+            )}
+          </View>
+
+          {/* Customer Assignments Section */}
+          <View style={styles.section}>
+            <SectionHeader
+              title={tr('users.edit.assignments')}
+              style={styles.sectionHeader}
+              action={
+                canChangeAssignments
+                  ? {
+                      label: tr('common.add'),
+                      onPress: () => {
+                        if (!saving) setShowCustomerSearch(true);
+                      },
+                      accessibilityLabel: tr('users.edit.assignCustomer'),
+                    }
+                  : undefined
+              }
+            />
+
+            {assignedCustomers.length === 0 ? (
+              <View style={styles.emptyAssignments}>
+                <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
+                <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
+                {canChangeAssignments && (
+                  <Text style={styles.emptySubText}>{tr('users.edit.addHint')}</Text>
+                )}
+              </View>
+            ) : (
+              <View style={styles.assignmentsList}>
+                {assignedCustomers.map((customer, index) => {
+                  const meta = [
+                    customer.customer_mobile && formatMobile(customer.customer_mobile),
+                    customer.customer_city,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <View
+                      key={customer.customer_id}
+                      style={[
+                        styles.assignmentItem,
+                        index === assignedCustomers.length - 1 && styles.assignmentItemLast,
+                      ]}
+                    >
+                      <View style={styles.flex} accessible accessibilityLabel={meta ? `${customer.customer_name}, ${meta}` : customer.customer_name}>
+                        <Text style={styles.assignmentName}>{customer.customer_name}</Text>
+                        {!!meta && <Text style={styles.assignmentMeta}>{meta}</Text>}
+                      </View>
+                      {canChangeAssignments && (
+                        <Pressable
+                          style={({ pressed }) => [styles.removeButton, pressed && styles.rowPressed]}
+                          onPress={() =>
+                            handleRemoveCustomer(customer.customer_id, customer.customer_name)
+                          }
+                          disabled={saving}
+                          accessibilityRole="button"
+                          accessibilityLabel={tr('users.edit.removeLabel', { name: customer.customer_name })}
+                          accessibilityState={{ disabled: saving }}
+                        >
+                          <Icon name="close" size={iconSize.md} color={t.status.negative.text} />
+                        </Pressable>
+                      )}
                     </View>
-                    {canChangeAssignments && (
-                      <Pressable
-                        style={({ pressed }) => [styles.removeButton, pressed && styles.rowPressed]}
-                        onPress={() =>
-                          handleRemoveCustomer(customer.customer_id, customer.customer_name)
-                        }
-                        disabled={saving}
-                        accessibilityRole="button"
-                        accessibilityLabel={tr('users.edit.removeLabel', { name: customer.customer_name })}
-                        accessibilityState={{ disabled: saving }}
-                      >
-                        <Icon name="close" size={iconSize.md} color={t.status.negative.text} />
-                      </Pressable>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+          </>
+        )}
 
         {/* Saving Indicator */}
         {saving && (
@@ -630,7 +686,7 @@ export default function UserEditScreen() {
         emptyInitialText={tr('users.edit.searchEmpty')}
         emptySubText={tr('users.edit.searchHint')}
       />
-    </GestureHandlerRootView>
+    </View>
   );
 }
 
@@ -652,10 +708,25 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.xxl,
     gap: space.sm,
   },
-  title: {
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingBottom: space.xs,
+    paddingHorizontal: space.sm,
+    gap: space.xs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  headerTitle: {
     ...typography.headline,
-    color: t.text.primary,
+    flex: 1,
     textAlign: 'center' as const,
+    color: t.text.primary,
+  },
+  // Same width as the Back button, so the title is centred.
+  headerSide: {
+    width: 80,
   },
   loadingText: {
     ...typography.subhead,
@@ -718,24 +789,11 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   section: {
-    marginTop: space.xxl,
     marginHorizontal: layout.marginCompact,
   },
+  // SectionHeader brings its own space above; the section already has the side margin.
   sectionHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-  },
-  sectionTitle: {
-    ...typography.footnote,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
-    marginBottom: space.sm,
-  },
-  sectionTitleInline: {
-    marginBottom: 0,
-    flex: 1,
+    paddingHorizontal: 0,
   },
   fieldRow: {
     flexDirection: 'row' as const,
@@ -774,26 +832,15 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     marginTop: space.xxs,
   },
+  managedText: {
+    ...typography.body,
+    color: t.text.secondary,
+    marginTop: space.xxl,
+  },
   helperText: {
     ...typography.footnote,
     color: t.text.secondary,
     marginTop: space.sm,
-  },
-  addButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    borderRadius: radius.button,
-  },
-  addButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  addButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
   emptyAssignments: {
     alignItems: 'center' as const,

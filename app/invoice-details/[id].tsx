@@ -513,7 +513,7 @@ function InvoiceDetailScreen() {
                 : tr('invoice.print.sent')
             );
           } else {
-            setSnackbarMessage(tr('invoice.print.failed'));
+            setSnackbarMessage(tr(result.unconfirmed ? 'invoice.print.unconfirmed' : 'invoice.print.failed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

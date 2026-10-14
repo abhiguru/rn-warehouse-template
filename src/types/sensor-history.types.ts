@@ -26,6 +26,11 @@ export interface SensorHistoryData {
   aggregation_interval: string;
   readings: SensorHistoryReading[];
   summary: SensorHistorySummary;
+  /**
+   * How many raw readings the summary's lowest, average and highest are of (the server's
+   * `metadata.raw_reading_count`). `summary.total_readings` counts the chart's points instead.
+   */
+  raw_reading_count?: number;
 }
 
 export interface SensorHistoryMetadata {

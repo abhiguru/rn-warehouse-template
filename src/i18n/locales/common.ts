@@ -78,7 +78,7 @@ const gu: CommonWords = {
     month: same('મહિનો'),
     unit: same('નંગ'),
     price: same('દર'),
-    user: same('વપરાશકર્તા'),
+    user: same('યુઝર'),
     filter: same('ફિલ્ટર'),
     result: same('પરિણામ'),
   },

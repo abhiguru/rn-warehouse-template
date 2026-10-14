@@ -6,14 +6,13 @@ import { setLanguage, t } from '..';
 import { gujaratiCalendar } from '../calendar';
 import { en } from '../locales/en';
 import { gu } from '../locales/gu';
+import { commonWords } from '../locales/common';
 import type { Plural } from '../types';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { dispatchSteps } from '@/components/DispatchStepIndicator';
 import { invoiceSteps } from '@/components/InvoiceStepIndicator';
-import { customerSteps } from '@/features/customer/customerStepLabels';
 import { GRN_STEP_COUNT } from '@/constants/grnSteps';
 import { DISPATCH_STEP_COUNT } from '@/constants/dispatchSteps';
-import { CUSTOMER_TOTAL_STEPS } from '@/constants/customerSteps';
 
 jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn(), useAppSelector: () => undefined }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -35,8 +34,8 @@ const GUJARATI = new Map(flatten(gu));
 describe('one word per idea', () => {
   it('names the review step ચકાસણી in every wizard', () => {
     setLanguage('gu');
-    expect([t('grn.steps.review'), t('dispatch.steps.review'), t('invoice.steps.review'), t('customers.steps.review.shortLabel'), t('customers.review.title')])
-      .toEqual(Array(5).fill('ચકાસણી'));
+    expect([t('grn.steps.review'), t('dispatch.steps.review'), t('invoice.steps.review')])
+      .toEqual(Array(3).fill('ચકાસણી'));
     expect(t('invoice.review.title')).toBe('ઇન્વૉઇસની ચકાસણી');
   });
 
@@ -53,6 +52,14 @@ describe('one word per idea', () => {
     const replaced = /સમીક્ષા|ઝાંખી|સંબંધિત લોકો|ભાવ|હજી|જોબ|વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન ઇન|સાઇન આઉટ|ડિસ્કાઉન્ટ|રાઉન્ડ ઑફ|ડેશબોર્ડ|રીડિંગ/;
     const found = [...GUJARATI].filter(([key, value]) => replaced.test(asString(value)) || (/બોરી/.test(asString(value)) && key !== "items.form.packagingPlaceholder")).map(([key]) => key);
     expect(found).toEqual([]);
+  });
+
+  it('keeps the replaced words out of the formatter nouns too (commonWords)', () => {
+    const replaced = /વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન ઇન|સાઇન આઉટ|ડિસ્કાઉન્ટ|રીડિંગ|બોરી/;
+    const words = commonWords('gu');
+    const found = Object.entries(words.nouns).filter(([, forms]) => forms.some(form => replaced.test(form))).map(([noun]) => noun);
+    expect(found).toEqual([]);
+    expect(words.nouns.user).toEqual(['યુઝર', 'યુઝર']);
   });
 
   it('calls the customer વેપારી everywhere, never ગ્રાહક', () => {
@@ -77,19 +84,17 @@ describe('one word per idea', () => {
       'grn': 'the bottom tab (આવક) and a narrow column (also આવક since the wording review); the full name is આવક પાવતી',
       'order': 'a customer order and the sort order (ક્રમ)',
       'invoices': 'the bottom tab only is બિલ: glossary',
-      'from {{from}}': 'a filter chip and "valid from" on a price',
       'recent': 'agrees with a different noun in each place',
       'latest {{date}}': 'agrees with the document: the latest GRN (પાવતી, feminine) and the latest invoice',
       'from': 'start date and start number: glossary rule 4',
       'to': 'end date and end number: glossary rule 4',
       'dispatched': 'the label beside a count, an order status (જાવક થઈ) and a report column',
-      'base': 'the base amount of an invoice line and the base band of a price',
       'remove {{name}}?': 'an item (feminine) and a person',
       'deactivate {{name}}?': 'an item (feminine) and a person',
-      'it may have been deleted.': 'an item (feminine) and a price (masculine)',
       'of {{total}}': 'a fragment that sits in a different sentence in each place',
+      '{{name}} added.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
+      '{{name}} saved.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       'critical': 'a sensor status and a battery level',
-      'cancel customer': 'the create and the edit form: English has one text for both',
     };
     const groups = new Map<string, Map<string, string[]>>();
     for (const [key, value] of ENGLISH) {
@@ -139,17 +144,14 @@ describe('wizard step names have one source each', () => {
     expect(grnSteps().map(step => step.label)).toEqual(['GRN details', 'Items', 'Review']);
     expect(dispatchSteps().map(step => step.label)).toEqual(['Dispatch details', 'Items', 'Review']);
     expect(invoiceSteps().map(step => step.label)).toEqual(['Details', 'Items', 'Review']);
-    expect(customerSteps().map(step => step.label)).toEqual(['Basic information', 'Address and tax details', 'Documents and review']);
     setLanguage('gu');
     expect(grnSteps().map(step => step.label)).toEqual(['આવક પાવતીની વિગતો', 'આઇટમ', 'ચકાસણી']);
     expect(dispatchSteps().map(step => step.label)).toEqual(['જાવકની વિગતો', 'આઇટમ', 'ચકાસણી']);
     expect(invoiceSteps().map(step => step.label)).toEqual(['વિગતો', 'આઇટમ', 'ચકાસણી']);
-    expect(customerSteps().map(step => step.shortLabel)).toEqual(['મુખ્ય માહિતી', 'વિગતો', 'ચકાસણી']);
   });
 
   it('matches the step counts kept with the step numbers', () => {
     expect(grnSteps()).toHaveLength(GRN_STEP_COUNT);
     expect(dispatchSteps()).toHaveLength(DISPATCH_STEP_COUNT);
-    expect(customerSteps()).toHaveLength(CUSTOMER_TOTAL_STEPS);
   });
 });

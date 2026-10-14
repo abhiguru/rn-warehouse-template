@@ -73,6 +73,7 @@ import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { AlertHost } from '@/components/AlertHost';
+import { ToastHost } from '@/components/ToastHost';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
@@ -491,6 +492,7 @@ function ThemedContent() {
                 </BelowOfflineBanner>
               </BottomSheetModalProvider>
               <AlertHost />
+              <ToastHost />
             </GestureHandlerRootView>
           </SafeAreaProvider>
         </PaperProvider>

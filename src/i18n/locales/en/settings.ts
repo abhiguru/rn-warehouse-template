@@ -4,10 +4,10 @@ export const settings = {
   profileHint: 'Opens your profile',
   features: {
     title: 'Warehouse tools',
-    customersSubtitle: 'Manage customer accounts',
-    enrollmentReviewSubtitle: 'Approve verified customers and assign access',
-    itemsSubtitle: 'Manage inventory items',
-    usersSubtitle: 'Manage user accounts',
+    customersSubtitle: 'Farmers and traders you store goods for',
+    enrollmentReviewSubtitle: 'Approve people who asked to use this facility',
+    itemsSubtitle: 'Produce you store, like potatoes or garlic',
+    usersSubtitle: 'People who can sign in, their role and customers',
     itemPricing: 'Item pricing',
     itemPricingSubtitle: 'View and manage prices',
     sensors: 'Temperature and humidity',
@@ -40,9 +40,9 @@ export const settings = {
       'The language stays on this phone for everyone who signs in here. Your choice also goes with your account to a phone where no language is chosen.',
   },
   brand: {
-    title: 'Brand',
+    title: 'App colours',
     footer: 'Colours for the whole app. Works with light and dark mode.',
-    optionLabel: '{{brand}} brand',
+    optionLabel: '{{brand}} colours',
     orange: 'Orange',
     gcsa: 'GCSA navy',
   },
@@ -67,8 +67,8 @@ export const settings = {
     styleGuideSubtitle: 'Tokens and components in the current brand and mode',
   },
   footer: {
-    version: 'Management System v{{version}}',
-    versionBuild: 'Management System v{{version}} (build {{build}})',
+    version: 'Version {{version}}',
+    versionBuild: 'Version {{version}} (build {{build}})',
   },
   deleteAccount: {
     warningTitle: 'Delete your account?',
@@ -78,6 +78,10 @@ export const settings = {
     confirmMessage: 'Enter the mobile number on your account to delete it.',
     phonePlaceholder: '10-digit mobile number',
     mismatch: "This number doesn't match your account. Check it and try again.",
+    onlyAdminTitle: "You're the only administrator",
+    onlyAdminMessage:
+      'Make another person an administrator in Users first, then delete your account.',
+    openUsers: 'Open Users',
     failed: "Couldn't delete your account. Check your connection and try again.",
     // Central login: the account at one facility; {{facility}} is its name.
     centralWarningTitle: 'Delete your account at {{facility}}?',
@@ -103,6 +107,12 @@ export const settings = {
     shareHint: 'Opens the share sheet. No passwords, codes or personal details are included.',
   },
   // The Help screen (app/help.tsx). The Settings row that opens it has its own keys.
+  // Change warehouse server (inside Settings): the server in use and what to enter.
+  server: {
+    rowSubtitle: 'Now using {{facility}}',
+    inUse: 'In use now',
+    help: 'Enter the address of the other server (it starts with https://), or scan its QR code.',
+  },
   help: {
     // The "Help and about" section of Settings and its Help row.
     sectionTitle: 'Help and about',
@@ -114,11 +124,14 @@ export const settings = {
     serverLabel: 'Server address',
     askTitle: 'Getting help',
     askAdmin: 'For help with the app or your account, ask an administrator of your facility.',
+    // An administrator has nobody at the facility to ask: the details below go to whoever set up the server.
+    askAdminSelf:
+      "You are this facility's administrator. For problems with the app, share the details below with whoever set up your server.",
     noContact: "The app has no support contact details of its own. Your facility's office can tell you who to ask.",
     rolesTitle: 'Roles',
     yourRole: 'Your role: {{role}}',
     changesTitle: 'When something changes',
-    newPhone: "New phone: install the app, enter your facility's address and sign in with your mobile number. The code comes by SMS.",
+    newPhone: "New phone: install the app, enter your cold storage's server address (it starts with https://) or scan its QR code, and sign in with your mobile number. The code comes by SMS.",
     // Central login builds
     newPhoneCentral: 'New phone: install the app, sign in with your association sign-in, then open your facility from My facilities.',
     newNumber: 'New mobile number: you sign in with your number, and the app cannot change it. Ask an administrator of your facility what to do.',

@@ -40,6 +40,12 @@ import { SavedInvoiceData } from '@/types/invoice.types';
 import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
+
+// The invoice's own financial year ("2025-26" -> 2025): numbers restart every April.
+const printFinYear = (finYear: string): number | undefined => {
+  const year = parseInt(finYear.split('-')[0], 10);
+  return Number.isFinite(year) ? year : undefined;
+};
 const makeHeaderStyles = (t: ThemeTokens) => ({
   header: {
     paddingHorizontal: layout.marginCompact,
@@ -346,7 +352,7 @@ export default function InvoiceFormStep4() {
           router.replace('/invoices');
         }}
         onConfirm={async (start, end) => {
-          const result = await printInvoiceRange(start, end);
+          const result = await printInvoiceRange(start, end, printFinYear(header.inv_fin_year));
           setShowPrintDialog(false);
           if (result.success) {
             setSnackbarMessage(
@@ -355,7 +361,7 @@ export default function InvoiceFormStep4() {
                 : tr('invoice.print.sentOne', { number: formatIdentifier(start) })
             );
           } else {
-            setSnackbarMessage(tr('invoice.print.failed'));
+            setSnackbarMessage(tr(result.unconfirmed ? 'invoice.print.unconfirmed' : 'invoice.print.failed'));
           }
           setSnackbarVisible(true);
           resetFormState();

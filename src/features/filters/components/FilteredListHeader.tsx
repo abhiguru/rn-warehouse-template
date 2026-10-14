@@ -107,7 +107,7 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
             style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             onPress={() => router.push('/settings')}
             accessibilityRole="button"
-            accessibilityLabel={translate('common.openSettings')}
+            accessibilityLabel={translate('common.toolsAndSettings')}
           >
             <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>

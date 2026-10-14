@@ -208,6 +208,41 @@ const invoiceFormSlice = createSlice({
       state.header.total = headerTotals.total;
     },
 
+    // Set the rates a saved rate form gives to the lines it concerns. This is not a typed edit:
+    // a rate typed on the line itself (marked in itemOverrides) is kept, and no mark is added, so
+    // a later group rate still applies. A group rate shown for a field that changed is dropped.
+    applySavedRates: (
+      state,
+      action: PayloadAction<Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }>>
+    ) => {
+      const changedGroups: Array<{ key: string; fields: Array<'charge' | 'labour_rate' | 'tax'> }> = [];
+      action.payload.forEach(rates => {
+        const index = state.items.findIndex(item => item.temp_id === rates.temp_id);
+        if (index === -1) return;
+        const item = state.items[index];
+        const overrides = state.itemOverrides[rates.temp_id] || [];
+        const values: Partial<EditedItemValues> = {};
+        (['charge', 'labour_rate', 'tax'] as const).forEach(field => {
+          if (!overrides.includes(field) && item[field] !== rates[field]) values[field] = rates[field];
+        });
+        const fields = Object.keys(values) as Array<'charge' | 'labour_rate' | 'tax'>;
+        if (fields.length === 0) return;
+        state.items[index] = recalculateItemWithEdits(item, values);
+        state.editedItems[rates.temp_id] = { ...state.editedItems[rates.temp_id], ...values };
+        changedGroups.push({ key: `${item.item_id}:::${item.package_mark}`, fields });
+      });
+      changedGroups.forEach(({ key, fields }) => {
+        const applied = state.bulkPricing[key];
+        if (!applied) return;
+        fields.forEach(field => { delete applied[field]; });
+      });
+
+      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      state.header.labour = headerTotals.labour;
+      state.header.tax_amount = headerTotals.tax_amount;
+      state.header.total = headerTotals.total;
+    },
+
     // Set rates for all dispatches of an item group (item_id + package_mark).
     // Only the rates in `pricing` are set: a group field that was not typed
     // leaves that rate on every line as it is. So changing the group tax of a
@@ -472,6 +507,7 @@ export const {
   updateEditedItem,
   bulkUpdateItemPricing,
   bulkUpdateItemGroupPricing,
+  applySavedRates,
   updateDiscount,
   recalculateTotals,
   setCurrentStep,

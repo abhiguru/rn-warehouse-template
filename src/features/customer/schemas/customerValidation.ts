@@ -1,14 +1,17 @@
 /**
  * Customer Form Validation Schemas
  *
- * Yup validation schemas for the multi-step customer form.
- * Includes step-by-step validation and helper functions.
+ * Yup validation schemas for the one-page customer form: basic information
+ * and details (address, tax, contact person).
  */
 
 import * as yup from 'yup';
 import { CustomerFormData, CustomerValidationErrors } from '@/types/customer.types';
 import { normalizeDigits, t } from '@/i18n';
 import { nationalMobileDigits } from '@/utils/formatters';
+
+/** The twelve text fields of the one-page customer form. */
+export type CustomerFormFields = Omit<CustomerFormData, 'document_urls' | 'document_images' | 'image_urls' | 'customer_images'>;
 
 // Messages are functions so that each one is read in the language of the moment it is shown.
 const maxLength = (max: number) => () => t('customers.validation.maxLength', { max });
@@ -47,7 +50,7 @@ const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
 const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 
 // =============================================================================
-// STEP 1: BASIC INFO SCHEMA
+// BASIC INFO SCHEMA
 // =============================================================================
 
 export const basicInfoSchema = yup.object().shape({
@@ -55,7 +58,7 @@ export const basicInfoSchema = yup.object().shape({
     .string()
     .required(() => t('customers.validation.nameRequired'))
     .min(2, () => t('customers.validation.minLength', { min: 2 }))
-    .max(200, maxLength(200))
+    .max(80, maxLength(80))
     .trim(),
 
   mobile: yup
@@ -78,7 +81,7 @@ export const basicInfoSchema = yup.object().shape({
 });
 
 // =============================================================================
-// STEP 2: DETAILS SCHEMA
+// DETAILS SCHEMA
 // =============================================================================
 
 export const detailsSchema = yup.object().shape({
@@ -87,7 +90,7 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(50, maxLength(50)),
+    .max(25, maxLength(25)),
 
   state: yup
     .string()
@@ -108,7 +111,7 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(500, maxLength(500)),
+    .max(300, maxLength(300)),
 
   // Tax fields (optional with format validation)
   gst: yup
@@ -157,62 +160,13 @@ export const detailsSchema = yup.object().shape({
 });
 
 // =============================================================================
-// STEP 3: DOCUMENTS SCHEMA (mostly optional)
-// =============================================================================
-
-export const documentsSchema = yup.object().shape({
-  document_urls: yup
-    .array()
-    .of(
-      yup.string().test('valid-url', () => t('customers.validation.documentLinkInvalid'), (value) => {
-        if (!value) return true;
-        // Allow http/https URLs and local file URIs
-        return /^(https?:\/\/|file:\/\/\/)/.test(value);
-      })
-    )
-    .max(10, () => t('customers.validation.maxDocuments', { max: 10 })),
-
-  document_images: yup
-    .array()
-    .max(10, () => t('customers.validation.maxDocuments', { max: 10 })),
-
-  image_urls: yup
-    .array()
-    .of(
-      yup.string().test('valid-url', () => t('customers.validation.imageLinkInvalid'), (value) => {
-        if (!value) return true;
-        // Allow http/https URLs and local file URIs
-        return /^(https?:\/\/|file:\/\/\/)/.test(value);
-      })
-    )
-    .max(10, () => t('customers.validation.maxImages', { max: 10 })),
-
-  customer_images: yup
-    .array()
-    .max(10, () => t('customers.validation.maxImages', { max: 10 })),
-});
-
-// =============================================================================
-// FULL CUSTOMER SCHEMA
-// =============================================================================
-
-export const fullCustomerSchema = yup.object().shape({
-  // Step 1 fields
-  ...basicInfoSchema.fields,
-  // Step 2 fields
-  ...detailsSchema.fields,
-  // Step 3 fields
-  ...documentsSchema.fields,
-});
-
-// =============================================================================
 // VALIDATION HELPERS
 // =============================================================================
 
 /**
- * Validate step 1 (basic info)
+ * Validate the basic information (name, mobile, email)
  */
-export async function validateStep1(
+export async function validateBasicInfo(
   data: Pick<CustomerFormData, 'name' | 'mobile' | 'email'>
 ): Promise<{ isValid: boolean; errors: CustomerValidationErrors }> {
   try {
@@ -222,7 +176,8 @@ export async function validateStep1(
     if (error instanceof yup.ValidationError) {
       const errors: CustomerValidationErrors = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        // Keep the first message per field (required is reported before min).
+        if (err.path && !errors[err.path as keyof CustomerValidationErrors]) {
           errors[err.path as keyof CustomerValidationErrors] = err.message;
         }
       });
@@ -233,9 +188,9 @@ export async function validateStep1(
 }
 
 /**
- * Validate step 2 (details)
+ * Validate the details (address, tax, contact person)
  */
-export async function validateStep2(
+export async function validateDetails(
   data: Pick<
     CustomerFormData,
     | 'city'
@@ -256,116 +211,14 @@ export async function validateStep2(
     if (error instanceof yup.ValidationError) {
       const errors: CustomerValidationErrors = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        // Keep the first message per field (required is reported before min).
+        if (err.path && !errors[err.path as keyof CustomerValidationErrors]) {
           errors[err.path as keyof CustomerValidationErrors] = err.message;
         }
       });
       return { isValid: false, errors };
     }
     throw error;
-  }
-}
-
-/**
- * Validate step 3 (documents)
- */
-export async function validateStep3(
-  data: Pick<CustomerFormData, 'document_urls' | 'document_images'>
-): Promise<{ isValid: boolean; errors: CustomerValidationErrors }> {
-  try {
-    await documentsSchema.validate(data, { abortEarly: false });
-    return { isValid: true, errors: {} };
-  } catch (error) {
-    if (error instanceof yup.ValidationError) {
-      const errors: CustomerValidationErrors = {};
-      error.inner.forEach((err) => {
-        if (err.path) {
-          errors[err.path as keyof CustomerValidationErrors] = err.message;
-        }
-      });
-      return { isValid: false, errors };
-    }
-    throw error;
-  }
-}
-
-/**
- * Validate entire form
- */
-export async function validateFullForm(
-  data: CustomerFormData
-): Promise<{ isValid: boolean; errors: CustomerValidationErrors }> {
-  try {
-    await fullCustomerSchema.validate(data, { abortEarly: false });
-    return { isValid: true, errors: {} };
-  } catch (error) {
-    if (error instanceof yup.ValidationError) {
-      const errors: CustomerValidationErrors = {};
-      error.inner.forEach((err) => {
-        if (err.path) {
-          errors[err.path as keyof CustomerValidationErrors] = err.message;
-        }
-      });
-      return { isValid: false, errors };
-    }
-    throw error;
-  }
-}
-
-/**
- * Validate a specific step by step number
- */
-export async function validateStep(
-  step: number,
-  data: CustomerFormData
-): Promise<{ isValid: boolean; errors: CustomerValidationErrors }> {
-  switch (step) {
-    case 1:
-      return validateStep1({
-        name: data.name,
-        mobile: data.mobile,
-        email: data.email,
-      });
-    case 2:
-      return validateStep2({
-        city: data.city,
-        state: data.state,
-        pincode: data.pincode,
-        address: data.address,
-        gst: data.gst,
-        pan: data.pan,
-        contact_name: data.contact_name,
-        contact_mobile: data.contact_mobile,
-        contact_email: data.contact_email,
-      });
-    case 3:
-      return validateStep3({
-        document_urls: data.document_urls,
-        document_images: data.document_images,
-      });
-    default:
-      return { isValid: true, errors: {} };
-  }
-}
-
-/**
- * Validate a single field
- */
-export async function validateField(
-  field: keyof CustomerFormData,
-  value: any
-): Promise<string | null> {
-  try {
-    const schema = fullCustomerSchema.fields[field];
-    if (schema) {
-      await (schema as yup.Schema).validate(value);
-    }
-    return null;
-  } catch (error) {
-    if (error instanceof yup.ValidationError) {
-      return error.message;
-    }
-    return null;
   }
 }
 

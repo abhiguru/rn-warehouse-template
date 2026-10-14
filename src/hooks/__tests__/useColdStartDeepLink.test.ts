@@ -1,7 +1,7 @@
 import React from 'react';
 import { Linking } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { usePathname, useRouter } from 'expo-router';
+import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 import { parseDeepLinkUrl, useColdStartDeepLink } from '../useColdStartDeepLink';
 
@@ -9,6 +9,7 @@ jest.mock('@/store/hooks', () => ({ useAppSelector: jest.fn() }));
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(),
   usePathname: jest.fn(),
+  useGlobalSearchParams: jest.fn(),
 }));
 
 describe('parseDeepLinkUrl', () => {
@@ -73,6 +74,7 @@ describe('useColdStartDeepLink warm links', () => {
     urlListener = undefined;
     (useRouter as jest.Mock).mockReturnValue({ replace });
     (usePathname as jest.Mock).mockReturnValue('/(tabs)');
+    (useGlobalSearchParams as jest.Mock).mockReturnValue({});
     (useAppSelector as jest.Mock).mockReturnValue({
       userProfile: { id: 'admin-user' },
       isLoading: false,
@@ -111,8 +113,9 @@ describe('useColdStartDeepLink warm links', () => {
   });
 
   it('does not open again a link with a query that expo-router has already opened (A26)', async () => {
-    // expo-router has pushed the report: the path is shown, without its query.
+    // expo-router has pushed the report: the path is shown, with the link's query as its params.
     (usePathname as jest.Mock).mockReturnValue('/reports/stock-aging');
+    (useGlobalSearchParams as jest.Mock).mockReturnValue({ customerId: 'customer-17' });
     await act(async () => {
       renderer = create(React.createElement(Harness));
       await Promise.resolve();
@@ -140,6 +143,21 @@ describe('useColdStartDeepLink warm links', () => {
     });
 
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('opens a link to the screen shown with another query (another customer)', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/reports/stock-aging');
+    (useGlobalSearchParams as jest.Mock).mockReturnValue({ customerId: 'customer-5' });
+    await act(async () => {
+      renderer = create(React.createElement(Harness));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      urlListener?.({ url: 'warehousemanager://reports/stock-aging?customerId=customer-17' });
+    });
+
+    expect(replace).toHaveBeenCalledWith('/reports/stock-aging?customerId=customer-17');
   });
 
   it('still opens a link with a query whose path is not the one shown', async () => {

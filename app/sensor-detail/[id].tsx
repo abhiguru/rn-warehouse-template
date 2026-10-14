@@ -23,6 +23,7 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -42,7 +43,7 @@ import {
 } from '@/theme/tokens';
 import type { SensorHistoryPeriod, SensorHistorySummary } from '@/types/sensor-history.types';
 import { formatDateTime } from '@/utils/formatters';
-import { localizeDigits, t as tr } from '@/i18n';
+import { t as tr } from '@/i18n';
 import { StatusTag } from '@/components/ui';
 import { batteryFact, chartThresholds, connectionStatus, healthStatus, readingTime } from '@/features/sensors/sensorStatus';
 import { useMinuteTick } from '@/features/sensors/useMinuteTick';
@@ -79,11 +80,8 @@ const daysOfData = (firstReadingAt: string | null | undefined, now: number): num
   return Number.isNaN(first) ? 0 : Math.floor((now - first) / DAY_MS);
 };
 
-/** Humidity statistics keep one decimal in the report summary (guide §12.3). */
-function formatHumidityStat(value: number | null | undefined): string {
-  if (value === null || value === undefined || isNaN(value)) return '—';
-  return localizeDigits(`${value.toFixed(1)}%`);
-}
+/** From this font scale the readings and the summary figures stack instead of sitting side by side. */
+const STACK_FROM_FONT_SCALE = 1.5;
 
 // ============================================================================
 // Styles
@@ -117,18 +115,6 @@ const makeStyles = (t: ThemeTokens) =>
       gap: space.md,
       ...t.shadow[2],
     },
-    heroType: {
-      ...typography.footnote,
-      color: t.text.secondary,
-    },
-    heroTitle: {
-      ...typography.title2,
-      color: t.text.primary,
-    },
-    heroLocation: {
-      ...typography.subhead,
-      color: t.text.secondary,
-    },
     tagRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -156,6 +142,9 @@ const makeStyles = (t: ThemeTokens) =>
     readingsRow: {
       flexDirection: 'row',
       gap: space.sm,
+    },
+    readingsRowStacked: {
+      flexDirection: 'column',
     },
     readingBox: {
       flex: 1,
@@ -248,6 +237,17 @@ const makeStyles = (t: ThemeTokens) =>
       flex: 1,
       alignItems: 'center',
     },
+    summaryRowStacked: {
+      flexDirection: 'column',
+      gap: space.xs,
+    },
+    summaryItemStacked: {
+      flex: 0,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: space.md,
+    },
     summaryItemLabel: {
       ...typography.footnote,
       color: t.text.secondary,
@@ -321,6 +321,7 @@ const SensorDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const stacked = useWindowDimensions().fontScale >= STACK_FROM_FONT_SCALE;
   const [selectedPeriod, setSelectedPeriod] = useState<SensorHistoryPeriod>(7);
 
   // Both asked at once on opening; a period chip asks for that period's history only.
@@ -398,14 +399,14 @@ const SensorDetailScreen: React.FC = () => {
   };
 
   const renderStat = (label: string, value: string) => (
-    <View style={styles.summaryItem} accessible accessibilityLabel={tr('sensors.statValue', { label, value })}>
+    <View style={[styles.summaryItem, stacked && styles.summaryItemStacked]} accessible accessibilityLabel={tr('sensors.statValue', { label, value })}>
       <Text style={styles.summaryItemLabel}>{label}</Text>
       <Text style={styles.summaryItemValue}>{value}</Text>
     </View>
   );
 
   // Render summary stats
-  const renderSummary = (summary: SensorHistorySummary) => (
+  const renderSummary = (summary: SensorHistorySummary, rawReadingCount: number | undefined) => (
     <View style={styles.card}>
       <Text style={styles.summaryTitle} accessibilityRole="header">
         {summaryTitle(selectedPeriod)}
@@ -416,7 +417,7 @@ const SensorDetailScreen: React.FC = () => {
           <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
           <Text style={styles.summaryLabel}>{tr('sensors.temperature')}</Text>
         </View>
-        <View style={styles.summaryRow}>
+        <View testID="sensor-summary-row-temperature" style={[styles.summaryRow, stacked && styles.summaryRowStacked]}>
           {renderStat(tr('sensors.detail.average'), formatTemperature(summary.avg_temperature))}
           {renderStat(tr('sensors.detail.lowest'), formatTemperature(summary.min_temperature))}
           {renderStat(tr('sensors.detail.highest'), formatTemperature(summary.max_temperature))}
@@ -428,15 +429,15 @@ const SensorDetailScreen: React.FC = () => {
           <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
           <Text style={styles.summaryLabel}>{tr('sensors.humidity')}</Text>
         </View>
-        <View style={styles.summaryRow}>
-          {renderStat(tr('sensors.detail.average'), formatHumidityStat(summary.avg_humidity))}
-          {renderStat(tr('sensors.detail.lowest'), formatHumidityStat(summary.min_humidity))}
-          {renderStat(tr('sensors.detail.highest'), formatHumidityStat(summary.max_humidity))}
+        <View testID="sensor-summary-row-humidity" style={[styles.summaryRow, stacked && styles.summaryRowStacked]}>
+          {renderStat(tr('sensors.detail.average'), formatHumidity(summary.avg_humidity))}
+          {renderStat(tr('sensors.detail.lowest'), formatHumidity(summary.min_humidity))}
+          {renderStat(tr('sensors.detail.highest'), formatHumidity(summary.max_humidity))}
         </View>
       </View>
 
       <Text style={styles.readingsCount}>
-        {tr('sensors.detail.basedOn', { count: summary.total_readings })}
+        {tr('sensors.detail.basedOn', { count: rawReadingCount ?? summary.total_readings })}
       </Text>
     </View>
   );
@@ -509,20 +510,12 @@ const SensorDetailScreen: React.FC = () => {
       >
         {/* Hero card */}
         <View style={styles.card}>
-          <View>
-            <Text style={styles.heroType}>{tr('sensors.sensor')}</Text>
-            <Text style={styles.heroTitle} accessibilityRole="header">
-              {device.device_name}
-            </Text>
-            <Text style={styles.heroLocation}>{device.location}</Text>
-          </View>
-
           <View style={styles.tagRow}>
             <StatusTag status={health.kind} label={health.label} />
           </View>
 
           {/* Current Readings */}
-          <View style={styles.readingsRow}>
+          <View testID="sensor-readings" style={[styles.readingsRow, stacked && styles.readingsRowStacked]}>
             <View
               style={styles.readingBox}
               accessible
@@ -569,9 +562,9 @@ const SensorDetailScreen: React.FC = () => {
         {/* Period Selector */}
         <View style={styles.periodSection}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
-            {tr('sensors.detail.history')}
+            {availablePeriods.length === 1 ? tr('sensors.detail.historyFor', { days: availablePeriods[0].days }) : tr('sensors.detail.history')}
           </Text>
-          {renderPeriodSelector()}
+          {availablePeriods.length > 1 ? renderPeriodSelector() : null}
         </View>
 
         {failure && (
@@ -608,7 +601,7 @@ const SensorDetailScreen: React.FC = () => {
             />
 
             {/* Summary */}
-            {renderSummary(historyData.summary)}
+            {renderSummary(historyData.summary, historyData.raw_reading_count)}
           </>
         ) : null}
       </ScrollView>

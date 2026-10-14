@@ -170,6 +170,12 @@ describe('Sign out on My facilities', () => {
     expect(await loadMyFacilities('asha')).toHaveLength(1);
   });
 
+  it('says so when the facility cleanup failed but the association sign-in ended', async () => {
+    dispatch.mockImplementationOnce(() => ({ unwrap: async () => { throw new Error('logout failed'); } }));
+    expect(await signOutEverywhere(dispatch)).toEqual({ ok: true, facilityCleanup: 'failed' });
+    expect(signOutCentral).toHaveBeenCalledTimes(1);
+  });
+
   it('needs no facility cleanup when none is selected', async () => {
     mockActive = null;
     expect(await signOutEverywhere(dispatch)).toEqual({ ok: true });

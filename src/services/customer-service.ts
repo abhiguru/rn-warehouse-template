@@ -278,7 +278,7 @@ class CustomerService {
         address: data.address,
         gst: data.gst,
         pan: data.pan,
-        contact_name: data.contact_name,
+        contact_name: data.contact_person ?? data.contact_name,
         contact_mobile: data.contact_mobile,
         contact_email: data.contact_email,
         document_urls: data.document_urls || [],
@@ -369,6 +369,7 @@ class CustomerService {
         success: false,
         message: serverText(rpcData.message, t('errors.customer.createFailed')),
         error: serverText(rpcData.error, t('errors.general.unknown')),
+        code: rpcData.error,
       };
     }
 
@@ -484,6 +485,7 @@ class CustomerService {
         success: false,
         message: serverText(rpcData.message, t('errors.customer.updateFailed')),
         error: serverText(rpcData.error, t('errors.general.unknown')),
+        code: rpcData.error,
       };
     }
 

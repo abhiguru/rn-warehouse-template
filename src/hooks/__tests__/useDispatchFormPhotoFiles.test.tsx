@@ -61,7 +61,7 @@ async function mount(store: ReturnType<typeof makeStore>, dispatchIdParam?: stri
 }
 
 const photos = [
-  { id: 'temp_a', file_name: 'truck.webp', image_url: 'file:///cache/ImageManipulator/truck.webp', upload_status: 'pending' as const },
+  { id: 'temp_a', file_name: 'truck.webp', image_url: 'file:///cache/ImageManipulator/truck.webp', upload_status: 'completed' as const },
   { id: 'image-1', file_name: 'gate.webp', image_url: 'https://files.example/gate', upload_status: 'completed' as const, storage_path: 'd1/gate.webp' },
 ];
 

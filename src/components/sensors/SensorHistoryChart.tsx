@@ -9,7 +9,7 @@
  * shows a text summary, and the full-screen view has a values table.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   ScrollView,
   FlatList,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,14 +154,12 @@ function averagesLabel(aggregationInterval: string): string {
 interface SeriesStats {
   min: number;
   max: number;
-  avg: number;
 }
 
 function statsOf(values: Array<number | null>): SeriesStats | null {
   const present = values.filter((v): v is number => v !== null && !isNaN(v));
   if (present.length === 0) return null;
-  const sum = present.reduce((a, b) => a + b, 0);
-  return { min: Math.min(...present), max: Math.max(...present), avg: sum / present.length };
+  return { min: Math.min(...present), max: Math.max(...present) };
 }
 
 /**
@@ -177,7 +176,6 @@ export function summariseReadings(readings: SensorHistoryReading[], interval: st
       tr('sensors.chart.summaryTemperature', {
         min: formatTemperature(temp.min),
         max: formatTemperature(temp.max),
-        average: formatTemperature(temp.avg),
       })
     );
   }
@@ -186,7 +184,6 @@ export function summariseReadings(readings: SensorHistoryReading[], interval: st
       tr('sensors.chart.summaryHumidity', {
         min: formatHumidity(hum.min),
         max: formatHumidity(hum.max),
-        average: formatHumidity(hum.avg),
       })
     );
   }
@@ -484,9 +481,17 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenView, setFullscreenView] = useState<FullscreenView>('chart');
+  // The width the card gives the chart; the screen's width less the card's margins and padding
+  // until the card has been measured.
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
+  const onAreaLayout = useCallback((event: LayoutChangeEvent) => {
+    const width = Math.floor(event.nativeEvent.layout.width);
+    if (width > 0) setMeasuredWidth(width);
+  }, []);
+  const areaWidth = measuredWidth ?? screenWidth - 2 * layout.marginCompact - 2 * space.lg;
 
   // Series colours: chart palette in order (guide §3.2, §13.11)
   const tempColour = t.chart[0];
@@ -529,21 +534,23 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
 
   const buildSeries = (maxLabels: number, compactLabels: boolean) => {
     const labelIndices = getLabelIndices(readings.length, maxLabels);
+    // The compact chart carries no value text on its points (they overlap); the full-screen
+    // chart and the table do.
     const temp: SensorChartDataPoint[] = readings.map((r, index) => ({
       value: present(r.temperature) ? r.temperature : undefined,
       label: labelIndices.has(index) ? formatLabel(r.timestamp, compactLabels) : '',
-      dataPointText: formatTemperature(r.temperature),
+      ...(compactLabels ? {} : { dataPointText: formatTemperature(r.temperature) }),
     }));
     // Humidity has its own axis on the right (guide §13.11), in percent.
     const humidity: SensorChartDataPoint[] = readings.map((r) => ({
       value: present(r.humidity) ? r.humidity : undefined,
       label: '', // Only show labels on temp line
-      dataPointText: formatHumidity(r.humidity),
+      ...(compactLabels ? {} : { dataPointText: formatHumidity(r.humidity) }),
     }));
     return { temp, humidity };
   };
 
-  const compactData = useMemo(() => buildSeries(5, true), [readings, periodDays, domain, maxHumidity]);
+  const compactData = useMemo(() => buildSeries(3, true), [readings, periodDays, domain, maxHumidity]);
   // Fullscreen data with more labels
   const fullscreenData = useMemo(() => buildSeries(10, false), [readings, periodDays, domain, maxHumidity]);
 
@@ -560,12 +567,17 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
   }
 
   // Calculate chart dimensions
-  const chartWidth = screenWidth - 64;
-  const availableArea = chartWidth - 60; // yAxis + margins
-  const spacing = readings.length > 1 ? Math.max(15, availableArea / (readings.length - 1)) : 30;
+  // The compact chart is sized from the card it sits in: the plot is the card's inner width
+  // less the two value axes, so the humidity axis stays inside the card at any text size.
+  const axisLabelWidth = Math.ceil(40 * fontScale);
+  const dateLabelWidth = Math.ceil(56 * fontScale);
+  const COMPACT_START = 15;
+  const COMPACT_END = 15;
+  const chartWidth = Math.max(60, areaWidth - 2 * axisLabelWidth);
+  const spacing = readings.length > 1 ? (chartWidth - COMPACT_START - COMPACT_END) / (readings.length - 1) : 30;
 
   // Thresholds as dashed reference lines (guide §13.11)
-  const thresholdProps = (fontScale: 'compact' | 'full') => {
+  const thresholdProps = (variant: 'compact' | 'full') => {
     const lines = thresholds.slice(0, 2);
     const props: Record<string, unknown> = {};
     lines.forEach((line, i) => {
@@ -576,7 +588,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
       props[`referenceLine${n}Position`] = line.value;
       props[`referenceLine${n}Config`] = {
         color: colour,
-        thickness: fontScale === 'full' ? 2 : 1,
+        thickness: variant === 'full' ? 2 : 1,
         dashWidth: 6,
         dashGap: 4,
         labelText: line.label,
@@ -587,6 +599,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
   };
 
   const sharedChartProps = {
+    yAxisLabelWidth: axisLabelWidth,
     color: tempColour,
     thickness: 2,
     dataPointsColor: tempColour,
@@ -612,6 +625,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
       formatYLabel: (label: string) => localizeDigits(label),
       yAxisTextStyle: styles.axisLabel,
       yAxisColor: t.border.divider,
+      yAxisLabelWidth: axisLabelWidth,
     },
     secondaryLineConfig: {
       color: humidityColour,
@@ -671,23 +685,29 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           </View>
         </View>
 
-        <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} />
+        <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} withUnits />
 
-        <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+        <View
+          testID="sensor-chart-area"
+          onLayout={onAreaLayout}
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+        >
           <LineChart
             {...sharedChartProps}
             {...thresholdProps('compact')}
+            xAxisLabelTextStyle={[styles.axisLabel, { width: dateLabelWidth, textAlign: 'center' }]}
+            labelsExtraHeight={Math.max(0, Math.round(16 * (fontScale - 1)))}
             data={compactData.temp}
             secondaryData={compactData.humidity}
             width={chartWidth}
             height={140}
-            hideDataPoints={readings.length > 20}
+            hideDataPoints={readings.length > 8}
             dataPointsRadius={3}
             hideRules
             spacing={spacing}
-            initialSpacing={15}
-            endSpacing={15}
-            adjustToWidth
+            initialSpacing={COMPACT_START}
+            endSpacing={COMPACT_END}
           />
         </View>
 

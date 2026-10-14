@@ -46,7 +46,6 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: jest.fn() }));
 jest.mock('@/store/slices/grnFormSlice', () => ({ resetForm: jest.fn() }));
 jest.mock('@/store/slices/dispatchFormSlice', () => ({ resetForm: jest.fn() }));
 jest.mock('@/store/slices/invoiceFormSlice', () => ({ resetForm: jest.fn() }));
-jest.mock('@/store/slices/customerFormSlice', () => ({ resetForm: jest.fn() }));
 jest.mock('@/services/configService', () => ({ __esModule: true, default: { clearCache: jest.fn() } }));
 jest.mock('@/store/sessionScopedState', () => ({ clearSessionScopedState: jest.fn() }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: () => 0 } }));

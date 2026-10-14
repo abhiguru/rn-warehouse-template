@@ -9,7 +9,6 @@ import { logout } from '@/store/slices/authSlice';
 import grnReducer, { updateHeader as updateGrn } from '@/store/slices/grnFormSlice';
 import dispatchReducer, { updateHeader as updateDispatch, saveSnapshot, rollbackToSnapshot, resetForm, setError } from '@/store/slices/dispatchFormSlice';
 import invoiceReducer, { updateHeader as updateInvoice } from '@/store/slices/invoiceFormSlice';
-import customerReducer, { updateFormData } from '@/store/slices/customerFormSlice';
 import ConfigService from '@/services/configService';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { clearAllCaches } from '@/utils/cacheManager';
@@ -74,7 +73,7 @@ jest.mock('@/config/operatorServer', () => ({
 const previous = { origin: 'https://first.example.test', instanceId: 'instance-first', displayName: 'Fictional First', companyName: 'Fictional Company' };
 const next = { origin: 'https://second.example.test', instanceId: 'instance-second', displayName: 'Fictional Second', companyName: 'Fictional Company' };
 const makeStore = () => configureStore({ reducer: {
-  grn: grnReducer, dispatch: dispatchReducer, invoice: invoiceReducer, customer: customerReducer,
+  grn: grnReducer, dispatch: dispatchReducer, invoice: invoiceReducer,
 } });
 let store: ReturnType<typeof makeStore>;
 let emptyState: ReturnType<typeof store.getState>;
@@ -105,7 +104,6 @@ beforeEach(() => {
   store.dispatch(saveSnapshot());
   store.dispatch(setError('Fictional previous warehouse error'));
   store.dispatch(updateInvoice({ customer_name: 'Unsaved fictional invoice' }));
-  store.dispatch(updateFormData({ name: 'Unsaved fictional customer' }));
   events = [];
   jest.mocked(logout).mockReturnValue({ type: 'test/logout' } as never);
   jest.mocked(useAppDispatch).mockReturnValue(((action: { type: string }) => {

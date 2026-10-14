@@ -19,8 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
-import { uploadDeferredDispatchImages } from '@/features/dispatch/services/dispatchImageService';
-import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
+import { uploadDeferredDispatchImages, unpreparedDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
+import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import { Snackbar } from 'react-native-paper';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -290,6 +290,19 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     // Handle form submission
     const handleSubmit = async () => {
+        // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
+        // photo still being prepared holds the save; one that could not be prepared has to go.
+        if (isCreateMode) {
+            const photoState = unpreparedDispatchPhotos(images);
+            if (photoState === 'preparing') {
+                showAlert(tr('grn.review.photosPreparingTitle'), tr('grn.review.photosPreparingMessage'));
+                return;
+            }
+            if (photoState === 'failed') {
+                showAlert(tr('grn.review.photoNotPreparedTitle'), tr('grn.review.photoNotPreparedMessage'));
+                return;
+            }
+        }
         // Show custom confirm dialog (dark mode compliant)
         setShowConfirmDialog(true);
     };
@@ -372,6 +385,13 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     };
 
     const handleContinueWithoutPhotos = () => {
+        // The photos are given up, retry included: their files on the phone go (the
+        // registry keeps a file while an upload of it still runs, until it ends).
+        if (photosNotUploaded) {
+            const files = photosNotUploaded.failed.map((photo) => photo.image_url);
+            files.forEach((file) => abandonLocalPhotoUpload(file));
+            void releaseLocalPhotos(files);
+        }
         setPhotosNotUploaded(null);
         setShowSuccessDialog(true);
     };

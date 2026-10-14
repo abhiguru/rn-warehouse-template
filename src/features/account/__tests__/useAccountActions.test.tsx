@@ -104,7 +104,7 @@ describe('without central login', () => {
     await render();
     expect(hook.mode).toBe('legacy');
     expect(ids()).toEqual(['signOut']);
-    expect(hook.actions[0]).toMatchObject({ label: 'Sign out', subtitle: 'Sign out of this facility on this phone.', destructive: true });
+    expect(hook.actions[0]).toMatchObject({ label: 'Sign out', subtitle: 'Sign out of this facility on this phone.', destructive: false });
     act(() => hook.request('signOut'));
     expect(hook.dialog).toMatchObject({
       visible: true,
@@ -150,7 +150,7 @@ describe('central login, signed in to the association', () => {
     expect(hook.actions[1]).toMatchObject({
       label: 'Sign out of this phone',
       subtitle: 'Ends your association sign-in and this facility on this phone.',
-      destructive: true,
+      destructive: false,
     });
   });
 
@@ -244,6 +244,13 @@ describe('central login, signed in to the association', () => {
     await render();
     await confirmAction('signOutPhone');
     expect(alerts()).toEqual([["Couldn't sign out", message]]);
+  });
+
+  it('tells the person when the facility cleanup failed although the sign-out finished', async () => {
+    jest.mocked(signOutEverywhere).mockResolvedValue({ ok: true, facilityCleanup: 'failed' });
+    await render();
+    await confirmAction('signOutPhone');
+    expect(alerts()).toEqual([["Couldn't switch facility", 'Check your connection and try again.']]);
   });
 
   it('keeps the same two actions for a facility opened with its own SMS sign-in', async () => {

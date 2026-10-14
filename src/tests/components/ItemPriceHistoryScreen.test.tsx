@@ -1,6 +1,6 @@
 /**
- * The price history screen (administrators and supervisors) and the action on Item
- * pricing that opens it.
+ * The price history screen ("Changes", administrators and supervisors). The action on the pricing
+ * list and the item page that opens it is tested with those screens.
  */
 import React from 'react';
 import { FlatList, Text } from 'react-native';
@@ -10,6 +10,7 @@ import { setLanguage } from '@/i18n';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
 
 let mockState: Record<string, unknown> = {};
+let mockParams: Record<string, string> = {};
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -19,6 +20,7 @@ jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args), back: jest.fn(), replace: jest.fn() },
   Stack: { Screen: () => null },
   useIsFocused: () => true,
+  useLocalSearchParams: () => mockParams,
   useFocusEffect: jest.fn(),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -46,7 +48,6 @@ jest.mock('@/services/item-pricing-service', () => ({
     data: [],
     pagination: { total_count: 0, limit: 50, offset: 0, has_more: false },
   })),
-  deleteItemStoragePrice: jest.fn(),
 }));
 
 import ItemPriceHistoryScreen from '../../../app/item-price-history';
@@ -185,6 +186,7 @@ beforeEach(() => {
   mockPush.mockReset();
   jest.mocked(showAlert).mockReset();
   signedInAs('supervisor');
+  mockParams = {};
 });
 afterEach(() => setLanguage('en'));
 
@@ -215,13 +217,13 @@ describe('price history entries', () => {
       'Example Chillies',
       'Default price',
       'Monthly price',
-      '₹5',
-      '₹6',
+      '₹5.00',
+      '₹6.00',
       WHEN,
       'Meera Joshi (Staff)',
     ]);
     expect(cardLabel(tree, 14)).toBe(
-      `Price changed, Example Chillies, Default price, Monthly price: ₹5 changed to ₹6, ${WHEN}, Meera Joshi (Staff)`
+      `Price changed, Example Chillies, Default price, Monthly price: ₹5.00 changed to ₹6.00, ${WHEN}, Meera Joshi (Staff)`
     );
     await unmount(tree);
   });
@@ -241,9 +243,9 @@ describe('price history entries', () => {
       'Example Garlic',
       'Example Traders',
       'Price type', 'Monthly',
-      'Monthly price', '₹8',
+      'Monthly price', '₹8.00',
       'Weight range', '0–100 kg',
-      'Labour rate', '₹2',
+      'Labour rate', '₹2.00',
       'Tax', '5%',
       'Start date', '1 Jan 2026',
       'End date', '31 Dec 2026',
@@ -261,9 +263,9 @@ describe('price history entries', () => {
       'Deleted item',
       'Deleted customer',
       'Price type', 'One-time',
-      'One-time price', '₹40',
+      'One-time price', '₹40.00',
       'Weight range', '0–100 kg',
-      'Labour rate', '₹2',
+      'Labour rate', '₹2.00',
       'Tax', '5%',
       'Start date', '1 Jan 2026',
       'End date', 'No end date',
@@ -290,15 +292,15 @@ describe('price history entries', () => {
       ])
     );
     const tree = await render(<ItemPriceHistoryScreen />);
-    expect(card(tree, 31)).toEqual(['Price changed', 'Example Chillies', 'Default price', 'Labour rate', '₹2', '₹3', WHEN, 'Meera Joshi (Staff)']);
+    expect(card(tree, 31)).toEqual(['Price changed', 'Example Chillies', 'Default price', 'Labour rate', '₹2.00', '₹3.00', WHEN, 'Meera Joshi (Staff)']);
     expect(card(tree, 30)).toEqual([
       'Price added',
       'Example Chillies',
       'Default price',
       'Price type', 'Monthly',
-      'Monthly price', '₹91.5',
+      'Monthly price', '₹91.50',
       'Weight range', '0–100 kg',
-      'Labour rate', '₹2',
+      'Labour rate', '₹2.00',
       'Tax', '5%',
       'Start date', '1 Jan 2026',
       'End date', 'No end date',
@@ -317,13 +319,13 @@ describe('price history entries', () => {
       'Example Chillies',
       'Default price',
       'Price type', 'Monthly', 'One-time',
-      'Monthly price', '₹5',
-      'One-time price', '₹7',
+      'Monthly price', '₹5.00',
+      'One-time price', '₹7.00',
       WHEN,
       'Meera Joshi (Staff)',
     ]);
     expect(cardLabel(tree, 32)).toBe(
-      `Price changed, Example Chillies, Default price, Price type: Monthly changed to One-time, Monthly price, ₹5, One-time price, ₹7, ${WHEN}, Meera Joshi (Staff)`
+      `Price changed, Example Chillies, Default price, Price type: Monthly changed to One-time, Monthly price, ₹5.00, One-time price, ₹7.00, ${WHEN}, Meera Joshi (Staff)`
     );
     await unmount(tree);
   });
@@ -344,15 +346,15 @@ describe('price history entries', () => {
       'Price type', 'Monthly',
       'Monthly price', unitPrice,
       'Weight range', '0–100 kg',
-      'Labour rate', '₹2',
+      'Labour rate', '₹2.00',
       'Tax', '5%',
       'Start date', '1 Jan 2026',
       'End date', 'No end date',
       WHEN,
       'Meera Joshi (Staff)',
     ];
-    expect(card(tree, 33)).toEqual(values('₹5'));
-    expect(card(tree, 34)).toEqual(values('₹6'));
+    expect(card(tree, 33)).toEqual(values('₹5.00'));
+    expect(card(tree, 34)).toEqual(values('₹6.00'));
     expect(card(tree, 33)).not.toContain('—');
     await unmount(tree);
   });
@@ -377,8 +379,8 @@ describe('price history entries', () => {
       'Example Chillies',
       'મૂળ દર',
       'માસિક દર',
-      '₹૫',
-      '₹૬',
+      '₹૫.૦૦',
+      '₹૬.૦૦',
       '૧૧ ઑક્ટો ૨૦૨૬, ૨:૪૫ PM',
       'Meera Joshi (સ્ટાફ)',
     ]);
@@ -622,36 +624,144 @@ describe.each(BRANDS.flatMap((brand) => MODES.map((mode) => [brand, mode] as con
   });
 });
 
-describe('History on Item pricing', () => {
-  // The pricing list logs its load timings.
-  let log: jest.SpyInstance;
-  beforeEach(() => { log = jest.spyOn(console, 'log').mockImplementation(() => {}); });
-  afterEach(() => log.mockRestore());
+// The list reads the rates through useItemRates and the connection through useIsOffline: neither is
+// what this block is about.
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
+jest.mock('@/features/item-pricing/useItemRates', () => ({
+  useItemRates: () => ({
+    items: [{ id: 'i1', name: 'Potato', packaging: 'Bag' }],
+    rates: [],
+    status: 'ready',
+    refreshing: false,
+    lastUpdated: 1,
+    refreshError: false,
+    error: null,
+    refresh: jest.fn(),
+    itemRates: () => undefined,
+  }),
+}));
 
+describe('All rate changes on Item pricing', () => {
   it.each(['admin', 'supervisor'])('is offered to a %s and opens the price history', async (role) => {
     signedInAs(role);
     const tree = await render(<ItemPricingScreen />);
-    const open = button(tree, 'History');
+    const open = button(tree, 'All rate changes');
     expect(open).toBeDefined();
     await act(async () => { open.props.onPress(); });
-    expect(mockPush).toHaveBeenCalledWith('/item-price-history');
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/item-price-history', params: {} });
     await unmount(tree);
   });
 
   it('is not offered while the profile is not loaded yet', async () => {
     signedInAs(null);
     const tree = await render(<ItemPricingScreen />);
-    expect(button(tree, 'History')).toBeUndefined();
+    expect(button(tree, 'All rate changes')).toBeUndefined();
     expect(mockPush).not.toHaveBeenCalled();
     await unmount(tree);
   });
 
-  it('is not offered to staff, who still get the list and Add price', async () => {
+  it('is not offered to staff, who still get the list but no Add button', async () => {
     signedInAs('staff');
     const tree = await render(<ItemPricingScreen />);
-    expect(button(tree, 'History')).toBeUndefined();
-    expect(button(tree, 'Add price')).toBeDefined();
+    expect(button(tree, 'All rate changes')).toBeUndefined();
+    expect(button(tree, 'Add price')).toBeUndefined();
     expect(shown(tree)).toContain('Item pricing');
+    expect(shown(tree)).toContain('Potato');
+    await unmount(tree);
+  });
+});
+
+describe('Changes of one item', () => {
+  // Job (b): at one moment the rate in force was ended and the new rate added; the feed has one row each.
+  const AT = '2026-10-14T05:00:00.123456+00:00';
+  const cumin = (id: number, more: Partial<ItemPriceHistoryEntry>) =>
+    entry(id, { changed_at: AT, item_id: 'item-cumin', item_name: 'Review Cumin Bold', changed_by_name: 'Dev Administrator', changed_by_role: 'admin', ...more });
+  const ENDED = cumin(22, {
+    action: 'update',
+    old_values: price(11, { effective_from: '2026-04-01' }),
+    new_values: price(11, { effective_from: '2026-04-01', effective_to: '2026-12-31' }),
+  });
+  const ADDED = cumin(23, { action: 'insert', new_values: price(12, { effective_from: '2027-01-01' }) });
+  const WHEN_JOB = '14 Oct 2026, 10:30 am';
+
+  it('asks the server for that item only, and names it in the title', async () => {
+    mockParams = { item_id: 'item-cumin', item_name: 'Review Cumin Bold' };
+    history.mockResolvedValue(page([ADDED, ENDED]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(history).toHaveBeenCalledWith({ limit: 50, offset: 0, itemId: 'item-cumin' });
+    expect(shown(tree)).toContain('Changes: Review Cumin Bold');
+    expect(shown(tree)).not.toContain('Price history');
+    await unmount(tree);
+  });
+
+  it('passes the customer on, and takes the title from the first entry when no name was sent', async () => {
+    mockParams = { item_id: 'item-cumin', customer_id: 'customer-1' };
+    history.mockResolvedValue(page([ADDED, ENDED]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(history).toHaveBeenCalledWith({ limit: 50, offset: 0, itemId: 'item-cumin', customerId: 'customer-1' });
+    expect(shown(tree)).toContain('Changes: Review Cumin Bold');
+    await unmount(tree);
+  });
+
+  it('two rows written by one save are one card, with only the changed value, two decimals', async () => {
+    mockParams = { item_id: 'item-cumin', item_name: 'Review Cumin Bold' };
+    history.mockResolvedValue(page([ADDED, ENDED]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    const group = tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'price-history-group-23')[0];
+    expect(group).toBeDefined();
+    expect(cardIds(tree)).toEqual([]);
+    const texts = group.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
+    expect(texts).toEqual([
+      'Rate changed from 1 Jan 2027',
+      'Review Cumin Bold',
+      'Default price',
+      'Monthly price',
+      '₹11.00 → ₹12.00',
+      WHEN_JOB,
+      'Dev Administrator (Admin)',
+    ]);
+    await unmount(tree);
+  });
+
+  it('a save that only ended the rate reads "Rate stopped after"', async () => {
+    mockParams = { item_id: 'item-cumin' };
+    history.mockResolvedValue(page([ENDED, cumin(21, { action: 'update', old_values: price(9, { effective_from: '2026-04-01' }), new_values: price(9, { effective_from: '2026-04-01', effective_to: '2026-12-31' }) })]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    const group = tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'price-history-group-22')[0];
+    expect(group.findAllByType(Text).map((node) => [node.props.children].flat().join('')).slice(0, 1)).toEqual(['Rate stopped after 31 Dec 2026']);
+    await unmount(tree);
+  });
+
+  it('a lone entry still draws as before, and rows of different saves stay apart', async () => {
+    history.mockResolvedValue(page([ADDED, UPDATE]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(cardIds(tree)).toEqual(['23', '14']);
+    await unmount(tree);
+  });
+
+  it('a group split by the page edge joins when the next page arrives', async () => {
+    mockParams = { item_id: 'item-cumin' };
+    history
+      .mockResolvedValueOnce(page([ADDED], { total: 2, has_more: true }))
+      .mockResolvedValueOnce(page([ENDED], { total: 2, offset: 50, has_more: false }));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(cardIds(tree)).toEqual(['23']);
+    await act(async () => { tree.root.findByType(FlatList).props.onEndReached(); });
+    expect(cardIds(tree)).toEqual([]);
+    expect(tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'price-history-group-23')).toHaveLength(1);
+    await unmount(tree);
+  });
+
+  it('writes the group in Gujarati', async () => {
+    setLanguage('gu');
+    mockParams = { item_id: 'item-cumin', item_name: 'Review Cumin Bold' };
+    history.mockResolvedValue(page([ADDED, ENDED]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(shown(tree)).toContain('ફેરફારો: Review Cumin Bold');
+    const group = tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'price-history-group-23')[0];
+    const texts = group.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
+    expect(texts[0]).toBe('૧ જાન્યુ ૨૦૨૭ થી દર બદલાયો');
+    expect(texts).toContain('₹૧૧.૦૦ → ₹૧૨.૦૦');
     await unmount(tree);
   });
 });

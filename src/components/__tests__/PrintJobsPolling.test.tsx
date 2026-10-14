@@ -91,7 +91,8 @@ async function openSheet() {
 const texts = (tree: renderer.ReactTestRenderer) =>
   tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
 
-test('while a job prints: 12 status reads and 6 job batches (24 requests) a minute on the in-progress tab', async () => {
+// The in-progress tab also asks for jobs the printer did not confirm ('unknown'), so a batch is 3 reads.
+test('while a job prints: 12 status reads and 6 job batches (30 requests) a minute on the in-progress tab', async () => {
   latest = job('j1', 'printing');
   queued = [job('j2', 'pending')];
   const { tree } = await openSheet();
@@ -99,8 +100,8 @@ test('while a job prints: 12 status reads and 6 job batches (24 requests) a minu
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(12);
-  expect(jobReads()).toBe(12);
-  expect(getJobs).toHaveBeenCalledTimes(24);
+  expect(jobReads()).toBe(18);
+  expect(getJobs).toHaveBeenCalledTimes(30);
   act(() => tree.unmount());
 });
 
@@ -118,7 +119,7 @@ test('while a job prints: 30 requests a minute on the finished tab', async () =>
   act(() => tree.unmount());
 });
 
-test('idle printer: 2 status reads and 1 job batch (4 requests) a minute', async () => {
+test('idle printer: 2 status reads and 1 job batch (5 requests) a minute', async () => {
   latest = job('j1', 'completed');
   queued = [];
   const { tree } = await openSheet();
@@ -126,7 +127,7 @@ test('idle printer: 2 status reads and 1 job batch (4 requests) a minute', async
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(2);
-  expect(jobReads()).toBe(2);
+  expect(jobReads()).toBe(3);
   act(() => tree.unmount());
 });
 
@@ -139,12 +140,12 @@ test('slow reads never overlap, and a pull to refresh joins them', async () => {
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(1);
-  expect(jobReads()).toBe(2);
+  expect(jobReads()).toBe(3);
   const list = tree.root.findAll(n => typeof n.props.onRefresh === 'function' && 'refreshing' in n.props)[0];
   act(() => { void list.props.onRefresh(); });
   await advance(0);
   expect(statusReads()).toBe(1);
-  expect(jobReads()).toBe(2);
+  expect(jobReads()).toBe(3);
   deferAll = false;
   await act(async () => { pending.splice(0).forEach(done => done()); });
   act(() => tree.unmount());

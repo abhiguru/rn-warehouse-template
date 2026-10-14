@@ -1,6 +1,5 @@
 /**
- * Order list rows, the order summary bar, quick-add chips, the customer list and
- * the customer search sheet render in all four themes with token colours.
+ * Order list rows, the order summary bar, quick-add chips and the customer search sheet render in all four themes with token colours.
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
@@ -8,10 +7,8 @@ import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { MemoizedOrderItem } from '../list-items/MemoizedOrderItem';
 import CustomerOrderSummary from '../CustomerOrderSummary';
 import RecentItemsQuickAdd from '../RecentItemsQuickAdd';
-import { CustomerList } from '../CustomerList';
 import { CustomerSearchBottomSheet } from '../CustomerSearchBottomSheet';
 import type { Order } from '@/types/order.types';
-import type { CustomerListItem } from '@/types/customer.types';
 
 let mockState = { theme: { preference: 'light' as Mode, brand: 'orange' as Brand }, auth: { userProfile: { id: 'fictional-user' } } };
 jest.mock('@/store/hooks', () => ({
@@ -61,11 +58,6 @@ const openOrder = {
   items: [{ id: 'line-1', requested_quantity: 1, item_status: 'pending' }],
 } as unknown as Order;
 
-const customers = [
-  { id: 'c-1', name: 'Fictional Traders', mobile: '9876543210', city: 'Fictional Town', active: true },
-  { id: 'c-2', name: 'Retired Fictional Co', active: false },
-] as unknown as CustomerListItem[];
-
 async function renderIn(element: React.ReactElement, brand: Brand, mode: Mode) {
   mockState = { ...mockState, theme: { preference: mode, brand } };
   let tree!: ReactTestRenderer;
@@ -110,32 +102,6 @@ describe.each(THEMES)('order components in %s %s', (brand, mode) => {
     expect(hasStyle(tree, 'backgroundColor', t.brand.subtle)).toBe(true);
     expect(hasStyle(tree, 'color', t.brand.tint)).toBe(true);
     expect(tree.root.findAll(node => node.props.name === 'check').length).toBe(1);
-    await act(async () => tree.unmount());
-  });
-
-  it('customer list formats mobiles and tags inactive customers', async () => {
-    const tree = await renderIn(
-      <CustomerList customers={customers} loading={false} refreshing={false} onRefresh={jest.fn()}
-        onEditCustomer={jest.fn()} onInactivateCustomer={jest.fn()} />,
-      brand, mode,
-    );
-    const text = allText(tree);
-    expect(text).toContain('+91 98765 43210');
-    expect(text).toContain('Inactive');
-    expect(hasStyle(tree, 'backgroundColor', t.status.neutral.background)).toBe(true);
-    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Edit Fictional Traders').length).toBeGreaterThan(0);
-    await act(async () => tree.unmount());
-  });
-
-  it('customer list empty state offers to add a customer', async () => {
-    const tree = await renderIn(
-      <CustomerList customers={[]} loading={false} refreshing={false} onRefresh={jest.fn()}
-        onEditCustomer={jest.fn()} onInactivateCustomer={jest.fn()} />,
-      brand, mode,
-    );
-    const text = allText(tree);
-    expect(text).toContain('No customers yet');
-    expect(text).toContain('Add customer');
     await act(async () => tree.unmount());
   });
 

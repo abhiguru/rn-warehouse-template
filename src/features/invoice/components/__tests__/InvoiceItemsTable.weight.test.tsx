@@ -112,17 +112,17 @@ describe('the invoice items table, the weight of a group', () => {
     const screen = await render([line('1'), line('2', { grn_item_id: 'gi-2', weight: 25 })]);
     expect(screen.weightWords()).toEqual(['25 kg each', '50 kg each']);
     expect(screen.weightIcons()).toHaveLength(2);
-    expect(screen.spoken()).toBe('Fictional potatoes, mark FIX, 25 kg each, 50 kg each, GRN quantity 200, dispatched 8, total ₹58.80');
+    expect(screen.spoken()).toBe('Fictional potatoes, mark FIX, 25 kg each, 50 kg each, GRN quantity 400, dispatched 8, total ₹58.80');
     // The other chips stay, in their places around the weights.
-    expect(screen.texts().filter(text => ['FIX', '25 kg each', '50 kg each', 'GRN qty 200', 'Dispatched 8'].includes(text)))
-      .toEqual(['FIX', '25 kg each', '50 kg each', 'GRN qty 200', 'Dispatched 8']);
+    expect(screen.texts().filter(text => ['FIX', '25 kg each', '50 kg each', 'GRN qty 400', 'Dispatched 8'].includes(text)))
+      .toEqual(['FIX', '25 kg each', '50 kg each', 'GRN qty 400', 'Dispatched 8']);
   });
 
   it('the same in Gujarati: દરેક ૨૫ કિલો and દરેક ૫૦ કિલો, shown and spoken in that order', async () => {
     setLanguage('gu');
     const screen = await render([line('1'), line('2', { grn_item_id: 'gi-2', weight: 25 })]);
     expect(screen.weightWords()).toEqual(['દરેક ૨૫ કિલો', 'દરેક ૫૦ કિલો']);
-    expect(screen.spoken()).toContain('માર્કો FIX, દરેક ૨૫ કિલો, દરેક ૫૦ કિલો, આવક પાવતીના નંગ ૨૦૦');
+    expect(screen.spoken()).toContain('માર્કો FIX, દરેક ૨૫ કિલો, દરેક ૫૦ કિલો, આવક પાવતીના નંગ ૪૦૦');
   });
 
   it('three weights give three chips, in a row that wraps with a gap between its lines', async () => {
@@ -155,7 +155,7 @@ describe('the invoice items table, the weight of a group', () => {
       node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Edit pricing for Fictional potatoes'
     )[0];
     await act(async () => { pencil.props.onPress(); });
-    expect(onEditPricing).toHaveBeenCalledWith({ item_id: 'item', item_name: 'Fictional potatoes', weight: 50, charge: 5, labour_rate: 2, tax: 5 });
+    expect(onEditPricing).toHaveBeenCalledWith({ item_id: 'item', item_name: 'Fictional potatoes', package_mark: 'FIX', weight: 50, charge: 5, labour_rate: 2, tax: 5 });
   });
 
   it('the pencil still opens the price of that weight: the number that picks the price band', async () => {
@@ -165,7 +165,7 @@ describe('the invoice items table, the weight of a group', () => {
       node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Edit pricing for Fictional potatoes'
     )[0];
     await act(async () => { pencil.props.onPress(); });
-    expect(onEditPricing).toHaveBeenCalledWith({ item_id: 'item', item_name: 'Fictional potatoes', weight: 37, charge: 5, labour_rate: 2, tax: 5 });
+    expect(onEditPricing).toHaveBeenCalledWith({ item_id: 'item', item_name: 'Fictional potatoes', package_mark: 'FIX', weight: 37, charge: 5, labour_rate: 2, tax: 5 });
     expect(screen.weightWords()).toEqual(['37 kg each']);
   });
 });

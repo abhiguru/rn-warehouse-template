@@ -11,7 +11,7 @@
  * - 44pt minimum touch target
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -70,6 +70,13 @@ export interface InputProps extends TextInputProps {
    * as stored; typed ૦-૯ reach `onChangeText` as 0-9.
    */
   identifier?: boolean;
+  /**
+   * Select the whole value when the field gets focus, so typing replaces it. Off by default
+   * (a tap places the cursor). For a field that opens with a value to be replaced, such as a rate.
+   */
+  selectTextOnFocus?: boolean;
+  /** The caller's ref to the TextInput; the field keeps its own too (the clear button refocuses). */
+  ref?: React.Ref<TextInput>;
 }
 
 // ============================================================================
@@ -91,6 +98,8 @@ export function Input({
   showClearButton = true,
   numeric = false,
   identifier = false,
+  selectTextOnFocus = false,
+  ref: callerRef,
   value,
   onChangeText,
   editable = true,
@@ -98,7 +107,7 @@ export function Input({
 }: InputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [internalValue, setInternalValue] = useState(value || '');
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInput | null>(null);
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 
@@ -109,6 +118,17 @@ export function Input({
   const hasValue = currentValue.length > 0;
   const isOverLimit = maxLength ? currentValue.length > maxLength : false;
   const isInvalid = hasError || isOverLimit;
+
+  // Both the caller and the clear button need the TextInput.
+  // A stable callback: a new one on every render would detach and re-attach the caller's ref each time.
+  const setRefs = useCallback(
+    (node: TextInput | null) => {
+      inputRef.current = node;
+      if (typeof callerRef === 'function') callerRef(node);
+      else if (callerRef) (callerRef as React.MutableRefObject<TextInput | null>).current = node;
+    },
+    [callerRef]
+  );
 
   // Handle text change
   const handleChangeText = (typed: string) => {
@@ -176,12 +196,12 @@ export function Input({
         {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
 
         <TextInput
-          ref={inputRef}
           {...textInputProps}
+          ref={setRefs}
           value={numeric ? localizeDigits(currentValue) : currentValue}
           onChangeText={handleChangeText}
           editable={!isReadOnly && editable}
-          selectTextOnFocus={isReadOnly}
+          selectTextOnFocus={isReadOnly || selectTextOnFocus}
           style={[
             styles.input,
             isDisabled && styles.textDisabled,

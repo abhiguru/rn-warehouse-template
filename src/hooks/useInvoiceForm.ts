@@ -18,6 +18,7 @@ import {
   updateEditedItem,
   bulkUpdateItemPricing,
   bulkUpdateItemGroupPricing,
+  applySavedRates,
   updateDiscount,
   recalculateTotals,
   setCurrentStep,
@@ -113,6 +114,8 @@ export interface UseInvoiceFormReturn {
   applyBulkPricing: (values: Partial<EditedItemValues>) => void;
   /** Sets the given rates on the lines of a group; a rate left out is not touched. */
   applyGroupPricing: (groupKey: string, pricing: GroupRates) => void;
+  /** Sets saved rates line by line; typed line rates are kept and no override mark is added. */
+  applySavedRatesToLines: (rates: Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }>) => void;
 
   // Validation
   validateCurrentStep: (step: number) => Promise<{ isValid: boolean; errors: Record<string, string> }>;
@@ -382,6 +385,13 @@ export function useInvoiceForm({
     dispatch(bulkUpdateItemGroupPricing({ group_key: groupKey, pricing }));
   }, [dispatch]);
 
+  const applySavedRatesToLines = useCallback(
+    (rates: Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }>) => {
+      dispatch(applySavedRates(rates));
+    },
+    [dispatch]
+  );
+
   // Totals recalculation
   const recalculateFormTotals = useCallback(() => {
     dispatch(recalculateTotals());
@@ -615,6 +625,7 @@ export function useInvoiceForm({
     // Bulk pricing actions
     applyBulkPricing,
     applyGroupPricing,
+    applySavedRatesToLines,
 
     // Validation
     validateCurrentStep,

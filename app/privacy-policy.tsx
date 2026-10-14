@@ -11,6 +11,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { ASSOCIATION_NAME, LEGAL_UPDATED, legalParty } from '@/constants/legal';
 import {
   fontWeight,
   layout,
@@ -20,12 +21,6 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-
-// Company information
-const COMPANY = {
-  name: process.env.EXPO_PUBLIC_COMPANY_NAME || 'Your Company Name',
-  email: process.env.EXPO_PUBLIC_LEGAL_EMAIL || 'legal@example.com',
-};
 
 function Section({
   title,
@@ -82,6 +77,10 @@ export default function PrivacyPolicyScreen() {
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
+  const party = legalParty();
+  const ownServer = party.name
+    ? `${party.name}'s own server`
+    : 'the server of the cold storage you connected to';
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -110,13 +109,15 @@ export default function PrivacyPolicyScreen() {
       >
         <View style={styles.content}>
           {/* Header */}
-          <Text style={styles.lastUpdated}>Last updated: December 2025</Text>
+          <Text style={styles.lastUpdated}>Last updated: {LEGAL_UPDATED}</Text>
 
           <Paragraph>
-            {COMPANY.name} ("Company", "we", "us", or "our") operates this
-            mobile application (the "App"). This Privacy Policy explains how we
-            collect, use, disclose, and safeguard your information when you use
-            our App.
+            {party.leading} ("we", "us", or "our") is responsible for the
+            records you enter in this mobile application (the "App"). The{' '}
+            {ASSOCIATION_NAME} (the "Association") provides the App to its
+            member cold storages; each member keeps its own records on its own
+            server. This Privacy Policy explains what we collect, where it is
+            kept, how we use it and who can see it.
           </Paragraph>
 
           {/* Section 1 */}
@@ -128,40 +129,27 @@ export default function PrivacyPolicyScreen() {
             <Subheading>Personal information</Subheading>
             <BulletList
               items={[
-                'Phone number (required for account creation and authentication)',
-                'Name (as provided during registration or by your organization)',
-                'Role/Position within your organization',
-                'Profile information you choose to provide',
-              ]}
-            />
-
-            <Subheading>Usage information</Subheading>
-            <BulletList
-              items={[
-                'App usage data and interaction patterns',
-                'Features accessed and actions taken within the App',
-                'Date and time of access',
-                'Session duration',
-              ]}
-            />
-
-            <Subheading>Device information</Subheading>
-            <BulletList
-              items={[
-                'Device type and model',
-                'Operating system and version',
-                'App version',
-                'Unique device identifiers',
-                'Network information',
+                'Mobile number (required to sign in with a one-time code)',
+                'Name (as given by you or by your cold storage)',
+                'Your role and the customers you can see, as set by your cold storage',
               ]}
             />
 
             <Subheading>Content you provide</Subheading>
             <BulletList
               items={[
-                'Images uploaded for GRN documentation',
-                'Notes and comments on orders and dispatches',
-                'Any other content you submit through the App',
+                'Records you enter: customers, items, GRNs, dispatches, invoices and stock',
+                'Photos of goods and documents for GRNs and dispatches, taken with the camera or chosen from your phone',
+                'Notes and comments on records',
+              ]}
+            />
+
+            <Subheading>On your phone</Subheading>
+            <BulletList
+              items={[
+                'Your choices (language, light or dark, colours) and the address of your cold storage, kept on your phone only',
+                'Your signed-in session, kept in the phone\'s secure storage',
+                'If crash reporting is switched on in your copy of the App: the App version, the phone model and the error, never your records',
               ]}
             />
           </Section>
@@ -171,12 +159,11 @@ export default function PrivacyPolicyScreen() {
             <Paragraph>We use the information we collect to:</Paragraph>
             <BulletList
               items={[
-                'Provide, maintain, and improve our App and services',
-                'Process and manage your cold storage bookings and orders',
-                'Authenticate your identity and secure your account',
-                'Send you service-related notifications and updates',
-                'Respond to your inquiries and provide customer support',
-                'Monitor and analyze usage patterns to improve user experience',
+                'Provide, maintain, and improve the App and our services',
+                'Process and manage your orders, GRNs, dispatches and invoices',
+                'Check who you are with a one-time code and secure your account',
+                'Show you only what your role and customers allow',
+                'Respond to your inquiries and provide support',
                 'Detect, prevent, and address technical issues and security threats',
                 'Comply with legal obligations and enforce our terms',
               ]}
@@ -186,27 +173,38 @@ export default function PrivacyPolicyScreen() {
           {/* Section 3 */}
           <Section title="3. Information sharing and disclosure">
             <Paragraph>
-              We may share your information in the following circumstances:
+              We do not sell your information. We may share it in the following
+              circumstances:
+            </Paragraph>
+
+            <Subheading>Within the cold storage</Subheading>
+            <Paragraph>
+              Staff of the cold storage see records according to their role.
+              Customers see only their own records.
             </Paragraph>
 
             <Subheading>Service providers</Subheading>
             <Paragraph>
-              We share information with third-party service providers who
-              perform services on our behalf, including:
+              We use service providers who perform services on our behalf,
+              including:
             </Paragraph>
             <BulletList
               items={[
-                'Cloud hosting and database services (Supabase)',
-                'Authentication services',
-                'Analytics services',
-                'Crash reporting and error monitoring',
+                'The server software your cold storage runs (Supabase, open source)',
+                'An SMS provider that delivers your one-time code (your mobile number and the code)',
+                'Crash reports (Sentry/GlitchTip): the app version and the error, never your records',
               ]}
             />
+            <Paragraph>
+              Where your copy of the App uses the Association's sign-in, the
+              Association's sign-in keeps only your mobile number.
+            </Paragraph>
 
             <Subheading>Business transfers</Subheading>
             <Paragraph>
-              If we are involved in a merger, acquisition, or sale of assets,
-              your information may be transferred as part of that transaction.
+              If the cold storage is involved in a merger, acquisition, or sale
+              of assets, your information may be transferred as part of that
+              transaction.
             </Paragraph>
 
             <Subheading>Legal requirements</Subheading>
@@ -225,23 +223,27 @@ export default function PrivacyPolicyScreen() {
           {/* Section 4 */}
           <Section title="4. Data storage and security">
             <Paragraph>
-              We implement appropriate technical and organizational measures to
+              Your records (customers, GRNs, dispatches, invoices and stock) are
+              stored on {ownServer}. They are not kept on a shared server of the
+              Association.
+            </Paragraph>
+            <Paragraph>
+              We use appropriate technical and organizational measures to
               protect your personal information against unauthorized access,
               alteration, disclosure, or destruction. These measures include:
             </Paragraph>
             <BulletList
               items={[
-                'Encryption of data in transit and at rest',
-                'Secure authentication using OTP verification',
-                'Optional biometric authentication for enhanced security',
-                'Regular security assessments and updates',
-                'Access controls limiting who can view your information',
+                'Encrypted connections (https) between the App and the server',
+                'Sign-in with a one-time code sent to your mobile number',
+                'Access limited by role and customers, which the cold storage can remove at any time',
+                'Nothing the App stores on your phone is copied to your Google account by Android backup',
               ]}
             />
             <Paragraph>
-              Your data is stored on secure cloud servers. While we strive to
-              protect your information, no method of transmission over the
-              Internet or electronic storage is 100% secure.
+              While we strive to protect your information, no method of
+              transmission over the Internet or electronic storage is 100%
+              secure.
             </Paragraph>
           </Section>
 
@@ -255,9 +257,10 @@ export default function PrivacyPolicyScreen() {
               obligations.
             </Paragraph>
             <Paragraph>
-              When your account is deleted, we will delete or anonymize your
-              personal information within a reasonable timeframe, unless
-              retention is required by law.
+              You can delete your account in the App under Settings. When your
+              account is deleted, we will delete or anonymize your personal
+              information within a reasonable timeframe, unless retention is
+              required by law.
             </Paragraph>
           </Section>
 
@@ -272,7 +275,6 @@ export default function PrivacyPolicyScreen() {
                 'Correction: Request correction of inaccurate or incomplete information',
                 'Deletion: Request deletion of your personal information, subject to legal requirements',
                 'Portability: Request a copy of your data in a portable format',
-                'Opt-out: Disable push notifications through your device settings',
                 'Withdraw Consent: Withdraw consent for optional data processing',
               ]}
             />
@@ -285,19 +287,17 @@ export default function PrivacyPolicyScreen() {
           {/* Section 7 */}
           <Section title="7. Device permissions">
             <Paragraph>
-              The App may request the following device permissions:
+              The App may ask for the following device permissions:
             </Paragraph>
             <BulletList
               items={[
-                'Camera: To capture images for GRN documentation',
-                'Photo Library: To select and upload images from your device',
-                'Push Notifications: To send you important updates about your orders',
-                'Biometric Sensors: For optional biometric authentication (Face ID/Touch ID)',
+                'Camera: To scan QR codes and to photograph goods and documents',
+                'Photos: You can choose a photo from your phone to attach to a record; the App only receives the photos you choose',
               ]}
             />
             <Paragraph>
               You can manage these permissions at any time through your device
-              settings. Denying certain permissions may limit App functionality.
+              settings. Denying a permission may limit App functionality.
             </Paragraph>
           </Section>
 
@@ -315,18 +315,17 @@ export default function PrivacyPolicyScreen() {
           {/* Section 9 */}
           <Section title="9. Third-party services">
             <Paragraph>
-              Our App may contain links to or integrate with third-party
-              services. This Privacy Policy does not apply to third-party
-              services, and we are not responsible for their privacy practices.
-              We encourage you to review the privacy policies of any third-party
-              services you access.
+              This Privacy Policy does not apply to third-party services, and we
+              are not responsible for their privacy practices. We encourage you
+              to review the privacy policies of any third-party services you
+              access.
             </Paragraph>
             <Paragraph>Third-party services we use include:</Paragraph>
             <BulletList
               items={[
-                'Supabase (database and authentication)',
+                'The server software your cold storage runs (Supabase, open source)',
                 'Expo (app development platform)',
-                'Sentry/GlitchTip (error monitoring)',
+                'Crash reports (Sentry/GlitchTip): the app version and the error, never your records',
               ]}
             />
           </Section>
@@ -336,7 +335,7 @@ export default function PrivacyPolicyScreen() {
             <Paragraph>
               We may update this Privacy Policy from time to time. We will
               notify you of any material changes by posting the new Privacy
-              Policy in the App with a new "Last Updated" date. Your continued
+              Policy in the App with a new "Last updated" date. Your continued
               use of the App after such changes constitutes acceptance of the
               updated Privacy Policy.
             </Paragraph>
@@ -346,10 +345,10 @@ export default function PrivacyPolicyScreen() {
           <Section title="11. Contact us">
             <Paragraph>
               If you have any questions, concerns, or requests regarding this
-              Privacy Policy or our data practices, please contact us:
+              Privacy Policy or our data practices, please contact{' '}
+              {party.inline}.
             </Paragraph>
-            <Paragraph>{COMPANY.name}</Paragraph>
-            <Paragraph>Email: {COMPANY.email}</Paragraph>
+            {party.email ? <Paragraph>Email: {party.email}</Paragraph> : null}
           </Section>
 
           {/* Section 12 */}

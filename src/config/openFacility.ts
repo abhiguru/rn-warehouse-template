@@ -84,6 +84,15 @@ async function record(ticket: Ticket, origin: string, change: Parameters<typeof 
   if (isCurrent(ticket)) await updateMyFacility(ticket.user.id, origin, change);
 }
 
+/** As `record`, for a step after the person has been let in: a failed write is not an outcome. */
+async function recordBestEffort(ticket: Ticket, origin: string, change: Parameters<typeof updateMyFacility>[2]): Promise<void> {
+  try {
+    await record(ticket, origin, change);
+  } catch {
+    // The list shows the older status until the next open writes it.
+  }
+}
+
 const fromCentral = (failure: CentralFailure): OpenOutcome =>
   failed(failure.code === 'unknown_facility' ? 'unknown_facility' : 'central', failure.message, failure.retryAfterSeconds);
 
@@ -166,14 +175,15 @@ async function settle(
   if (answer.success) {
     setCentralState({ pendingLink: null, facilitySmsOrigin: null });
     if (answer.data.action === 'pending') {
-      await record(ticket, origin, { status: 'requested', opened: true });
+      await recordBestEffort(ticket, origin, { status: 'requested', opened: true });
       return { kind: 'pending' };
     }
     // The same step as the code screen after an SMS sign-in: with the profile
     // in the store the route guard lets the person into the facility. Dispatched
     // right after the check above, before the list write waits for the storage.
     store.dispatch(setUserProfile(answer.data.userProfile));
-    await record(ticket, origin, { status: 'approved', opened: true });
+    // The person is in: a list write that fails (a full phone) must not turn this into a failed open.
+    await recordBestEffort(ticket, origin, { status: 'approved', opened: true });
     return { kind: 'login' };
   }
   if (answer.code === 'link_required') {

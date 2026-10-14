@@ -38,7 +38,7 @@ import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grn
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
-import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
+import { LOCAL_PHOTO_OWNERS, registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
 import {
   HorizontalItemForm,
@@ -662,8 +662,11 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     }
   }, [dispatch, loadForm]);
 
-  const handleImageUploadStart = (tempImageData: GRNImageData) => {
-    dispatch(addItemImage({ itemId: currentItem.grn_trl_id, imageData: tempImageData }));
+  // `itemId` is the item that was in the form when the photo came back from the picker. The
+  // render that opened the picker is older: its item may since have been checkmarked and the
+  // form re-created under a new id, and a photo recorded under the old id is never completed.
+  const handleImageUploadStart = (tempImageData: GRNImageData, itemId: string) => {
+    dispatch(addItemImage({ itemId, imageData: tempImageData }));
     setCurrentItem((prev) => ({
       ...prev,
       trl_images: [...(prev.trl_images || []), tempImageData],
@@ -682,9 +685,9 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     baseline.current = { ...baseline.current, trl_images: change(photosOf(baseline.current)) };
   };
 
-  const handleImageUploadComplete = (imageData: GRNImageData, tempImageId: string) => {
+  const handleImageUploadComplete = (imageData: GRNImageData, tempImageId: string, itemId: string) => {
     dispatch(completeItemImageUpload({
-      itemId: currentItem.grn_trl_id,
+      itemId,
       imageId: tempImageId,
       persistedImageId: imageData.id,
       imageUrl: imageData.imageUrl,
@@ -703,9 +706,9 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
 
   // Nothing is deleted on the server here. The photo leaves the form; a saved photo is
   // remembered by the store and deleted when the GRN is saved, so "Discard changes" keeps it.
-  const handleImageRemove = async (imageId: string) => {
-    const removed = currentItem.trl_images?.find((img) => img.id === imageId);
-    dispatch(removeItemImage({ itemId: currentItem.grn_trl_id, imageId }));
+  const handleImageRemove = async (imageId: string, target?: { itemId: string; imageUrl: string }) => {
+    const removed = currentItem.trl_images?.find((img) => img.id === imageId) ?? (target ? { imageUrl: target.imageUrl } : undefined);
+    dispatch(removeItemImage({ itemId: target?.itemId ?? currentItem.grn_trl_id, imageId }));
     // A photo that never reached the server: its file on the phone is not needed.
     // A photo the saved item already had when it was opened is the exception:
     // "Discard changes" puts it back, so its file stays until the correction is
@@ -722,17 +725,23 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
    * A photo that could not be prepared leaves the item for good. Unlike a
    * photo the worker took off, "Discard changes" must not put it back.
    */
-  const dropUnpreparedPhoto = (imageId: string) => {
+  const dropUnpreparedPhoto = (imageId: string, target: { itemId: string; imageUrl: string }) => {
     changeBaselinePhotos((photos) => photos.filter((img) => img.id !== imageId));
-    handleImageRemove(imageId);
+    handleImageRemove(imageId, target);
   };
 
   const processPickedImage = async (result: ImagePicker.ImagePickerResult) => {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
+      // The picker wrote this file into the app's cache (a camera shot; a library pick on
+      // Android). Registered, it goes once the prepared copy has taken its place, when the photo
+      // is refused or removed, or with the form. A file outside the app's folders is refused here.
+      void registerLocalPhoto(asset.uri, LOCAL_PHOTO_OWNERS.grnForm, 'capture');
+      const itemId = latest.current.currentItem.grn_trl_id;
 
       const validation = validateImageFile(asset);
       if (!validation.valid) {
+        void releaseLocalPhotos([asset.uri]);
         showAlert(tr('grn.itemsStep.addPhotoFailedTitle'), serverText(validation.error, tr('grn.itemsStep.chooseJpegPng')));
         return;
       }
@@ -747,14 +756,14 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         uploadTimestamp: new Date().toISOString(),
       };
 
-      handleImageUploadStart(tempImageData);
+      handleImageUploadStart(tempImageData, itemId);
 
       // A temporary id only prepares the photo on the device. It is uploaded when the GRN
       // is saved, in create and in edit mode: an edit that is discarded must not have added
       // photos, and a line added in this edit has no server id to attach a photo to yet.
       const deferredUploadId = tempGrnId || generateTempGRNId();
       try {
-        const uploadResult = await uploadGRNItemImage(asset, deferredUploadId, currentItem.grn_trl_id);
+        const uploadResult = await uploadGRNItemImage(asset, deferredUploadId, itemId);
         // The item may have been discarded while the photo was being prepared: then the photo
         // is nobody's (discardOpenItem). No message about it, and its prepared copy is given up like the original.
         if (discardedPhotoIds.current.has(tempImageData.id)) {
@@ -763,7 +772,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         }
         if (!uploadResult.success) {
           // The photo could not be prepared (too large, unreadable): say so and take it out again.
-          dropUnpreparedPhoto(tempImageData.id);
+          dropUnpreparedPhoto(tempImageData.id, { itemId, imageUrl: asset.uri });
           showAlert(
             tr('grn.photos.captureFailedTitle'),
             serverText(uploadResult.error, tr('grn.photos.captureFailedMessage'))
@@ -780,12 +789,14 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
           mimeType: uploadResult.metadata?.mimeType,
           uploadTimestamp: uploadResult.metadata?.uploadTimestamp,
         };
-        handleImageUploadComplete(uploadedImageData, tempImageData.id);
+        handleImageUploadComplete(uploadedImageData, tempImageData.id, itemId);
+        // The prepared copy has taken the picked file's place in the form.
+        if (uploadedImageData.imageUrl !== asset.uri) void releaseLocalPhotos([asset.uri]);
       } catch (error) {
         log.error('Upload failed', loggableError(error));
         if (discardedPhotoIds.current.has(tempImageData.id)) return;
         // The entry still points at the original file: it is taken out, like a refused photo.
-        dropUnpreparedPhoto(tempImageData.id);
+        dropUnpreparedPhoto(tempImageData.id, { itemId, imageUrl: asset.uri });
         showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
       }
     }

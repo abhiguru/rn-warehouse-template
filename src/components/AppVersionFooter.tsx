@@ -24,9 +24,10 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatIdentifier, t as tr } from '@/i18n';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { createLogger, loggableError } from '@/utils/logger';
 
 const log = createLogger('appVersion');
@@ -93,7 +94,7 @@ export function buildDiagnostics(): string {
   return lines.join('\n');
 }
 
-/** "Management System v0.1.0 (build 1)", or without the build when there is none. */
+/** "Version 0.1.0 (build 1)", or without the build when there is none. */
 function versionLine(): string {
   const { version, build } = getAppVersionInfo();
   return build
@@ -124,9 +125,7 @@ export function AppVersionFooter({ diagnostics = false }: AppVersionFooterProps)
     <View>
       {diagnostics && (
         <View style={styles.block} testID="app-diagnostics">
-          <Text style={styles.blockTitle} accessibilityRole="header">
-            {tr('settings.diagnostics.title')}
-          </Text>
+          <SectionHeader title={tr('settings.diagnostics.title')} style={styles.blockTitle} />
           <View style={styles.card}>
             {buildDiagnostics()
               .split('\n')
@@ -149,22 +148,24 @@ export function AppVersionFooter({ diagnostics = false }: AppVersionFooterProps)
           </Pressable>
         </View>
       )}
-      <Pressable
-        testID="app-version-footer"
-        style={styles.footer}
-        onLongPress={shareDiagnostics}
-        accessible
-        accessibilityLabel={`${appName()}, ${line}`}
-        accessibilityHint={tr('settings.diagnostics.shareHint')}
-        accessibilityActions={[{ name: 'longpress', label: tr('settings.diagnostics.share') }]}
-        onAccessibilityAction={onAccessibilityAction}
-      >
-        <Icon name="snowflake" size={iconSize.lg} color={t.icon.secondary} />
-        <Text style={styles.footerTitle}>{appName()}</Text>
-        <Text style={styles.footerSubtitle} selectable>
-          {line}
-        </Text>
-      </Pressable>
+      {!diagnostics && (
+        <Pressable
+          testID="app-version-footer"
+          style={styles.footer}
+          onLongPress={shareDiagnostics}
+          accessible
+          accessibilityLabel={`${appName()}, ${line}`}
+          accessibilityHint={tr('settings.diagnostics.shareHint')}
+          accessibilityActions={[{ name: 'longpress', label: tr('settings.diagnostics.share') }]}
+          onAccessibilityAction={onAccessibilityAction}
+        >
+          <Icon name="snowflake" size={iconSize.lg} color={t.icon.secondary} />
+          <Text style={styles.footerTitle}>{appName()}</Text>
+          <Text style={styles.footerSubtitle} selectable>
+            {line}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -190,14 +191,10 @@ const makeStyles = (t: ThemeTokens) => ({
   block: {
     marginTop: space.xxl,
   },
+  // SectionHeader brings its own top padding; the block's margin already spaces it.
   blockTitle: {
-    ...typography.footnote,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
     marginHorizontal: layout.marginCompact,
-    marginBottom: space.sm,
-    paddingHorizontal: space.lg,
+    paddingTop: 0,
   },
   card: {
     marginHorizontal: layout.marginCompact,

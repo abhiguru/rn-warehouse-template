@@ -40,14 +40,13 @@ import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 import type { AppEntity, EntityMode } from '@/i18n/entities';
 
 /** What a wizard can be about. */
-export type StepEntity = Exclude<AppEntity, 'item'>;
+export type StepEntity = Exclude<AppEntity, 'item' | 'customer'>;
 
 /** The header label when the caller gives none. */
 const ENTITY_TITLE_KEY: Record<StepEntity, TranslationKey> = {
   grn: 'common.grn',
   dispatch: 'common.dispatch',
   invoice: 'common.invoice',
-  customer: 'common.customer',
 };
 type StepState = 'completed' | 'current' | 'upcoming';
 

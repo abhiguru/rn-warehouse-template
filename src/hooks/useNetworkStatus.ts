@@ -17,6 +17,11 @@ export interface NetworkStatus {
   isInternetReachable: boolean | null;
   type: string | null;
   isLoading: boolean;
+  /**
+   * NetInfo has not classified the connection (its `isConnected` is null). `isConnected` is
+   * false then; a caller that must not act on "no network" without knowing checks this too.
+   */
+  isConnectionUnknown?: boolean;
 }
 
 /**
@@ -46,6 +51,7 @@ export function useNetworkStatus(): NetworkStatus {
       if (!active) return;
       setStatus({
         isConnected: state.isConnected ?? false,
+        isConnectionUnknown: state.isConnected === null,
         isInternetReachable: state.isInternetReachable,
         type: state.type,
         isLoading: false,

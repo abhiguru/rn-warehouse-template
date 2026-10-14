@@ -1,7 +1,7 @@
 /**
  * The table-agnostic subscription (order-live-updates.test.ts covers the orders channel and
  * the session rules in full): each table gets its own channel and filter, and the sensors
- * channel keeps the shared rules (first join refetches nothing, bursts coalesce).
+ * channel keeps the shared rules (first join refetches once, bursts coalesce).
  */
 import { createClient } from '@supabase/supabase-js';
 import { acquireValidSession } from '@/config/supabaseConfig';
@@ -65,17 +65,17 @@ test('a schema other than public is passed through', () => {
   expect(filters.postgres_changes).toEqual({ event: '*', schema: 'audit', table: 'ledger' });
 });
 
-test('sensors: the first join and first system ok refetch nothing; a rejoin refetches once', async () => {
+test('sensors: the first join refetches once, the first system ok nothing; a rejoin refetches again', async () => {
   const refresh = jest.fn();
   stop = subscribeToSensorChanges(refresh);
   status('SUBSCRIBED');
   handlers.system({ status: 'ok' });
   await flush();
-  expect(refresh).not.toHaveBeenCalled();
+  expect(refresh).toHaveBeenCalledTimes(1);
   status('CHANNEL_ERROR');
   status('SUBSCRIBED');
   await flush();
-  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(refresh).toHaveBeenCalledTimes(2);
 });
 
 test('sensors: a burst of changes within 150 ms refetches once, without the payload', async () => {

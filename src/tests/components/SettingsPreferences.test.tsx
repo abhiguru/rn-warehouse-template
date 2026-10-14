@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import SettingsScreen from '../../../app/settings';
 import themeReducer from '@/store/slices/themeSlice';
 import { setLanguage } from '@/i18n';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 type MockState = {
   theme: { preference: 'system' | 'light' | 'dark'; brand: 'orange' | 'gcsa'; language: 'system' | 'en' | 'gu' };
@@ -121,7 +122,8 @@ describe('Settings order', () => {
       'settings-section-account',
       'settings-section-help',
     ]);
-    const headers = tree!.root.findAll(node => node.props.accessibilityRole === 'header' && typeof node.type !== 'string').map(node => node.props.children);
+    // The section titles are shared SectionHeaders (G-43); they print in capitals.
+    const headers = tree!.root.findAllByType(SectionHeader).map(node => node.props.title);
     expect(headers).toEqual(expect.arrayContaining(['Warehouse tools', 'Preferences', 'Account', 'Help and about']));
     expect(headers).not.toContain('App features');
     expect(headers).not.toContain('About');
@@ -157,7 +159,7 @@ describe('Preferences rows', () => {
     await render();
     expect(row('settings-pref-appearance').props.accessibilityLabel).toBe('Appearance, Dark');
     expect(row('settings-pref-language').props.accessibilityLabel).toBe('Language on this phone, English');
-    expect(row('settings-pref-brand').props.accessibilityLabel).toBe('Brand, GCSA navy');
+    expect(row('settings-pref-brand').props.accessibilityLabel).toBe('App colours, GCSA navy');
     // No sheet is open, and the old cards are gone.
     expect(tree!.root.findAll(node => node.props.accessibilityRole === 'radio')).toHaveLength(0);
   });
@@ -179,11 +181,11 @@ describe('Preferences rows', () => {
   it('Brand: the swatches lead the row, and a choice applies at once', async () => {
     await render();
     await press(row('settings-pref-brand'));
-    expect(checked('settings-sheet-brand')).toEqual(['GCSA navy brand']);
+    expect(checked('settings-sheet-brand')).toEqual(['GCSA navy colours']);
     await press(radios('settings-sheet-brand')[0]);
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'theme/setBrand', payload: 'orange' });
-    expect(checked('settings-sheet-brand')).toEqual(['Orange brand']);
-    expect(row('settings-pref-brand').props.accessibilityLabel).toBe('Brand, Orange');
+    expect(checked('settings-sheet-brand')).toEqual(['Orange colours']);
+    expect(row('settings-pref-brand').props.accessibilityLabel).toBe('App colours, Orange');
   });
 
   it('Language: a new language opens the sheet again on the rebuilt screen', async () => {

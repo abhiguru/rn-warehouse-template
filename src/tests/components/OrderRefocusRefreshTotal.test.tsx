@@ -133,7 +133,7 @@ describe.each([
   ['orders list', () => <OrderFlashList />, () => service.getOrdersList],
   ['order queue', () => <SupervisorOrderQueueList />, () => service.getOrdersList],
 ])('%s', (_name, element, loads) => {
-  it('costs one load per return, none for the first join, one for a rejoin', async () => {
+  it('costs one load per return, one for each first join, one for a rejoin', async () => {
     let renderer!: ReturnType<typeof create>;
     await act(async () => { renderer = create(element()); });
     await settle();
@@ -141,50 +141,51 @@ describe.each([
     expect(mockSockets).toHaveLength(1);
     await act(async () => { join(0); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(1);
+    // The first join loads once more: a change before the subscription was registered gives no event.
+    expect(loads()).toHaveBeenCalledTimes(2);
 
     // Another screen covers this one: the subscription ends, a change reaches nobody.
     await act(async () => { setScreenFocused(false); renderer.update(element()); });
     await act(async () => { mockSockets[0].change(); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(1);
+    expect(loads()).toHaveBeenCalledTimes(2);
 
-    // Back: one load in total, and the new subscription's first join adds none.
+    // Back: one catch-up load, and the new subscription's first join adds one.
     await act(async () => { setScreenFocused(true); renderer.update(element()); });
     await settle();
     expect(mockSockets).toHaveLength(2);
     await act(async () => { join(1); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(2);
+    expect(loads()).toHaveBeenCalledTimes(4);
 
     // A rejoin after a dropped socket still catches up, once.
     await act(async () => { mockSockets[1].status('CHANNEL_ERROR'); join(1); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(3);
+    expect(loads()).toHaveBeenCalledTimes(5);
     await act(async () => { renderer.unmount(); });
   });
 
-  it('costs one load for a trip to the background while shown, none for the first join', async () => {
+  it('costs one load for a trip to the background while shown, one for each first join', async () => {
     let renderer!: ReturnType<typeof create>;
     await act(async () => { renderer = create(element()); });
     await settle();
     await act(async () => { join(0); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(1);
+    expect(loads()).toHaveBeenCalledTimes(2);
 
     // In the background the subscription ends and a change reaches nobody.
     await appState('background');
     await act(async () => { mockSockets[0].change(); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(1);
+    expect(loads()).toHaveBeenCalledTimes(2);
 
-    // Back in the foreground: one catch-up load, and the new first join adds none.
+    // Back in the foreground: one catch-up load, and the new first join adds one.
     await appState('active');
     await settle();
     expect(mockSockets).toHaveLength(2);
     await act(async () => { join(1); });
     await settle();
-    expect(loads()).toHaveBeenCalledTimes(2);
+    expect(loads()).toHaveBeenCalledTimes(4);
     await act(async () => { renderer.unmount(); });
   });
 });

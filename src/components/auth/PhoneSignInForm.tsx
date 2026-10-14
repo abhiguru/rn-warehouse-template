@@ -23,6 +23,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { BrandMark } from '@/components/BrandMark';
 import { PhoneInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { groupMobileDigits } from '@/utils/mobileGrouping';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -60,15 +61,6 @@ export const toInternationalMobile = (phone: string): string => {
     return `+91${digitsOnly}`;
   } else if (digitsOnly.length === 12 && digitsOnly.startsWith('91')) {
     return `+${digitsOnly}`;
-  }
-  return phone;
-};
-
-// Indian mobile numbers are written 5 + 5 ("98765 43210"); group as the user types.
-const formatPhoneDisplay = (phone: string) => {
-  const digitsOnly = phone.replace(/\D/g, '');
-  if (digitsOnly.length <= 10) {
-    return digitsOnly.length > 5 ? `${digitsOnly.slice(0, 5)} ${digitsOnly.slice(5)}` : digitsOnly;
   }
   return phone;
 };
@@ -200,7 +192,7 @@ export function PhoneSignInForm({
 
               <PhoneInput
                 placeholder="98765 43210"
-                value={formatPhoneDisplay(phoneNumber)}
+                value={groupMobileDigits(phoneNumber)}
                 onChangeText={(text) => {
                   // ૦-૯ typed on a Gujarati keyboard count as 0-9.
                   const digitsOnly = normalizeDigits(text).replace(/\D/g, '');

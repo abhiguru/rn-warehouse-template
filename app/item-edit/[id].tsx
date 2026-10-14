@@ -27,8 +27,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
+import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
+import { deleteItemFlow } from '@/features/items/deleteItemFlow';
+import { matchingPackaging, normalizePackaging, usePackagingWords } from '@/features/items/packagingSuggestions';
+import { showToast } from '@/utils/toast';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -65,6 +70,7 @@ const ItemEditScreen: React.FC = () => {
     active: true,
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
+  const { groups, suggestions } = usePackagingWords();
 
   // Load item data
   useEffect(() => {
@@ -145,12 +151,19 @@ const ItemEditScreen: React.FC = () => {
     if (!originalItem) return false;
 
     return (
-      formData.name.trim() !== (originalItem.name || '') ||
-      formData.packaging.trim() !== (originalItem.packaging || '') ||
-      formData.description.trim() !== (originalItem.description || '') ||
+      // Both sides trimmed: an item stored as "Garlic " is not changed by opening it (CR-27).
+      formData.name.trim() !== (originalItem.name || '').trim() ||
+      formData.packaging.trim() !== (originalItem.packaging || '').trim() ||
+      formData.description.trim() !== (originalItem.description || '').trim() ||
       formData.active !== originalItem.active
     );
   }, [formData, originalItem]);
+
+  // Every way out asks first when something changed: the header Back, the phone's Back key, the swipe.
+  const { leaveWithoutAsking } = useLeaveGuard({
+    hasChanges: hasChanges(),
+    message: tr('items.form.discardMessage'),
+  });
 
   // Handle save
   const handleSave = async () => {
@@ -158,8 +171,9 @@ const ItemEditScreen: React.FC = () => {
       return;
     }
 
+    // Nothing changed: there is nothing to save, so just go back.
     if (!hasChanges()) {
-      showAlert(tr('items.form.nothingToSaveTitle'), tr('items.form.nothingToSaveMessage'));
+      router.back();
       return;
     }
 
@@ -168,15 +182,14 @@ const ItemEditScreen: React.FC = () => {
       const result = await itemService.updateItem({
         p_item_id: id!,
         p_name: formData.name.trim(),
-        p_packaging: formData.packaging.trim() || undefined,
+        p_packaging: normalizePackaging(formData.packaging, groups) || undefined,
         p_description: formData.description.trim() || undefined,
         p_active: formData.active,
       });
 
       if (result.success) {
-        showAlert(tr('items.form.savedTitle'), tr('items.form.savedMessage', { name: formData.name.trim() }), [
-          { text: tr('common.ok'), onPress: () => router.back() },
-        ]);
+        leaveWithoutAsking(() => router.back());
+        showToast(tr('items.form.savedToast', { name: formData.name.trim() }));
       } else {
         // Check for duplicate name error
         if (
@@ -197,61 +210,59 @@ const ItemEditScreen: React.FC = () => {
     }
   };
 
-  // Handle back with unsaved changes
-  const handleBack = () => {
-    if (hasChanges()) {
-      showAlert(
-        tr('items.form.discardTitle'),
-        tr('items.form.discardMessage'),
-        [
-          { text: tr('common.keepEditing'), style: 'cancel' },
-          { text: tr('common.discard'), style: 'destructive', onPress: () => router.back() },
-        ]
-      );
-    } else {
-      router.back();
-    }
+  // Deleting asks first (it takes the item's prices with it); an item in use can be deactivated instead.
+  const handleDelete = () => {
+    if (!originalItem) return;
+    deleteItemFlow(
+      { id: originalItem.id, name: originalItem.name },
+      {
+        onDeleted: () => leaveWithoutAsking(() => router.back()),
+        onDeactivate: async () => {
+          const result = await itemService.toggleItemActive(originalItem.id, false);
+          if (result.success) {
+            setOriginalItem({ ...originalItem, active: false });
+            setFormData((prev) => ({ ...prev, active: false }));
+            showToast(tr('items.form.deactivatedToast', { name: originalItem.name }));
+          } else {
+            showAlert(tr('items.list.couldNotDeactivateTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
+          }
+        },
+      }
+    );
   };
+
+  // The header is the same while the item loads, so Back is always there.
+  const header = (
+    <View style={[styles.header, { paddingTop: insets.top + space.xs }]} testID="item-header">
+      <View style={styles.headerSide}>
+        <HeaderBackButton />
+      </View>
+      <Text style={styles.headerTitle} accessibilityRole="header">
+        {tr('items.form.editTitle')}
+      </Text>
+      <View style={styles.headerSide} />
+    </View>
+  );
 
   if (loading || !originalItem) {
     return (
-      <View
-        style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}
-        accessibilityRole="progressbar"
-        accessibilityLabel={tr('items.form.loadingLabel')}
-      >
-        <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>{tr('items.form.loading')}</Text>
+      <View style={styles.container}>
+        {header}
+        <View
+          style={[styles.flex, styles.loadingContainer]}
+          accessibilityRole="progressbar"
+          accessibilityLabel={tr('items.form.loadingLabel')}
+        >
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.loadingText}>{tr('items.form.loading')}</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-        <HeaderBackButton onPress={handleBack} />
-        <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-          {tr('items.form.editTitle')}
-        </Text>
-        <Pressable
-          style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
-          onPress={handleSave}
-          disabled={saving}
-          accessibilityRole="button"
-          accessibilityLabel={tr('items.form.saveItem')}
-          accessibilityState={{ busy: saving }}
-        >
-          {saving ? (
-            <>
-              <ActivityIndicator size="small" color={t.brand.onFill} />
-              <Text style={styles.saveButtonText}>{tr('common.saving')}</Text>
-            </>
-          ) : (
-            <Text style={styles.saveButtonText}>{tr('common.save')}</Text>
-          )}
-        </Pressable>
-      </View>
+      {header}
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -260,7 +271,7 @@ const ItemEditScreen: React.FC = () => {
         <ScrollView
           key={`form-${originalItem?.id || 'new'}`}
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: space.max + insets.bottom }]}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -283,6 +294,14 @@ const ItemEditScreen: React.FC = () => {
               maxLength={40}
               error={errors.packaging}
             />
+            {suggestions.length > 0 && (
+              <ChoiceChips
+                options={suggestions.map((word) => ({ value: word, label: word }))}
+                value={matchingPackaging(formData.packaging, groups)}
+                onChange={(word) => handleFieldChange('packaging', word)}
+                accessibilityLabel={tr('items.form.packagingSuggestions')}
+              />
+            )}
             <ItemTextField
               label={tr('items.form.description')}
               value={formData.description}
@@ -316,7 +335,20 @@ const ItemEditScreen: React.FC = () => {
               importantForAccessibility="no-hide-descendants"
             />
           </Pressable>
+
+          <View style={styles.deleteRow}>
+            <Button type="tertiary" variant="negative" leftIcon="trash-can-outline" onPress={handleDelete} disabled={saving}>
+              {tr('items.delete.deleteItem')}
+            </Button>
+          </View>
         </ScrollView>
+
+        {/* Under the form, not floating over it (style guide §14.4) */}
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]} testID="item-bottom-bar">
+          <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving}>
+            {tr('items.form.saveItem')}
+          </Button>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -406,27 +438,24 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   headerTitle: {
     ...typography.headline,
-    flex: 1,
+    flexShrink: 1,
+    textAlign: 'center' as const,
     color: t.text.primary,
   },
-  saveButton: {
-    flexDirection: 'row' as const,
-    gap: space.sm,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    paddingHorizontal: space.xl,
-    justifyContent: 'center' as const,
+  // Both sides take an equal share, so the title stays centred whatever the Back button's width.
+  headerSide: {
+    flex: 1,
+    alignItems: 'flex-start' as const,
+  },
+  bottomBar: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    backgroundColor: t.surface.card,
+    ...t.shadow[3],
+  },
+  deleteRow: {
+    marginTop: space.xxl,
     alignItems: 'center' as const,
-    marginRight: layout.marginCompact - space.sm,
-    backgroundColor: t.brand.fill,
-  },
-  saveButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  saveButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
   },
   keyboardView: {
     flex: 1,
@@ -436,6 +465,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   scrollContent: {
     padding: layout.marginCompact,
+    paddingBottom: space.xl,
     gap: space.lg,
   },
   card: {

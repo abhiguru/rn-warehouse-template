@@ -1,10 +1,13 @@
 /**
- * Price history: who added, changed or deleted which item price, and when. Read-only,
+ * Changes (price history): who added, changed or deleted which item price, and when. Read-only,
  * for administrators and supervisors (backend migration 48, get_item_price_history).
- * Opened from Item pricing. Newest first, 50 at a time.
+ * Opened from Item pricing (all changes) or from an item or customer rate page (that item's
+ * changes: params item_id, customer_id, item_name). Newest first, 50 at a time. Rows written by
+ * one save are one card.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -14,6 +17,8 @@ import { getItemPriceHistory, PRICE_HISTORY_PAGE_SIZE } from '@/services/item-pr
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
 import { useAppSelector } from '@/store/hooks';
 import ItemPriceHistoryCard from '@/components/ItemPriceHistoryCard';
+import ChangeGroupCard from '@/features/item-pricing/components/ChangeGroupCard';
+import { groupBySave, groupChanges, type GroupView } from '@/features/item-pricing/utils/priceHistory';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { showAlert } from '@/utils/alert';
@@ -26,7 +31,15 @@ const SKELETONS = [1, 2, 3, 4, 5, 6];
 /** How many further pages in a row may hold nothing new before the next one waits for a tap. */
 const MAX_SKIPPED_PAGES = 3;
 
+/** What the list draws: a lone entry, or one card for the rows of one save. */
+type ListRow =
+  | { type: 'entry'; key: string; entry: ItemPriceHistoryEntry }
+  | { type: 'group'; key: string; entries: ItemPriceHistoryEntry[]; view: GroupView };
+
 const ItemPriceHistoryScreen: React.FC = () => {
+  const params = useLocalSearchParams<{ item_id?: string; customer_id?: string; item_name?: string }>();
+  const itemId = params.item_id || undefined;
+  const customerId = params.customer_id || undefined;
   const role = useAppSelector((state) => state.auth.userProfile?.role);
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -76,7 +89,12 @@ const ItemPriceHistoryScreen: React.FC = () => {
     try {
       let pageOffset = offset;
       for (let skipped = 0; ; skipped += 1) {
-        const result = await getItemPriceHistory({ limit: PRICE_HISTORY_PAGE_SIZE, offset: pageOffset });
+        const result = await getItemPriceHistory({
+          limit: PRICE_HISTORY_PAGE_SIZE,
+          offset: pageOffset,
+          ...(itemId ? { itemId } : {}),
+          ...(customerId ? { customerId } : {}),
+        });
         // Left, signed out, or overtaken by a refresh: nothing of this answer is shown.
         if (!current()) return;
         if (!result.success) {
@@ -116,7 +134,7 @@ const ItemPriceHistoryScreen: React.FC = () => {
         }
       }
     }
-  }, []);
+  }, [itemId, customerId]);
 
   useEffect(() => {
     if (allowed) void load('first', 0);
@@ -133,7 +151,27 @@ const ItemPriceHistoryScreen: React.FC = () => {
     if (!moreError && !stalled) loadMore();
   }, [moreError, stalled, loadMore]);
 
-  const renderEntry = useCallback(({ item }: { item: ItemPriceHistoryEntry }) => <ItemPriceHistoryCard entry={item} />, []);
+  // The rows of one save are one card; all the entries loaded are grouped each time, so a save
+  // that a page edge cut in two joins when its other half arrives.
+  const rows = useMemo<ListRow[]>(
+    () =>
+      groupBySave(entries).flatMap<ListRow>((group) => {
+        const view = group.entries.length > 1 ? groupChanges(group.entries) : null;
+        return view && view.kind !== 'other'
+          ? [{ type: 'group', key: `g-${group.key}`, entries: group.entries, view }]
+          : group.entries.map((entry) => ({ type: 'entry' as const, key: `e-${entry.id}`, entry }));
+      }),
+    [entries]
+  );
+
+  const renderRow = useCallback(
+    ({ item }: { item: ListRow }) =>
+      item.type === 'group' ? <ChangeGroupCard entries={item.entries} view={item.view} /> : <ItemPriceHistoryCard entry={item.entry} />,
+    []
+  );
+
+  const itemName = params.item_name || entries[0]?.item_name || '';
+  const title = itemId && itemName ? tr('pricing.changes.titleItem', { item: itemName }) : tr('pricing.history.title');
 
   const renderFooter = () => {
     if (loadingMore) {
@@ -181,7 +219,7 @@ const ItemPriceHistoryScreen: React.FC = () => {
       <View style={styles.titleRow}>
         <HeaderBackButton />
         <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-          {tr('pricing.history.title')}
+          {title}
         </Text>
       </View>
     </View>
@@ -232,9 +270,9 @@ const ItemPriceHistoryScreen: React.FC = () => {
     <View style={styles.container}>
       {header}
       <FlatList
-        data={entries}
-        renderItem={renderEntry}
-        keyExtractor={(item: ItemPriceHistoryEntry) => String(item.id)}
+        data={rows}
+        renderItem={renderRow}
+        keyExtractor={(item: ListRow) => item.key}
         ListEmptyComponent={
           <ListEmptyState
             activeFilterCount={0}

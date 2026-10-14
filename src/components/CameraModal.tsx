@@ -10,7 +10,7 @@
  * Android back button closes the camera (or returns from the preview).
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
     View,
     Text,
@@ -75,6 +75,11 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     const [preview, setPreview] = useState<CapturedPhoto | null>(null);
     const previewUri = preview?.uri ?? null;
     const cameraRef = useRef<CameraView>(null);
+    // Counts the times the camera was closed, so a shot that finishes after that is told apart.
+    const openEpoch = useRef(0);
+    useEffect(() => {
+        if (!visible) openEpoch.current += 1;
+    }, [visible]);
     const [permission, requestPermission] = useCameraPermissions();
 
     const toggleFlash = useCallback(() => {
@@ -94,6 +99,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
         try {
             setIsCapturing(true);
+            const openedAt = openEpoch.current;
             const photo = await cameraRef.current.takePictureAsync({
                 quality: 0.8,
                 skipProcessing: false,
@@ -102,6 +108,12 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             if (photo?.uri) {
                 // The camera wrote this file; it is deleted when it is retaken or left.
                 void registerLocalPhoto(photo.uri, LOCAL_PHOTO_OWNERS.camera, 'capture');
+                // The camera was closed while the shot was being saved: nobody is waiting for
+                // it. It is deleted, and not kept as a preview for the next time the camera opens.
+                if (openedAt !== openEpoch.current) {
+                    void releaseLocalPhotos([photo.uri]);
+                    return;
+                }
                 // Show preview instead of immediately closing
                 setPreview({ uri: photo.uri, width: photo.width, height: photo.height });
             }
@@ -132,6 +144,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     }, [preview, onCapture, onClose]);
 
     const handleClose = useCallback(() => {
+        openEpoch.current += 1;
         discardPreview();
         onClose();
     }, [discardPreview, onClose]);

@@ -79,17 +79,18 @@ function reportDeletionFailure(server: OperatorServer, message: string): 'report
 type Dispatch = (action: any) => any;
 
 export type CentralEndOutcome =
-  | { ok: true }
+  /** `facilityCleanup: 'failed'`: signed out centrally, but part of the facility's local cleanup did not run. */
+  | { ok: true; facilityCleanup?: 'failed' }
   | { ok: false; reason: 'busy' }
   | { ok: false; reason: 'central'; failure: CentralFailure }
   /** Signed out in memory, but the phone's secure storage kept the session; the next start removes it. */
   | { ok: false; reason: 'local_clear_failed' };
 
-/** Leave the selected facility, if there is one. False while a write is in flight. */
-async function leaveSelectedFacility(dispatch: Dispatch): Promise<boolean> {
-  if (!getActiveOperatorServer()) return true;
+/** Leave the selected facility, if there is one: 'busy' while a write is in flight, 'failed' when the cleanup threw. */
+async function leaveSelectedFacility(dispatch: Dispatch): Promise<'left' | 'busy' | 'failed'> {
+  if (!getActiveOperatorServer()) return 'left';
   // A failed cleanup must not keep the person signed in: only "busy" stops here.
-  return (await leaveFacility(dispatch)) !== 'busy';
+  return leaveFacility(dispatch);
 }
 
 /**
@@ -101,9 +102,11 @@ async function leaveSelectedFacility(dispatch: Dispatch): Promise<boolean> {
  */
 export function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
   return whileLeaving(async () => {
-    if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
+    const left = await leaveSelectedFacility(dispatch);
+    if (left === 'busy') return { ok: false, reason: 'busy' };
     if (!(await signOutCentral())) return { ok: false, reason: 'local_clear_failed' };
-    return { ok: true };
+    // Signed out, but the facility's cleanup did not all run: said, not hidden.
+    return left === 'failed' ? { ok: true, facilityCleanup: 'failed' } : { ok: true };
   });
 }
 
@@ -115,7 +118,7 @@ export function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome
  */
 export function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
   return whileLeaving(async () => {
-    if (!(await leaveSelectedFacility(dispatch))) return { ok: false, reason: 'busy' };
+    if ((await leaveSelectedFacility(dispatch)) === 'busy') return { ok: false, reason: 'busy' };
     const deleted = await deleteCentralAccount();
     if (!deleted.ok) return { ok: false, reason: 'central', failure: deleted };
     if (deleted.userId) await deleteMyFacilities(deleted.userId).catch(() => {});

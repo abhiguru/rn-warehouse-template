@@ -579,6 +579,31 @@ const uploadSingleDeferredImage = async (
 };
 
 /**
+ * A photo that exists only on the device and is ready to be uploaded: it has a
+ * local file, no storage path, and its preparation has finished ('completed').
+ *
+ * Until the preparation has finished, and when it has failed, the entry still
+ * points at the original camera or gallery file, with its EXIF block and
+ * possibly over the size limit. That file is never uploaded.
+ */
+export const isDeferredDispatchPhoto = (image: DispatchImageData): boolean =>
+  !!image.image_url && !image.storage_path && image.upload_status === 'completed';
+
+/**
+ * What keeps a dispatch from being created because of its photos: one still
+ * being prepared, or one whose preparation failed. Null when every photo is
+ * either on the server or prepared.
+ */
+export const unpreparedDispatchPhotos = (
+  images: DispatchImageData[]
+): 'preparing' | 'failed' | null => {
+  const local = images.filter(image => !image.storage_path);
+  if (local.some(image => image.upload_status === 'failed')) return 'failed';
+  if (local.some(image => image.upload_status !== 'completed')) return 'preparing';
+  return null;
+};
+
+/**
  * Upload deferred images after dispatch creation, at most
  * DISPATCH_PHOTO_UPLOAD_CONCURRENCY at a time. A photo whose upload is
  * confirmed has its copy on the phone deleted; a failed one keeps it for a retry.
@@ -592,10 +617,8 @@ export const uploadDeferredDispatchImages = async (
   const failed: DispatchImageData[] = [];
   let uploadedCount = 0;
 
-  // Filter to only deferred images (have image_url but no storage_path)
-  const deferredImages = images.filter(
-    img => img.image_url && !img.storage_path
-  );
+  // Only prepared photos go up (see isDeferredDispatchPhoto).
+  const deferredImages = images.filter(isDeferredDispatchPhoto);
 
   if (deferredImages.length === 0) {
     return { success: true, uploadedCount: 0, errors: [], failed: [] };

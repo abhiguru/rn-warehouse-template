@@ -10,12 +10,27 @@ describe('pricing in Gujarati', () => {
     expect(t('pricing.form.fixFields', { count: 1 })).toBe('Fix 1 field.');
     expect(t('pricing.form.fixFields', { count: 3 })).toBe('Fix 3 fields.');
   });
-  it('writes a validity period with થી and સુધી after the dates', () => {
-    expect(t('pricing.card.validFromTo', { from: '૧ ઑક્ટો', to: '૩૧ ઑક્ટો' }, 'gu')).toBe('૧ ઑક્ટો થી ૩૧ ઑક્ટો સુધી');
-    expect(t('pricing.card.validFromTo', { from: '1 Oct', to: '31 Oct' })).toBe('From 1 Oct to 31 Oct');
+  it('writes the range of goods-received dates with થી and સુધી after the dates', () => {
+    expect(t('pricing.item.range', { from: '૧ ઑક્ટો ૨૦૨૬', to: '૩૧ ઑક્ટો ૨૦૨૬' }, 'gu')).toBe('૧ ઑક્ટો ૨૦૨૬ થી ૩૧ ઑક્ટો ૨૦૨૬ સુધી આવેલા જથ્થા માટે');
+    expect(t('pricing.item.range', { from: '1 Oct 2026', to: '31 Oct 2026' })).toBe('Lots received 1 Oct 2026 – 31 Oct 2026');
+    expect(t('pricing.item.since', { date: '૧ એપ્રિલ ૨૦૨૬' }, 'gu')).toBe('૧ એપ્રિલ ૨૦૨૬ થી આવેલા જથ્થા માટે');
   });
   it('shows a tax rate in Gujarati digits', () => {
-    expect(t('pricing.card.tax', { percent: localizeDigits('18', 'gu') }, 'gu')).toBe('ટેક્સ ૧૮%');
+    expect(t('pricing.row.tax', { percent: localizeDigits('18', 'gu') }, 'gu')).toBe('ટેક્સ ૧૮%');
+    expect(t('pricing.item.taxValue', { percent: localizeDigits('5', 'gu') }, 'gu')).toBe('ભાડું અને મજૂરી પર ૫%');
+  });
+  it('keeps the owner\'s word મૂળ દર for the default rate, once, with no extra tag (P-19)', () => {
+    expect(t('pricing.item.default', undefined, 'gu')).toBe('મૂળ દર');
+    expect(t('pricing.action.addDefault', undefined, 'gu')).toBe('મૂળ દર ઉમેરો');
+    expect(t('pricing.customerRate.title', { customer: 'ફિક્શનલ' }, 'gu')).toBe('ફિક્શનલ નો પોતાનો દર');
+  });
+  it('counts customer rates and old rates', () => {
+    expect(t('pricing.tag.customerRates', { count: 1 }, 'gu')).toBe('૧ વેપારીનો દર');
+    expect(t('pricing.tag.customerRates', { count: 3 }, 'gu')).toBe('૩ વેપારીના દર');
+    expect(t('pricing.item.showOld', { count: 1 }, 'gu')).toBe('૧ જૂનો દર બતાવો');
+    expect(t('pricing.item.showOld', { count: 2 }, 'gu')).toBe('૨ જૂના દર બતાવો');
+    expect(t('pricing.list.needRate', { count: 2 })).toBe('2 items need a rate');
+    expect(t('pricing.list.needRate', { count: 1 })).toBe('1 item needs a rate');
   });
   it('names the price history and what happened to a price', () => {
     expect(t('pricing.history.open', undefined, 'gu')).toBe('ઇતિહાસ');

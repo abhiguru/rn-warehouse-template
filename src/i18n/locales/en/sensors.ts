@@ -54,6 +54,8 @@ export const sensors = {
     noHistory: 'No history yet. Readings appear here once the sensor reports them.',
     periodLabel: 'History period',
     history: 'History',
+    /** Section title when only one period is offered, so no chip is shown. */
+    historyFor: 'History, last {{days}} days',
     connection: 'Connection',
     battery: 'Battery',
     lastReading: 'Last reading',
@@ -72,8 +74,8 @@ export const sensors = {
     year: '1 year',
     lastDays: 'Last {{days}} days',
     lastYear: 'Last 1 year',
-    summaryDays: 'Summary, last {{days}} days',
-    summaryYear: 'Summary, last 1 year',
+    summaryDays: 'All readings, last {{days}} days',
+    summaryYear: 'All readings, last 1 year',
     loadingDays: 'Loading {{days}} days of history',
     loadingYear: 'Loading 1 year of history',
   },
@@ -97,8 +99,8 @@ export const sensors = {
     dateAndTime: 'Date and time',
     rowLabel: '{{time}}, temperature {{temperature}}, humidity {{humidity}}',
     axisNote: 'Temperature axis {{min}} to {{max}}. Humidity 0 to {{humidityMax}} on the right axis.',
-    summaryTemperature: 'Temperature {{min}} to {{max}}, average {{average}}.',
-    summaryHumidity: 'Humidity {{min}} to {{max}}, average {{average}}.',
+    summaryTemperature: 'Temperature {{min}} to {{max}}.',
+    summaryHumidity: 'Humidity {{min}} to {{max}}.',
     /** How the readings were averaged, under the chart title. */
     averages: {
       hourly: 'Hourly averages',
@@ -108,14 +110,14 @@ export const sensors = {
       weekly: 'Weekly averages',
       other: '{{interval}} averages',
     },
-    /** Last sentence of the summary: how many readings and how they were averaged. */
+    /** Last sentence of the summary: how many points the chart draws and how they were averaged. */
     summaryCount: {
-      hourly: { one: '{{count}} reading, hourly averages.', other: '{{count}} readings, hourly averages.' },
-      twoHour: { one: '{{count}} reading, 2-hour averages.', other: '{{count}} readings, 2-hour averages.' },
-      fourHour: { one: '{{count}} reading, 4-hour averages.', other: '{{count}} readings, 4-hour averages.' },
-      daily: { one: '{{count}} reading, daily averages.', other: '{{count}} readings, daily averages.' },
-      weekly: { one: '{{count}} reading, weekly averages.', other: '{{count}} readings, weekly averages.' },
-      other: { one: '{{count}} reading, {{interval}} averages.', other: '{{count}} readings, {{interval}} averages.' },
+      hourly: { one: '{{count}} hourly average.', other: '{{count}} hourly averages.' },
+      twoHour: { one: '{{count}} 2-hour average.', other: '{{count}} 2-hour averages.' },
+      fourHour: { one: '{{count}} 4-hour average.', other: '{{count}} 4-hour averages.' },
+      daily: { one: '{{count}} daily average.', other: '{{count}} daily averages.' },
+      weekly: { one: '{{count}} weekly average.', other: '{{count}} weekly averages.' },
+      other: { one: '{{count}} {{interval}} average.', other: '{{count}} {{interval}} averages.' },
     },
   },
 };

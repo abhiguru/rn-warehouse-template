@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,11 +26,11 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
-  trackedText,
 } from '@/theme/tokens';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { formatMobile } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { t as tr } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { AppVersionFooter } from '@/components/AppVersionFooter';
@@ -51,6 +52,8 @@ const UserProfileScreen: React.FC = () => {
   const account = useAccountActions();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // At the largest text sizes the label sits above the value so neither is squeezed.
+  const stacked = useWindowDimensions().fontScale >= 1.5;
 
   const handleEditProfile = () => {
     // Use userProfile.id (users table) not user.id (auth table)
@@ -74,21 +77,12 @@ const UserProfileScreen: React.FC = () => {
   }> = [
     {
       title: tr('users.profile.accountInformation'),
+      // Each fact once: the name and role are under the avatar.
       items: [
         {
-          label: tr('users.fields.name'),
-          value: userProfile?.name || tr('users.profile.notProvided'),
-          icon: 'account-outline',
-        },
-        {
-          label: tr('users.fields.phone'),
+          label: tr('common.mobileNumber'),
           value: userProfile?.mobile ? formatMobile(userProfile.mobile) : tr('users.profile.notProvided'),
           icon: 'phone-outline',
-        },
-        {
-          label: tr('users.fields.role'),
-          value: roleLabel,
-          icon: 'shield-check-outline',
         },
       ],
     },
@@ -104,14 +98,7 @@ const UserProfileScreen: React.FC = () => {
         <Text style={styles.navTitle} accessibilityRole="header">
           {tr('users.profile.title')}
         </Text>
-        <Pressable
-          style={styles.navEditButton}
-          onPress={handleEditProfile}
-          accessibilityRole="button"
-          accessibilityLabel={tr('users.profile.edit')}
-        >
-          <Text style={styles.navEditText}>{tr('common.edit')}</Text>
-        </Pressable>
+        <View style={styles.navPlaceholder} />
       </View>
 
       <ScrollView
@@ -131,15 +118,6 @@ const UserProfileScreen: React.FC = () => {
                 {avatarInitials(profileName)}
               </Text>
             </View>
-            <Pressable
-              style={styles.editAvatarButton}
-              onPress={handleEditProfile}
-              hitSlop={space.sm}
-              accessibilityRole="button"
-              accessibilityLabel={tr('users.profile.edit')}
-            >
-              <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.onFill} />
-            </Pressable>
           </View>
 
           <Text style={styles.profileName} accessibilityRole="header">
@@ -157,15 +135,15 @@ const UserProfileScreen: React.FC = () => {
         {/* Profile Sections */}
         {profileSections.map((section) => (
           <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionHeader} accessibilityRole="header">
-              {section.title}
-            </Text>
+            <SectionHeader title={section.title} style={styles.sectionHeader} />
             <View style={styles.sectionContent}>
               {section.items.map((item, itemIndex) => (
                 <View
                   key={item.label}
+                  testID={stacked ? 'profile-row-stacked' : undefined}
                   style={[
                     styles.keyValueRow,
+                    stacked && styles.keyValueRowStacked,
                     itemIndex < section.items.length - 1 && styles.keyValueRowDivider,
                   ]}
                   accessible
@@ -175,7 +153,7 @@ const UserProfileScreen: React.FC = () => {
                     <Icon name={item.icon} size={iconSize.md} color={t.icon.secondary} />
                     <Text style={styles.keyValueLabel}>{item.label}</Text>
                   </View>
-                  <Text style={styles.keyValueValue}>{item.value}</Text>
+                  <Text style={[styles.keyValueValue, stacked && styles.keyValueValueStacked]}>{item.value}</Text>
                 </View>
               ))}
             </View>
@@ -184,9 +162,7 @@ const UserProfileScreen: React.FC = () => {
 
         {/* Actions Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader} accessibilityRole="header">
-            {tr('users.profile.actions')}
-          </Text>
+          <SectionHeader title={tr('users.profile.actions')} style={styles.sectionHeader} />
           <View style={styles.sectionContent}>
             {/* Edit Profile */}
             <Pressable
@@ -263,23 +239,14 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   navBackButton: {
-    minWidth: 70,
+    minWidth: 80,
   },
   navTitle: {
     ...typography.headline,
     color: t.text.primary,
   },
-  navEditButton: {
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    paddingLeft: space.lg,
-    paddingRight: space.sm,
-    minWidth: 70,
-    alignItems: 'flex-end' as const,
-  },
-  navEditText: {
-    ...typography.body,
-    color: t.brand.tint,
+  navPlaceholder: {
+    width: 80,
   },
 
   scrollView: {
@@ -309,19 +276,6 @@ const makeStyles = (t: ThemeTokens) => ({
   avatarText: {
     ...typography.title1,
   },
-  editAvatarButton: {
-    position: 'absolute' as const,
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    borderWidth: 2,
-    borderColor: t.surface.card,
-    backgroundColor: t.brand.fill,
-  },
   profileName: {
     ...typography.title2,
     color: t.text.primary,
@@ -336,14 +290,10 @@ const makeStyles = (t: ThemeTokens) => ({
   section: {
     marginBottom: space.xxl,
   },
+  // SectionHeader brings its own top padding; the section's bottom margin already spaces it.
   sectionHeader: {
-    ...typography.footnote,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
     marginHorizontal: layout.marginCompact,
-    marginBottom: space.sm,
-    paddingHorizontal: space.lg,
+    paddingTop: 0,
   },
   sectionContent: {
     marginHorizontal: layout.marginCompact,
@@ -360,6 +310,11 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: layout.rowMinHeight + space.sm,
     paddingHorizontal: space.lg,
     paddingVertical: space.sm,
+  },
+  keyValueRowStacked: {
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'center' as const,
   },
   keyValueRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -380,6 +335,13 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'right' as const,
     flex: 1,
     marginLeft: space.lg,
+  },
+
+  keyValueValueStacked: {
+    flex: 0,
+    marginLeft: 0,
+    marginTop: space.xs,
+    textAlign: 'left' as const,
   },
 
   // Action Row

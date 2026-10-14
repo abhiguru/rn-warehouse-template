@@ -90,7 +90,14 @@ jest.mock('@/features/grn/services/imageUploadService', () => ({
   uploadGRNItemImage: jest.fn(),
   validateImageFile: () => ({ valid: true }),
 }));
-jest.mock('@/utils/localPhotoFiles', () => ({ releaseLocalPhotos: jest.fn(async () => 0) }));
+jest.mock('@/utils/localPhotoFiles', () => ({
+  LOCAL_PHOTO_OWNERS: { grnForm: 'grn-form' },
+  registerLocalPhoto: jest.fn(async () => true),
+  releaseLocalPhotos: jest.fn(async () => 0),
+}));
+
+/** Every file given to releaseLocalPhotos, in order. */
+const releasedFiles = () => jest.mocked(releaseLocalPhotos).mock.calls.flatMap(([uris]) => [...uris]);
 
 /** Ids shaped as the server's (the item form checks the item id). */
 const lineId = (n: number) => `55555555-2222-4333-8444-${String(n).padStart(12, '0')}`;
@@ -778,8 +785,8 @@ describe('GRN items step, photos of an item that is left', () => {
 
     expect(storedItems()[4].trl_images).toEqual([savedPhoto]);
     expect(sentToReview()?.[4].trl_images).toEqual([savedPhoto]);
-    expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
-    expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/prepared.webp']);
+    // The picked original went when the prepared copy replaced it; then the prepared copy.
+    expect(releasedFiles()).toEqual(['file:///camera/raw.jpg', 'file:///cache/prepared.webp']);
   });
 
   // In a new GRN every photo is still a file on the phone: it is uploaded when the GRN is saved.
@@ -911,8 +918,8 @@ describe('GRN items step, photos of an item that is left', () => {
       expect(photosOfItemThree(tree)).toMatchObject({ stored: [prepared], sentToReview: [prepared], inSavedItemsSheet: [prepared] });
       // Nothing waits to be deleted by the save, and only the second photo's file is given up.
       expect(removedImages()).toEqual([]);
-      expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
-      expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/second.webp']);
+      // Each picked original went when its prepared copy replaced it; only the second photo's copy is given up.
+      expect(releasedFiles()).toEqual(['file:///camera/raw.jpg', 'file:///camera/raw.jpg', 'file:///cache/second.webp']);
       expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
     });
 

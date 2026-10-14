@@ -5,7 +5,7 @@
  * Refactored to use useInvoiceForm hook for form state management.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,9 @@ import {
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { t as tr } from '@/i18n';
-import { getItemStoragePrices } from '@/services/item-pricing-service';
+import { getItemStoragePrices, listItemRates } from '@/services/item-pricing-service';
+import { subscribeRatesChanged } from '@/features/item-pricing/contract';
+import { applicableRate } from '@/features/item-pricing/rateModel';
 import { findCustomerPrice } from '@/features/item-pricing/utils/findCustomerPrice';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { canOpenScreen } from '@/config/roles';
@@ -50,6 +52,7 @@ export default function InvoiceFormStep2() {
     itemOverrides,
     updateItemPricing,
     applyGroupPricing,
+    applySavedRatesToLines,
     navigateToStep,
     resetFormState,
   } = useInvoiceForm({ mode: 'create' });
@@ -93,52 +96,90 @@ export default function InvoiceFormStep2() {
     [header.customer_id, header.one_time_charge]
   );
 
-  // The item group whose price form was opened, so its saved price can be applied on return
-  const pendingPricingUpdate = useRef<{ item_id: string; weight: number } | null>(null);
+  // The item group whose price form was opened. `saved` turns true only when the editor reports a
+  // successful save, so leaving the editor without saving changes nothing on the invoice.
+  const pendingPricingUpdate = useRef<{ item_id: string; weight: number; saved: boolean } | null>(null);
+  useEffect(
+    () =>
+      subscribeRatesChanged(changedItem => {
+        if (pendingPricingUpdate.current?.item_id === changedItem) pendingPricingUpdate.current.saved = true;
+      }),
+    []
+  );
 
-  // When screen regains focus, check if we need to apply updated pricing
+  // The latest lines and header, for the continuation below: it must read what the form holds when
+  // the rates arrive, not what it held when it started.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const headerRef = useRef(header);
+  headerRef.current = header;
+  // Raised whenever the screen loses focus or the form is cancelled: an answer that started
+  // before that is dropped, so it never writes into a form that was left or discarded.
+  const applyToken = useRef(0);
+  // True once the form was cancelled: a saved rate is then no longer applied or retried.
+  const discarded = useRef(false);
+
+  // When screen regains focus, apply the rates the editor saved: each line by its own weight and
+  // goods-received day. Lines that were typed by hand keep their value (the form's override marks).
   useFocusEffect(
     useCallback(() => {
       const applyUpdatedPricing = async () => {
-        if (!pendingPricingUpdate.current) return;
-
-        const { item_id, weight } = pendingPricingUpdate.current;
+        const pending = pendingPricingUpdate.current;
+        if (!pending || !pending.saved) {
+          if (pending) pendingPricingUpdate.current = null;
+          return;
+        }
+        const token = applyToken.current;
+        const restore = () => {
+          // Left before the answer came: try again the next time this step is shown.
+          if (!discarded.current && !pendingPricingUpdate.current) {
+            pendingPricingUpdate.current = pending;
+          }
+        };
 
         try {
-          // The price as it is now saved. None when the form was left without saving a new price.
-          const found = await findPriceFor(item_id, weight);
-          const updatedPrice = found.ok ? found.price : undefined;
-          if (!updatedPrice) {
+          // Every rate of the item as saved (ended ones too: an older lot is priced by the rate of its own day).
+          const rates = await listItemRates(pending.item_id);
+          if (token !== applyToken.current) {
+            restore();
             return;
           }
-
-          // Apply pricing to all groups with the same item_id AND weight
-          const matchingItems = items.filter(item =>
-            item.item_id === item_id && item.weight === weight
-          );
-
-          if (matchingItems.length > 0) {
-            // Get unique package_marks for groups with this weight
-            const packageMarks = new Set(matchingItems.map(item => item.package_mark));
-            packageMarks.forEach(packageMark => {
-              const groupKey = `${item_id}:::${packageMark}`;
-              applyGroupPricing(groupKey, {
-                charge: updatedPrice.unit_price,
-                labour_rate: updatedPrice.labour_rate,
-                tax: updatedPrice.tax_percent,
+          const today = toLocalISODate(new Date());
+          const current = headerRef.current;
+          const updates: Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }> = [];
+          // Every line of the item, by its own weight: the saved change can move any of its bands.
+          itemsRef.current
+            .filter(line => line.item_id === pending.item_id)
+            .forEach(line => {
+              // The same rule invoices use: the customer's own rate before the default, narrowest band, latest start.
+              const rate = applicableRate(rates, {
+                customer_id: current.customer_id,
+                weight: line.weight,
+                price_type: current.one_time_charge ? 'one_time' : 'monthly',
+                day: line.grn_date || today,
               });
+              if (rate) {
+                updates.push({ temp_id: line.temp_id, charge: rate.unit_price, labour_rate: rate.labour_rate, tax: rate.tax_percent });
+              }
             });
-          }
+          pendingPricingUpdate.current = null;
+          if (updates.length > 0) applySavedRatesToLines(updates);
         } catch (error) {
           console.error('[InvoiceFormStep2] Error applying updated pricing:', error);
-        } finally {
-          // Clear the pending update
-          pendingPricingUpdate.current = null;
+          if (token !== applyToken.current) {
+            restore();
+            return;
+          }
+          // Keep the saved marker: leaving this step and coming back tries again.
+          showError(tr('invoice.items.ratesNotAppliedTitle'), tr('invoice.items.ratesNotAppliedMessage'));
         }
       };
 
       applyUpdatedPricing();
-    }, [items, applyGroupPricing, findPriceFor])
+      return () => {
+        applyToken.current += 1;
+      };
+    }, [applySavedRatesToLines])
   );
 
   // I11: Handle Android back button - go to previous step
@@ -157,6 +198,8 @@ export default function InvoiceFormStep2() {
     applyGroupPricing(groupKey, pricing);
   };
 
+  const openingPricing = useRef(false);
+
   // Pencil beside an item group: open the price form. Looking at a price writes
   // nothing. The customer's existing price opens for editing; when there is
   // none, an empty form opens filled from the line, and the price row is
@@ -164,6 +207,7 @@ export default function InvoiceFormStep2() {
   const handleEditPricing = useCallback(async (params: {
     item_id: string;
     item_name: string;
+    package_mark?: string;
     weight: number;
     charge: number;
     labour_rate: number;
@@ -175,6 +219,9 @@ export default function InvoiceFormStep2() {
       return;
     }
 
+    // A second tap while the first is still reading would stack a second editor.
+    if (openingPricing.current) return;
+    openingPricing.current = true;
     setIsLoadingPricing(true);
 
     try {
@@ -184,39 +231,51 @@ export default function InvoiceFormStep2() {
         return;
       }
 
-      pendingPricingUpdate.current = { item_id: params.item_id, weight: params.weight };
-      if (found.price) {
-        router.push({ pathname: '/item-pricing-form', params: { id: found.price.id, mode: 'edit' } });
-      } else {
-        router.push({
-          pathname: '/item-pricing-form',
-          params: {
-            item_id: params.item_id,
-            item_name: params.item_name,
-            customer_id: header.customer_id,
-            customer_name: header.customer_name,
-            price_type: header.one_time_charge ? 'one_time' : 'monthly',
-            unit_price: String(params.charge),
-            labour_rate: String(params.labour_rate),
-            tax_percent: String(params.tax),
-            weight_min: '0',
-            weight_max: String(params.weight),
-          },
-        });
-      }
+      discarded.current = false;
+      pendingPricingUpdate.current = { item_id: params.item_id, weight: params.weight, saved: false };
+      // The editor resolves the rate itself (the customer's own rate in force on the goods-received
+      // day, or a new customer rate copied from the default): it needs the line and its day. The
+      // days are those of the tapped group's own lines; a group of several days uses the latest.
+      const own = items.filter(
+        i => i.item_id === params.item_id && i.weight === params.weight && (params.package_mark === undefined || i.package_mark === params.package_mark)
+      );
+      const days = [...new Set(own.map(i => i.grn_date).filter((d): d is string => Boolean(d)))].sort();
+      const grn_date = days[days.length - 1];
+      router.push({
+        pathname: '/item-rates/edit',
+        params: {
+          mode: 'invoice',
+          item_id: params.item_id,
+          item_name: params.item_name,
+          customer_id: header.customer_id,
+          customer_name: header.customer_name,
+          price_type: header.one_time_charge ? 'one_time' : 'monthly',
+          unit_price: String(params.charge),
+          labour_rate: String(params.labour_rate),
+          tax_percent: String(params.tax),
+          weight_min: '0',
+          weight_max: String(params.weight),
+          grn_date,
+          ...(days.length > 1 ? { grn_dates_differ: '1' } : {}),
+        },
+      });
     } catch (error) {
       console.error('[InvoiceFormStep2] Error in handleEditPricing:', error);
       showError(tr('invoice.items.pricingOpenFailedTitle'), tr('common.checkConnection'));
     } finally {
+      openingPricing.current = false;
       setIsLoadingPricing(false);
     }
-  }, [header.customer_id, header.customer_name, header.one_time_charge, findPriceFor]);
+  }, [header.customer_id, header.customer_name, header.one_time_charge, findPriceFor, items]);
 
   const handleBack = async () => {
     await navigateToStep(1);
   };
 
   const handleCancel = () => {
+    discarded.current = true;
+    applyToken.current += 1;
+    pendingPricingUpdate.current = null;
     resetFormState();
     router.replace('/invoices');
   };

@@ -33,7 +33,6 @@ export type {
 // ============================================================================
 export { default as CustomerOrderSummary } from './CustomerOrderSummary';
 export { default as OrderItemCard } from './OrderItemCard';
-export { default as ItemPricingCard, ItemPricingSkeletonCard } from './ItemPricingCard';
 export { default as StockIndicator } from './StockIndicator';
 
 // ============================================================================

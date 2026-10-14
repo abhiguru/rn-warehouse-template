@@ -14,3 +14,13 @@ describe('a number typed into the price form', () => {
     expect(priceNumber(text)).toBeNull();
   });
 });
+
+describe('a whole-number field (0 decimals)', () => {
+  it('reads whole numbers and refuses a decimal point', () => {
+    expect(priceNumber('12', 0)).toBe(12);
+    expect(priceNumber('0', 0)).toBe(0);
+    expect(priceNumber('12.5', 0)).toBeNull();
+    expect(priceNumber('12.', 0)).toBeNull();
+    expect(priceNumber('', 0)).toBeNull();
+  });
+});

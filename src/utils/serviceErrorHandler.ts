@@ -645,6 +645,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
         success: false,
         message: (dataObj.message as string) || errorMessage || t('errors.general.operationFailed'),
         error: (dataObj.error as string) || 'API_ERROR',
+        ...(typeof dataObj.error_code === 'string' ? { errorCode: dataObj.error_code } : {}),
       };
     }
 

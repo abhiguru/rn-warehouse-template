@@ -1,6 +1,5 @@
 import { setLanguage, t } from '..';
-import { customerNextStepLabel, customerSteps } from '@/features/customer/customerStepLabels';
-import { formatGST, formatMobile, validateStep1, validateStep2 } from '@/features/customer/schemas/customerValidation';
+import { formatGST, formatMobile, validateBasicInfo, validateDetails } from '@/features/customer/schemas/customerValidation';
 
 afterEach(() => setLanguage('en'));
 
@@ -10,31 +9,32 @@ describe('customers in Gujarati', () => {
       '૧૫ અક્ષરનો GST નંબર અંગ્રેજી અક્ષરો અને આંકડામાં લખો, જેમ કે 22AAAAA0000A1Z5.'
     );
   });
-  it('puts the total before the count', () => {
-    expect(t('customers.review.documentCountLabel', { count: 3, max: 10 }, 'gu')).toBe('૧૦ માંથી ૩ દસ્તાવેજ');
+  it('counts the fields to fix', () => {
+    expect(t('customers.form.fixFields', { count: 1 }, 'gu')).toBe('આગળ વધવા ૧ વિગત સુધારો.');
+    expect(t('customers.form.fixFields', { count: 3 }, 'gu')).toBe('આગળ વધવા ૩ વિગતો સુધારો.');
+  });
+  it('names the duplicate customer and the mobile number it has', () => {
+    expect(t('customers.form.duplicateTitle', { name: 'પટેલ ટ્રેડર્સ' }, 'gu')).toBe('પટેલ ટ્રેડર્સ પહેલેથી છે');
+    expect(t('customers.form.duplicateMessage', { mobile: '+91 99999 00308' }, 'gu')).toContain('+91 99999 00308');
+  });
+  it('does not tell a screen-reader user to swipe', () => {
+    expect(t('customers.list.rowHint', undefined, 'gu')).toBe('વેપારી ખોલે છે.');
+    expect(t('customers.list.rowHint', undefined, 'gu')).not.toMatch(/સ્વાઇપ/);
   });
   it('quotes the search text', () => {
     expect(t('customers.search.noMatchTitle', { search: 'પટેલ' }, 'gu')).toBe('"પટેલ" સાથે મળતો કોઈ વેપારી નથી');
-  });
-  it('names the steps in the language of the moment', () => {
-    expect(customerSteps().map(step => step.label)).toEqual(['Basic information', 'Address and tax details', 'Documents and review']);
-    expect(customerNextStepLabel(1)).toBe('Next: Details');
-    expect(customerNextStepLabel(3, true)).toBe('Update Customer');
-    setLanguage('gu');
-    expect(customerSteps().map(step => step.shortLabel)).toEqual(['મુખ્ય માહિતી', 'વિગતો', 'ચકાસણી']);
-    expect(customerNextStepLabel(2)).toBe('આગળ: ચકાસણી');
   });
 });
 
 describe('customer validation', () => {
   it('keeps the English messages', async () => {
-    const result = await validateStep1({ name: 'A', mobile: '123', email: 'x' });
+    const result = await validateBasicInfo({ name: 'A', mobile: '123', email: 'x' });
     expect(result.errors).toEqual({
       name: 'Enter at least 2 characters.',
       mobile: 'Enter a 10-digit mobile number.',
       email: 'Enter an email address like name@example.com.',
     });
-    const details = await validateStep2({
+    const details = await validateDetails({
       city: '', state: '', pincode: '12', address: '', gst: 'ABC', pan: 'ABC', contact_name: '', contact_mobile: '', contact_email: '',
     });
     expect(details.errors).toEqual({
@@ -45,11 +45,11 @@ describe('customer validation', () => {
   });
   it('gives Gujarati messages once the language is Gujarati, and accepts ૦-૯ in a mobile number', async () => {
     setLanguage('gu');
-    const result = await validateStep1({ name: '', mobile: '૯૮૭૬૫૪૩૨૧૦', email: '' });
-    // An empty name fails both rules; the form shows the last one, as it does in English.
-    expect(result.errors).toEqual({ name: 'ઓછામાં ઓછા ૨ અક્ષર લખો.' });
+    const result = await validateBasicInfo({ name: '', mobile: '૯૮૭૬૫૪૩૨૧૦', email: '' });
+    // An empty name fails two rules; the first one, asking for the name, is shown.
+    expect(result.errors).toEqual({ name: 'વેપારીનું નામ લખો.' });
     expect(t('customers.validation.nameRequired')).toBe('વેપારીનું નામ લખો.');
-    const short = await validateStep1({ name: 'રમેશ ટ્રેડર્સ', mobile: '૯૮૭', email: '' });
+    const short = await validateBasicInfo({ name: 'રમેશ ટ્રેડર્સ', mobile: '૯૮૭', email: '' });
     expect(short.errors).toEqual({ mobile: '૧૦ આંકડાનો મોબાઇલ નંબર લખો.' });
   });
   it('stores typed ૦-૯ as 0-9 in identifiers', () => {

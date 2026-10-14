@@ -46,6 +46,7 @@
  * action stays `available`; actions without a fallback are still left out.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t } from '@/i18n';
 import {
   generateReportPDF,
@@ -384,6 +385,9 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
     running.current = true;
     setBusy(true);
     const facility = currentFacility();
+    // A session that ends while a dialog is open must not go on to download the old session's report.
+    const generation = getSessionGeneration();
+    const sessionChanged = () => generation !== getSessionGeneration();
     try {
       // A search the PDF will not apply: the person agrees to the full report before anything is asked for.
       const search = unappliedSearch?.();
@@ -394,9 +398,10 @@ export function useReportExport(options: UseReportExportOptions): ReportExport {
         if (!(await agreeToShare(fullReportQuestion(t('reports.export.filterNeedsUpdate'))))) return;
         made = await makePdf(withoutReportFilters(request), facility, fallback, false);
       }
-      if (!made || made === FILTERS_REFUSED) return;
+      if (!made || made === FILTERS_REFUSED || sessionChanged()) return;
       const filename = reportPdfFilename(request, namePartsOf(made.document, latest.current.filenameParts?.()));
       await noteTruncated(made.document);
+      if (sessionChanged()) return;
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
       if (!shared.success) {
         log.warn('Report PDF not shared', { report: request.report });

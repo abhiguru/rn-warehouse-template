@@ -100,7 +100,6 @@ export function subscribeToTableChanges(
       constructing = false;
     }
     let systemOk = false;
-    let joined = false;
     const channel = client
       .channel(channelName)
       .on(
@@ -110,16 +109,17 @@ export function subscribeToTableChanges(
       )
       .on('system', {}, payload => {
         if (payload.status !== 'ok') return;
-        // Same as the first join below: the first ok needs no refetch, a later one does.
+        // The first ok adds nothing over the first join below (which already refetches); a later
+        // one is a rejoin and does.
         if (systemOk) schedule();
         systemOk = true;
       });
     channel.subscribe(status => {
       if (status !== 'SUBSCRIBED') return;
-      // The first join needs no refetch: the screen loads, or catches up on its return,
-      // itself. A later one is an automatic socket rejoin: recover missed changes.
-      if (joined) schedule();
-      joined = true;
+      // Every join refetches, the first included: the screen's own load (or catch-up) is
+      // answered before postgres_changes is registered, so a change committed in between
+      // produces no event. A later join is an automatic socket rejoin: recover missed changes.
+      schedule();
     });
   };
   unsubscribeSession = onSessionChange(stop);

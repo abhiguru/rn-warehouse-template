@@ -45,6 +45,7 @@ import {
 } from '@/features/settings/preferenceSheetMemory';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
 
 const THEME_OPTIONS: {
@@ -122,6 +123,10 @@ const SettingsScreen: React.FC = () => {
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
   const featureRows = settingsFeatureRows(userProfile?.role, capabilities);
+
+  // The server in use, named under "Change warehouse server" (as Help names the facility).
+  const activeServer = getActiveOperatorServer();
+  const serverName = activeServer ? activeServer.companyName || activeServer.displayName : '';
 
   const roleLabel = roleName(userProfile?.role);
   const profileName = userProfile?.name || t('users.fallbackName');
@@ -211,6 +216,7 @@ const SettingsScreen: React.FC = () => {
             <SettingsRow
               icon="server"
               label={t('auth.server.change')}
+              subtitle={serverName ? t('settings.server.rowSubtitle', { facility: serverName }) : undefined}
               onPress={() => router.push('/operator-server')}
             />
           ) : null}
@@ -222,7 +228,7 @@ const SettingsScreen: React.FC = () => {
               label={action.label}
               subtitle={action.subtitle}
               onPress={() => account.request(action.id)}
-              showChevron={!action.destructive}
+              showChevron={false}
               destructive={action.destructive}
               last={!account.deletion.available && index === account.actions.length - 1}
             />

@@ -10,7 +10,7 @@ import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewSt
 import { uploadDeferredDispatchImages } from '@/features/dispatch/services/dispatchImageService';
 
 const DISPATCH_ID = '11111111-2222-4333-8444-555555555555';
-const photo = (name: string) => ({ id: `temp_${name}`, file_name: `${name}.webp`, image_url: `file:///cache/${name}.webp`, upload_status: 'pending' as const });
+const photo = (name: string) => ({ id: `temp_${name}`, file_name: `${name}.webp`, image_url: `file:///cache/${name}.webp`, upload_status: 'completed' as const });
 const mockImages = [photo('truck'), photo('load'), photo('seal')];
 
 jest.mock('@/store/hooks', () => ({

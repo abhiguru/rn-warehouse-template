@@ -235,6 +235,7 @@ export const components = {
       completed: 'Completed',
       failed: 'Failed',
       cancelled: 'Cancelled',
+      unknown: 'Not confirmed',
     },
     printer: {
       online: 'Online',
@@ -249,6 +250,7 @@ export const components = {
       printing: 'Printing in progress',
       queued: 'Print job queued',
       unavailable: 'Status unavailable',
+      unconfirmed: 'The last print job was not confirmed. Check the printer.',
     },
   },
   printRange: {
@@ -324,14 +326,12 @@ export const components = {
       grn: { create: 'Cancel GRN', edit: 'Cancel editing' },
       dispatch: { create: 'Cancel Dispatch', edit: 'Cancel editing' },
       invoice: { create: 'Cancel Invoice', edit: 'Cancel invoice edit' },
-      customer: { create: 'Cancel customer', edit: 'Cancel customer' },
     },
     // The discard question when a screen gives no title of its own.
     discardFor: {
       grn: 'Discard this GRN?',
       dispatch: 'Discard this Dispatch?',
       invoice: 'Discard this Invoice?',
-      customer: 'Discard this Customer?',
     },
     cancelHint: 'Asks before discarding your changes',
   },

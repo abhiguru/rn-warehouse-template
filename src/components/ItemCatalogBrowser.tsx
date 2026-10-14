@@ -680,11 +680,13 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const current = draftRef.current;
     const changes = changesOf(current);
 
+    // Nothing chosen: this also holds when every saved lot was deselected. The picker does not
+    // remove every line of the order without asking; a line is removed from its card, which asks.
+    if (current.selection.size === 0) {
+      showAlert(tr('orders.catalog.noneSelectedTitle'), tr('orders.catalog.noneSelectedMessage'));
+      return;
+    }
     if (changes.length === 0) {
-      if (current.selection.size === 0) {
-        showAlert(tr('orders.catalog.noneSelectedTitle'), tr('orders.catalog.noneSelectedMessage'));
-        return;
-      }
       // Only saved lines, none of them changed: nothing to send.
       finishClose();
       return;

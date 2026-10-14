@@ -8,7 +8,7 @@
  * Access: Admin and Supervisor roles only
  */
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { canOpenScreen } from '@/config/roles';
@@ -27,6 +28,7 @@ import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { MasterListHeader } from '@/components/common/MasterListHeader';
 import {
   fontWeight,
   iconSize,
@@ -36,10 +38,9 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
-  singleLineText,
 } from '@/theme/tokens';
-import { Avatar, StatusTag } from '@/components/ui';
-import { formatCount, formatMobile } from '@/utils/formatters';
+import { Avatar, SectionHeader, StatusTag } from '@/components/ui';
+import { formatCount, formatMobile, formatTime } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 
@@ -55,8 +56,26 @@ interface ListState {
   filters: UserFilters;
   offset: number;
   totalCount: number;
-  error: string | null;
+  error: boolean;
+  /** The search the rows on screen answer. */
+  loadedSearch: string;
+  /** When the rows on screen were loaded. */
+  loadedAt: Date | null;
+  /** A reload failed while rows were on screen: they are older than they look. */
+  refreshFailed: boolean;
 }
+
+/** What the list draws: a person, a connection (FAS sync), or the heading above the connections. */
+type ListRow = { kind: 'user'; user: UserListItem } | { kind: 'connectionsHeader' };
+
+/**
+ * Rows asked for per call. The server sends no count of connections, so the screen loads
+ * every row (up to MAX_ROWS) to count people and to show the Connections section in full.
+ */
+import { appendNew } from '@/utils/appendNew';
+
+const PAGE_SIZE = 100;
+const MAX_ROWS = 1000;
 
 const DEFAULT_FILTERS: UserFilters = {
   search_query: '',
@@ -82,8 +101,13 @@ export default function UsersScreen() {
     filters: DEFAULT_FILTERS,
     offset: 0,
     totalCount: 0,
-    error: null,
+    error: false,
+    loadedSearch: '',
+    loadedAt: null,
+    refreshFailed: false,
   });
+  // Counts the loads from the first row: an answer for an older search is ignored.
+  const requestRef = useRef(0);
 
   // Check access
   const hasAccess = canOpenScreen(userProfile?.role, 'userManagement');
@@ -94,14 +118,28 @@ export default function UsersScreen() {
 
   const fetchUsers = useCallback(
     async (filters: UserFilters, offset: number = 0) => {
+      const request = offset === 0 ? ++requestRef.current : requestRef.current;
+      const search = filters.search_query ?? '';
       if (offset === 0) {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
+        setState((prev) => ({ ...prev, loading: true, error: false }));
       } else {
         setState((prev) => ({ ...prev, loadingMore: true }));
       }
 
+      const fail = () => {
+        setState((prev) => {
+          // Rows for the same search stay, marked as older; rows for another search would mislead.
+          const keepRows = offset === 0 ? prev.data.length > 0 && prev.loadedSearch === search : true;
+          if (keepRows && prev.data.length > 0) {
+            return { ...prev, loading: false, loadingMore: false, refreshFailed: offset === 0 };
+          }
+          return { ...prev, data: [], totalCount: 0, loading: false, loadingMore: false, error: true };
+        });
+      };
+
       try {
-        const response = await adminUserService.getUsersList(filters, 20, offset);
+        const response = await adminUserService.getUsersList(filters, PAGE_SIZE, offset);
+        if (request !== requestRef.current) return;
 
         if (response.success && response.data) {
           setState((prev) => ({
@@ -109,30 +147,27 @@ export default function UsersScreen() {
             data:
               offset === 0
                 ? response.data!.users
-                : [...prev.data, ...response.data!.users],
+                : appendNew(prev.data, response.data!.users),
             totalCount: response.data!.pagination.total_count,
             offset,
             loading: false,
             loadingMore: false,
-            error: null,
+            error: false,
+            loadedSearch: offset === 0 ? search : prev.loadedSearch,
+            loadedAt: offset === 0 ? new Date() : prev.loadedAt,
+            refreshFailed: offset === 0 ? false : prev.refreshFailed,
           }));
+          // More rows on the server: keep loading them (CR-26), for this search only.
+          const loaded = offset + response.data.users.length;
+          if (response.data.users.length > 0 && loaded < response.data.pagination.total_count && loaded < MAX_ROWS) {
+            void fetchUsers(filters, loaded);
+          }
         } else {
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            loadingMore: false,
-            error: response.error || 'Failed to fetch users',
-          }));
+          fail();
         }
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error';
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          loadingMore: false,
-          error: errorMessage,
-        }));
+      } catch {
+        if (request !== requestRef.current) return;
+        fail();
       }
     },
     []
@@ -159,13 +194,22 @@ export default function UsersScreen() {
     });
   }, [state.filters, fetchUsers]);
 
+  const handleSearch = useCallback(
+    (text: string) => {
+      const filters = { ...state.filters, search_query: text };
+      setState((prev) => ({ ...prev, filters, offset: 0 }));
+      fetchUsers(filters, 0);
+    },
+    [state.filters, fetchUsers]
+  );
+
   const handleEndReached = useCallback(() => {
     const hasMore =
       state.totalCount > state.data.length &&
       !state.loadingMore &&
       !state.loading;
     if (hasMore) {
-      fetchUsers(state.filters, state.offset + 20);
+      fetchUsers(state.filters, state.data.length);
     }
   }, [state, fetchUsers]);
 
@@ -180,14 +224,30 @@ export default function UsersScreen() {
   // RENDER
   // ===========================================================================
 
+  // People first; connections (the FAS sync) after them under their own heading, and not counted.
+  const rows = useMemo<ListRow[]>(() => {
+    const people = state.data.filter((user) => !user.is_service_account);
+    const connections = state.data.filter((user) => user.is_service_account);
+    return [
+      ...people.map((user): ListRow => ({ kind: 'user', user })),
+      ...(connections.length > 0 ? [{ kind: 'connectionsHeader' } as ListRow] : []),
+      ...connections.map((user): ListRow => ({ kind: 'user', user })),
+    ];
+  }, [state.data]);
+  const connectionCount = state.data.filter((user) => user.is_service_account).length;
+  const peopleCount = Math.max(0, state.totalCount - connectionCount);
+
   const renderItem = useCallback(
-    ({ item }: { item: UserListItem }) => (
-      <FioriUserCard user={item} onPress={() => handleEditUser(item.id)} />
-    ),
+    ({ item }: { item: ListRow }) =>
+      item.kind === 'connectionsHeader' ? (
+        <SectionHeader title={tr('users.list.connections')} />
+      ) : (
+        <FioriUserCard user={item.user} onPress={() => handleEditUser(item.user.id)} />
+      ),
     [handleEditUser]
   );
 
-  const keyExtractor = useCallback((item: UserListItem) => item.id, []);
+  const keyExtractor = useCallback((item: ListRow) => (item.kind === 'user' ? item.user.id : 'connections-header'), []);
 
   const renderEmpty = useCallback(() => {
     if (state.loading) {
@@ -219,6 +279,23 @@ export default function UsersScreen() {
       );
     }
 
+    // A search with no match is not an empty list: say so and offer to clear it.
+    if (state.filters.search_query) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyText}>{tr('users.list.noMatch', { search: state.filters.search_query })}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={() => handleSearch('')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
@@ -228,7 +305,7 @@ export default function UsersScreen() {
         <Text style={styles.emptyText}>{tr('users.list.emptyMessage')}</Text>
       </View>
     );
-  }, [state.loading, state.error, handleRefresh, styles, t]);
+  }, [state.loading, state.error, state.filters.search_query, handleRefresh, handleSearch, styles, t]);
 
   const renderFooter = useCallback(() => {
     if (!state.loadingMore) return null;
@@ -288,21 +365,37 @@ export default function UsersScreen() {
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.title}>{tr('users.list.title')}</Text>
-              {state.totalCount > 0 && (
-                <Text style={styles.subtitle} {...singleLineText()}>{formatCount(state.totalCount, 'user')}</Text>
-              )}
             </View>
           ),
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={styles.container} testID="users-screen">
+        <MasterListHeader
+          listKey="users"
+          search={state.filters.search_query ?? ''}
+          onSearch={handleSearch}
+          placeholder={tr('users.list.searchPlaceholder')}
+          loading={state.loading}
+          countText={peopleCount > 0 ? formatCount(peopleCount, 'user') : undefined}
+          refreshError={
+            state.refreshFailed
+              ? {
+                  message: tr('users.list.refreshFailed', { time: formatTime(state.loadedAt) }),
+                  onRetry: () => fetchUsers(state.filters, 0),
+                }
+              : undefined
+          }
+        />
         <FlatList
-          data={state.data}
+          style={styles.flatList}
+          data={rows}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={[
             styles.listContent,
+            // Android: app/_layout.tsx already pads the screen by the navigation bar.
+            Platform.OS === 'ios' && { paddingBottom: space.xl + insets.bottom },
             state.data.length === 0 && styles.listContentEmpty,
           ]}
           refreshControl={
@@ -349,9 +442,11 @@ interface FioriUserCardProps {
 function FioriUserCard({ user, onPress }: FioriUserCardProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const roleLabel = roleName(user.role);
+  const connection = !!user.is_service_account;
+  // A connection has a kind, not a role, and no phone number to show.
+  const roleLabel = connection ? tr('users.list.connectionTag') : roleName(user.role);
   const name = user.name || tr('users.unknownUser');
-  const mobile = user.mobile ? formatMobile(user.mobile) : null;
+  const mobile = user.mobile && !connection ? formatMobile(user.mobile) : null;
   const assigned =
     user.assigned_customers_count > 0
       ? tr('users.list.customersAssigned', { count: user.assigned_customers_count })
@@ -377,7 +472,7 @@ function FioriUserCard({ user, onPress }: FioriUserCardProps) {
           {name}
         </Text>
         <View style={styles.tagRow}>
-          <StatusTag status={ROLE_TONE[user.role] ?? 'neutral'} label={roleLabel} icon={null} />
+          <StatusTag status={connection ? 'neutral' : (ROLE_TONE[user.role] ?? 'neutral')} label={roleLabel} icon={null} />
           {!user.active && <StatusTag status="neutral" label={tr('common.inactive')} />}
         </View>
 
@@ -424,17 +519,16 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     textAlign: 'center' as const,
   },
-  subtitle: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
   listContent: {
     paddingTop: space.md,
     paddingBottom: space.xl,
   },
-  listContentEmpty: {
+  // The list fills the space under the search field, so the empty state has a box to centre in.
+  flatList: {
     flex: 1,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
   },
 
   // Object cell

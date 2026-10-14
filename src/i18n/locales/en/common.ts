@@ -40,7 +40,7 @@ export const common = {
   dismiss: 'Dismiss',
   discard: 'Discard',
   keepEditing: 'Keep editing',
-  openSettings: 'Open settings',
+  toolsAndSettings: 'Tools and settings',
   showMore: 'Show more',
   showLess: 'Show less',
   // States
