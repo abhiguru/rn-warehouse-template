@@ -236,17 +236,19 @@ describe('weights on the dispatch cards', () => {
   });
 
   // The drawn width cannot be measured here. "Kg each" in the heading style needs about
-  // 47 dp at font scale 1.0 and about 61 dp at 1.3; the column gives it 64 dp to write in.
-  it('the weight column leaves its heading 64 dp to write in, on both cards', () => {
+  // 47 dp at font scale 1.0 and about 61 dp at 1.3. The Gujarati "દરેકના kg" wrapped onto two
+  // lines at 64 dp to write in on the phone (the GRN list gives it 72 and fits it), so the
+  // column gives it all 72 dp: no padding inside the column.
+  it('the weight column leaves its heading 72 dp to write in, on both cards', () => {
     tree = open(fiveBags());
     const column = weightColumn(tree);
-    expect((column.width as number) - (column.paddingRight as number)).toBeGreaterThanOrEqual(64);
+    expect((column.width as number) - ((column.paddingRight as number) || 0)).toBeGreaterThanOrEqual(72);
     expect(column.width).toBeLessThanOrEqual(72);
     act(() => tree.unmount());
 
     tree = openRecent(recentFiveBags());
     const recentColumn = weightColumn(tree);
-    expect((recentColumn.width as number) - (recentColumn.paddingRight as number)).toBeGreaterThanOrEqual(64);
+    expect((recentColumn.width as number) - ((recentColumn.paddingRight as number) || 0)).toBeGreaterThanOrEqual(72);
     expect(recentColumn.width).toBeLessThanOrEqual(72);
   });
 

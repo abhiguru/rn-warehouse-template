@@ -183,12 +183,13 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     paddingRight: space.sm,
   },
-  // Wide enough for its heading "Kg each" on one line at font scales 1.0 and 1.3
-  // (64 dp to write in); the number under it is the weight of one bag.
+  // Wide enough for its heading on one line at font scales 1.0 and 1.3, "Kg each" and
+  // the Gujarati "દરેકના kg" (72 dp to write in, as on the GRN list: padding inside the
+  // column left 64 dp, and the Gujarati heading wrapped); the number under it is the
+  // weight of one bag. The GRN cell beside it is centred, so the two stay apart.
   colWeight: {
     width: 72,
     textAlign: 'right' as const,
-    paddingRight: space.sm,
   },
   // As wide as on the dispatch card. At 60 dp (52 to write in) "RV15001" needs
   // about 77 dp at font scale 1.3, more than shrinking to 0.7 could make room
