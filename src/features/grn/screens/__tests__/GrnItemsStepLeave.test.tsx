@@ -801,6 +801,133 @@ describe('GRN items step, photos of an item that is left', () => {
     expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/prepared.webp']);
     expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
   });
+
+  // An item can be checkmarked, and opened again, while its photo is still being
+  // prepared. "Discard changes" restores the photos the item had when it was
+  // opened: it used to restore that photo as it was then, still "uploading" and
+  // pointing at the camera's file, and Review's Save refused the GRN for it.
+  describe('a photo that is still being prepared when its item is opened again', () => {
+    const preparedAs = (imageUrl: string) => ({
+      success: true,
+      imageId: undefined,
+      imageUrl,
+      metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z', storagePath: undefined },
+    });
+
+    /**
+     * A third item is typed and given a photo, and it is checkmarked and opened
+     * again before the photo has been prepared. `finish` ends the preparation
+     * with the result it is given.
+     */
+    async function reopenedWhilePreparing() {
+      // A photo's id is made from the time it is picked at: no two picks in one millisecond.
+      let now = Date.parse('2026-10-10T08:00:00.000Z');
+      jest.spyOn(Date, 'now').mockImplementation(() => (now += 1000));
+      let endPreparation!: (result: unknown) => void;
+      (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+        canceled: false,
+        assets: [{ uri: 'file:///camera/raw.jpg', fileName: 'raw.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
+      });
+      (uploadGRNItemImage as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { endPreparation = resolve; }));
+
+      const tree = await render('create', lines(2));
+      set(tree, 'item_table_id', NEW_ITEM_ID);
+      set(tree, 'item_name', 'Fictional garlic');
+      set(tree, 'qty', '7');
+      act(() => form(tree).props.onImagePick());
+      const gallery = lastAlert()?.[2]?.find((candidate) => candidate.text === 'Choose from gallery');
+      let picking!: Promise<unknown>;
+      await act(async () => {
+        // Not waited for: it ends when the photo has been prepared.
+        picking = Promise.resolve(gallery!.onPress?.());
+        for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      });
+      await act(async () => { await form(tree).props.onSaveItem(); });
+      await openRow(tree, 3);
+
+      const unprepared = { uploadStatus: 'uploading', imageUrl: 'file:///camera/raw.jpg' };
+      expect(storedItems()[2].trl_images).toMatchObject([unprepared]);
+      expect(form(tree).props.currentItem.trl_images).toMatchObject([unprepared]);
+      expect(inForm(tree)).toMatchObject({ id: storedItems()[2].grn_trl_id, isEditing: true, editingItemNumber: 3 });
+
+      const finish = (result: unknown) => act(async () => { endPreparation(result); await picking; });
+      return { tree, photoId: storedItems()[2].trl_images[0].id, finish };
+    }
+    /** Everywhere the third item's photos are held once the step is left for Review. */
+    const photosOfItemThree = (tree: ReactTestRenderer) => ({
+      stored: storedItems()[2].trl_images,
+      sentToReview: sentToReview()?.[2].trl_images,
+      inSavedItemsSheet: sheet(tree).props.items[2].trl_images,
+    });
+
+    it('Discard changes keeps the photo as it is stored once it was prepared, and takes off only the photo added since', async () => {
+      const { tree, photoId, finish } = await reopenedWhilePreparing();
+
+      await finish(preparedAs('file:///cache/prepared.webp'));
+      const prepared = { id: photoId, uploadStatus: 'completed', imageUrl: 'file:///cache/prepared.webp' };
+      expect(storedItems()[2].trl_images).toMatchObject([prepared]);
+      expect(form(tree).props.currentItem.trl_images).toMatchObject([prepared]);
+
+      // A second photo is the correction.
+      (uploadGRNItemImage as jest.Mock).mockResolvedValueOnce(preparedAs('file:///cache/second.webp'));
+      await pickFromGallery(tree);
+      expect(storedItems()[2].trl_images).toMatchObject([prepared, { uploadStatus: 'completed', imageUrl: 'file:///cache/second.webp' }]);
+
+      await pressNext(tree);
+      expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+      await answer('Discard changes');
+
+      expect(photosOfItemThree(tree)).toMatchObject({ stored: [prepared], sentToReview: [prepared], inSavedItemsSheet: [prepared] });
+      // Nothing waits to be deleted by the save, and only the second photo's file is given up.
+      expect(removedImages()).toEqual([]);
+      expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
+      expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/second.webp']);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+
+    it('the photo becoming ready is not a change: Next asks nothing', async () => {
+      const { tree, photoId, finish } = await reopenedWhilePreparing();
+      await finish(preparedAs('file:///cache/prepared.webp'));
+      const asked = alerts().length;
+
+      await pressNext(tree);
+
+      expect(alerts()).toHaveLength(asked);
+      expect(sentToReview()?.[2].trl_images).toMatchObject([{ id: photoId, uploadStatus: 'completed', imageUrl: 'file:///cache/prepared.webp' }]);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+
+    it('a photo that could not be prepared is gone, which is not a change either: Next asks nothing', async () => {
+      const { tree, finish } = await reopenedWhilePreparing();
+
+      await finish({ success: false, error: 'The photo is too large.' });
+      expect(lastAlert()?.[0]).toBe("Couldn't use the photo");
+      expect(storedItems()[2].trl_images).toEqual([]);
+      expect(form(tree).props.currentItem.trl_images).toEqual([]);
+      const asked = alerts().length;
+
+      await pressNext(tree);
+
+      expect(alerts()).toHaveLength(asked);
+      expect(sentToReview()?.[2].trl_images).toEqual([]);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+
+    it('Discard changes does not bring back a photo that could not be prepared', async () => {
+      const { tree, finish } = await reopenedWhilePreparing();
+      await finish({ success: false, error: 'The photo is too large.' });
+
+      set(tree, 'package_mark', 'OTHER');
+      await pressNext(tree);
+      expect(lastAlert()?.[0]).toBe('Save changes to this item?');
+      await answer('Discard changes');
+
+      expect(photosOfItemThree(tree)).toEqual({ stored: [], sentToReview: [], inSavedItemsSheet: [] });
+      // The checkmark that saved the item, then Next: no photos were put back in between.
+      expect(itemActions().map((action) => action.type)).toEqual([addItem.type, reconcileItems.type]);
+      expect(router.push).toHaveBeenCalledWith('/grn-form/step3');
+    });
+  });
 });
 
 describe('GRN items step, deleting a saved item while a new one is being typed', () => {
