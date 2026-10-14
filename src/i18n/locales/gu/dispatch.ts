@@ -432,4 +432,10 @@ export const dispatch: Translation<typeof source> = {
     loadingLabel: 'જાવક લોડ થઈ રહી છે',
     retryLoad: 'જાવક ફરીથી લોડ કરો',
   },
+  // A line of the table on a dispatch card, as a screen reader says it, when the
+  // lot has no weight (with a weight: lists.dispatch.itemRow and itemRowRack)
+  listRow: {
+    noWeight: '{{item}}, આવક પાવતી {{grn}}, {{quantity}} નંગ જાવક',
+    noWeightRack: '{{item}}, રેક {{rack}}, આવક પાવતી {{grn}}, {{quantity}} નંગ જાવક',
+  },
 };

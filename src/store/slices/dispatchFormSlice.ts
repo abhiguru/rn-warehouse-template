@@ -561,7 +561,6 @@ export const selectDispatchFormTotals = createSelector(
   [selectDispatchFormItems],
   (items) => ({
     totalQty: items.reduce((sum, item) => sum + (item.disp_quantity || 0), 0),
-    totalWeight: items.reduce((sum, item) => sum + (item.grnItems_weight || 0), 0),
     itemCount: items.length,
   })
 );

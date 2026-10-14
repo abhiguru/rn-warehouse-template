@@ -34,7 +34,7 @@ import {
     trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate, formatWeight, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatWeightEach, formatNumber } from '@/utils/formatters';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { showAlert } from '@/utils/alert';
@@ -263,27 +263,24 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         });
     }, []);
 
-    // Calculate totals
+    // The totals: bags per item and in all, and the number of GRNs. No weight: a lot
+    // stores the weight of one bag, and total weights are not shown (style guide 12.3).
     const totals = useMemo(() => {
-        const itemWiseTotals: Record<string, { quantity: number; weight: number }> = {};
+        const itemWiseTotals: Record<string, { quantity: number }> = {};
         let grandTotalQuantity = 0;
-        let grandTotalWeight = 0;
         const uniqueGRNs = new Set(items.map((item) => item.grns_gr_no)).size;
 
         items.forEach((item: DispatchItemData) => {
             const itemKey = item.grnItems_item_name;
             if (!itemWiseTotals[itemKey]) {
-                itemWiseTotals[itemKey] = { quantity: 0, weight: 0 };
+                itemWiseTotals[itemKey] = { quantity: 0 };
             }
             const qty = item.disp_quantity;
-            const weight = item.grnItems_weight * qty;
             itemWiseTotals[itemKey].quantity += qty;
-            itemWiseTotals[itemKey].weight += weight;
             grandTotalQuantity += qty;
-            grandTotalWeight += weight;
         });
 
-        return { itemWiseTotals, grandTotalQuantity, grandTotalWeight, uniqueGRNs };
+        return { itemWiseTotals, grandTotalQuantity, uniqueGRNs };
     }, [items]);
 
     // Format date (guide 12.3: "9 Oct 2026")
@@ -554,17 +551,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     </View>
                 </View>
 
-                {/* Row 3: Weight (full width) */}
-                <View style={styles.compactRow}>
-                    <View style={[styles.compactItem, styles.fullWidth]}>
-                        <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                        <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>{tr('dispatch.review.totalWeight')}</Text>
-                            <Text style={styles.compactValue}>{formatWeight(totals.grandTotalWeight, 0)}</Text>
-                        </View>
-                    </View>
-                </View>
-
                 {/* Notes (if any) */}
                 {header.note && (
                     <View style={styles.notesRow}>
@@ -681,11 +667,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>{tr('dispatch.review.totalQuantity')}</Text>
                     <Text style={styles.totalValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
-                </View>
-
-                <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>{tr('dispatch.review.totalWeight')}</Text>
-                    <Text style={styles.totalValue}>{formatWeight(totals.grandTotalWeight, 0)}</Text>
                 </View>
 
                 {!isCreateMode && (
@@ -937,7 +918,8 @@ const DispatchReviewItemRow = React.memo(function DispatchReviewItemRow({
     styles,
     t,
 }: DispatchReviewItemRowProps) {
-    const itemTotalWeight = item.grnItems_weight * item.disp_quantity;
+    // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+    const weightEach = formatWeightEach(item.grnItems_weight);
 
     return (
         <View style={styles.itemCard}>
@@ -1026,17 +1008,13 @@ const DispatchReviewItemRow = React.memo(function DispatchReviewItemRow({
                         </View>
                     )}
 
-                    <View style={styles.detailRow}>
-                        <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.detailLabel}>{tr('dispatch.review.unitWeight')}</Text>
-                        <Text style={styles.detailValue}>{formatWeight(item.grnItems_weight)}</Text>
-                    </View>
-
-                    <View style={styles.detailRow}>
-                        <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.detailLabel}>{tr('dispatch.review.totalWeight')}</Text>
-                        <Text style={styles.detailValue}>{formatWeight(itemTotalWeight, 0)}</Text>
-                    </View>
+                    {weightEach !== null && (
+                        <View style={styles.detailRow}>
+                            <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
+                            <Text style={styles.detailValue}>{weightEach}</Text>
+                        </View>
+                    )}
 
                     <View style={styles.detailRow}>
                         <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
@@ -1089,9 +1067,6 @@ const makeStyles = (t: ThemeTokens) => ({
         padding: space.lg,
         gap: space.md,
         ...t.shadow[2],
-    },
-    fullWidth: {
-        flex: 1,
     },
     // Hero section
     heroSection: {

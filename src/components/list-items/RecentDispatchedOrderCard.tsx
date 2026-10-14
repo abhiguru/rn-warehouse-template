@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -181,10 +181,12 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     paddingRight: space.sm,
   },
+  // Wide enough for its heading "Kg each" on one line at font scales 1.0 and 1.3
+  // (64 dp to write in); the number under it is the weight of one bag.
   colWeight: {
-    width: 48,
+    width: 72,
     textAlign: 'right' as const,
-    paddingRight: space.md,
+    paddingRight: space.sm,
   },
   colGrn: {
     width: 60,
@@ -206,17 +208,21 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
+  // The rack sits beside the name while both fit, and goes under it when they
+  // do not, so a narrow column never cuts the name down to a few letters.
   itemNameRow: {
     flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
-    gap: space.sm,
+    columnGap: space.sm,
   },
   tableCellItemName: {
     ...typography.subhead,
     fontWeight: fontWeight.medium,
     color: t.text.primary,
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   tableCellRack: {
     ...typography.caption1,
@@ -353,48 +359,63 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
             <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
             <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
           </View>
 
-          {dispatch.items.map((item, idx) => (
-            <View
-              key={`${dispatch.dispatch_id}-item-${idx}`}
-              style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
-              accessible
-              accessibilityLabel={translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
-                item: item.item_name,
-                rack: item.rack,
-                weight: formatWeight(item.weight, 0),
-                grn: formatIdentifier(item.gr_no),
-                quantity: item.disp_qty,
-              })}
-            >
-              <View style={[styles.tableCell, styles.colItem]}>
-                <View style={styles.itemNameRow}>
-                  <Text style={styles.tableCellItemName} numberOfLines={1}>
-                    {item.item_name}
-                  </Text>
-                  {item.rack && <Text style={styles.tableCellRack}>({item.rack})</Text>}
+          {dispatch.items.map((item, idx) => {
+            // Whole kilograms of one bag, as the column shows them. A lot without a
+            // weight shows a dash and is read without one.
+            const kg = Math.round(Number(item.weight) || 0);
+            const weightEach = formatWeightEach(kg);
+            return (
+              <View
+                key={`${dispatch.dispatch_id}-item-${idx}`}
+                style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
+                accessible
+                accessibilityLabel={
+                  weightEach === null
+                    ? translate(item.rack ? 'dispatch.listRow.noWeightRack' : 'dispatch.listRow.noWeight', {
+                      item: item.item_name,
+                      rack: item.rack,
+                      grn: formatIdentifier(item.gr_no),
+                      quantity: item.disp_qty,
+                    })
+                    : translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
+                      item: item.item_name,
+                      rack: item.rack,
+                      weight: weightEach,
+                      grn: formatIdentifier(item.gr_no),
+                      quantity: item.disp_qty,
+                    })
+                }
+              >
+                <View style={[styles.tableCell, styles.colItem]}>
+                  <View style={styles.itemNameRow}>
+                    <Text style={styles.tableCellItemName} numberOfLines={1}>
+                      {item.item_name}
+                    </Text>
+                    {item.rack && <Text style={styles.tableCellRack}>({item.rack})</Text>}
+                  </View>
+                  {item.package_mark && (
+                    <Text style={styles.tableCellItemMark} numberOfLines={1}>
+                      {item.package_mark}
+                    </Text>
+                  )}
                 </View>
-                {item.package_mark && (
-                  <Text style={styles.tableCellItemMark} numberOfLines={1}>
-                    {item.package_mark}
-                  </Text>
-                )}
+                <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
+                  {weightEach === null ? '—' : formatNumber(kg)}
+                </Text>
+                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {item.gr_no}
+                </Text>
+                <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
+                  {formatNumber(item.disp_qty)}
+                </Text>
               </View>
-              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
-                {formatNumber(Math.round(item.weight || 0))}
-              </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                {item.gr_no}
-              </Text>
-              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
-                {formatNumber(item.disp_qty)}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </Animated.View>
       )}
 

@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import type { MutableRefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -56,13 +57,19 @@ import { isOtherCustomersStock } from '@/features/dispatch/utils/lotOwnership';
 import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQuantityInput';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
+    /**
+     * The phone's Back key. The route owns the key (`useBackHandler`); while this
+     * step is mounted it puts its own way back here, the one the footer's Back
+     * button takes, so the key asks "Go back to details?" as the button does.
+     */
+    backGuard?: MutableRefObject<(() => void) | null>;
 };
 
-export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
+export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
     const insets = useSafeAreaInsets();
@@ -669,12 +676,34 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         await navigateToStep(1);
     };
 
+    // The Back key takes the same way back. Set again after every drawing, so the
+    // key always asks about the items and the form as they are now.
+    useEffect(() => {
+        if (backGuard) backGuard.current = handleBack;
+    });
+    useEffect(() => {
+        if (!backGuard) return undefined;
+        return () => {
+            backGuard.current = null;
+        };
+    }, [backGuard]);
+
     // Handle next navigation
     const handleNext = async () => {
         const isEditing = editingItemId !== null;
 
         if (savedItems.length === 0 && !isCurrentItemValid) {
             showAlert(tr('dispatch.items.addFirstTitle'), tr('dispatch.items.addFirstMessage'));
+            return;
+        }
+
+        // A correction that cannot be saved (no bags, or more than the lot holds) stays
+        // here with its fields marked. Going on would review the item as it was before
+        // the correction, without a word.
+        if (isEditing && !isCurrentItemValid) {
+            const validation = await validateSingleItem(currentItem);
+            setValidationErrors(validation.errors);
+            showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
             return;
         }
 
@@ -733,19 +762,20 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     const handleStepIndicatorPress = async (stepNumber: number) => {
         if (stepNumber === DISPATCH_STEP_NUMBERS.ITEMS) return; // Already on this step
         if (stepNumber === DISPATCH_STEP_NUMBERS.INFO) {
-            // Go back to step 1
-            await navigateToStep(1);
+            // As the footer's Back: asks first when items would be left behind.
+            handleBack();
         } else if (stepNumber === DISPATCH_STEP_NUMBERS.REVIEW) {
-            // Go to step 3 if we have items
-            if (savedItems.length > 0) {
-                await navigateToStep(3);
-            }
+            // As the footer's Next: an item in the form is saved first, and with
+            // no item at all it says so.
+            await handleNext();
         }
     };
 
     const exceedsMax = (currentItem.disp_quantity ?? 0) > maxAllowedQty;
     const quantityHasError = !!validationErrors.disp_quantity || exceedsMax;
     const canSaveItem = !!isCurrentItemValid && !isAddingItem;
+    // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
+    const lotWeightEach = formatWeightEach(currentItem.grnItems_weight);
     const itemTitle = isEditingItem
         ? tr('dispatch.items.editingItem', { number: editingItemNumber })
         : tr('dispatch.items.addingItem', { number: savedItems.length + 1 });
@@ -866,7 +896,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <SwipeableFormStep
                 onSwipeLeft={handleNext}
-                onSwipeRight={() => navigateToStep(1)}
+                onSwipeRight={handleBack}
                 canSwipeLeft={true}
                 canSwipeRight={true}
             >
@@ -1128,7 +1158,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                     count: maxAllowedQty,
                                 })
                             )}
-                        {renderError(validationErrors.disp_quantity)}
+                        {/* Above the limit the line above already gives the reason, with the number. */}
+                        {!exceedsMax && renderError(validationErrors.disp_quantity)}
                     </View>
 
                     {/* Lot Details */}
@@ -1157,11 +1188,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                         <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                                     </View>
                                 )}
-                                <View style={styles.detailItem}>
-                                    <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                                    <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
-                                    <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
-                                </View>
+                                {lotWeightEach !== null && (
+                                    <View style={styles.detailItem}>
+                                        <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                                        <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
+                                        <Text style={styles.detailValue}>{lotWeightEach}</Text>
+                                    </View>
+                                )}
                             </View>
                         </View>
                     )}
