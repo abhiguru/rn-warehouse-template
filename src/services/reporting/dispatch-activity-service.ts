@@ -30,7 +30,6 @@ const EMPTY_RESPONSE: DispatchActivityData = {
   summary: {
     total_dispatches: 0,
     total_quantity: 0,
-    total_weight: 0,
   },
   dispatches: [],
 };
@@ -43,7 +42,6 @@ const EMPTY_ALL_RESPONSE: AllDispatchActivityData = {
     total_dispatches: 0,
     total_customers: 0,
     total_quantity: 0,
-    total_weight: 0,
   },
   by_customer: [],
 };
@@ -123,7 +121,6 @@ export async function getCustomerDispatchActivity(
     const summary: DispatchActivityKPIs = {
       total_dispatches: responseData?.summary?.total_dispatches ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight: responseData?.summary?.total_weight ?? 0,
     };
 
     const dispatches: DispatchActivityRecord[] = (
@@ -134,7 +131,6 @@ export async function getCustomerDispatchActivity(
       disp_date: disp.disp_date,
       supervisor_name: disp.supervisor_name ?? '',
       total_qty: disp.total_qty ?? 0,
-      total_weight: disp.total_weight ?? 0,
       items: (disp.items ?? []).map((item: any) => ({
         item_name: item.item_name,
         qty: item.qty ?? 0,
@@ -221,7 +217,6 @@ export async function getAllDispatchActivity(
       total_dispatches: responseData?.summary?.total_dispatches ?? 0,
       total_customers: responseData?.summary?.total_customers ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
-      total_weight: responseData?.summary?.total_weight ?? 0,
     };
 
     const byCustomer: CustomerDispatchRow[] = (
@@ -231,7 +226,6 @@ export async function getAllDispatchActivity(
       customer_name: customer.customer_name,
       dispatch_count: customer.dispatch_count ?? 0,
       total_quantity: customer.total_quantity ?? customer.total_qty ?? 0,
-      total_weight: customer.total_weight ?? 0,
     }));
 
     return {

@@ -145,7 +145,6 @@ export interface DispatchActivityRecord {
   disp_date: string;
   supervisor_name: string;
   total_qty: number;
-  total_weight: number;
   items: DispatchItemDetail[];
 }
 
@@ -155,7 +154,6 @@ export interface DispatchActivityRecord {
 export interface DispatchActivityKPIs {
   total_dispatches: number;
   total_quantity: number;
-  total_weight: number;
 }
 
 /**
@@ -182,7 +180,6 @@ export interface AllDispatchActivityKPIs {
   total_dispatches: number;
   total_customers: number;
   total_quantity: number;
-  total_weight: number;
 }
 
 /**
@@ -193,7 +190,6 @@ export interface CustomerDispatchRow {
   customer_name: string;
   dispatch_count: number;
   total_quantity: number;
-  total_weight: number;
 }
 
 /**
