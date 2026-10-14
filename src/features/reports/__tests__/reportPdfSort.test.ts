@@ -3,7 +3,7 @@
  * the columns the backend accepts for that report and level, or not at all.
  */
 import { CUSTOMER_ACTIVITY_CUSTOMER, CUSTOMER_ACTIVITY_CUSTOMERS } from '@/features/filters/configs/reports/customerActivity';
-import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT, DISPATCH_ACTIVITY_CUSTOMERS } from '@/features/filters/configs/reports/dispatchActivity';
+import { DISPATCH_ACTIVITY_CUSTOMER, DISPATCH_ACTIVITY_CUSTOMERS } from '@/features/filters/configs/reports/dispatchActivity';
 import { GRN_ACTIVITY_CUSTOMER, GRN_ACTIVITY_CUSTOMERS } from '@/features/filters/configs/reports/grnActivity';
 import { INVOICE_HISTORY_CUSTOMER, INVOICE_HISTORY_CUSTOMERS } from '@/features/filters/configs/reports/invoiceHistory';
 import { ITEM_STOCK } from '@/features/filters/configs/reports/itemStock';
@@ -51,10 +51,10 @@ const BACKEND_COLUMNS: Record<ReportPdfName, Record<ReportPdfLevel, string[]>> =
 
 type AnyConfig = FilterListConfig<any>;
 
-/** The configuration each report level's screen sorts with (one customer's dispatches: the one with Weight, which has every sort). */
+/** The configuration each report level's screen sorts with. */
 const SCREEN_CONFIGS: Record<ReportPdfName, Record<ReportPdfLevel, AnyConfig>> = {
   'grn-activity': { customers: GRN_ACTIVITY_CUSTOMERS, customer: GRN_ACTIVITY_CUSTOMER },
-  'dispatch-activity': { customers: DISPATCH_ACTIVITY_CUSTOMERS, customer: DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT },
+  'dispatch-activity': { customers: DISPATCH_ACTIVITY_CUSTOMERS, customer: DISPATCH_ACTIVITY_CUSTOMER },
   'invoice-history': { customers: INVOICE_HISTORY_CUSTOMERS, customer: INVOICE_HISTORY_CUSTOMER },
   'stock-summary': { customers: STOCK_SUMMARY_CUSTOMERS, customer: STOCK_SUMMARY_CUSTOMER },
   'stock-aging': { customers: STOCK_AGING_CUSTOMERS, customer: STOCK_AGING_CUSTOMER },
@@ -62,10 +62,11 @@ const SCREEN_CONFIGS: Record<ReportPdfName, Record<ReportPdfLevel, AnyConfig>> =
   'customer-activity': { customers: CUSTOMER_ACTIVITY_CUSTOMERS, customer: CUSTOMER_ACTIVITY_CUSTOMER },
 };
 
-/** Screen sorts the PDF has no column for: they are not sent. */
-const NO_PDF_COLUMN: Partial<Record<ReportPdfName, Partial<Record<ReportPdfLevel, string[]>>>> = {
-  'dispatch-activity': { customer: ['weight'] },
-};
+/**
+ * Screen sorts the PDF has no column for: they are not sent. There is none now; the one there
+ * was, one customer's dispatches by weight, went when total weights stopped being shown.
+ */
+const NO_PDF_COLUMN: Partial<Record<ReportPdfName, Partial<Record<ReportPdfLevel, string[]>>>> = {};
 
 const REPORTS = Object.keys(SCREEN_CONFIGS) as ReportPdfName[];
 const LEVELS: ReportPdfLevel[] = ['customers', 'customer'];
@@ -94,17 +95,16 @@ describe('reportPdfSort', () => {
     }
   });
 
-  it('one customer\'s dispatches: Weight is unmapped and only in the configuration with weights; the other three map', () => {
-    const withWeight = sortFieldsOf(DISPATCH_ACTIVITY_CUSTOMER_WITH_WEIGHT);
-    const without = sortFieldsOf(DISPATCH_ACTIVITY_CUSTOMER);
-    expect(withWeight).toEqual(['date', 'number', 'bags', 'weight']);
-    expect(without).toEqual(['date', 'number', 'bags']);
-    for (const field of without) {
+  it('one customer\'s dispatches: Date, Dispatch number and Bags, each with a column; no sort by weight on the screen or in the table', () => {
+    expect(sortFieldsOf(DISPATCH_ACTIVITY_CUSTOMER)).toEqual(['date', 'number', 'bags']);
+    expect(REPORT_PDF_SORT_COLUMNS['dispatch-activity'].customer).toEqual({ date: 'date', number: 'disp_no', bags: 'quantity' });
+    for (const field of sortFieldsOf(DISPATCH_ACTIVITY_CUSTOMER)) {
       for (const order of ['asc', 'desc'] as const) {
         expect(reportPdfSort('dispatch-activity', 'customer', { field, order })).toEqual({ field: expect.any(String), order });
       }
     }
-    // The PDF has no weight column: sorted by weight, in either direction, no sort is sent.
+    // A weight sort a phone still remembers never reaches here (currentSort gives the default first);
+    // if one did, nothing would be sent for it.
     expect(reportPdfSort('dispatch-activity', 'customer', { field: 'weight', order: 'desc' })).toBeUndefined();
     expect(reportPdfSort('dispatch-activity', 'customer', { field: 'weight', order: 'asc' })).toBeUndefined();
     expect(BACKEND_COLUMNS['dispatch-activity'].customer).not.toContain('weight');

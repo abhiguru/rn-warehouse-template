@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { OrderItem } from '@/types/order.types';
-import { formatDate, formatWeight } from '@/utils/formatters';
+import { formatDate, formatWeightEach } from '@/utils/formatters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -217,6 +217,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   }
 
   const itemName = item.grn_item.name;
+  // The lot's weight is the weight of one bag, box or crate; a lot without one shows no weight.
+  const weightEach = formatWeightEach(item.grn_item.weight);
   const quantityStatus = isPending ? tr('common.saving') : showSaved ? tr('orders.item.saved') : tr('orders.item.qty');
 
   return (
@@ -242,12 +244,12 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
               {item.grn_item.package_mark || tr('orders.item.noMark')}
             </Text>
           </View>
-          {item.grn_item.weight && item.grn_item.weight > 0 && (
+          {weightEach ? (
             <View style={styles.weightRow}>
               <Icon name="weight-kilogram" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.weightText}>{formatWeight(item.grn_item.weight)}</Text>
+              <Text style={styles.weightText}>{weightEach}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         {/* Line 3: Stock Status */}
@@ -409,15 +411,18 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.s6,
     flexShrink: 1,
   },
+  // A long mark wraps; it does not push the weight ("50 kg each") off the card.
   itemDetails: {
     ...typography.footnote,
     color: t.text.secondary,
     marginRight: space.xs,
+    flexShrink: 1,
   },
   weightRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.xs,
+    flexShrink: 0,
   },
   weightText: {
     ...typography.footnote,

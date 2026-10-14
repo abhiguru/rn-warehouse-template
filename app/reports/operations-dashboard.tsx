@@ -7,7 +7,8 @@
  * useReportQuery the data, and ReportScaffold draws every state. The figures
  * come in two groups that say what they cover (SR-14): the period's GRNs and
  * dispatches ("In 15 Jun – 12 Oct"), and what is true now whatever the period
- * ("Right now": pending orders, customers with stock, the stock and its weight).
+ * ("Right now": pending orders, customers with stock, the stock). The stock's
+ * total weight is not shown: total weights are shown nowhere (§12.3).
  * Under them: the period's daily averages (its total over every day of it that
  * has happened, quiet days included), then the latest GRNs and dispatches of any
  * date, as the server sends them.
@@ -32,7 +33,7 @@ import { t as tr, formatIdentifier, localizeDigits } from '@/i18n';
 import { getOperationsDashboard } from '@/services/reporting';
 import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
 import type { OperationsDashboardData, RecentActivityItem } from '@/types/report.types';
-import { formatIndiaDate, formatNumber, formatRelativeTime, todayInIST } from '@/utils/formatters';
+import { formatIndiaDate, formatRelativeTime, todayInIST } from '@/utils/formatters';
 
 const REPORT_ID = 'operations-dashboard';
 
@@ -166,7 +167,8 @@ function OperationsDashboardReport() {
   const { data } = query;
 
   // The server counts GRNs and dispatches over the period; pending orders, the customers with
-  // stock, the stock and its weight are today's, whatever the period. Each group says which.
+  // stock and the stock are today's, whatever the period. Each group says which. The answer
+  // also carries the stock's total weight (`total_stock_weight`); it is not drawn.
   const kpiGroups = useMemo<ReportKpiGroup[] | undefined>(() => {
     if (!data) return undefined;
     const { kpis: figures } = data;
@@ -184,13 +186,6 @@ function OperationsDashboardReport() {
           { icon: 'clipboard-list-outline', value: figures.pending_orders, label: tr('reports.operations.pendingOrders'), variant: 'neutral' },
           { icon: 'account-group-outline', value: figures.active_customers, label: tr('reports.operations.activeCustomers'), variant: 'neutral' },
           { icon: 'warehouse', value: figures.total_stock_qty, label: tr('reports.operations.totalStock'), variant: 'primary' },
-          {
-            icon: 'scale-balance',
-            value: formatNumber(figures.total_stock_weight, 2),
-            label: tr('reports.operations.totalWeight'),
-            variant: 'primary',
-            unit: tr('reports.operations.kg'),
-          },
         ],
       },
     ];
@@ -204,7 +199,8 @@ function OperationsDashboardReport() {
       filters={{ config: OPERATIONS_DASHBOARD, state: filters }}
       query={query}
       kpiGroups={kpiGroups}
-      kpiPlaceholders={6}
+      // Two figures of the period and three of right now.
+      kpiPlaceholders={5}
       status={{ range: period }}
       rows={data?.recent_activity ?? []}
       renderRow={renderRow}

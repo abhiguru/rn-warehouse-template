@@ -9,7 +9,10 @@ import { groupInvoiceItems, invoiceGroupTotal, invoiceGroupTotals } from '../gro
 
 type OldGroup = GroupedInvoiceItems & { allItems: InvoiceItemData[] };
 
-/** The grouping as InvoiceItemsTable did it before (main 92a2a09), copied unchanged. */
+/**
+ * The grouping as InvoiceItemsTable did it before (main 92a2a09), copied unchanged but for one
+ * name: the lot's per-package weight was held in a field called `total_weight`, now `weight_each`.
+ */
 function oldGrouping(items: InvoiceItemData[]): OldGroup[] {
   const groups: OldGroup[] = [];
   const itemMap = new Map<string, OldGroup>();
@@ -20,7 +23,7 @@ function oldGrouping(items: InvoiceItemData[]): OldGroup[] {
         item_id: item.item_id,
         item_name: item.item_name,
         package_mark: item.package_mark,
-        total_weight: item.weight,
+        weight_each: item.weight,
         gr_quantity: item.grn_original_qty,
         total_dispatched: 0,
         rack: item.rack,

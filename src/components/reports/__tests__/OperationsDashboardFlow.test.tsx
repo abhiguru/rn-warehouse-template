@@ -4,8 +4,10 @@
  * The service, the role hook's profile and the router are stand-ins.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { Dimensions } from 'react-native';
+import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
+import { KPICard } from '@/components/reports/KPICard';
 import { getOperationsDashboard } from '@/services/reporting';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { setReportPeriod } from '@/store/slices/reportPrefsSlice';
@@ -146,10 +148,10 @@ describe('the period', () => {
     expect(screen.texts()).not.toContain('Last 120 days');
   });
 
-  it('shows the six figures, the daily averages and the recent activity of the answer', async () => {
+  it('shows the five figures, the daily averages and the recent activity of the answer', async () => {
     const screen = await open();
     expect(screen.texts()).toEqual(
-      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Total weight', '5,400.50', 'Period averages', 'Latest activity (any date)'])
+      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Period averages', 'Latest activity (any date)'])
     );
     // Over the 120 days of 15 Jun to 12 Oct, not over the 2 days (GRNs) and 1 day (dispatches) that had events:
     // 5 GRNs / 120 = 0.04 and 1 dispatch / 120 = 0.008: not zero, and too small for one decimal, so "<0.1" and
@@ -173,7 +175,7 @@ describe('the period', () => {
     // Each group's figures are under its own heading.
     const texts = screen.texts();
     const at = (words: string) => texts.indexOf(words);
-    const order = ['IN 15 JUN – 12 OCT', 'GRNs', 'Dispatches', 'RIGHT NOW', 'Pending orders', 'Active customers', 'Total stock', 'Total weight'].map(at);
+    const order = ['IN 15 JUN – 12 OCT', 'GRNs', 'Dispatches', 'RIGHT NOW', 'Pending orders', 'Active customers', 'Total stock'].map(at);
     expect(order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1]))).toBe(true);
     expect(texts).not.toContain('Recent activity');
 
@@ -201,6 +203,86 @@ describe('the period', () => {
     expect(dashboard.mock.calls).toEqual([[days('2026-06-15')], [days('2025-08-19')]]);
     expect(screen.status()).toBe('19 Aug 2025 – 12 Oct · Last updated 10:00 am');
     expect(button()).toEqual([]);
+  });
+});
+
+// The answer carries the stock's total weight (kpis.total_stock_weight: 5,400.5 kg, every lot's
+// bags in stock times the weight of one bag). Total weights are not shown, so "Right now" has
+// three tiles, not four, and nothing on the screen states that weight.
+describe('the figures: no total weight', () => {
+  const before = Dimensions.get('window');
+  afterEach(() => Dimensions.set({ window: before }));
+  /** A phone 392 dp wide at the given text size. */
+  const phone = (fontScale: number, width = 392) => Dimensions.set({ window: { width, height: 850, scale: 2.75, fontScale } });
+
+  const tiles = (screen: Awaited<ReturnType<typeof open>>) => screen.tree.root.findAllByType(KPICard);
+  /** The tiles row by row, each by its label: a row is the parent of its tiles. */
+  const rows = (screen: Awaited<ReturnType<typeof open>>) => {
+    const byRow = new Map<ReactTestInstance, string[]>();
+    for (const tile of tiles(screen)) byRow.set(tile.parent!, [...(byRow.get(tile.parent!) ?? []), tile.props.label as string]);
+    return [...byRow.values()];
+  };
+  /** What a screen reader says for each tile. */
+  const spoken = (screen: Awaited<ReturnType<typeof open>>) =>
+    tiles(screen).map(tile => tile.findAll(node => typeof node.type === 'string' && node.props.accessible === true)[0].props.accessibilityLabel as string);
+
+  it('"Right now" has three tiles, pending orders, active customers and total stock; the 5,400.5 kg of the answer is nowhere', async () => {
+    phone(1);
+    const screen = await open();
+    expect((await dashboard.mock.results[0].value).data!.kpis.total_stock_weight).toBe(5400.5);
+
+    expect(spoken(screen)).toEqual(['GRNs: 12', 'Dispatches: 7', 'Pending orders: 3', 'Active customers: 5', 'Total stock: 1,200']);
+    expect(tiles(screen).map(tile => tile.props.icon)).toEqual(['package-down', 'truck-delivery-outline', 'clipboard-list-outline', 'account-group-outline', 'warehouse']);
+    // No tile, text or label names a weight: not the label, the figure, its unit or its scale icon.
+    const texts = screen.texts();
+    for (const gone of ['Total weight', '5,400.50', '5,400.5', 'kg']) expect(texts).not.toContain(gone);
+    expect(texts.filter(text => /weight|\bkg\b/i.test(text))).toEqual([]);
+    expect(screen.tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && /weight|\bkg\b|5,400/i.test(node.props.accessibilityLabel))).toEqual([]);
+    expect(screen.tree.root.findAll(node => node.props.name === 'scale-balance')).toEqual([]);
+  });
+
+  it('lays the three tiles out in one row at ordinary text sizes, the two of the period in a row above them', async () => {
+    for (const fontScale of [1, 1.2]) {
+      phone(fontScale);
+      const screen = await open();
+      expect(rows(screen)).toEqual([['GRNs', 'Dispatches'], ['Pending orders', 'Active customers', 'Total stock']]);
+      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      forgetQueries();
+    }
+  });
+
+  it('above 1.2 times the text size puts two across: total stock alone in a second row, at the width of one tile', async () => {
+    for (const fontScale of [1.3, 2]) {
+      phone(fontScale);
+      const screen = await open();
+      expect(rows(screen)).toEqual([['GRNs', 'Dispatches'], ['Pending orders', 'Active customers'], ['Total stock']]);
+      // The short row is filled out by an empty cell, so the lone tile is not stretched across the screen.
+      const lastRow = tiles(screen).at(-1)!.parent!;
+      expect(lastRow.children).toHaveLength(2);
+      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      forgetQueries();
+    }
+  });
+
+  it('on a tablet all three share one row, a third of the width each', async () => {
+    phone(1, 800);
+    const screen = await open();
+    expect(rows(screen)).toEqual([['GRNs', 'Dispatches'], ['Pending orders', 'Active customers', 'Total stock']]);
+    expect(tiles(screen).at(-1)!.parent!.children).toHaveLength(3);
+  });
+
+  it('while the first answer is awaited, draws five placeholder tiles: as many as the figures that follow', async () => {
+    phone(1);
+    let answerNow!: (value: unknown) => void;
+    dashboard.mockImplementationOnce(() => new Promise(resolve => (answerNow = resolve)) as never);
+    const screen = await open();
+    expect(tiles(screen)).toHaveLength(5);
+    expect(tiles(screen).every(tile => tile.props.isLoading === true)).toBe(true);
+    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Loading figures').length).toBeGreaterThan(0);
+
+    await screen.run(() => answerNow(answer(RECENT)));
+    expect(tiles(screen)).toHaveLength(5);
+    expect(tiles(screen).some(tile => tile.props.isLoading === true)).toBe(false);
   });
 });
 

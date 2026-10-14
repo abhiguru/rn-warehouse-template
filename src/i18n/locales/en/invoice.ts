@@ -136,6 +136,9 @@ export const invoice = {
     emptyText: 'Items from the selected dispatches appear here.',
     groupA11y:
       '{{item}}, mark {{mark}}, {{weight}}, GRN quantity {{grnQty}}, dispatched {{dispatched}}, total {{total}}',
+    // The same for a lot that has no weight: nothing is read where the weight would be.
+    groupA11yNoWeight:
+      '{{item}}, mark {{mark}}, GRN quantity {{grnQty}}, dispatched {{dispatched}}, total {{total}}',
     grnQty: 'GRN qty {{qty}}',
     dispatchedQty: 'Dispatched {{qty}}',
     groupPricing: 'Group pricing',
