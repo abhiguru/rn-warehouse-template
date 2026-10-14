@@ -214,7 +214,6 @@ export interface OperationsKPIs {
   pending_orders: number;
   active_customers: number;
   total_stock_qty: number;
-  total_stock_weight: number;
 }
 
 /**
