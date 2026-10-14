@@ -28,6 +28,7 @@ export const PUBLIC_ROUTES: readonly string[] = [
  */
 const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   customers: 'masterData',
+  customer: 'masterData',
   'customer-form': 'masterData',
   'customer-edit': 'masterData',
   items: 'masterData',
@@ -37,7 +38,7 @@ const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'user-edit': 'userManagement',
   'enrollment-review': 'enrollmentReview',
   'item-pricing': 'itemPricing',
-  'item-pricing-form': 'itemPricing',
+  'item-rates': 'itemPricing',
   'item-price-history': 'itemPriceHistory',
   sensors: 'sensors',
   'sensor-detail': 'sensors',

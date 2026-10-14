@@ -70,6 +70,8 @@ jest.mock('expo-sharing', () => ({
 jest.mock('@/config/supabaseConfig', () => ({
   REQUEST_TIME_LIMIT_MS: { read: 30000, write: 60000, transfer: 120000 },
   awaitIdentityGate: jest.fn(async () => {}),
+  // A server switch aborts the tracked downloads, as beginOperatorSwitch does for reads.
+  trackReadRequest: jest.fn(() => ({ started: true, release: () => {} })),
 }));
 jest.mock('@/config/nativeHandoff', () => ({
   withNativeHandoff: jest.fn((run: () => Promise<unknown>) => run()),

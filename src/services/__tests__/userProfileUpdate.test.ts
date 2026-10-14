@@ -55,7 +55,7 @@ test('an id that matches no row is tried as auth_user_id', async () => {
   const result = await UserService.updateUser(USER, { name: 'Asha Example' } as never);
   expect(result.success).toBe(true);
   expect(updates.map(update => update.column)).toEqual(['id', 'auth_user_id']);
-  expect(updates[1].payload).toEqual({ name: 'Asha Example' });
+  expect(updates[1].payload).toEqual({ name: 'Asha Example', display_name: 'Asha Example' });
 });
 
 test('an update that changes no row is reported, not called a success (X2-2)', async () => {
@@ -84,4 +84,19 @@ test('the name being saved is not written to the device log (M2-7)', async () =>
   clientAnswering({ data: [{ id: USER }], error: null });
   await UserService.updateUser(USER, { name: 'Asha Example' } as never);
   expect(JSON.stringify(log.mock.calls)).not.toContain('Asha Example');
+});
+
+test('F33: the display name follows the name, so order cards show the new one', async () => {
+  const { updates } = clientAnswering({ data: [{ id: USER }], error: null });
+  await UserService.updateUser(USER, { name: 'Ramesh Patel' } as never);
+  expect(updates[0].payload).toEqual({ name: 'Ramesh Patel', display_name: 'Ramesh Patel' });
+});
+
+test('F34: the name is cut to 30 characters and control and bidi characters are dropped', async () => {
+  const { updates } = clientAnswering({ data: [{ id: USER }], error: null });
+  await UserService.updateUser(USER, { name: '  Chandrakant‮ Jayantilal\u0007 Prajapati  ' } as never);
+  const sent = updates[0].payload.name as string;
+  expect(sent).toBe('Chandrakant Jayantilal Prajapa');
+  expect(sent.length).toBeLessThanOrEqual(30);
+  expect(updates[0].payload.display_name).toBe(sent);
 });

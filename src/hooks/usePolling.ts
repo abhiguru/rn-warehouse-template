@@ -39,6 +39,12 @@ export interface UsePollingOptions {
 export interface UsePollingResult {
   /** Run now, or join the run in flight. Resolves when that run settles. */
   runNow: () => Promise<void>;
+  /**
+   * Run a read that starts after this call. A run in flight was sent earlier, so its
+   * answer is dropped and a fresh run starts as soon as it settles. Resolves when that
+   * fresh run settles.
+   */
+  refreshNow: () => Promise<void>;
   /** Whether polling is currently allowed to run (enabled, focused, foreground). */
   active: boolean;
 }
@@ -118,6 +124,16 @@ export function usePolling(
 
   const runNow = useCallback(() => startRef.current(), []);
 
+  const refreshNow = useCallback(async () => {
+    const earlier = inFlightRef.current;
+    if (!earlier) return startRef.current();
+    // The run in flight was sent before the caller's write: it is stale, and a new one follows it.
+    generationRef.current += 1;
+    rerunRef.current = true;
+    await earlier;
+    await inFlightRef.current;
+  }, []);
+
   // Start on every genuine transition to active; stop on every transition away.
   useEffect(() => {
     if (!active) {
@@ -165,7 +181,7 @@ export function usePolling(
     };
   }, [clearTimer]);
 
-  return { runNow, active };
+  return { runNow, refreshNow, active };
 }
 
 export default usePolling;

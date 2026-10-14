@@ -43,7 +43,7 @@ export const common: Translation<typeof source> = {
   dismiss: 'બંધ કરો',
   discard: 'ફેરફાર છોડી દો',
   keepEditing: 'ફેરફાર ચાલુ રાખો',
-  openSettings: 'સેટિંગ ખોલો',
+  toolsAndSettings: 'સાધનો અને સેટિંગ',
   showMore: 'વધુ બતાવો',
   showLess: 'ઓછું બતાવો',
   // States

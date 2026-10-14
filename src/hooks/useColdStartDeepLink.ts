@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Linking, Platform } from 'react-native';
-import { useRouter, usePathname, Href } from 'expo-router';
+import { useRouter, usePathname, useGlobalSearchParams, Href } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 
 interface ColdStartDeepLinkResult {
@@ -99,6 +99,18 @@ function isProtectedRoute(path: string): boolean {
   );
 }
 
+/** True when every query value of the link is what the screen shown already has. */
+function queryShown(routePath: string, shown: Record<string, string | string[] | undefined>): boolean {
+  const withoutFragment = routePath.split('#')[0];
+  const at = withoutFragment.indexOf('?');
+  if (at < 0) return true;
+  for (const [key, value] of new URLSearchParams(withoutFragment.slice(at + 1))) {
+    const have = shown[key];
+    if ((Array.isArray(have) ? have.join(',') : have) !== value) return false;
+  }
+  return true;
+}
+
 /**
  * Hook to handle deep links on cold start
  *
@@ -121,6 +133,9 @@ export function useColdStartDeepLink(
 ): ColdStartDeepLinkResult {
   const router = useRouter();
   const currentPath = usePathname();
+  // Read when a link arrives; held in a ref so a new params object does not resubscribe the listener.
+  const shownParams = useRef<Record<string, string | string[] | undefined>>({});
+  shownParams.current = useGlobalSearchParams();
   const { userProfile, isLoading } = useAppSelector((state) => state.auth);
 
   const [initialUrl, setInitialUrl] = useState<string | null>(null);
@@ -160,9 +175,10 @@ export function useColdStartDeepLink(
       setPendingAuth(false);
       setProcessed(true);
 
-      // `currentPath` has no query or fragment: compare the link's path alone, or a link with a
-      // query (a report with its filters) that expo-router has already opened is opened again.
-      if (currentPath !== routePath.split(/[?#]/)[0]) {
+      // `currentPath` has no query or fragment: the path alone is compared, and the link's query
+      // against the shown screen's params, so a link that expo-router has already opened is not
+      // opened again, while one to the same screen with another query (another customer) is.
+      if (currentPath !== routePath.split(/[?#]/)[0] || !queryShown(routePath, shownParams.current)) {
         router.replace(routePath as Href);
       }
     });

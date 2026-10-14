@@ -2,6 +2,9 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
+import { serverText } from '@/utils/serverText';
+import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
+import { UserService } from '@/services/user-service';
 
 export type PendingEnrollment = {
   id: string;
@@ -30,6 +33,19 @@ export async function listPendingEnrollments(): Promise<PendingEnrollment[]> {
   return (data || []) as PendingEnrollment[];
 }
 
+/** Whether the facility has at least one active customer: a one-row read, not a scan of every customer. */
+export async function hasEnrollmentCustomers(): Promise<boolean> {
+  const generation = getSessionGeneration();
+  const client = await getAuthenticatedClient();
+  const { data, error } = await client.from('customers')
+    .select('id')
+    .eq('active', true)
+    .limit(1);
+  unchanged(generation);
+  if (error) throw new Error(error.message);
+  return (data || []).length > 0;
+}
+
 export async function listEnrollmentCustomers(): Promise<EnrollmentCustomer[]> {
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
@@ -49,22 +65,45 @@ export async function listEnrollmentCustomers(): Promise<EnrollmentCustomer[]> {
   return customers;
 }
 
+/** Who an approved person becomes: a customer of the chosen customers, or warehouse staff or a supervisor. */
+export type EnrollmentRole = 'customer' | 'staff' | 'supervisor';
+
+/**
+ * Approve or reject a request. A customer needs at least one customer to see;
+ * staff and supervisors see every customer and are sent none (server contract:
+ * operator_review_enrollment(p_user_id, p_decision, p_customer_ids, p_role)).
+ */
 export async function reviewEnrollment(
   userId: string,
   decision: 'approved' | 'rejected',
-  customerIds: string[] = []
+  customerIds: string[] = [],
+  role: EnrollmentRole = 'customer'
 ): Promise<void> {
-  if (decision === 'approved' && customerIds.length === 0)
+  if (decision === 'approved' && role === 'customer' && customerIds.length === 0)
     throw new Error(t('errors.user.selectExistingCustomer'));
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
   const { data, error } = await client.rpc('operator_review_enrollment', {
     p_user_id: userId,
     p_decision: decision,
-    p_customer_ids: decision === 'approved' ? customerIds : [],
+    p_customer_ids: decision === 'approved' && role === 'customer' ? customerIds : [],
+    // p_role is new (migration 77) and defaults to 'customer': a customer approval and a rejection
+    // leave it out, so they keep working on a facility that has not upgraded.
+    ...(decision === 'approved' && role !== 'customer' ? { p_role: role } : {}),
   });
   unchanged(generation);
-  if (error) throw new Error(error.message);
+  if (error) {
+    handleGlobalAuthError(error);
+    // A staff or supervisor approval needs the new argument: an older facility has no such function.
+    if (error.code === 'PGRST202') throw new AppError('REFUSED', t('errors.user.enrollmentServerNeedsUpdate'));
+    // Only an answer from the database is the server saying no (INVALID_ROLE ...). A timeout, a gateway
+    // page or a changed session leaves open whether the decision was saved.
+    if (UserService.isDatabaseAnswer(error)) throw new AppError('REFUSED', serverText(error.message, t('errors.user.enrollmentReviewNotAccepted')));
+    throw new Error(error.message);
+  }
+  // The request was decided meanwhile (by another administrator): say so, the screen reloads.
+  if (data?.success === false && data?.code === 'unknown_user')
+    throw new AppError('REFUSED', t('errors.user.enrollmentAlreadyHandled'));
   if (data?.success !== true || data?.data?.status !== decision)
-    throw new Error(t('errors.user.enrollmentReviewNotAccepted'));
+    throw new AppError('REFUSED', serverText(data?.message, t('errors.user.enrollmentReviewNotAccepted')));
 }

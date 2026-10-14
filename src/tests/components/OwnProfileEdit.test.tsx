@@ -28,6 +28,10 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('@/store/slices/authSlice', () => ({ setUserProfile: jest.fn((profile: unknown) => ({ type: 'set', profile })) }));
+jest.mock('@/hooks/useLeaveGuard', () => ({
+  useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }),
+}));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 let mockServer: Record<string, string> | null = null;
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockServer }));
@@ -139,11 +143,11 @@ describe('Change name (O06)', () => {
     expect(details.props.accessibilityRole).toBe('button');
     // Collapsed: no mobile number, role or customer access yet.
     expect(shown.join('\n')).not.toContain('Staff');
-    expect(shown.join('\n')).not.toContain('Fictional Traders');
+    expect(shown.join('\n')).not.toContain('1 customer');
 
     await openDetails(tree);
     expect(byTestID(tree, 'self-edit-account-details').props.accessibilityState).toEqual({ expanded: true });
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Staff', 'Fictional Traders', 'Customer access']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Staff', '1 customer', 'Customer access']));
     expect(tree.root.findAllByType(TextInput)).toHaveLength(1);
   });
 
@@ -159,7 +163,7 @@ describe('Change name (O06)', () => {
     updateUser.mockResolvedValue({ success: true, message: 'ok' });
     const tree = await render();
     await typeName(tree, 'Asha Fictional');
-    await press(composite(tree, (node) => node.props.accessibilityLabel === 'Save profile' && node.props.accessibilityRole === 'button')[0]);
+    await press(composite(tree, (node) => node.props.accessibilityLabel === 'Save name' && node.props.accessibilityRole === 'button')[0]);
     expect(updateUser).toHaveBeenCalledTimes(1);
     expect(updateUser.mock.calls[0][0]).toBe('profile-1');
     expect(updateUser.mock.calls[0][1].name).toBe('Asha Fictional');
@@ -192,7 +196,7 @@ describe('customer access (SR-08)', () => {
     });
     expect(getAccessibleCustomers).toHaveBeenCalledTimes(1);
     expect(getUserById).toHaveBeenCalledTimes(1);
-    expect(texts(tree)).toContain('Fictional Traders');
+    expect(texts(tree)).toContain('1 customer');
     expect(texts(tree)).not.toContain("Couldn't load your customer access. Check your connection and try again.");
     expect(nameInput(tree).props.value).toBe('Asha Fictional');
   });

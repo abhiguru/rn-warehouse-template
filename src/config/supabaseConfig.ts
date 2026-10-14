@@ -325,6 +325,18 @@ export function createSessionReadFetch() {
     sessionFetch(input, init, generation, false).catch(inOwnWords);
 }
 
+/**
+ * Registers a read that does not go through `gatedFetch` (a native file download) so a server
+ * switch aborts it like any other read. Returns false while a switch is running: the read must
+ * not begin. Call the returned `release` when the read ends.
+ */
+export function trackReadRequest(controller: AbortController): { started: boolean; release: () => void } {
+  if (operatorSwitching) return { started: false, release: () => {} };
+  const request = { controller, mutation: false };
+  activeRequests.add(request);
+  return { started: true, release: () => void activeRequests.delete(request) };
+}
+
 export function beginOperatorSwitch(): boolean {
   if (operatorSwitching || activeMutationOperations > 0 || [...activeRequests].some(request => request.mutation)) return false;
   operatorSwitching = true;

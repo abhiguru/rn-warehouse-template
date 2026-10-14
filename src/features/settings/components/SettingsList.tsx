@@ -7,23 +7,23 @@
  * chevron, and is read as "label, value, subtitle".
  */
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+
+/** From this font scale a row's value moves under its label (the batch-wide threshold). */
+const STACK_FONT_SCALE = 1.5;
 
 const makeStyles = (t: ThemeTokens) => ({
   section: {
     marginBottom: space.xxl,
   },
+  // SectionHeader brings its own top padding; the section's bottom margin already spaces it.
   sectionHeader: {
-    ...typography.footnote,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
     marginHorizontal: layout.marginCompact,
-    marginBottom: space.sm,
-    paddingHorizontal: space.lg,
+    paddingTop: 0,
   },
   sectionContent: {
     marginHorizontal: layout.marginCompact,
@@ -79,6 +79,13 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     marginTop: space.xxs,
   },
+  // At the largest text sizes the value sits under the label and wraps (G-13).
+  rowValueStacked: {
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'left' as const,
+    marginTop: space.xxs,
+  },
   rowValue: {
     ...typography.body,
     color: t.text.secondary,
@@ -104,9 +111,7 @@ export function SettingsSection({
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.section} testID={testID}>
-      <Text style={styles.sectionHeader} accessibilityRole="header">
-        {title}
-      </Text>
+      <SectionHeader title={title} style={styles.sectionHeader} />
       <View style={styles.sectionContent}>{children}</View>
       {footer ? <Text style={styles.sectionFooter}>{footer}</Text> : null}
     </View>
@@ -141,6 +146,7 @@ export function SettingsRow({
 }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const stacked = useWindowDimensions().fontScale >= STACK_FONT_SCALE && !!value;
   return (
     <Pressable
       testID={testID}
@@ -164,9 +170,14 @@ export function SettingsRow({
       <View style={[styles.rowBody, !last && styles.rowDivider]}>
         <View style={styles.rowContent}>
           <Text style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
+          {stacked ? (
+            <Text style={styles.rowValueStacked} testID="settings-row-value-stacked">
+              {value}
+            </Text>
+          ) : null}
           {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
         </View>
-        {value ? (
+        {value && !stacked ? (
           <Text style={styles.rowValue} numberOfLines={1}>
             {value}
           </Text>

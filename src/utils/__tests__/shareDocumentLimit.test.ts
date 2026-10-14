@@ -81,6 +81,7 @@ jest.mock('@/config/supabaseConfig', () => {
   const lifecycle = jest.requireActual('@/config/sessionLifecycle');
   return {
     REQUEST_TIME_LIMIT_MS: { read: 30000, write: 60000, transfer: 120000 },
+    trackReadRequest: jest.fn(() => ({ started: true, release: () => {} })),
     awaitIdentityGate: jest.fn(async (generation: number) => {
       if (generation !== lifecycle.getSessionGeneration()) throw new Error('Session changed');
     }),
@@ -239,6 +240,30 @@ describe('the 25 MB cap bounds the download', () => {
     expect(server.sent).toBeLessThanOrEqual(4 * CHUNK);
     expect(sharedPdfs()).toEqual([]);
     expect(Sharing.shareAsync).not.toHaveBeenCalled();
+  });
+
+  it('refuses the file when a server switch begins during the download (the tracked read is aborted)', async () => {
+    const { trackReadRequest } = jest.requireMock('@/config/supabaseConfig') as { trackReadRequest: jest.Mock };
+    let tracked: AbortController | undefined;
+    trackReadRequest.mockImplementationOnce((controller: AbortController) => {
+      tracked = controller;
+      return { started: true, release: () => {} };
+    });
+    server.reset({ contentLength: 20 * MiB, bodyBytes: 20 * MiB, onChunk: count => count === 3 && tracked?.abort() });
+    const result = await downloadAndSharePDF(signedUrl, 'Stock summary.pdf');
+    expect(result).toEqual({ success: false, error: 'Session changed' });
+    expect(server.completed).toBe(false);
+    expect(sharedPdfs()).toEqual([]);
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
+  });
+
+  it('starts nothing while a server switch is running', async () => {
+    const { trackReadRequest } = jest.requireMock('@/config/supabaseConfig') as { trackReadRequest: jest.Mock };
+    trackReadRequest.mockReturnValueOnce({ started: false, release: () => {} });
+    server.reset({ contentLength: MiB, bodyBytes: MiB });
+    expect(await downloadPDF(signedUrl, 'Stock summary.pdf')).toEqual({ success: false, error: 'Session changed' });
+    expect(server.sent).toBe(0);
+    expect(sharedPdfs()).toEqual([]);
   });
 
   it('starts nothing for a session that changed before the download began', async () => {

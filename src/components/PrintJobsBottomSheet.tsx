@@ -71,6 +71,8 @@ const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; l
   completed: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.status.completed' },
   failed: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.status.failed' },
   cancelled: { kind: 'neutral', icon: 'circle-outline', labelKey: 'components.printJobs.status.cancelled' },
+  // Accepted by the printer, not confirmed: staff check at the printer, nobody resubmits it.
+  unknown: { kind: 'critical', icon: 'alert-circle', labelKey: 'components.printJobs.status.unknown' },
 };
 
 const PRINTER_STATUS: Record<PrinterStatus, { kind: StatusKind; icon: string; labelKey: TranslationKey }> = {
@@ -185,6 +187,10 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // ⏳ Job queued
           setPrinterStatus('busy');
           setPrinterMessage(tr('components.printJobs.message.queued'));
+        } else if (recentJob.status === 'unknown') {
+          // The printer did not confirm the job: not "ready", and not to be printed again on a guess.
+          setPrinterStatus('error');
+          setPrinterMessage(tr('components.printJobs.message.unconfirmed'));
         } else if (recentJob.status === 'cancelled') {
           // Last job was cancelled, assume printer is online
           setPrinterStatus('online');
@@ -220,9 +226,10 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (activeTab === 'inProgress') {
           // Fetch pending and printing jobs separately using Promise.allSettled
           // to handle partial failures gracefully
-          const [pendingSettled, printingSettled] = await Promise.allSettled([
+          const [pendingSettled, printingSettled, unknownSettled] = await Promise.allSettled([
             getPrintJobs(undefined, 50, 'pending'),
             getPrintJobs(undefined, 50, 'printing'),
+            getPrintJobs(undefined, 50, 'unknown'),
           ]);
           if (!isCurrent()) return;
 
@@ -233,6 +240,11 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           const printingResult = printingSettled.status === 'fulfilled'
             ? printingSettled.value
             : { success: false, error: 'Failed to fetch printing jobs' };
+
+          // A job the printer accepted but did not confirm stays here until someone has checked it.
+          const unknownResult = unknownSettled.status === 'fulfilled'
+            ? unknownSettled.value
+            : { success: false, error: 'Failed to fetch unconfirmed jobs' };
 
           if (__DEV__) console.log('[PrintJobsBottomSheet] In Progress results:', {
             pending: {
@@ -254,9 +266,13 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             allJobs = [...allJobs, ...printingResult.data];
           }
 
+          if (unknownResult.success && unknownResult.data) {
+            allJobs = [...allJobs, ...unknownResult.data];
+          }
+
           // Check for errors
-          if (!pendingResult.success || !printingResult.success) {
-            const error = pendingResult.error || printingResult.error;
+          if (!pendingResult.success || !printingResult.success || !unknownResult.success) {
+            const error = pendingResult.error || printingResult.error || unknownResult.error;
             console.error('[PrintJobsBottomSheet] Failed to fetch in-progress jobs:', error);
             if (!isRefreshing) {
               setSnackbarMessage(tr(LOAD_ERROR_KEY));
@@ -328,7 +344,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
     // One owner polls the jobs and the printer status (see usePrintJobPolling for the
     // cadence): faster while a job is queued or printing, slower when idle.
     const hasActiveJob = printerStatus === 'busy' || (activeTab === 'inProgress' && printJobs.length > 0);
-    const { fetchNow, updateStatusNow } = usePrintJobPolling({
+    const { fetchNow, updateStatusNow, refetchNow, refreshStatusNow } = usePrintJobPolling({
       isActive: isOpen,
       onFetchJobs: fetchPrintJobs,
       onUpdateStatus: updatePrinterStatus,
@@ -356,8 +372,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (result.success) {
           setSnackbarMessage(tr('components.printJobs.cancelled'));
           setSnackbarVisible(true);
-          // Refresh the list immediately
-          void fetchNow();
+          // Read again after the cancel: a read already in flight was sent before it committed.
+          void Promise.all([refetchNow(), refreshStatusNow()]);
         } else {
           setSnackbarMessage(tr('components.printJobs.cancelFailed'));
           setSnackbarVisible(true);
@@ -367,7 +383,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         setSnackbarMessage(tr('components.printJobs.cancelFailed'));
         setSnackbarVisible(true);
       }
-    }, [fetchNow]);
+    }, [refetchNow, refreshStatusNow]);
 
     // Snackbars dismiss themselves after 4 seconds
     useEffect(() => {

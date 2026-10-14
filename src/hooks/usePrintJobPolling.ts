@@ -49,6 +49,10 @@ interface UsePrintJobPollingReturn {
   fetchNow: () => Promise<void>;
   /** Update the printer status now, or join the status read in flight. */
   updateStatusNow: () => Promise<void>;
+  /** Read the jobs again after a write: a read in flight is dropped and a new one follows it. */
+  refetchNow: () => Promise<void>;
+  /** The same for the printer status. */
+  refreshStatusNow: () => Promise<void>;
 }
 
 /**
@@ -98,6 +102,8 @@ export function usePrintJobPolling({
   return {
     fetchNow: jobs.runNow,
     updateStatusNow: status.runNow,
+    refetchNow: jobs.refreshNow,
+    refreshStatusNow: status.refreshNow,
   };
 }
 

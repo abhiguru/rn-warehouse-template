@@ -479,7 +479,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     });
     const all = texts(tree);
     expect(all).toEqual(expect.arrayContaining(['Chamber 2 sensor', 'Warning', 'Online', 'Historical trend']));
-    expect(all).toContain('Summary, last 7 days');
+    expect(all).toContain('All readings, last 7 days');
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     act(() => tree.unmount());
   });

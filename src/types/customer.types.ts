@@ -162,6 +162,8 @@ export interface CustomerServiceResponse<T = Customer> {
   message: string;
   data?: T;
   error?: string;
+  /** The server's own error code (DUPLICATE_NAME ...), before any translation. */
+  code?: string;
 }
 
 /**

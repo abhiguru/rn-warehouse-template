@@ -1,4 +1,4 @@
-import { DEMO_CAPABILITIES } from '@/config/demoCapabilities';
+import { useCapability } from '@/hooks/useCapability';
 /**
  * PrintRangeDialog - Reusable dialog for selecting print range
  *
@@ -274,6 +274,8 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
+  // The facility's own capability, not the demo default.
+  const printingAvailable = useCapability('printing');
 
   const [startNumber, setStartNumber] = useState(defaultNumber);
   const [endNumber, setEndNumber] = useState(defaultNumber);
@@ -341,7 +343,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       };
 
   // Keep every entry point honest, including direct document detail actions.
-  if (!DEMO_CAPABILITIES.printing)
+  if (!printingAvailable)
     return (
       <Modal
         visible

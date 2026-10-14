@@ -12,6 +12,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { setLanguage, t } from '@/i18n';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { showAlert } from '@/utils/alert';
+import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { alertTexts, dismissLatestAlert, pressAlertButton } from '@/tests/helpers/alertMock';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import type { ReportPdfRequest } from '@/services/pdf-service';
@@ -240,6 +241,17 @@ describe('a PDF the server cut short', () => {
 
     await press('OK');
     expect(downloadAndSharePDF).toHaveBeenCalledWith(SIGNED_URL, 'GRN_activity_Fictional_Traders_2026_09_01_to_2026_09_30.pdf');
+    expect(probe.current().busy).toBe(false);
+  });
+
+  it('does not download when the session ended while the notice was open', async () => {
+    jest.mocked(fetch).mockResolvedValue(cutShort(true));
+    const probe = setup();
+    await probe.tap();
+    expect(dialogs()).toHaveLength(1);
+    act(() => { advanceSessionGeneration(); });
+    await press('OK');
+    expect(downloadAndSharePDF).not.toHaveBeenCalled();
     expect(probe.current().busy).toBe(false);
   });
 

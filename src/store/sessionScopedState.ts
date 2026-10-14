@@ -9,7 +9,6 @@ import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { resetForm as resetGrn } from './slices/grnFormSlice';
 import { resetForm as resetDispatch } from './slices/dispatchFormSlice';
 import { resetForm as resetInvoice } from './slices/invoiceFormSlice';
-import { resetForm as resetCustomer } from './slices/customerFormSlice';
 import { resetAllListFilters } from './slices/listFilterSlice';
 import { forgetReportCustomers } from './slices/reportPrefsSlice';
 import { clearAllCaches } from '@/utils/cacheManager';
@@ -17,6 +16,7 @@ import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearImageCaches } from '@/utils/imageCache';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { forgetRecentSearches } from '@/features/filters/recentSearches';
+import { clearItemRatesCache } from '@/features/item-pricing/useItemRates';
 
 export async function clearSessionScopedState(
   dispatch: (action: UnknownAction) => unknown
@@ -27,13 +27,14 @@ export async function clearSessionScopedState(
   dispatch(resetGrn());
   dispatch(resetDispatch());
   dispatch(resetInvoice());
-  dispatch(resetCustomer());
   // Filters and searches name customers and items of this session's facility.
   dispatch(resetAllListFilters());
   // The customer last opened in a report is kept on the phone; the period, sorts and pinned reports name no facility data and stay.
   dispatch(forgetReportCustomers());
   // So do the "Recent" searches offered under a search field; they are kept outside the store.
   forgetRecentSearches();
+  // The rates cached for Item pricing belong to this session's facility and person.
+  clearItemRatesCache();
   await clearAllCaches();
   // Photos seen in this session must not stay on the phone for the next one.
   await clearImageCaches();

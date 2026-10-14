@@ -28,6 +28,7 @@ jest.mock('@/config/envConfig', () => ({
 }));
 
 import HelpScreen from '../../../app/help';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 beforeEach(() => {
   setLanguage('en');
@@ -54,25 +55,25 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
   expect(texts).toEqual(
     expect.arrayContaining([
       'Help',
-      'Your facility',
+      'YOUR FACILITY',
       'North Cold Store',
       'Server address',
       'https://north-cold.example.test',
-      'Getting help',
+      'GETTING HELP',
       'For help with the app or your account, ask an administrator of your facility.',
       "The app has no support contact details of its own. Your facility's office can tell you who to ask.",
-      'Roles',
+      'ROLES',
       'Your role: Staff',
       'Admin',
-      'Full system access and user management',
+      'Everything, including access requests, users and administrators.',
       'Supervisor',
-      'Can manage operations and view all data',
+      'Runs the warehouse: orders, GRNs, dispatches, invoices, prices, customers, items, and users who are not administrators. Cannot approve access requests.',
       'Staff',
-      'Can create and manage GRNs and dispatches',
+      'Orders, GRNs, dispatches, invoices and prices for every customer. Cannot manage customers, items or users.',
       'Customer',
-      'Can view assigned orders and invoices',
-      'When something changes',
-      "New phone: install the app, enter your facility's address and sign in with your mobile number. The code comes by SMS.",
+      'Places orders and sees stock, GRNs, dispatches, invoices and reports for the customers assigned to them.',
+      'WHEN SOMETHING CHANGES',
+      "New phone: install the app, enter your cold storage's server address (it starts with https://) or scan its QR code, and sign in with your mobile number. The code comes by SMS.",
       'New mobile number: you sign in with your number, and the app cannot change it. Ask an administrator of your facility what to do.',
       'Different role or access: only an administrator of your facility can change your role and the customers you see.',
     ])
@@ -85,7 +86,7 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
     (node) => typeof node.type !== 'string' && node.props.accessibilityState?.selected === true
   );
   expect(marked.map((node) => node.props.accessibilityLabel)).toEqual([
-    'Staff, Can create and manage GRNs and dispatches',
+    'Staff, Orders, GRNs, dispatches, invoices and prices for every customer. Cannot manage customers, items or users.',
   ]);
 });
 
@@ -110,4 +111,30 @@ it('names the role in Gujarati and keeps the address as typed', async () => {
   mockState = { ...mockState, auth: { userProfile: { id: 'profile-1', role: 'admin' } } };
   const { texts } = await shown();
   expect(texts).toEqual(expect.arrayContaining(['મદદ', 'તમારો હોદ્દો: એડમિન', 'https://north-cold.example.test']));
+});
+
+// G-46: an administrator has no administrator to ask.
+it('tells an administrator to share the details with whoever set up the server', async () => {
+  mockState = { ...mockState, auth: { userProfile: { id: 'profile-1', name: 'Asha Example', role: 'admin', mobile: '9000000002' } } };
+  const { texts } = await shown();
+  expect(texts).toContain(
+    "You are this facility's administrator. For problems with the app, share the details below with whoever set up your server."
+  );
+  expect(texts).not.toContain('For help with the app or your account, ask an administrator of your facility.');
+  expect(texts).not.toContain("The app has no support contact details of its own. Your facility's office can tell you who to ask.");
+});
+
+it('keeps "ask an administrator" for a staff member', async () => {
+  const { texts } = await shown();
+  expect(texts).toContain('For help with the app or your account, ask an administrator of your facility.');
+  expect(texts).not.toContain(
+    "You are this facility's administrator. For problems with the app, share the details below with whoever set up your server."
+  );
+});
+
+// G-43: every title is a SectionHeader.
+it('draws its section titles with the shared SectionHeader', async () => {
+  const { tree } = await shown();
+  const headers = tree.root.findAllByType(SectionHeader).map(node => node.props.title);
+  expect(headers).toEqual(['Your facility', 'Getting help', 'Roles', 'When something changes', 'Details for support']);
 });

@@ -444,6 +444,8 @@ export const errors = {
     accountDeleted: 'Account deleted successfully',
     selectExistingCustomer: 'Select at least one existing customer.',
     enrollmentReviewNotAccepted: 'Enrollment review was not accepted.',
+    enrollmentAlreadyHandled: 'This request was already handled.',
+    enrollmentServerNeedsUpdate: "This facility's server needs an update before a person can be approved as staff or a supervisor.",
   },
   search: {
     minChars: 'Search query must be at least 2 characters',

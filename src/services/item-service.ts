@@ -471,9 +471,10 @@ class ItemService {
       success: boolean;
       message?: string;
       references?: {
-        grn_count: number;
-        dispatch_count: number;
-        invoice_count: number;
+        /** Where the server found the item (delete_item_safe): GRN lines, order lines and prices. */
+        grn_items_count: number;
+        order_items_count: number;
+        pricing_count: number;
       };
     }
 

@@ -21,7 +21,7 @@ jest.mock('@/utils/localPhotoFiles', () => ({
 jest.mock('@/utils/submissionIdempotency', () => ({ submissionIdempotencyKey: async () => 'warehouse-dispatch-fictional-key' }));
 
 const DISPATCH_ID = '11111111-2222-4333-8444-555555555555';
-const photo = (name: string): DispatchImageData => ({ id: `temp_${name}`, file_name: `${name}.webp`, image_url: `file:///cache/${name}.webp`, upload_status: 'pending' });
+const photo = (name: string): DispatchImageData => ({ id: `temp_${name}`, file_name: `${name}.webp`, image_url: `file:///cache/${name}.webp`, upload_status: 'completed' });
 const photos = [photo('truck'), photo('load')];
 const payload = {
   header: { disp_no: 'I0042', disp_date: '2026-10-01', registration: '', customer_id: 'c1', customer_name: 'Fictional Traders', note: '' },
@@ -159,4 +159,15 @@ it('uploads at most four photos at once, reading each file only when its turn co
   // The switch gate is released once, after the last upload.
   const release = jest.mocked(beginOperatorMutation).mock.results[0].value as jest.Mock;
   expect(release).toHaveBeenCalledTimes(1);
+});
+
+it('never uploads the original file of a photo that is still being prepared or failed', async () => {
+  const rpc = server([]);
+  const prepared = photo('prepared');
+  const preparing: DispatchImageData = { ...photo('raw_camera'), upload_status: 'uploading' };
+  const tooLarge: DispatchImageData = { ...photo('twelve_mb'), upload_status: 'failed' };
+  const outcome = await uploadDeferredDispatchImages(DISPATCH_ID, [prepared, preparing, tooLarge]);
+  const registered = rpc.mock.calls.filter(([name]) => name === 'register_dispatch_image_upload').map(([, args]) => (args as { p_file_name: string }).p_file_name);
+  expect(registered).toEqual(['prepared.webp']);
+  expect(outcome.failed).toEqual([prepared]);
 });

@@ -15,7 +15,7 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
-  Vibration,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { router, Stack } from 'expo-router';
@@ -29,6 +29,11 @@ import {
 } from '@/types/customer.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { MasterListHeader } from '@/components/common/MasterListHeader';
+import { useHaptics } from '@/hooks/useHaptics';
+import { railKey, railLetters, sortForRail } from '@/features/customer/railKey';
+import { AlphabeticalRail } from '@/features/customer/AlphabeticalRail';
+import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import {
   fontWeight,
   iconSize,
@@ -38,14 +43,16 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
-  singleLineText,
 } from '@/theme/tokens';
 
 import { Avatar, StatusTag } from '@/components/ui';
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatMobile } from '@/utils/formatters';
+import { formatCount, formatMobile, formatTime, nationalMobileDigits } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('Customers');
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -55,16 +62,27 @@ interface ListState {
   loading: boolean;
   refreshing: boolean;
   filters: CustomerFilters;
-  totalCount: number;
-  error: string | null;
+  /** The first load failed and there are no rows to show instead. */
+  error: boolean;
+  /** A refresh failed while rows were on the screen: they are older than they look. */
+  refreshFailed: boolean;
+  /** When the rows on the screen were loaded. */
+  loadedAt: Date | null;
 }
 
 // =============================================================================
 // SCREEN COMPONENT
 // =============================================================================
 
-// Alphabet for the rail - common letters only to fit on screen
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+/**
+ * A load that failed. With rows on the screen they stay, and the list says they
+ * are older (refreshFailed); with none, the error takes the place of the list.
+ */
+function failed(prev: ListState): ListState {
+  return prev.data.length > 0
+    ? { ...prev, loading: false, refreshFailed: true }
+    : { ...prev, loading: false, error: true };
+}
 
 export default function CustomersScreen() {
   const isFocused = useIsFocused();
@@ -78,9 +96,11 @@ export default function CustomersScreen() {
     loading: true,
     refreshing: false,
     filters: DEFAULT_CUSTOMER_FILTERS,
-    totalCount: 0,
-    error: null,
+    error: false,
+    refreshFailed: false,
+    loadedAt: null,
   });
+  const [search, setSearch] = useState('');
 
   // ===========================================================================
   // FETCH LOGIC
@@ -89,7 +109,7 @@ export default function CustomersScreen() {
   // Load ALL customers at once for smooth alphabetical rail navigation
   const fetchCustomers = useCallback(
     async (filters: CustomerFilters) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
+      setState((prev) => ({ ...prev, loading: true, error: false }));
 
       try {
         // Load all customers (limit 10000 should cover any realistic customer count)
@@ -98,25 +118,19 @@ export default function CustomersScreen() {
         if (response.success) {
           setState((prev) => ({
             ...prev,
-            data: response.data,
-            totalCount: response.pagination?.total_count || response.data.length,
+            // Sorted by rail group so every row can be reached from the A–Z rail.
+            data: sortForRail(response.data),
             loading: false,
-            error: null,
+            error: false,
+            refreshFailed: false,
+            loadedAt: new Date(),
           }));
         } else {
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            error: response.message || 'Failed to fetch customers',
-          }));
+          setState((prev) => failed(prev));
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          error: errorMessage,
-        }));
+        log.error('Customer list load failed', loggableError(error));
+        setState((prev) => failed(prev));
       }
     },
     []
@@ -144,9 +158,9 @@ export default function CustomersScreen() {
     });
   }, [state.filters, fetchCustomers]);
 
-  const handleEditCustomer = useCallback((customerId: string) => {
+  const handleOpenCustomer = useCallback((customerId: string) => {
     router.push({
-      pathname: '/customer-edit/[id]/step1',
+      pathname: '/customer/[id]',
       params: { id: customerId },
     });
   }, []);
@@ -177,7 +191,7 @@ export default function CustomersScreen() {
           );
         }
       } catch (error) {
-        console.error('[Customers] Toggle active error:', error);
+        log.error('Toggle active failed', loggableError(error));
         showAlert(tr('customers.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
       }
     },
@@ -192,7 +206,7 @@ export default function CustomersScreen() {
         handleInactivateCustomer(customer.id, false);
         return;
       }
-      showAlert(tr('customers.list.deactivateConfirmTitle', { name: customer.name }), undefined, [
+      showAlert(tr('customers.list.deactivateConfirmTitle', { name: customer.name }), tr('customers.list.deactivateConfirmMessage'), [
         { text: tr('common.cancel'), style: 'cancel' },
         {
           text: tr('customers.list.deactivateCustomer'),
@@ -205,25 +219,37 @@ export default function CustomersScreen() {
   );
 
   const handleAddCustomer = useCallback(() => {
-    router.push('/customer-form/step1');
+    router.push('/customer-form');
   }, []);
 
   // ===========================================================================
   // ALPHABETICAL RAIL LOGIC
   // ===========================================================================
 
-  // Build a map of first letters to their first customer index
+  // The rows shown: every typed word must be in the name, the mobile digits or the city (§14.6).
+  const terms = useMemo(() => searchTerms(search), [search]);
+  const visible = useMemo(
+    () =>
+      terms.length === 0
+        ? state.data
+        : state.data.filter((customer) =>
+            matchesSearch(terms, [customer.name, nationalMobileDigits(customer.mobile), customer.mobile, customer.city])
+          ),
+    [state.data, terms]
+  );
+  const searching = search.trim().length > 0;
+
+  // Build a map of rail keys to their first customer index (the same key sorts the list)
   const letterIndexMap = useMemo(() => {
     const map: Record<string, number> = {};
-    state.data.forEach((customer, index) => {
-      const firstChar = (customer.name || '').charAt(0).toUpperCase();
-      const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
+    visible.forEach((customer, index) => {
+      const letter = railKey(customer.name);
       if (!(letter in map)) {
         map[letter] = index;
       }
     });
     return map;
-  }, [state.data]);
+  }, [visible]);
 
   // Set of available letters (that have customers)
   const availableLetters = useMemo(() => new Set(Object.keys(letterIndexMap)), [letterIndexMap]);
@@ -242,7 +268,6 @@ export default function CustomersScreen() {
     }
 
     setActiveLetter(letter);
-    Vibration.vibrate(5);
 
     flatListRef.current.scrollToIndex({
       index,
@@ -290,11 +315,11 @@ export default function CustomersScreen() {
     ({ item }: { item: CustomerListItem }) => (
       <FioriCustomerCard
         customer={item}
-        onPress={() => handleEditCustomer(item.id)}
+        onPress={() => handleOpenCustomer(item.id)}
         onToggleActive={() => handleToggleActive(item)}
       />
     ),
-    [handleEditCustomer, handleToggleActive]
+    [handleOpenCustomer, handleToggleActive]
   );
 
   const keyExtractor = useCallback((item: CustomerListItem) => item.id, []);
@@ -330,6 +355,23 @@ export default function CustomersScreen() {
       );
     }
 
+    // A search that finds nothing is not an empty warehouse either.
+    if (state.data.length > 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyText}>{tr('customers.search.noMatchTryFewer', { search: search.trim() })}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={() => setSearch('')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
@@ -347,7 +389,7 @@ export default function CustomersScreen() {
         </Pressable>
       </View>
     );
-  }, [state.loading, state.error, state.filters, fetchCustomers, handleAddCustomer, styles, t]);
+  }, [state.loading, state.error, state.data.length, state.filters, search, fetchCustomers, handleAddCustomer, styles, t]);
 
   return (
     <>
@@ -365,14 +407,9 @@ export default function CustomersScreen() {
             <HeaderBackButton />
           ),
           headerTitle: () => (
-            <View style={styles.titleContainer} accessible accessibilityRole="header">
-              <Text style={styles.headerTitle}>{tr('common.customers')}</Text>
-              {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle} {...singleLineText()}>
-                  {formatCount(state.totalCount, 'customer')}
-                </Text>
-              )}
-            </View>
+            <Text style={styles.headerTitle} accessibilityRole="header">
+              {tr('common.customers')}
+            </Text>
           ),
           headerRight: () => (
             <Pressable
@@ -389,16 +426,28 @@ export default function CustomersScreen() {
       />
 
       <View style={styles.container}>
+        <MasterListHeader
+          listKey="customers"
+          search={search}
+          onSearch={setSearch}
+          placeholder={tr('customers.search.placeholder')}
+          countText={state.data.length > 0 ? formatCount(visible.length, 'customer') : undefined}
+          refreshError={
+            state.refreshFailed
+              ? { message: tr('customers.list.refreshFailed', { time: formatTime(state.loadedAt) }), onRetry: handleRefresh }
+              : undefined
+          }
+        />
         <View style={styles.listWithRail}>
           <FlatList
             ref={flatListRef}
-            data={state.data}
+            data={visible}
             renderItem={renderItem}
             keyExtractor={keyExtractor}
             contentContainerStyle={[
               styles.listContent,
               { paddingBottom: space.xl + insets.bottom },
-              state.data.length === 0 && styles.listContentEmpty,
+              visible.length === 0 && styles.listContentEmpty,
             ]}
             refreshControl={
               <RefreshControl
@@ -415,10 +464,10 @@ export default function CustomersScreen() {
             style={styles.flatList}
           />
 
-          {/* Alphabetical Rail */}
-          {state.data.length > 0 && (
+          {/* Alphabetical Rail: hidden while a search is typed */}
+          {visible.length > 0 && !searching && (
             <AlphabeticalRail
-              letters={ALPHABET}
+              letters={railLetters(availableLetters)}
               availableLetters={availableLetters}
               activeLetter={activeLetter}
               onLetterPress={scrollToLetter}
@@ -427,57 +476,6 @@ export default function CustomersScreen() {
         </View>
       </View>
     </>
-  );
-}
-
-// =============================================================================
-// ALPHABETICAL RAIL COMPONENT
-// Vertical A-Z rail for quick navigation
-// =============================================================================
-
-interface AlphabeticalRailProps {
-  letters: string[];
-  availableLetters: Set<string>;
-  activeLetter: string | null;
-  onLetterPress: (letter: string) => void;
-}
-
-function AlphabeticalRail({
-  letters,
-  availableLetters,
-  activeLetter,
-  onLetterPress,
-}: AlphabeticalRailProps) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.alphabetRail}>
-      {letters.map((letter) => {
-        const hasLoadedCustomers = availableLetters.has(letter);
-        const isActive = activeLetter === letter;
-
-        return (
-          <Pressable
-            key={letter}
-            onPress={() => onLetterPress(letter)}
-            style={[styles.letterItem, isActive && styles.letterItemActive]}
-            accessibilityRole="button"
-            accessibilityLabel={tr('customers.list.jumpTo', { letter })}
-            accessibilityState={{ disabled: !hasLoadedCustomers, selected: isActive }}
-          >
-            <Text
-              style={[
-                styles.letterText,
-                !hasLoadedCustomers && styles.letterTextDisabled,
-                isActive && styles.letterTextActive,
-              ]}
-              maxFontSizeMultiplier={1.2}
-            >
-              {letter}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }
 
@@ -552,7 +550,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={rowLabel}
-        accessibilityHint={customer.active ? tr('customers.list.rowHintDeactivate') : tr('customers.list.rowHintActivate')}
+        accessibilityHint={tr('customers.list.rowHint')}
         accessibilityActions={[{ name: 'toggleActive', label: actionLabel }]}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'toggleActive') onToggleActive();
@@ -626,51 +624,10 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Alphabetical Rail
-  alphabetRail: {
-    position: 'absolute' as const,
-    right: space.xxs,
-    top: 0,
-    bottom: 0,
-    width: 40,
-    justifyContent: 'space-evenly' as const,
-    alignItems: 'center' as const,
-  },
-  letterItem: {
-    width: 40,
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  letterItemActive: {
-    backgroundColor: t.brand.fill,
-    borderRadius: radius.button,
-  },
-  letterText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.bold,
-    textAlign: 'center' as const,
-    color: t.brand.tint,
-  },
-  letterTextDisabled: {
-    color: t.text.disabled,
-  },
-  letterTextActive: {
-    color: t.brand.onFill,
-  },
-
   // Header styles
-  titleContainer: {
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
   headerTitle: {
     ...typography.headline,
     color: t.text.primary,
-    textAlign: 'center' as const,
-  },
-  headerSubtitle: {
-    ...typography.caption1,
-    color: t.text.secondary,
     textAlign: 'center' as const,
   },
   addButton: {

@@ -255,7 +255,7 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
  *
  * @example
  * ```tsx
- * useConfirmBack(formIsDirty, 'Discard your changes?');
+ * useConfirmBack(formIsDirty, 'Discard changes?');
  * ```
  */
 export function useConfirmBack(

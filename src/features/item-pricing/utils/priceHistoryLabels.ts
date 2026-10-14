@@ -57,7 +57,8 @@ export function priceHistoryValueText(field: PriceHistoryField, value: PriceHist
       // A price with no end date runs until it is changed.
       return typeof value === 'string' ? formatDate(value) : t('pricing.form.noEndDate');
     default:
-      return typeof value === 'number' ? formatCurrency(value) : MISSING;
+      // Money always has two decimals: ₹3.50, ₹10.00 (never ₹3.5 or ₹10).
+      return typeof value === 'number' ? formatCurrency(value, { minimumFractionDigits: 2 }) : MISSING;
   }
 }
 

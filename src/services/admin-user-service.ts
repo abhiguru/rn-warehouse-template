@@ -47,6 +47,7 @@ interface RpcUserRow {
   created_at?: string;
   updated_at?: string;
   assigned_customers_count?: number;
+  is_service_account?: boolean;
 }
 
 /** Raw customer assignment from RPC responses */
@@ -65,6 +66,13 @@ interface RpcCustomerAssignment {
 
 /** The server refuses to remove the warehouse's last administrator (backend migration 44). */
 const LAST_ADMIN = 'LAST_ADMIN';
+
+/** The server refuses role, status and delete changes on a service account such as the FAS sync (backend migration 78). */
+const SERVICE_ACCOUNT_READ_ONLY = 'SERVICE_ACCOUNT_READ_ONLY';
+
+/** Code of a refused answer: `error_code` first, then `error` which older answers use as the code. */
+const refusalCode = (responseData: { error_code?: unknown; error?: unknown } | null | undefined): unknown =>
+  responseData?.error_code ?? responseData?.error;
 
 /**
  * Refusals about the target's access request (backend migration 47), by the code the
@@ -150,6 +158,7 @@ class AdminUserService {
         created_at: user.created_at,
         updated_at: user.updated_at,
         assigned_customers_count: user.assigned_customers_count || 0,
+        is_service_account: user.is_service_account ?? false,
       }));
 
       return {
@@ -233,6 +242,7 @@ class AdminUserService {
           created_at: user.created_at,
           updated_at: user.updated_at,
           assigned_customers_count: assignedCustomers.length,
+          is_service_account: user.is_service_account ?? false,
           assigned_customers: assignedCustomers,
         },
       };
@@ -282,7 +292,9 @@ class AdminUserService {
           // The server names this refusal by a code, not a sentence (migration 44).
           error: responseData?.error === LAST_ADMIN
             ? t('errors.user.lastAdminRole')
-            : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateRoleFailed')),
+            : refusalCode(responseData) === SERVICE_ACCOUNT_READ_ONLY
+              ? t('users.edit.serviceAccountReadOnly')
+              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateRoleFailed')),
         };
       }
 
@@ -341,7 +353,9 @@ class AdminUserService {
           success: false,
           error: responseData?.error === LAST_ADMIN
             ? t('errors.user.lastAdminDeactivate')
-            : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateStatusFailed')),
+            : refusalCode(responseData) === SERVICE_ACCOUNT_READ_ONLY
+              ? t('users.edit.serviceAccountReadOnly')
+              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateStatusFailed')),
         };
       }
 

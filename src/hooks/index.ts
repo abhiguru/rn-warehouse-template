@@ -34,3 +34,7 @@ export type { UseDispatchFormOptions, UseDispatchFormReturn, DispatchFormMode } 
 
 export { useInvoiceForm } from './useInvoiceForm';
 export type { UseInvoiceFormOptions, UseInvoiceFormReturn, InvoiceFormMode } from './useInvoiceForm';
+
+// Ask before unsaved work is left (style guide §14.4)
+export { useLeaveGuard } from './useLeaveGuard';
+export type { LeaveGuardOptions, LeaveGuard } from './useLeaveGuard';

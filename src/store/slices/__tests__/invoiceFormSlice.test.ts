@@ -528,3 +528,45 @@ describe('a group rate on an invoice whose lines differ', () => {
     expect(rates(state)).toEqual([[4, 1, 0], [4, 1, 0], [7, 1, 18]]);
   });
 });
+
+describe('saved rates applied from the rate form', () => {
+  const slice: Slice = require('../invoiceFormSlice');
+  const reducer = slice.default;
+  const base = (id: string, mark: string, weight: number): InvoiceItemData => ({
+    temp_id: id, disp_trl_id: id, grn_item_id: `g-${id}`, item_id: 'i1', item_name: 'Example Potatoes', qty: 10,
+    grn_original_qty: 10, package_mark: mark, rack: '', weight, dispatch_id: `d-${id}`, dispatch_no: 'I1',
+    dispatch_date: '2026-10-01', grn_id: 'gr1', grn_no: 'A1', grn_date: '2026-09-01', duration: 1, no_of_days: 30,
+    charge: 10, labour_rate: 2, tax: 5, amount: 100, labour_amount: 20, tax_amount: 6, item_total: 126,
+  });
+  const loaded = () =>
+    reducer(
+      undefined,
+      slice.loadInvoiceFormData({ header: { gr_id: 'gr1', gr_no: 'A1' }, items: [base('L1', 'M1', 50), base('L2', 'M1', 50), base('L3', 'M2', 50)], grId: 'gr1' })
+    );
+
+  it('leaves the lines open to a later group rate (no override mark) and drops the stale group rate', () => {
+    let state = reducer(loaded(), slice.bulkUpdateItemGroupPricing({ group_key: 'i1:::M1', pricing: { charge: 9 } }));
+    state = reducer(state, slice.applySavedRates([
+      { temp_id: 'L1', charge: 12, labour_rate: 2, tax: 5 },
+      { temp_id: 'L2', charge: 12, labour_rate: 2, tax: 5 },
+    ]));
+    expect(state.items.find(i => i.temp_id === 'L1')?.charge).toBe(12);
+    expect(state.itemOverrides.L1).toBeUndefined();
+    expect(state.bulkPricing['i1:::M1']?.charge).toBeUndefined();
+
+    state = reducer(state, slice.bulkUpdateItemGroupPricing({ group_key: 'i1:::M1', pricing: { charge: 11 } }));
+    expect(state.items.filter(i => i.package_mark === 'M1').map(i => i.charge)).toEqual([11, 11]);
+  });
+
+  it('keeps a rate typed on a line, including a charge of 0', () => {
+    let state = reducer(loaded(), slice.updateEditedItem({ temp_id: 'L3', values: { charge: 0 } }));
+    state = reducer(state, slice.applySavedRates([
+      { temp_id: 'L1', charge: 12, labour_rate: 3, tax: 5 },
+      { temp_id: 'L3', charge: 12, labour_rate: 3, tax: 5 },
+    ]));
+    const l3 = state.items.find(i => i.temp_id === 'L3')!;
+    expect(l3.charge).toBe(0);
+    expect(l3.labour_rate).toBe(3);
+    expect(state.items.find(i => i.temp_id === 'L1')?.charge).toBe(12);
+  });
+});

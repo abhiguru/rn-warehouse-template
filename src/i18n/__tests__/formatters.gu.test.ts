@@ -52,6 +52,8 @@ describe('formatters in Gujarati', () => {
     expect(formatCount(1200, 'bag')).toBe('૧,૨૦૦ નંગ');
     expect(formatCount(2, 'dispatch', 'dispatches')).toBe('૨ જાવક');
     expect(formatCount(0, 'invoice')).toBe('૦ ઇન્વૉઇસ');
+    // The owner's word for user (glossary; G-38), as in the Users title above the count.
+    expect(formatCount(7, 'user')).toBe('૭ યુઝર');
   });
   it('keeps an unknown noun in English rather than dropping it', () => {
     expect(formatCount(2, 'widget')).toBe('૨ widgets');

@@ -98,6 +98,7 @@ describe('signed out', () => {
     ['customers', ['customers']],
     ['users', ['users']],
     ['item-pricing', ['item-pricing']],
+    ['item-rates/[itemId]', ['item-rates', '[itemId]']],
     ['list-filters', ['list-filters']],
     ['settings', ['settings']],
     ['(tabs)', ['(tabs)']],
@@ -202,6 +203,8 @@ describe('signed in', () => {
   it.each([
     ['customer', 'items', ['items']],
     ['customer', 'item-pricing', ['item-pricing']],
+    ['customer', 'item-rates/[itemId]', ['item-rates', '[itemId]']],
+    ['customer', 'item-rates/edit', ['item-rates', 'edit']],
     ['customer', 'sensors', ['sensors']],
     ['customer', 'item-price-history', ['item-price-history']],
     ['staff', 'item-price-history', ['item-price-history']],

@@ -67,7 +67,6 @@ describe('GenericStepIndicatorHeader', () => {
     ['dispatch', 'create', 'Cancel Dispatch', 'જાવક રદ કરો'],
     ['dispatch', 'edit', 'Cancel editing', 'ફેરફાર રદ કરો'],
     ['invoice', 'create', 'Cancel Invoice', 'ઇન્વૉઇસ રદ કરો'],
-    ['customer', 'create', 'Cancel customer', 'વેપારી રદ કરો'],
   ] as const)('names the close button for %s in %s mode in both languages', (entity, mode, english, gujarati) => {
     expect(closeButton(header({ entity, mode })).props.accessibilityLabel).toBe(english);
     setLanguage('gu');
@@ -83,10 +82,10 @@ describe('GenericStepIndicatorHeader', () => {
   });
 
   it('shows the name of the entity when no label is given, and the given label otherwise', () => {
-    expect(texts(header({ entity: 'customer' }))).toContain('Customer');
+    expect(texts(header({ entity: 'invoice' }))).toContain('Invoice');
     expect(texts(header({ entity: 'invoice', mode: 'edit', entityName: 'Edit invoice' }))).toContain('Edit invoice');
     setLanguage('gu');
-    expect(texts(header({ entity: 'customer' }))).toContain('વેપારી');
+    expect(texts(header({ entity: 'invoice' }))).toContain('ઇન્વૉઇસ');
   });
 
   it('asks a whole-sentence discard question when the screen gives no title', () => {

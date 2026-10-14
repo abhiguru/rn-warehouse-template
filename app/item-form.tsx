@@ -16,7 +16,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ActivityIndicator,
   Switch,
   TextInput,
   type TextInputProps,
@@ -26,8 +25,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
+import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
+import { matchingPackaging, normalizePackaging, usePackagingWords } from '@/features/items/packagingSuggestions';
+import { showToast } from '@/utils/toast';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -56,6 +59,16 @@ const ItemFormScreen: React.FC = () => {
     active: true,
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
+  const { groups, suggestions } = usePackagingWords();
+
+  // Typed work is not thrown away without asking; an untouched form leaves at once.
+  const hasChanges =
+    !!formData.name.trim() || !!formData.packaging.trim() || !!formData.description.trim() || !formData.active;
+  const { leaveWithoutAsking } = useLeaveGuard({
+    hasChanges,
+    title: tr('items.form.discardNewTitle'),
+    message: tr('items.form.discardNewMessage'),
+  });
 
   // Field change handlers
   const handleFieldChange = useCallback(
@@ -104,15 +117,14 @@ const ItemFormScreen: React.FC = () => {
     try {
       const result = await itemService.createItem({
         p_name: formData.name.trim(),
-        p_packaging: formData.packaging.trim() || undefined,
+        p_packaging: normalizePackaging(formData.packaging, groups) || undefined,
         p_description: formData.description.trim() || undefined,
         p_active: formData.active,
       });
 
       if (result.success) {
-        showAlert(tr('items.form.addedTitle'), tr('items.form.addedMessage', { name: formData.name.trim() }), [
-          { text: tr('common.ok'), onPress: () => router.back() },
-        ]);
+        leaveWithoutAsking(() => router.back());
+        showToast(tr('items.form.addedToast', { name: formData.name.trim() }));
       } else {
         // Check for duplicate name error
         if (result.message?.toLowerCase().includes('duplicate') ||
@@ -134,28 +146,14 @@ const ItemFormScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-        <HeaderBackButton />
-        <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+      <View style={[styles.header, { paddingTop: insets.top + space.xs }]} testID="item-header">
+        <View style={styles.headerSide}>
+          <HeaderBackButton />
+        </View>
+        <Text style={styles.headerTitle} accessibilityRole="header">
           {tr('items.form.addTitle')}
         </Text>
-        <Pressable
-          style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
-          onPress={handleSave}
-          disabled={saving}
-          accessibilityRole="button"
-          accessibilityLabel={tr('items.form.saveItem')}
-          accessibilityState={{ busy: saving }}
-        >
-          {saving ? (
-            <>
-              <ActivityIndicator size="small" color={t.brand.onFill} />
-              <Text style={styles.saveButtonText}>{tr('common.saving')}</Text>
-            </>
-          ) : (
-            <Text style={styles.saveButtonText}>{tr('common.save')}</Text>
-          )}
-        </Pressable>
+        <View style={styles.headerSide} />
       </View>
 
       <KeyboardAvoidingView
@@ -164,7 +162,7 @@ const ItemFormScreen: React.FC = () => {
       >
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: space.max + insets.bottom }]}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -187,6 +185,14 @@ const ItemFormScreen: React.FC = () => {
               maxLength={40}
               error={errors.packaging}
             />
+            {suggestions.length > 0 && (
+              <ChoiceChips
+                options={suggestions.map((word) => ({ value: word, label: word }))}
+                value={matchingPackaging(formData.packaging, groups)}
+                onChange={(word) => handleFieldChange('packaging', word)}
+                accessibilityLabel={tr('items.form.packagingSuggestions')}
+              />
+            )}
             <ItemTextField
               label={tr('items.form.description')}
               value={formData.description}
@@ -221,6 +227,13 @@ const ItemFormScreen: React.FC = () => {
             />
           </Pressable>
         </ScrollView>
+
+        {/* Under the form, not floating over it (style guide §14.4) */}
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]} testID="item-bottom-bar">
+          <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving}>
+            {tr('items.form.addItem')}
+          </Button>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -310,28 +323,20 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   headerTitle: {
     ...typography.headline,
-    flex: 1,
+    flexShrink: 1,
+    textAlign: 'center' as const,
     color: t.text.primary,
   },
-  saveButton: {
-    flexDirection: 'row' as const,
-    gap: space.sm,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    paddingHorizontal: space.xl,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    // The header pads by space.sm: the rest brings the button's edge to the page margin.
-    marginRight: layout.marginCompact - space.sm,
-    backgroundColor: t.brand.fill,
+  // Both sides take an equal share, so the title stays centred whatever the Back button's width.
+  headerSide: {
+    flex: 1,
+    alignItems: 'flex-start' as const,
   },
-  saveButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  saveButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
+  bottomBar: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    backgroundColor: t.surface.card,
+    ...t.shadow[3],
   },
   keyboardView: {
     flex: 1,
@@ -341,6 +346,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   scrollContent: {
     padding: layout.marginCompact,
+    paddingBottom: space.xl,
     gap: space.lg,
   },
   card: {

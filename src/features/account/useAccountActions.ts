@@ -25,6 +25,7 @@ import { leaveFacility } from '@/store/operatorSwitch';
 import { deleteFacilityAccount, signOutEverywhere, type CentralEndOutcome } from '@/store/centralSignOut';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { adminUserService } from '@/services/admin-user-service';
 import { useCentralState } from '@/hooks/useCentralState';
 import { normalizeDigits, t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
@@ -57,7 +58,10 @@ export interface AccountDeletion {
   /** The row: "Delete account", or "Delete my account at <facility>" with central login. */
   label: string;
   subtitle: string;
-  /** Opens the first step (the warning). */
+  /**
+   * Opens the first step (the warning). An administrator is checked first: the only one is told
+   * so in an alert and the warning stays closed. The check runs in the background; the caller waits for nothing.
+   */
   open: () => void;
   /** Props for one ConfirmInputDialog: the warning step, then the step with the mobile number. */
   dialog: ConfirmInputDialogProps;
@@ -72,7 +76,9 @@ export interface AccountDeletion {
  */
 export async function signOutPhoneWithMessages(dispatch: Dispatch): Promise<CentralEndOutcome> {
   const result = await signOutEverywhere(dispatch);
-  if (!result.ok)
+  if (result.ok && result.facilityCleanup === 'failed')
+    showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
+  else if (!result.ok)
     showAlert(
       t('auth.signOut.couldNotTitle'),
       result.reason === 'local_clear_failed' ? t('central.signOut.notCleared') : t('central.switch.busyMessage')
@@ -113,7 +119,7 @@ export function useAccountActions(): {
     icon: 'logout',
     label: t('auth.signOut.action'),
     subtitle: t('users.profile.signOutSubtitle'),
-    destructive: true,
+    destructive: false,
     testID: 'account-sign-out',
   };
   const actions: AccountAction[] =
@@ -134,7 +140,7 @@ export function useAccountActions(): {
             icon: 'logout',
             label: t('central.phoneSignOut.action'),
             subtitle: t('central.phoneSignOut.subtitle'),
-            destructive: true,
+            destructive: false,
             testID: 'account-sign-out-phone',
           },
         ]
@@ -189,14 +195,14 @@ export function useAccountActions(): {
         title: t('central.phoneSignOut.confirmTitle'),
         message: t('central.signOut.confirmMessage'),
         confirmText: t('auth.signOut.action'),
-        variant: 'danger',
+        variant: 'default',
         icon: 'logout',
       };
     return {
       title: t('auth.signOut.confirmTitle'),
       message: t('auth.signOut.confirmMessage'),
       confirmText: t('auth.signOut.action'),
-      variant: 'danger',
+      variant: 'default',
       icon: 'logout',
     };
   };
@@ -228,6 +234,21 @@ export function useAccountActions(): {
   const deletionAvailable = accountPhone !== '';
   // With central login only the account at the open facility is deleted.
   const atFacility = centralLogin && facilityName !== '';
+
+  // A second tap on Delete account while the administrator count is being read does nothing.
+  const checkingAdmins = useRef(false);
+  /** True only when the server says this is the one active administrator; a failed lookup says false (the server still refuses). */
+  const isOnlyAdministrator = async (): Promise<boolean> => {
+    try {
+      // A connection (a service account) is not another administrator: the server's rule
+      // (other_active_admin_exists) leaves it out, so the count does too.
+      const result = await adminUserService.getUsersList({ roles: ['admin'], active: true }, 100, 0);
+      if (!result.success || !result.data || result.data.pagination.has_more) return false;
+      return result.data.users.filter(user => !user.is_service_account).length <= 1;
+    } catch {
+      return false;
+    }
+  };
 
   const cancelDeletion = () => {
     if (deletingAccount) return;
@@ -328,9 +349,27 @@ export function useAccountActions(): {
     subtitle: atFacility ? t('settings.account.deleteAtFacilitySubtitle') : t('settings.account.deleteAccountSubtitle'),
     open: () => {
       if (!deletionAvailable) return;
-      setDeleteConfirmPhone('');
-      setDeleteError(null);
-      setDeleteStep('warning');
+      const showWarning = () => {
+        setDeleteConfirmPhone('');
+        setDeleteError(null);
+        setDeleteStep('warning');
+      };
+      // Only an administrator can be the last one; everyone else opens the warning at once.
+      if (userProfile?.role !== 'admin') return showWarning();
+      if (checkingAdmins.current) return;
+      checkingAdmins.current = true;
+      // The last administrator cannot be deleted: say so before the two steps, not after the number.
+      void isOnlyAdministrator()
+        .then(only => {
+          if (!only) return showWarning();
+          showAlert(t('settings.deleteAccount.onlyAdminTitle'), t('settings.deleteAccount.onlyAdminMessage'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('settings.deleteAccount.openUsers'), onPress: () => router.push('/users') },
+          ]);
+        })
+        .finally(() => {
+          checkingAdmins.current = false;
+        });
     },
     dialog: deletionDialog,
     deleteAccount: confirmDeleteAccount,

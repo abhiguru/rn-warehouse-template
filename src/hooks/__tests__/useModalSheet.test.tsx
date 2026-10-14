@@ -108,9 +108,9 @@ describe('every BottomSheetModal in the app', () => {
     });
 
   it('is dismissed through useModalSheet, not through its ref', () => {
-    // The pricing form presents and dismisses its two modals from press handlers only,
-    // so a dismiss there always follows a present.
-    const pressHandlersOnly = ['app/item-pricing-form.tsx'];
+    // No screen presents and dismisses a sheet from a press handler only any more (the old
+    // pricing form was the last one); this list stays so a new one is named and explained here.
+    const pressHandlersOnly: string[] = [];
     const offenders = [...sources(join(root, 'src')), ...sources(join(root, 'app'))]
       .map(path => ({ file: relative(root, path), text: readFileSync(path, 'utf8') }))
       .filter(({ file }) => !pressHandlersOnly.includes(file) && file !== 'src/hooks/useModalSheet.ts')

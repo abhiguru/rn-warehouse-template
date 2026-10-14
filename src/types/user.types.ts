@@ -83,6 +83,11 @@ export interface UserListItem {
   created_at: string;
   updated_at: string;
   assigned_customers_count: number;
+  /**
+   * A connection such as the FAS sync, not a person (backend `user_profiles.is_service_account`).
+   * Users lists it apart from people, and its role and status cannot be changed in the app.
+   */
+  is_service_account?: boolean;
 }
 
 export interface UserDetailsCustomer {

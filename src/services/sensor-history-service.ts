@@ -75,7 +75,8 @@ export async function getSensorHistory(
 
     return {
       success: true,
-      data: data.data,
+      // The query keeps `data` only, so the raw reading count rides along inside it.
+      data: { ...data.data, raw_reading_count: data.metadata?.raw_reading_count },
       metadata: data.metadata,
       message: t('errors.sensor.historyFetched'),
     };

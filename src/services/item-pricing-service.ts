@@ -12,6 +12,13 @@ import type {
   ItemPricingDeleteResponse,
   ItemPriceHistoryEntry,
   ItemPriceHistoryResponse,
+  ItemPriceHistoryParams,
+  ActiveItem,
+  ReplaceRatesInput,
+  ReplaceRatesResult,
+  UndoRateChangeInput,
+  UndoRateChangeResult,
+  RateErrorCode,
 } from '../types/item-pricing.types';
 import {
   ItemStoragePrice
@@ -21,7 +28,9 @@ import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
+import { withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { failureText, serverText } from '@/utils/serverText';
 
 const itemPricingLogger = createLogger('ItemPricingService');
@@ -105,7 +114,7 @@ export const getItemStoragePrices = async (
       return {
         success: false,
         data: [],
-        pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
+        pagination: { total_count: 0, total: 0, limit: 20, offset: 0, has_more: false },
         message: t('errors.price.fetchFailed'),
         error: error.message,
       };
@@ -130,24 +139,24 @@ export const getItemStoragePrices = async (
       return {
         success: false,
         data: [],
-        pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
+        pagination: { total_count: 0, total: 0, limit: 20, offset: 0, has_more: false },
         message: serverText(responseData?.message, t('errors.general.noDataAvailable')),
         error: responseData?.error,
       };
     }
 
     const items = Array.isArray(responseData.data) ? responseData.data : [];
-    const pagination = responseData.pagination || {
-      total_count: items.length,
-      limit: params.p_limit || PAGINATION.DEFAULT_LIMIT,
-      offset: params.p_offset || 0,
-      has_more: false,
+    const rawPagination = (responseData.pagination || {}) as Partial<ItemPricingListResponse['pagination']>;
+    const totalCount = Number(rawPagination.total_count ?? rawPagination.total ?? items.length) || 0;
+    const pagination: ItemPricingListResponse['pagination'] = {
+      total_count: totalCount,
+      total: totalCount,
+      limit: rawPagination.limit ?? (params.p_limit || PAGINATION.DEFAULT_LIMIT),
+      offset: rawPagination.offset ?? (params.p_offset || 0),
+      has_more:
+        rawPagination.has_more ??
+        hasMoreItems(rawPagination.offset ?? (params.p_offset || 0), rawPagination.limit ?? (params.p_limit || PAGINATION.DEFAULT_LIMIT), totalCount),
     };
-
-    // Calculate has_more if not provided (using standardized utility)
-    if (pagination.has_more === undefined) {
-      pagination.has_more = hasMoreItems(pagination.offset, pagination.limit, pagination.total_count);
-    }
 
     return {
       success: true,
@@ -161,134 +170,11 @@ export const getItemStoragePrices = async (
     return {
       success: false,
       data: [],
-      pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
+      pagination: { total_count: 0, total: 0, limit: 20, offset: 0, has_more: false },
       message: t('errors.price.fetchFailed'),
       error: errorMessage,
     };
   }
-};
-
-/**
- * Create a new item storage price
- */
-// M3 Fix: Using executeRPC wrapper
-export const createItemStoragePrice = async (
-  payload: CreateItemPricingPayload
-): Promise<ItemPricingMutationResponse> => {
-  itemPricingLogger.debug('Creating price:', payload);
-
-  const result = await executeRPC<ItemStoragePrice>(
-    getAuthenticatedClient,
-    'create_item_storage_price',
-    {
-      p_item_id: payload.item_id,
-      p_customer_id: payload.customer_id || null,
-      p_price_type: payload.price_type,
-      p_unit_price: payload.unit_price,
-      p_weight_min: payload.weight_min,
-      p_weight_max: payload.weight_max,
-      p_labour_rate: payload.labour_rate,
-      p_tax_percent: payload.tax_percent,
-      p_effective_from: payload.effective_from,
-      p_effective_to: payload.effective_to || null,
-    },
-    {
-      context: 'ItemPricingService.createItemStoragePrice',
-      errorMessage: t('errors.price.createFailed'),
-    }
-  );
-
-  if (!result.success) {
-    return {
-      success: false,
-      message: result.message,
-      error: result.error,
-    };
-  }
-
-  return {
-    success: true,
-    data: result.data,
-    message: serverText(result.message, t('errors.price.created')),
-  };
-};
-
-/**
- * Update an existing item storage price
- */
-// M3 Fix: Using executeRPC wrapper
-export const updateItemStoragePrice = async (
-  id: string,
-  payload: UpdateItemPricingPayload
-): Promise<ItemPricingMutationResponse> => {
-  itemPricingLogger.debug('Updating price:', id, payload);
-
-  // Note: p_price_type is not supported by backend - price type cannot be changed after creation
-  const result = await executeRPC<ItemStoragePrice>(
-    getAuthenticatedClient,
-    'update_item_storage_price',
-    {
-      p_id: id,
-      p_unit_price: payload.unit_price,
-      p_weight_min: payload.weight_min,
-      p_weight_max: payload.weight_max,
-      p_labour_rate: payload.labour_rate,
-      p_tax_percent: payload.tax_percent,
-      p_effective_from: payload.effective_from,
-      p_effective_to: payload.effective_to || null,
-    },
-    {
-      context: 'ItemPricingService.updateItemStoragePrice',
-      errorMessage: t('errors.price.updateFailed'),
-    }
-  );
-
-  if (!result.success) {
-    return {
-      success: false,
-      message: result.message,
-      error: result.error,
-    };
-  }
-
-  return {
-    success: true,
-    data: result.data,
-    message: serverText(result.message, t('errors.price.updated')),
-  };
-};
-
-/**
- * Delete an item storage price
- */
-// M3 Fix: Using executeRPC wrapper
-export const deleteItemStoragePrice = async (
-  id: string
-): Promise<ItemPricingDeleteResponse> => {
-  itemPricingLogger.debug('Deleting price:', id);
-
-  const result = await executeRPC<void>(
-    getAuthenticatedClient,
-    'delete_item_storage_price',
-    { p_id: id },
-    {
-      context: 'ItemPricingService.deleteItemStoragePrice',
-      errorMessage: t('errors.price.deleteFailed'),
-    }
-  );
-
-  if (!result.success) {
-    return {
-      success: false,
-      message: result.message,
-      error: result.error,
-    };
-  }
-
-  return {
-    success: true,
-    message: serverText(result.message, t('errors.price.deleted')),
-  };
 };
 
 /**
@@ -297,11 +183,17 @@ export const deleteItemStoragePrice = async (
  * cache"; the database itself says 42883 "function ... does not exist". Trying again cannot
  * help until the facility's server is updated.
  */
-function priceHistoryMissing(error: { code?: unknown; message?: unknown } | null | undefined): boolean {
+function isMissingFunction(
+  error: { code?: unknown; message?: unknown } | null | undefined,
+  name: string
+): boolean {
   const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
   if (error?.code === 'PGRST202' || message.includes('could not find the function')) return true;
-  return message.includes('get_item_price_history') && (error?.code === '42883' || message.includes('does not exist'));
+  return message.includes(name) && (error?.code === '42883' || message.includes('does not exist'));
 }
+
+const priceHistoryMissing = (error: { code?: unknown; message?: unknown } | null | undefined): boolean =>
+  isMissingFunction(error, 'get_item_price_history');
 
 /** One page of the price history is 50 entries; the server allows 1 to 200. */
 export const PRICE_HISTORY_PAGE_SIZE = 50;
@@ -316,7 +208,7 @@ export const PRICE_HISTORY_PAGE_SIZE = 50;
  * permission, connection), otherwise "Try again in a moment."
  */
 export const getItemPriceHistory = async (
-  params: { limit?: number; offset?: number } = {}
+  params: ItemPriceHistoryParams = {}
 ): Promise<ItemPriceHistoryResponse> => {
   const limit = params.limit ?? PRICE_HISTORY_PAGE_SIZE;
   const offset = params.offset ?? 0;
@@ -333,6 +225,8 @@ export const getItemPriceHistory = async (
     const { data, error } = await authenticatedClient.rpc('get_item_price_history', {
       p_limit: limit,
       p_offset: offset,
+      ...(params.itemId ? { p_item_id: params.itemId } : {}),
+      ...(params.customerId ? { p_customer_id: params.customerId } : {}),
     });
 
     if (error) {
@@ -378,4 +272,253 @@ export const getItemPriceHistory = async (
     }
     return failed(failureText(errorMessage, null, t('pricing.list.tryAgainInAMoment')), errorMessage);
   }
+};
+
+const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
+  INVALID_PRICE_TYPE: 'pricing.error.generic',
+  INVALID_DATE: 'pricing.error.invalidDate',
+  PAST_DATE_NOT_ALLOWED: 'pricing.error.pastDateNotAllowed',
+  RATE_IN_FORCE_MANAGER_ONLY: 'pricing.error.rateInForceManagerOnly',
+  ITEM_NOT_FOUND: 'pricing.error.itemNotFound',
+  CUSTOMER_NOT_FOUND: 'pricing.error.customerNotFound',
+  INVALID_BANDS: 'pricing.error.tooManyBands',
+  INVALID_BAND: 'pricing.error.invalidBand',
+  INVALID_AMOUNT: 'pricing.error.invalidAmount',
+  BANDS_OVERLAP: 'pricing.error.bandsOverlap',
+  BANDS_GAP: 'pricing.error.bandsGap',
+  NOTHING_TO_STOP: 'pricing.error.nothingToStop',
+  NOTHING_TO_UNDO: 'pricing.error.nothingToUndo',
+  INVALID_MODE: 'pricing.error.generic',
+  NOT_A_RATE_START: 'pricing.error.notARateStart',
+  NOTHING_TO_MOVE: 'pricing.error.nothingToMove',
+  STALE_RATES: 'pricing.error.staleRates',
+  // LATER_RATES_EXIST has no message: the screen's dialog explains.
+};
+
+const RPC_TIMEOUT_MS = 30000;
+
+/** The code and the app's own text for an RPC that failed outright (missing function, no right, anything else). */
+const mapRateError = (
+  error: { code?: unknown; message?: unknown },
+  fn: string
+): { code: RateErrorCode; message: string } => {
+  const text = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+  if (isMissingFunction(error, fn)) return { code: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
+  if (error.code === '42501' || text.includes('access required')) return { code: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') };
+  return { code: 'UNKNOWN', message: t('pricing.error.generic') };
+};
+
+const RATE_FIELDS = ['unit_price', 'labour_rate', 'tax_percent'] as const;
+
+/** The request left the phone but the answer did not come back: the rate may or may not be saved. */
+const outcomeUnknown = (): ReplaceRatesResult => ({
+  success: false,
+  errorCode: 'UNKNOWN',
+  message: t('pricing.error.unconfirmed'),
+  outcomeUnknown: true,
+});
+
+const rateFailure = (errorCode: RateErrorCode, message: string | undefined, extra: Partial<ReplaceRatesResult> = {}): ReplaceRatesResult => ({
+  success: false,
+  errorCode,
+  ...(message ? { message } : {}),
+  ...extra,
+});
+
+/**
+ * Replace the rates of one scope (item, customer or default, price type) from a day
+ * (backend migration 76). `bands: []` stops the rate from `starts_on`. The server's English
+ * text is never shown: a failure carries `errorCode` and the app's own `message`.
+ */
+export const replaceItemRates = async (input: ReplaceRatesInput): Promise<ReplaceRatesResult> => {
+  try {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(
+      Promise.resolve(client.rpc('replace_item_rates', {
+        p_item_id: input.item_id,
+        p_customer_id: input.customer_id,
+        p_price_type: input.price_type,
+        p_starts_on: input.starts_on,
+        p_bands: input.bands,
+        p_replace_later: input.replace_later ?? false,
+        p_mode: input.mode ?? 'change',
+        p_move_from: input.move_from ?? null,
+        // The rows the editor loaded: the server refuses (STALE_RATES) when it would change one that is not listed.
+        ...(input.seen_rows ? { p_seen_rows: input.seen_rows } : {}),
+      })),
+      RPC_TIMEOUT_MS,
+      'Rate change'
+    );
+
+    if (error) {
+      itemPricingLogger.error('replace_item_rates RPC error:', error);
+      handleGlobalAuthError(error);
+      const mapped = mapRateError(error, 'replace_item_rates');
+      // An error with no database code is the connection failing: the save may have gone through.
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return outcomeUnknown();
+      return rateFailure(mapped.code, mapped.message);
+    }
+
+    const response = unwrapArrayResponse(data) as
+      | {
+          success?: unknown;
+          error_code?: unknown;
+          data?: { index?: unknown; field?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
+        }
+      | null;
+
+    if (!response || typeof response !== 'object') {
+      return rateFailure('UNKNOWN', t('pricing.error.generic'));
+    }
+
+    if (response.success !== true) {
+      handleGlobalAuthError(response);
+      const code = String(response.error_code ?? '') as RateErrorCode;
+      const key = RATE_ERROR_KEYS[code];
+      const details = response.data ?? {};
+      const extra: Partial<ReplaceRatesResult> = {};
+      if (typeof details.index === 'number') extra.bandIndex = details.index;
+      if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
+        extra.field = details.field as ReplaceRatesResult['field'];
+      }
+      if (Array.isArray(details.later)) extra.later = details.later as ReplaceRatesResult['later'];
+      if (code === 'LATER_RATES_EXIST') return rateFailure(code, undefined, extra);
+      if (code === 'PERMISSION_DENIED') return rateFailure(code, t('errors.parsed.noPermission'), extra);
+      if (key) return rateFailure(code, t(key), extra);
+      return rateFailure('UNKNOWN', t('pricing.error.generic'), extra);
+    }
+
+    const details = response.data ?? {};
+    return {
+      success: true,
+      // null is the server saying "no stop is kept"; a missing key is the server not saying.
+      ...(typeof details.kept_end === 'string' && details.kept_end
+        ? { keptEnd: details.kept_end.slice(0, 10) }
+        : 'kept_end' in details && details.kept_end === null
+          ? { keptEnd: null }
+          : {}),
+      ...(Array.isArray(details.ended) ? { ended: details.ended as ReplaceRatesResult['ended'] } : {}),
+      ...(Array.isArray(details.added) ? { added: details.added as ReplaceRatesResult['added'] } : {}),
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    itemPricingLogger.error('Exception in replaceItemRates:', { error: errorMessage });
+    handleGlobalAuthError(err);
+    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'replace_item_rates')) {
+      return rateFailure('SERVER_NEEDS_UPDATE', t('pricing.error.serverNeedsUpdate'));
+    }
+    // A timeout or a lost answer: the server may have committed the change.
+    return outcomeUnknown();
+  }
+};
+
+/**
+ * Undo the change that starts on `startsOn` for one scope (backend migration 76): the rows
+ * starting that day are removed and the rows that ended the day before run on again. Used by
+ * "Cancel new rate" and "Undo stop". A failure carries `errorCode` and the app's own `message`.
+ */
+export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
+  const failure = (errorCode: RateErrorCode, message: string): UndoRateChangeResult => ({ success: false, errorCode, message });
+  try {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(
+      Promise.resolve(client.rpc('undo_rate_change', {
+        p_item_id: input.itemId,
+        p_customer_id: input.customerId,
+        p_price_type: input.priceType,
+        p_starts_on: input.startsOn,
+      })),
+      RPC_TIMEOUT_MS,
+      'Rate change'
+    );
+
+    if (error) {
+      itemPricingLogger.error('undo_rate_change RPC error:', error);
+      handleGlobalAuthError(error);
+      const mapped = mapRateError(error, 'undo_rate_change');
+      return failure(mapped.code, mapped.message);
+    }
+
+    const response = unwrapArrayResponse(data) as
+      | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown } | null }
+      | null;
+    if (!response || typeof response !== 'object') return failure('UNKNOWN', t('pricing.error.generic'));
+
+    if (response.success !== true) {
+      handleGlobalAuthError(response);
+      const code = String(response.error_code ?? '') as RateErrorCode;
+      if (code === 'PERMISSION_DENIED') return failure(code, t('errors.parsed.noPermission'));
+      const key = RATE_ERROR_KEYS[code];
+      return key ? failure(code, t(key)) : failure('UNKNOWN', t('pricing.error.generic'));
+    }
+
+    const details = response.data ?? {};
+    return {
+      success: true,
+      ...(Array.isArray(details.removed) ? { removed: details.removed as UndoRateChangeResult['removed'] } : {}),
+      ...(Array.isArray(details.reopened) ? { reopened: details.reopened as UndoRateChangeResult['reopened'] } : {}),
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    itemPricingLogger.error('Exception in undoRateChange:', { error: errorMessage });
+    handleGlobalAuthError(err);
+    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'undo_rate_change')) {
+      return failure('SERVER_NEEDS_UPDATE', t('pricing.error.serverNeedsUpdate'));
+    }
+    return failure('UNKNOWN', t('pricing.error.generic'));
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Reads for the rate screens (list, item page, editor): every rate of the facility,
+// the rates of one item, and the active items. They throw when the facility cannot be
+// reached; the screens show the load error state and keep older data they already have.
+// ---------------------------------------------------------------------------
+
+/** The server returns at most this many rows per call. */
+const RATES_PAGE_SIZE = 500;
+
+/** Rates (ended ones too) page by page, until the server says there are no more. */
+async function readRates(filters: ItemPricingFilters): Promise<ItemStoragePrice[]> {
+  const seen = new Set<string>();
+  const rows: ItemStoragePrice[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await getItemStoragePrices({
+      p_filters: { ...filters, include_expired: true },
+      p_limit: RATES_PAGE_SIZE,
+      p_offset: offset,
+    });
+    if (!page.success) throw new Error(page.message || page.error || 'Rates could not be loaded');
+    for (const row of page.data) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        rows.push(row);
+      }
+    }
+    if (!page.pagination.has_more || page.data.length === 0) break;
+    offset += RATES_PAGE_SIZE;
+  }
+  return rows;
+}
+
+/** Every rate of the facility, ended ones included. Fails as a whole if any page fails. */
+export const listAllRates = (): Promise<ItemStoragePrice[]> => readRates({});
+
+/** Every rate of one item (one item never has more than a page). */
+export const listItemRates = (itemId: string): Promise<ItemStoragePrice[]> => readRates({ item_ids: [itemId] });
+
+/** The active items, by name (the items table, as the item pickers read it). */
+export const listActiveItems = async (): Promise<ActiveItem[]> => {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await client.from('items').select('id, name, packaging').eq('active', true).order('name');
+  if (error) {
+    handleGlobalAuthError(error);
+    throw new Error(error.message || 'Items could not be loaded');
+  }
+  return (data ?? []).map((row: { id: string; name: string; packaging: string | null }) => ({
+    id: row.id,
+    name: row.name,
+    packaging: row.packaging ?? null,
+  }));
 };

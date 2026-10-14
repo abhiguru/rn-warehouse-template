@@ -1,7 +1,7 @@
 /**
  * SR-O03: the way to Settings from the list and report headers is a gear,
- * which a first-time user recognises, not the person's initials. The button,
- * its spoken name and where it goes are unchanged.
+ * which a first-time user recognises, not the person's initials. The button
+ * and where it goes are unchanged; since G-08 it is spoken "Tools and settings".
  */
 import fs from 'fs';
 import path from 'path';
@@ -28,11 +28,11 @@ describe('the Settings entry in the list header', () => {
   let tree: ReactTestRenderer;
   afterEach(() => act(() => tree.unmount()));
 
-  it('is a cog icon, not an avatar, keeps its name and opens Settings', async () => {
+  it('is a cog icon, not an avatar, spoken "Tools and settings", and opens Settings', async () => {
     await act(async () => {
       tree = create(<FilteredListHeader title="GRNs" config={config} filters={filters} />);
     });
-    const button = tree.root.find(node => node.props.accessibilityLabel === 'Open settings' && typeof node.props.onPress === 'function');
+    const button = tree.root.find(node => node.props.accessibilityLabel === 'Tools and settings' && typeof node.props.onPress === 'function');
     const icons = button.findAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name);
     expect(icons).toEqual(['cog-outline']);
     // No initials are drawn in the button.
@@ -47,7 +47,6 @@ describe('every header with a Settings entry', () => {
   it.each([
     'src/features/filters/components/FilteredListHeader.tsx',
     'src/components/GRNListFiori.tsx',
-    'app/item-pricing.tsx',
     'app/(tabs)/reports.tsx',
   ])('%s draws the gear and no avatar', file => {
     const source = fs.readFileSync(path.join(root, file), 'utf8');

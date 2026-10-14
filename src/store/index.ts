@@ -10,7 +10,6 @@ import configReducer from './slices/configSlice';
 import grnFormReducer from './slices/grnFormSlice';
 import dispatchFormReducer from './slices/dispatchFormSlice';
 import invoiceFormReducer from './slices/invoiceFormSlice';
-import customerFormReducer from './slices/customerFormSlice';
 import listFilterReducer from './slices/listFilterSlice';
 import reportPrefsReducer from './slices/reportPrefsSlice';
 import themeReducer from './slices/themeSlice';
@@ -24,7 +23,6 @@ const rootReducer = combineReducers({
   grnForm: grnFormReducer,
   dispatchForm: dispatchFormReducer,
   invoiceForm: invoiceFormReducer,
-  customerForm: customerFormReducer,
   // Session only: not in the persist whitelist below.
   listFilters: listFilterReducer,
   // Persisted: what was last chosen on the report screens, per facility and account.

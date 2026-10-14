@@ -11,6 +11,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { ASSOCIATION_NAME, LEGAL_UPDATED, legalParty } from '@/constants/legal';
 import {
   fontWeight,
   layout,
@@ -20,12 +21,6 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-
-// Company information
-const COMPANY = {
-  name: process.env.EXPO_PUBLIC_COMPANY_NAME || 'Your Company Name',
-  email: process.env.EXPO_PUBLIC_LEGAL_EMAIL || 'legal@example.com',
-};
 
 function Section({
   title,
@@ -82,6 +77,7 @@ export default function TermsOfServiceScreen() {
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
+  const party = legalParty();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -110,27 +106,33 @@ export default function TermsOfServiceScreen() {
       >
         <View style={styles.content}>
           {/* Header */}
-          <Text style={styles.lastUpdated}>Last updated: December 2025</Text>
+          <Text style={styles.lastUpdated}>Last updated: {LEGAL_UPDATED}</Text>
 
           <Paragraph>
-            Welcome to the App. These Terms and Conditions constitute a legal
-            agreement between you and {COMPANY.name}. By accessing or using our
-            App and services, you agree to be bound by these Terms.
+            Welcome to the App. These Terms of service are an agreement
+            between you and {party.inline}. The {ASSOCIATION_NAME} (the
+            "Association") provides this App to its member cold storages. Each
+            member cold storage runs its own server and is the party you deal
+            with. By using the App you agree to be bound by these Terms.
           </Paragraph>
 
           {/* Section 1 */}
-          <Section title="1. Company information">
-            <Paragraph>Company Name: {COMPANY.name}</Paragraph>
-            <Paragraph>Email: {COMPANY.email}</Paragraph>
+          <Section title="1. Who provides what">
+            <Paragraph>
+              {party.leading} keeps your records on its own server and decides
+              who may use them. The Association provides the App and does not
+              hold the cold storage's records.
+            </Paragraph>
+            {party.email ? <Paragraph>Email: {party.email}</Paragraph> : null}
           </Section>
 
           {/* Section 2 */}
           <Section title="2. Definitions">
             <BulletList
               items={[
-                '"Services" means cold storage rental, leasing, booking system, customer account management, and related services offered through the App',
-                '"User Account" means the customer dashboard accessible through phone number authentication',
-                '"Agreement" means the formal service agreement or contract executed between you and the Company for cold storage services',
+                '"Services" means cold storage rental and leasing, customer records, GRNs, dispatches, invoices, stock records and related services offered through the App',
+                '"User Account" means your sign-in with your mobile number and a one-time code, together with the role and customers your cold storage gives you',
+                '"Agreement" means the formal service agreement or contract executed between you and the cold storage for cold storage services',
                 '"Content" means all information, text, graphics, images, and other material available on the App',
               ]}
             />
@@ -149,38 +151,40 @@ export default function TermsOfServiceScreen() {
           {/* Section 4 */}
           <Section title="4. Services offered">
             <Paragraph>
-              The Company provides the following services through the App:
+              The cold storage provides the following services through the App:
             </Paragraph>
             <BulletList
               items={[
                 'Cold Storage Rental and Leasing: Provision of cold storage facilities for preservation of goods',
-                'Booking System: Platform for requesting and managing cold storage bookings',
-                'Customer Account Management: Access to customer dashboard for viewing records and managing services',
+                'Customer Records: Access for customers to view their own records and for staff to manage them',
                 'GRN Management: Goods Receipt Note creation and tracking',
                 'Dispatch Management: Track and manage dispatch operations',
+                'Invoices: Create and view invoices',
                 'Inventory Management: View and manage stock levels',
               ]}
             />
           </Section>
 
           {/* Section 5 */}
-          <Section title="5. User account and registration">
+          <Section title="5. User account and sign-in">
             <Paragraph>
-              To access the App features, you need to create a User Account by
-              providing your phone number. You agree to:
+              You sign in to the App with your mobile number. The cold storage
+              sends a one-time code by SMS, and you enter it in the App. The
+              cold storage decides your role and which customers you can see,
+              and may change or remove your access at any time. You agree to:
             </Paragraph>
             <BulletList
               items={[
-                'Provide accurate and complete information during registration',
-                'Maintain the confidentiality of your account credentials',
-                'Notify us immediately of any unauthorized use of your account',
+                'Provide an accurate mobile number and name',
+                'Keep your one-time codes private and not share them with anyone',
+                'Tell the cold storage immediately if someone else uses your account',
                 'Be responsible for all activities that occur under your account',
               ]}
             />
             <Paragraph>
-              We reserve the right to suspend or terminate your User Account at
-              any time if we believe you have violated these Terms or engaged in
-              fraudulent, illegal, or harmful activities.
+              The cold storage may suspend or end your access at any time if it
+              believes you have violated these Terms or engaged in fraudulent,
+              illegal, or harmful activities.
             </Paragraph>
           </Section>
 
@@ -205,14 +209,12 @@ export default function TermsOfServiceScreen() {
           {/* Section 7 */}
           <Section title="7. Mobile device permissions">
             <Paragraph>
-              The App may request access to certain features on your device:
+              The App may ask for access to certain features on your device:
             </Paragraph>
             <BulletList
               items={[
-                'Camera: For capturing images of goods and documents',
-                'Photo Library: For uploading images from your device',
-                'Notifications: For receiving updates about your orders and services',
-                'Biometric Authentication: For secure app access (optional)',
+                'Camera: To scan QR codes and to photograph goods and documents',
+                'Photos: You can choose a photo from your phone to attach to a record; the App only receives the photos you choose',
               ]}
             />
             <Paragraph>
@@ -225,9 +227,9 @@ export default function TermsOfServiceScreen() {
           <Section title="8. Payment terms">
             <Paragraph>
               Payment terms, including the amount, due dates, advance payment
-              requirements, and billing cycles, shall be as specified in your
-              written Agreement with the Company. All prices are exclusive of
-              applicable taxes, including GST, unless otherwise stated.
+              requirements, and billing cycles, are as specified in your
+              written Agreement with the cold storage. All prices are exclusive
+              of applicable taxes, including GST, unless otherwise stated.
             </Paragraph>
           </Section>
 
@@ -235,10 +237,10 @@ export default function TermsOfServiceScreen() {
           <Section title="9. Cancellation and refund policy">
             <Paragraph>
               Cancellation terms, refund eligibility, notice periods, and refund
-              processing timelines shall be governed by the specific terms
-              outlined in your written Agreement with the Company. Any
-              cancellation request must be submitted in writing to{' '}
-              {COMPANY.email}.
+              processing timelines are governed by the specific terms outlined
+              in your written Agreement with the cold storage. Any cancellation
+              request must be submitted in writing to {party.inline}
+              {party.email ? ` at ${party.email}` : ''}.
             </Paragraph>
           </Section>
 
@@ -247,8 +249,9 @@ export default function TermsOfServiceScreen() {
             <Paragraph>
               All Content on the App, including but not limited to text,
               graphics, logos, images, software, and other material, is the
-              property of {COMPANY.name} or its licensors and is protected by
-              Indian and international intellectual property laws.
+              property of the Association, {party.inline} or their licensors and
+              is protected by Indian and international intellectual property
+              laws.
             </Paragraph>
           </Section>
 
@@ -257,8 +260,8 @@ export default function TermsOfServiceScreen() {
             <Paragraph>
               Your use of the App is also governed by our Privacy Policy, which
               is incorporated into these Terms by reference. Please review our
-              Privacy Policy to understand our practices regarding the
-              collection, use, and disclosure of your personal information.
+              Privacy Policy to understand how your records are stored on the
+              cold storage's own server and who can see them.
             </Paragraph>
           </Section>
 
@@ -266,9 +269,9 @@ export default function TermsOfServiceScreen() {
           <Section title="12. Third-party services">
             <Paragraph>
               The App may use third-party services for functionality such as
-              authentication, analytics, and cloud storage. We have no control
-              over and assume no responsibility for the privacy policies or
-              practices of any third-party services.
+              sending one-time codes by SMS and reporting crashes. We have no
+              control over and assume no responsibility for the privacy policies
+              or practices of any third-party services.
             </Paragraph>
           </Section>
 
@@ -286,32 +289,32 @@ export default function TermsOfServiceScreen() {
           {/* Section 14 */}
           <Section title="14. Limitation of liability">
             <Paragraph>
-              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The Company,
-              its directors, officers, employees, agents, and affiliates shall
-              not be liable for any indirect, incidental, special,
-              consequential, or punitive damages arising out of or related to
-              your use of the App or services.
+              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The
+              Association, {party.inline}, and their directors, officers,
+              employees, agents, and affiliates shall not be liable for any
+              indirect, incidental, special, consequential, or punitive damages
+              arising out of or related to your use of the App or services.
             </Paragraph>
           </Section>
 
           {/* Section 15 */}
           <Section title="15. Indemnification">
             <Paragraph>
-              You agree to indemnify, defend, and hold harmless {COMPANY.name},
-              its directors, officers, employees, agents, affiliates, and
-              licensors from any claims, liabilities, damages, losses, costs, or
-              expenses arising out of your use of the App or violation of these
-              Terms.
+              You agree to indemnify, defend, and hold harmless the Association
+              and {party.inline}, their directors, officers, employees, agents,
+              affiliates, and licensors from any claims, liabilities, damages,
+              losses, costs, or expenses arising out of your use of the App or
+              violation of these Terms.
             </Paragraph>
           </Section>
 
           {/* Section 16 */}
           <Section title="16. Force majeure">
             <Paragraph>
-              The Company shall not be liable for any failure or delay in
-              performance due to circumstances beyond its reasonable control,
-              including acts of God, natural disasters, war, terrorism,
-              pandemics, or government actions.
+              Neither the Association nor the cold storage shall be liable for
+              any failure or delay in performance due to circumstances beyond
+              its reasonable control, including acts of God, natural disasters,
+              war, terrorism, pandemics, or government actions.
             </Paragraph>
           </Section>
 
@@ -349,17 +352,17 @@ export default function TermsOfServiceScreen() {
           {/* Section 20 */}
           <Section title="20. Contact information">
             <Paragraph>
-              If you have any questions about these Terms, please contact us:
+              If you have any questions about these Terms, please contact{' '}
+              {party.inline}.
             </Paragraph>
-            <Paragraph>{COMPANY.name}</Paragraph>
-            <Paragraph>Email: {COMPANY.email}</Paragraph>
+            {party.email ? <Paragraph>Email: {party.email}</Paragraph> : null}
           </Section>
 
           {/* Acknowledgment */}
           <View style={styles.acknowledgment}>
             <Text style={styles.acknowledgmentText}>
-              By using the app, you acknowledge that you have read these terms
-              and conditions, understand them, and agree to be bound by them.
+              By using the app, you acknowledge that you have read these Terms of
+              service, understand them, and agree to be bound by them.
             </Text>
           </View>
         </View>

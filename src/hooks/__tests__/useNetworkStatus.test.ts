@@ -48,7 +48,7 @@ it.each([online, offline])('uses the initial $type check when no event has arriv
   await mount();
   expect(status.isLoading).toBe(true);
   await act(async () => { initial.resolve(state); });
-  expect(status).toEqual({ isConnected: state.isConnected, isInternetReachable: state.isInternetReachable, type: state.type, isLoading: false });
+  expect(status).toEqual({ isConnected: state.isConnected, isInternetReachable: state.isInternetReachable, type: state.type, isLoading: false, isConnectionUnknown: false });
 });
 
 it.each([
@@ -58,7 +58,7 @@ it.each([
   await mount();
   await act(async () => { listener(latest); });
   await act(async () => { initial.resolve(old); });
-  expect(status).toEqual({ isConnected: latest.isConnected, isInternetReachable: latest.isInternetReachable, type: latest.type, isLoading: false });
+  expect(status).toEqual({ isConnected: latest.isConnected, isInternetReachable: latest.isInternetReachable, type: latest.type, isLoading: false, isConnectionUnknown: false });
 });
 
 it('keeps a synchronous subscription event ahead of a delayed startup check', async () => {
@@ -87,7 +87,7 @@ it('keeps a newer event even if the initial check subsequently fails', async () 
   await mount();
   await act(async () => { listener(offline); });
   await act(async () => { initial.reject(new Error('Fictional delayed check failure')); });
-  expect(status).toEqual({ isConnected: false, isInternetReachable: false, type: 'none', isLoading: false });
+  expect(status).toEqual({ isConnected: false, isInternetReachable: false, type: 'none', isLoading: false, isConnectionUnknown: false });
 });
 
 it('unsubscribes and ignores late native results after unmount', async () => {
@@ -101,4 +101,15 @@ it('unsubscribes and ignores late native results after unmount', async () => {
   Object.defineProperty(late, 'type', { get: readType });
   await act(async () => { initial.resolve(late); listener(late); });
   expect(readType).not.toHaveBeenCalled();
+});
+
+it('tells an unknown connection (isConnected null) from no connection', async () => {
+  await mount();
+  const unknown = { type: 'unknown', isConnected: null, isInternetReachable: null, details: null } as unknown as NetInfoState;
+  await act(async () => { listener(unknown); });
+  expect(status.isConnected).toBe(false);
+  expect(status.isConnectionUnknown).toBe(true);
+  await act(async () => { listener(offline); });
+  expect(status.isConnected).toBe(false);
+  expect(status.isConnectionUnknown).toBe(false);
 });

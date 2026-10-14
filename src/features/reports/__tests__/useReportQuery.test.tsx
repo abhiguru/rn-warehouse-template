@@ -187,6 +187,21 @@ describe('the answer kept on the phone', () => {
   const kept = { rows: ['kept GRN A0010'] };
   const keep = () => writeReportCache(['test', 'a'], { data: kept, updatedAt: keptAt });
 
+  it('keeps the newer answer on the phone when a superseded request answers last', async () => {
+    signIn();
+    const probe = setup('a');
+    await probe.answer(0, rows('first'));
+    // Two refreshes: the second cancels the first, which runs on and answers after it.
+    await probe.run(() => void probe.query().refresh());
+    await probe.run(() => void probe.query().refresh());
+    expect(probe.pending).toHaveLength(3);
+    await probe.answer(2, rows('newer answer'));
+    await probe.answer(1, rows('older answer'));
+    expect(probe.query().data).toEqual({ rows: ['newer answer'] });
+    await settle();
+    expect((await readReportCache(['test', 'a']))?.data).toEqual({ rows: ['newer answer'] });
+  });
+
   it('shows the kept answer with its time while the request is out, then the fresh answer', async () => {
     signIn();
     await keep();

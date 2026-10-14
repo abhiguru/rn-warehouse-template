@@ -27,13 +27,15 @@ interface PrintJobResponse {
   };
   timestamp?: string;
   error?: string;
+  /** The printer accepted the job but did not confirm it (status 'unknown'): it may still print. */
+  unconfirmed?: boolean;
 }
 
 export interface PrintJob {
   id: string;
   job_type: string; // Backend returns "GRN", "Dispatch", "Invoice" (capitalized)
   cups_job_id: number;
-  status: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown';
   created_at: string;
   user_id: string;
   user_name: string;
@@ -133,6 +135,8 @@ async function submitPrintJob(
       return {
         success: false,
         error: serverText(data.error, t('errors.print.httpError', { status: String(response.status) })),
+        // A 502 that names a recorded job: the printer did not confirm it. Never resubmit on a guess.
+        ...(response.status === 502 && data.print_job_id ? { unconfirmed: true } : {}),
       };
     }
 
@@ -216,7 +220,7 @@ export async function printInvoiceRange(
 export async function getPrintJobs(
   jobType?: 'grn' | 'dispatch' | 'invoice',
   limit = 50,
-  status?: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled'
+  status?: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown'
 ): Promise<GetPrintJobsResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();

@@ -1,4 +1,5 @@
 import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConfig';
+import { invalidateReportQueries } from '@/lib/queryClient';
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
@@ -864,6 +865,9 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
   if (!result.success) {
     return { success: false, message: result.message, error: result.error };
   }
+
+  // A report left open under the invoice must not keep listing it (SR-10, as for every other write).
+  void invalidateReportQueries();
 
   return {
     success: true,

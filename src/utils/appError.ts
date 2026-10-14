@@ -23,7 +23,9 @@ export type AppErrorCode =
   /** The app is moving to another facility's server. */
   | 'SERVER_SWITCH'
   /** The request belonged to a session that has since been replaced. */
-  | 'SESSION_CHANGED';
+  | 'SESSION_CHANGED'
+  /** The server understood the request and said no; the message is the reason, in the app's words. */
+  | 'REFUSED';
 
 export class AppError extends Error {
   readonly code: AppErrorCode;

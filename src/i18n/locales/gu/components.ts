@@ -238,6 +238,7 @@ export const components: Translation<typeof source> = {
       completed: 'પૂર્ણ',
       failed: 'નિષ્ફળ',
       cancelled: 'રદ થયેલ',
+      unknown: 'પુષ્ટિ થઈ નથી',
     },
     printer: {
       online: 'ઑનલાઇન',
@@ -252,6 +253,7 @@ export const components: Translation<typeof source> = {
       printing: 'પ્રિન્ટ થઈ રહ્યું છે',
       queued: 'પ્રિન્ટ જૉબ કતારમાં છે',
       unavailable: 'સ્થિતિ જાણી શકાઈ નથી',
+      unconfirmed: 'છેલ્લી પ્રિન્ટ જૉબની પુષ્ટિ થઈ નથી. પ્રિન્ટર તપાસો.',
     },
   },
   printRange: {
@@ -325,13 +327,11 @@ export const components: Translation<typeof source> = {
       grn: { create: 'આવક પાવતી રદ કરો', edit: 'ફેરફાર રદ કરો' },
       dispatch: { create: 'જાવક રદ કરો', edit: 'ફેરફાર રદ કરો' },
       invoice: { create: 'ઇન્વૉઇસ રદ કરો', edit: 'ઇન્વૉઇસના ફેરફાર રદ કરો' },
-      customer: { create: 'વેપારી રદ કરો', edit: 'વેપારીના ફેરફાર રદ કરો' },
     },
     discardFor: {
       grn: 'આ આવક પાવતી છોડી દેવી છે?',
       dispatch: 'આ જાવક છોડી દેવી છે?',
       invoice: 'આ ઇન્વૉઇસ છોડી દેવું છે?',
-      customer: 'આ વેપારી છોડી દેવા છે?',
     },
     cancelHint: 'ફેરફાર છોડતાં પહેલાં પૂછે છે',
   },

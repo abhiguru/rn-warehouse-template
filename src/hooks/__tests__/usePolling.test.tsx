@@ -207,3 +207,34 @@ test('disabled polling makes no calls until enabled', async () => {
   expect(d.currents[0]()).toBe(false);
   act(() => tree.unmount());
 });
+
+test('refreshNow drops the run in flight and starts a fresh one that begins after the call', async () => {
+  const d = deferredRun();
+  const { tree } = mount(d.run);
+  expect(d.run).toHaveBeenCalledTimes(1);
+
+  let refreshed = false;
+  act(() => { void result.refreshNow().then(() => { refreshed = true; }); });
+  // The run sent earlier is stale; the fresh one only starts when it has ended.
+  expect(d.currents[0]()).toBe(false);
+  expect(d.run).toHaveBeenCalledTimes(1);
+  await d.finishAll();
+  expect(d.run).toHaveBeenCalledTimes(2);
+  expect(d.currents[1]()).toBe(true);
+  expect(refreshed).toBe(false);
+  await d.finishAll();
+  expect(refreshed).toBe(true);
+  expect(d.maxInFlight).toBe(1);
+  act(() => tree.unmount());
+});
+
+test('refreshNow with nothing in flight starts one run', async () => {
+  const d = deferredRun();
+  const { tree } = mount(d.run);
+  await d.finishAll();
+  expect(d.run).toHaveBeenCalledTimes(1);
+  act(() => { void result.refreshNow(); });
+  expect(d.run).toHaveBeenCalledTimes(2);
+  await d.finishAll();
+  act(() => tree.unmount());
+});

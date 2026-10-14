@@ -33,9 +33,25 @@ export interface OperatorServerSelectionProps {
    * to "My facilities" and opens it; nothing is signed out on this screen.
    */
   onChoose?: (discovery: Discovery) => void;
+  /**
+   * The server in use, when this is "Change warehouse server" inside Settings: shown in a
+   * read-only card above the field, and the screen's own title is left to the header.
+   */
+  current?: Discovery['server'] | null;
+  /** Leave out the language switch (Settings has "Language on this phone"). */
+  hideLanguage?: boolean;
+  /** A header above this screen already covers the top of the safe area. */
+  underHeader?: boolean;
 }
 
-export function OperatorServerSelection({ initial = false, onCancel, onChoose }: OperatorServerSelectionProps) {
+export function OperatorServerSelection({
+  initial = false,
+  onCancel,
+  onChoose,
+  current = null,
+  hideLanguage = false,
+  underHeader = false,
+}: OperatorServerSelectionProps) {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -68,7 +84,10 @@ export function OperatorServerSelection({ initial = false, onCancel, onChoose }:
       setCandidate(discovered);
     } catch (error) {
       if (request !== inspection.current) return;
-      showAlert(tr('auth.server.unavailableTitle'), error instanceof Error ? error.message : tr('auth.server.couldNotCheck'));
+      // The app's own texts (discoverOperator throws them as plain Errors) are shown as they are;
+      // a network failure (TypeError) or a reply that is not JSON (SyntaxError) is not for the person to read.
+      const own = error instanceof Error && !(error instanceof TypeError) && !(error instanceof SyntaxError);
+      showAlert(tr('auth.server.unavailableTitle'), own ? error.message : tr('auth.server.couldNotCheck'));
     } finally { if (request === inspection.current) setBusy(false); }
   };
 
@@ -126,23 +145,37 @@ export function OperatorServerSelection({ initial = false, onCancel, onChoose }:
 
   const fieldStyle = [styles.input, focused && styles.inputFocused];
 
-  return <SafeAreaView style={styles.screen}>
+  return <SafeAreaView style={styles.screen} edges={underHeader ? ['bottom', 'left', 'right'] : undefined}>
     {initial && <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />}
     {/* Same as the sign-in screens (PhoneSignInForm, CodeEntryForm): padding on iOS, height on Android. */}
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.column}>
-          <Text style={styles.title} accessibilityRole="header">{tr('auth.server.title')}</Text>
-          <Text style={styles.help}>{tr('auth.server.help')}</Text>
+          {!current && <Text style={styles.title} accessibilityRole="header">{tr('auth.server.title')}</Text>}
+          <Text style={styles.help}>{current ? tr('settings.server.help') : tr('auth.server.help')}</Text>
+
+          {current && <View style={styles.card} testID="server-in-use">
+            <Text style={styles.inUse}>{tr('settings.server.inUse')}</Text>
+            <View style={styles.cell} accessible accessibilityLabel={`${tr('settings.server.inUse')}, ${current.displayName}, ${current.companyName}, ${current.origin}`}>
+              <View style={styles.avatar}>
+                <MaterialCommunityIcons name="office-building-outline" size={iconSize.lg} color={t.brand.tint} />
+              </View>
+              <View style={styles.cellText}>
+                <Text style={styles.name} numberOfLines={2}>{current.displayName}</Text>
+                <Text style={styles.company}>{current.companyName}</Text>
+                <Text style={styles.originText}>{current.origin}</Text>
+              </View>
+            </View>
+          </View>}
 
           <View style={styles.field}>
             <Text style={styles.label} nativeID="server-origin-label">{tr('auth.server.addressLabel')}</Text>
             <TextInput value={origin} onChangeText={value => { if (activating.current) return; inspection.current += 1; setBusy(false); setOrigin(value); setCandidate(null); }}
-              autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://warehouse.example.com"
-              placeholderTextColor={t.text.placeholder} textContentType="URL" autoComplete="url" returnKeyType="go"
+              autoCapitalize="none" autoCorrect={false} keyboardType="url"
+              textContentType="URL" autoComplete="url" returnKeyType="go"
               onSubmitEditing={() => { if (!busy) void inspect(origin); }}
               onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-              style={fieldStyle} accessibilityLabel={tr('auth.server.originLabel')} accessibilityLabelledBy="server-origin-label" />
+              style={fieldStyle} accessibilityLabel={tr('auth.server.addressLabel')} accessibilityLabelledBy="server-origin-label" />
           </View>
 
           <View style={styles.actions}>
@@ -171,7 +204,7 @@ export function OperatorServerSelection({ initial = false, onCancel, onChoose }:
           </View>}
 
           {/* English or Gujarati, below the actions so it never pushes them down */}
-          <LanguageSwitch />
+          {!hideLanguage && <LanguageSwitch />}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -239,6 +272,7 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
   },
   cellText: { flex: 1, gap: space.xxs },
+  inUse: { ...typography.footnote, color: t.text.secondary },
   name: { ...typography.headline, color: t.text.primary },
   company: { ...typography.subhead, color: t.text.secondary },
   originText: { ...typography.footnote, fontWeight: fontWeight.regular, color: t.text.secondary },

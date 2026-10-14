@@ -32,6 +32,7 @@ jest.mock('expo-router', () => {
   return {
     Stack: { Screen: () => null },
     router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
+    useIsFocused: () => true,
     DarkTheme: actual.DarkTheme,
     DefaultTheme: actual.DefaultTheme,
     ThemeProvider: actual.ThemeProvider,
@@ -52,9 +53,10 @@ jest.mock('@/config/operatorServer', () => ({
     companyName: 'Fictional Cold Store',
   }),
 }));
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/services/enrollmentReviewService', () => ({
   listPendingEnrollments: jest.fn(() => new Promise(() => undefined)),
-  listEnrollmentCustomers: jest.fn(() => new Promise(() => undefined)),
+  hasEnrollmentCustomers: jest.fn(() => new Promise(() => undefined)),
   reviewEnrollment: jest.fn(),
 }));
 // The root layout imports the whole app shell; only its theme builders are under test.
@@ -146,7 +148,7 @@ describe.each(THEMES)('sign-in flow in %s %s', (brand, mode) => {
 
   it('enrollment review renders for administrators', () => {
     const tree = renderIn(<EnrollmentReviewScreen />, brand, mode, { userProfile: { role: 'admin' } });
-    expect(allText(tree)).toContain('Pending enrollments');
+    expect(allText(tree)).toContain('Choose how each person can use this facility, then approve.');
     expect(hasBackground(tree, t.background.base)).toBe(true);
     act(() => tree.unmount());
   });

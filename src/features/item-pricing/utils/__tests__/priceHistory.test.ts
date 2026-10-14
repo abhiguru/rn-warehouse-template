@@ -1,4 +1,5 @@
-import { priceHistoryChanges, priceHistorySides, truncatedPriceCount } from '../priceHistory';
+import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
+import { groupBySave, groupChanges, priceHistoryChanges, priceHistorySides, truncatedPriceCount } from '../priceHistory';
 import { priceHistoryAuthor, priceHistoryActionLabel, priceHistoryFieldLabel, priceHistoryValueText } from '../priceHistoryLabels';
 import { setLanguage } from '@/i18n';
 
@@ -174,8 +175,8 @@ describe('words and formats', () => {
     expect(priceHistoryFieldLabel('monthlyPrice')).toBe('Monthly price');
     expect(priceHistoryFieldLabel('weightBand')).toBe('Weight range');
     expect(priceHistoryValueText('priceType', 'one_time')).toBe('One-time');
-    expect(priceHistoryValueText('monthlyPrice', 1250.5)).toBe('₹1,250.5');
-    expect(priceHistoryValueText('labourRate', 2)).toBe('₹2');
+    expect(priceHistoryValueText('monthlyPrice', 1250.5)).toBe('₹1,250.50');
+    expect(priceHistoryValueText('labourRate', 2)).toBe('₹2.00');
     expect(priceHistoryValueText('tax', 18)).toBe('18%');
     expect(priceHistoryValueText('weightBand', { min: 0, max: 100 })).toBe('0–100 kg');
     expect(priceHistoryValueText('effectiveFrom', '2026-01-01')).toBe('1 Jan 2026');
@@ -206,11 +207,99 @@ describe('words and formats', () => {
 
   it('writes numbers and dates in Gujarati digits in Gujarati', () => {
     setLanguage('gu');
-    expect(priceHistoryValueText('monthlyPrice', 6)).toBe('₹૬');
+    expect(priceHistoryValueText('monthlyPrice', 6)).toBe('₹૬.૦૦');
     expect(priceHistoryValueText('tax', 18)).toBe('૧૮%');
     expect(priceHistoryValueText('weightBand', { min: 0, max: 100 })).toBe('૦–૧૦૦ કિલો');
     expect(priceHistoryValueText('effectiveFrom', '2026-01-01')).toBe('૧ જાન્યુ ૨૦૨૬');
     expect(priceHistoryAuthor({ changed_by: 'u1', changed_by_name: 'Meera Joshi', changed_by_role: 'staff' })).toBe('Meera Joshi (સ્ટાફ)');
     expect(priceHistoryAuthor({ changed_by: null, changed_by_name: null, changed_by_role: null })).toBe('ઍપનો યુઝર નથી');
+  });
+});
+
+describe('rows written by one save', () => {
+  const at = '2026-10-14T05:00:00.123456+00:00';
+  const entry = (id: number, more: Partial<ItemPriceHistoryEntry>): ItemPriceHistoryEntry => ({
+    id,
+    changed_at: at,
+    action: 'update',
+    price_id: `p${id}`,
+    item_id: 'cumin',
+    item_name: 'Review Cumin Bold',
+    customer_id: null,
+    customer_name: null,
+    old_values: null,
+    new_values: null,
+    changed_by: 'u1',
+    changed_by_name: 'Meera Joshi',
+    changed_by_role: 'admin',
+    ...more,
+  });
+  // Job (b): the rate in force is ended on 31 Dec 2026 and the new one is added from 1 Jan 2027.
+  const ended = (id: number, extra: Partial<ItemPriceHistoryEntry> = {}) =>
+    entry(id, { action: 'update', old_values: monthly(11, { effective_from: '2026-04-01' }), new_values: monthly(11, { effective_from: '2026-04-01', effective_to: '2026-12-31' }), ...extra });
+  const added = (id: number, rent: number, extra: Partial<ItemPriceHistoryEntry> = {}) =>
+    entry(id, { action: 'insert', new_values: monthly(rent, { effective_from: '2027-01-01' }), ...extra });
+
+  it('three rows with the same time and person are one group', () => {
+    const groups = groupBySave([added(3, 12), ended(2), entry(1, { action: 'update', old_values: monthly(9), new_values: monthly(9, { effective_to: '2026-12-31' }), price_id: 'p-other' })]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map(e => e.id)).toEqual([3, 2, 1]);
+  });
+
+  it('a second apart, or another person, or another item or customer, is another group', () => {
+    const later = '2026-10-14T05:00:01.123456+00:00';
+    expect(groupBySave([added(3, 12, { changed_at: later }), ended(2)])).toHaveLength(2);
+    expect(groupBySave([added(3, 12, { changed_by: 'u2' }), ended(2)])).toHaveLength(2);
+    expect(groupBySave([added(3, 12, { item_id: 'garlic' }), ended(2)])).toHaveLength(2);
+    expect(groupBySave([added(3, 12, { customer_id: 'c1' }), ended(2)])).toHaveLength(2);
+  });
+
+  it('keeps the order of the feed and puts a row that comes later in the page into the group it belongs to', () => {
+    const other = ended(9, { changed_at: '2026-10-13T05:00:00+00:00' });
+    const groups = groupBySave([added(5, 12), other, ended(4)]);
+    expect(groups.map(g => g.entries.map(e => e.id))).toEqual([[5, 4], [9]]);
+  });
+
+  it('a truncate and a row without an item are never joined', () => {
+    const t1 = entry(7, { action: 'truncate', item_id: null, old_values: { rows: 3 } });
+    const t2 = entry(8, { action: 'truncate', item_id: null, old_values: { rows: 4 } });
+    expect(groupBySave([t1, t2])).toHaveLength(2);
+  });
+
+  it('describes job (b): rate changed from 1 Jan 2027, 11 to 12 on the price only', () => {
+    const [group] = groupBySave([added(3, 12), ended(2)]);
+    const view = groupChanges(group.entries);
+    expect(view).toMatchObject({ kind: 'changed', day: '2027-01-01' });
+    expect(view.bands).toHaveLength(1);
+    expect(view.bands[0].band).toEqual({ min: 0, max: 100 });
+    expect(view.bands[0].changes.map(c => [c.field, c.before, c.after])).toEqual([['monthlyPrice', 11, 12]]);
+  });
+
+  it('shows labour and tax too when they changed, and nothing that stayed', () => {
+    const [group] = groupBySave([added(3, 12, { new_values: monthly(12, { effective_from: '2027-01-01', labour_rate: 3, tax_percent: 12 }) }), ended(2)]);
+    expect(groupChanges(group.entries).bands[0].changes.map(c => c.field)).toEqual(['monthlyPrice', 'labourRate', 'tax']);
+  });
+
+  it('a save that only ended the rate reads "stopped after"', () => {
+    const [group] = groupBySave([ended(2), ended(1, { old_values: monthly(9, { effective_from: '2026-04-01' }), new_values: monthly(9, { effective_from: '2026-04-01', effective_to: '2026-12-31' }) })]);
+    expect(groupChanges(group.entries)).toMatchObject({ kind: 'stopped', day: '2026-12-31', bands: [] });
+  });
+
+  it('a new band with no old one is shown whole, an old band that went is not', () => {
+    const [group] = groupBySave([
+      added(4, 6, { new_values: monthly(6, { effective_from: '2027-01-01', weight_min: 0, weight_max: 40 }) }),
+      added(3, 9.5, { new_values: monthly(9.5, { effective_from: '2027-01-01', weight_min: 41, weight_max: 100 }) }),
+      ended(2, { old_values: monthly(11, { effective_from: '2026-04-01', weight_min: 0, weight_max: 100 }), new_values: monthly(11, { effective_from: '2026-04-01', weight_min: 0, weight_max: 100, effective_to: '2026-12-31' }) }),
+    ]);
+    const view = groupChanges(group.entries);
+    expect(view.bands.map(b => b.band)).toEqual([{ min: 0, max: 40 }, { min: 41, max: 100 }]);
+    // The old 0-100 band is not the same band: both new bands are shown with all their values.
+    expect(view.bands[0].changes.map(c => c.field)).toEqual(['monthlyPrice', 'weightBand', 'labourRate', 'tax']);
+    expect(view.bands[0].changes[0]).toMatchObject({ before: null, after: 6 });
+  });
+
+  it('a group of rows that cannot be told apart as a save is described as none', () => {
+    const [group] = groupBySave([entry(2, { action: 'delete', old_values: monthly(5) }), entry(1, { action: 'delete', old_values: monthly(6) })]);
+    expect(groupChanges(group.entries).kind).toBe('other');
   });
 });

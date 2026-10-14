@@ -197,7 +197,7 @@ describe('the sensor and its history', () => {
       days.release(historyOf(7));
     });
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Chamber 7', 'Healthy', 'Summary, last 7 days', 'Based on 7 readings']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Chamber 7', 'Healthy', 'All readings, last 7 days', 'Based on 7 readings']));
     expect(screen.facts()).toEqual(['Connection: Online', 'Battery: Good', 'Last reading: 12 Oct 2026, 9:55 am']);
   });
 
@@ -206,7 +206,7 @@ describe('the sensor and its history', () => {
     await screen.press('Last 14 days');
     expect(history.mock.calls).toEqual([['s7', 7], ['s7', 14]]);
     expect(device).toHaveBeenCalledTimes(1);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Summary, last 14 days', 'Based on 14 readings']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'All readings, last 14 days', 'Based on 14 readings']));
   });
 
   it('a late answer for a period left behind is not shown under the period chosen', async () => {
@@ -220,11 +220,11 @@ describe('the sensor and its history', () => {
 
     await act(async () => thirty.release(historyOf(30)));
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Summary, last 30 days', 'Based on 30 readings']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['All readings, last 30 days', 'Based on 30 readings']));
     // The 14-day answer arrives last: a broken screen would now say 14.
     await act(async () => fourteen.release(historyOf(14)));
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Summary, last 30 days', 'Based on 30 readings']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['All readings, last 30 days', 'Based on 30 readings']));
     expect(screen.texts()).not.toContain('Based on 14 readings');
   });
 
@@ -290,11 +290,11 @@ describe('the chart', () => {
 describe('a sensor with less than a day of data', () => {
   const NEW_SENSOR = { first_reading_at: minutesAgo(10), earliest_reading_at: minutesAgo(10) };
 
-  it('offers the 7-day period, selected, and no other', async () => {
+  it('names the 7-day period in the section title and offers no chip', async () => {
     device.mockResolvedValue(found(NEW_SENSOR) as never);
     const screen = await open();
-    expect(screen.chips()).toEqual([{ label: 'Last 7 days', selected: true }]);
-    expect(screen.texts()).toContain('7 days');
+    expect(screen.chips()).toEqual([]);
+    expect(screen.texts()).toContain('History, last 7 days');
     expect(history.mock.calls).toEqual([['s7', 7]]);
   });
 
@@ -304,7 +304,7 @@ describe('a sensor with less than a day of data', () => {
     const screen = await open();
     expect(screen.chart().length).toBe(1);
     expect(screen.chart()[0].props.readings.length).toBe(1);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Summary, last 7 days', 'Based on 1 reading']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['All readings, last 7 days', 'Based on 1 reading']));
     expect(screen.texts()).not.toContain(NO_HISTORY);
   });
 
@@ -315,8 +315,8 @@ describe('a sensor with less than a day of data', () => {
     expect(screen.texts()).toContain(NO_HISTORY);
     // A count, not the instances: a failing match would print the whole rendered tree.
     expect(screen.chart().length).toBe(0);
-    expect(screen.texts()).not.toContain('Summary, last 7 days');
-    // The period is still offered, so a longer one can be chosen once the data covers it.
-    expect(screen.chips()).toEqual([{ label: 'Last 7 days', selected: true }]);
+    expect(screen.texts()).not.toContain('All readings, last 7 days');
+    // Only the 7-day period exists yet: named in the section title, no chip.
+    expect(screen.chips()).toEqual([]);
   });
 });

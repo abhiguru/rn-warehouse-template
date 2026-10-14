@@ -235,7 +235,7 @@ describe.each([
     expect(texts()).not.toContain('Sign out of this phone');
     if (screen === 'Settings') {
       expect(texts()).toContain('Change warehouse server');
-      await press('Change warehouse server');
+      await press('Change warehouse server, Now using North Cold Store');
       expect(router.push).toHaveBeenCalledWith('/operator-server');
     }
 

@@ -447,6 +447,8 @@ export const errors: Translation<typeof source> = {
     accountDeleted: 'એકાઉન્ટ ડિલીટ થયું',
     selectExistingCustomer: 'ઓછામાં ઓછો એક હાલનો વેપારી પસંદ કરો.',
     enrollmentReviewNotAccepted: 'અરજી વિશેનો તમારો નિર્ણય સર્વરે સ્વીકાર્યો નથી.',
+    enrollmentAlreadyHandled: 'આ અરજી પર પહેલેથી નિર્ણય લેવાઈ ગયો છે.',
+    enrollmentServerNeedsUpdate: 'કોઈને સ્ટાફ કે સુપરવાઇઝર તરીકે મંજૂર કરવા માટે આ કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ કરવું જરૂરી છે.',
   },
   search: {
     minChars: 'શોધવા માટે ઓછામાં ઓછા ૨ અક્ષર લખો',

@@ -3,9 +3,9 @@ import { configureStore } from '@reduxjs/toolkit';
 import grnReducer, { updateHeader as updateGrn } from '../slices/grnFormSlice';
 import dispatchReducer, { updateHeader as updateDispatch, saveSnapshot, setError } from '../slices/dispatchFormSlice';
 import invoiceReducer, { updateHeader as updateInvoice } from '../slices/invoiceFormSlice';
-import customerReducer, { updateFormData } from '../slices/customerFormSlice';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { queryClient } from '@/lib/queryClient';
+import { clearItemRatesCache } from '@/features/item-pricing/useItemRates';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearSessionScopedState } from '../sessionScopedState';
@@ -25,6 +25,7 @@ import {
 jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
 }));
+jest.mock('@/features/item-pricing/useItemRates', () => ({ clearItemRatesCache: jest.fn() }));
 jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn() }));
@@ -58,7 +59,7 @@ jest.mock('expo-image', () => ({
 
 const makeStore = () =>
   configureStore({
-    reducer: { grnForm: grnReducer, dispatchForm: dispatchReducer, invoiceForm: invoiceReducer, customerForm: customerReducer },
+    reducer: { grnForm: grnReducer, dispatchForm: dispatchReducer, invoiceForm: invoiceReducer },
   });
 
 // A reset form is dated "now" (the default dispatch date), so the clock is held
@@ -89,7 +90,6 @@ it('clears queries, autocomplete, every form draft, every list cache and shared 
   store.dispatch(saveSnapshot());
   store.dispatch(setError('Fictional previous warehouse error'));
   store.dispatch(updateInvoice({ customer_name: 'Unsaved fictional invoice' }));
-  store.dispatch(updateFormData({ name: 'Unsaved fictional customer' }));
   expect(store.getState()).not.toEqual(empty);
 
   const scope = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
@@ -248,4 +248,9 @@ it('deletes on sign-out the photo files kept for a retry, and keeps one an uploa
   endRunning();
   await localPhotoFilesIdle();
   expect(mockFiles.has(running)).toBe(false);
+});
+
+it('forgets the rates cached for Item pricing', async () => {
+  await clearSessionScopedState(makeStore().dispatch);
+  expect(clearItemRatesCache).toHaveBeenCalledTimes(1);
 });

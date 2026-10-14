@@ -1,7 +1,7 @@
 /**
  * Items screen: list report (style guide §14.1).
  *
- * Object cells with an avatar, packaging and description, an Inactive status
+ * Object cells with a cube glyph, packaging and description, an Inactive status
  * tag, swipe to delete, pull to refresh, infinite scroll, and loading, empty
  * and error states. Colours come from the semantic tokens.
  */
@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useIsFocused } from 'expo-router';
@@ -28,6 +29,7 @@ import {
 } from '@/types/item.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { MasterListHeader } from '@/components/common/MasterListHeader';
 import {
   fontWeight,
   iconSize,
@@ -37,12 +39,12 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
-  singleLineText,
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
-import { Avatar, StatusTag } from '@/components/ui';
-import { formatCount } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui';
+import { formatCount, formatTime } from '@/utils/formatters';
+import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 // =============================================================================
@@ -58,6 +60,12 @@ interface ListState {
   offset: number;
   totalCount: number;
   error: string | null;
+  /** The search the rows on screen answer (the filters' search once a load succeeds). */
+  loadedSearch: string;
+  /** When the rows on screen were loaded. */
+  loadedAt: Date | null;
+  /** A reload failed while rows were on screen: they are older than they look. */
+  refreshFailed: boolean;
 }
 
 // =============================================================================
@@ -78,7 +86,12 @@ export default function ItemsScreen() {
     offset: 0,
     totalCount: 0,
     error: null,
+    loadedSearch: '',
+    loadedAt: null,
+    refreshFailed: false,
   });
+  // Counts the loads from the first row: an answer for an older search is ignored.
+  const requestRef = useRef(0);
 
   // ===========================================================================
   // FETCH LOGIC
@@ -86,14 +99,28 @@ export default function ItemsScreen() {
 
   const fetchItems = useCallback(
     async (filters: ItemFilters, offset: number = 0) => {
+      const request = offset === 0 ? ++requestRef.current : requestRef.current;
+      const search = filters.search ?? '';
       if (offset === 0) {
         setState((prev) => ({ ...prev, loading: true, error: null }));
       } else {
         setState((prev) => ({ ...prev, loadingMore: true }));
       }
 
+      const fail = (message: string) => {
+        setState((prev) => {
+          // Rows for the same search stay, marked as older; rows for another search would mislead.
+          const keepRows = offset === 0 ? prev.data.length > 0 && prev.loadedSearch === search : true;
+          if (keepRows && prev.data.length > 0) {
+            return { ...prev, loading: false, loadingMore: false, refreshFailed: offset === 0 };
+          }
+          return { ...prev, data: [], totalCount: 0, loading: false, loadingMore: false, error: message };
+        });
+      };
+
       try {
         const response = await itemService.getItemList(filters, 20, offset);
+        if (request !== requestRef.current) return;
 
         if (response.success) {
           setState((prev) => ({
@@ -104,23 +131,16 @@ export default function ItemsScreen() {
             loading: false,
             loadingMore: false,
             error: null,
+            loadedSearch: offset === 0 ? search : prev.loadedSearch,
+            loadedAt: offset === 0 ? new Date() : prev.loadedAt,
+            refreshFailed: offset === 0 ? false : prev.refreshFailed,
           }));
         } else {
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            loadingMore: false,
-            error: response.message || 'Failed to fetch items',
-          }));
+          fail(response.message || 'Failed to fetch items');
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          loadingMore: false,
-          error: errorMessage,
-        }));
+        if (request !== requestRef.current) return;
+        fail(error instanceof Error ? error.message : 'Unknown error');
       }
     },
     []
@@ -147,6 +167,15 @@ export default function ItemsScreen() {
       setState((prev) => ({ ...prev, refreshing: false }));
     });
   }, [state.filters, fetchItems]);
+
+  const handleSearch = useCallback(
+    (text: string) => {
+      const filters = { ...state.filters, search: text };
+      setState((prev) => ({ ...prev, filters, offset: 0 }));
+      fetchItems(filters, 0);
+    },
+    [state.filters, fetchItems]
+  );
 
   const handleEndReached = useCallback(() => {
     const hasMore =
@@ -201,7 +230,7 @@ export default function ItemsScreen() {
         handleToggleActive(item.id, false);
         return;
       }
-      showAlert(tr('items.list.deactivateConfirmTitle', { name: item.name }), undefined, [
+      showAlert(tr('items.list.deactivateConfirmTitle', { name: item.name }), tr('items.list.deactivateConfirmMessage'), [
         { text: tr('common.cancel'), style: 'cancel' },
         {
           text: tr('items.list.deactivateItem'),
@@ -218,57 +247,17 @@ export default function ItemsScreen() {
   }, []);
 
   const handleDeleteItem = useCallback(
-    async (item: ItemListItem) => {
-      showAlert(
-        tr('items.delete.confirmTitle', { name: item.name }),
-        tr('items.delete.confirmMessage'),
-        [
-          { text: tr('common.cancel'), style: 'cancel' },
-          {
-            text: tr('items.delete.deleteItem'),
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                const result = await itemService.deleteItem(item.id);
-
-                if (result.success) {
-                  // Remove item from local state
-                  setState((prev) => ({
-                    ...prev,
-                    data: prev.data.filter((i) => i.id !== item.id),
-                    totalCount: prev.totalCount - 1,
-                  }));
-                  showAlert(tr('items.delete.deletedTitle'), tr('items.delete.deletedMessage', { name: item.name }));
-                } else {
-                  // Check if blocked due to references
-                  if (result.references) {
-                    const refs = result.references;
-                    let message = `${tr('items.delete.usedIn')}\n\n`;
-                    if (refs.grn_count > 0) {
-                      message += `${tr('items.delete.usedInLine', { count: formatCount(refs.grn_count, 'GRN') })}\n`;
-                    }
-                    if (refs.dispatch_count > 0) {
-                      message += `${tr('items.delete.usedInLine', { count: formatCount(refs.dispatch_count, 'dispatch', 'dispatches') })}\n`;
-                    }
-                    if (refs.invoice_count > 0) {
-                      message += `${tr('items.delete.usedInLine', { count: formatCount(refs.invoice_count, 'invoice') })}\n`;
-                    }
-                    message += `\n${tr('items.delete.deactivateInstead')}`;
-                    showAlert(tr('items.delete.cannotDeleteTitle'), message);
-                  } else {
-                    showAlert(tr('items.delete.couldNotDeleteTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
-                  }
-                }
-              } catch (error) {
-                console.error('[Items] Delete error:', error);
-                showAlert(tr('items.delete.couldNotDeleteTitle'), tr('common.checkConnection'));
-              }
-            },
-          },
-        ]
-      );
-    },
-    []
+    (item: ItemListItem) =>
+      deleteItemFlow(item, {
+        onDeleted: () =>
+          setState((prev) => ({
+            ...prev,
+            data: prev.data.filter((i) => i.id !== item.id),
+            totalCount: prev.totalCount - 1,
+          })),
+        onDeactivate: () => handleToggleActive(item.id, true),
+      }),
+    [handleToggleActive]
   );
 
   // ===========================================================================
@@ -320,6 +309,23 @@ export default function ItemsScreen() {
       );
     }
 
+    // A search with no match is not an empty catalogue: say so and offer to clear it.
+    if (state.filters.search) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyText}>{tr('items.list.noMatch', { search: state.filters.search })}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={() => handleSearch('')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
@@ -337,7 +343,7 @@ export default function ItemsScreen() {
         </Pressable>
       </View>
     );
-  }, [state.loading, state.error, state.filters, fetchItems, handleAddItem, styles, t]);
+  }, [state.loading, state.error, state.filters, fetchItems, handleAddItem, handleSearch, styles, t]);
 
   const renderFooter = useCallback(() => {
     if (!state.loadingMore) return null;
@@ -366,9 +372,6 @@ export default function ItemsScreen() {
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.headerTitle}>{tr('common.items')}</Text>
-              {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle} {...singleLineText()}>{formatCount(state.totalCount, 'item')}</Text>
-              )}
             </View>
           ),
           headerRight: () => (
@@ -385,13 +388,31 @@ export default function ItemsScreen() {
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={styles.container} testID="items-screen">
+        <MasterListHeader
+          listKey="items"
+          search={state.filters.search ?? ''}
+          onSearch={handleSearch}
+          placeholder={tr('items.list.searchPlaceholder')}
+          loading={state.loading}
+          countText={state.totalCount > 0 ? formatCount(state.totalCount, 'item') : undefined}
+          refreshError={
+            state.refreshFailed
+              ? {
+                  message: tr('items.list.refreshFailed', { time: formatTime(state.loadedAt) }),
+                  onRetry: () => fetchItems(state.filters, 0),
+                }
+              : undefined
+          }
+        />
         <FlatList
           data={state.data}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={[
             styles.listContent,
+            // Android: app/_layout.tsx already pads the screen by the navigation bar.
+            Platform.OS === 'ios' && { paddingBottom: space.xl + insets.bottom },
             state.data.length === 0 && styles.listContentEmpty,
           ]}
           refreshControl={
@@ -503,8 +524,14 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
           if (event.nativeEvent.actionName === 'delete') onDelete();
         }}
       >
-        {/* Fiori Object Cell: Leading Avatar */}
-        <Avatar name={item.name} id={item.id} style={styles.avatar} />
+        {/* Leading glyph: the same cube on every item (style guide §8); a person's avatar is not an item's */}
+        <View
+          style={styles.itemIcon}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
+        </View>
 
         {/* Fiori Object Cell: Main Content */}
         <View style={styles.cardContent}>
@@ -516,10 +543,7 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
           {/* Subheadline - Item Details */}
           <View style={styles.attributeStack}>
             {item.packaging && (
-              <View style={styles.attributeRow}>
-                <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.attributeText}>{item.packaging}</Text>
-              </View>
+              <Text style={styles.attributeText}>{item.packaging}</Text>
             )}
             {item.description && (
               <View style={styles.attributeRow}>
@@ -566,11 +590,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     textAlign: 'center' as const,
   },
-  headerSubtitle: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
   addButton: {
     minWidth: touchTarget,
     minHeight: touchTarget,
@@ -593,7 +612,13 @@ const makeStyles = (t: ThemeTokens) => ({
   cardPressed: {
     backgroundColor: t.surface.cardPressed,
   },
-  avatar: {
+  itemIcon: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     marginRight: space.md,
   },
   cardContent: {

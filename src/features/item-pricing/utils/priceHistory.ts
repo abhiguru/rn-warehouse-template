@@ -3,7 +3,7 @@
  * get_item_price_history). No text is built here: the screen names and formats the
  * fields (see priceHistoryLabels.ts).
  */
-import type { ItemPriceHistoryAction, ItemPriceHistoryValues } from '@/types/item-pricing.types';
+import type { ItemPriceHistoryAction, ItemPriceHistoryEntry, ItemPriceHistoryValues } from '@/types/item-pricing.types';
 
 /** The fields a person sees, in the order shown. */
 export type PriceHistoryField =
@@ -161,4 +161,122 @@ export function priceHistoryChanges(
 /** How many prices a truncate removed; null when the entry does not say. */
 export function truncatedPriceCount(oldValues: ItemPriceHistoryValues | null | undefined): number | null {
   return isValues(oldValues) ? numberOf(oldValues.rows) : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rows written by one save (replace_item_rates is one transaction: one time, one person)
+// ---------------------------------------------------------------------------------------------
+
+export interface SaveGroup {
+  key: string;
+  /** In the order of the feed (newest first). */
+  entries: ItemPriceHistoryEntry[];
+}
+
+/**
+ * Entries of the same time, person, item and customer are one save. A truncate, or an entry
+ * with no item, is never joined to another. Order: by the first entry of each group, so the
+ * feed keeps its order; an entry that came on a later page joins its group (the screen groups
+ * all the entries it holds each time).
+ */
+export function groupBySave(entries: ItemPriceHistoryEntry[]): SaveGroup[] {
+  const groups = new Map<string, SaveGroup>();
+  for (const entry of entries) {
+    const key =
+      entry.action === 'truncate' || !entry.item_id
+        ? `solo:${entry.id}`
+        : [entry.changed_at, entry.changed_by ?? '', entry.item_id, entry.customer_id ?? ''].join('|');
+    const group = groups.get(key);
+    if (group) group.entries.push(entry);
+    else groups.set(key, { key, entries: [entry] });
+  }
+  return [...groups.values()];
+}
+
+export interface GroupBand {
+  band: WeightBand;
+  /** The values that changed (old to new), or every value of a band that is new (before is null). */
+  changes: PriceFieldChange[];
+}
+
+export interface GroupView {
+  /** changed: a rate from `day`. stopped: the rate's last day is `day`. other: show the entries one by one. */
+  kind: 'changed' | 'stopped' | 'other';
+  day: string | null;
+  bands: GroupBand[];
+  /** Planned rates this save deleted (a rate replaced from an earlier day, or bands a correction dropped). */
+  removed: RemovedBand[];
+}
+
+export interface RemovedBand {
+  band: WeightBand;
+  field: 'monthlyPrice' | 'oneTimePrice';
+  price: number | null;
+  /** The day the removed rate was to start. */
+  from: string | null;
+}
+
+const SHOWN_FIELDS: PriceHistoryField[] = ['monthlyPrice', 'oneTimePrice', 'weightBand', 'labourRate', 'tax'];
+const valuesOf = (entry: ItemPriceHistoryEntry, side: 'old' | 'new') => {
+  const values = side === 'old' ? entry.old_values : entry.new_values;
+  return isValues(values) ? values : null;
+};
+const sameBand = (a: ItemPriceHistoryValues, b: ItemPriceHistoryValues) =>
+  numberOf(a.weight_min) === numberOf(b.weight_min) && numberOf(a.weight_max) === numberOf(b.weight_max) && (a.price_type ?? 'monthly') === (b.price_type ?? 'monthly');
+
+/** What one save did, for the grouped card. */
+export function groupChanges(entries: ItemPriceHistoryEntry[]): GroupView {
+  const inserts = entries.filter(e => e.action === 'insert' && valuesOf(e, 'new'));
+  const updates = entries.filter(e => e.action === 'update' && valuesOf(e, 'old') && valuesOf(e, 'new'));
+  const deletes = entries.filter(e => e.action === 'delete' && valuesOf(e, 'old'));
+  const other: GroupView = { kind: 'other', day: null, bands: [], removed: [] };
+
+  const fieldsOf = (e: ItemPriceHistoryEntry) => priceHistoryChanges('update', e.old_values, e.new_values);
+  const onlyEnded = (e: ItemPriceHistoryEntry) => fieldsOf(e).every(c => c.field === 'effectiveTo');
+  const ended = updates.filter(e => fieldsOf(e).some(c => c.field === 'effectiveTo'));
+  const rewritten = updates.filter(e => fieldsOf(e).some(c => SHOWN_FIELDS.includes(c.field)));
+
+  if (inserts.length === 0) {
+    if (ended.length > 0 && deletes.length === 0 && updates.every(onlyEnded)) {
+      const last = ended.map(e => textOf(valuesOf(e, 'new')?.effective_to)).filter((d): d is string => !!d).sort().pop();
+      return last ? { kind: 'stopped', day: last, bands: [], removed: [] } : other;
+    }
+    // A rate corrected in place: one update per band.
+    if (rewritten.length > 0 && deletes.length === 0) {
+      const bands = rewritten
+        .map(e => ({ band: read(valuesOf(e, 'new') as ItemPriceHistoryValues).weightBand as WeightBand, changes: fieldsOf(e).filter(c => SHOWN_FIELDS.includes(c.field)) }))
+        .sort((a, b) => (a.band.min ?? 0) - (b.band.min ?? 0));
+      const day = rewritten.map(e => textOf(valuesOf(e, 'new')?.effective_from)).filter((d): d is string => !!d).sort()[0] ?? null;
+      return day ? { kind: 'changed', day, bands, removed: [] } : other;
+    }
+    return other;
+  }
+
+  // Every row must be one of: a rate added, a rate ended, a rate removed. Anything else is not
+  // a replace: the entries are shown one by one rather than hidden in a summary.
+  const accounted = new Set<ItemPriceHistoryEntry>([...inserts, ...updates.filter(onlyEnded), ...deletes]);
+  if (entries.some(e => !accounted.has(e))) return other;
+
+  // The rates this save replaced: the ones it ended and the ones it removed.
+  const pool = [...ended, ...deletes].map(e => valuesOf(e, 'old') as ItemPriceHistoryValues);
+  const deletedValues = new Set(deletes.map(e => valuesOf(e, 'old') as ItemPriceHistoryValues));
+  const bands: GroupBand[] = inserts
+    .map(e => valuesOf(e, 'new') as ItemPriceHistoryValues)
+    .map(now => {
+      const at = pool.findIndex(old => sameBand(old, now));
+      const old = at >= 0 ? pool.splice(at, 1)[0] : null;
+      const changes = (old ? priceHistoryChanges('update', old, now) : priceHistoryChanges('insert', null, now)).filter(c => SHOWN_FIELDS.includes(c.field));
+      return { band: read(now).weightBand as WeightBand, changes };
+    })
+    .sort((a, b) => (a.band.min ?? 0) - (b.band.min ?? 0));
+  // Deleted rows no inserted band took over were removed by this save: say so.
+  const removed: RemovedBand[] = pool
+    .filter(old => deletedValues.has(old))
+    .map(old => {
+      const r = read(old);
+      return { band: r.weightBand as WeightBand, field: r.priceField, price: r.price, from: r.effectiveFrom as string | null };
+    })
+    .sort((a, b) => (a.from ?? '').localeCompare(b.from ?? '') || (a.band.min ?? 0) - (b.band.min ?? 0));
+  const day = inserts.map(e => textOf(valuesOf(e, 'new')?.effective_from)).filter((d): d is string => !!d).sort()[0] ?? null;
+  return day ? { kind: 'changed', day, bands, removed } : other;
 }

@@ -129,7 +129,7 @@ describe('getAppVersionInfo', () => {
       mockNative = { version: '0.1.0', build: '42' };
       expect(buildDiagnostics().split('\n')[1]).toBe('Version: 0.1.0 (build 42)');
       const tree = await render(<AppVersionFooter />);
-      expect(texts(tree)).toContain('Management System v0.1.0 (build 42)');
+      expect(texts(tree)).toContain('Version 0.1.0 (build 42)');
     });
 
     it('on iOS without a native build from expo-application, takes CFBundleVersion from expo-constants', () => {
@@ -165,7 +165,7 @@ describe('AppVersionFooter', () => {
   it('shows the installed version and build, never the old literal 1.0', async () => {
     const tree = await render(<AppVersionFooter />);
     const shown = texts(tree);
-    expect(shown).toContain('Management System v2.3.4 (build 7)');
+    expect(shown).toContain('Version 2.3.4 (build 7)');
     expect(shown.join('\n')).not.toContain('v1.0');
     // Without `diagnostics` there is no support block and no share button.
     expect(byTestID(tree, 'app-diagnostics')).toHaveLength(0);
@@ -175,14 +175,14 @@ describe('AppVersionFooter', () => {
   it('shows the version alone when no build number is known', async () => {
     mockConfig = { version: '0.1.0' };
     const tree = await render(<AppVersionFooter />);
-    expect(texts(tree)).toContain('Management System v0.1.0');
+    expect(texts(tree)).toContain('Version 0.1.0');
   });
 
   it('keeps 0-9 in the version and build in Gujarati', async () => {
     setLanguage('gu');
     const tree = await render(<AppVersionFooter />);
     const line = texts(tree).find((text) => text.includes('2.3.4'));
-    expect(line).toBe('મેનેજમેન્ટ સિસ્ટમ v2.3.4 (બિલ્ડ 7)');
+    expect(line).toBe('આવૃત્તિ 2.3.4 (બિલ્ડ 7)');
     expect(line).not.toMatch(/[૦-૯]/);
   });
 
@@ -202,12 +202,15 @@ describe('AppVersionFooter', () => {
     const lines = block.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
     expect(lines).toEqual(
       expect.arrayContaining([
-        'Details for support',
+        'DETAILS FOR SUPPORT',
         'Version: 2.3.4 (build 7)',
         'Facility: North Cold Store',
         'Server: https://north-cold.example.test',
       ])
     );
+    // G-44: Help shows the version once, in the support block, not again as a footer line.
+    expect(byTestID(tree, 'app-version-footer')).toHaveLength(0);
+    expect(texts(tree)).not.toContain('Version 2.3.4 (build 7)');
     const button = byTestID(tree, 'app-diagnostics-share')[0];
     expect(button.props.accessibilityRole).toBe('button');
     await act(async () => {

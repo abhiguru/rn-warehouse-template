@@ -20,7 +20,7 @@ export const nav = {
     enterCode: 'Enter code',
     waitingForApproval: 'Waiting for approval',
     facility: 'Facility',
-    enrollmentReview: 'Enrollment review',
+    enrollmentReview: 'Access requests',
     editGrn: 'Edit GRN',
     // Central login (docs/CENTRAL_LOGIN.md)
     myFacilities: 'My facilities',

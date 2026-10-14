@@ -54,7 +54,7 @@ describe('sensor formatting', () => {
 
   it('summarises the readings in words', () => {
     expect(summariseReadings(READINGS, 'Daily')).toBe(
-      'Temperature −18.5°C to 2.3°C, average −8.1°C. Humidity 80% to 90%, average 85%. 3 readings, daily averages.'
+      'Temperature −18.5°C to 2.3°C. Humidity 80% to 90%. 3 daily averages.'
     );
   });
 });

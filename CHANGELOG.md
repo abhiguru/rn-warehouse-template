@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased — Settings, Item pricing and master-data screens (2026-10-14 review)
+
+Requires backend migrations 76–78 (supabase-warehouse-template PR #101); merge and deploy the backend first.
+
+### Settings, Profile, Help and legal pages
+
+- Change warehouse server shows the server in use, has a Back control, no example address and one language control. Sign out is an ordinary action; the only administrator is told before the delete-account steps.
+- Profile shows each fact once; Change name has Back, a bottom Save, a discard question and a "Name saved." message. The version footer reads "Version x (build y)"; Help shows the version once and has clearer administrator text. Row subtitles are clearer and the colours row is "App colours".
+- Terms and Privacy name the connected cold storage and no longer carry template text or features the app does not have.
+- Every form that holds unsaved work asks "Discard changes?" before it is left (Back, the Android Back key and the swipe), and saves show a short message at the bottom.
+
+### Customers
+
+- A customer page and a one-page Add/Edit form replace the 3-step wizard. The list has search, a count line, an A-Z rail that reaches every name (digits, accents, Gujarati), an honest refresh failure message and a clearer deactivate question. Adding a customer who already exists warns first.
+- Access requests (was: approvals) lets an administrator approve a person as customer, staff or supervisor, and pick the customers they can see by search.
+
+### Items and Users
+
+- Items: search, delete questions that say the item's rates go too and name what blocks the delete (GRN lines, order lines), a bottom Add/Save bar, packaging suggestions and Delete in Edit item.
+- Users: search, a clear question when a role changes ("Make <name> a supervisor?"), a message after changes, section headers, plain role descriptions and the user count as "users". Edit user draws its own header.
+
+### Sensors
+
+- The history chart fits its card, with whole date labels, one set of figures and stacked readings at large text sizes. One period shows no chip row.
+
+### Item pricing
+
+- The list shows one row per item with its rate today, a search box, and filters Customer, Type and "Needs a rate". "Change date" shows the rates for lots received on another day. Administrators and supervisors get "All rate changes".
+- The item page shows the default rate, the rate that starts next, customer rates (each with its own page), old rates and a short "How an invoice picks a rate". Actions: Change rate, Correct this rate, Stop this rate, Add one-time rate, Add customer rate, Edit or Cancel a new rate, Undo stop.
+- One editor for every change: start day chips (Today, 1 Nov 2026, 1 Apr 2027, Other date), weight bands in whole kg that follow on from 0, rent, labour and tax per band, a summary of what changes, and a question before a planned rate is replaced. Rates start today or later; administrators and supervisors can correct a rate in force or start one in the past. Typing in a rate field replaces the old value without tapping the clear button first.
+- Stop this rate: choose the last day (today, a chip or another date); a planned later rate is asked about first.
+- Changes per item: one card per save, with only the values that changed and money shown with two decimals.
+- The pencil on an invoice line opens the same editor, and the rate saved there comes back to the invoice.
+- Rates stay on screen from the last load while they refresh and are forgotten at sign-out.
+
+### Gujarati, for review
+
+- New or changed Gujarati strings await the owner's review; see `review-2026-10-14-settings/fixes/gujarati-strings.md` (316 strings, about 200 of them Item pricing).
+
 ## Unreleased — live sensors (2026-10-13)
 
 Needs backend migration 74 (`sensor_latest`, `get_sensor_device`, the new `get_sensor_polling_data`): merge and deploy the backend first.

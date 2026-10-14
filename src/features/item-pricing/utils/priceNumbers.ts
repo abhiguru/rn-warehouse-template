@@ -8,6 +8,7 @@ import { normalizeDigits } from '@/i18n';
  */
 export function priceNumber(text: string | null | undefined, maxDecimals: number = 2): number | null {
   const cleaned = normalizeDigits(text ?? '').trim();
-  if (!new RegExp(`^\\d+(\\.\\d{1,${maxDecimals}})?$`).test(cleaned)) return null;
+  const decimals = maxDecimals > 0 ? `(\\.\\d{1,${maxDecimals}})?` : '';
+  if (!new RegExp(`^\\d+${decimals}$`).test(cleaned)) return null;
   return Number(cleaned);
 }

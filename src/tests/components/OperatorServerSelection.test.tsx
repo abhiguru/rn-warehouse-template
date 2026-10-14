@@ -3,6 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { logout } from '@/store/slices/authSlice';
+import { showAlert } from '@/utils/alert';
 import { beginOperatorSwitch } from '@/config/supabaseConfig';
 import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, stageOperatorServer } from '@/config/operatorServer';
 
@@ -37,7 +38,10 @@ jest.mock('@/components/ui/Button', () => {
 });
 jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn() }));
 // The language switch has its own controls and store access; it is not under test here.
-jest.mock('@/components/LanguageSwitch', () => ({ LanguageSwitch: () => null }));
+jest.mock('@/components/LanguageSwitch', () => ({
+  LanguageSwitch: () => require('react').createElement('LanguageSwitch'),
+}));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/i18n/useAppLanguage', () => ({
   useAppLanguage: () => ({ language: 'en', preference: 'system', setPreference: jest.fn() }),
 }));
@@ -45,7 +49,6 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: jest.fn() }));
 jest.mock('@/store/slices/grnFormSlice', () => ({ resetForm: jest.fn() }));
 jest.mock('@/store/slices/dispatchFormSlice', () => ({ resetForm: jest.fn() }));
 jest.mock('@/store/slices/invoiceFormSlice', () => ({ resetForm: jest.fn() }));
-jest.mock('@/store/slices/customerFormSlice', () => ({ resetForm: jest.fn() }));
 jest.mock('@/services/configService', () => ({ __esModule: true, default: { clearCache: jest.fn() } }));
 jest.mock('@/store/sessionScopedState', () => ({ clearSessionScopedState: jest.fn() }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: () => 0 } }));
@@ -157,4 +160,47 @@ it('re-selecting the active server from the settings route still goes back throu
   await act(async () => { button('Use this server')!.props.onPress(); });
   expect(router.back).toHaveBeenCalledTimes(1);
   expect(onCancel).not.toHaveBeenCalled();
+});
+
+// G-09: "Change warehouse server" inside Settings shows the server in use, has no example
+// address and no second language switch; the first-run screen keeps its look.
+const devServer = { origin: 'https://warehouse-dev.gurucold.in', displayName: 'Dev', companyName: 'Dev Cold Storage (fictional data)', instanceId: 'i1' };
+const allText = () => renderer!.root.findAllByType(TEXT).map(node => [node.props.children].flat(Infinity).join(''));
+
+it('with a current server: shows it, no placeholder, no language switch, no in-body title', async () => {
+  await act(async () => { renderer = create(<OperatorServerSelection current={devServer} hideLanguage />); });
+  const shown = allText();
+  expect(shown).toContain('In use now');
+  expect(shown).toContain('Dev Cold Storage (fictional data)');
+  expect(shown).toContain('https://warehouse-dev.gurucold.in');
+  expect(shown).toContain('Enter the address of the other server (it starts with https://), or scan its QR code.');
+  expect(shown).not.toContain('Choose your warehouse server');
+  expect(renderer!.root.findAllByType(tag('LanguageSwitch'))).toHaveLength(0);
+  const input = renderer!.root.findByType(TEXT_INPUT);
+  expect(input.props.placeholder).toBeUndefined();
+  expect(input.props.value).toBe('');
+  expect(input.props.accessibilityLabel).toBe('Server address');
+  // The in-use card does not offer "Use this server".
+  expect(buttons()).not.toContain('Use this server');
+});
+
+it('first run: no "In use now", the language switch and the title stay, but still no example address', async () => {
+  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
+  expect(allText()).not.toContain('In use now');
+  expect(allText()).toContain('Choose your warehouse server');
+  expect(renderer!.root.findAllByType(tag('LanguageSwitch'))).toHaveLength(1);
+  expect(renderer!.root.findByType(TEXT_INPUT).props.placeholder).toBeUndefined();
+});
+
+it('a network failure says the server could not be checked; the app\'s own message is kept', async () => {
+  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
+  jest.mocked(discoverOperator).mockRejectedValueOnce(new TypeError('Network request failed'));
+  await act(async () => { button('Check server')!.props.onPress(); });
+  expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', "Couldn't check this server. Check the address and try again.");
+  jest.mocked(discoverOperator).mockRejectedValueOnce(new SyntaxError('Unexpected token < in JSON'));
+  await act(async () => { button('Check server')!.props.onPress(); });
+  expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', "Couldn't check this server. Check the address and try again.");
+  jest.mocked(discoverOperator).mockRejectedValueOnce(new Error('Use an https:// address'));
+  await act(async () => { button('Check server')!.props.onPress(); });
+  expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', 'Use an https:// address');
 });

@@ -116,6 +116,8 @@ export const invoice: Translation<typeof source> = {
     selectCustomerTitle: 'પહેલાં વેપારી પસંદ કરો',
     selectCustomerMessage: 'વિગતોના પગલામાં આવક પાવતી પસંદ કરો, પછી દરમાં ફેરફાર કરો.',
     pricingOpenFailedTitle: 'દર ખોલી શકાયા નથી',
+    ratesNotAppliedTitle: 'સાચવેલો દર લાગુ થયો નથી',
+    ratesNotAppliedMessage: 'દર સાચવાઈ ગયો છે, પણ તે ઇન્વૉઇસની લાઇનોમાં લાગુ થઈ શક્યો નથી. તમારું કનેક્શન તપાસો, પછી આ પગલું છોડીને પાછા આવો અને ફરી પ્રયાસ કરો.',
     openingPricing: 'દર ખૂલી રહ્યા છે…',
     openingPricingA11y: 'દર ખૂલી રહ્યા છે',
     backToDetails: 'વિગતો પર પાછા જાઓ',
@@ -287,6 +289,7 @@ export const invoice: Translation<typeof source> = {
     sentOne: 'ઇન્વૉઇસ {{number}} પ્રિન્ટર પર મોકલ્યું.',
     sentRange: 'ઇન્વૉઇસ {{start}} થી {{end}} પ્રિન્ટર પર મોકલ્યાં.',
     failed: 'ઇન્વૉઇસ પ્રિન્ટ કરી શકાયું નથી. પ્રિન્ટર તપાસો અને ફરી પ્રયાસ કરો.',
+    unconfirmed: 'પ્રિન્ટરે જૉબની પુષ્ટિ કરી નથી. ફરી પ્રિન્ટ કરતાં પહેલાં પ્રિન્ટર તપાસો.',
   },
   // The invoice details screens
   tabs: {
