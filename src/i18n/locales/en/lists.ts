@@ -106,6 +106,8 @@ export const lists = {
     emptySection: 'Empty orders',
     statusOpen: 'Open',
     statusEmpty: 'Empty',
+    statusDeactivated: 'Deactivated',
+    accessibilityDeactivated: 'deactivated',
     statusDispatched: 'Dispatched',
     summary: '{{items}} · {{units}}',
     noItemsYet: 'No items yet',

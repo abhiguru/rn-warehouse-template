@@ -67,7 +67,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(text).toContain('Patel Traders');
     expect(text).toContain('+91 98765 43210');
     expect(text).toContain('+91 98123 45678');
-    expect(text).toContain('Inactive');
+    expect(text).toContain('Deactivated');
     const tokens = getTokens(brand, mode);
     const backgrounds = tree.root
       .findAll(node => typeof node.type === 'string' && node.props.style)

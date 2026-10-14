@@ -12,6 +12,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag } from '@/components/ui';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 
@@ -21,6 +22,8 @@ export interface CustomerChoice {
   name: string;
   /** A second line under the name, e.g. the city. Left out when empty. */
   detail?: string;
+  /** A small neutral tag next to the name, e.g. "Deactivated". Read after the name and city. */
+  tag?: string;
 }
 
 export interface CustomerChoiceRowsProps<T extends CustomerChoice> {
@@ -52,6 +55,7 @@ const makeStyles = (t: ThemeTokens) =>
     rowPressed: { backgroundColor: t.surface.cardPressed },
     text: { flex: 1 },
     name: { ...typography.headline, color: t.text.primary },
+    tagRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm, marginTop: space.xxs },
     detail: { ...typography.subhead, color: t.text.secondary },
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -83,7 +87,7 @@ export function CustomerChoiceRows<T extends CustomerChoice>({
                 onPress={() => onPick(customer)}
                 accessibilityRole="button"
                 // Two customers of one name are told apart by the second line, so it is read too.
-                accessibilityLabel={detail ? `${name}, ${detail}` : name}
+                accessibilityLabel={[name, detail, customer.tag].filter(Boolean).join(', ')}
                 accessibilityHint={hint}
               >
                 <Avatar name={name} id={customer.id} />
@@ -95,6 +99,11 @@ export function CustomerChoiceRows<T extends CustomerChoice>({
                     <Text style={styles.detail} numberOfLines={1}>
                       {detail}
                     </Text>
+                  ) : null}
+                  {customer.tag ? (
+                    <View style={styles.tagRow} testID={`${testIDPrefix}${customer.id}-tags`}>
+                      <StatusTag status="neutral" label={customer.tag} />
+                    </View>
                   ) : null}
                 </View>
                 <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />

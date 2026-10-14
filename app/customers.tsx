@@ -497,7 +497,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
   const actionLabel = customer.active ? tr('customers.list.deactivate') : tr('customers.list.activate');
   const rowLabel = [
     customer.name,
-    customer.active ? null : tr('common.inactive'),
+    customer.active ? null : tr('customers.list.statusDeactivated'),
     mobile,
     customer.city,
     customer.email,
@@ -565,7 +565,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
           <Text style={[styles.headline, !customer.active && styles.textInactive]} numberOfLines={2}>
             {customer.name}
           </Text>
-          {!customer.active && <StatusTag status="neutral" label={tr('common.inactive')} />}
+          {!customer.active && <StatusTag status="neutral" label={tr('customers.list.statusDeactivated')} />}
 
           {/* Subheadline - Contact Details */}
           <View style={styles.attributeStack}>

@@ -102,11 +102,15 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
     : timeText;
 
   // Accessibility
+  // Backend migration 82 adds customer.active to each row; an older backend has no field, so no tag.
+  const deactivated = order.customer?.active === false;
+
   const accessibilityDescription = [
     translate('lists.order.orderFor', { customer: customerName }),
     statusConfig.label,
     subtitle,
     order.customer?.city ? translate('lists.order.location', { city: order.customer.city }) : null,
+    deactivated ? translate('lists.order.accessibilityDeactivated') : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -137,15 +141,20 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
             {footnote}
           </Text>
 
+          {/* Status tags in the text column, wrapping: at large text sizes they must not squeeze the name */}
+          <View style={styles.tagRow} testID="order-card-tags">
+            {deactivated ? <StatusTag status="neutral" label={translate('lists.order.statusDeactivated')} /> : null}
+            <StatusTag status={statusConfig.kind} label={statusConfig.label} />
+          </View>
+
           {/* Why this order matched, when the match is not in the customer's name */}
           {matched.length > 0 ? (
             <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} />
           ) : null}
         </View>
 
-        {/* Attribute: Status Badge + Chevron */}
+        {/* Attribute: Chevron */}
         <View style={styles.attributeArea}>
-          <StatusTag status={statusConfig.kind} label={statusConfig.label} />
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
       </View>
@@ -177,6 +186,7 @@ const areEqual = (
     prevOrder.customer_id === nextOrder.customer_id &&
     prevOrder.customer?.name === nextOrder.customer?.name &&
     prevOrder.customer?.city === nextOrder.customer?.city &&
+    prevOrder.customer?.active === nextOrder.customer?.active &&
     (prevOrder.item_count ?? prevOrder.total_items) === (nextOrder.item_count ?? nextOrder.total_items) &&
     (prevOrder.quantity_sum ?? prevOrder.total_quantity) === (nextOrder.quantity_sum ?? nextOrder.total_quantity) &&
     prevOrder.status === nextOrder.status &&
@@ -257,6 +267,14 @@ const makeStyles = (t: ThemeTokens) => ({
   footnote: {
     ...typography.footnote,
     color: t.text.secondary,
+  },
+
+  tagRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginTop: space.xxs,
   },
 
   // Attribute Area (Right) - status + navigation

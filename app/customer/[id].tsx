@@ -196,7 +196,7 @@ export default function CustomerPage() {
         >
           {!shown.active && (
             <View style={styles.status}>
-              <StatusTag status="neutral" label={tr('common.inactive')} />
+              <StatusTag status="neutral" label={tr('customers.list.statusDeactivated')} />
             </View>
           )}
           <ContactCard

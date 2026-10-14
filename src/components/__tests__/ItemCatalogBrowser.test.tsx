@@ -140,7 +140,9 @@ it('loads the next browse page when the list reaches its end', async () => {
     await act(async () => { await catalogList(tree).props.onEndReached(); });
     expect(OrderService.getAvailableItems).toHaveBeenCalledTimes(2);
   } finally { await act(async () => { tree.unmount(); }); }
-});
+  // Nothing here waits on a clock (the pages are mocked promises); the cost is rendering 53 rows,
+  // twice, which passes the default 5 s only on an idle machine. Same assertions, own timeout.
+}, 30000);
 
 it('loads the next search page from the current result count', async () => {
   const hits = (from: number, count: number) =>

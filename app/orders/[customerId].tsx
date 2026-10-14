@@ -38,9 +38,17 @@ export default function CustomerOrderScreen() {
   const loading = loadedFor !== customerId;
   const latestCustomerId = useRef(customerId);
   latestCustomerId.current = customerId;
-  // The business the customer record (or the facility's refusal) says is turned off or deleted.
-  const [inactiveFor, setInactiveFor] = useState<string | undefined>(undefined);
-  const businessInactive = inactiveFor !== undefined && inactiveFor === customerId;
+  // `refusedFor`: the server refused to open the order (the only thing that disables "+"). The
+  // record (`deactivatedFor`: `active === false`, deleted or not) only chooses the wording and the banner:
+  // on an older facility (no migration 82) a deactivated business has `deleted_at` set too.
+  const [refusedFor, setRefusedFor] = useState<string | undefined>(undefined);
+  // The record could not be read for this business: a refusal then gets the plain sentence.
+  const [unreadFor, setUnreadFor] = useState<string | undefined>(undefined);
+  const businessRecordUnread = unreadFor !== undefined && unreadFor === customerId;
+  const businessDeleted = refusedFor !== undefined && refusedFor === customerId;
+  // The business the customer record says is deactivated in Customers: it still has its orders.
+  const [deactivatedFor, setDeactivatedFor] = useState<string | undefined>(undefined);
+  const businessDeactivated = deactivatedFor !== undefined && deactivatedFor === customerId;
   const [showItemCatalog, setShowItemCatalog] = useState(false);
 
   // Changelog state
@@ -109,7 +117,8 @@ export default function CustomerOrderScreen() {
   const fetchCustomerName = useCallback(async () => {
     const requestedFor = customerId;
     let name = tr('common.customer');
-    let off = false;
+    let deactivated = false;
+    let unread = false;
     try {
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error } = await authenticatedClient
@@ -120,17 +129,22 @@ export default function CustomerOrderScreen() {
 
       if (error) {
         console.error('[CustomerOrderScreen] Error fetching customer:', error);
+        unread = true;
       } else {
         name = data?.name || name;
-        off = data?.active === false || Boolean(data?.deleted_at);
+        deactivated = data?.active === false;
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Exception:', error);
+      unread = true;
     }
     // The answer for a business the screen has left is dropped.
     if (latestCustomerId.current !== requestedFor) return;
     setCustomerName(name);
-    setInactiveFor(off ? requestedFor : undefined);
+    setDeactivatedFor(deactivated ? requestedFor : undefined);
+    setUnreadFor(unread ? requestedFor : undefined);
+    // Every read of the record replaces an earlier refusal; the editor asks the server again anyway.
+    setRefusedFor(undefined);
     setLoadedFor(requestedFor);
   }, [customerId]);
 
@@ -207,12 +221,12 @@ export default function CustomerOrderScreen() {
             <Pressable
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={handleOpenItemCatalog}
-              disabled={businessInactive}
-              accessibilityState={{ disabled: businessInactive }}
+              disabled={businessDeleted}
+              accessibilityState={{ disabled: businessDeleted }}
               accessibilityLabel={tr('orders.screen.addItemsToOrder')}
               accessibilityRole="button"
             >
-              <Icon name="plus" size={iconSize.lg} color={businessInactive ? t.text.disabled : t.brand.tint} />
+              <Icon name="plus" size={iconSize.lg} color={businessDeleted ? t.text.disabled : t.brand.tint} />
             </Pressable>
           </View>
         </View>
@@ -225,8 +239,9 @@ export default function CustomerOrderScreen() {
             onOpenItemCatalog={handleOpenItemCatalog}
             onCloseItemCatalog={handleCloseItemCatalog}
             staffView={staffView}
-            businessInactive={businessInactive}
-            onBusinessInactive={() => setInactiveFor(customerId)}
+            businessDeactivated={businessDeactivated}
+            businessRecordUnread={businessRecordUnread}
+            onBusinessDeleted={() => setRefusedFor(customerId)}
           />
         </View>
 

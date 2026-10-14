@@ -7,7 +7,7 @@ import { readOwnBusinesses } from '../ownBusinesses';
 let mockGeneration = 1;
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => mockGeneration }));
 
-type Row = { id: string; name: string | null; city: string | null };
+type Row = { id: string; name: string | null; city: string | null; active?: boolean | null };
 let mockAnswer: { data: Row[] | null; error: Error | null } = { data: [], error: null };
 /** Runs when the facility answers, before the answer is handed to the reader. */
 let mockOnAnswer = () => {};
@@ -42,10 +42,9 @@ it('asks for the businesses in use, by name, and sends no list of ids', async ()
   await readOwnBusinesses();
   expect(mockQuery.mock.calls).toEqual([
     ['from', 'customers'],
-    ['select', 'id, name, city'],
-    // A deactivated or deleted business stays readable while its assignment stands
-    // (the row-level policy looks at the assignment only), so the read leaves it out.
-    ['eq', 'active', true],
+    ['select', 'id, name, city, active'],
+    // A deactivated business still orders its goods out, so there is NO active filter;
+    // only a deleted one is left out.
     ['is', 'deleted_at', null],
     ['order', 'name'],
   ]);
@@ -61,9 +60,9 @@ it('hands back the rows in the order the facility gave, with an empty city or na
     error: null,
   };
   await expect(readOwnBusinesses()).resolves.toEqual([
-    { id: 'business-a', name: 'Amber Field Traders', city: 'Northgate' },
-    { id: 'business-b', name: 'Birchwood Produce', city: '' },
-    { id: 'business-c', name: '', city: 'Southmere' },
+    { id: 'business-a', name: 'Amber Field Traders', city: 'Northgate', active: true },
+    { id: 'business-b', name: 'Birchwood Produce', city: '', active: true },
+    { id: 'business-c', name: '', city: 'Southmere', active: true },
   ]);
 });
 
@@ -83,4 +82,16 @@ it('hands nothing back when the session changed while the read was out', async (
     mockGeneration = 2;
   };
   await expect(readOwnBusinesses()).rejects.toThrow('Session changed');
+});
+
+it('hands back a deactivated business with active false, and treats a missing flag as active', async () => {
+  mockAnswer = {
+    data: [
+      { id: 'business-a', name: 'Amber Field Traders', city: 'Northgate', active: false },
+      { id: 'business-b', name: 'Birchwood Produce', city: null },
+    ],
+    error: null,
+  };
+  const rows = await readOwnBusinesses();
+  expect(rows.map(r => [r.id, r.active])).toEqual([['business-a', false], ['business-b', true]]);
 });
