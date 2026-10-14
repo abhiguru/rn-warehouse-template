@@ -116,6 +116,9 @@ describe('Users search', () => {
     await type('zzzz');
     expect(shownText()).toContain('No users match "zzzz". Try fewer letters.');
     expect(shownText()).not.toContain('No users yet');
+    const list = tree!.root.find(node => typeof node.props.ListEmptyComponent === 'function' && node.props.contentContainerStyle);
+    expect(StyleSheet.flatten(list.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
+    expect(StyleSheet.flatten(list.props.contentContainerStyle)).toEqual(expect.objectContaining({ flexGrow: 1 }));
   });
 
   it('keeps the rows and says the list is older when a refresh fails', async () => {

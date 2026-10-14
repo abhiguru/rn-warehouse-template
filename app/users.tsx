@@ -388,6 +388,7 @@ export default function UsersScreen() {
           }
         />
         <FlatList
+          style={styles.flatList}
           data={rows}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
@@ -522,8 +523,12 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingTop: space.md,
     paddingBottom: space.xl,
   },
-  listContentEmpty: {
+  // The list fills the space under the search field, so the empty state has a box to centre in.
+  flatList: {
     flex: 1,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
   },
 
   // Object cell

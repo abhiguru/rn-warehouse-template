@@ -406,6 +406,7 @@ export default function ItemsScreen() {
           }
         />
         <FlatList
+          style={styles.flatList}
           data={state.data}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
@@ -576,8 +577,12 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingTop: space.md,
     paddingBottom: space.xl,
   },
-  listContentEmpty: {
+  // The list fills the space under the search field, so the empty state has a box to centre in.
+  flatList: {
     flex: 1,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
   },
 
   // Header
