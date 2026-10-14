@@ -84,8 +84,10 @@ export const formatWeight = (
 /**
  * The weight of one bag, box or crate, which is the only weight a lot stores,
  * worded so it cannot be read as a total (style guide §12.3): "50 kg each".
- * Null when there is no weight to show (missing, zero or negative): the caller
- * then shows no weight at all.
+ * Null when there is no weight to show: the caller then shows no weight at all.
+ * That is a weight that is missing, not a finite number, or zero or less once
+ * it is rounded to `decimals`, which is how it would be written: 0.004 is no
+ * weight ("0 kg each" says nothing), 0.5 is "0.5 kg each".
  *
  * @param weight - Weight of one package in kg
  * @param decimals - Maximum number of decimal places (default 2)
@@ -94,8 +96,11 @@ export const formatWeightEach = (
   weight: number | null | undefined,
   decimals: number = 2
 ): string | null => {
-  if (weight === null || weight === undefined || isNaN(weight) || weight <= 0) return null;
-  return words().each.replace('{w}', formatWeight(weight, decimals));
+  if (weight === null || weight === undefined) return null;
+  // A weight that reaches here as text ("50" in a server answer) is read as its number, as it always was.
+  const kg = Number(weight);
+  if (!Number.isFinite(kg) || Number(kg.toFixed(decimals)) <= 0) return null;
+  return words().each.replace('{w}', formatWeight(kg, decimals));
 };
 
 /**
