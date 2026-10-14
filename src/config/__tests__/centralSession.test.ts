@@ -454,27 +454,67 @@ describe('refresh', () => {
 });
 
 describe('catalogue', () => {
+  // As central service 0.8.0 publishes them: `city` is the same as `town`.
   const facilities = [
-    { id: 'north-cold', name: 'North Cold Store', city: 'Rajkot', origin: 'https://north-cold.example.test', operator: 'North Cold Store Private Limited' },
-    { id: 'gondal', name: 'ગોંડલ કોલ્ડ સ્ટોરેજ', city: 'ગોંડલ', origin: 'https://gondal.example.test', operator: 'Fictional Operator' },
+    {
+      id: 'north-cold', name: 'North Cold Store', city: 'Rajkot', town: 'Rajkot', district: 'Rajkot',
+      origin: 'https://north-cold.example.test', operator: 'North Cold Store Private Limited',
+      online: true, last_seen_at: '2026-10-14T06:00:00.000Z',
+    },
+    {
+      id: 'gondal', name: 'ગોંડલ કોલ્ડ સ્ટોરેજ', city: 'ગોંડલ', town: 'ગોંડલ', district: 'રાજકોટ',
+      origin: 'https://gondal.example.test', operator: 'Fictional Operator', online: false, last_seen_at: null,
+    },
+  ];
+  /** The same two entries as the app reads them. */
+  const read = [
+    {
+      id: 'north-cold', name: 'North Cold Store', city: 'Rajkot', town: 'Rajkot', district: 'Rajkot',
+      origin: 'https://north-cold.example.test', operator: 'North Cold Store Private Limited',
+      online: true, lastSeenAt: '2026-10-14T06:00:00.000Z',
+    },
+    {
+      id: 'gondal', name: 'ગોંડલ કોલ્ડ સ્ટોરેજ', city: 'ગોંડલ', town: 'ગોંડલ', district: 'રાજકોટ',
+      origin: 'https://gondal.example.test', operator: 'Fictional Operator', online: false, lastSeenAt: null,
+    },
   ];
   const catalogue = (claims: Record<string, unknown> = {}, header: Record<string, unknown> = {}) =>
-    `${b64url({ alg: 'ES256', typ: 'facility-catalogue+jwt', kid: 'k1', ...header })}.${b64url({ iss: ORIGIN, iat: nowSeconds(), exp: nowSeconds() + 86400, facilities, ...claims })}.signature`;
+    `${b64url({ alg: 'ES256', typ: 'facility-catalogue+jwt', kid: 'k1', ...header })}.${b64url({ iss: ORIGIN, iat: nowSeconds(), exp: nowSeconds() + 900, facilities, ...claims })}.signature`;
+  const readOne = (entry: Record<string, unknown>) => readCatalogueToken(catalogue({ facilities: [entry] }), ORIGIN);
 
   it('reads the entries, in any script, without sign-in', async () => {
     serve({ 'GET /v1/facilities': { body: { catalogue: catalogue() } } });
     const result = await fetchFacilityCatalogue();
-    expect(result).toEqual({ ok: true, facilities });
+    expect(result).toEqual({ ok: true, facilities: read });
     expect(headersOf(calls('GET /v1/facilities')[0]).Authorization).toBeUndefined();
   });
 
-  it('is asked once in ten minutes unless a retry forces it', async () => {
+  it('asks past the phone\'s HTTP cache: the request says Cache-Control: no-cache', async () => {
     serve({ 'GET /v1/facilities': { body: { catalogue: catalogue() } } });
-    await fetchFacilityCatalogue();
-    await fetchFacilityCatalogue();
-    expect(calls('GET /v1/facilities')).toHaveLength(1);
     await fetchFacilityCatalogue({ force: true });
-    expect(calls('GET /v1/facilities')).toHaveLength(2);
+    const [call] = calls('GET /v1/facilities');
+    expect(headersOf(call)).toEqual({ Accept: 'application/json', 'Cache-Control': 'no-cache' });
+    expect((call[1] as RequestInit).redirect).toBe('error');
+  });
+
+  it('is asked once a minute unless a retry forces it', async () => {
+    const start = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      serve({ 'GET /v1/facilities': { body: { catalogue: catalogue() } } });
+      await fetchFacilityCatalogue();
+      clock.mockReturnValue(start + 59 * 1000);
+      await fetchFacilityCatalogue();
+      expect(calls('GET /v1/facilities')).toHaveLength(1);
+      clock.mockReturnValue(start + 61 * 1000);
+      await fetchFacilityCatalogue();
+      expect(calls('GET /v1/facilities')).toHaveLength(2);
+      // Pull to refresh and "Try again" never take the copy.
+      await fetchFacilityCatalogue({ force: true });
+      expect(calls('GET /v1/facilities')).toHaveLength(3);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it.each([
@@ -494,16 +534,34 @@ describe('catalogue', () => {
     });
   });
 
-  it('accepts an address with a port', () => {
+  it('reads an entry of the older catalogue (before central 0.8.0): no district, nothing reported about availability', () => {
     const withPort = { id: 'port', name: 'Port', city: 'Morbi', origin: 'https://port.example.test:8443', operator: '' };
-    expect(readCatalogueToken(catalogue({ facilities: [withPort] }), ORIGIN)).toEqual([withPort]);
+    expect(readOne(withPort)).toEqual([{ ...withPort, town: 'Morbi', district: '', online: null, lastSeenAt: null }]);
   });
 
-  it('checks the issuer against the configured issuer name, which may differ from the address called', () => {
-    expect(readCatalogueToken(catalogue({ iss: 'https://issuer.example.test' }), 'https://issuer.example.test')).toHaveLength(2);
+  it('takes the town for the city and the city for the town when only one is sent', () => {
+    const base = { name: 'Fictional Cold', origin: 'https://fictional.example.test', operator: '' };
+    expect(readOne({ ...base, id: 'town-only', town: 'Deesa', district: 'Banaskantha' })).toMatchObject([
+      { city: 'Deesa', town: 'Deesa', district: 'Banaskantha' },
+    ]);
+    expect(readOne({ ...base, id: 'city-only', city: 'Deesa', district: null })).toMatchObject([{ city: 'Deesa', town: 'Deesa', district: '' }]);
+    expect(readOne({ ...base, id: 'neither' })).toMatchObject([{ city: '', town: '', district: '' }]);
   });
 
-  it('drops an entry whose address is not a bare lower-case https origin, and a repeated address', () => {
+  it('keeps a member with no app server yet (origin null), and reports nothing about its availability', () => {
+    const member = {
+      id: 'gcsa-024', name: 'Fictional Sabar Cold', city: 'Himmatnagar', town: 'Himmatnagar', district: 'Sabarkantha',
+      origin: null, operator: 'Fictional Operator', online: true, last_seen_at: null,
+    };
+    expect(readOne(member)).toEqual([
+      {
+        id: 'gcsa-024', name: 'Fictional Sabar Cold', city: 'Himmatnagar', town: 'Himmatnagar', district: 'Sabarkantha',
+        origin: null, operator: 'Fictional Operator', online: null, lastSeenAt: null,
+      },
+    ]);
+  });
+
+  it('drops an entry whose address is missing or not a bare lower-case https origin (never shown as "no app server"), and a repeated address', () => {
     const token = catalogue({
       facilities: [
         facilities[0],
@@ -515,9 +573,43 @@ describe('catalogue', () => {
         { id: 'user', name: 'User', city: 'Morbi', origin: 'https://someone@user.example.test', operator: '' },
         { id: 'slash', name: 'Slash', city: 'Morbi', origin: 'https://slash.example.test/', operator: '' },
         { id: 'nameless', name: ' ', city: 'Morbi', origin: 'https://nameless.example.test', operator: '' },
+        { id: 'missing', name: 'Missing', city: 'Morbi', operator: '' },
+        { id: 'empty', name: 'Empty', city: 'Morbi', origin: '', operator: '' },
+        { id: 'number', name: 'Number', city: 'Morbi', origin: 42, operator: '' },
+        { id: '', name: 'No id', city: 'Morbi', origin: 'https://no-id.example.test', operator: '' },
       ],
     });
-    expect(readCatalogueToken(token, ORIGIN)).toEqual([facilities[0]]);
+    expect(readCatalogueToken(token, ORIGIN)).toEqual([read[0]]);
+  });
+
+  it('keeps the first of two entries with the same id, also when neither has an address', () => {
+    const member = { id: 'gcsa-001', name: 'First', city: 'Jamnagar', origin: null, operator: '' };
+    const token = catalogue({
+      facilities: [
+        member,
+        { ...member, name: 'Second' },
+        { ...facilities[0], id: 'gcsa-001', name: 'Third' },
+        facilities[1],
+      ],
+    });
+    expect(readCatalogueToken(token, ORIGIN)?.map(entry => entry.name)).toEqual(['First', 'ગોંડલ કોલ્ડ સ્ટોરેજ']);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['a string', 'true'],
+    ['a number', 1],
+    ['null', null],
+  ])('reports nothing about availability when `online` is %s', (_name, online) => {
+    expect(readOne({ ...facilities[0], online })).toMatchObject([{ online: null }]);
+  });
+
+  it.each([
+    ['not a date', 'yesterday'],
+    ['a number', 1760421600000],
+    ['empty', ''],
+  ])('reads no last-seen time when `last_seen_at` is %s', (_name, lastSeen) => {
+    expect(readOne({ ...facilities[0], last_seen_at: lastSeen })).toMatchObject([{ online: true, lastSeenAt: null }]);
   });
 });
 

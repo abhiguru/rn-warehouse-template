@@ -68,13 +68,15 @@ export default function FacilityCatalogueScreen() {
   );
 
   const pick = async (facility: CatalogueFacility) => {
-    if (picking || !userId) return;
+    const origin = facility.origin;
+    // A member with no app server yet has nothing to add or open.
+    if (picking || !userId || !origin) return;
     setPicking(true);
     try {
-      await addMyFacility(userId, { origin: facility.origin, name: facility.name, city: facility.city });
+      await addMyFacility(userId, { origin, name: facility.name, city: facility.town || facility.city });
       // The answer of the open is shown on My facilities.
       router.back();
-      void openFacility(facility.origin, facility.name);
+      void openFacility(origin, facility.name);
     } finally {
       setPicking(false);
     }
@@ -103,7 +105,7 @@ export default function FacilityCatalogueScreen() {
         <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
         {item.city ? <Text style={styles.city} numberOfLines={1}>{item.city}</Text> : null}
       </View>
-      {mine.has(item.origin) ? <StatusTag status="neutral" label={tr('central.catalogue.onYourList')} icon="check" /> : null}
+      {item.origin !== null && mine.has(item.origin) ? <StatusTag status="neutral" label={tr('central.catalogue.onYourList')} icon="check" /> : null}
       <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
     </Pressable>
   );
@@ -136,7 +138,7 @@ export default function FacilityCatalogueScreen() {
     body = (
       <FlatList
         data={shown}
-        keyExtractor={item => item.origin}
+        keyExtractor={item => item.id}
         renderItem={renderFacility}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
