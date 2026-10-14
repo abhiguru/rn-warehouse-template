@@ -56,6 +56,7 @@ import {
   type Draft,
   type EditorContext,
   type StartsOnChoice,
+  fieldOrder,
 } from '@/features/item-pricing/editModel';
 import { rateRights } from '@/features/item-pricing/rateRights';
 import { laterDialogText, plannedOnDay } from '@/features/item-pricing/laterRates';
