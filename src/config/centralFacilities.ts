@@ -178,13 +178,14 @@ export async function deleteMyFacilities(userId: string): Promise<void> {
 }
 
 /**
- * True when the list can be skipped at start: exactly one approved facility
- * and nothing else waiting (no request pending, no number to confirm).
+ * True when the list can be skipped at start: exactly one facility that can be
+ * opened (approved, or asking for its own code, which it will ask for when
+ * opened) and no request pending. Two openable facilities keep the list.
  */
 export function soleApprovedFacility(list: readonly MyFacility[]): MyFacility | null {
-  const approved = list.filter(entry => entry.status === 'approved');
-  const waiting = list.some(entry => entry.status === 'requested' || entry.status === 'link_needed');
-  return approved.length === 1 && !waiting ? approved[0] : null;
+  const openable = list.filter(entry => entry.status === 'approved' || entry.status === 'link_needed');
+  const waiting = list.some(entry => entry.status === 'requested');
+  return openable.length === 1 && !waiting ? openable[0] : null;
 }
 
 /**
