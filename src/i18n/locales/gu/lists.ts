@@ -13,7 +13,7 @@ export const lists: Translation<typeof source> = {
     matched: 'અહીં મળ્યું: {{matches}}',
     vehicle: 'વાહન {{number}}',
     grnRef: 'આવક પાવતી {{number}}',
-    colKgEach: 'નંગ દીઠ kg',
+    colKgEach: 'દરેકના kg',
     colQty: 'નંગ',
     colGrn: 'આવક',
   },

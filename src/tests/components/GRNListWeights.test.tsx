@@ -187,14 +187,14 @@ describe('GRN list card', () => {
     ]);
   });
 
-  it('says "નંગ દીઠ kg" and "દરેક ૫૦ કિલો" in Gujarati', async () => {
+  it('says "દરેકના kg" and "દરેક ૫૦ કિલો" in Gujarati', async () => {
     setLanguage('gu');
     const tree = await renderList([row('line-1', 'Potato', 100, 50)]);
 
     expand(tree, 1);
 
     const { header, rows, spoken } = table(tree);
-    expect(header[2]).toBe('નંગ દીઠ kg');
+    expect(header[2]).toBe('દરેકના kg');
     expect(rows[0][2]).toBe('૫૦');
     expect(spoken[0]).toContain('દરેક ૫૦ કિલો');
   });
