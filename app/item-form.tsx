@@ -27,6 +27,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
+import { ItemRateChoice, type RateChoice } from '@/features/item-pricing/components/ItemRateChoice';
+import type { PickableItem } from '@/features/item-pricing/components/ItemPickerSheet';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { matchingPackaging, normalizePackaging, usePackagingWords } from '@/features/items/packagingSuggestions';
 import { showToast } from '@/utils/toast';
@@ -59,11 +61,15 @@ const ItemFormScreen: React.FC = () => {
     active: true,
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
+  // Which rate the new item gets: the standard rate, or the rates of another item (required when chosen).
+  const [rateChoice, setRateChoice] = useState<RateChoice>('standard');
+  const [rateSource, setRateSource] = useState<PickableItem | null>(null);
+  const [rateSourceError, setRateSourceError] = useState<string | undefined>();
   const { groups, suggestions } = usePackagingWords();
 
   // Typed work is not thrown away without asking; an untouched form leaves at once.
   const hasChanges =
-    !!formData.name.trim() || !!formData.packaging.trim() || !!formData.description.trim() || !formData.active;
+    !!formData.name.trim() || !!formData.packaging.trim() || !!formData.description.trim() || !formData.active || rateChoice !== 'standard';
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges,
     title: tr('items.form.discardNewTitle'),
@@ -104,8 +110,9 @@ const ItemFormScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formData]);
+    setRateSourceError(rateChoice === 'item' && !rateSource ? tr('items.form.rateItemRequired') : undefined);
+    return Object.keys(newErrors).length === 0 && !(rateChoice === 'item' && !rateSource);
+  }, [formData, rateChoice, rateSource]);
 
   // Handle save
   const handleSave = async () => {
@@ -120,11 +127,22 @@ const ItemFormScreen: React.FC = () => {
         p_packaging: normalizePackaging(formData.packaging, groups) || undefined,
         p_description: formData.description.trim() || undefined,
         p_active: formData.active,
+        ...(rateChoice === 'item' && rateSource ? { p_rate_from_item: rateSource.id } : {}),
       });
 
       if (result.success) {
         leaveWithoutAsking(() => router.back());
-        showToast(tr('items.form.addedToast', { name: formData.name.trim() }));
+        const name = formData.name.trim();
+        const rateSourceDone = result.data?.rate_source;
+        showToast(
+          rateSourceDone === 'standard'
+            ? tr('items.form.addedStandardToast', { name })
+            : rateSourceDone === 'copied'
+              ? tr('items.form.addedCopiedToast', { name, item: rateSource?.name ?? '' })
+              : rateSourceDone === 'none'
+                ? tr('items.form.addedNoRateToast', { name })
+                : tr('items.form.addedToast', { name }),
+        );
       } else {
         // Check for duplicate name error
         if (result.message?.toLowerCase().includes('duplicate') ||
@@ -200,6 +218,16 @@ const ItemFormScreen: React.FC = () => {
               placeholder={tr('items.form.descriptionPlaceholder')}
               maxLength={40}
               error={errors.description}
+            />
+          </View>
+
+          <View style={styles.card}>
+            <ItemRateChoice
+              choice={rateChoice}
+              onChoice={choice => { setRateChoice(choice); setRateSourceError(undefined); }}
+              source={rateSource}
+              onSource={item => { setRateSource(item); setRateSourceError(undefined); }}
+              error={rateSourceError}
             />
           </View>
 

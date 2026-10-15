@@ -22,6 +22,12 @@ export interface Item {
   updated_at?: string;
 }
 
+/** Which rate a new item got (backend migration 85, create_item): the standard rate, a copy of another item's, or none. */
+export type ItemRateSource = 'standard' | 'copied' | 'none';
+
+/** An item as create_item answers: the item and which rate it got (absent from a server without migration 85). */
+export type CreatedItem = Item & { rate_source?: ItemRateSource };
+
 /**
  * Item list item (lightweight for list views)
  */
@@ -146,6 +152,8 @@ export interface CreateItemParams {
   p_packaging?: string;
   p_description?: string;
   p_active?: boolean;
+  /** Copy the default rates in force today of this item (backend migration 85); omitted: the standard rate. */
+  p_rate_from_item?: string;
 }
 
 /**

@@ -30,6 +30,8 @@ jest.mock('@/services/item-service', () => ({
   itemService: { getItemList: jest.fn(), getItemById: jest.fn(), createItem: jest.fn(), updateItem: jest.fn(), toggleItemActive: jest.fn(), deleteItem: jest.fn() },
 }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
+jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'loading', refresh: jest.fn(), key: 'k' }) }));
 
 function ItemsList() {
   return <Text>Items list</Text>;
