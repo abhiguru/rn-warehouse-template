@@ -18,6 +18,7 @@ import type { DispatchImageData } from '@/types/dispatch.types';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { mapWithConcurrency } from '@/utils/concurrency';
+import { rollbackPendingUpload } from '@/services/uploadRollback';
 import {
   holdLocalPhoto,
   localPhotoUploadEnded,
@@ -280,6 +281,44 @@ export const uploadDispatchImage = async (
       onProgress({ loaded: 40, total: 100, percentage: 40 });
     }
 
+    // Builds the success answer once the photo is attached (also used when a
+    // lost confirm answer is found to have committed).
+    const finishConfirmed = async (confirmedPath: string): Promise<ImageUploadResult> => {
+      // Generate signed URL for the uploaded image
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .createSignedUrl(confirmedPath, 3600); // 1 hour expiry
+
+      let finalImageUrl: string;
+      if (urlError || !urlData?.signedUrl) {
+        console.warn(
+          '[DispatchImageService] Could not create signed URL:',
+          urlError
+        );
+        finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${confirmedPath}`;
+      } else {
+        finalImageUrl = urlData.signedUrl;
+      }
+
+      // Progress: Complete
+      if (onProgress) {
+        onProgress({ loaded: 100, total: 100, percentage: 100 });
+      }
+
+      return {
+        success: true,
+        imageId: imageId,
+        imageUrl: finalImageUrl,
+        metadata: {
+          file_size: fileSize,
+          file_name: fileName,
+          mime_type: contentType,
+          uploadTimestamp: new Date().toISOString(),
+          storage_path: confirmedPath,
+        },
+      };
+    };
+
     try {
       // Step 2: Upload to storage
 
@@ -337,39 +376,7 @@ export const uploadDispatchImage = async (
         );
       }
 
-      // Generate signed URL for the uploaded image
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .createSignedUrl(storagePath, 3600); // 1 hour expiry
-
-      let finalImageUrl: string;
-      if (urlError || !urlData?.signedUrl) {
-        console.warn(
-          '[DispatchImageService] Could not create signed URL:',
-          urlError
-        );
-        finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`;
-      } else {
-        finalImageUrl = urlData.signedUrl;
-      }
-
-      // Progress: Complete
-      if (onProgress) {
-        onProgress({ loaded: 100, total: 100, percentage: 100 });
-      }
-
-      return {
-        success: true,
-        imageId: imageId,
-        imageUrl: finalImageUrl,
-        metadata: {
-          file_size: fileSize,
-          file_name: fileName,
-          mime_type: contentType,
-          uploadTimestamp: new Date().toISOString(),
-          storage_path: storagePath,
-        },
-      };
+      return await finishConfirmed(storagePath);
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record
       console.error(
@@ -377,24 +384,15 @@ export const uploadDispatchImage = async (
         uploadOrConfirmError
       );
 
-      try {
-        await supabase.rpc('cancel_dispatch_image_upload', {
-          p_image_id: imageId,
-        });
-      } catch (cancelError) {
-        console.warn(
-          '[DispatchImageService] Failed to cancel pending record:',
-          cancelError
-        );
-      }
-
-      try {
-        await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
-      } catch (removeError) {
-        console.warn(
-          '[DispatchImageService] Failed to remove partial upload:',
-          removeError
-        );
+      const rollback = await rollbackPendingUpload(supabase, {
+        rpc: 'cancel_dispatch_image_upload',
+        bucket: STORAGE_BUCKET,
+        imageId,
+        storagePath,
+      });
+      if (rollback.outcome === 'already_confirmed') {
+        // The confirm committed and only its answer was lost: the photo is attached.
+        return await finishConfirmed(rollback.storagePath ?? storagePath);
       }
 
       return {
@@ -541,21 +539,15 @@ const uploadSingleDeferredImage = async (
         uploadOrConfirmError
       );
 
-      try {
-        await supabase.rpc('cancel_dispatch_image_upload', {
-          p_image_id: imageId,
-        });
-      } catch (cancelError) {
-        console.warn('[DispatchImageService] Failed to cancel:', cancelError);
-      }
-
-      try {
-        await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
-      } catch (removeError) {
-        console.warn(
-          '[DispatchImageService] Failed to remove partial upload:',
-          removeError
-        );
+      const rollback = await rollbackPendingUpload(supabase, {
+        rpc: 'cancel_dispatch_image_upload',
+        bucket: STORAGE_BUCKET,
+        imageId,
+        storagePath,
+      });
+      if (rollback.outcome === 'already_confirmed') {
+        // The confirm committed and only its answer was lost: the photo is attached.
+        return { success: true };
       }
 
       return {

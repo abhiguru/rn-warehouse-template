@@ -23,6 +23,7 @@ import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 import { createLimiter } from '@/utils/concurrency';
+import { rollbackPendingUpload } from '@/services/uploadRollback';
 import {
   holdLocalPhoto,
   localPhotoUploadEnded,
@@ -276,6 +277,42 @@ export const uploadGRNImage = async (
       onProgress({ loaded: 40, total: 100, percentage: 40 });
     }
 
+    // Builds the success answer once the photo is attached (also used when a
+    // lost confirm answer is found to have committed).
+    const finishConfirmed = async (confirmedPath: string): Promise<ImageUploadResult> => {
+      // Generate signed URL for the uploaded image
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('grn-images')
+        .createSignedUrl(confirmedPath, 3600); // 1 hour expiry
+
+      let finalImageUrl: string;
+      if (urlError || !urlData?.signedUrl) {
+        log.warn('Could not create signed URL', loggableError(urlError));
+        // Use direct storage URL as fallback
+        finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${confirmedPath}`;
+      } else {
+        finalImageUrl = urlData.signedUrl;
+      }
+
+      // Progress: Complete
+      if (onProgress) {
+        onProgress({ loaded: 100, total: 100, percentage: 100 });
+      }
+
+      return {
+        success: true,
+        imageId: imageId,
+        imageUrl: finalImageUrl,
+        metadata: {
+          fileSize: fileSize,
+          fileName: fileName,
+          mimeType: contentType,
+          uploadTimestamp: new Date().toISOString(),
+          storagePath: confirmedPath,
+        },
+      };
+    };
+
     try {
       // Step 2: Upload binary file directly to Supabase Storage
 
@@ -326,51 +363,20 @@ export const uploadGRNImage = async (
         );
       }
 
-      // Generate signed URL for the uploaded image
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from('grn-images')
-        .createSignedUrl(storagePath, 3600); // 1 hour expiry
-
-      let finalImageUrl: string;
-      if (urlError || !urlData?.signedUrl) {
-        log.warn('Could not create signed URL', loggableError(urlError));
-        // Use direct storage URL as fallback
-        finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${storagePath}`;
-      } else {
-        finalImageUrl = urlData.signedUrl;
-      }
-
-      // Progress: Complete
-      if (onProgress) {
-        onProgress({ loaded: 100, total: 100, percentage: 100 });
-      }
-
-      return {
-        success: true,
-        imageId: imageId,
-        imageUrl: finalImageUrl,
-        metadata: {
-          fileSize: fileSize,
-          fileName: fileName,
-          mimeType: contentType,
-          uploadTimestamp: new Date().toISOString(),
-          storagePath: storagePath,
-        },
-      };
+      return await finishConfirmed(storagePath);
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
       log.error('Upload/confirm failed, rolling back', loggableError(uploadOrConfirmError));
 
-      try {
-        await supabase.rpc('cancel_grn_image_upload', { p_image_id: imageId });
-      } catch (cancelError) {
-        log.warn('Failed to cancel pending record', loggableError(cancelError));
-      }
-
-      try {
-        await supabase.storage.from('grn-images').remove([storagePath]);
-      } catch (removeError) {
-        log.warn('Failed to remove partial upload', loggableError(removeError));
+      const rollback = await rollbackPendingUpload(supabase, {
+        rpc: 'cancel_grn_image_upload',
+        bucket: 'grn-images',
+        imageId,
+        storagePath,
+      });
+      if (rollback.outcome === 'already_confirmed') {
+        // The confirm committed and only its answer was lost: the photo is attached.
+        return await finishConfirmed(rollback.storagePath ?? storagePath);
       }
 
       return {
@@ -677,16 +683,15 @@ const uploadSingleDeferredImage = async (
       // Rollback: Cancel the pending DB record and try to remove from storage
       log.error(`Upload/confirm failed for deferred ${imageType} image, rolling back`, loggableError(uploadOrConfirmError));
 
-      try {
-        await supabase.rpc('cancel_grn_image_upload', { p_image_id: imageId });
-      } catch (cancelError) {
-        log.warn(`Failed to cancel pending record for deferred ${imageType} image`, loggableError(cancelError));
-      }
-
-      try {
-        await supabase.storage.from('grn-images').remove([storagePath]);
-      } catch (removeError) {
-        log.warn(`Failed to remove partial upload for deferred ${imageType} image`, loggableError(removeError));
+      const rollback = await rollbackPendingUpload(supabase, {
+        rpc: 'cancel_grn_image_upload',
+        bucket: 'grn-images',
+        imageId,
+        storagePath,
+      });
+      if (rollback.outcome === 'already_confirmed') {
+        // The confirm committed and only its answer was lost: the photo is attached.
+        return { success: true };
       }
 
       return {

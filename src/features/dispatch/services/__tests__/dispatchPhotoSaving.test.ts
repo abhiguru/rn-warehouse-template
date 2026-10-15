@@ -4,14 +4,19 @@
  */
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { createDispatch } from '../dispatchFormService';
-import { uploadDeferredDispatchImages } from '../dispatchImageService';
+import { uploadDeferredDispatchImages, uploadDispatchImage } from '../dispatchImageService';
 import type { DispatchImageData } from '@/types/dispatch.types';
 import { localPhotoUploadEnded } from '@/utils/localPhotoFiles';
+import { compressPhoto } from '@/utils/photoCompression';
 
 jest.mock('@/config/supabaseConfig', () => ({
   beginOperatorMutation: jest.fn(() => jest.fn()),
   getAuthenticatedClient: jest.fn(),
   getCurrentConfig: () => ({ url: 'https://facility.invalid', anonKey: 'anon' }),
+}));
+jest.mock('@/utils/photoCompression', () => ({
+  ...jest.requireActual('@/utils/photoCompression'),
+  compressPhoto: jest.fn(),
 }));
 // The real registry, with the end of each upload watched.
 jest.mock('@/utils/localPhotoFiles', () => ({
@@ -170,4 +175,87 @@ it('never uploads the original file of a photo that is still being prepared or f
   const registered = rpc.mock.calls.filter(([name]) => name === 'register_dispatch_image_upload').map(([, args]) => (args as { p_file_name: string }).p_file_name);
   expect(registered).toEqual(['prepared.webp']);
   expect(outcome.failed).toEqual([prepared]);
+});
+
+// BR-05: a lost confirm answer must not cost a photo the server has attached.
+describe('rolling back a photo upload', () => {
+  const asset = { uri: 'file:///cache/truck.jpg', fileName: 'truck.jpg', width: 800, height: 600 } as never;
+  const flows: Array<[string, () => Promise<{ success: boolean; imageId?: string }>]> = [
+    ['immediate', () => uploadDispatchImage(asset, DISPATCH_ID)],
+    ['deferred', async () => ({ success: (await uploadDeferredDispatchImages(DISPATCH_ID, [photo('truck')])).uploadedCount === 1 })],
+  ];
+
+  /** register and storage upload succeed; the confirm and cancel answers are given by the test. */
+  function rollbackServer(confirm: () => unknown, cancel: () => unknown) {
+    const remove = jest.fn(async (paths: string[]) => ({ data: paths.map((name) => ({ name })), error: null }));
+    const rpc = jest.fn(async (name: string) => {
+      if (name === 'register_dispatch_image_upload')
+        return { data: { success: true, image_id: 'image-1', storage_path: 'path-1', upload_token: 'token' }, error: null };
+      if (name === 'confirm_dispatch_image_upload') return confirm();
+      if (name === 'cancel_dispatch_image_upload') return cancel();
+      return { data: null, error: { message: `unexpected ${name}` } };
+    });
+    const storage = {
+      from: () => ({
+        upload: async () => ({ error: null }),
+        createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null }),
+        remove,
+      }),
+    };
+    jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc, storage } as never);
+    return remove;
+  }
+  const lostConfirm = () => ({ data: null, error: { message: 'Network request failed' } });
+
+  beforeEach(() => {
+    jest.mocked(compressPhoto).mockResolvedValue({ uri: 'file:///cache/prepared.webp', fileSize: 1200, mimeType: 'image/webp', extension: '.webp' } as never);
+    (global as any).fetch = jest.fn(async () => ({ blob: async () => ({ size: 1200 }) }));
+    (global as any).FileReader = class {
+      result: ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      readAsArrayBuffer() {
+        this.result = new ArrayBuffer(8);
+        this.onload?.();
+      }
+    };
+  });
+
+  describe.each(flows)('%s upload', (name, run) => {
+    it('keeps the file when the cancel says the pending row was not found (old server)', async () => {
+      const remove = rollbackServer(lostConfirm, () => ({ data: { success: false, code: 'NOT_FOUND', error: 'Pending upload not found' }, error: null }));
+      const result = await run();
+      expect(remove).not.toHaveBeenCalled();
+      expect(result.success).toBe(false);
+    });
+
+    it('reports success and keeps the file when the cancel says the upload is already confirmed', async () => {
+      const remove = rollbackServer(lostConfirm, () => ({
+        data: { success: false, code: 'ALREADY_CONFIRMED', error: 'Upload already confirmed', image_id: 'image-1', storage_path: 'path-1' },
+        error: null,
+      }));
+      const result = await run();
+      expect(remove).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      if (name === 'immediate') expect(result.imageId).toBe('image-1');
+    });
+
+    it('removes the file once when the confirm was refused and the pending row was cancelled', async () => {
+      const remove = rollbackServer(
+        () => ({ data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null }),
+        () => ({ data: { success: true, storage_path: 'path-1' }, error: null })
+      );
+      const result = await run();
+      expect(remove.mock.calls).toEqual([[['path-1']]]);
+      expect(result.success).toBe(false);
+    });
+
+    it('keeps the file when the cancel itself throws', async () => {
+      const remove = rollbackServer(lostConfirm, () => {
+        throw new Error('Network request failed');
+      });
+      const result = await run();
+      expect(remove).not.toHaveBeenCalled();
+      expect(result.success).toBe(false);
+    });
+  });
 });

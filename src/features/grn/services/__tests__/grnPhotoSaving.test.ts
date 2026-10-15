@@ -8,6 +8,7 @@
 import { createGRN, updateGRN } from '../grnFormService';
 import {
   uploadGRNPhotos,
+  uploadGRNImage,
   collectDeferredGRNPhotos,
   unpreparedGRNPhotos,
   GRN_PHOTO_UPLOAD_CONCURRENCY,
@@ -52,6 +53,7 @@ jest.mock('@/config/supabaseConfig', () => ({
           mockCalls.push({ name: 'storage.upload', args: path });
           return mockUploadHook ? mockUploadHook(path) : { error: null };
         },
+        createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null }),
         remove: async (paths: string[]) => {
           mockCalls.push({ name: 'storage.remove', args: paths });
           return { data: paths.map((name) => ({ name })), error: null };
@@ -59,6 +61,10 @@ jest.mock('@/config/supabaseConfig', () => ({
       }),
     },
   }),
+}));
+jest.mock('@/utils/photoCompression', () => ({
+  ...jest.requireActual('@/utils/photoCompression'),
+  compressPhoto: async () => ({ uri: 'file:///cache/prepared.webp', fileSize: 1200, mimeType: 'image/webp', extension: '.webp' }),
 }));
 jest.mock('expo-image-manipulator', () => ({ SaveFormat: { WEBP: 'webp' }, manipulateAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({ File: jest.fn() }));
@@ -806,5 +812,68 @@ describe('the GRN date goes to the server as a calendar day', () => {
     });
     await updateGRN(GRN_ID, { header: header([]), items: [line(LINE_ID, 'Example Potatoes')] });
     expect(callsTo('update_grn')[0].args.p_date).toBe('2026-10-01');
+  });
+});
+
+// BR-05: a lost confirm answer must not cost a photo the server has attached.
+describe('rolling back a photo upload', () => {
+  const asset = { uri: 'file:///cache/book.jpg', fileName: 'book.jpg', width: 800, height: 600 } as any;
+  const pending = [{ image: picked('book'), imageType: 'header' as const, position: 1 }];
+  const flows: Array<[string, () => Promise<{ success: boolean; imageId?: string; error?: string }>]> = [
+    ['immediate', () => uploadGRNImage(asset, GRN_ID, 'header')],
+    [
+      'deferred',
+      async () => {
+        const outcome = await uploadGRNPhotos(GRN_ID, pending);
+        return { success: outcome.failed.length === 0 && outcome.uploadedCount === 1 };
+      },
+    ],
+  ];
+  const lostConfirm = () => {
+    mockRpcHandlers.confirm_grn_image_upload = () => ({ data: null, error: { message: 'Network request failed' } });
+  };
+  const removals = () => callsTo('storage.remove');
+
+  describe.each(flows)('%s upload', (_name, run) => {
+    it('keeps the file when the cancel says the pending row was not found (old server)', async () => {
+      lostConfirm();
+      mockRpcHandlers.cancel_grn_image_upload = () => ({
+        data: { success: false, code: 'NOT_FOUND', error: 'Pending upload not found' },
+        error: null,
+      });
+      const result = await run();
+      expect(removals()).toEqual([]);
+      expect(result.success).toBe(false);
+    });
+
+    it('reports success and keeps the file when the cancel says the upload is already confirmed', async () => {
+      lostConfirm();
+      mockRpcHandlers.cancel_grn_image_upload = () => ({
+        data: { success: false, code: 'ALREADY_CONFIRMED', error: 'Upload already confirmed', image_id: 'image-1', storage_path: 'path-1' },
+        error: null,
+      });
+      const result = await run();
+      expect(removals()).toEqual([]);
+      expect(result.success).toBe(true);
+      if (_name === 'immediate') expect(result.imageId).toBe('image-1');
+    });
+
+    it('removes the file once when the confirm was refused and the pending row was cancelled', async () => {
+      mockRpcHandlers.confirm_grn_image_upload = () => ({ data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null });
+      mockRpcHandlers.cancel_grn_image_upload = () => ({ data: { success: true, storage_path: 'path-1' }, error: null });
+      const result = await run();
+      expect(removals().map((call) => call.args)).toEqual([['path-1']]);
+      expect(result.success).toBe(false);
+    });
+
+    it('keeps the file when the cancel itself throws', async () => {
+      lostConfirm();
+      mockRpcHandlers.cancel_grn_image_upload = () => {
+        throw new Error('Network request failed');
+      };
+      const result = await run();
+      expect(removals()).toEqual([]);
+      expect(result.success).toBe(false);
+    });
   });
 });
