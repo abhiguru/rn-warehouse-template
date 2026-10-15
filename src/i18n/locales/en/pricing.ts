@@ -223,7 +223,9 @@ export const pricing = {
   error: {
     generic: "Couldn't save the rate. Try again.",
     unconfirmed: "We couldn't confirm that the rate was saved. Close this screen and check the item page before you try again.",
-    invalidDate: 'Choose a start date within three years before today and two years after.',
+    invalidDate: 'Choose a day on or after {{date}}, the date of your oldest GRN.',
+    invalidDateWindow: 'Choose a start date within three years before today and two years after.',
+    startTooFar: 'Choose a start date within two years after today.',
     pastDateNotAllowed: 'Only an administrator or supervisor can start a rate in the past.',
     rateInForceManagerOnly: 'Only an administrator or supervisor can change a rate that is already in force.',
     itemNotFound: 'This item is no longer active.',

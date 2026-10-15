@@ -12,13 +12,15 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { parseLocalISODate, toLocalISODate } from '@/utils/formatters';
-import { START_DAYS_AHEAD, START_DAYS_BACK, startChips, type StartsOnChoice } from '../editModel';
+import { START_DAYS_AHEAD, startChips, startFloor, type StartsOnChoice } from '../editModel';
 import { addDays, dateText } from '../rateText';
 
 interface Props {
   choice: StartsOnChoice | null;
   day: string | null;
   today: string;
+  /** The earliest day the calendar offers (the oldest GRN's day); absent: three years before today. */
+  earliest?: string | null;
   /** Admin and supervisor may start a rate in the past (up to three years back). */
   canStartInPast: boolean;
   /** An invoice line's goods-received day, offered as the first chip when it is before today. */
@@ -38,12 +40,12 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function StartsOnField({ choice, day, today, canStartInPast, receivedDay, fixed, error, onChange }: Props) {
+export function StartsOnField({ choice, day, today, earliest, canStartInPast, receivedDay, fixed, error, onChange }: Props) {
   const styles = useThemedStyles(makeStyles);
   const chips = startChips(today);
   const nextMonth = chips.find(c => c.id === 'nextMonth')?.day ?? today;
-  // The server's window, in days (1095 back, 730 ahead), not calendar years: a 29 Feb is inside it.
-  const minimumDate = parseLocalISODate(canStartInPast ? addDays(today, -START_DAYS_BACK) : today);
+  // The server's window: from the oldest GRN's day (older servers: 1095 days back) to 730 days ahead.
+  const minimumDate = parseLocalISODate(canStartInPast ? startFloor(today, earliest) : today);
   const maximumDate = parseLocalISODate(addDays(today, START_DAYS_AHEAD));
 
   const label = (

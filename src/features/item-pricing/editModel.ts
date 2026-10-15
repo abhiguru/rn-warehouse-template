@@ -75,6 +75,8 @@ export interface EditorContext {
   originalStart: string | null;
   /** The bands, labour and tax were taken from the default rate (shows the copy note). */
   copied: boolean;
+  /** The earliest day a rate may start (the oldest GRN's day); absent: three years before today. */
+  earliestStart?: string | null;
   /** Set when the editor was opened from an invoice line. */
   invoice: null | { customerName: string | null; grnDate: string; staff: boolean; mixedDays: boolean };
 }
@@ -88,13 +90,22 @@ const day = (value: string | null | undefined): string => (value ? value.slice(0
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 const two = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 
-/** The server accepts a start from three years before today (1095 days) to two years after (730 days). */
+/**
+ * The server accepts a start from the day of the facility's oldest GRN (`earliest_start` of the rates
+ * read, migration 86) to two years after today (730 days). A server that does not send the floor is an
+ * older one: it allowed three years before today (1095 days), which is the fallback.
+ */
 export const START_DAYS_BACK = 1095;
 export const START_DAYS_AHEAD = 730;
 
+/** The earliest day a rate may start. */
+export function startFloor(today: string, earliest?: string | null): string {
+  return earliest || addDays(today, -START_DAYS_BACK);
+}
+
 /** True when `startsOn` is a day the server accepts as a start (INVALID_DATE otherwise). */
-export function dayInWindow(startsOn: string, today: string): boolean {
-  return startsOn >= addDays(today, -START_DAYS_BACK) && startsOn <= addDays(today, START_DAYS_AHEAD);
+export function dayInWindow(startsOn: string, today: string, earliest?: string | null): boolean {
+  return startsOn >= startFloor(today, earliest) && startsOn <= addDays(today, START_DAYS_AHEAD);
 }
 
 /** A whole number of kilograms typed as digits only, else null. */
@@ -470,9 +481,11 @@ interface OpenArgs {
   rows: ItemStoragePrice[];
   role: string | null | undefined;
   today: string;
+  /** `earliest_start` of the rates read, when the server sent it. */
+  earliest?: string | null;
 }
 
-export function initialDraft({ mode: asked, params, rows, role, today }: OpenArgs): { draft: Draft; context: EditorContext } {
+export function initialDraft({ mode: asked, params, rows, role, today, earliest }: OpenArgs): { draft: Draft; context: EditorContext } {
   const rights = rateRights(role);
   const customerId = params.customer_id || null;
   const itemName = params.item_name || rows[0]?.item_name || '';
@@ -498,6 +511,7 @@ export function initialDraft({ mode: asked, params, rows, role, today }: OpenArg
     customerName,
     today,
     canStartInPast: rights.canStartInPast,
+    earliestStart: earliest ?? null,
     managerOnly: false,
     plannedGone: false,
     rows,
@@ -622,8 +636,10 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
     errors.startsOn = t('pricing.edit.chooseDate');
   } else if (ctx.mode !== 'correct' && !ctx.canStartInPast && draft.startsOn < ctx.today) {
     errors.startsOn = t('pricing.error.pastDateNotAllowed');
-  } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today)) {
-    errors.startsOn = t('pricing.error.invalidDate');
+  } else if (ctx.mode !== 'correct' && draft.startsOn < startFloor(ctx.today, ctx.earliestStart)) {
+    errors.startsOn = t('pricing.error.invalidDate', { date: dateText(startFloor(ctx.today, ctx.earliestStart)) });
+  } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today, ctx.earliestStart)) {
+    errors.startsOn = t('pricing.error.startTooFar');
   } else if (
     ctx.mode === 'upcoming' && !ctx.canStartInPast && ctx.originalStart !== null &&
     draft.startsOn !== ctx.originalStart && draft.startsOn <= ctx.today

@@ -6,6 +6,7 @@
 import type { UnknownAction } from '@reduxjs/toolkit';
 import { queryClient } from '@/lib/queryClient';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
+import { clearRateStartFloor } from '@/services/rateStartFloor';
 import { resetForm as resetGrn } from './slices/grnFormSlice';
 import { resetForm as resetDispatch } from './slices/dispatchFormSlice';
 import { resetForm as resetInvoice } from './slices/invoiceFormSlice';
@@ -37,6 +38,7 @@ export async function clearSessionScopedState(
   // The rates cached for Item pricing belong to this session's facility and person.
   clearItemRatesCache();
   clearStandardRateCache();
+  clearRateStartFloor();
   await clearAllCaches();
   // Photos seen in this session must not stay on the phone for the next one.
   await clearImageCaches();

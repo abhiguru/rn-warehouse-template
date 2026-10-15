@@ -37,6 +37,7 @@ import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { listItemRates, replaceItemRates } from '@/services/item-pricing-service';
+import { getRateStartFloor } from '@/services/rateStartFloor';
 import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
 import { showToast } from '@/utils/toast';
@@ -132,7 +133,7 @@ const RateEditorScreen: React.FC = () => {
     listItemRates(params.item_id).then(
       rows => {
         if (!live) return;
-        const opened = initialDraft({ mode: params.mode ?? 'change', params, rows, role, today: todayDay() });
+        const opened = initialDraft({ mode: params.mode ?? 'change', params, rows, role, today: todayDay(), earliest: getRateStartFloor() });
         // The Add button of the list asks for one more empty band; `initial` stays without it, so leaving untouched asks first.
         const draft = params.add_band === '1' ? appendEmptyBand(opened.draft) : opened.draft;
         setLoaded({ state: 'ready', draft, initial: opened.draft, context: opened.context });
@@ -305,6 +306,14 @@ const RateEditorScreen: React.FC = () => {
       if (result.outcomeUnknown) {
         // The change may be saved: the pages behind read the item again.
         notifyRatesChanged(ctx.itemId);
+      }
+      if (result.errorCode === 'INVALID_DATE') {
+        // The day is outside what the server accepts: say so at the field, and learn the oldest allowed day from the answer.
+        const earliest = result.earliest;
+        if (earliest) setLoaded(cur => (cur.state === 'ready' ? { ...cur, context: { ...cur.context, earliestStart: earliest } } : cur));
+        setErrors(current => ({ ...current, startsOn: result.message ?? '' }));
+        scrollToError('startsOn');
+        return;
       }
       if (result.errorCode === 'PAST_DATE_NOT_ALLOWED' && ctx.mode === 'upcoming' && !ctx.canStartInPast) {
         setStrip(t('pricing.edit.err.moveAfterToday'));
@@ -493,6 +502,7 @@ const RateEditorScreen: React.FC = () => {
             choice={current.startsOnChoice}
             day={current.startsOn}
             today={ctx.today}
+            earliest={ctx.earliestStart}
             canStartInPast={ctx.canStartInPast}
             receivedDay={ctx.invoice && ctx.mode === 'addCustomer' ? ctx.invoice.grnDate : null}
             fixed={current.startsOnChoice === 'fixed'}

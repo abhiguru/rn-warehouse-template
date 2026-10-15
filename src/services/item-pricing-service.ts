@@ -33,8 +33,11 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
+import { formatDate } from '@/utils/formatters';
 import type { TranslationKey } from '@/i18n';
 import { failureText, serverText } from '@/utils/serverText';
+
+import { rememberRateStartFloor } from './rateStartFloor';
 
 const itemPricingLogger = createLogger('ItemPricingService');
 
@@ -161,6 +164,12 @@ export const getItemStoragePrices = async (
         hasMoreItems(rawPagination.offset ?? (params.p_offset || 0), rawPagination.limit ?? (params.p_limit || PAGINATION.DEFAULT_LIMIT), totalCount),
     };
 
+    // Backend migration 86 adds the earliest day a rate may start to every rates read. `data` is the row
+    // list, so it comes beside it (an object `data` or the pagination block are accepted as well).
+    const asObject = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+    const earliest = responseData.earliest_start ?? asObject(responseData.data)?.earliest_start ?? (rawPagination as Record<string, unknown>).earliest_start;
+    rememberRateStartFloor(earliest);
+
     return {
       success: true,
       data: items,
@@ -279,7 +288,6 @@ export const getItemPriceHistory = async (
 
 const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   INVALID_PRICE_TYPE: 'pricing.error.generic',
-  INVALID_DATE: 'pricing.error.invalidDate',
   PAST_DATE_NOT_ALLOWED: 'pricing.error.pastDateNotAllowed',
   RATE_IN_FORCE_MANAGER_ONLY: 'pricing.error.rateInForceManagerOnly',
   ITEM_NOT_FOUND: 'pricing.error.itemNotFound',
@@ -311,6 +319,12 @@ const mapRateError = (
   if (error.code === '42501' || text.includes('access required')) return { code: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') };
   return { code: 'UNKNOWN', message: t('pricing.error.generic') };
 };
+
+/** INVALID_DATE: names the oldest day that is allowed when the server sends it (`data.earliest`, migration 86). */
+const invalidDateText = (details: { earliest?: unknown }): string =>
+  typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)
+    ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10), 'medium') })
+    : t('pricing.error.invalidDateWindow');
 
 const RATE_FIELDS = ['unit_price', 'labour_rate', 'tax_percent'] as const;
 
@@ -367,7 +381,7 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       | {
           success?: unknown;
           error_code?: unknown;
-          data?: { index?: unknown; field?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
+          data?: { index?: unknown; field?: unknown; earliest?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
         }
       | null;
 
@@ -385,8 +399,10 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
         extra.field = details.field as ReplaceRatesResult['field'];
       }
+      if (typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)) extra.earliest = details.earliest.slice(0, 10);
       if (Array.isArray(details.later)) extra.later = details.later as ReplaceRatesResult['later'];
       if (code === 'LATER_RATES_EXIST') return rateFailure(code, undefined, extra);
+      if (code === 'INVALID_DATE') return rateFailure(code, invalidDateText(details), extra);
       if (code === 'PERMISSION_DENIED') return rateFailure(code, t('errors.parsed.noPermission'), extra);
       if (key) return rateFailure(code, t(key), extra);
       return rateFailure('UNKNOWN', t('pricing.error.generic'), extra);
@@ -444,7 +460,7 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     }
 
     const response = unwrapArrayResponse(data) as
-      | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown } | null }
+      | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown; earliest?: unknown } | null }
       | null;
     if (!response || typeof response !== 'object') return failure('UNKNOWN', t('pricing.error.generic'));
 
@@ -452,6 +468,7 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
       handleGlobalAuthError(response);
       const code = String(response.error_code ?? '') as RateErrorCode;
       if (code === 'PERMISSION_DENIED') return failure(code, t('errors.parsed.noPermission'));
+      if (code === 'INVALID_DATE') return failure(code, invalidDateText(response.data ?? {}));
       const key = RATE_ERROR_KEYS[code];
       return key ? failure(code, t(key)) : failure('UNKNOWN', t('pricing.error.generic'));
     }

@@ -219,6 +219,8 @@ export interface ReplaceRatesResult {
   /** INVALID_BAND / INVALID_AMOUNT: which band and field the server named. */
   bandIndex?: number;
   field?: 'unit_price' | 'labour_rate' | 'tax_percent';
+  /** INVALID_DATE (migration 86): the earliest day a rate may start (the day of the oldest GRN). */
+  earliest?: string;
   /** LATER_RATES_EXIST: the later rates the server found. */
   later?: { effective_from: string; weight_min: number; weight_max: number; unit_price: number }[];
   /** Success: the last day the server kept for the new rates (a scheduled stop); null when it kept none; absent when it did not say. */
