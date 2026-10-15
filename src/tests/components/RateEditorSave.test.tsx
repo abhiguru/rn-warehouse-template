@@ -17,6 +17,7 @@ import { chip, cuminRows, rate, garlicRows, inputsWithLabel, textsOf } from '@/t
 import RateEditorScreen from '../../../app/item-rates/edit';
 
 let mockParams: Record<string, string> = {};
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>

@@ -85,16 +85,17 @@ it('shows what each band is now under its rent', async () => {
   expect(rent.map(n => n.props.helperText)).toEqual(['Now ₹6.00', 'Now ₹9.50']);
 });
 
-it('splits the last band and removes a band by its button', async () => {
+it('adds an empty band after the last and removes a band by its button', async () => {
   const t = await mount();
   const add = t.root.findAll(n => n.props.accessibilityLabel === 'Add weight band' || n.props.children === 'Add weight band')[0];
   expect(add).toBeDefined();
   await act(async () => { t.root.findAll(n => typeof n.props.onPress === 'function' && n.props.children === 'Add weight band')[0].props.onPress(); });
-  expect(latest.bands.map(b => b.upTo)).toEqual(['40', '70', '100']);
-  const remove = t.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Remove the 71 to 100 kg band');
+  expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
+  expect(texts(t)).toContain('From 101 kg');
+  const remove = t.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Remove the From 101 kg band');
   expect(remove.length).toBeGreaterThan(0);
   await act(async () => { remove[0].props.onPress(); });
-  // The band before takes over the weights of the one removed.
+  // The band just added has no weights to hand over: the band before keeps its own.
   expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100']);
 });
 

@@ -148,6 +148,11 @@ export const pricing = {
     empty: 'No customers match "{{search}}". Try part of the name or the mobile number.',
     detail: '{{city}} · {{mobile}}',
   },
+  itemPicker: {
+    placeholder: 'Search items',
+    initial: 'Type part of the item name.',
+    empty: 'No items match "{{search}}".',
+  },
   form: {
     weightRange: 'Weight range',
     priceType: 'Price type',

@@ -254,24 +254,38 @@ export function setBandField(draft: Draft, index: number, field: 'rent' | 'labou
   return { ...draft, bands: draft.bands.map((b, i) => (i === index ? { ...b, [field]: text } : b)) };
 }
 
-/** Splits the last band in half; the rent (and labour, tax) is copied. Unchanged when it cannot be split. */
-export function splitLastBand(draft: Draft): Draft {
-  const last = draft.bands.length - 1;
-  const from = fromOf(draft, last);
-  const upTo = wholeKg(draft.bands[last]?.upTo);
-  if (draft.bands.length >= MAX_BANDS || from === null || upTo === null || upTo - from < 1) return draft;
-  const mid = Math.floor((from + upTo) / 2);
-  const band = draft.bands[last];
-  const { gapFrom: _gap, fromText: _text, ...rest } = band;
-  return { ...draft, bands: [...draft.bands.slice(0, last), { ...band, upTo: String(mid) }, { ...rest, upTo: String(upTo) }] };
+/** Why "Add weight band" cannot add one now: ten bands already, or the last "Up to" is not a whole number yet. */
+export function appendBandBlock(draft: Draft): 'max' | 'upTo' | null {
+  if (draft.bands.length >= MAX_BANDS) return 'max';
+  if (wholeKg(draft.bands[draft.bands.length - 1]?.upTo) === null) return 'upTo';
+  return null;
 }
 
-/** Removes a band; the band before takes over its weights (the first band's weights go to the next). */
+/**
+ * Adds an empty band after the last one (it starts one kg above where the last ends). Labour and tax
+ * are copied from the first band when each band keeps its own, as withBandFor does. Unchanged at ten
+ * bands and while the last "Up to" is not a whole number.
+ */
+export function appendEmptyBand(draft: Draft): Draft {
+  if (appendBandBlock(draft) !== null) return draft;
+  const first = draft.bands[0];
+  const fresh: BandDraft = {
+    upTo: '',
+    rent: '',
+    ...(draft.bands.some(b => b.labour !== undefined) ? { labour: first.labour ?? '', tax: first.tax ?? '' } : {}),
+  };
+  return { ...draft, bands: [...draft.bands, fresh] };
+}
+
+/**
+ * Removes a band; the band before takes over its weights (the first band's weights go to the next).
+ * A band whose "Up to" is still empty (just added) has no weights to hand over: the band before keeps its own.
+ */
 export function removeBand(draft: Draft, index: number): Draft {
   if (draft.bands.length < 2 || index < 0 || index >= draft.bands.length) return draft;
   const removed = draft.bands[index];
   const bands = draft.bands.filter((_, i) => i !== index);
-  if (index > 0) bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
+  if (index > 0 && removed.upTo.trim() !== '') bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
   return { ...draft, bands };
 }
 
@@ -303,6 +317,16 @@ function draftFromRows(rows: ItemStoragePrice[], priceType: PriceType, keepRent 
     labour: two(first.labour_rate),
     tax: taxText(first.tax_percent),
   };
+}
+
+/**
+ * The draft with the bands, labour and tax of another item's default rate (its rows in force,
+ * one price type). The start day the person chose stays. Unchanged when the other item has no rows.
+ */
+export function copyTiersFrom(draft: Draft, rows: ItemStoragePrice[]): Draft {
+  if (rows.length === 0) return draft;
+  const sorted = [...rows].sort((a, b) => a.weight_min - b.weight_min);
+  return { ...draftFromRows(sorted, draft.priceType, true, true), startsOn: draft.startsOn, startsOnChoice: draft.startsOnChoice };
 }
 
 /** One band 0-100 and nothing else filled in. */

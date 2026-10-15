@@ -412,6 +412,11 @@ export function SearchableBottomSheet<T extends { id: string }>({
     }
   }, [currentValue, isVisible, performSearchNow]);
 
+  // A sheet that searches from zero letters (minQueryLength 0) lists everything as soon as it opens.
+  useEffect(() => {
+    if (isVisible && minQueryLength === 0 && !currentValue?.name) void performSearchNow('');
+  }, [isVisible, minQueryLength, currentValue, performSearchNow]);
+
   return (
     <BottomSheetModal
       ref={bottomSheetRef}

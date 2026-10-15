@@ -18,6 +18,7 @@ let mockRole = 'admin';
 let mockParams: Record<string, string> = {};
 let mockOffline = false;
 import { listItemRates } from '@/services/item-pricing-service';
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
@@ -271,13 +272,18 @@ describe('States', () => {
 
 // CR-19
 describe('Add weight band', () => {
-  it('is disabled with a reason when the last band cannot be split, and works otherwise', async () => {
+  it('appends an empty band after the last, and is disabled with a reason until the last "Up to" is a whole number', async () => {
     const t = await open({ mode: 'change', item_id: 'garlic', price_type: 'monthly' }, garlicRows());
     const add = () => t.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function');
     expect(add().props.disabled).toBe(false);
-    await act(async () => { inputsWithLabel(t, 'Up to')[1].props.onChangeText('41'); });
-    await act(async () => { inputsWithLabel(t, 'Up to')[1].props.onChangeText(''); });
+    expect(inputsWithLabel(t, 'Up to')).toHaveLength(2);
+    await act(async () => { add().props.onPress(); });
+    // The new band starts at 101 kg and has an empty "Up to"; adding another waits for it.
+    expect(inputsWithLabel(t, 'Up to').map(n => n.props.value)).toEqual(['40', '100', '']);
+    expect(textsOf(t)).toContain('From 101 kg');
     expect(add().props.disabled).toBe(true);
-    expect(textsOf(t)).toContain("This band can't be split. Enter an \"Up to\" weight at least 1 kg above where it starts.");
+    expect(textsOf(t)).toContain('Enter the "Up to" weight of the last band first.');
+    await act(async () => { inputsWithLabel(t, 'Up to')[2].props.onChangeText('150'); });
+    expect(add().props.disabled).toBe(false);
   });
 });

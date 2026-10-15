@@ -150,6 +150,11 @@ export const pricing: Translation<typeof source> = {
     empty: '"{{search}}" સાથે કોઈ વેપારી મળતો નથી. નામનો ભાગ અથવા મોબાઇલ નંબર અજમાવો.',
     detail: '{{city}} · {{mobile}}',
   },
+  itemPicker: {
+    placeholder: 'આઇટમ શોધો',
+    initial: 'આઇટમના નામનો ભાગ લખો.',
+    empty: '"{{search}}" સાથે કોઈ આઇટમ મળતી નથી.',
+  },
   form: {
     weightRange: 'વજનની મર્યાદા',
     priceType: 'દરનો પ્રકાર',

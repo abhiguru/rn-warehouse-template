@@ -15,7 +15,9 @@ import {
   setPriceType,
   setStartsOn,
   setUpTo,
-  splitLastBand,
+  appendEmptyBand,
+  appendBandBlock,
+  copyTiersFrom,
   startChips,
   stopChips,
   summaryLines,
@@ -128,21 +130,57 @@ describe('weight bands', () => {
     expect(draft.bands[0].upTo).toBe('40');
   });
 
-  it('splits the last band in half and copies the rent', () => {
+  it('appends an empty band that starts one kilogram above the last, and leaves the others alone', () => {
     const one = open('change', { item_id: CUMIN, price_type: 'monthly' }, cuminRows).draft;
-    const split = splitLastBand(one);
-    expect(split.bands.map(b => [fromOf(split, split.bands.indexOf(b)), b.upTo, b.rent])).toEqual([
-      [0, '50', '11.00'],
-      [51, '100', '11.00'],
+    const added = appendEmptyBand(one);
+    expect(added.bands.map(b => [fromOf(added, added.bands.indexOf(b)), b.upTo, b.rent])).toEqual([
+      [0, '100', '11.00'],
+      [101, '', ''],
     ]);
+    expect(one.bands).toHaveLength(1);
   });
 
-  it('does not split a band that is one kilogram wide, and stops at ten bands', () => {
-    const narrow = { ...open('change', { item_id: CUMIN }, cuminRows).draft, bands: [{ upTo: '0', rent: '1' }] };
-    expect(splitLastBand(narrow)).toBe(narrow);
-    let many = { ...open('change', { item_id: CUMIN }, cuminRows).draft, bands: [{ upTo: '5000', rent: '1.00' }] };
-    for (let i = 0; i < 12; i += 1) many = splitLastBand(many);
+  it('gives the new band the labour and tax of the first when each band keeps its own', () => {
+    const per = { ...draft, bands: draft.bands.map((b, i) => ({ ...b, labour: i === 0 ? '2.50' : '3.00', tax: i === 0 ? '5' : '12' })) };
+    expect(appendEmptyBand(per).bands[2]).toEqual({ upTo: '', rent: '', labour: '2.50', tax: '5' });
+    // A draft that shares one labour and tax gives the new band neither.
+    expect(appendEmptyBand(draft).bands[2]).toEqual({ upTo: '', rent: '' });
+  });
+
+  it('adds nothing while the last "Up to" is not a whole number, and stops at ten bands', () => {
+    const one = open('change', { item_id: CUMIN }, cuminRows).draft;
+    const blank = { ...one, bands: [{ upTo: '', rent: '1' }] };
+    expect(appendBandBlock(blank)).toBe('upTo');
+    expect(appendEmptyBand(blank)).toBe(blank);
+    const typed = { ...one, bands: [{ upTo: '40.5', rent: '1' }] };
+    expect(appendEmptyBand(typed)).toBe(typed);
+    let many = { ...one, bands: [{ upTo: '5', rent: '1.00' }] };
+    for (let i = 0; i < 12; i += 1) {
+      many = appendEmptyBand(many);
+      many = { ...many, bands: many.bands.map((b, j) => (b.upTo === '' ? { ...b, upTo: String(10 * (j + 1)) } : b)) };
+    }
     expect(many.bands).toHaveLength(10);
+    expect(appendBandBlock(many)).toBe('max');
+    expect(appendEmptyBand(many)).toBe(many);
+  });
+
+  it('replaces the bands, labour and tax with those of another item and keeps the start day', () => {
+    const chosen = setStartsOn(draft, 'nextMonth', '2026-11-01');
+    const other = [
+      { ...cuminRows[0], weight_min: 11, weight_max: 20, unit_price: 4, labour_rate: 1.5, tax_percent: 5 },
+      { ...cuminRows[0], weight_min: 0, weight_max: 10, unit_price: 3, labour_rate: 1, tax_percent: 5 },
+    ];
+    const copied = copyTiersFrom(chosen, other);
+    expect(copied.bands.map(b => [b.upTo, b.rent, b.labour, b.tax])).toEqual([['10', '3.00', '1.00', '5'], ['20', '4.00', '1.50', '5']]);
+    expect(copied.firstFrom).toBe(0);
+    expect([copied.startsOn, copied.startsOnChoice]).toEqual(['2026-11-01', 'nextMonth']);
+    expect(copied.priceType).toBe(chosen.priceType);
+    expect(copyTiersFrom(chosen, [])).toBe(chosen);
+  });
+
+  it('removing a band that was just added (no "Up to" yet) leaves the band before as it was', () => {
+    const added = appendEmptyBand(draft);
+    expect(removeBand(added, 2).bands.map(b => b.upTo)).toEqual(['40', '100']);
   });
 
   it('removing the last band gives its weights to the band before', () => {
@@ -342,7 +380,7 @@ describe('hasChanges', () => {
     expect(hasChanges({ ...draft, bands: [{ upTo: '100', rent: '12' }] }, draft)).toBe(true);
     expect(hasChanges(setStartsOn(draft, 'today', TODAY), draft)).toBe(true);
     expect(hasChanges(setPriceType(draft, 'one_time'), draft)).toBe(true);
-    expect(hasChanges(splitLastBand(draft), draft)).toBe(true);
+    expect(hasChanges(appendEmptyBand(draft), draft)).toBe(true);
   });
 });
 
