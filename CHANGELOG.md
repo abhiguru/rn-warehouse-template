@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — fixes from the outside backend review (2026-10-15)
+
+Works with any backend; backend migration 87 adds the `ALREADY_CONFIRMED` answer that lets the
+first fix report an attached photo as attached (older servers answer `NOT_FOUND`: the photo is
+then reported as failed but its file is kept).
+
+- **Photo upload rollback**: when the server confirmed a GRN or dispatch photo but the answer never
+  reached the phone, the app no longer deletes the stored file. It now reads the cancel answer and
+  removes the file only when the server really removed the pending record; a confirmed photo is
+  kept, and reported as attached when the server says `ALREADY_CONFIRMED`. One shared helper
+  (`src/services/uploadRollback.ts`) for the four upload paths (GRN and dispatch, immediate and
+  deferred).
+- **GRN edit**: the Leon flag is always sent as true or false, so unticking it on an edit is saved
+  (it used to be sent as "no change"). A cleared note or registration is sent as empty text, so it
+  is cleared too.
 ## Unreleased — GRN Review: a cleaner Rates card and "Change the rate?" question (2026-10-15)
 
 App only; no backend migration. Layout and wording only: what is saved does not change.

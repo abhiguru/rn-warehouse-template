@@ -485,9 +485,12 @@ const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
     p_sender_name: payload.header.sender_name || null, // ✅ New: sender name
     p_supervisor_id: payload.header.supervisor_id || null, // ✅ New: supervisor ID
     p_supervisor_name: payload.header.supervisor_name || null,
-    p_registration: payload.header.registration || null,
-    p_note: payload.header.note || null, // ✅ Corrected: note field
-    p_leon: payload.header.leon || null, // ✅ New: leon flag
+    // A cleared text goes as '' (update_grn keeps the old value for null, and the
+    // screens show '' and null alike); only a missing one is null.
+    p_registration: payload.header.registration ?? null,
+    p_note: payload.header.note ?? null,
+    // Always a boolean: null would keep the old value, so Leon could not be switched off.
+    p_leon: payload.header.leon === true,
     p_pricing_mode: payload.header.pricing_mode || null, // ✅ New: pricing mode
     p_items: rpcItems,
     p_images: rpcImages,
