@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — GRN Review: a cleaner Rates card and "Change the rate?" question (2026-10-15)
+
+App only; no backend migration. Layout and wording only: what is saved does not change.
+
+- **Rates card** (GRN step 3 Review): each row reads like the Items card above it and the Item
+  pricing list. The rent is the row's main value on the right ("₹9.00", "Rent per month"); the
+  weight is the same "40 kg each" tag as on the Items card, beside the source tag (Item rate,
+  Customer rate, This GRN only, Changed · …); band, labour and tax are one line under the name
+  ("Weight band 0–100 kg · Labour ₹3.00 · Tax 5%"). A change waiting in the form shows the rent it
+  replaces struck through under the new one. "No rate" stands where the rent would be. Change, Add
+  rate and Undo change are small buttons with icons at the end of the row. At large text the rent
+  drops under the name. The note on an invoiced GRN is an information strip.
+- **"Change the rate?"**: in place of one centred block of up to ten lines, the question is in parts:
+  the item and band under the title; who pays the new rate, with what that means for other customers
+  or for this customer's own rate; the figures as Old / New columns, the ones that change in bold
+  with an arrow; the period, with what happens to the old rate before and after it; and which GRNs it
+  reaches, as a footnote. The body scrolls when it is long, and the three buttons are stacked
+  (Change the rate, Only this GRN, Back) instead of wrapping two and one.
+
 ## Unreleased — fixes from the outside frontend review (2026-10-15)
 
 App only; no backend migration. 15 of the review's 19 findings were already fixed on main (it
