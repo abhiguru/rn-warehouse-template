@@ -23,7 +23,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { BrandMark } from '@/components/BrandMark';
 import { PhoneInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { groupMobileDigits } from '@/utils/mobileGrouping';
+import { groupMobileDigits, limitMobileDigits } from '@/utils/mobileGrouping';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -193,12 +193,7 @@ export function PhoneSignInForm({
               <PhoneInput
                 placeholder="98765 43210"
                 value={groupMobileDigits(phoneNumber)}
-                onChangeText={(text) => {
-                  // ૦-૯ typed on a Gujarati keyboard count as 0-9.
-                  const digitsOnly = normalizeDigits(text).replace(/\D/g, '');
-                  onChangePhone(digitsOnly);
-                }}
-                maxLength={12}
+                onChangeText={(text) => onChangePhone(limitMobileDigits(text))}
                 editable={!busy && !rateLimit.isRateLimited}
                 accessibilityLabel={tr('common.mobileNumber')}
                 accessibilityHint={tr('auth.login.countryCodeHint', { code: '+91' })}

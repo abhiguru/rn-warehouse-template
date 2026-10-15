@@ -59,7 +59,7 @@ function rebuildIn(tree: ReactTestRenderer, language: 'en' | 'gu'): ReactTestRen
   return tree;
 }
 const phoneField = (tree: ReactTestRenderer) =>
-  tree.root.find(node => node.props.maxLength === 12 && typeof node.props.onChangeText === 'function' && typeof node.type !== 'string');
+  tree.root.find(node => node.props.placeholder === '98765 43210' && typeof node.props.onChangeText === 'function' && typeof node.type !== 'string');
 const texts = (tree: ReactTestRenderer) =>
   tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
 
@@ -73,6 +73,16 @@ describe('sign-in screen and the language switch', () => {
   it('starts with an empty mobile number', () => {
     const tree = mount('en');
     expect(phoneField(tree).props.value).toBe('');
+    act(() => tree.unmount());
+  });
+
+  it('keeps ten digits at most, and a pasted +91 number loses its country code', () => {
+    const tree = mount('en');
+    act(() => phoneField(tree).props.onChangeText('98765 432101'));
+    // A broken field would show an eleventh digit: '98765 432101'.
+    expect(phoneField(tree).props.value).toBe('98765 43210');
+    act(() => phoneField(tree).props.onChangeText('+91 98765 43210'));
+    expect(phoneField(tree).props.value).toBe('98765 43210');
     act(() => tree.unmount());
   });
 
