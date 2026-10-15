@@ -148,6 +148,27 @@ export const pricing = {
     empty: 'No customers match "{{search}}". Try part of the name or the mobile number.',
     detail: '{{city}} · {{mobile}}',
   },
+  // The facility's standard rate (backend migration 85): what a new item gets.
+  standard: {
+    title: 'Standard rate',
+    note: 'New items get this rate. Changing it does not change items that already have a rate.',
+    save: 'Save standard rate',
+    saved: 'Standard rate saved.',
+    itemsGotIt: { one: '{{count}} item got it.', other: '{{count}} items got it.' },
+    loading: 'Loading the standard rate',
+    loadErrorTitle: "Couldn't load the standard rate",
+    // Tags on the tiers of an item's default monthly rate.
+    tagStandard: 'Standard',
+    tagThisItem: 'This item',
+    // The strip on Item pricing while some item has no rate at all.
+    setupStrip: 'Set the standard rate so every item has a rate.',
+    setupAction: 'Set standard rate',
+    setupAskAdmin: 'Ask an administrator or supervisor to set the standard rate.',
+    error: {
+      managerOnly: 'Only an administrator or supervisor can set the standard rate.',
+      unconfirmed: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.",
+    },
+  },
   itemPicker: {
     placeholder: 'Search items',
     initial: 'Type part of the item name.',

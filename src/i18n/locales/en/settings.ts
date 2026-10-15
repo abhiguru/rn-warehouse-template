@@ -10,6 +10,8 @@ export const settings = {
     usersSubtitle: 'People who can sign in, their role and customers',
     itemPricing: 'Item pricing',
     itemPricingSubtitle: 'View and manage prices',
+    standardRate: 'Standard rate',
+    standardRateSubtitle: 'The rate new items get',
     sensors: 'Temperature and humidity',
     sensorsSubtitle: 'Live readings and history',
   },

@@ -17,6 +17,7 @@ import { clearImageCaches } from '@/utils/imageCache';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { forgetRecentSearches } from '@/features/filters/recentSearches';
 import { clearItemRatesCache } from '@/features/item-pricing/useItemRates';
+import { clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
 
 export async function clearSessionScopedState(
   dispatch: (action: UnknownAction) => unknown
@@ -35,6 +36,7 @@ export async function clearSessionScopedState(
   forgetRecentSearches();
   // The rates cached for Item pricing belong to this session's facility and person.
   clearItemRatesCache();
+  clearStandardRateCache();
   await clearAllCaches();
   // Photos seen in this session must not stay on the phone for the next one.
   await clearImageCaches();

@@ -19,6 +19,9 @@ import type {
   UndoRateChangeInput,
   UndoRateChangeResult,
   RateErrorCode,
+  StandardRate,
+  StandardTier,
+  SetStandardRateResult,
 } from '../types/item-pricing.types';
 import {
   ItemStoragePrice
@@ -292,6 +295,7 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   NOT_A_RATE_START: 'pricing.error.notARateStart',
   NOTHING_TO_MOVE: 'pricing.error.nothingToMove',
   STALE_RATES: 'pricing.error.staleRates',
+  STANDARD_RATE_MANAGER_ONLY: 'pricing.standard.error.managerOnly',
   // LATER_RATES_EXIST has no message: the screen's dialog explains.
 };
 
@@ -521,4 +525,109 @@ export const listActiveItems = async (): Promise<ActiveItem[]> => {
     name: row.name,
     packaging: row.packaging ?? null,
   }));
+};
+
+// ---------------------------------------------------------------------------
+// The standard rate (backend migration 85): get_standard_rate, set_standard_rate.
+// ---------------------------------------------------------------------------
+
+const toTier = (raw: unknown): StandardTier | null => {
+  const r = raw as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object') return null;
+  const n = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+  const tier = {
+    weight_min: n(r.weight_min),
+    weight_max: n(r.weight_max),
+    unit_price: n(r.unit_price),
+    labour_rate: n(r.labour_rate),
+    tax_percent: n(r.tax_percent),
+  };
+  return Object.values(tier).every(Number.isFinite) ? tier : null;
+};
+
+const toTiers = (raw: unknown): StandardTier[] =>
+  (Array.isArray(raw) ? raw : []).map(toTier).filter((t): t is StandardTier => t !== null).sort((a, b) => a.weight_min - b.weight_min);
+
+/** The standard rate. Throws when the facility cannot be reached or refuses, like the other rate reads. */
+export const getStandardRate = async (): Promise<StandardRate> => {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_standard_rate')), RPC_TIMEOUT_MS, 'Standard rate');
+  if (error) {
+    itemPricingLogger.error('get_standard_rate RPC error:', error);
+    handleGlobalAuthError(error);
+    if (isMissingFunction(error, 'get_standard_rate')) throw new Error(t('pricing.error.serverNeedsUpdate'));
+    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The standard rate could not be loaded');
+  }
+  const response = unwrapArrayResponse(data) as { success?: unknown; data?: { tiers?: unknown; updated_at?: unknown; updated_by_name?: unknown } | null } | null;
+  if (!response || typeof response !== 'object' || response.success !== true) {
+    handleGlobalAuthError(response);
+    throw new Error('The standard rate could not be loaded');
+  }
+  const details = response.data ?? {};
+  return {
+    tiers: toTiers(details.tiers),
+    updatedAt: typeof details.updated_at === 'string' ? details.updated_at : null,
+    updatedByName: typeof details.updated_by_name === 'string' ? details.updated_by_name : null,
+  };
+};
+
+/**
+ * Save the standard rate (administrators and supervisors). The server also gives the tiers to every
+ * active item that has no default rate yet and says how many (`itemsPriced`). A failure carries
+ * `errorCode` and the app's own `message`; the server's English text is never shown.
+ */
+export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandardRateResult> => {
+  const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
+  try {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(
+      Promise.resolve(client.rpc('set_standard_rate', { p_tiers: tiers })),
+      RPC_TIMEOUT_MS,
+      'Standard rate'
+    );
+
+    if (error) {
+      itemPricingLogger.error('set_standard_rate RPC error:', error);
+      handleGlobalAuthError(error);
+      const mapped = mapRateError(error, 'set_standard_rate');
+      // An error with no database code is the connection failing: the save may have gone through.
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unconfirmed();
+      return { success: false, errorCode: mapped.code, message: mapped.message };
+    }
+
+    const response = unwrapArrayResponse(data) as
+      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown } | null }
+      | null;
+    if (!response || typeof response !== 'object') return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') };
+
+    const details = response.data ?? {};
+    if (response.success !== true) {
+      handleGlobalAuthError(response);
+      const code = String(response.error_code ?? '') as RateErrorCode;
+      const key = RATE_ERROR_KEYS[code];
+      const extra: Partial<SetStandardRateResult> = {};
+      if (typeof details.index === 'number') extra.tierIndex = details.index;
+      if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
+        extra.field = details.field as SetStandardRateResult['field'];
+      }
+      if (code === 'PERMISSION_DENIED') return { success: false, errorCode: code, message: t('errors.parsed.noPermission'), ...extra };
+      if (key) return { success: false, errorCode: code, message: t(key), ...extra };
+      return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic'), ...extra };
+    }
+
+    return {
+      success: true,
+      tiers: toTiers(details.tiers),
+      itemsPriced: Number(details.items_priced ?? 0) || 0,
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    itemPricingLogger.error('Exception in setStandardRate:', { error: errorMessage });
+    handleGlobalAuthError(err);
+    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'set_standard_rate')) {
+      return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
+    }
+    // A timeout or a lost answer: the server may have committed the change.
+    return unconfirmed();
+  }
 };

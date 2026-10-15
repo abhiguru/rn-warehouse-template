@@ -150,6 +150,27 @@ export const pricing: Translation<typeof source> = {
     empty: '"{{search}}" સાથે કોઈ વેપારી મળતો નથી. નામનો ભાગ અથવા મોબાઇલ નંબર અજમાવો.',
     detail: '{{city}} · {{mobile}}',
   },
+  // The facility's standard rate (backend migration 85): what a new item gets.
+  standard: {
+    title: 'પ્રમાણભૂત દર',
+    note: 'નવી આઇટમને આ દર મળે છે. તે બદલવાથી જે આઇટમનો દર પહેલેથી છે તે બદલાતો નથી.',
+    save: 'પ્રમાણભૂત દર સાચવો',
+    saved: 'પ્રમાણભૂત દર સચવાયો.',
+    itemsGotIt: { one: '{{count}} આઇટમને તે મળ્યો.', other: '{{count}} આઇટમને તે મળ્યો.' },
+    loading: 'પ્રમાણભૂત દર લોડ થઈ રહ્યો છે',
+    loadErrorTitle: 'પ્રમાણભૂત દર લોડ થઈ શક્યો નહીં',
+    // Tags on the tiers of an item's default monthly rate.
+    tagStandard: 'પ્રમાણભૂત',
+    tagThisItem: 'આ આઇટમનો',
+    // The strip on Item pricing while some item has no rate at all.
+    setupStrip: 'દરેક આઇટમનો દર હોય તે માટે પ્રમાણભૂત દર નક્કી કરો.',
+    setupAction: 'પ્રમાણભૂત દર નક્કી કરો',
+    setupAskAdmin: 'પ્રમાણભૂત દર નક્કી કરવા એડમિન અથવા સુપરવાઇઝરને કહો.',
+    error: {
+      managerOnly: 'પ્રમાણભૂત દર ફક્ત એડમિન અથવા સુપરવાઇઝર નક્કી કરી શકે છે.',
+      unconfirmed: 'પ્રમાણભૂત દર સચવાયો કે નહીં તે ખાતરી થઈ શકી નથી. ફરી પ્રયાસ કરતા પહેલાં આ સ્ક્રીન બંધ કરીને ફરી ખોલો.',
+    },
+  },
   itemPicker: {
     placeholder: 'આઇટમ શોધો',
     initial: 'આઇટમના નામનો ભાગ લખો.',
