@@ -167,7 +167,8 @@ export function useAccountActions(): {
         reportLeave(outcome);
       } else {
         try {
-          await dispatch(logout()).unwrap();
+          const outcome = await dispatch(logout()).unwrap();
+          if (outcome?.localCleared === false) showAlert(t('auth.signOut.couldNotTitle'), t('auth.signOut.notCleared'));
           close();
           router.replace('/login');
         } catch {

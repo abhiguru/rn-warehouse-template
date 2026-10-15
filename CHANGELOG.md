@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — fixes from the outside frontend review (2026-10-15)
+
+App only; no backend migration. 15 of the review's 19 findings were already fixed on main (it
+reviewed an older app). These three were still open:
+
+- **GRN edit**: when the server keeps a changed quantity because that line has been dispatched
+  meanwhile (a dispatch made while the edit was open; lines dispatched before are locked in the
+  form), Save now shows "GRN saved. Some quantities were not changed…" with one line per item
+  ("Item: 3 already dispatched"), not a plain "GRN saved." The app read the result in the wrong place.
+  Dispatched lines whose quantity was not changed do not raise the warning.
+- **Sign out** (without central login): if this phone cannot remove the sign-in from its secure
+  storage, it says so ("This phone couldn't remove your sign-in…"), and the next start removes the
+  session and stays signed out instead of signing the same person back in. This is the same fix
+  central sign-out already had (a sign-out marker, `secure_signed_out`).
+- **Pending access request**: an access-request token that is saved after the person has already
+  switched to another facility is deleted, and that sign-in is refused, so it is never sent to the
+  other facility.
+
 ## Unreleased — every item always has a rate: standard rate, Add on Item pricing, rates on the GRN Review step (2026-10-15)
 
 Needs backend migrations 85 (standard rate) and 86 (rates on the GRN sheet, rate start floor). On a

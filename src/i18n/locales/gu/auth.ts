@@ -92,6 +92,8 @@ export const auth: Translation<typeof source> = {
     confirmTitle: 'લૉગઆઉટ કરવું છે?',
     confirmMessage: 'ફરી લૉગિન કરવા માટે તમારો મોબાઇલ નંબર અને OTP જોઈશે.',
     couldNotTitle: 'લૉગઆઉટ થઈ શક્યું નથી',
+    notCleared:
+      'આ ફોનમાં સુરક્ષિત રીતે સાચવેલું તમારું લૉગિન કાઢી શકાયું નથી. ઍપ બંધ કરીને ફરી ખોલો અને બીજું કોઈ આ ફોન વાપરે તે પહેલાં તપાસો કે તમે લૉગઆઉટ થઈ ગયા છો.',
   },
   enrollment: {
     status: {

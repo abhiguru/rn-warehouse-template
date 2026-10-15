@@ -258,6 +258,7 @@ export const grn: Translation<typeof source> = {
     },
     savedWithSkipped:
       'આવક પાવતી સચવાઈ ગઈ. કેટલાક નંગ બદલાયા નથી, કારણ કે તે આઇટમની જાવક થઈ ગઈ છે:\n{{items}}',
+    skippedLine: '{{item}}: {{qty}} ની જાવક થઈ ગઈ છે',
     savedWithNumber: 'આવક પાવતી {{number}} સચવાઈ ગઈ.',
     saved: 'આવક પાવતી સચવાઈ ગઈ.',
     photosNotUploadedTitle: 'ફોટો અપલોડ થયા નથી',

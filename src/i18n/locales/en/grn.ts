@@ -264,6 +264,7 @@ export const grn = {
     },
     savedWithSkipped:
       'GRN saved. Some quantities were not changed because those items are already dispatched:\n{{items}}',
+    skippedLine: '{{item}}: {{qty}} already dispatched',
     savedWithNumber: 'GRN {{number}} saved.',
     saved: 'GRN saved.',
     photosNotUploadedTitle: 'Photos not uploaded',

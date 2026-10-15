@@ -401,8 +401,10 @@ export const logout = createAsyncThunk(
     // ended. Clear them before waiting for the server revocation (up to 15 s),
     // so a user who signs in meanwhile never has their fresh state wiped.
     await clearSessionScopedState(dispatch);
-    await signingOut;
-    if (generation !== getSessionGeneration()) return;
+    const { success: localCleared } = await signingOut;
+    // `localCleared` is false when this phone could not remove the session from its secure
+    // storage; the sign-out still finishes (reducers listen for fulfilled) and the screen says so.
+    if (generation !== getSessionGeneration()) return { localCleared };
     // D8 Fix: Make logout atomic - clear local state regardless of signOut result
     // Server session invalidation is best-effort; local cleanup must always succeed
 
@@ -479,8 +481,8 @@ export const logout = createAsyncThunk(
 
     console.log('[AuthSlice] Logout complete - all user data cleared');
 
-    // Always return success - local state will be cleared by reducer
-    return;
+    // Always fulfilled - local state will be cleared by reducer
+    return { localCleared };
   }
 );
 

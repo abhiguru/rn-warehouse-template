@@ -485,6 +485,8 @@ it('Redux logout revokes its captured credential without clearing an account sig
   );
   const store = configureStore({ reducer: { auth: authReducer } });
   const pending = store.dispatch(logout());
+  // The sign-out marker adds a few storage round trips before the revocation starts.
+  await flush();
   await flush();
   expect(rpc).toHaveBeenCalledWith('logout_session', {
     p_refresh_token: 'a'.repeat(64),
@@ -1373,5 +1375,100 @@ describe('sign-in code limits from the server (migration 44)', () => {
     const result = await verifyOTP('0000000002', '123456') as { error: string; errorCode?: string };
     expect(result.error).toBe('Invalid or expired OTP');
     expect(result.errorCode).toBeUndefined();
+  });
+});
+
+describe('P2-AUTH-002: an enrollment token written late is refused after a switch', () => {
+  const pendingAnswer = () =>
+    operatorResponse({
+      success: true,
+      data: { action: 'pending', enrollment_token: 'old-facility-enrollment', user: { enrollment_status: 'pending' } },
+    }) as Response;
+
+  it('a write that lands after the session changed is deleted and the sign-in is refused', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(pendingAnswer());
+    const release = deferred<void>();
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === 'secure_enrollment_token') await release.promise;
+      secure.set(key, value);
+    });
+    const verifying = verifyOTP('0000000002', '654321');
+    await flush();
+    await flush();
+    // What a server switch does: the logout advances the session generation.
+    // (Its cleanup queues behind the held write, so it is awaited after the release.)
+    const switching = signOut({ localOnly: true });
+    release.resolve();
+    const result = await verifying;
+    await switching;
+    expect(result).toMatchObject({ success: false, error: t('errors.auth.sessionChanged') });
+    expect(secure.has('secure_enrollment_token')).toBe(false);
+    expect(await getPendingEnrollmentToken()).toBeNull();
+  });
+
+  it('a normal pending sign-in still stores the token and says pendingEnrollment', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(pendingAnswer());
+    const result = await verifyOTP('0000000002', '654321');
+    expect(result).toMatchObject({ success: true, data: { action: 'pending', pendingEnrollment: true } });
+    expect(await getPendingEnrollmentToken()).toBe('old-facility-enrollment');
+  });
+});
+
+describe('P2-AUTH-001: a failed local facility sign-out cannot sign the person back in', () => {
+  const failSessionDeletes = () =>
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => {
+      if (key === 'secure_signed_out') {
+        secure.delete(key);
+        return;
+      }
+      throw new Error('Native storage refused the delete');
+    });
+
+  it('reports failure, leaves a marker, and the next read finds no session', async () => {
+    await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+    rpc.mockRejectedValue(new Error('Offline'));
+    failSessionDeletes();
+    expect(await signOut()).toEqual({ success: false });
+    expect(secure.has('secure_signed_out')).toBe(true);
+    expect(secure.has('secure_refresh_token')).toBe(true);
+    rpc.mockClear();
+    // Next app start, storage works again.
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => {
+      secure.delete(key);
+    });
+    expect(await getStoredToken()).toEqual({ isValid: false });
+    expect(await ensureValidTokens()).toBe(false);
+    expect(rpc).not.toHaveBeenCalledWith('refresh_session', expect.anything());
+    expect(secure.has('secure_refresh_token')).toBe(false);
+    expect(secure.has('secure_auth_token')).toBe(false);
+    expect(secure.has('secure_signed_out')).toBe(false);
+  });
+
+  it('a failing read at start still sends no bearer: the marker is kept while the keys remain', async () => {
+    await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+    rpc.mockRejectedValue(new Error('Offline'));
+    failSessionDeletes();
+    await signOut();
+    expect(await getStoredToken()).toEqual({ isValid: false });
+    expect(await ensureValidTokens()).toBe(false);
+    expect(secure.has('secure_signed_out')).toBe(true);
+  });
+
+  it('a clean sign-out succeeds and leaves no marker; a new sign-in then works', async () => {
+    await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+    rpc.mockRejectedValue(new Error('Offline'));
+    expect(await signOut()).toEqual({ success: true });
+    expect(secure.size).toBe(0);
+    const fresh = jwt();
+    await storeTokens(fresh, 'b'.repeat(64), Date.now() + 3600000);
+    const stored = await getStoredToken();
+    expect(stored).toMatchObject({ isValid: true, authToken: fresh, refreshToken: 'b'.repeat(64) });
+  });
+
+  it('an old marker never blocks a new sign-in', async () => {
+    secure.set('secure_signed_out', '*');
+    await storeTokens(jwt(), 'c'.repeat(64), Date.now() + 3600000);
+    expect(secure.has('secure_signed_out')).toBe(false);
+    expect(await getStoredToken()).toMatchObject({ isValid: true, refreshToken: 'c'.repeat(64) });
   });
 });
