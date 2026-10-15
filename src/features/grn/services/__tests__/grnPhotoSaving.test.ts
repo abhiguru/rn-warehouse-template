@@ -863,6 +863,23 @@ describe('rolling back a photo upload', () => {
       if (_name === 'immediate') expect(result.imageId).toBe('image-1');
     });
 
+    it('hands the form the whole success answer when the cancel says the upload is already confirmed', async () => {
+      if (_name !== 'immediate') return;
+      lostConfirm();
+      mockRpcHandlers.cancel_grn_image_upload = () => ({
+        data: { success: false, code: 'ALREADY_CONFIRMED', error: 'Upload already confirmed', image_id: 'image-1', storage_path: 'path-1' },
+        error: null,
+      });
+      // ImageUploadButton only takes a result with imageUrl and metadata as a success.
+      expect(await uploadGRNImage(asset, GRN_ID, 'header')).toEqual(
+        expect.objectContaining({
+          success: true,
+          imageId: 'image-1',
+          imageUrl: 'https://facility.invalid/signed/path-1',
+          metadata: expect.objectContaining({ storagePath: 'path-1' }),
+        })
+      );
+    });
 
     it('removes the file once when the confirm was refused and the pending row was cancelled', async () => {
       mockRpcHandlers.confirm_grn_image_upload = () => ({ data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null });

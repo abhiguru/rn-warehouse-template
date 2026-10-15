@@ -240,6 +240,27 @@ describe('rolling back a photo upload', () => {
       if (name === 'immediate') expect(result.imageId).toBe('image-1');
     });
 
+    it('hands the form the whole success answer, and ends the local copy as confirmed, when the cancel says the upload is already confirmed', async () => {
+      rollbackServer(lostConfirm, () => ({
+        data: { success: false, code: 'ALREADY_CONFIRMED', error: 'Upload already confirmed', image_id: 'image-1', storage_path: 'path-1' },
+        error: null,
+      }));
+      if (name === 'immediate') {
+        // ImageUploadButton only takes a result with imageUrl and metadata as a success.
+        expect(await uploadDispatchImage(asset, DISPATCH_ID)).toEqual(
+          expect.objectContaining({
+            success: true,
+            imageId: 'image-1',
+            imageUrl: 'https://facility.invalid/signed/path-1',
+            metadata: expect.objectContaining({ storage_path: 'path-1' }),
+          })
+        );
+      } else {
+        const outcome = await uploadDeferredDispatchImages(DISPATCH_ID, [photo('truck')]);
+        expect(outcome.failed).toEqual([]);
+        expect(jest.mocked(localPhotoUploadEnded).mock.calls).toEqual([['file:///cache/truck.webp', true]]);
+      }
+    });
 
     it('removes the file once when the confirm was refused and the pending row was cancelled', async () => {
       const remove = rollbackServer(
