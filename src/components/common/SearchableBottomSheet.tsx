@@ -53,6 +53,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Button } from '@/components/ui/Button';
 import { useSearchAutocomplete } from '@/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
@@ -107,6 +108,8 @@ export interface SearchableBottomSheetProps<T> {
   emptyInitialText?: string;
   /** Optional: Sub-text for empty states */
   emptySubText?: string;
+  /** Optional: a button under the empty-state text (for example Try again when the list could not be loaded) */
+  emptyAction?: { label: string; onPress: () => void };
 }
 
 // ============================================================================
@@ -186,6 +189,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   emptySearchText,
   emptyInitialText: emptyInitialTextProp,
   emptySubText: emptySubTextProp,
+  emptyAction,
 }: SearchableBottomSheetProps<T>): ReactElement {
   const placeholder = placeholderProp ?? tr('common.search');
   const emptyInitialText = emptyInitialTextProp ?? tr('components.searchSheet.emptyInitial');
@@ -339,7 +343,8 @@ export function SearchableBottomSheet<T extends { id: string }>({
           <Text style={dynamicStyles.emptyText}>
             {emptySearchText || tr('components.searchSheet.noMatch', { search: searchQuery })}
           </Text>
-          <Text style={dynamicStyles.emptySubText}>{tr('components.searchSheet.noMatchHint')}</Text>
+          {emptyAction ? null : <Text style={dynamicStyles.emptySubText}>{tr('components.searchSheet.noMatchHint')}</Text>}
+          {emptyAction ? <Button type="secondary" onPress={emptyAction.onPress} testID="sheet-empty-action">{emptyAction.label}</Button> : null}
         </View>
       );
     }
@@ -357,6 +362,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
             />
             <Text style={dynamicStyles.emptyText}>{emptyInitialText}</Text>
             <Text style={dynamicStyles.emptySubText}>{emptySubText}</Text>
+            {emptyAction ? <Button type="secondary" onPress={emptyAction.onPress} testID="sheet-empty-action">{emptyAction.label}</Button> : null}
           </>
         )}
       </View>
@@ -368,6 +374,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
     emptySearchText,
     emptyInitialText,
     emptySubText,
+    emptyAction,
     recentItems,
     renderRecentSection,
     dynamicStyles,
@@ -411,6 +418,18 @@ export function SearchableBottomSheet<T extends { id: string }>({
       performSearchNow(currentValue.name);
     }
   }, [currentValue, isVisible, performSearchNow]);
+
+  // A sheet that searches from zero letters (minQueryLength 0) lists everything as soon as it opens.
+  // Only on the closed-to-open change: when the items it searches change while it is open (a refresh
+  // lands while the person types), the typed query is searched again instead of being wiped.
+  const wasOpen = useRef(false);
+  const typedQuery = useRef(searchQuery);
+  typedQuery.current = searchQuery;
+  useEffect(() => {
+    const opening = isVisible && !wasOpen.current;
+    wasOpen.current = isVisible;
+    if (isVisible && minQueryLength === 0 && !currentValue?.name) void performSearchNow(opening ? '' : typedQuery.current);
+  }, [isVisible, minQueryLength, currentValue, performSearchNow]);
 
   return (
     <BottomSheetModal
@@ -477,6 +496,8 @@ export function SearchableBottomSheet<T extends { id: string }>({
               style={styles.clearButton}
               onPress={() => {
                 clearSearch();
+                // A sheet that lists everything with nothing typed lists it again.
+                if (minQueryLength === 0) void performSearchNow('');
                 inputRef.current?.focus();
               }}
               accessibilityRole="button"

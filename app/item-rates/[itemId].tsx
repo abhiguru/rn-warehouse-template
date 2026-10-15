@@ -4,8 +4,10 @@
  * "Default rate" with a card per price type, "Customer rates" with one row per customer who has
  * their own rate, "Old rates" (read-only, every warehouse role) and the rule invoices follow.
  * The day shown is a goods-received day: the list's day arrives as `on`, and Change date moves it.
+ * Each tier of a default monthly rate is tagged Standard (it equals a tier of the standard rate) or
+ * This item; with no standard rate saved, or not readable, there are no tags.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,11 +21,14 @@ import { customerRatePath, editorPath, historyPath } from '@/features/item-prici
 import { planScope } from '@/features/item-pricing/scopePlan';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { useItemRatesFor } from '@/features/item-pricing/useItemRates';
+import { useStandardRate } from '@/features/item-pricing/useStandardRate';
+import { tierTags } from '@/features/item-pricing/standardRate';
 import { useRateActions, type RateScope } from '@/features/item-pricing/useRateActions';
 import { CustomerPickerSheet, type PickedCustomer } from '@/features/item-pricing/components/CustomerPickerSheet';
 import { CustomerRateRow } from '@/features/item-pricing/components/CustomerRateRow';
 import { HowInvoiceSheet } from '@/features/item-pricing/components/HowInvoiceSheet';
 import { OtherDayStrip } from '@/features/item-pricing/components/OtherDayStrip';
+import { GrnOnlyRatesSection } from '@/features/item-pricing/components/GrnOnlyRatesSection';
 import { OldRatesSection } from '@/features/item-pricing/components/OldRatesSection';
 import { RateCard } from '@/features/item-pricing/components/RateCard';
 import { RateStrip } from '@/features/item-pricing/components/RateStrip';
@@ -35,7 +40,8 @@ import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatTime } from '@/utils/formatters';
-import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
+import { getItemGrnRates } from '@/services/item-pricing-service';
+import type { ItemGrnRate, ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -95,9 +101,24 @@ export default function ItemRatesPage() {
   const writable = rights.canWrite && day === today;
   const offline = useIsOffline();
   const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
+  // The standard rate is read once per page (from the session cache when it is there) for the Standard / This item tags.
+  const standard = useStandardRate();
   const [pulling, setPulling] = useState(false);
   const [picking, setPicking] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
+  // Rates set for one GRN only (migration 86), read once the page is open; never blocks the page.
+  const [grnRates, setGrnRates] = useState<ItemGrnRate[] | null>(null);
+  const [grnRatesFailed, setGrnRatesFailed] = useState(false);
+  const itemReady = status === 'ready' && !!itemRates;
+  useEffect(() => {
+    if (!itemReady || !itemId) return undefined;
+    let live = true;
+    getItemGrnRates(itemId).then(
+      list => { if (live) { setGrnRates(list); setGrnRatesFailed(false); } },
+      () => { if (live) setGrnRatesFailed(true); },
+    );
+    return () => { live = false; };
+  }, [itemReady, itemId]);
 
   const item = itemRates?.item ?? { id: itemId, name: '' };
   const actions = useRateActions(item);
@@ -243,6 +264,7 @@ export default function ItemRatesPage() {
                     canWrite={writable}
                     offline={offline}
                     busy={actions.busy}
+                    tags={priceType === 'monthly' ? tierTags(view.inForce, standard.rate?.tiers) : null}
                     day={day}
                     onChange={() => actions.change(scopeOf(priceType, view))}
                     onCorrect={() => actions.correct(scopeOf(priceType, view))}
@@ -299,8 +321,11 @@ export default function ItemRatesPage() {
               )}
             </View>
 
+            {/* Rates for one GRN only */}
+            <GrnOnlyRatesSection rates={grnRates} failed={grnRatesFailed} />
+
             {/* Old rates */}
-            {rights.canSeeOldRates ? <OldRatesSection rows={allEnded} /> : null}
+            {rights.canSeeOldRates ? <OldRatesSection rows={allEnded} archivedGrnRates={(grnRates ?? []).filter(r => r.archived)} /> : null}
 
             <Text style={styles.foot}>{t('pricing.item.rule')}</Text>
             <Button type="tertiary" style={styles.link} onPress={() => setHowOpen(true)} testID="how-link">

@@ -10,6 +10,7 @@ import React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import SettingsScreen from '../../../app/settings';
 import { setLanguage } from '@/i18n';
+import { router } from 'expo-router';
 
 let mockState: Record<string, unknown>;
 jest.mock('@/store/hooks', () => ({
@@ -65,6 +66,13 @@ describe('Warehouse tools rows (G-10)', () => {
     expect(byTestId('settings-feature-items').props.accessibilityLabel).toBe('Items, Produce you store, like potatoes or garlic');
     expect(byTestId('settings-feature-users').props.accessibilityLabel).toBe('Users, People who can sign in, their role and customers');
     expect(byTestId('settings-feature-enrollmentReview').props.accessibilityLabel).toContain('Approve people who asked to use this facility');
+  });
+
+  it('name the standard rate and open its screen', async () => {
+    await render();
+    expect(byTestId('settings-feature-standardRate').props.accessibilityLabel).toBe('Standard rate, The rate new items get');
+    await act(async () => { byTestId('settings-feature-standardRate').props.onPress(); });
+    expect(router.push).toHaveBeenCalledWith('/standard-rate');
   });
 });
 

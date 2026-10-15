@@ -1,8 +1,7 @@
 /**
  * "Monthly rent per bag, for lots received on 14 Oct 2026." with "Change date" (the platform
  * calendar, three years back to two years ahead) and, when the day is not today, "Back to
- * today". Every date here reads as a goods-received date. The list adds the "N items need a
- * rate" link.
+ * today". Every date here reads as a goods-received date.
  */
 import React, { useState } from 'react';
 import { Modal, Platform, Pressable, Text, View } from 'react-native';
@@ -20,8 +19,6 @@ export interface RatesOnBarProps {
   day: string;
   today: string;
   onChangeDay: (day: string) => void;
-  /** "2 items need a rate": turns the Needs a rate filter on. */
-  needRate?: { text: string; onPress: () => void } | null;
 }
 
 const makeStyles = (th: ThemeTokens) => ({
@@ -44,7 +41,7 @@ export const dayLimits = (today: string) => ({
   max: parseLocalISODate(addDays(today, 365 * 2)),
 });
 
-export function RatesOnBar({ text, day, today, onChangeDay, needRate }: RatesOnBarProps) {
+export function RatesOnBar({ text, day, today, onChangeDay }: RatesOnBarProps) {
   const styles = useThemedStyles(makeStyles);
   const { tokens: th, resolvedMode } = useTheme();
   const [open, setOpen] = useState(false);
@@ -70,11 +67,6 @@ export function RatesOnBar({ text, day, today, onChangeDay, needRate }: RatesOnB
         {day !== today ? (
           <Button type="tertiary" onPress={() => onChangeDay(today)} testID="back-to-today">
             {t('pricing.list.backToToday')}
-          </Button>
-        ) : null}
-        {needRate ? (
-          <Button type="tertiary" onPress={needRate.onPress} testID="need-rate-link">
-            {needRate.text}
           </Button>
         ) : null}
       </View>

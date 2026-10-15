@@ -5,7 +5,7 @@
  */
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { setLanguage } from '@/i18n';
-import { fieldOrder, fromOf, gapBefore, hasChanges, initialDraft, setFirstFrom, setBandFrom, setStartsOn, setUpTo, splitLastBand, toReplaceInput, validate } from '../editModel';
+import { fieldOrder, fromOf, gapBefore, hasChanges, initialDraft, setFirstFrom, setBandFrom, setStartsOn, setUpTo, appendEmptyBand, toReplaceInput, validate } from '../editModel';
 
 const TODAY = '2026-10-14';
 const ITEM = 'onion';
@@ -54,9 +54,9 @@ describe('a gap typed into a customer rate', () => {
   const start = () => {
     const { draft, context } = open('addCustomer', { customer_id: CUST, price_type: 'monthly' }, rows);
     // 0-40 and 41-100, rents filled in
-    let d = splitLastBand(setUpTo(draft, 0, '80'));
+    let d = appendEmptyBand(setUpTo(draft, 0, '40'));
     d = { ...d, bands: d.bands.map(b => ({ ...b, rent: '4.00' })) };
-    d = setUpTo(setUpTo(d, 1, '100'), 0, '40');
+    d = setUpTo(d, 1, '100');
     return { d: setStartsOn(d, 'today', TODAY), context };
   };
 
@@ -85,7 +85,7 @@ describe('a gap typed into a customer rate', () => {
 
   it('refuses a gap in a default rate', () => {
     const { draft, context } = open('change', { price_type: 'monthly' }, rows);
-    const split = splitLastBand(setUpTo(draft, 0, '80'));
+    const split = appendEmptyBand(setUpTo(draft, 0, '80'));
     const gap = setBandFrom(split, 1, '70');
     expect(validate({ ...gap, bands: gap.bands.map(b => ({ ...b, rent: '4.00' })) }, context).errors['band.1.from']).toBe(
       'A default rate cannot have a gap: every weight needs a rate.',

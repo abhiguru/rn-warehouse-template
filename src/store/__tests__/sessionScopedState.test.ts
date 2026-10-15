@@ -6,6 +6,7 @@ import invoiceReducer, { updateHeader as updateInvoice } from '../slices/invoice
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { queryClient } from '@/lib/queryClient';
 import { clearItemRatesCache } from '@/features/item-pricing/useItemRates';
+import { clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearSessionScopedState } from '../sessionScopedState';
@@ -26,6 +27,7 @@ jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
 }));
 jest.mock('@/features/item-pricing/useItemRates', () => ({ clearItemRatesCache: jest.fn() }));
+jest.mock('@/features/item-pricing/useStandardRate', () => ({ clearStandardRateCache: jest.fn() }));
 jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
 jest.mock('@/config/supabaseConfig', () => ({ getSessionIdentity: jest.fn() }));
@@ -253,4 +255,5 @@ it('deletes on sign-out the photo files kept for a retry, and keeps one an uploa
 it('forgets the rates cached for Item pricing', async () => {
   await clearSessionScopedState(makeStore().dispatch);
   expect(clearItemRatesCache).toHaveBeenCalledTimes(1);
+  expect(clearStandardRateCache).toHaveBeenCalledTimes(1);
 });

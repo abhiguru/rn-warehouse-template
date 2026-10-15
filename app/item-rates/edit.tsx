@@ -37,17 +37,21 @@ import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { listItemRates, replaceItemRates } from '@/services/item-pricing-service';
+import { getRateStartFloor } from '@/services/rateStartFloor';
 import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
 import { showToast } from '@/utils/toast';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from '@/features/item-pricing/contract';
 import {
+  appendEmptyBand,
+  copyTiersFrom,
   hasChanges,
   initialDraft,
   lotsRule,
   resyncToday,
   savedStop,
   switchNewRateType,
+  withoutRents,
   setBandField,
   setStartsOn,
   summaryLines,
@@ -62,6 +66,7 @@ import { rateRights } from '@/features/item-pricing/rateRights';
 import { laterDialogText, plannedOnDay } from '@/features/item-pricing/laterRates';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
+import { CopyTiersSheet } from '@/features/item-pricing/components/CopyTiersSheet';
 import { ChangeSummary } from '@/features/item-pricing/components/ChangeSummary';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import { fieldLink, type FieldNode, type FieldRegistry } from '@/features/item-pricing/components/fieldLink';
@@ -104,6 +109,9 @@ const RateEditorScreen: React.FC = () => {
   const [strip, setStrip] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [later, setLater] = useState<NonNullable<ReplaceRatesResult['later']> | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  // The item whose tiers were copied into the draft (names the note under the start day).
+  const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
   const checked = useRef(false);
   // The sticky Save bar's measured height: the form scrolls clear of it, a field never ends under it.
   const [barHeight, setBarHeight] = useState(0);
@@ -116,6 +124,8 @@ const RateEditorScreen: React.FC = () => {
   useEffect(() => {
     let live = true;
     setLoaded({ state: 'loading' });
+    // The draft is rebuilt from the server: it no longer holds another item's copied bands.
+    setCopiedFrom(null);
     if (!params.item_id) {
       setLoaded({ state: 'error', message: t('pricing.edit.notFound') });
       return;
@@ -123,8 +133,10 @@ const RateEditorScreen: React.FC = () => {
     listItemRates(params.item_id).then(
       rows => {
         if (!live) return;
-        const opened = initialDraft({ mode: params.mode ?? 'change', params, rows, role, today: todayDay() });
-        setLoaded({ state: 'ready', draft: opened.draft, initial: opened.draft, context: opened.context });
+        const opened = initialDraft({ mode: params.mode ?? 'change', params, rows, role, today: todayDay(), earliest: getRateStartFloor() });
+        // The Add button of the list asks for one more empty band; `initial` stays without it, so leaving untouched asks first.
+        const draft = params.add_band === '1' ? appendEmptyBand(opened.draft) : opened.draft;
+        setLoaded({ state: 'ready', draft, initial: opened.draft, context: opened.context });
       },
       (e: unknown) => {
         if (live) setLoaded({ state: 'error', message: e instanceof Error ? e.message : '' });
@@ -295,6 +307,14 @@ const RateEditorScreen: React.FC = () => {
         // The change may be saved: the pages behind read the item again.
         notifyRatesChanged(ctx.itemId);
       }
+      if (result.errorCode === 'INVALID_DATE') {
+        // The day is outside what the server accepts: say so at the field, and learn the oldest allowed day from the answer.
+        const earliest = result.earliest;
+        if (earliest) setLoaded(cur => (cur.state === 'ready' ? { ...cur, context: { ...cur.context, earliestStart: earliest } } : cur));
+        setErrors(current => ({ ...current, startsOn: result.message ?? '' }));
+        scrollToError('startsOn');
+        return;
+      }
       if (result.errorCode === 'PAST_DATE_NOT_ALLOWED' && ctx.mode === 'upcoming' && !ctx.canStartInPast) {
         setStrip(t('pricing.edit.err.moveAfterToday'));
         scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -405,9 +425,20 @@ const RateEditorScreen: React.FC = () => {
 
   const switchType = (value: PriceType) => {
     const next = switchNewRateType(current, ctx, value);
-    setLoaded(cur => (cur.state === 'ready' ? { ...cur, draft: next.draft, context: { ...cur.context, copied: next.copied } } : cur));
+    // Bands copied from another item: its rents are rents of the other price type, so they are cleared
+    // when nothing of this type was found to take their place; either way the note no longer applies.
+    const nextDraft = copiedFrom && !next.copied && value !== current.priceType ? withoutRents(next.draft) : next.draft;
+    if (value !== current.priceType) setCopiedFrom(null);
+    setLoaded(cur => (cur.state === 'ready' ? { ...cur, draft: nextDraft, context: { ...cur.context, copied: next.copied } } : cur));
     setStrip(null);
-    if (checked.current) setErrors(validate(next.draft, ctx).errors);
+    if (checked.current) setErrors(validate(nextDraft, ctx).errors);
+  };
+
+  const canCopyTiers = !ctx.customerId && !ctx.invoice;
+  const copyTiers = (item: { id: string; name: string }, rows: ItemStoragePrice[]) => {
+    setCopyOpen(false);
+    setCopiedFrom(item.name);
+    setDraft(copyTiersFrom(current, rows));
   };
 
   const onStartsOn = (choice: StartsOnChoice, day: string) => setDraft(setStartsOn(current, choice, day));
@@ -471,6 +502,7 @@ const RateEditorScreen: React.FC = () => {
             choice={current.startsOnChoice}
             day={current.startsOn}
             today={ctx.today}
+            earliest={ctx.earliestStart}
             canStartInPast={ctx.canStartInPast}
             receivedDay={ctx.invoice && ctx.mode === 'addCustomer' ? ctx.invoice.grnDate : null}
             fixed={current.startsOnChoice === 'fixed'}
@@ -481,10 +513,19 @@ const RateEditorScreen: React.FC = () => {
           {inThePast && ctx.canStartInPast ? (
             <EditorStrip variant="warning" message={t('pricing.edit.pastDate', { date: dateText(current.startsOn ?? '') })} />
           ) : null}
-          {ctx.copied ? <Text style={styles.note}>{t('pricing.edit.copied')}</Text> : null}
+          {copiedFrom ? (
+            <Text style={styles.note} testID="copied-from-item">{t('pricing.edit.copiedFromItem', { item: copiedFrom })}</Text>
+          ) : ctx.copied ? (
+            <Text style={styles.note}>{t('pricing.edit.copied')}</Text>
+          ) : null}
           {current.firstBandZeroed ? <Text style={styles.note}>{t('pricing.edit.firstBandZeroed')}</Text> : null}
 
           <BandsEditor draft={current} ctx={ctx} errors={errors} onChange={setDraft} fields={fields} />
+          {canCopyTiers ? (
+            <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="copy-tiers">
+              {t('pricing.edit.copyTiers')}
+            </Button>
+          ) : null}
 
           {oneTime ? (
             <Text style={styles.note}>{t('pricing.edit.oneTimeLabour')}</Text>
@@ -543,6 +584,17 @@ const RateEditorScreen: React.FC = () => {
           </Button>
         </View>
       </KeyboardAvoidingView>
+
+      {copyOpen ? (
+        <CopyTiersSheet
+          visible
+          onClose={() => setCopyOpen(false)}
+          itemId={ctx.itemId}
+          priceType={current.priceType}
+          today={ctx.today}
+          onPick={copyTiers}
+        />
+      ) : null}
 
       <ConfirmDialog
         visible={!!first}

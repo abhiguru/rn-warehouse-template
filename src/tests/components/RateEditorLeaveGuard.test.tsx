@@ -13,6 +13,7 @@ let mockRole = 'admin';
 let mockParams: Record<string, string> = {};
 let mockGuard: { hasChanges: boolean; title?: string } = { hasChanges: false };
 import { listItemRates } from '@/services/item-pricing-service';
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>

@@ -40,6 +40,7 @@ const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'item-pricing': 'itemPricing',
   'item-rates': 'itemPricing',
   'item-price-history': 'itemPriceHistory',
+  'standard-rate': 'standardRate',
   sensors: 'sensors',
   'sensor-detail': 'sensors',
   'reports/operations-dashboard': 'operationsDashboard',

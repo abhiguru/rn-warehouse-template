@@ -36,6 +36,9 @@ export interface ConfirmDialogProps {
   variant?: ConfirmVariant;
   /** Optional icon name (MaterialCommunityIcons) */
   icon?: string;
+  /** A third action between Cancel and the confirm button (for example "Only this GRN"); drawn when both are given. */
+  middleText?: string;
+  onMiddle?: () => void;
   /** Whether tapping the scrim cancels (default true). The back button always cancels. */
   dismissible?: boolean;
   /** The action is running: spinner in the confirm button, both buttons disabled, Back and the scrim do nothing. */
@@ -136,6 +139,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelText: cancelTextProp,
   onConfirm,
   onCancel,
+  middleText,
+  onMiddle,
   variant = 'default',
   icon,
   dismissible = true,
@@ -204,6 +209,20 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 accessibilityState={{ disabled: busy }}
               >
                 <Text style={styles.cancelButtonText}>{cancelText}</Text>
+              </Pressable>
+            ) : null}
+
+            {middleText && onMiddle ? (
+              <Pressable
+                style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed, busy && styles.disabled]}
+                onPress={onMiddle}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={middleText}
+                accessibilityState={{ disabled: busy }}
+                testID="confirm-middle"
+              >
+                <Text style={styles.cancelButtonText}>{middleText}</Text>
               </Pressable>
             ) : null}
 

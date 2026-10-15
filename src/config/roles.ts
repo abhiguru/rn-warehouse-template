@@ -67,6 +67,7 @@ export type RoleGatedScreen =
   | 'itemPricing'
   | 'itemPricingWrite'
   | 'itemPriceHistory'
+  | 'standardRate'
   | 'sensors'
   | 'userManagement'
   | 'enrollmentReview'
@@ -93,8 +94,10 @@ export function canOpenScreen(
     case 'userManagement':
     case 'masterData':
     case 'itemPriceHistory':
+    case 'standardRate':
       // The price history too: staff change prices, but the server gives the record of the
-      // changes to managers only (get_item_price_history, migration 48).
+      // changes to managers only (get_item_price_history, migration 48). Likewise the standard
+      // rate: staff read it, only managers set it (set_standard_rate, migration 85).
       return isManager(role);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';
@@ -106,7 +109,7 @@ export function canOpenScreen(
  * row of a capability the facility does not have (`capabilities`, as for canOpenScreen) is
  * left out.
  */
-export type SettingsFeature = 'customers' | 'enrollmentReview' | 'items' | 'users' | 'itemPricing' | 'sensors';
+export type SettingsFeature = 'customers' | 'enrollmentReview' | 'items' | 'users' | 'itemPricing' | 'standardRate' | 'sensors';
 
 export function settingsFeatureRows(
   role: string | null | undefined,
@@ -118,6 +121,7 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'masterData')) rows.push('items');
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
   if (canOpenScreen(role, 'itemPricing')) rows.push('itemPricing');
+  if (canOpenScreen(role, 'standardRate')) rows.push('standardRate');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;
 }

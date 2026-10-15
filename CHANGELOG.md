@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — every item always has a rate: standard rate, Add on Item pricing, rates on the GRN Review step (2026-10-15)
+
+Needs backend migrations 85 (standard rate) and 86 (rates on the GRN sheet, rate start floor). On a
+facility still on 85 or older, a GRN saves as before when no rate was touched; a rate set on the
+Review step then shows "This cold storage's server needs an update". Owner decisions of 2026-10-15.
+
+- **Standard rate** (Tools and settings → Standard rate; administrators and supervisors): the
+  facility's monthly weight bands (0–10, 11–20, 21–30, 31–50 kg to start) with rent, labour and tax
+  each. Saving it gives every item that has no rate the bands from its first GRN's day, and the
+  toast says how many items got it. Changing it later does not change items that already have a rate.
+- **Items → Add item** has a Rate choice: Standard rate (the default, with the bands shown) or Same
+  as another item (copies that item's rate in force today). The toast says which rate the item got.
+- **Item pricing**: an **Add** button in the list header picks an item and opens its rate with one
+  empty band appended; the "N items need a rate" link and the Needs a rate chip are gone (a strip asks
+  for the standard rate while any item still has none). In the rate editor "Add weight band" now
+  appends after the last band, removing the last band shortens the range (a middle band gives its
+  weights to the band before), and "Copy weight bands from another item…" replaces the bands with
+  another item's. On the item page each default monthly band is tagged **Standard** or **This item**.
+  A "For GRNs only" section lists rates set for single GRNs.
+- **GRN → step 3 Review → Rates**: one row per item and weight with the rate the invoice will use
+  (Customer rate / Item rate / This GRN only) or **No rate**. Create GRN and Save GRN are blocked
+  until every row has a rate ("Add the missing rates before saving."). **Add rate** and **Change**
+  open a short pre-filled sheet: Applies to This customer only / Everyone (this weight band) / Only
+  this GRN; rent, labour, tax; the band; the start date is the GRN date; an optional last day. A
+  change to a rate in force asks first, listing item, band, scope, old → new figures, the period,
+  what ends or resumes and which GRNs it reaches, with Change the rate / Only this GRN / Back.
+  Everything is saved together with the GRN; discarding the GRN discards it. Staff may set all
+  three from the GRN date. A rate for one GRN only is archived once the GRN is invoiced; an
+  invoiced GRN's Rates section is read-only. GRN details show "Rates for this GRN only".
+- **Rate start date**: the earliest allowed start is the facility's oldest GRN or three years back,
+  whichever is earlier; a typed earlier day gets "Choose a start date on or after <date>."
+- Fixes from the two Opus reviews of this batch: the Standard rate screen saves from a fresh read,
+  item pickers keep the typed search and offer Try again, the rate editor keeps its scroll position
+  on errors, and an "Everyone" change on the GRN sheet never hides a customer's own rate.
+- New Gujarati strings drafted (પ્રમાણભૂત for Standard, વજન મર્યાદા for weight band) — owner review pending.
+
 ## Unreleased — sign-in mobile number is ten digits (2026-10-15)
 
 - The sign-in field keeps at most ten digits: an eleventh typed digit is dropped, and a pasted

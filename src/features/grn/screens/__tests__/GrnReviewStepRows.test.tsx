@@ -43,6 +43,11 @@ const LINES = Array.from({ length: 30 }, (_, n) => line(n));
 const WEIGHTS = new Set(LINES.map((item) => item.weight));
 let mockForm: Record<string, unknown>;
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
+jest.mock('@/features/grn/rates/useGrnRates', () => require('@/tests/helpers/grnRatesMock').grnRatesModuleMock());
+// These tests are about the item list; the Rates section has its own tests (GrnReviewStepRates).
+jest.mock('@/features/grn/rates/GrnRatesSection', () => ({ GrnRatesSection: () => null }));
+jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null }));
+jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
 // A line words its weight with formatWeightEach ("40 kg each"). That helper calls formatWeight
 // inside its own module, where a stand-in for the export is not seen, so it is the one watched.
 jest.mock('@/utils/formatters', () => {

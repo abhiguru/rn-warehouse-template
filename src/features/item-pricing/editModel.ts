@@ -75,6 +75,8 @@ export interface EditorContext {
   originalStart: string | null;
   /** The bands, labour and tax were taken from the default rate (shows the copy note). */
   copied: boolean;
+  /** The earliest day a rate may start (the oldest GRN's day); absent: three years before today. */
+  earliestStart?: string | null;
   /** Set when the editor was opened from an invoice line. */
   invoice: null | { customerName: string | null; grnDate: string; staff: boolean; mixedDays: boolean };
 }
@@ -88,13 +90,22 @@ const day = (value: string | null | undefined): string => (value ? value.slice(0
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 const two = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 
-/** The server accepts a start from three years before today (1095 days) to two years after (730 days). */
+/**
+ * The server accepts a start from the day of the facility's oldest GRN (`earliest_start` of the rates
+ * read, migration 86) to two years after today (730 days). A server that does not send the floor is an
+ * older one: it allowed three years before today (1095 days), which is the fallback.
+ */
 export const START_DAYS_BACK = 1095;
 export const START_DAYS_AHEAD = 730;
 
+/** The earliest day a rate may start. */
+export function startFloor(today: string, earliest?: string | null): string {
+  return earliest || addDays(today, -START_DAYS_BACK);
+}
+
 /** True when `startsOn` is a day the server accepts as a start (INVALID_DATE otherwise). */
-export function dayInWindow(startsOn: string, today: string): boolean {
-  return startsOn >= addDays(today, -START_DAYS_BACK) && startsOn <= addDays(today, START_DAYS_AHEAD);
+export function dayInWindow(startsOn: string, today: string, earliest?: string | null): boolean {
+  return startsOn >= startFloor(today, earliest) && startsOn <= addDays(today, START_DAYS_AHEAD);
 }
 
 /** A whole number of kilograms typed as digits only, else null. */
@@ -254,24 +265,41 @@ export function setBandField(draft: Draft, index: number, field: 'rent' | 'labou
   return { ...draft, bands: draft.bands.map((b, i) => (i === index ? { ...b, [field]: text } : b)) };
 }
 
-/** Splits the last band in half; the rent (and labour, tax) is copied. Unchanged when it cannot be split. */
-export function splitLastBand(draft: Draft): Draft {
-  const last = draft.bands.length - 1;
-  const from = fromOf(draft, last);
-  const upTo = wholeKg(draft.bands[last]?.upTo);
-  if (draft.bands.length >= MAX_BANDS || from === null || upTo === null || upTo - from < 1) return draft;
-  const mid = Math.floor((from + upTo) / 2);
-  const band = draft.bands[last];
-  const { gapFrom: _gap, fromText: _text, ...rest } = band;
-  return { ...draft, bands: [...draft.bands.slice(0, last), { ...band, upTo: String(mid) }, { ...rest, upTo: String(upTo) }] };
+/** Why "Add weight band" cannot add one now: ten bands already, or the last "Up to" is not a whole number yet. */
+export function appendBandBlock(draft: Draft): 'max' | 'upTo' | null {
+  if (draft.bands.length >= MAX_BANDS) return 'max';
+  if (wholeKg(draft.bands[draft.bands.length - 1]?.upTo) === null) return 'upTo';
+  return null;
 }
 
-/** Removes a band; the band before takes over its weights (the first band's weights go to the next). */
+/**
+ * Adds an empty band after the last one (it starts one kg above where the last ends). Labour and tax
+ * are copied from the first band when each band keeps its own, as withBandFor does. Unchanged at ten
+ * bands and while the last "Up to" is not a whole number.
+ */
+export function appendEmptyBand(draft: Draft): Draft {
+  if (appendBandBlock(draft) !== null) return draft;
+  const first = draft.bands[0];
+  const fresh: BandDraft = {
+    upTo: '',
+    rent: '',
+    ...(draft.bands.some(b => b.labour !== undefined) ? { labour: first.labour ?? '', tax: first.tax ?? '' } : {}),
+  };
+  return { ...draft, bands: [...draft.bands, fresh] };
+}
+
+/**
+ * Removes a band. The LAST band is dropped and the range gets shorter (the band before keeps its own
+ * "Up to": owner decision 6, so "Up to 1, Up to 8, remove the rest" ends at 8). Any other band hands
+ * its weights to the band before it (the first band's weights go to the next).
+ * A band whose "Up to" is still empty (just added) has no weights to hand over either way.
+ */
 export function removeBand(draft: Draft, index: number): Draft {
   if (draft.bands.length < 2 || index < 0 || index >= draft.bands.length) return draft;
   const removed = draft.bands[index];
   const bands = draft.bands.filter((_, i) => i !== index);
-  if (index > 0) bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
+  const last = index === draft.bands.length - 1;
+  if (index > 0 && !last && removed.upTo.trim() !== '') bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
   return { ...draft, bands };
 }
 
@@ -303,6 +331,16 @@ function draftFromRows(rows: ItemStoragePrice[], priceType: PriceType, keepRent 
     labour: two(first.labour_rate),
     tax: taxText(first.tax_percent),
   };
+}
+
+/**
+ * The draft with the bands, labour and tax of another item's default rate (its rows in force,
+ * one price type). The start day the person chose stays. Unchanged when the other item has no rows.
+ */
+export function copyTiersFrom(draft: Draft, rows: ItemStoragePrice[]): Draft {
+  if (rows.length === 0) return draft;
+  const sorted = [...rows].sort((a, b) => a.weight_min - b.weight_min);
+  return { ...draftFromRows(sorted, draft.priceType, true, true), startsOn: draft.startsOn, startsOnChoice: draft.startsOnChoice };
 }
 
 /** One band 0-100 and nothing else filled in. */
@@ -432,15 +470,22 @@ export function switchNewRateType(draft: Draft, ctx: EditorContext, priceType: P
   };
 }
 
+/** The draft with every rent cleared: rents copied from another item are rents of one price type only. */
+export function withoutRents(draft: Draft): Draft {
+  return { ...draft, bands: draft.bands.map(b => ({ ...b, rent: '' })) };
+}
+
 interface OpenArgs {
   mode: EditorMode;
   params: EditorParams;
   rows: ItemStoragePrice[];
   role: string | null | undefined;
   today: string;
+  /** `earliest_start` of the rates read, when the server sent it. */
+  earliest?: string | null;
 }
 
-export function initialDraft({ mode: asked, params, rows, role, today }: OpenArgs): { draft: Draft; context: EditorContext } {
+export function initialDraft({ mode: asked, params, rows, role, today, earliest }: OpenArgs): { draft: Draft; context: EditorContext } {
   const rights = rateRights(role);
   const customerId = params.customer_id || null;
   const itemName = params.item_name || rows[0]?.item_name || '';
@@ -466,6 +511,7 @@ export function initialDraft({ mode: asked, params, rows, role, today }: OpenArg
     customerName,
     today,
     canStartInPast: rights.canStartInPast,
+    earliestStart: earliest ?? null,
     managerOnly: false,
     plannedGone: false,
     rows,
@@ -590,8 +636,13 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
     errors.startsOn = t('pricing.edit.chooseDate');
   } else if (ctx.mode !== 'correct' && !ctx.canStartInPast && draft.startsOn < ctx.today) {
     errors.startsOn = t('pricing.error.pastDateNotAllowed');
-  } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today)) {
-    errors.startsOn = t('pricing.error.invalidDate');
+  } else if (ctx.mode !== 'correct' && draft.startsOn < startFloor(ctx.today, ctx.earliestStart)) {
+    // A day from the server is named; without one (an older server) the old three-year window is described.
+    errors.startsOn = ctx.earliestStart
+      ? t('pricing.error.invalidDate', { date: dateText(ctx.earliestStart) })
+      : t('pricing.error.invalidDateWindow');
+  } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today, ctx.earliestStart)) {
+    errors.startsOn = t('pricing.error.startTooFar');
   } else if (
     ctx.mode === 'upcoming' && !ctx.canStartInPast && ctx.originalStart !== null &&
     draft.startsOn !== ctx.originalStart && draft.startsOn <= ctx.today

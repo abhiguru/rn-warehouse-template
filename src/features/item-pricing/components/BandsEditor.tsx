@@ -12,7 +12,6 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import {
-  MAX_BANDS,
   fromOf,
   gapBefore,
   nowText,
@@ -20,7 +19,8 @@ import {
   setBandFrom,
   setFirstFrom,
   setUpTo,
-  splitLastBand,
+  appendBandBlock,
+  appendEmptyBand,
   removeBand,
   wholeKg,
   type Draft,
@@ -67,7 +67,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
   const stacked = fontScale >= STACK_FROM_SCALE;
   const oneTime = draft.priceType === 'one_time';
   const perBand = draft.bands.some(b => b.labour !== undefined);
-  const canSplit = splitLastBand(draft) !== draft;
+  const addBlock = appendBandBlock(draft);
   const rentLabel = oneTime ? t('pricing.edit.rentOnce') : t('pricing.edit.rentMonthly');
 
   return (
@@ -204,13 +204,16 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
           </View>
         );
       })}
+      {draft.bands.length >= 2 ? <Text style={styles.note} testID="remove-band-note">{t('pricing.edit.removeBandNote')}</Text> : null}
       {errors.bands ? <Text style={styles.error} accessibilityRole="alert">{errors.bands}</Text> : null}
-      {draft.bands.length < MAX_BANDS && (
+      {addBlock === 'max' ? (
+        <Text style={styles.note}>{t('pricing.edit.bandsFull')}</Text>
+      ) : (
         <>
-          <Button type="tertiary" leftIcon="plus" disabled={!canSplit} onPress={() => onChange(splitLastBand(draft))} testID="add-band">
+          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null} onPress={() => onChange(appendEmptyBand(draft))} testID="add-band">
             {t('pricing.edit.addBand')}
           </Button>
-          {canSplit ? null : <Text style={styles.note}>{t('pricing.edit.cannotSplit')}</Text>}
+          {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}
         </>
       )}
       {ctx.customerId ? <Text style={styles.note}>{t('pricing.edit.outsidePay')}</Text> : null}

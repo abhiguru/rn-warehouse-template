@@ -14,6 +14,8 @@ export type EditorParams = {
   price_type?: PriceType;
   /** 'correct' and 'upcoming': the start (YYYY-MM-DD) of the rate being corrected or edited. 'change'/'add'/'addCustomer': a start to preselect. */
   starts_on?: string;
+  /** '1': the editor opens with one empty band added after the last (the Add button of the Item pricing list). */
+  add_band?: '1';
   // Invoice prefill (mode 'invoice'): the line as the invoice shows it.
   unit_price?: string;
   labour_rate?: string;

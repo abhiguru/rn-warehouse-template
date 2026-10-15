@@ -12,6 +12,7 @@ import RateEditorScreen from '../../../app/item-rates/edit';
 let mockRole = 'admin';
 let mockParams: Record<string, string> = {};
 let mockGuard: { hasChanges: boolean; title?: string } = { hasChanges: false };
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>

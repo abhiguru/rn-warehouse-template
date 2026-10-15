@@ -64,6 +64,25 @@ export interface ItemPricingListResponse {
   error?: string;
 }
 
+/** A rate for one GRN only, as get_item_grn_rates (backend migration 86) returns it. */
+export interface ItemGrnRate {
+  id: string;
+  gr_id: string;
+  gr_no: string;
+  grn_date: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  price_type: PriceType;
+  weight_min: number;
+  weight_max: number;
+  unit_price: number;
+  labour_rate: number;
+  tax_percent: number;
+  /** The GRN is invoiced: the invoice keeps its own figures, so the rate is no longer used. */
+  archived: boolean;
+  created_at: string;
+}
+
 export interface CreateItemPricingPayload {
   item_id: string;
   customer_id?: string | null;
@@ -162,7 +181,7 @@ export type RateErrorCode =
   | 'INVALID_PRICE_TYPE' | 'INVALID_DATE' | 'PAST_DATE_NOT_ALLOWED' | 'RATE_IN_FORCE_MANAGER_ONLY'
   | 'ITEM_NOT_FOUND' | 'CUSTOMER_NOT_FOUND' | 'INVALID_BANDS' | 'INVALID_BAND' | 'INVALID_AMOUNT'
   | 'BANDS_OVERLAP' | 'BANDS_GAP' | 'LATER_RATES_EXIST' | 'NOTHING_TO_STOP' | 'NOTHING_TO_UNDO' | 'PERMISSION_DENIED'
-  | 'INVALID_MODE' | 'NOT_A_RATE_START' | 'NOTHING_TO_MOVE' | 'STALE_RATES'
+  | 'INVALID_MODE' | 'NOT_A_RATE_START' | 'NOTHING_TO_MOVE' | 'STALE_RATES' | 'STANDARD_RATE_MANAGER_ONLY'
   | 'SERVER_NEEDS_UPDATE' | 'UNKNOWN';
 
 export interface RateBandInput {
@@ -219,6 +238,8 @@ export interface ReplaceRatesResult {
   /** INVALID_BAND / INVALID_AMOUNT: which band and field the server named. */
   bandIndex?: number;
   field?: 'unit_price' | 'labour_rate' | 'tax_percent';
+  /** INVALID_DATE (migration 86): the earliest day a rate may start (the day of the oldest GRN). */
+  earliest?: string;
   /** LATER_RATES_EXIST: the later rates the server found. */
   later?: { effective_from: string; weight_min: number; weight_max: number; unit_price: number }[];
   /** Success: the last day the server kept for the new rates (a scheduled stop); null when it kept none; absent when it did not say. */
@@ -242,4 +263,31 @@ export interface ActiveItem {
   id: string;
   name: string;
   packaging: string | null;
+}
+
+// The facility's standard rate (backend migration 85): monthly tiers by weight that a new item gets.
+
+/** One tier of the standard rate: whole kilograms, both ends inclusive. Same shape as a band sent to replace_item_rates. */
+export type StandardTier = RateBandInput;
+
+export interface StandardRate {
+  /** Ordered by weight_min; empty until a standard rate is saved. */
+  tiers: StandardTier[];
+  updatedAt: string | null;
+  updatedByName: string | null;
+}
+
+export interface SetStandardRateResult {
+  success: boolean;
+  errorCode?: RateErrorCode;
+  /** Text for the screen, in the app's language, already mapped. */
+  message?: string;
+  /** INVALID_BAND / INVALID_AMOUNT / BANDS_OVERLAP / BANDS_GAP: which tier and field the server named. */
+  tierIndex?: number;
+  field?: 'unit_price' | 'labour_rate' | 'tax_percent';
+  /** Failure: the answer never came, so the standard rate may have been saved. */
+  outcomeUnknown?: boolean;
+  /** Success: the tiers as saved, and how many items without a rate got them. */
+  tiers?: StandardTier[];
+  itemsPriced?: number;
 }

@@ -16,24 +16,26 @@ describe('ITEM_RATES_FILTERS', () => {
     expect((ITEM_RATES_CONFIG as { countResults?: unknown }).countResults).toBeUndefined();
   });
 
-  it('offers the chips Customer, Type and Needs a rate, and nothing for items (P-35, P-39)', () => {
-    expect(ITEM_RATES_FILTERS.fastFilters).toEqual(['customers', 'priceType', 'needsRate']);
-    expect(ITEM_RATES_FILTERS.fields.map(f => label(f.key))).toEqual(['Customer', 'Type', 'Needs a rate']);
+  it('offers the chips Customer and Type, no Needs a rate, and nothing for items (P-35, P-39)', () => {
+    expect(ITEM_RATES_FILTERS.fastFilters).toEqual(['customers', 'priceType']);
+    expect(ITEM_RATES_FILTERS.fields.map(f => label(f.key))).toEqual(['Customer', 'Type']);
     expect(ITEM_RATES_FILTERS.sort).toBeUndefined();
   });
 
   it('labels follow the language', () => {
     setLanguage('gu');
     expect(label('customers')).toBe('વેપારી');
-    expect(label('needsRate')).toBe('દર જોઈએ છે');
+    expect(label('priceType')).toBe('પ્રકાર');
     expect(ITEM_RATES_CONFIG.title).toBe('આઇટમના દર');
     setLanguage('en');
-    expect(label('needsRate')).toBe('Needs a rate');
+    expect(label('priceType')).toBe('Type');
   });
 
   it('turns Customer = Review Orchard B into a request', () => {
-    const request = ITEM_RATES_FILTERS.toRequest({ customers: [{ id: 'orchard-b', label: 'Review Orchard B' }], needsRate: true, priceType: 'one_time' }, undefined, ctx);
-    expect(request).toEqual({ customerIds: ['orchard-b'], priceType: 'one_time', needsRate: true });
-    expect(ITEM_RATES_FILTERS.toRequest({}, undefined, ctx)).toEqual({ customerIds: [], priceType: 'all', needsRate: false });
+    const request = ITEM_RATES_FILTERS.toRequest({ customers: [{ id: 'orchard-b', label: 'Review Orchard B' }], priceType: 'one_time' }, undefined, ctx);
+    expect(request).toEqual({ customerIds: ['orchard-b'], priceType: 'one_time' });
+    expect(ITEM_RATES_FILTERS.toRequest({}, undefined, ctx)).toEqual({ customerIds: [], priceType: 'all' });
+    // A Needs a rate value left in a saved filter is ignored.
+    expect(ITEM_RATES_FILTERS.toRequest({ needsRate: true }, undefined, ctx)).toEqual({ customerIds: [], priceType: 'all' });
   });
 });

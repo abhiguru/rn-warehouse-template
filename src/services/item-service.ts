@@ -16,6 +16,8 @@ import {
   ItemListItem,
   ItemListResponse,
   ItemServiceResponse,
+  CreatedItem,
+  ItemRateSource,
   ItemFilters,
   CreateItemParams,
   UpdateItemParams,
@@ -334,13 +336,15 @@ class ItemService {
    * - Packaging (optional, max 40 chars)
    * - Description (optional, max 40 chars)
    */
-  async createItem(params: CreateItemParams): Promise<ItemServiceResponse> {
+  async createItem(params: CreateItemParams): Promise<ItemServiceResponse<CreatedItem>> {
     console.log('[ItemService] createItem:', params);
 
     interface CreateItemRpcResponse {
       success: boolean;
       message?: string;
       item_id?: string;
+      /** The item and `rate_source` (backend migration 85). */
+      data?: { id?: string; rate_source?: unknown } | null;
       error?: string;
     }
 
@@ -357,6 +361,10 @@ class ItemService {
     );
 
     if (!result.success || !result.data) {
+      // PGRST202: this facility's create_item has no Standard rate / Same as another item parameters (migration 85 missing).
+      if (result.errorCode === 'PGRST202') {
+        return { success: false, message: t('pricing.standard.error.serverNeedsUpdate'), error: result.error };
+      }
       return {
         success: false,
         message: result.message,
@@ -374,12 +382,15 @@ class ItemService {
       };
     }
 
-    console.log('[ItemService] Item created via RPC:', rpcData.item_id);
+    console.log('[ItemService] Item created via RPC:', rpcData.item_id ?? rpcData.data?.id);
+    const source = rpcData.data?.rate_source;
+    const rate_source: ItemRateSource | undefined = source === 'standard' || source === 'copied' || source === 'none' ? source : undefined;
     return {
       success: true,
       message: serverText(rpcData.message, t('errors.item.created')),
       data: {
-        id: rpcData.item_id,
+        id: rpcData.item_id ?? rpcData.data?.id,
+        ...(rate_source ? { rate_source } : {}),
         name: params.p_name,
         packaging: params.p_packaging,
         description: params.p_description,

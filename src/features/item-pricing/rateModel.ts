@@ -42,7 +42,6 @@ export interface ItemRates {
 export interface ItemSummaryFilters {
   customerIds?: string[];
   priceType?: 'all' | PriceType;
-  needsRate?: boolean;
 }
 
 export interface ItemSummary {

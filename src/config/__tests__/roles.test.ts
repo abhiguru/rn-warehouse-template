@@ -50,14 +50,15 @@ describe('role by screen', () => {
     'enrollmentReview',
     'masterData',
     'itemPriceHistory',
+    'standardRate',
   ];
   it.each([
-    ['admin', [true, true, true, true, true, true, true, true]],
-    ['supervisor', [true, true, true, true, true, false, true, true]],
-    // Staff change prices but do not read the record of the changes (server migration 48).
-    ['staff', [false, true, true, true, false, false, false, false]],
-    ['customer', [false, false, false, false, false, false, false, false]],
-    [null, [false, false, false, false, false, false, false, false]],
+    ['admin', [true, true, true, true, true, true, true, true, true]],
+    ['supervisor', [true, true, true, true, true, false, true, true, true]],
+    // Staff change prices but do not read the record of the changes (server migration 48), nor set the standard rate (migration 85).
+    ['staff', [false, true, true, true, false, false, false, false, false]],
+    ['customer', [false, false, false, false, false, false, false, false, false]],
+    [null, [false, false, false, false, false, false, false, false, false]],
   ])('%s', (role, expected) => {
     expect(SCREENS.map((screen) => canOpenScreen(role, screen))).toEqual(expected);
   });
@@ -71,6 +72,7 @@ const SCREENS_WITHOUT_SENSORS: RoleGatedScreen[] = [
   'enrollmentReview',
   'masterData',
   'itemPriceHistory',
+  'standardRate',
 ];
 
 describe('role and facility capabilities by screen', () => {
@@ -118,8 +120,8 @@ describe('report routing', () => {
 
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'sensors']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'sensors']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
+    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
     ['staff', ['itemPricing', 'sensors']],
     ['customer', []],
     [undefined, []],
@@ -128,8 +130,8 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
+    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate']],
     ['staff', ['itemPricing']],
     ['customer', []],
   ])('%s at a facility without sensors sees %j', (role, rows) => {

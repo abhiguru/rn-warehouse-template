@@ -11,6 +11,7 @@ import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
 
 let mockState: Record<string, unknown> = {};
 let mockParams: Record<string, string> = {};
+jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),

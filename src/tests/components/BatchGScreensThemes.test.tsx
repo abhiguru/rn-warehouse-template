@@ -64,6 +64,7 @@ jest.mock('@/services/item-pricing-service', () => ({
   listActiveItems: jest.fn(async () => [{ id: 'i1', name: 'Potato', packaging: 'Bag' }]),
   listAllRates: jest.fn(async () => [mockPrice]),
   listItemRates: jest.fn(async () => [mockPrice]),
+  getItemGrnRates: jest.fn(async () => []),
 }));
 jest.mock('@/components/list/ListSkeletonCard', () => ({ ListSkeletonCard: () => null }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
@@ -273,11 +274,11 @@ describe('what each role is offered', () => {
   // The Sensors row also needs the facility's `sensors` capability (its public config).
   const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
   it.each([
-    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'sensors']],
-    ['supervisor', true, ['customers', 'items', 'users', 'itemPricing', 'sensors']],
+    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
+    ['supervisor', true, ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
     ['staff', true, ['itemPricing', 'sensors']],
     ['customer', true, []],
-    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing']],
+    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
     ['staff', false, ['itemPricing']],
   ])('Settings feature rows for %s, sensors capability %s: %j', async (role, sensors, rows) => {
     signedInAs(role);

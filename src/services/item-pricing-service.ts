@@ -14,11 +14,15 @@ import type {
   ItemPriceHistoryResponse,
   ItemPriceHistoryParams,
   ActiveItem,
+  ItemGrnRate,
   ReplaceRatesInput,
   ReplaceRatesResult,
   UndoRateChangeInput,
   UndoRateChangeResult,
   RateErrorCode,
+  StandardRate,
+  StandardTier,
+  SetStandardRateResult,
 } from '../types/item-pricing.types';
 import {
   ItemStoragePrice
@@ -30,8 +34,12 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
+import { formatDate, toCalendarDay } from '@/utils/formatters';
+import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
 import { failureText, serverText } from '@/utils/serverText';
+
+import { rememberRateStartFloor } from './rateStartFloor';
 
 const itemPricingLogger = createLogger('ItemPricingService');
 
@@ -158,6 +166,12 @@ export const getItemStoragePrices = async (
         hasMoreItems(rawPagination.offset ?? (params.p_offset || 0), rawPagination.limit ?? (params.p_limit || PAGINATION.DEFAULT_LIMIT), totalCount),
     };
 
+    // Backend migration 86 adds the earliest day a rate may start to every rates read. `data` is the row
+    // list, so it comes beside it (an object `data` or the pagination block are accepted as well).
+    const asObject = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+    const earliest = responseData.earliest_start ?? asObject(responseData.data)?.earliest_start ?? (rawPagination as Record<string, unknown>).earliest_start;
+    rememberRateStartFloor(earliest);
+
     return {
       success: true,
       data: items,
@@ -276,7 +290,6 @@ export const getItemPriceHistory = async (
 
 const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   INVALID_PRICE_TYPE: 'pricing.error.generic',
-  INVALID_DATE: 'pricing.error.invalidDate',
   PAST_DATE_NOT_ALLOWED: 'pricing.error.pastDateNotAllowed',
   RATE_IN_FORCE_MANAGER_ONLY: 'pricing.error.rateInForceManagerOnly',
   ITEM_NOT_FOUND: 'pricing.error.itemNotFound',
@@ -292,6 +305,7 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   NOT_A_RATE_START: 'pricing.error.notARateStart',
   NOTHING_TO_MOVE: 'pricing.error.nothingToMove',
   STALE_RATES: 'pricing.error.staleRates',
+  STANDARD_RATE_MANAGER_ONLY: 'pricing.standard.error.managerOnly',
   // LATER_RATES_EXIST has no message: the screen's dialog explains.
 };
 
@@ -306,6 +320,15 @@ const mapRateError = (
   if (isMissingFunction(error, fn)) return { code: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
   if (error.code === '42501' || text.includes('access required')) return { code: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') };
   return { code: 'UNKNOWN', message: t('pricing.error.generic') };
+};
+
+/** INVALID_DATE: names the oldest day that is allowed when the server sends it (`data.earliest`, migration 86). */
+const invalidDateText = (details: { earliest?: unknown }, startsOn?: string | null): string => {
+  // The server sends INVALID_DATE for a day too far ahead as well: that one is told apart by the day sent.
+  if (startsOn && startsOn.slice(0, 10) > addDays(toCalendarDay(new Date()), 730)) return t('pricing.error.startTooFar');
+  return typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)
+    ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10), 'medium') })
+    : t('pricing.error.invalidDateWindow');
 };
 
 const RATE_FIELDS = ['unit_price', 'labour_rate', 'tax_percent'] as const;
@@ -363,7 +386,7 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       | {
           success?: unknown;
           error_code?: unknown;
-          data?: { index?: unknown; field?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
+          data?: { index?: unknown; field?: unknown; earliest?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
         }
       | null;
 
@@ -381,8 +404,10 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
         extra.field = details.field as ReplaceRatesResult['field'];
       }
+      if (typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)) extra.earliest = details.earliest.slice(0, 10);
       if (Array.isArray(details.later)) extra.later = details.later as ReplaceRatesResult['later'];
       if (code === 'LATER_RATES_EXIST') return rateFailure(code, undefined, extra);
+      if (code === 'INVALID_DATE') return rateFailure(code, invalidDateText(details, input.starts_on), extra);
       if (code === 'PERMISSION_DENIED') return rateFailure(code, t('errors.parsed.noPermission'), extra);
       if (key) return rateFailure(code, t(key), extra);
       return rateFailure('UNKNOWN', t('pricing.error.generic'), extra);
@@ -440,7 +465,7 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     }
 
     const response = unwrapArrayResponse(data) as
-      | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown } | null }
+      | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown; earliest?: unknown } | null }
       | null;
     if (!response || typeof response !== 'object') return failure('UNKNOWN', t('pricing.error.generic'));
 
@@ -448,6 +473,7 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
       handleGlobalAuthError(response);
       const code = String(response.error_code ?? '') as RateErrorCode;
       if (code === 'PERMISSION_DENIED') return failure(code, t('errors.parsed.noPermission'));
+      if (code === 'INVALID_DATE') return failure(code, invalidDateText(response.data ?? {}, input.startsOn));
       const key = RATE_ERROR_KEYS[code];
       return key ? failure(code, t(key)) : failure('UNKNOWN', t('pricing.error.generic'));
     }
@@ -508,6 +534,46 @@ export const listAllRates = (): Promise<ItemStoragePrice[]> => readRates({});
 /** Every rate of one item (one item never has more than a page). */
 export const listItemRates = (itemId: string): Promise<ItemStoragePrice[]> => readRates({ item_ids: [itemId] });
 
+/** Every rate (ended ones too) of these items, for the rates of a GRN. */
+export const listRatesOfItems = (itemIds: string[]): Promise<ItemStoragePrice[]> =>
+  itemIds.length === 0 ? Promise.resolve([]) : readRates({ item_ids: itemIds });
+
+/**
+ * The rates set for one GRN only on this item (backend migration 86), active ones first. A server without
+ * the function (an older one) has none: an empty list. Throws when the facility cannot be reached.
+ */
+export const getItemGrnRates = async (itemId: string): Promise<ItemGrnRate[]> => {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_item_grn_rates', { p_item_id: itemId })), RPC_TIMEOUT_MS, 'GRN rates');
+  if (error) {
+    handleGlobalAuthError(error);
+    if (isMissingFunction(error, 'get_item_grn_rates')) return [];
+    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates for GRNs could not be loaded');
+  }
+  const response = unwrapArrayResponse(data) as { success?: unknown; data?: { rates?: unknown } | null } | null;
+  if (!response || response.success !== true) {
+    handleGlobalAuthError(response);
+    throw new Error('The rates for GRNs could not be loaded');
+  }
+  const rows = Array.isArray(response.data?.rates) ? (response.data!.rates as Array<Record<string, unknown>>) : [];
+  return rows.map(r => ({
+    id: String(r.id),
+    gr_id: String(r.gr_id),
+    gr_no: String(r.gr_no ?? ''),
+    grn_date: String(r.grn_date ?? '').slice(0, 10),
+    customer_id: (r.customer_id as string | null) ?? null,
+    customer_name: (r.customer_name as string | null) ?? null,
+    price_type: r.price_type === 'one_time' ? 'one_time' : 'monthly',
+    weight_min: Number(r.weight_min),
+    weight_max: Number(r.weight_max),
+    unit_price: Number(r.unit_price),
+    labour_rate: Number(r.labour_rate),
+    tax_percent: Number(r.tax_percent),
+    archived: r.archived === true,
+    created_at: String(r.created_at ?? ''),
+  }));
+};
+
 /** The active items, by name (the items table, as the item pickers read it). */
 export const listActiveItems = async (): Promise<ActiveItem[]> => {
   const client = await getAuthenticatedClient();
@@ -521,4 +587,109 @@ export const listActiveItems = async (): Promise<ActiveItem[]> => {
     name: row.name,
     packaging: row.packaging ?? null,
   }));
+};
+
+// ---------------------------------------------------------------------------
+// The standard rate (backend migration 85): get_standard_rate, set_standard_rate.
+// ---------------------------------------------------------------------------
+
+const toTier = (raw: unknown): StandardTier | null => {
+  const r = raw as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object') return null;
+  const n = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+  const tier = {
+    weight_min: n(r.weight_min),
+    weight_max: n(r.weight_max),
+    unit_price: n(r.unit_price),
+    labour_rate: n(r.labour_rate),
+    tax_percent: n(r.tax_percent),
+  };
+  return Object.values(tier).every(Number.isFinite) ? tier : null;
+};
+
+const toTiers = (raw: unknown): StandardTier[] =>
+  (Array.isArray(raw) ? raw : []).map(toTier).filter((t): t is StandardTier => t !== null).sort((a, b) => a.weight_min - b.weight_min);
+
+/** The standard rate. Throws when the facility cannot be reached or refuses, like the other rate reads. */
+export const getStandardRate = async (): Promise<StandardRate> => {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_standard_rate')), RPC_TIMEOUT_MS, 'Standard rate');
+  if (error) {
+    itemPricingLogger.error('get_standard_rate RPC error:', error);
+    handleGlobalAuthError(error);
+    if (isMissingFunction(error, 'get_standard_rate')) throw Object.assign(new Error(t('pricing.standard.error.serverNeedsUpdate')), { code: 'SERVER_NEEDS_UPDATE' });
+    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The standard rate could not be loaded');
+  }
+  const response = unwrapArrayResponse(data) as { success?: unknown; data?: { tiers?: unknown; updated_at?: unknown; updated_by_name?: unknown } | null } | null;
+  if (!response || typeof response !== 'object' || response.success !== true) {
+    handleGlobalAuthError(response);
+    throw new Error('The standard rate could not be loaded');
+  }
+  const details = response.data ?? {};
+  return {
+    tiers: toTiers(details.tiers),
+    updatedAt: typeof details.updated_at === 'string' ? details.updated_at : null,
+    updatedByName: typeof details.updated_by_name === 'string' ? details.updated_by_name : null,
+  };
+};
+
+/**
+ * Save the standard rate (administrators and supervisors). The server also gives the tiers to every
+ * active item that has no default rate yet and says how many (`itemsPriced`). A failure carries
+ * `errorCode` and the app's own `message`; the server's English text is never shown.
+ */
+export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandardRateResult> => {
+  const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
+  try {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(
+      Promise.resolve(client.rpc('set_standard_rate', { p_tiers: tiers })),
+      RPC_TIMEOUT_MS,
+      'Standard rate'
+    );
+
+    if (error) {
+      itemPricingLogger.error('set_standard_rate RPC error:', error);
+      handleGlobalAuthError(error);
+      const mapped = mapRateError(error, 'set_standard_rate');
+      // An error with no database code is the connection failing: the save may have gone through.
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unconfirmed();
+      return { success: false, errorCode: mapped.code, message: mapped.message };
+    }
+
+    const response = unwrapArrayResponse(data) as
+      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown } | null }
+      | null;
+    if (!response || typeof response !== 'object') return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') };
+
+    const details = response.data ?? {};
+    if (response.success !== true) {
+      handleGlobalAuthError(response);
+      const code = String(response.error_code ?? '') as RateErrorCode;
+      const key = RATE_ERROR_KEYS[code];
+      const extra: Partial<SetStandardRateResult> = {};
+      if (typeof details.index === 'number') extra.tierIndex = details.index;
+      if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
+        extra.field = details.field as SetStandardRateResult['field'];
+      }
+      if (code === 'PERMISSION_DENIED') return { success: false, errorCode: code, message: t('errors.parsed.noPermission'), ...extra };
+      if (key) return { success: false, errorCode: code, message: t(key), ...extra };
+      return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic'), ...extra };
+    }
+
+    return {
+      success: true,
+      tiers: toTiers(details.tiers),
+      itemsPriced: Number(details.items_priced ?? 0) || 0,
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    itemPricingLogger.error('Exception in setStandardRate:', { error: errorMessage });
+    handleGlobalAuthError(err);
+    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'set_standard_rate')) {
+      return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
+    }
+    // A timeout or a lost answer: the server may have committed the change.
+    return unconfirmed();
+  }
 };

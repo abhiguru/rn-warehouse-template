@@ -17,6 +17,8 @@ import {
   ActionsSection,
 } from '@/components/common/overview-tab';
 import { t as tr } from '@/i18n';
+import { GrnOnlyRates } from '@/features/grn/rates/GrnOnlyRates';
+import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 
 // Using snake_case to match backend RPC types
 interface CustomerDetails {
@@ -46,6 +48,8 @@ interface GRNOverviewTabProps {
   is_share_loading?: boolean;
   onPrint?: () => void;
   is_print_loading?: boolean;
+  /** Rates for this GRN only (backend migration 86). */
+  rates?: RpcGrnRate[] | null;
 }
 
 export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
@@ -64,6 +68,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   is_share_loading = false,
   onPrint,
   is_print_loading = false,
+  rates,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -133,6 +138,9 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
           </View>
         </>
       )}
+
+      {/* SECTION: RATES FOR THIS GRN ONLY */}
+      {rates && rates.length > 0 ? <GrnOnlyRates rates={rates} /> : null}
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}
