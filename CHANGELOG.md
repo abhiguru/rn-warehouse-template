@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — sign-in mobile number is ten digits (2026-10-15)
+
+- The sign-in field keeps at most ten digits: an eleventh typed digit is dropped, and a pasted
+  `+91 98765 43210` or `919876543210` loses its country code. Gujarati digits still count as 0-9.
+  App only; no backend change.
+
 ## Unreleased — GRN for a deactivated business (2026-10-15)
 
 Needs backend migration 83 (same batch as 82): `save_grn` refuses a new GRN for a business that is
