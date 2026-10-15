@@ -78,10 +78,25 @@ describe('createGRN with rates', () => {
     expect(result.rateError).toEqual({ code: 'RATE_MISSING', data: { lines } });
   });
 
-  it('says the server needs an update when it has no p_rates', async () => {
-    mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.save_grn(p_rates) in the schema cache' } });
+  const unknown = { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.save_grn(p_rates) in the schema cache' } };
+
+  it('says the server needs an update when it has no p_rates and rates were set', async () => {
+    mockRpc.mockResolvedValue(unknown);
+    const result = await createGRN({ header, items, rates });
+    expect(result.error).toBe("This cold storage's server needs an update before rates can be saved with a GRN.");
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+  });
+
+  // Review D2: a facility still on migration 85 must go on creating GRNs when no rate was touched.
+  it('with no rates set, a server without p_rates gets the old call (no p_rates, the old key) and the GRN is created', async () => {
+    mockRpc.mockResolvedValueOnce(unknown).mockResolvedValueOnce(created);
     const result = await createGRN({ header, items, rates: [] });
-    expect(result.error).toBe("This facility's server needs an update before rates can be saved with a GRN.");
+    expect(result.success).toBe(true);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    const [first, second] = mockRpc.mock.calls.map(c => c[1]);
+    expect('p_rates' in first).toBe(true);
+    expect('p_rates' in second).toBe(false);
+    expect(second.p_idempotency_key).not.toContain('p_rates');
   });
 });
 
@@ -105,9 +120,24 @@ describe('updateGRN with rates', () => {
     expect(result.rateError).toEqual({ code, data: { starts_on: '2026-11-01' } });
   });
 
-  it('says the server needs an update when it knows no update_grn with p_rates', async () => {
-    mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.update_grn' } });
+  const unknown = { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.update_grn' } };
+
+  it('says the server needs an update when it knows no update_grn with p_rates and rates were set', async () => {
+    mockRpc.mockResolvedValue(unknown);
     const result = await updateGRN(GRN_ID, { header, items, rates });
-    expect(result.error).toBe("This facility's server needs an update before rates can be saved with a GRN.");
+    expect(result.error).toBe("This cold storage's server needs an update before rates can be saved with a GRN.");
+  });
+
+  // Review D2
+  it('with no rates set, a server without p_rates gets the old call and the GRN is updated', async () => {
+    mockRpc.mockResolvedValueOnce(unknown).mockResolvedValueOnce(updated);
+    const result = await updateGRN(GRN_ID, { header, items, rates: [] });
+    expect(result.success).toBe(true);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    const [first, second] = mockRpc.mock.calls.map(c => c[1]);
+    expect('p_rates' in first).toBe(true);
+    expect('p_rates' in second).toBe(false);
+    expect(second.p_idempotency_key).toBeDefined();
+    expect(second.p_idempotency_key).not.toContain('p_rates');
   });
 });

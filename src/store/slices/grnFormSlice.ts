@@ -83,6 +83,8 @@ interface GRNFormState {
   // seeded from the server), and the changes of the item's rate that wait for the save.
   grnRates: GrnRate[];
   rateChanges: RateChange[];
+  // The GRN being edited is invoiced: its rates are shown and sent back unchanged, nothing can be set.
+  grnInvoiced: boolean;
 
   // UI state
   currentStep: number;
@@ -131,6 +133,7 @@ const createInitialState = (): GRNFormState => ({
   removedImages: [],
   grnRates: [],
   rateChanges: [],
+  grnInvoiced: false,
   currentStep: 0,
   isLoading: false,
   isSaving: false,
@@ -407,12 +410,13 @@ const grnFormSlice = createSlice({
     },
 
     // Bulk operations
-    loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string; grnRates?: GrnRate[] }>) => {
+    loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string; grnRates?: GrnRate[]; grnInvoiced?: boolean }>) => {
       state.header = action.payload.header;
       state.items = action.payload.items;
       state.grnId = action.payload.grnId;
       state.grnRates = action.payload.grnRates ?? [];
       state.rateChanges = [];
+      state.grnInvoiced = action.payload.grnInvoiced === true;
       state.removedImages = [];
       state.saveUnconfirmed = false;
       state.takenNumberError = null;
@@ -513,6 +517,7 @@ export const selectGRNFormItems = (state: { grnForm: GRNFormState }) => state.gr
 export const selectGRNFormId = (state: { grnForm: GRNFormState }) => state.grnForm.grnId;
 export const selectGRNRates = (state: { grnForm: GRNFormState }) => state.grnForm.grnRates ?? EMPTY_RATES;
 export const selectGRNRateChanges = (state: { grnForm: GRNFormState }) => state.grnForm.rateChanges ?? EMPTY_CHANGES;
+export const selectGRNInvoiced = (state: { grnForm: GRNFormState }) => state.grnForm.grnInvoiced === true;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;

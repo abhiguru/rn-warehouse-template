@@ -21,6 +21,8 @@ export interface GrnRatesSectionProps {
   oneTime: boolean;
   /** The GRN's day: a pending change starts on it. */
   day: string;
+  /** The GRN is invoiced: its rates are shown, nothing can be added, changed or undone. */
+  invoiced?: boolean;
   onChange: (row: PricedRow) => void;
   onAdd: (row: PricedRow) => void;
   onUndo: (row: PricedRow) => void;
@@ -34,6 +36,7 @@ const makeStyles = (th: ThemeTokens) => ({
   cell: { padding: space.lg, gap: space.xs, borderBottomWidth: 1, borderBottomColor: th.border.divider },
   figures: { ...typography.subhead, color: th.text.secondary },
   tags: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.s6, marginTop: space.xs },
+  note: { ...typography.footnote, color: th.text.secondary, padding: space.lg, paddingBottom: 0 },
   actions: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm, marginTop: space.sm },
 });
 
@@ -48,7 +51,7 @@ export const figuresText = (rate: Pick<RowRate, 'weight_min' | 'weight_max' | 'u
 export const rowWeightText = (weight: number): string =>
   weight > 0 ? `${localizeDigits(String(weight))} ${t('pricing.kg')}` : t('grn.rates.noWeight');
 
-export function GrnRatesSection({ rows, status, offline, oneTime, day, onChange, onAdd, onUndo, onRetry }: GrnRatesSectionProps) {
+export function GrnRatesSection({ rows, status, offline, oneTime, day, invoiced = false, onChange, onAdd, onUndo, onRetry }: GrnRatesSectionProps) {
   const styles = useThemedStyles(makeStyles);
 
   if (status === 'loading') {
@@ -69,44 +72,41 @@ export function GrnRatesSection({ rows, status, offline, oneTime, day, onChange,
   }
   return (
     <View>
+      {invoiced ? <Text style={styles.note} testID="grn-rates-invoiced">{t('grn.rates.invoicedNote')}</Text> : null}
       {rows.map((row, index) => {
         const rate = row.rate;
         const name = t('grn.rates.rowName', { item: row.item_name, weight: rowWeightText(row.weight) });
         return (
           <View key={row.key} style={[styles.cell, index === rows.length - 1 && { borderBottomWidth: 0 }]} testID={`grn-rate-row-${index}`}>
             <Text style={styles.title}>{name}</Text>
-            {rate ? <Text style={styles.figures}>{figuresText(rate, oneTime)}</Text> : null}
+            {rate ? <Text style={styles.figures}>{figuresText(rate, oneTime)}{rate.source === 'change' ? ` · ${t('grn.rates.fromDate', { date: dateText(day) })}` : ''}</Text> : null}
             <View style={styles.tags}>
               {!rate ? <StatusTag status="critical" label={t('grn.rates.noRate')} /> : null}
               {rate?.source === 'customer' ? <StatusTag status="neutral" label={t('grn.rates.tagCustomer')} /> : null}
               {rate?.source === 'item' ? <StatusTag status="neutral" label={t('grn.rates.tagItem')} /> : null}
               {rate?.source === 'grn' ? <StatusTag status="informative" label={t('grn.rates.tagGrn')} /> : null}
-              {rate?.source === 'change' ? (
-                <StatusTag
-                  status="informative"
-                  label={t(
-                    rate.entry && 'scope' in rate.entry && rate.entry.scope === 'customer' ? 'grn.rates.changedCustomer' : 'grn.rates.changedEveryone',
-                    { date: dateText(day) },
-                  )}
-                />
+              {rate?.entry && 'scope' in rate.entry ? (
+                <StatusTag status="informative" label={t(rate.entry.scope === 'customer' ? 'grn.rates.changedCustomer' : 'grn.rates.changedEveryone')} />
               ) : null}
             </View>
+            {invoiced ? null : (
             <View style={styles.actions}>
               {rate ? (
                 <Button type="secondary" onPress={() => onChange(row)} accessibilityLabel={t('grn.rates.changeFor', { item: row.item_name, weight: rowWeightText(row.weight) })} testID={`grn-rate-change-${index}`}>
                   {t('grn.rates.change')}
                 </Button>
               ) : (
-                <Button type="primary" onPress={() => onAdd(row)} accessibilityLabel={t('grn.rates.addFor', { item: row.item_name, weight: rowWeightText(row.weight) })} testID={`grn-rate-add-${index}`}>
+                <Button type="secondary" onPress={() => onAdd(row)} accessibilityLabel={t('grn.rates.addFor', { item: row.item_name, weight: rowWeightText(row.weight) })} testID={`grn-rate-add-${index}`}>
                   {t('grn.rates.addRate')}
                 </Button>
               )}
               {rate?.entry ? (
                 <Button type="tertiary" onPress={() => onUndo(row)} accessibilityLabel={t('grn.rates.undoFor', { item: row.item_name, weight: rowWeightText(row.weight) })} testID={`grn-rate-undo-${index}`}>
-                  {t('grn.rates.undo')}
+                  {t(rate.source === 'grn' && rate.entry?.saved === true ? 'grn.rates.remove' : 'grn.rates.undo')}
                 </Button>
               ) : null}
             </View>
+            )}
           </View>
         );
       })}

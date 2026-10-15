@@ -36,6 +36,11 @@ export interface RowRate extends RateBand, RateFigures {
   entry?: GrnRate | RateChange;
   /** The stored rate behind it (what the row would be priced with without the entry), when there is one. */
   stored?: ItemStoragePrice;
+  /**
+   * An Everyone change waiting in the form that does not reach this row: the customer's own rate holds the
+   * weight on the GRN's day, so the row keeps it. `entry` is the same change (Undo change removes it).
+   */
+  keptOwn?: boolean;
 }
 
 export interface PricedRow extends RateRow {
@@ -88,9 +93,9 @@ export function changeFor(row: RateRow, changes: RateChange[], ctx: RateContext)
   return changes.find(c => c.ctx === key && c.item_id === row.item_id && holds(c, row.weight));
 }
 
-/** The rate for this GRN only that prices a row, or undefined. */
-export function grnRateFor(row: RateRow, grnRates: GrnRate[]): GrnRate | undefined {
-  return grnRates.find(g => g.item_id === row.item_id && holds(g, row.weight));
+/** The rate for this GRN only that prices a row (of the GRN's price type), or undefined. */
+export function grnRateFor(row: RateRow, grnRates: GrnRate[], priceType?: PriceType): GrnRate | undefined {
+  return grnRates.find(g => g.item_id === row.item_id && (!priceType || g.price_type === priceType) && holds(g, row.weight));
 }
 
 /**
@@ -110,11 +115,23 @@ export function priceRows(
       day: a.ctx.day,
     });
     const change = changeFor(row, a.changes, a.ctx);
-    if (change) return { ...row, rate: { source: 'change', ...bandOf(change), ...figuresOf(change), entry: change, stored } };
-    const own = grnRateFor(row, a.grnRates);
+    // A change for Everyone only touches the rows without a customer: when the customer has a rate of their own
+    // for this weight, the server keeps pricing the line with it (find_storage_price: the customer's rows first).
+    const keptOwn = change?.scope === 'everyone' && !!stored?.customer_id;
+    if (change && !keptOwn) return { ...row, rate: { source: 'change', ...bandOf(change), ...figuresOf(change), entry: change, stored } };
+    const own = grnRateFor(row, a.grnRates, a.ctx.priceType);
     if (own) return { ...row, rate: { source: 'grn', ...bandOf(own), ...figuresOf(own), entry: own, stored } };
     if (!stored) return { ...row, rate: null };
-    return { ...row, rate: { source: stored.customer_id ? 'customer' : 'item', ...bandOf(stored), ...figuresOf(stored), stored } };
+    return {
+      ...row,
+      rate: {
+        source: stored.customer_id ? 'customer' : 'item',
+        ...bandOf(stored),
+        ...figuresOf(stored),
+        stored,
+        ...(keptOwn ? { entry: change, keptOwn: true } : {}),
+      },
+    };
   });
 }
 
@@ -156,10 +173,19 @@ export function plannedStart(rates: ItemStoragePrice[], itemId: string, customer
   return later[0] ?? null;
 }
 
-/** The To day a scope starts with: the day before a later rate of the band, else none. */
+/** The earliest start after the GRN's day of any row of the scope that shares a weight with the band (planned rates of other bands too). */
+export function nextStart(rates: ItemStoragePrice[], itemId: string, customerId: string | null, priceType: PriceType, band: RateBand, day: string): string | null {
+  const later = scopeRows(rates, itemId, customerId, priceType)
+    .filter(r => overlaps(r, band) && r.effective_from > day)
+    .map(r => r.effective_from)
+    .sort();
+  return later[0] ?? null;
+}
+
+/** The To day a scope starts with: the day before a later rate over the band's weights, else none. */
 export function defaultTo(scope: RateScope, itemId: string, band: RateBand, a: PreloadInput): string | null {
   if (scope === 'grn') return null;
-  const start = plannedStart(a.rates, itemId, scope === 'customer' ? a.ctx.customerId : null, a.ctx.priceType, band, a.ctx.day);
+  const start = nextStart(a.rates, itemId, scope === 'customer' ? a.ctx.customerId : null, a.ctx.priceType, band, a.ctx.day);
   return start ? addDays(start, -1) : null;
 }
 
@@ -195,14 +221,15 @@ export function preloadAdd(row: RateRow, a: PreloadInput): SheetPreload {
     };
   }
 
-  // 2. A weight above the last band of the rate that would apply.
-  const own = ctx.customerId ? scopeRows(a.rates, row.item_id, ctx.customerId, ctx.priceType).filter(r => rateState(r, ctx.day) === 'inForce') : [];
-  const inForce = own.length > 0 ? own : scopeRows(a.rates, row.item_id, null, ctx.priceType).filter(r => rateState(r, ctx.day) === 'inForce');
-  if (inForce.length > 0) {
-    const last = inForce.reduce((best, r) => (r.weight_max > best.weight_max ? r : best), inForce[0]);
+  // 2. A weight above the last band of the rates that apply per weight: the customer's own and the default's
+  //    in force on the GRN's day; the highest end wins (the customer's on a tie), with its figures and scope.
+  const inForceOf = (customerId: string | null) => scopeRows(a.rates, row.item_id, customerId, ctx.priceType).filter(r => rateState(r, ctx.day) === 'inForce');
+  const candidates = [...(ctx.customerId ? inForceOf(ctx.customerId) : []), ...inForceOf(null)];
+  if (candidates.length > 0) {
+    const last = candidates.reduce((best, r) => (r.weight_max > best.weight_max ? r : best), candidates[0]);
     if (row.weight > last.weight_max) {
       return {
-        scope: own.length > 0 ? 'customer' : 'everyone',
+        scope: last.customer_id ? 'customer' : 'everyone',
         band: { weight_min: last.weight_max + 1, weight_max: Math.ceil(row.weight) },
         figures: figuresOf(last),
         to: null,
@@ -241,7 +268,7 @@ export function preloadChange(row: RateRow, current: RowRate, a: PreloadInput): 
     scope: 'grn',
     band,
     figures: figuresOf(current),
-    to: defaultTo(storedScope, row.item_id, band, a),
+    to: defaultTo(storedScope, row.item_id, band, a) ?? (current.stored?.effective_to ?? null),
     origin: 'current',
   };
 }
@@ -274,11 +301,18 @@ export function entryProblems(
     const customerId = entry.scope === 'customer' ? ctx.customerId : null;
     const planned = plannedStart(a.rates, row.item_id, customerId, ctx.priceType, entry, ctx.day);
     if (planned && (entry.to === null || entry.to >= planned)) problems.planned = { date: planned };
-    // Another band of the scope in force over some of these weights: the server refuses a partly overlapping band.
-    const clash = scopeRows(a.rates, row.item_id, customerId, ctx.priceType).some(
-      r => rateState(r, ctx.day) === 'inForce' && overlaps(r, entry) && !sameBand(r, entry)
+    // Another band of the scope over some of these weights on any day of [GRN day, last day]: the server refuses
+    // a partly overlapping band, planned rows included.
+    const clashes = scopeRows(a.rates, row.item_id, customerId, ctx.priceType).filter(
+      r =>
+        overlaps(r, entry) &&
+        !sameBand(r, entry) &&
+        (r.effective_to === null || r.effective_to >= ctx.day) &&
+        (entry.to === null || r.effective_from <= entry.to)
     );
-    if (clash) problems.overlap = {};
+    // A clash that starts later is fixed with a last day before it: the error names that day.
+    const later = clashes.filter(r => r.effective_from > ctx.day).map(r => r.effective_from).sort()[0];
+    if (clashes.length > 0) problems.overlap = later ? { date: later } : {};
   }
   return problems;
 }
@@ -302,6 +336,8 @@ export interface ChangeFacts {
   ends: { lastDay: string } | { replaced: true } | { overrides: true };
   /** With a last day, the old figures come back the day after it. */
   resumes: { from: string; figures: RateFigures } | null;
+  /** Everyone, and the GRN's customer has a rate of their own for this weight on the GRN's day: this GRN keeps it. */
+  keepsOwn: { rent: number } | null;
 }
 
 /**
@@ -315,9 +351,17 @@ export function changeFacts(entry: SheetEntry, row: RateRow, a: PreloadInput): C
   const inScopeNow = (cid: string | null) =>
     scopeRows(a.rates, row.item_id, cid, ctx.priceType).find(r => rateState(r, ctx.day) === 'inForce' && sameBand(r, entry));
   const ownOld = inScopeNow(customerId);
-  // A customer's own rate over the item's rate for everyone: that one stays for the others.
-  const old = ownOld ?? (entry.scope === 'customer' ? inScopeNow(null) : undefined);
+  // A customer's own rate over the item's rate for everyone: that one stays for the others. It is also shown
+  // when the default has only another band over these weights (the customer's band would cover weights the
+  // default prices).
+  const overlapsDefault = () =>
+    scopeRows(a.rates, row.item_id, null, ctx.priceType).find(r => rateState(r, ctx.day) === 'inForce' && overlaps(r, entry));
+  const old = ownOld ?? (entry.scope === 'customer' ? inScopeNow(null) ?? overlapsDefault() : undefined);
   if (!old) return null;
+  const customerOwn =
+    entry.scope === 'everyone' && ctx.customerId
+      ? applicableRate(a.rates.filter(r => r.item_id === row.item_id), { customer_id: ctx.customerId, weight: row.weight, price_type: ctx.priceType, day: ctx.day })
+      : undefined;
   const overrides = !ownOld;
   const next = { unit_price: entry.unit_price, labour_rate: entry.labour_rate, tax_percent: entry.tax_percent };
   const resumes =
@@ -333,6 +377,7 @@ export function changeFacts(entry: SheetEntry, row: RateRow, a: PreloadInput): C
     to: entry.to,
     ends: overrides ? { overrides: true } : old.effective_from === ctx.day ? { replaced: true } : { lastDay: addDays(ctx.day, -1) },
     resumes,
+    keepsOwn: customerOwn?.customer_id ? { rent: Number(customerOwn.unit_price) } : null,
   };
 }
 
@@ -340,8 +385,9 @@ export function changeFacts(entry: SheetEntry, row: RateRow, a: PreloadInput): C
 // Keeping the entries
 // ---------------------------------------------------------------------------------------------
 
-const toGrnRate = (item_id: string, e: SheetEntry): GrnRate => ({
+const toGrnRate = (item_id: string, e: SheetEntry, price_type: PriceType): GrnRate => ({
   item_id,
+  price_type,
   weight_min: e.weight_min,
   weight_max: e.weight_max,
   unit_price: e.unit_price,
@@ -364,8 +410,8 @@ export function withEntry(
   const keep = (e: GrnRate) => !(e.item_id === item_id && overlaps(e, entry));
   const grnRates = state.grnRates.filter(keep);
   const changes = state.changes.filter(c => c.ctx === key && keep(c));
-  if (entry.scope === 'grn') grnRates.push(toGrnRate(item_id, entry));
-  else changes.push({ ...toGrnRate(item_id, entry), scope: entry.scope, to: entry.to, ctx: key });
+  if (entry.scope === 'grn') grnRates.push(toGrnRate(item_id, entry, ctx.priceType));
+  else changes.push({ ...toGrnRate(item_id, entry, ctx.priceType), scope: entry.scope, to: entry.to, ctx: key });
   return { grnRates, changes };
 }
 
@@ -376,6 +422,19 @@ export function withoutEntryFor(
 ): { grnRates: GrnRate[]; changes: RateChange[] } {
   const drop = (e: GrnRate) => !(e.item_id === row.item_id && holds(e, row.weight));
   return { grnRates: state.grnRates.filter(drop), changes: state.changes.filter(drop) };
+}
+
+/**
+ * The GRN's price type changed: entries (rates for this GRN only and pending changes) made for the other type
+ * go; the figures of a monthly rate mean nothing as a one-time charge. `removed` says whether any went.
+ */
+export function dropOtherPriceType(
+  state: { grnRates: GrnRate[]; changes: RateChange[] },
+  priceType: PriceType
+): { grnRates: GrnRate[]; changes: RateChange[]; removed: boolean } {
+  const grnRates = state.grnRates.filter(g => g.price_type === priceType);
+  const changes = state.changes.filter(c => c.price_type === priceType);
+  return { grnRates, changes, removed: grnRates.length !== state.grnRates.length || changes.length !== state.changes.length };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -389,7 +448,7 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  * rates for this GRN only. An entry whose item is no longer on the GRN, or whose band holds none of that
  * item's weights, is left out (the server refuses it: RATE_NOT_FOR_GRN). A one-time GRN stores labour 0.
  */
-export function buildRates(a: { grnRates: GrnRate[]; changes: RateChange[]; ctx: RateContext; lines: GrnLine[] }): RatesPayloadEntry[] {
+export function buildRates(a: { grnRates: GrnRate[]; changes: RateChange[]; ctx: RateContext; lines: GrnLine[]; invoiced?: boolean }): RatesPayloadEntry[] {
   const weights = new Map<string, number[]>();
   for (const line of a.lines) {
     if (!line.item_table_id) continue;
@@ -407,27 +466,31 @@ export function buildRates(a: { grnRates: GrnRate[]; changes: RateChange[]; ctx:
     labour_rate: oneTime ? 0 : round2(e.labour_rate),
     tax_percent: round2(e.tax_percent),
   });
+  // An invoiced GRN keeps its stored set: sent back unchanged (the server accepts an equal set and checks nothing else).
+  if (a.invoiced) return a.grnRates.map(g => ({ scope: 'grn' as const, ...base(g) }));
   const key = contextKey(a.ctx);
   return [
-    ...a.changes.filter(c => c.ctx === key && live(c)).map(c => ({ scope: c.scope, ...base(c), to: c.to })),
-    ...a.grnRates.filter(live).map(g => ({ scope: 'grn' as const, ...base(g) })),
+    ...a.changes.filter(c => c.ctx === key && c.price_type === a.ctx.priceType && live(c)).map(c => ({ scope: c.scope, ...base(c), to: c.to })),
+    ...a.grnRates.filter(g => g.price_type === a.ctx.priceType && live(g)).map(g => ({ scope: 'grn' as const, ...base(g) })),
   ];
 }
 
-/** Rates for this GRN only from get_grn_details (`grn.rates`) as the form keeps them. */
+/** Rates for this GRN only from get_grn_details (`grn.rates`) as the form keeps them (a row without a price type is dropped). */
 export function grnRatesFromDetails(raw: unknown): GrnRate[] {
   if (!Array.isArray(raw)) return [];
   const out: GrnRate[] = [];
   for (const r of raw as Array<Record<string, unknown>>) {
+    if (r?.price_type !== 'monthly' && r?.price_type !== 'one_time') continue;
     const entry = {
       item_id: String(r?.item_id ?? ''),
+      price_type: r.price_type as PriceType,
       weight_min: Number(r?.weight_min),
       weight_max: Number(r?.weight_max),
       unit_price: Number(r?.unit_price),
       labour_rate: Number(r?.labour_rate),
       tax_percent: Number(r?.tax_percent),
     };
-    if (entry.item_id && Object.values(entry).every(v => typeof v === 'string' || Number.isFinite(v))) out.push(entry);
+    if (entry.item_id && Object.values(entry).every(v => typeof v === 'string' || Number.isFinite(v))) out.push({ ...entry, saved: true });
   }
   return out;
 }

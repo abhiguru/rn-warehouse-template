@@ -171,7 +171,7 @@ export const pricing = {
     error: {
       managerOnly: 'Only an administrator or supervisor can set the standard rate.',
       unconfirmed: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.",
-      serverNeedsUpdate: "This facility's server needs an update before the standard rate is available.",
+      serverNeedsUpdate: "This cold storage's server needs an update before the standard rate is available.",
     },
   },
   itemPicker: {
@@ -226,7 +226,7 @@ export const pricing = {
   error: {
     generic: "Couldn't save the rate. Try again.",
     unconfirmed: "We couldn't confirm that the rate was saved. Close this screen and check the item page before you try again.",
-    invalidDate: 'Choose a day on or after {{date}}, the date of your oldest GRN.',
+    invalidDate: 'Choose a start date on or after {{date}}.',
     invalidDateWindow: 'Choose a start date within three years before today and two years after.',
     startTooFar: 'Choose a start date within two years after today.',
     pastDateNotAllowed: 'Only an administrator or supervisor can start a rate in the past.',

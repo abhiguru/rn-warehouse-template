@@ -197,9 +197,9 @@ describe('F19: the start window is the server window in days', () => {
   it('validate refuses a day outside it before saving', () => {
     const { draft, context } = open('change', { price_type: 'monthly' }, [row(null, 0, 100, 11, '2026-04-01', null)]);
     expect(validate(setStartsOn(draft, 'other', '2028-10-14'), context).errors.startsOn).toBe('Choose a start date within two years after today.');
-    // A day before the floor names the floor: the oldest GRN's day when the server sent it, else three years back.
-    expect(validate(setStartsOn(draft, 'other', '2021-12-31'), { ...context, earliestStart: '2022-01-01' }).errors.startsOn).toBe('Choose a day on or after 1 Jan 2022, the date of your oldest GRN.');
-    expect(validate(setStartsOn(draft, 'other', '2023-10-14'), context).errors.startsOn).toBe('Choose a day on or after 15 Oct 2023, the date of your oldest GRN.');
+    // A day before the floor names the floor when the server sent one; without one (an older server) the old window is described.
+    expect(validate(setStartsOn(draft, 'other', '2021-12-31'), { ...context, earliestStart: '2022-01-01' }).errors.startsOn).toBe('Choose a start date on or after 1 Jan 2022.');
+    expect(validate(setStartsOn(draft, 'other', '2023-10-14'), context).errors.startsOn).toBe('Choose a start date within three years before today and two years after.');
   });
 });
 

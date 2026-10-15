@@ -223,7 +223,7 @@ describe('Standard rate', () => {
   it('says the facility server needs an update when it has no standard rate yet', async () => {
     jest.mocked(getStandardRate).mockRejectedValue(Object.assign(new Error('x'), { code: 'SERVER_NEEDS_UPDATE' }));
     await act(async () => { tree = create(<StandardRateScreen />); });
-    expect(textsOf(tree!)).toContain("This facility's server needs an update before the standard rate is available.");
+    expect(textsOf(tree!)).toContain("This cold storage's server needs an update before the standard rate is available.");
   });
 
   it('Try again reads the server again and shows the tiers', async () => {

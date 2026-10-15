@@ -49,7 +49,7 @@ const makeStyles = (th: ThemeTokens) => ({
     backgroundColor: th.surface.field,
     borderColor: th.border.field,
   },
-  rowDisabled: { opacity: 0.5 },
+  rowDisabled: { opacity: th.interaction.disabledOpacity },
   rowError: { borderWidth: 2, borderColor: th.status.negative.border },
   rowText: { ...typography.body, color: th.text.primary, flexShrink: 1 },
   rowPlaceholder: { ...typography.body, color: th.text.placeholder, flexShrink: 1 },

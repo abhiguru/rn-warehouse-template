@@ -52,7 +52,8 @@ export function rateRefusalText(code: string, data: unknown, serverMessage: stri
     case 'RATE_PLANNED':
       return isDay(d.starts_on) ? t('grn.review.rateErr.planned', { date: formatDate(d.starts_on.slice(0, 10), 'medium') }) : t('grn.review.rateErr.plannedSome');
     case 'BANDS_OVERLAP':
-      return t('grn.review.rateErr.overlap');
+      // The server names the earliest conflicting row's start: same advice as a planned rate of the band.
+      return isDay(d.starts_on) ? t('grn.review.rateErr.planned', { date: formatDate(d.starts_on.slice(0, 10), 'medium') }) : t('grn.review.rateErr.overlap');
     case 'GRN_INVOICED':
       return t('grn.review.rateErr.invoiced');
     case 'RATE_NOT_FOR_GRN':

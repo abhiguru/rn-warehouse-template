@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/Input';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { wholeKg } from '@/features/item-pricing/editModel';
 import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
+import { rowWeightText } from './GrnRatesSection';
 import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
 import { useModalSheet } from '@/hooks/useModalSheet';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -97,6 +98,7 @@ export function confirmationLines(facts: ChangeFacts, row: PricedRow, customerNa
   else if ('replaced' in facts.ends) lines.push(t('grn.rates.confirm.replaced', { rent: oldRent, date: dateText(facts.from) }));
   else lines.push(t('grn.rates.confirm.overrides', { customer: customerName, rent: oldRent }));
   if (facts.resumes) lines.push(t('grn.rates.confirm.resumes', { rent: money(facts.resumes.figures.unit_price), date: dateText(facts.resumes.from) }));
+  if (facts.keepsOwn) lines.push(t('grn.rates.confirm.keepsOwn', { customer: customerName, rent: money(facts.keepsOwn.rent) }));
   lines.push(
     facts.scope === 'customer'
       ? t('grn.rates.confirm.reachesCustomer', { customer: customerName, date: dateText(facts.from) })
@@ -187,13 +189,13 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
         to: scope === 'grn' ? null : to,
       };
       const problems = entryProblems(entry, row, input);
-      const kgText = `${localizeDigits(String(row.weight))} ${t('pricing.kg')}`;
+      const kgText = rowWeightText(row.weight);
       if (problems.bandWeights) next.from = t('pricing.edit.err.wholeKg');
       if (problems.bandFrom) next.upTo = t('grn.rates.sheet.errUpToBeforeFrom');
       if (problems.bandHolds) next.upTo = t('grn.rates.sheet.errBandHolds', { weight: kgText });
       if (problems.to) next.to = t('grn.rates.sheet.errTo', { date: dateText(input.ctx.day) });
       if (problems.planned) next.to = t('grn.rates.sheet.errPlanned', { date: dateText(problems.planned.date ?? '') });
-      if (problems.overlap) next.upTo = t('grn.rates.sheet.errOverlap');
+      if (problems.overlap) next.upTo = problems.overlap.date ? t('grn.rates.sheet.errPlanned', { date: dateText(problems.overlap.date) }) : t('grn.rates.sheet.errOverlap');
       if (Object.keys(next).length === 0) {
         const found = changeFacts(entry, row, input);
         if (found) setFacts({ facts: found, entry });
@@ -205,7 +207,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     setErrors(next);
   };
 
-  const subtitle = `${row.item_name}, ${localizeDigits(String(row.weight))} ${t('pricing.kg')}`;
+  const subtitle = t('grn.rates.sheet.subtitle', { item: row.item_name, weight: rowWeightText(row.weight) });
   const context = t('grn.rates.sheet.context', { date: dateText(input.ctx.day), customer: customerName, type: priceTypeText });
   const lines = facts ? confirmationLines(facts.facts, row, customerName, oneTime) : [];
 
@@ -301,7 +303,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
           />
 
           <View>
-            <Text style={styles.label}>{t('grn.rates.sheet.from')}</Text>
+            <Text style={styles.label}>{t('grn.rates.sheet.startDate')}</Text>
             <Text style={styles.value} testID="rate-from-date">{t('grn.rates.sheet.fromGrnDate', { date: dateText(input.ctx.day) })}</Text>
           </View>
 

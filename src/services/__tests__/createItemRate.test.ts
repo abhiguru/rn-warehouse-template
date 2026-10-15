@@ -44,7 +44,7 @@ describe('createItem (backend migration 85)', () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.create_item(p_name, p_rate_from_item) in the schema cache' } });
     const result = await itemService.createItem({ p_name: 'Fictional Gur Box', p_rate_from_item: 'src-1' });
     expect(result.success).toBe(false);
-    expect(result.message).toBe("This facility's server needs an update before the standard rate is available.");
+    expect(result.message).toBe("This cold storage's server needs an update before the standard rate is available.");
     rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'denied' } });
     expect((await itemService.createItem({ p_name: 'x' })).message).not.toMatch(/needs an update/);
   });

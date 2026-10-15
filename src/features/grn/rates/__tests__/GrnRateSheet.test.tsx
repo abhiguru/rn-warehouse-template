@@ -192,3 +192,34 @@ describe('Change', () => {
     expect(texts()).toContain('A rate for this band starts on 15 Nov 2026. Choose a last day before it.');
   });
 });
+
+describe('round 3', () => {
+  it('D1: Everyone over a customer who has an own rate says the customer keeps it', async () => {
+    open([stored(0, 50, 3, '2026-01-01'), stored(0, 50, 3.5, '2026-01-01', 'cust-a')], 12);
+    await act(async () => { chip('Everyone (this weight band)').props.onPress(); });
+    await type('Rent per bag, per month', '4');
+    await save();
+    const lines = confirm().props.message.split('\n');
+    expect(lines).toContain('Rent: ₹3.00 → ₹4.00');
+    expect(lines).toContain('Fictional Traders keeps their own rate of ₹3.50.');
+  });
+
+  it('D5: a planned band of the scope over the weights is refused with its start day; the preloaded last day is the day before', async () => {
+    const rates = [stored(0, 50, 3, '2026-01-01', null, '2026-10-31'), stored(0, 20, 3, '2026-11-01'), stored(21, 50, 4, '2026-11-01')];
+    open(rates, 12, { ...ctx, customerId: null });
+    await act(async () => { chip('Everyone (this weight band)').props.onPress(); });
+    await act(async () => { chip('No end date').props.onPress(); });
+    await save();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(texts()).toContain('A rate for this band starts on 1 Nov 2026. Choose a last day before it.');
+    await act(async () => { chip('Until a date').props.onPress(); });
+    await save();
+    expect(confirm().props.message).toContain('From 12 Oct 2026 to 31 Oct 2026');
+  });
+
+  it('D9: the subtitle and the date label come from t() with placeholders', () => {
+    open([stored(0, 50, 3, '2026-01-01')], 12);
+    expect(texts()).toContain('Fictional Gur, 12 kg');
+    expect(texts()).toContain('Start date');
+  });
+});

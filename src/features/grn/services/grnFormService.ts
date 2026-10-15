@@ -253,14 +253,20 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       // Part of what the idempotency key hashes: the same form with other rates is another save.
       ...(payload.rates ? { p_rates: payload.rates } : {}),
     };
-    const { data, error } = await authenticatedClient.rpc('save_grn', {
-      ...rpcPayload,
-      p_idempotency_key: await submissionIdempotencyKey('grn', rpcPayload),
-    });
+    const callSave = async (body: typeof rpcPayload) =>
+      authenticatedClient.rpc('save_grn', { ...body, p_idempotency_key: await submissionIdempotencyKey('grn', body) });
+    let { data, error } = await callSave(rpcPayload);
+    if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+      // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
+      // has a stored rate, so the old call (and its key) loses nothing.
+      log.warn('save_grn does not take p_rates on this server; sent without it');
+      const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
+      ({ data, error } = await callSave(withoutRates as typeof rpcPayload));
+    }
 
     if (error) {
       log.error('save_grn failed', loggableError(error));
-      if (payload.rates && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
+      if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
       throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
@@ -516,15 +522,27 @@ export const updateGRN = async (
 
     // Call the update_grn RPC function with correct parameters using authenticated client
     const authenticatedClient = await getAuthenticatedClient();
-    let { data, error } = await authenticatedClient.rpc('update_grn', { ...rpcRequest, p_idempotency_key: idempotencyKey });
+    let sentRequest: typeof rpcRequest = rpcRequest;
+    let { data, error } = await authenticatedClient.rpc('update_grn', { ...sentRequest, p_idempotency_key: idempotencyKey });
+    if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+      // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
+      // has a stored rate, so the call as it was before rates loses nothing (and its key is the old key).
+      log.warn('update_grn does not take p_rates on this server; sent without it');
+      const without = (request: typeof rpcRequest) => {
+        const { p_rates: _noRates, ...rest } = request as typeof rpcRequest & { p_rates?: unknown };
+        return rest as typeof rpcRequest;
+      };
+      sentRequest = without(rpcRequest);
+      ({ data, error } = await authenticatedClient.rpc('update_grn', { ...sentRequest, p_idempotency_key: await grnUpdateIdempotencyKey(grnId, without(firstSentRequest)) }));
+    }
     if (error && isUnknownFunctionSignature(error)) {
       // A server that has not applied migration 47 knows no p_idempotency_key and
       // refused the call before running it. Sent once more as that server takes it.
       log.warn('update_grn does not take an idempotency key on this server; sent without it');
-      ({ data, error } = await authenticatedClient.rpc('update_grn', rpcRequest));
+      ({ data, error } = await authenticatedClient.rpc('update_grn', sentRequest));
     }
-    // With rates, a server that still refuses the call has no p_rates (migration 86 missing).
-    if (error && payload.rates && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
+    // With rates set, a server that still refuses the call has no p_rates (migration 86 missing).
+    if (error && payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
 
     if (error) {
       log.error('update_grn failed', loggableError(error));
@@ -895,14 +913,21 @@ export const loadGRNData = async (grnId: string) => {
       log.error('Failed to read the rates of the GRN', loggableError(detailsError));
       throw detailsError;
     }
-    const grnRates = grnRatesFromDetails((details?.data ?? details)?.grn?.rates);
+    // A failed read ({success:false, data:null}) is not "no rates": Save would delete the GRN's own rates.
+    const grn = details?.success === true ? details?.data?.grn : null;
+    if (!grn) {
+      log.error('The rates of the GRN were not returned', { message: details?.message });
+      throw new Error(serverText(details?.message, t('grn.form.loadFailed')));
+    }
+    const grnRates = grnRatesFromDetails(grn.rates);
+    const grnInvoiced = grn.invoiced === true || (Array.isArray(grn.rates) && grn.rates.some((r: { archived?: unknown }) => r?.archived === true));
 
     // The form now shows what the server holds: saves from here on are new saves.
     beginGrnEditSession(grnId);
 
     return {
       success: true,
-      data: { header, items, grnRates },
+      data: { header, items, grnRates, grnInvoiced },
     };
   } catch (error) {
     log.error('Error loading GRN', loggableError(error));

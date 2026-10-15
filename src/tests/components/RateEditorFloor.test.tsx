@@ -85,7 +85,7 @@ it('a day before the oldest GRN is refused at the field, naming the date, and no
   const t = await open({ ...change, starts_on: '2021-12-31' });
   await act(async () => { save(t).props.onPress(); });
   expect(replaceItemRates).not.toHaveBeenCalled();
-  expect(textsOf(t)).toContain('Choose a day on or after 1 Jan 2022, the date of your oldest GRN.');
+  expect(textsOf(t)).toContain('Choose a start date on or after 1 Jan 2022.');
 });
 
 it('the oldest GRN day itself is accepted', async () => {
@@ -102,10 +102,10 @@ it("the server's INVALID_DATE shows the same text at the field and moves the flo
     success: false,
     errorCode: 'INVALID_DATE',
     earliest: '2026-11-02',
-    message: 'Choose a day on or after 2 Nov 2026, the date of your oldest GRN.',
+    message: 'Choose a start date on or after 2 Nov 2026.',
   });
   await act(async () => { save(t).props.onPress(); });
-  expect(textsOf(t)).toContain('Choose a day on or after 2 Nov 2026, the date of your oldest GRN.');
+  expect(textsOf(t)).toContain('Choose a start date on or after 2 Nov 2026.');
   expect(inputsWithLabel(t, 'Rent per bag, per month').length).toBeGreaterThan(0);
   expect(day((await openCalendar(t)).minimumDate as Date)).toBe('2026-11-02');
 });

@@ -80,12 +80,18 @@ describe('replaceItemRates', () => {
     expect(result.message).not.toContain('English sentence');
   });
 
-  it('INVALID_DATE with data.earliest names the oldest GRN day and keeps the day for the editor', async () => {
+  it('INVALID_DATE for a day more than two years ahead says so, with or without data.earliest', async () => {
+    rpc.mockResolvedValue(refused('INVALID_DATE', { earliest: '2022-01-01' }));
+    const result = await replaceItemRates({ ...input, starts_on: '2999-01-01' });
+    expect(result).toMatchObject({ errorCode: 'INVALID_DATE', message: 'Choose a start date within two years after today.' });
+  });
+
+  it('INVALID_DATE with data.earliest names that day and keeps it for the editor', async () => {
     rpc.mockResolvedValue(refused('INVALID_DATE', { earliest: '2022-01-01' }));
     expect(await replaceItemRates(input)).toMatchObject({
       errorCode: 'INVALID_DATE',
       earliest: '2022-01-01',
-      message: 'Choose a day on or after 1 Jan 2022, the date of your oldest GRN.',
+      message: 'Choose a start date on or after 1 Jan 2022.',
     });
   });
 

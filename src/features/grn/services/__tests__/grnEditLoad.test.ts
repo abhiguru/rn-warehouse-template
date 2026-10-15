@@ -15,7 +15,7 @@ type Row = Record<string, unknown>;
 type Query = { table: string; filters: Array<[string, string, unknown]> };
 const mockQueries: Query[] = [];
 let mockAnswer: (query: Query) => { data: unknown; error: unknown };
-let mockDetails: { data: unknown; error: unknown } = { data: { data: { grn: { rates: [] } } }, error: null };
+let mockDetails: { data: unknown; error: unknown } = { data: { success: true, data: { grn: { rates: [] } } }, error: null };
 
 jest.mock('@/config/supabaseConfig', () => {
   const builder = (table: string) => {
@@ -84,7 +84,7 @@ const server = (failing?: 'header' | 'item') => (query: Query) => {
 
 beforeEach(() => {
   mockQueries.length = 0;
-  mockDetails = { data: { data: { grn: { rates: [] } } }, error: null };
+  mockDetails = { data: { success: true, data: { grn: { rates: [] } } }, error: null };
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -124,16 +124,16 @@ describe('opening a GRN for editing', () => {
   it('seeds the form with the rates for this GRN only from get_grn_details', async () => {
     mockAnswer = server();
     mockDetails = {
-      data: { data: { grn: { rates: [{ id: 'r1', item_id: ITEM, item_name: 'Example Potatoes', price_type: 'monthly', weight_min: 41, weight_max: 60, unit_price: '4.50', labour_rate: 1, tax_percent: 5, archived: false }] } } },
+      data: { success: true, data: { grn: { rates: [{ id: 'r1', item_id: ITEM, item_name: 'Example Potatoes', price_type: 'monthly', weight_min: 41, weight_max: 60, unit_price: '4.50', labour_rate: 1, tax_percent: 5, archived: false }] } } },
       error: null,
     };
     const result = await loadGRNData(GRN_ID);
-    expect(result.data?.grnRates).toEqual([{ item_id: ITEM, weight_min: 41, weight_max: 60, unit_price: 4.5, labour_rate: 1, tax_percent: 5 }]);
+    expect(result.data?.grnRates).toEqual([{ item_id: ITEM, price_type: 'monthly', saved: true, weight_min: 41, weight_max: 60, unit_price: 4.5, labour_rate: 1, tax_percent: 5 }]);
   });
 
   it('has no rates of its own for an older server without them', async () => {
     mockAnswer = server();
-    mockDetails = { data: { data: { grn: {} } }, error: null };
+    mockDetails = { data: { success: true, data: { grn: {} } }, error: null };
     expect((await loadGRNData(GRN_ID)).data?.grnRates).toEqual([]);
   });
 
@@ -143,6 +143,29 @@ describe('opening a GRN for editing', () => {
     const result = await loadGRNData(GRN_ID);
     expect(result.success).toBe(false);
     expect(result.data).toBeUndefined();
+  });
+
+  // Review D3: the server answers its own failures as {success:false, data:null}, not as a transport error.
+  it.each([
+    [{ success: false, data: null, message: 'Error retrieving GRN details: boom' }],
+    [{ success: false, data: null, message: 'GRN not found or access denied' }],
+    [{ success: true, data: {} }],
+  ])('fails when get_grn_details answers %j, instead of opening with an empty set that Save would send', async answer => {
+    mockAnswer = server();
+    mockDetails = { data: answer, error: null };
+    const result = await loadGRNData(GRN_ID);
+    expect(result.success).toBe(false);
+    expect(result.data).toBeUndefined();
+  });
+
+  it('knows an invoiced GRN from grn.invoiced, or from an archived rate', async () => {
+    mockAnswer = server();
+    mockDetails = { data: { success: true, data: { grn: { invoiced: true, rates: [] } } }, error: null };
+    expect((await loadGRNData(GRN_ID)).data?.grnInvoiced).toBe(true);
+    mockDetails = { data: { success: true, data: { grn: { rates: [{ item_id: ITEM, price_type: 'monthly', weight_min: 0, weight_max: 9, unit_price: 1, labour_rate: 1, tax_percent: 5, archived: true }] } } }, error: null };
+    expect((await loadGRNData(GRN_ID)).data?.grnInvoiced).toBe(true);
+    mockDetails = { data: { success: true, data: { grn: { invoiced: false, rates: [] } } }, error: null };
+    expect((await loadGRNData(GRN_ID)).data?.grnInvoiced).toBe(false);
   });
 
   it('asks for confirmed photos only', async () => {

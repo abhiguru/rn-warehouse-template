@@ -17,10 +17,11 @@ const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const mockDispatch = jest.fn();
 let mockGrnRates: unknown[] = [];
 let mockChanges: unknown[] = [];
+let mockInvoiced = false;
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: [], saveUnconfirmed: false, grnRates: mockGrnRates, rateChanges: mockChanges } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: [], saveUnconfirmed: false, grnRates: mockGrnRates, rateChanges: mockChanges, grnInvoiced: mockInvoiced } }),
 }));
 
 const mockHeader = {
@@ -92,6 +93,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGrnRates = [];
   mockChanges = [];
+  mockInvoiced = false;
   mockStatus = 'ready';
   mockItems = [line(1, 'gur', 'Fictional Gur', 12), line(2, 'rice', 'Fictional Rice', 30)];
   // Gur has the customer's own rate for 0-50 kg; rice has no rate at all.
@@ -125,18 +127,18 @@ describe('the rows', () => {
     expect(texts(tree)).toContain('Item rate');
   });
 
-  it('a pending change shows its figures, "Changed · This customer only from 12 Oct 2026" and Undo change', async () => {
-    mockChanges = [{ item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'customer', to: null, ctx: contextKey(CTX) }];
+  it('a pending change shows its figures with the date, "Changed · This customer" and Undo change', async () => {
+    mockChanges = [{ item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'customer', to: null, ctx: contextKey(CTX), price_type: 'monthly' }];
     const tree = await render('create');
-    expect(texts(tree)).toContain('0–50 kg · ₹4.00 rent · ₹1.50 labour · 5% tax');
-    expect(texts(tree)).toContain('Changed · This customer only from 12 Oct 2026');
+    expect(texts(tree)).toContain('0–50 kg · ₹4.00 rent · ₹1.50 labour · 5% tax · From 12 Oct 2026');
+    expect(texts(tree)).toContain('Changed · This customer');
     await act(async () => { byId(tree, 'grn-rate-undo-0')[0].props.onPress(); });
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
   });
 
   it('edit mode: the rates for this GRN only that the form was seeded with price the row, tagged This GRN only', async () => {
-    mockGrnRates = [{ item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.25, labour_rate: 1, tax_percent: 5 }];
+    mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.25, labour_rate: 1, tax_percent: 5 }];
     const tree = await render('edit');
     expect(texts(tree)).toContain('21–40 kg · ₹2.25 rent · ₹1.00 labour · 5% tax');
     expect(texts(tree)).toContain('This GRN only');
@@ -159,10 +161,10 @@ describe('the rows', () => {
 });
 
 describe('Create is blocked without a rate', () => {
-  it('names how many items need one, shows no question and sends nothing', async () => {
+  it('says rates are missing, shows no question and sends nothing', async () => {
     const tree = await render('create');
     await press(tree);
-    expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add a rate for 1 item before saving.');
+    expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add the missing rates before saving.');
     expect(dialogs(tree).every(d => d.props.visible === false)).toBe(true);
     expect(createGRN).not.toHaveBeenCalled();
   });
@@ -170,7 +172,7 @@ describe('Create is blocked without a rate', () => {
   it('saving an edit is blocked the same way', async () => {
     const tree = await render('edit');
     await press(tree);
-    expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add a rate for 1 item before saving.');
+    expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add the missing rates before saving.');
     expect(updateGRN).not.toHaveBeenCalled();
   });
 
@@ -178,7 +180,7 @@ describe('Create is blocked without a rate', () => {
     mockStatus = 'error';
     const tree = await render('create');
     await press(tree);
-    expect(showAlert).toHaveBeenCalledWith('Add the missing rates', "The rates couldn't be loaded. Check your connection and try again before saving.");
+    expect(showAlert).toHaveBeenCalledWith("The rates couldn't be loaded", "The rates couldn't be loaded. Check your connection and try again before saving.");
     expect(createGRN).not.toHaveBeenCalled();
   });
 
@@ -201,7 +203,7 @@ describe('Add rate and the sheet', () => {
     expect(sheetProps.customerName).toBe('Fictional Traders');
     expect(sheetProps.priceTypeText).toBe('Monthly');
     await act(async () => { sheetProps.onSave({ scope: 'grn', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5, to: null }); });
-    expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([{ item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }]));
+    expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }]));
     expect(sheetProps.visible).toBe(false);
   });
 
@@ -211,7 +213,7 @@ describe('Add rate and the sheet', () => {
     expect(sheetProps.row).toMatchObject({ item_id: 'gur', rate: { source: 'customer' } });
     await act(async () => { sheetProps.onSave({ scope: 'customer', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, to: '2026-10-31' }); });
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([
-      { item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'customer', to: '2026-10-31', ctx: contextKey(CTX) },
+      { item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'customer', to: '2026-10-31', ctx: contextKey(CTX), price_type: 'monthly' },
     ]));
   });
 });
@@ -219,7 +221,7 @@ describe('Add rate and the sheet', () => {
 describe('saving the rates with the GRN', () => {
   it('create and edit hand the rates of the form to the save', async () => {
     mockRates = [...mockRates, stored('rice', 0, 100, 2)];
-    mockGrnRates = [{ item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }];
+    mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }];
     (createGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
     const tree = await render('create');
     await press(tree);
@@ -249,5 +251,103 @@ describe('saving the rates with the GRN', () => {
     await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
     expect(mockRefresh).toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith('Check the rates', text);
+  });
+});
+
+
+describe('round 3', () => {
+  const everyone = { item_id: 'gur', price_type: 'monthly', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'everyone', to: null, ctx: contextKey(CTX) };
+
+  it('D1: an Everyone change does not price a row the customer has an own rate for; it shows both tags and Undo change', async () => {
+    mockChanges = [everyone];
+    const tree = await render('create');
+    expect(texts(tree)).toContain('0–50 kg · ₹3.50 rent · ₹1.50 labour · 5% tax');
+    expect(texts(tree)).toContain('Customer rate');
+    expect(texts(tree)).toContain('Changed · Everyone');
+    expect(byId(tree, 'grn-rate-undo-0').length).toBeGreaterThan(0);
+  });
+
+  it('D9: the section header carries the count of rows without a rate as a tag', async () => {
+    const tree = await render('create');
+    expect(texts(tree)).toContain('1 without a rate');
+    act(() => tree.unmount());
+    mockRates = [...mockRates, stored('rice', 0, 100, 2)];
+    const full = await render('create');
+    expect(texts(full).some(x => x.includes('without a rate'))).toBe(false);
+  });
+
+  it('D9: Add rate is a secondary button, not a second primary', async () => {
+    const tree = await render('create');
+    expect(byId(tree, 'grn-rate-add-1')[0].props.type).toBe('secondary');
+  });
+
+  it('D9: a saved GRN-only rate offers Remove, a pending one Undo change', async () => {
+    mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5, saved: true }];
+    const saved = await render('edit');
+    expect(byId(saved, 'grn-rate-undo-1')[0].props.children).toBe('Remove');
+    act(() => saved.unmount());
+    mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 }];
+    const pending = await render('edit');
+    expect(byId(pending, 'grn-rate-undo-1')[0].props.children).toBe('Undo change');
+  });
+
+  describe('D4: an invoiced GRN', () => {
+    beforeEach(() => {
+      mockInvoiced = true;
+      // Gur has a stored rate; rice has none (an old GRN priced by its invoice's own figures).
+      mockGrnRates = [{ price_type: 'monthly', item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4.5, labour_rate: 1, tax_percent: 5, saved: true }];
+    });
+
+    it('shows the note, no Add rate / Change / Undo, and "No rate" for a row without one', async () => {
+      const tree = await render('edit');
+      expect(texts(tree)).toContain('This GRN is invoiced; its rates cannot change here.');
+      expect(texts(tree)).toContain('No rate');
+      for (const id of ['grn-rate-add-1', 'grn-rate-change-0', 'grn-rate-undo-0']) expect(byId(tree, id)).toHaveLength(0);
+      expect(texts(tree).some(x => x.includes('without a rate'))).toBe(false);
+    });
+
+    it('Save is not blocked by the missing rate and sends the stored set back unchanged', async () => {
+      const tree = await render('edit');
+      await press(tree);
+      expect(showAlert).not.toHaveBeenCalled();
+      expect(dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!.props.visible).toBe(true);
+      (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!.props.onConfirm(); });
+      expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toEqual([
+        { scope: 'grn', item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4.5, labour_rate: 1, tax_percent: 5 },
+      ]);
+    });
+  });
+
+  it('D7: entries of the other price type are dropped from the form and the person is told once', async () => {
+    mockGrnRates = [{ price_type: 'one_time', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 0, tax_percent: 5 }];
+    mockChanges = [{ ...everyone, price_type: 'one_time' }];
+    const tree = await render('create');
+    expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
+    expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
+    const bar = one(tree, 'Snackbar');
+    expect(bar.props.visible).toBe(true);
+    expect(bar.props.children.props.children).toBe('Rates set for the other price type were removed.');
+  });
+
+  it('D7: nothing is dropped, and no notice shown, when every entry is of the GRN price type', async () => {
+    mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 }];
+    const tree = await render('create');
+    expect(mockDispatch).not.toHaveBeenCalledWith(setGrnRates([]));
+    expect(one(tree, 'Snackbar').props.visible).toBe(false);
+  });
+
+  it('a refused Create leaves the form open, and the second Create sends the call again', async () => {
+    mockRates = [...mockRates, stored('rice', 0, 100, 2)];
+    (createGRN as jest.Mock)
+      .mockResolvedValueOnce({ success: false, error: 'x', rateError: { code: 'RATE_PLANNED', data: { starts_on: '2026-11-01' } } })
+      .mockResolvedValueOnce({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+    const tree = await render('create');
+    for (let n = 0; n < 2; n += 1) {
+      await press(tree);
+      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
+    }
+    expect(createGRN).toHaveBeenCalledTimes(2);
+    expect(showAlert).toHaveBeenCalledTimes(1);
   });
 });

@@ -637,7 +637,10 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
   } else if (ctx.mode !== 'correct' && !ctx.canStartInPast && draft.startsOn < ctx.today) {
     errors.startsOn = t('pricing.error.pastDateNotAllowed');
   } else if (ctx.mode !== 'correct' && draft.startsOn < startFloor(ctx.today, ctx.earliestStart)) {
-    errors.startsOn = t('pricing.error.invalidDate', { date: dateText(startFloor(ctx.today, ctx.earliestStart)) });
+    // A day from the server is named; without one (an older server) the old three-year window is described.
+    errors.startsOn = ctx.earliestStart
+      ? t('pricing.error.invalidDate', { date: dateText(ctx.earliestStart) })
+      : t('pricing.error.invalidDateWindow');
   } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today, ctx.earliestStart)) {
     errors.startsOn = t('pricing.error.startTooFar');
   } else if (

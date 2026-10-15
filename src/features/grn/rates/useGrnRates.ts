@@ -3,7 +3,7 @@
  * gains focus (a rate may have been changed in Item pricing meanwhile) and when the items, customer, day or
  * price type change. Offline or failed: status 'error', and the GRN cannot be saved.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { listRatesOfItems } from '@/services/item-pricing-service';
@@ -40,17 +40,19 @@ export function useGrnRates(itemIds: string[], dependsOn: string): UseGrnRatesRe
     }
   }, [idsKey]);
 
-  // The items, customer, day or price type changed: the rows shown are of the old ones until the new read arrives.
-  useEffect(() => {
-    setStatus('loading');
-    void refresh();
-    // dependsOn: the customer, day and price type the caller prices for.
-  }, [refresh, dependsOn]);
-
+  // One read per mount, per change and per return to the screen. When the items, customer, day or price type
+  // changed (dependsOn: the customer, day and price type the caller prices for), the rows shown are of the
+  // old ones until the new read arrives.
+  const lastKey = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
+      const key = `${idsKey}|${dependsOn}`;
+      if (lastKey.current !== key) {
+        lastKey.current = key;
+        setStatus('loading');
+      }
       void refresh();
-    }, [refresh]),
+    }, [refresh, idsKey, dependsOn]),
   );
 
   return { rates, status: offline && status !== 'ready' ? 'error' : status, offline, refresh };

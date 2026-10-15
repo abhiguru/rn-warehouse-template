@@ -34,7 +34,8 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, toCalendarDay } from '@/utils/formatters';
+import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
 import { failureText, serverText } from '@/utils/serverText';
 
@@ -322,10 +323,13 @@ const mapRateError = (
 };
 
 /** INVALID_DATE: names the oldest day that is allowed when the server sends it (`data.earliest`, migration 86). */
-const invalidDateText = (details: { earliest?: unknown }): string =>
-  typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)
+const invalidDateText = (details: { earliest?: unknown }, startsOn?: string | null): string => {
+  // The server sends INVALID_DATE for a day too far ahead as well: that one is told apart by the day sent.
+  if (startsOn && startsOn.slice(0, 10) > addDays(toCalendarDay(new Date()), 730)) return t('pricing.error.startTooFar');
+  return typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)
     ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10), 'medium') })
     : t('pricing.error.invalidDateWindow');
+};
 
 const RATE_FIELDS = ['unit_price', 'labour_rate', 'tax_percent'] as const;
 
@@ -403,7 +407,7 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       if (typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)) extra.earliest = details.earliest.slice(0, 10);
       if (Array.isArray(details.later)) extra.later = details.later as ReplaceRatesResult['later'];
       if (code === 'LATER_RATES_EXIST') return rateFailure(code, undefined, extra);
-      if (code === 'INVALID_DATE') return rateFailure(code, invalidDateText(details), extra);
+      if (code === 'INVALID_DATE') return rateFailure(code, invalidDateText(details, input.starts_on), extra);
       if (code === 'PERMISSION_DENIED') return rateFailure(code, t('errors.parsed.noPermission'), extra);
       if (key) return rateFailure(code, t(key), extra);
       return rateFailure('UNKNOWN', t('pricing.error.generic'), extra);
@@ -469,7 +473,7 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
       handleGlobalAuthError(response);
       const code = String(response.error_code ?? '') as RateErrorCode;
       if (code === 'PERMISSION_DENIED') return failure(code, t('errors.parsed.noPermission'));
-      if (code === 'INVALID_DATE') return failure(code, invalidDateText(response.data ?? {}));
+      if (code === 'INVALID_DATE') return failure(code, invalidDateText(response.data ?? {}, input.startsOn));
       const key = RATE_ERROR_KEYS[code];
       return key ? failure(code, t(key)) : failure('UNKNOWN', t('pricing.error.generic'));
     }
