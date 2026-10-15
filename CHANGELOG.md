@@ -9,7 +9,9 @@ reviewed an older app). These three were still open:
   meanwhile (a dispatch made while the edit was open; lines dispatched before are locked in the
   form), Save now shows "GRN saved. Some quantities were not changed…" with one line per item
   ("Item: 3 already dispatched"), not a plain "GRN saved." The app read the result in the wrong place.
-  Dispatched lines whose quantity was not changed do not raise the warning.
+  Dispatched lines whose quantity was not changed do not raise the warning. The warning is its own
+  dialog, "Some quantities were not changed" with OK, shown before "GRN updated" (or before "Photos
+  not uploaded"), so the success dialog no longer hides it (owner decision).
 - **Sign out** (without central login): if this phone cannot remove the sign-in from its secure
   storage, it says so ("This phone couldn't remove your sign-in…"), and the next start removes the
   session and stays signed out instead of signing the same person back in. This is the same fix
