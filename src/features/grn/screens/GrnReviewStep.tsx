@@ -54,7 +54,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
 import { GrnRatesSection } from '@/features/grn/rates/GrnRatesSection';
@@ -487,6 +487,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           return Number(sent.qty) !== Number(entry.current_qty);
         });
 
+        let skippedMessage: string | null = null;
         if (skippedItems && skippedItems.length > 0) {
           triggerWarning();
           const skippedText = skippedItems
@@ -494,12 +495,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               ? tr('grn.review.skippedLine', { item: item.item_name, qty: formatNumber(item.dispatched_qty) })
               : item.item_name}`)
             .join('\n');
-          setSnackbarMessage(tr('grn.review.savedWithSkipped', { items: skippedText }));
+          skippedMessage = tr('grn.review.savedWithSkipped', { items: skippedText });
         } else {
           triggerSuccess();
           setSnackbarMessage(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
+          setSnackbarVisible(true);
         }
-        setSnackbarVisible(true);
 
         const grNo = header.gr_no || '';
         setDocumentNumber(grNo);
@@ -509,7 +510,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           date: formatReviewDate(header.date),
           itemCount: items.length,
         });
-        finishSave(grnId, result.data?.photos);
+        const savedPhotos = result.data?.photos;
+        if (skippedMessage) {
+          // Its own dialog first, so the warning is not hidden behind the success dialog. Not awaited:
+          // the Save button must not stay busy while the dialog is open. askAlert settles on OK or dismissal.
+          void askAlert(tr('grn.review.skippedTitle'), skippedMessage, [{ text: tr('common.ok'), value: true }], false)
+            .then(() => finishSave(grnId, savedPhotos));
+        } else {
+          finishSave(grnId, savedPhotos);
+        }
       } else if (result.outcomeUnknown) {
         // Sent, not answered: the GRN may or may not be saved. The form stays as it is.
         triggerError();

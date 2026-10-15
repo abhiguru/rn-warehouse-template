@@ -73,7 +73,13 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRang
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), findLinesSavedByLostUpdate: jest.fn() }));
 // What unpreparedGRNPhotos answers for real forms is tested with the service (grnPhotoSaving.test.ts).
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// askAlert never answers by itself: a test presses OK (the button's value) or dismisses (the `dismissed` value).
+const mockAsked: Array<{ title: string; message?: string; ok: unknown; dismissed: unknown; resolve: (value: unknown) => void }> = [];
+jest.mock('@/utils/alert', () => ({
+  showAlert: jest.fn(),
+  askAlert: jest.fn((title: string, message: string | undefined, choices: Array<{ value: unknown }>, dismissed: unknown) =>
+    new Promise((resolve) => { mockAsked.push({ title, message, ok: choices[0].value, dismissed, resolve }); })),
+}));
 jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })) }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
@@ -187,27 +193,60 @@ describe('GRN review step: save of an edit with lines the server did not change'
     return tree;
   }
   const snackbarText = (tree: ReactTestRenderer) => String(tree.root.findByType('Snackbar' as never).props.children.props.children);
+  const successShown = (tree: ReactTestRenderer) => tree.root.findByType('DocumentSuccessDialog' as never).props.isVisible;
+  const photosDialogShown = (tree: ReactTestRenderer) => visibleDialogs(tree).some((dialog) => dialog.props.title === 'Photos not uploaded');
+  const pressOk = async () => { await act(async () => { const asked = mockAsked[0]; asked.resolve(asked.ok); }); };
+  beforeEach(() => { mockAsked.length = 0; });
 
-  it('warns, naming the item and its dispatched count', async () => {
+  it('warns in its own dialog first, naming the item and its dispatched count, then shows the success dialog after OK', async () => {
     const tree = await saveEdit([skipped]);
-    const text = snackbarText(tree);
+    expect(mockAsked).toHaveLength(1);
+    expect(mockAsked[0].title).toBe('Some quantities were not changed');
+    const text = String(mockAsked[0].message);
     expect(text).toContain('Some quantities were not changed because those items are already dispatched');
     expect(text).toContain('• Test Item Alpha: 3 already dispatched');
     expect(text).not.toContain('Cannot update');
-    expect(text).not.toBe('GRN A0010 saved.');
+    expect(successShown(tree)).toBe(false);
+    expect(tree.root.findByType('Snackbar' as never).props.visible).toBe(false);
+    await pressOk();
+    expect(successShown(tree)).toBe(true);
+    expect(tree.root.findByType('Snackbar' as never).props.visible).toBe(false);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('shows the success dialog also when the warning dialog is dismissed without its button', async () => {
+    const tree = await saveEdit([skipped]);
+    expect(successShown(tree)).toBe(false);
+    await act(async () => { mockAsked[0].resolve(mockAsked[0].dismissed); });
+    expect(successShown(tree)).toBe(true);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('shows "Photos not uploaded" after the warning dialog, not the success dialog, when photos also failed', async () => {
+    const failedPhoto = { kind: 'header', localUri: 'file:///x.jpg', error: 'Network request failed' };
+    (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: 'grn-1', message: 'ok', stats: { items_skipped_stock: [skipped] }, photos: { uploadedCount: 0, failed: [failedPhoto], removalFailures: 0 } } });
+    const tree = await render('edit');
+    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await act(async () => { await visibleDialogs(tree)[0].props.onConfirm(); });
+    expect(mockAsked).toHaveLength(1);
+    expect(photosDialogShown(tree)).toBe(false);
+    expect(successShown(tree)).toBe(false);
+    await pressOk();
+    expect(photosDialogShown(tree)).toBe(true);
+    expect(successShown(tree)).toBe(false);
     await act(async () => { tree.unmount(); });
   });
 
   it('shows just the item name when the entry has no numeric dispatched count', async () => {
     const tree = await saveEdit([{ ...skipped, dispatched_qty: undefined }]);
-    expect(snackbarText(tree)).toMatch(/dispatched:\n• Test Item Alpha$/);
+    expect(String(mockAsked[0].message)).toMatch(/dispatched:\n• Test Item Alpha$/);
     await act(async () => { tree.unmount(); });
   });
 
   it('writes the count in Gujarati digits in Gujarati', async () => {
     setLanguage('gu');
     const tree = await saveEdit([skipped]);
-    const text = snackbarText(tree);
+    const text = String(mockAsked[0].message);
     expect(text).toContain('Test Item Alpha');
     expect(text).toContain('૩');
     expect(text).not.toMatch(/3/);
@@ -216,12 +255,15 @@ describe('GRN review step: save of an edit with lines the server did not change'
 
   it('does not warn for a dispatched line whose quantity was not changed (the server lists every dispatched line)', async () => {
     const tree = await saveEdit([{ ...skipped, current_qty: LINES[0].qty }]);
+    expect(mockAsked).toHaveLength(0);
     expect(snackbarText(tree)).toBe('GRN A0010 saved.');
+    expect(successShown(tree)).toBe(true);
     await act(async () => { tree.unmount(); });
   });
 
   it('control: an empty skipped list gives the plain saved message', async () => {
     const tree = await saveEdit([]);
+    expect(mockAsked).toHaveLength(0);
     expect(snackbarText(tree)).toBe('GRN A0010 saved.');
     await act(async () => { tree.unmount(); });
   });
