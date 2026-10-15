@@ -282,8 +282,8 @@ export const uploadGRNImage = async (
     const finishConfirmed = async (confirmedPath: string): Promise<ImageUploadResult> => {
       // Generate signed URL for the uploaded image
       // A throw here must never reach the upload catch: the photo is already confirmed.
-      let urlData: { signedUrl?: string } | null = null;
-      let urlError: unknown = null;
+      let urlData: { signedUrl?: string } | null | undefined;
+      let urlError: unknown;
       try {
         const signed = await supabase.storage
           .from('grn-images')
