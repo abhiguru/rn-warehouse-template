@@ -21,6 +21,7 @@ const mockCalls: Array<{ name: string; args: any }> = [];
 let mockRpcHandlers: Record<string, (args: any) => RpcAnswer | Promise<RpcAnswer>> = {};
 let mockRegistered = 0;
 /** When set, a storage upload waits for what this returns (P2F-MEDIA-2). */
+let mockSignedUrlThrows = false;
 let mockUploadHook: ((path: string) => Promise<{ error: unknown }>) | null = null;
 /** Switch gates taken and ended by the uploads. */
 const mockMutation = { begun: 0, finished: 0 };
@@ -53,7 +54,10 @@ jest.mock('@/config/supabaseConfig', () => ({
           mockCalls.push({ name: 'storage.upload', args: path });
           return mockUploadHook ? mockUploadHook(path) : { error: null };
         },
-        createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null }),
+        createSignedUrl: async (path: string) => {
+          if (mockSignedUrlThrows) throw new Error('signing unavailable');
+          return { data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null };
+        },
         remove: async (paths: string[]) => {
           mockCalls.push({ name: 'storage.remove', args: paths });
           return { data: paths.map((name) => ({ name })), error: null };
@@ -152,6 +156,7 @@ beforeEach(() => {
   mockRpcHandlers = {};
   mockRegistered = 0;
   mockUploadHook = null;
+  mockSignedUrlThrows = false;
   mockMutation.begun = 0;
   mockMutation.finished = 0;
   mockBuffersRead = 0;
@@ -858,6 +863,7 @@ describe('rolling back a photo upload', () => {
       if (_name === 'immediate') expect(result.imageId).toBe('image-1');
     });
 
+
     it('removes the file once when the confirm was refused and the pending row was cancelled', async () => {
       mockRpcHandlers.confirm_grn_image_upload = () => ({ data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null });
       mockRpcHandlers.cancel_grn_image_upload = () => ({ data: { success: true, storage_path: 'path-1' }, error: null });
@@ -875,5 +881,21 @@ describe('rolling back a photo upload', () => {
       expect(removals()).toEqual([]);
       expect(result.success).toBe(false);
     });
+  });
+
+  it('does not cancel a confirmed photo when signing its URL throws', async () => {
+    mockRpcHandlers.confirm_grn_image_upload = () => ({ data: { success: true }, error: null });
+    mockRpcHandlers.cancel_grn_image_upload = () => ({ data: { success: true, storage_path: 'path-1' }, error: null });
+    mockSignedUrlThrows = true;
+    const result = await uploadGRNImage(asset, GRN_ID, 'header');
+    expect(callsTo('cancel_grn_image_upload')).toEqual([]);
+    expect(removals()).toEqual([]);
+    // Same answer as a missing signed URL: the direct storage URL.
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        imageUrl: expect.stringMatching(/^https:\/\/facility\.invalid\/storage\/v1\/object\/grn-images\//),
+      })
+    );
   });
 });

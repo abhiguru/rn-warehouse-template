@@ -186,7 +186,7 @@ describe('rolling back a photo upload', () => {
   ];
 
   /** register and storage upload succeed; the confirm and cancel answers are given by the test. */
-  function rollbackServer(confirm: () => unknown, cancel: () => unknown) {
+  function rollbackServer(confirm: () => unknown, cancel: () => unknown, signedUrl?: (path: string) => unknown) {
     const remove = jest.fn(async (paths: string[]) => ({ data: paths.map((name) => ({ name })), error: null }));
     const rpc = jest.fn(async (name: string) => {
       if (name === 'register_dispatch_image_upload')
@@ -198,7 +198,8 @@ describe('rolling back a photo upload', () => {
     const storage = {
       from: () => ({
         upload: async () => ({ error: null }),
-        createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null }),
+        createSignedUrl: async (path: string) =>
+          signedUrl ? signedUrl(path) : { data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null },
         remove,
       }),
     };
@@ -239,6 +240,7 @@ describe('rolling back a photo upload', () => {
       if (name === 'immediate') expect(result.imageId).toBe('image-1');
     });
 
+
     it('removes the file once when the confirm was refused and the pending row was cancelled', async () => {
       const remove = rollbackServer(
         () => ({ data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null }),
@@ -257,5 +259,22 @@ describe('rolling back a photo upload', () => {
       expect(remove).not.toHaveBeenCalled();
       expect(result.success).toBe(false);
     });
+  });
+
+  it('does not cancel a confirmed photo when signing its URL throws', async () => {
+    const cancel = jest.fn(() => ({ data: { success: true, storage_path: 'path-1' }, error: null }));
+    const remove = rollbackServer(() => ({ data: { success: true }, error: null }), cancel, () => {
+      throw new Error('signing unavailable');
+    });
+    const result = await uploadDispatchImage(asset, DISPATCH_ID);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    // Same answer as a missing signed URL: the direct storage URL.
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        imageUrl: expect.stringMatching(/^https:\/\/facility\.invalid\/storage\/v1\/object\//),
+      })
+    );
   });
 });

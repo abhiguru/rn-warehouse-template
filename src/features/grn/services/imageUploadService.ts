@@ -281,9 +281,18 @@ export const uploadGRNImage = async (
     // lost confirm answer is found to have committed).
     const finishConfirmed = async (confirmedPath: string): Promise<ImageUploadResult> => {
       // Generate signed URL for the uploaded image
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from('grn-images')
-        .createSignedUrl(confirmedPath, 3600); // 1 hour expiry
+      // A throw here must never reach the upload catch: the photo is already confirmed.
+      let urlData: { signedUrl?: string } | null = null;
+      let urlError: unknown = null;
+      try {
+        const signed = await supabase.storage
+          .from('grn-images')
+          .createSignedUrl(confirmedPath, 3600); // 1 hour expiry
+        urlData = signed.data;
+        urlError = signed.error;
+      } catch (signError) {
+        urlError = signError;
+      }
 
       let finalImageUrl: string;
       if (urlError || !urlData?.signedUrl) {
@@ -313,6 +322,7 @@ export const uploadGRNImage = async (
       };
     };
 
+    let confirmedPath: string;
     try {
       // Step 2: Upload binary file directly to Supabase Storage
 
@@ -363,7 +373,7 @@ export const uploadGRNImage = async (
         );
       }
 
-      return await finishConfirmed(storagePath);
+      confirmedPath = storagePath;
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
       log.error('Upload/confirm failed, rolling back', loggableError(uploadOrConfirmError));
@@ -376,17 +386,19 @@ export const uploadGRNImage = async (
       });
       if (rollback.outcome === 'already_confirmed') {
         // The confirm committed and only its answer was lost: the photo is attached.
-        return await finishConfirmed(rollback.storagePath ?? storagePath);
+        confirmedPath = rollback.storagePath ?? storagePath;
+      } else {
+        return {
+          success: false,
+          error:
+            uploadOrConfirmError instanceof Error
+              ? uploadOrConfirmError.message
+              : t('grn.photos.uploadFailed'),
+        };
       }
-
-      return {
-        success: false,
-        error:
-          uploadOrConfirmError instanceof Error
-            ? uploadOrConfirmError.message
-            : t('grn.photos.uploadFailed'),
-      };
     }
+
+    return await finishConfirmed(confirmedPath);
   } catch (error) {
     log.error('Upload exception', loggableError(error));
 
