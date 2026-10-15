@@ -141,3 +141,34 @@ describe('updateGRN with rates', () => {
     expect(second.p_idempotency_key).not.toContain('p_rates');
   });
 });
+
+// BR-09: update_grn keeps the old value for null, so a switched-off or cleared field must go as a value.
+describe('updateGRN header values that were switched off or cleared', () => {
+  const sent = async (changes: Partial<GRNHeaderData>) => {
+    mockRpc.mockResolvedValue(updated);
+    await updateGRN(GRN_ID, { header: { ...header, ...changes }, items, rates: [] });
+    return mockRpc.mock.calls[0][1];
+  };
+
+  it('sends p_leon false when Leon is switched off, and true when it is on', async () => {
+    expect((await sent({ leon: false })).p_leon).toBe(false);
+    mockRpc.mockReset();
+    expect((await sent({ leon: true })).p_leon).toBe(true);
+  });
+
+  it('sends p_leon false, not null, when the form carries no value', async () => {
+    expect((await sent({ leon: undefined as never })).p_leon).toBe(false);
+  });
+
+  it('sends a cleared note and registration as empty text, not null', async () => {
+    const body = await sent({ note: '', registration: '' });
+    expect(body.p_note).toBe('');
+    expect(body.p_registration).toBe('');
+  });
+
+  it('sends the note and registration as typed', async () => {
+    const body = await sent({ note: 'Handle with care', registration: 'GJ01AB1234' });
+    expect(body.p_note).toBe('Handle with care');
+    expect(body.p_registration).toBe('GJ01AB1234');
+  });
+});
