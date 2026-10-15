@@ -2,9 +2,11 @@
  * Item pricing: the list (screen A of the item rate card).
  *
  * One row per active item with the rent in force on the chosen goods-received day. A row opens
- * the item page, where rates are read and changed. Search, the Customer / Type / Needs a rate
- * chips and the day are applied on the phone over the rates already loaded. There is no swipe,
- * no Add button and no Settings cog.
+ * the item page, where rates are read and changed. Search, the Customer / Type chips and the day
+ * are applied on the phone over the rates already loaded. The header has the history icon and an
+ * Add button (administrators, supervisors and staff): pick an item and the rate editor opens with
+ * its tiers plus one empty tier. While some item has no rate at all (before the standard rate is
+ * first saved) a strip points to the Standard rate screen. There is no swipe and no Settings cog.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -17,15 +19,19 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { canOpenScreen } from '@/config/roles';
+import { rateRights } from '@/features/item-pricing/rateRights';
 import { FilterBar } from '@/features/filters/components/FilterBar';
 import { searchWords } from '@/features/filters/components/HighlightedText';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { useListFilters } from '@/features/filters/useListFilters';
-import { itemRatesPath, historyPath } from '@/features/item-pricing/contract';
+import { itemRatesPath, historyPath, editorPath } from '@/features/item-pricing/contract';
+import { rowsInForce } from '@/features/item-pricing/editModel';
 import { ITEM_RATES_CONFIG, ITEM_RATES_FILTERS } from '@/features/item-pricing/itemRatesFilters';
 import { groupByItem, itemSummary, rateState, type ItemSummary } from '@/features/item-pricing/rateModel';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
+import { ItemPickerSheet, type PickableItem } from '@/features/item-pricing/components/ItemPickerSheet';
 import { RatesOnBar } from '@/features/item-pricing/components/RatesOnBar';
+import { RateStrip } from '@/features/item-pricing/components/RateStrip';
 import { ItemRateRow } from '@/features/item-pricing/components/ItemRateRow';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
 import { useItemRates } from '@/features/item-pricing/useItemRates';
@@ -55,6 +61,8 @@ const makeStyles = (th: ThemeTokens) => ({
   headerContent: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
   titleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, flex: 1, gap: space.xs },
   title: { ...typography.title2, color: th.text.primary, flexShrink: 1 },
+  actions: { flexDirection: 'row' as const, alignItems: 'center' as const },
+  disabled: { opacity: 0.4 },
   iconButton: { width: touchTarget, height: touchTarget, alignItems: 'center' as const, justifyContent: 'center' as const },
   note: { ...typography.footnote, color: th.text.secondary, paddingHorizontal: layout.marginCompact, paddingVertical: space.xs },
   strip: { paddingHorizontal: layout.marginCompact, paddingVertical: space.sm },
@@ -68,6 +76,8 @@ export default function ItemPricingScreen() {
   const offline = useIsOffline();
   const canSeeChanges = canOpenScreen(role, 'itemPriceHistory');
   const canOpenItems = canOpenScreen(role, 'masterData');
+  const canAdd = rateRights(role).canWrite;
+  const canSetStandard = canOpenScreen(role, 'standardRate');
 
   const filters = useListFilters(ITEM_RATES_FILTERS);
   const request = filters.request;
@@ -76,14 +86,16 @@ export default function ItemPricingScreen() {
   const today = todayDay();
   const [day, setDay] = useState(today);
   const [pulling, setPulling] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const groups = useMemo(() => groupByItem(rates, items), [rates, items]);
-  // One summary per item for the day and the chips; the count of items that need a rate comes from the same ones.
+  // One summary per item for the day and the chips.
   const summaries = useMemo(
     () => groups.map(group => itemSummary(group, day, { customerIds: request.customerIds, priceType: request.priceType })),
     [groups, day, request.customerIds, request.priceType],
   );
-  const needRateCount = useMemo(() => summaries.filter(s => s.noRateToday).length, [summaries]);
+  // Some active item has no default rate rows at all (not even an ended one): the standard rate was never saved, or the item came before it.
+  const someItemHasNoRate = useMemo(() => groups.some(group => !group.rows.some(r => r.customer_id === null)), [groups]);
 
   const terms = useMemo(() => searchTerms(filters.search), [filters.search]);
   const words = useMemo(() => searchWords(filters.search), [filters.search]);
@@ -92,9 +104,8 @@ export default function ItemPricingScreen() {
     const result: ListRow[] = [];
     for (const [index, group] of groups.entries()) {
       const summary = summaries[index];
-      if (request.needsRate && !summary.noRateToday) continue;
       if (request.customerIds.length > 0 && !group.rows.some(r => r.customer_id && request.customerIds.includes(r.customer_id) && rateState(r, day) !== 'ended')) continue;
-      if (request.priceType !== 'all' && summary.bands.length === 0 && !(request.needsRate && summary.noRateToday)) continue;
+      if (request.priceType !== 'all' && summary.bands.length === 0) continue;
 
       // Search: the item name, and the names of customers who have their own rate on this item.
       let matchedCustomer: ListRow['matchedCustomer'] = null;
@@ -119,6 +130,18 @@ export default function ItemPricingScreen() {
   const openItem = useCallback(
     (itemId: string) => router.push(itemRatesPath(itemId, day !== today ? day : undefined)),
     [day, today],
+  );
+  // Add: the item's default monthly rate in force today (else its one-time rate) opens with one more empty tier; an item with neither starts a new default rate.
+  const addForItem = useCallback(
+    (item: PickableItem) => {
+      setPicking(false);
+      const own = rates.filter(r => r.item_id === item.id);
+      const onDay = todayDay();
+      const type = (['monthly', 'one_time'] as const).find(priceType => rowsInForce(own, { customerId: null, priceType }, onDay).length > 0);
+      const base = { item_id: item.id, item_name: item.name };
+      router.push(type ? editorPath({ ...base, mode: 'change', price_type: type, add_band: '1' }) : editorPath({ ...base, mode: 'add' }));
+    },
+    [rates],
   );
   const onPullRefresh = useCallback(async () => {
     setPulling(true);
@@ -197,6 +220,20 @@ export default function ItemPricingScreen() {
             <HeaderBackButton />
             <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>{t('pricing.list.title')}</Text>
           </View>
+          <View style={styles.actions}>
+          {canAdd ? (
+            <Pressable
+              style={[styles.iconButton, offline && styles.disabled]}
+              onPress={() => setPicking(true)}
+              disabled={offline}
+              accessibilityRole="button"
+              accessibilityLabel={t('pricing.list.addRate')}
+              accessibilityState={{ disabled: offline }}
+              testID="item-pricing-add"
+            >
+              <Icon name="plus" size={iconSize.lg} color={th.brand.tint} />
+            </Pressable>
+          ) : null}
           {canSeeChanges ? (
             <Pressable
               style={styles.iconButton}
@@ -208,6 +245,7 @@ export default function ItemPricingScreen() {
               <Icon name="history" size={iconSize.lg} color={th.brand.tint} />
             </Pressable>
           ) : null}
+          </View>
         </View>
       </View>
 
@@ -229,12 +267,17 @@ export default function ItemPricingScreen() {
         day={day}
         today={today}
         onChangeDay={setDay}
-        needRate={
-          showList && !request.needsRate && needRateCount > 0
-            ? { text: t('pricing.list.needRate', { count: needRateCount }), onPress: () => filters.setField('needsRate', true) }
-            : null
-        }
       />
+      {showList && someItemHasNoRate ? (
+        <View style={styles.strip}>
+          <RateStrip
+            variant="info"
+            message={canSetStandard ? t('pricing.standard.setupStrip') : t('pricing.standard.setupAskAdmin')}
+            actions={canSetStandard ? [{ label: t('pricing.standard.setupAction'), onPress: () => router.push('/standard-rate'), testID: 'standard-rate-link' }] : undefined}
+            testID="standard-rate-strip"
+          />
+        </View>
+      ) : null}
       {offline && lastUpdated ? <Text style={styles.note}>{t('pricing.list.lastUpdated', { time: formatTime(new Date(lastUpdated)) })}</Text> : null}
 
       {body}
@@ -264,6 +307,7 @@ export default function ItemPricingScreen() {
           removeClippedSubviews={false}
         />
       ) : null}
+      <ItemPickerSheet visible={picking} onClose={() => setPicking(false)} onSelect={addForItem} items={items} title={t('pricing.list.addPickTitle')} />
     </View>
   );
 }

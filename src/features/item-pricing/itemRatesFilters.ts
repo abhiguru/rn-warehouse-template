@@ -1,5 +1,5 @@
 /**
- * The Item pricing list's filter bar: Customer, Type, Needs a rate. All of it is applied on
+ * The Item pricing list's filter bar: Customer and Type. All of it is applied on
  * the phone over the rates already loaded, so there is no result count (`fetchCount`) and no
  * full "Sort and filter" page: a filter sheet's button reads "Show results", never "No prices
  * match" (P-02, P-35). The list does not register this in FILTER_CONFIGS.
@@ -14,7 +14,6 @@ import type { PriceType } from '@/types/item-pricing.types';
 export interface ItemRatesRequest {
   customerIds: string[];
   priceType: 'all' | PriceType;
-  needsRate: boolean;
 }
 
 export const ITEM_RATES_FILTERS: FilterListConfig<ItemRatesRequest> = {
@@ -38,13 +37,12 @@ export const ITEM_RATES_FILTERS: FilterListConfig<ItemRatesRequest> = {
         { value: 'one_time', get label() { return t('filters.option.oneTime'); } },
       ],
     },
-    { kind: 'toggle', key: 'needsRate', get label() { return t('pricing.list.filterNeedsRate'); }, icon: 'tag-off-outline' },
   ],
-  fastFilters: ['customers', 'priceType', 'needsRate'],
+  fastFilters: ['customers', 'priceType'],
 
   toRequest(values) {
     const priceType = values.priceType === 'monthly' || values.priceType === 'one_time' ? values.priceType : 'all';
-    return { customerIds: ids(values.customers), priceType, needsRate: values.needsRate === true };
+    return { customerIds: ids(values.customers), priceType };
   },
   // No fetchCount: nothing is counted on the server.
 };

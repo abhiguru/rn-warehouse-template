@@ -14,6 +14,7 @@ import authReducer from '@/store/slices/authSlice';
 import themeReducer from '@/store/slices/themeSlice';
 import listFilterReducer, { applyListFilters } from '@/store/slices/listFilterSlice';
 import { useItemRates, type UseItemRatesResult } from '@/features/item-pricing/useItemRates';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { F1, ITEMS, row } from '@/tests/helpers/ratesFixtures';
 import type { ActiveItem } from '@/types/item-pricing.types';
 
@@ -31,6 +32,10 @@ jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: jest.fn(() => false) }));
+let sheetProps: Record<string, any> = {};
+jest.mock('@/components/common/SearchableBottomSheet', () => ({
+  SearchableBottomSheet: (props: Record<string, unknown>) => { sheetProps = props; return null; },
+}));
 jest.mock('@/features/item-pricing/useItemRates', () => ({ useItemRates: jest.fn() }));
 jest.mock('@/components/list/ListSkeletonCard', () => ({ ListSkeletonCard: () => require('react').createElement('Skeleton') }));
 jest.mock('@react-native-community/datetimepicker', () => {
@@ -166,23 +171,22 @@ describe('Item pricing list', () => {
     expect(shown(tree)).toContain('Monthly rent per bag, for lots received on 14 Oct 2026.');
   });
 
-  it('has the chips Customer, Type and Needs a rate and no Filters chip or Sort and filter (P-35)', async () => {
+  it('has the chips Customer and Type, no Needs a rate chip, and no Filters chip or Sort and filter (P-35)', async () => {
     await open('admin');
     const s = shown(tree);
-    for (const label of ['Customer', 'Type', 'Needs a rate']) expect(s).toContain(label);
+    for (const label of ['Customer', 'Type']) expect(s).toContain(label);
+    expect(s).not.toContain('Needs a rate');
     expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Filters' || /Sort and filter|Open all filters/i.test(String(n.props.accessibilityLabel))).length).toBe(0);
     const source = fs.readFileSync(path.join(__dirname, '../../../app/item-pricing.tsx'), 'utf8');
     expect(source).not.toContain('list-filters');
     expect(source).not.toMatch(/onOpenAll/);
   });
 
-  it('Needs a rate keeps the chip bar and shows only items without a rate today (P-36)', async () => {
+  it('has no "items need a rate" link: the item without a rate is still listed, with its No rate today tag', async () => {
     await open('admin');
-    expect(shown(tree)).toContain('1 item needs a rate');
-    const link = tree.root.find(n => n.props.testID === 'need-rate-link');
-    act(() => link.props.onPress());
-    expect(shown(tree)).toContain('Customer');
-    expect(listed(tree)).toEqual(['onion-small']);
+    expect(shown(tree)).not.toMatch(/need a rate|needs a rate/i);
+    expect(tree.root.findAll(n => n.props.testID === 'need-rate-link')).toHaveLength(0);
+    expect(listed(tree)).toContain('onion-small');
     expect(shown(tree)).toContain('No rate today');
   });
 
@@ -232,7 +236,7 @@ describe('Item pricing list', () => {
   it('while loading, the search field and chip bar stay with 8 skeleton rows (P-36)', async () => {
     await open('admin', { status: 'loading', items: [], rates: [] });
     expect(tree.root.findAllByType(TextInput)).toHaveLength(1);
-    expect(shown(tree)).toContain('Needs a rate');
+    expect(shown(tree)).toContain('Type');
     expect(tree.root.findAll(n => (n.type as unknown) === 'Skeleton')).toHaveLength(8);
   });
 
@@ -277,6 +281,129 @@ describe('Item pricing list', () => {
     await open('admin');
     expect(rowButtons(tree).length).toBeGreaterThanOrEqual(6);
     expect(original).toBeDefined();
+  });
+});
+
+describe('Add in the header and the setup strip', () => {
+  beforeEach(() => {
+    jest.setSystemTime(new Date('2026-10-14T10:00:00+05:30'));
+    jest.mocked(useIsOffline).mockReturnValue(false);
+    sheetProps = {};
+  });
+  const addButton = () => tree.root.findAll(n => n.props.testID === 'item-pricing-add' && typeof n.props.onPress === 'function');
+  const pick = (id: string) => act(() => sheetProps.onSelect(ITEMS.find(i => i.id === id)));
+
+  it.each(['admin', 'supervisor', 'staff'])('a %s has the Add button, which opens the item picker over every item', async role => {
+    await open(role);
+    expect(addButton()).toHaveLength(1);
+    expect(addButton()[0].props.accessibilityLabel).toBe('Add a weight band to an item');
+    expect(sheetProps.isVisible).toBe(false);
+    act(() => addButton()[0].props.onPress());
+    expect(sheetProps.isVisible).toBe(true);
+    expect(sheetProps.title).toBe('Choose an item');
+    const offered = await sheetProps.searchFn('');
+    expect(offered.map((i: { id: string }) => i.id)).toEqual(ITEMS.map(i => i.id));
+  });
+
+  it('a customer account has no Add button', async () => {
+    await open('customer');
+    expect(addButton()).toHaveLength(0);
+  });
+
+  it('offline the Add button is disabled', async () => {
+    jest.mocked(useIsOffline).mockReturnValue(true);
+    await open('admin');
+    expect(addButton()[0].props.disabled).toBe(true);
+  });
+
+  it('an item with a monthly default in force today opens in Change rate with one more tier', async () => {
+    await open('admin');
+    act(() => addButton()[0].props.onPress());
+    pick('garlic');
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/item-rates/edit',
+      params: { item_id: 'garlic', item_name: 'Review Garlic Desi', mode: 'change', price_type: 'monthly', add_band: '1' },
+    });
+    expect(sheetProps.isVisible).toBe(false);
+  });
+
+  it('an item with only a one-time default in force opens as one-time', async () => {
+    const rates = [...F1, row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 2, price_type: 'one_time', effective_from: '2025-01-01' })]
+      .filter(r => !(r.item_id === 'potato' && r.price_type === 'monthly'));
+    await open('admin', { rates });
+    pick('potato');
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/item-rates/edit',
+      params: { item_id: 'potato', item_name: 'Review Potato Seed', mode: 'change', price_type: 'one_time', add_band: '1' },
+    });
+  });
+
+  it('an item with no rate in force today starts a default rate, without the extra tier: none, only an ended one, only a coming one', async () => {
+    const rates = [
+      ...F1.filter(r => !['potato', 'ajwain-a'].includes(r.item_id)),
+      row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2025-01-01', effective_to: '2026-06-30' }),
+      row({ item_id: 'ajwain-a', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2027-01-01' }),
+    ];
+    await open('admin', { rates });
+    for (const id of ['onion-small', 'potato', 'ajwain-a']) {
+      jest.mocked(router.push).mockClear();
+      pick(id);
+      const item = ITEMS.find(i => i.id === id)!;
+      expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/edit', params: { item_id: id, item_name: item.name, mode: 'add' } });
+    }
+  });
+
+  it('uses today\'s rate, not the day the list shows', async () => {
+    const original = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      // Potato's rate ended on 30 Jun 2026: it is in force on 31 Mar 2026 (the day the list is moved to) but not today.
+      const rates = [...F1.filter(r => r.item_id !== 'potato'), row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2025-01-01', effective_to: '2026-06-30' })];
+      await open('admin', { rates });
+      act(() => tree.root.find(n => n.props.testID === 'change-date').props.onPress());
+      act(() => tree.root.findByType('Picker' as never).props.onChange({ type: 'set' }, new Date(2026, 2, 31)));
+      expect(shown(tree)).toContain('31 Mar 2026');
+      pick('potato');
+      expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/edit', params: { item_id: 'potato', item_name: 'Review Potato Seed', mode: 'add' } });
+    } finally {
+      Platform.OS = original;
+    }
+  });
+
+  describe('the strip while some item has no rate at all', () => {
+    it('tells an administrator or supervisor to set the standard rate, with a button to the screen', async () => {
+      for (const role of ['admin', 'supervisor']) {
+        await open(role);
+        expect(shown(tree)).toContain('Set the standard rate so every item has a rate.');
+        const button = tree.root.find(n => n.props.testID === 'standard-rate-link' && typeof n.props.onPress === 'function');
+        jest.mocked(router.push).mockClear();
+        act(() => button.props.onPress());
+        expect(router.push).toHaveBeenCalledWith('/standard-rate');
+        act(() => tree.unmount());
+      }
+      await open('admin');
+    });
+
+    it('tells staff to ask, with no button', async () => {
+      await open('staff');
+      expect(shown(tree)).toContain('Ask an administrator or supervisor to set the standard rate.');
+      expect(shown(tree)).not.toContain('Set the standard rate so every item has a rate.');
+      expect(tree.root.findAll(n => n.props.testID === 'standard-rate-link')).toHaveLength(0);
+    });
+
+    it('is gone when every item has a default rate row, even an ended one', async () => {
+      const rates = [...F1, row({ item_id: 'onion-small', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2025-01-01', effective_to: '2026-01-31' })];
+      await open('admin', { rates });
+      expect(tree.root.findAll(n => n.props.testID === 'standard-rate-strip')).toHaveLength(0);
+      expect(shown(tree)).not.toContain('standard rate');
+    });
+
+    it('does not count an item that has only a customer\'s own rate as priced', async () => {
+      const items = [{ id: 'z', name: 'Review Zinc', packaging: null }];
+      const rates = [row({ item_id: 'z', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2025-01-01', ...{ customer_id: 'orchard-b', customer_name: 'Review Orchard B' } })];
+      await open('admin', { items, rates });
+      expect(tree.root.findAll(n => n.props.testID === 'standard-rate-strip').length).toBeGreaterThan(0);
+    });
   });
 });
 

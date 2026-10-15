@@ -29,8 +29,6 @@ describe('pricing in Gujarati', () => {
     expect(t('pricing.tag.customerRates', { count: 3 }, 'gu')).toBe('૩ વેપારીના દર');
     expect(t('pricing.item.showOld', { count: 1 }, 'gu')).toBe('૧ જૂનો દર બતાવો');
     expect(t('pricing.item.showOld', { count: 2 }, 'gu')).toBe('૨ જૂના દર બતાવો');
-    expect(t('pricing.list.needRate', { count: 2 })).toBe('2 items need a rate');
-    expect(t('pricing.list.needRate', { count: 1 })).toBe('1 item needs a rate');
   });
   it('names the price history and what happened to a price', () => {
     expect(t('pricing.history.open', undefined, 'gu')).toBe('ઇતિહાસ');
