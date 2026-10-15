@@ -1,6 +1,6 @@
 /**
  * The rate sheet of the GRN review step: what it starts with, its checks, and the confirmation before a
- * change of a rate in force (three buttons: Change the rate / Only this GRN / Back).
+ * change of a rate in force (its parts, and three buttons: Change the rate / Only this GRN / Back).
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
@@ -15,6 +15,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, default: 'DateTimePicker', DateTimePickerAndroid: { open: jest.fn() } }));
 jest.mock('@gorhom/bottom-sheet', () => {
   const R = require('react');
@@ -45,7 +46,16 @@ const input = (label: string) => tree!.root.findAllByType(Input).find(n => n.pro
 const type = async (label: string, value: string) => { await act(async () => { input(label)!.props.onChangeText(value); }); };
 const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
 const save = async () => { await act(async () => { tree!.root.find(n => n.props.testID === 'rate-save' && typeof n.props.onPress === 'function').props.onPress(); }); };
-const confirm = () => tree!.root.find(n => n.props.testID === 'rate-confirm' && 'onMiddle' in n.props);
+const confirm = () => tree!.root.find(n => typeof n.props.onOnlyGrn === 'function');
+const confirmOpen = () => confirm().props.summary !== null;
+/** The texts of one part of the open confirmation, in order. */
+const part = (id: string) => tree!.root.find(n => n.props.testID === id && typeof n.type !== 'string').findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+/** A figure row of the confirmation as [label, old, new] and whether it reads as changed. */
+const figureRow = (key: string) => {
+  const row = tree!.root.find(n => n.props.testID === `rate-confirm-${key}` && typeof n.props.accessibilityLabel === 'string');
+  return { cells: row.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('')), a11y: row.props.accessibilityLabel as string };
+};
+const tap = async (id: string) => { await act(async () => { tree!.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function').props.onPress(); }); };
 const chip = (label: string) => tree!.root.find(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
 
 function open(rates: ItemStoragePrice[], weight: number, c = ctx) {
@@ -128,31 +138,44 @@ describe('Change', () => {
     open(rates, 12, { ...ctx, customerId: null });
     await type('Rent per bag, per month', '3.25');
     await save();
-    expect(confirm().props.visible).toBe(false);
+    expect(confirmOpen()).toBe(false);
     expect(onSave).toHaveBeenCalledWith({ scope: 'grn', weight_min: 0, weight_max: 50, unit_price: 3.25, labour_rate: 1.5, tax_percent: 5, to: null });
   });
 
-  it('Everyone starts its last day the day before the planned rate; the question lists the facts and has three buttons', async () => {
+  it('Everyone starts its last day the day before the planned rate; the question sorts the facts into parts and has three buttons', async () => {
     open(rates, 12, { ...ctx, customerId: null });
     await act(async () => { chip('Everyone (this weight band)').props.onPress(); });
     await type('Rent per bag, per month', '3.5');
     await save();
     expect(onSave).not.toHaveBeenCalled();
-    const dialog = confirm();
-    expect(dialog.props.visible).toBe(true);
-    expect(dialog.props.title).toBe('Change the rate?');
-    expect(dialog.props.message.split('\n')).toEqual([
-      'Fictional Gur, 0–50 kg',
-      'For: every customer (this weight band)',
-      'Rent: ₹4.00 → ₹3.50',
-      'Labour: ₹1.50 → ₹1.50',
-      'Tax: 5% → 5%',
+    expect(confirmOpen()).toBe(true);
+    expect(texts()).toContain('Change the rate?');
+    expect(texts()).toContain('Fictional Gur, 0–50 kg');
+    expect(part('rate-confirm-audience')).toEqual(['For: every customer (this weight band)']);
+    // The figures as Old / New: only the rent changes, so only the rent reads as a change.
+    expect(texts()).toEqual(expect.arrayContaining(['Old', 'New']));
+    expect(figureRow('rent')).toEqual({ cells: ['Rent', '₹4.00', '₹3.50'], a11y: 'Rent: old ₹4.00, new ₹3.50' });
+    expect(figureRow('labour')).toEqual({ cells: ['Labour', '₹1.50', '₹1.50'], a11y: 'Labour: ₹1.50, no change' });
+    expect(figureRow('tax')).toEqual({ cells: ['Tax', '5%', '5%'], a11y: 'Tax: 5%, no change' });
+    expect(part('rate-confirm-period')).toEqual([
       'From 12 Oct 2026 to 14 Nov 2026',
       'The ₹4.00 rate ends on 11 Oct 2026.',
       'The ₹4.00 rate applies again from 15 Nov 2026.',
-      'GRNs of every customer from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.',
     ]);
-    expect([dialog.props.confirmText, dialog.props.middleText, dialog.props.cancelText]).toEqual(['Change the rate', 'Only this GRN', 'Back']);
+    expect(part('rate-confirm-reach')).toEqual(['GRNs of every customer from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.']);
+    const buttons = ['rate-confirm-change', 'rate-confirm-only-grn', 'rate-confirm-back'].map(id => tree!.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function'));
+    expect(buttons.map(b => [b.props.type, b.props.children])).toEqual([['primary', 'Change the rate'], ['secondary', 'Only this GRN'], ['secondary', 'Back']]);
+  });
+
+  it('a one-time GRN has no labour row in the question', async () => {
+    const oneTime = [{ ...stored(0, 50, 4, '2026-01-01'), price_type: 'one_time' as PriceType, labour_rate: 0 }];
+    open(oneTime, 12, { ...ctx, customerId: null, priceType: 'one_time' });
+    await act(async () => { chip('Everyone (this weight band)').props.onPress(); });
+    await type('Rent per bag, once', '5');
+    await save();
+    expect(confirmOpen()).toBe(true);
+    expect(tree!.root.findAll(n => n.props.testID === 'rate-confirm-labour')).toHaveLength(0);
+    expect(figureRow('rent').cells).toEqual(['Rent', '₹4.00', '₹5.00']);
   });
 
   it('Change the rate saves the scope chosen; Only this GRN turns it into a rate for this GRN only; Back saves nothing', async () => {
@@ -160,16 +183,17 @@ describe('Change', () => {
     await act(async () => { chip('Everyone (this weight band)').props.onPress(); });
     await type('Rent per bag, per month', '3.5');
     await save();
-    await act(async () => { confirm().props.onCancel(); });
+    await tap('rate-confirm-back');
     expect(onSave).not.toHaveBeenCalled();
-    expect(confirm().props.visible).toBe(false);
+    expect(confirmOpen()).toBe(false);
 
     await save();
-    await act(async () => { confirm().props.onConfirm(); });
+    await tap('rate-confirm-change');
     expect(onSave).toHaveBeenLastCalledWith({ scope: 'everyone', weight_min: 0, weight_max: 50, unit_price: 3.5, labour_rate: 1.5, tax_percent: 5, to: '2026-11-14' });
+    expect(confirmOpen()).toBe(false);
 
     await save();
-    await act(async () => { confirm().props.onMiddle(); });
+    await tap('rate-confirm-only-grn');
     expect(onSave).toHaveBeenLastCalledWith({ scope: 'grn', weight_min: 0, weight_max: 50, unit_price: 3.5, labour_rate: 1.5, tax_percent: 5, to: null });
   });
 
@@ -178,9 +202,10 @@ describe('Change', () => {
     await act(async () => { chip('This customer only').props.onPress(); });
     await type('Rent per bag, per month', '3.5');
     await save();
-    expect(confirm().props.message).toContain('Fictional Traders pays the new rate. The ₹4.00 rate stays for other customers.');
-    expect(confirm().props.message).toContain('For: Fictional Traders only');
-    expect(confirm().props.message).toContain('From 12 Oct 2026, no end date');
+    // Who pays it, with what it means for the others, sits together; the period has no note about the old rate.
+    expect(part('rate-confirm-audience')).toEqual(['For: Fictional Traders only', 'Fictional Traders pays the new rate. The ₹4.00 rate stays for other customers.']);
+    expect(part('rate-confirm-period')).toEqual(['From 12 Oct 2026, no end date']);
+    expect(part('rate-confirm-reach')).toEqual(['GRNs of Fictional Traders from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.']);
   });
 
   it('a last day before the planned rate is the only one accepted: clearing the end is refused', async () => {
@@ -199,9 +224,8 @@ describe('round 3', () => {
     await act(async () => { chip('Everyone (this weight band)').props.onPress(); });
     await type('Rent per bag, per month', '4');
     await save();
-    const lines = confirm().props.message.split('\n');
-    expect(lines).toContain('Rent: ₹3.00 → ₹4.00');
-    expect(lines).toContain('Fictional Traders keeps their own rate of ₹3.50.');
+    expect(figureRow('rent').cells).toEqual(['Rent', '₹3.00', '₹4.00']);
+    expect(part('rate-confirm-audience')).toEqual(['For: every customer (this weight band)', 'Fictional Traders keeps their own rate of ₹3.50.']);
   });
 
   it('D5: a planned band of the scope over the weights is refused with its start day; the preloaded last day is the day before', async () => {
@@ -214,7 +238,7 @@ describe('round 3', () => {
     expect(texts()).toContain('A rate for this band starts on 1 Nov 2026. Choose a last day before it.');
     await act(async () => { chip('Until a date').props.onPress(); });
     await save();
-    expect(confirm().props.message).toContain('From 12 Oct 2026 to 31 Oct 2026');
+    expect(part('rate-confirm-period')[0]).toBe('From 12 Oct 2026 to 31 Oct 2026');
   });
 
   it('D9: the subtitle and the date label come from t() with placeholders', () => {

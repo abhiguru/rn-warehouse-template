@@ -86,6 +86,13 @@ async function render(mode: 'create' | 'edit') {
 const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
 const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
 const byId = (tree: ReactTestRenderer, id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.props.onPress === 'function');
+/** The texts of one Rates row, in reading order (name, tags, rent, its unit, the struck rent, the facts line, the actions). */
+const rowTexts = (tree: ReactTestRenderer, index: number) =>
+  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && n.type === 'View').findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+/** What a screen reader says for a row's facts. */
+const rowA11y = (tree: ReactTestRenderer, index: number) =>
+  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && n.type === 'View').findAll(n => n.type === 'View' && typeof n.props.accessibilityLabel === 'string' && n.props.accessible === true)[0].props.accessibilityLabel;
+const rowCount = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.props.testID === 'string' && /^grn-rate-row-\d+$/.test(n.props.testID) && n.type === 'View').length;
 const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
 const press = async (tree: ReactTestRenderer) => { await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); }); };
 
@@ -106,13 +113,13 @@ afterEach(() => jest.restoreAllMocks());
 describe('the rows', () => {
   it('shows the rate and its source for a line that has one, and No rate with Add rate for one that has none', async () => {
     const tree = await render('create');
-    const t = texts(tree);
-    expect(t).toContain('RATES');
-    expect(t).toContain('Fictional Gur, 12 kg');
-    expect(t).toContain('0–50 kg · ₹3.50 rent · ₹1.50 labour · 5% tax');
-    expect(t).toContain('Customer rate');
-    expect(t).toContain('Fictional Rice, 30 kg');
-    expect(t).toContain('No rate');
+    expect(texts(tree)).toContain('RATES');
+    // The rent is the row's main value; the weight is the same tag as on the Items card; band, labour and tax follow.
+    expect(rowTexts(tree, 0)).toEqual(['Fictional Gur', '12 kg each', 'Customer rate', '₹3.50', 'Rent per month', 'Weight band 0–50 kg · Labour ₹1.50 · Tax 5%', 'Change']);
+    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹3.50 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Customer rate');
+    // No rate stands where the rent would be.
+    expect(rowTexts(tree, 1)).toEqual(['Fictional Rice', '30 kg each', 'No rate', 'Add rate']);
+    expect(rowA11y(tree, 1)).toBe('Fictional Rice, 30 kg, No rate');
     expect(byId(tree, 'grn-rate-change-0').length).toBeGreaterThan(0);
     expect(byId(tree, 'grn-rate-add-0')).toHaveLength(0);
     expect(byId(tree, 'grn-rate-add-1').length).toBeGreaterThan(0);
@@ -123,15 +130,20 @@ describe('the rows', () => {
     mockRates = [stored('gur', 0, 50, 3)];
     mockItems = [line(1, 'gur', 'Fictional Gur', 12), line(2, 'gur', 'Fictional Gur', 12)];
     const tree = await render('create');
-    expect(texts(tree).filter(x => x === 'Fictional Gur, 12 kg')).toHaveLength(1);
-    expect(texts(tree)).toContain('Item rate');
+    expect(rowCount(tree)).toBe(1);
+    expect(rowTexts(tree, 0)).toContain('Item rate');
   });
 
   it('a pending change shows its figures with the date, "Changed · This customer" and Undo change', async () => {
     mockChanges = [{ item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'customer', to: null, ctx: contextKey(CTX), price_type: 'monthly' }];
     const tree = await render('create');
-    expect(texts(tree)).toContain('0–50 kg · ₹4.00 rent · ₹1.50 labour · 5% tax · From 12 Oct 2026');
-    expect(texts(tree)).toContain('Changed · This customer');
+    // The new rent, with the customer's rent it replaces struck through under it.
+    expect(rowTexts(tree, 0)).toEqual([
+      'Fictional Gur', '12 kg each', 'Changed · This customer', '₹4.00', 'Rent per month', '₹3.50',
+      'Weight band 0–50 kg · Labour ₹1.50 · Tax 5% · From 12 Oct 2026', 'Undo change', 'Change',
+    ]);
+    expect(tree.root.find(n => n.props.testID === 'grn-rate-was-0' && n.type === Text).props.style).toEqual(expect.objectContaining({ textDecorationLine: 'line-through' }));
+    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12 Oct 2026, was ₹3.50');
     await act(async () => { byId(tree, 'grn-rate-undo-0')[0].props.onPress(); });
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
@@ -140,8 +152,8 @@ describe('the rows', () => {
   it('edit mode: the rates for this GRN only that the form was seeded with price the row, tagged This GRN only', async () => {
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.25, labour_rate: 1, tax_percent: 5 }];
     const tree = await render('edit');
-    expect(texts(tree)).toContain('21–40 kg · ₹2.25 rent · ₹1.00 labour · 5% tax');
-    expect(texts(tree)).toContain('This GRN only');
+    // Rice has no stored rate, so nothing is struck through.
+    expect(rowTexts(tree, 1)).toEqual(['Fictional Rice', '30 kg each', 'This GRN only', '₹2.25', 'Rent per month', 'Weight band 21–40 kg · Labour ₹1.00 · Tax 5%', 'Undo change', 'Change']);
     expect(texts(tree)).not.toContain('No rate');
     await press(tree);
     expect(dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!.props.visible).toBe(true);
@@ -261,9 +273,8 @@ describe('round 3', () => {
   it('D1: an Everyone change does not price a row the customer has an own rate for; it shows both tags and Undo change', async () => {
     mockChanges = [everyone];
     const tree = await render('create');
-    expect(texts(tree)).toContain('0–50 kg · ₹3.50 rent · ₹1.50 labour · 5% tax');
-    expect(texts(tree)).toContain('Customer rate');
-    expect(texts(tree)).toContain('Changed · Everyone');
+    // The row keeps the customer's own rent, so nothing is struck through.
+    expect(rowTexts(tree, 0)).toEqual(['Fictional Gur', '12 kg each', 'Customer rate', 'Changed · Everyone', '₹3.50', 'Rent per month', 'Weight band 0–50 kg · Labour ₹1.50 · Tax 5%', 'Undo change', 'Change']);
     expect(byId(tree, 'grn-rate-undo-0').length).toBeGreaterThan(0);
   });
 
