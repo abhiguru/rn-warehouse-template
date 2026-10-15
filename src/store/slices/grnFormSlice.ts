@@ -2,6 +2,7 @@ import { createSlice, PayloadAction, createSelector, original } from '@reduxjs/t
 
 import { toLocalISODate } from '@/utils/formatters';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
+import type { GrnRate, RateChange } from '@/features/grn/rates/types';
 // Image data structure
 export interface GRNImageData {
   id: string;
@@ -78,6 +79,11 @@ interface GRNFormState {
   // Saved photos removed in this edit; applied when the GRN is saved
   removedImages: RemovedGRNImage[];
 
+  // Rates saved with the GRN (backend migration 86): the complete set for this GRN only (in edit mode
+  // seeded from the server), and the changes of the item's rate that wait for the save.
+  grnRates: GrnRate[];
+  rateChanges: RateChange[];
+
   // UI state
   currentStep: number;
   isLoading: boolean;
@@ -123,6 +129,8 @@ const createInitialState = (): GRNFormState => ({
   },
   items: [],
   removedImages: [],
+  grnRates: [],
+  rateChanges: [],
   currentStep: 0,
   isLoading: false,
   isSaving: false,
@@ -226,6 +234,14 @@ const grnFormSlice = createSlice({
     },
     removeItem: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.grn_trl_id !== action.payload);
+    },
+
+    // Rates saved with the GRN (Review step)
+    setGrnRates: (state, action: PayloadAction<GrnRate[]>) => {
+      state.grnRates = action.payload;
+    },
+    setRateChanges: (state, action: PayloadAction<RateChange[]>) => {
+      state.rateChanges = action.payload;
     },
 
     // Header image management
@@ -391,10 +407,12 @@ const grnFormSlice = createSlice({
     },
 
     // Bulk operations
-    loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string }>) => {
+    loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string; grnRates?: GrnRate[] }>) => {
       state.header = action.payload.header;
       state.items = action.payload.items;
       state.grnId = action.payload.grnId;
+      state.grnRates = action.payload.grnRates ?? [];
+      state.rateChanges = [];
       state.removedImages = [];
       state.saveUnconfirmed = false;
       state.takenNumberError = null;
@@ -475,6 +493,8 @@ export const {
   setTakenNumberError,
   setSaveUnconfirmed,
   adoptSavedLines,
+  setGrnRates,
+  setRateChanges,
   loadGRNData,
   resetForm,
   // #18 Fix: Snapshot actions for optimistic update rollback
@@ -491,6 +511,10 @@ export const {
 export const selectGRNFormHeader = (state: { grnForm: GRNFormState }) => state.grnForm.header;
 export const selectGRNFormItems = (state: { grnForm: GRNFormState }) => state.grnForm.items;
 export const selectGRNFormId = (state: { grnForm: GRNFormState }) => state.grnForm.grnId;
+export const selectGRNRates = (state: { grnForm: GRNFormState }) => state.grnForm.grnRates ?? EMPTY_RATES;
+export const selectGRNRateChanges = (state: { grnForm: GRNFormState }) => state.grnForm.rateChanges ?? EMPTY_CHANGES;
+const EMPTY_RATES: GrnRate[] = [];
+const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
 export const selectGRNSaveUnconfirmed = (state: { grnForm: GRNFormState }) => state.grnForm.saveUnconfirmed === true;
 export const selectGRNTakenNumberError = (state: { grnForm: GRNFormState }) => state.grnForm.takenNumberError ?? null;

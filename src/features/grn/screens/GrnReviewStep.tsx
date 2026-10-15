@@ -26,6 +26,10 @@ import {
   setIsSaving,
   selectGRNRemovedImages,
   selectGRNSaveUnconfirmed,
+  selectGRNRates,
+  selectGRNRateChanges,
+  setGrnRates,
+  setRateChanges,
   setSaveUnconfirmed,
   adoptSavedLines,
 } from '@/store/slices/grnFormSlice';
@@ -51,7 +55,24 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 
 import { showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
+import { GrnRatesSection } from '@/features/grn/rates/GrnRatesSection';
+import { GrnRateSheet } from '@/features/grn/rates/GrnRateSheet';
+import { useGrnRates } from '@/features/grn/rates/useGrnRates';
+import {
+  buildRates,
+  contextKey,
+  groupRows,
+  missingCount,
+  priceRows,
+  priceTypeOf,
+  withEntry,
+  withoutEntryFor,
+  type PricedRow,
+  type SheetEntry,
+} from '@/features/grn/rates/grnRateModel';
+import { rateRefusalText } from '@/features/grn/rates/rateErrors';
+import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -96,6 +117,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const removedImages = useAppSelector(selectGRNRemovedImages) ?? [];
   // The last update got no answer: the server is asked what it holds before the next one.
   const saveUnconfirmed = useAppSelector(selectGRNSaveUnconfirmed);
+  // Rates saved with the GRN: the set for this GRN only, and changes of the item's rate (backend migration 86).
+  const grnRates = useAppSelector(selectGRNRates);
+  const rateChanges = useAppSelector(selectGRNRateChanges);
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -116,6 +140,48 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [showImageOverlay, setShowImageOverlay] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+  // ---- Rates section ----
+  const scrollRef = useRef<ScrollView>(null);
+  const ratesY = useRef(0);
+  const [sheetRow, setSheetRow] = useState<PricedRow | null>(null);
+  const rateCtx = useMemo(
+    () => ({ customerId: header.customer_id || null, day: toCalendarDay(header.date || new Date()), priceType: priceTypeOf(header.pricing_mode) }),
+    [header.customer_id, header.date, header.pricing_mode],
+  );
+  const ctxKey = contextKey(rateCtx);
+  const rateRowList = useMemo(() => groupRows(items), [items]);
+  const stored = useGrnRates(rateRowList.map((r) => r.item_id), ctxKey);
+  const standard = useStandardRate();
+  const pricedRows = useMemo(
+    () => priceRows(rateRowList, { rates: stored.rates, ctx: rateCtx, grnRates, changes: rateChanges }),
+    [rateRowList, stored.rates, rateCtx, grnRates, rateChanges],
+  );
+  const preloadInput = useMemo(
+    () => ({ rates: stored.rates, ctx: rateCtx, standard: standard.rate?.tiers ?? null }),
+    [stored.rates, rateCtx, standard.rate],
+  );
+  const scrollToRates = () => scrollRef.current?.scrollTo({ y: Math.max(0, ratesY.current - space.lg), animated: true });
+  const saveRateEntry = (entry: SheetEntry) => {
+    if (!sheetRow) return;
+    const next = withEntry({ grnRates, changes: rateChanges }, sheetRow.item_id, entry, rateCtx);
+    dispatch(setGrnRates(next.grnRates));
+    dispatch(setRateChanges(next.changes));
+    setSheetRow(null);
+  };
+  const undoRateEntry = (row: PricedRow) => {
+    const next = withoutEntryFor({ grnRates, changes: rateChanges }, row);
+    dispatch(setGrnRates(next.grnRates));
+    dispatch(setRateChanges(next.changes));
+  };
+  /** `p_rates` as the form holds them now. */
+  const ratesToSave = () => buildRates({ grnRates, changes: rateChanges, ctx: rateCtx, lines: items });
+  /** The server refused the rates: read them again and say why. */
+  const showRateRefusal = (rateError: { code: string; data: unknown }, message: string) => {
+    void stored.refresh();
+    showAlert(tr('grn.review.ratesRefusedTitle'), rateRefusalText(rateError.code, rateError.data, message));
+    scrollToRates();
+  };
 
   // The X in the step header asks before it calls this, so there is no second question here.
   const handleCancel = () => {
@@ -193,6 +259,19 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     const isValid = await validateFormData();
     if (!isValid) return;
+
+    // Every line needs a rate before the GRN is saved (and the rates must be known).
+    if (stored.status !== 'ready') {
+      showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesNotLoadedMessage'));
+      scrollToRates();
+      return;
+    }
+    const missing = missingCount(pricedRows);
+    if (missing > 0) {
+      showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesMissingMessage', { count: missing }));
+      scrollToRates();
+      return;
+    }
 
     // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
     // photo still being prepared holds the save; one that could not be prepared has to go.
@@ -300,6 +379,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           package_mark: item.package_mark,
           trl_images: item.trl_images || [],
         })),
+        rates: ratesToSave(),
       });
 
       if (result.success && result.data) {
@@ -317,7 +397,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         finishSave(result.data.id, result.data.photos);
       } else {
         triggerError();
-        showAlert(saveFailedTitle(), serverText(result.error, connectionHint()));
+        if (result.rateError) showRateRefusal(result.rateError, result.error);
+        else showAlert(saveFailedTitle(), serverText(result.error, connectionHint()));
       }
     } catch (error) {
       triggerError();
@@ -380,6 +461,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           package_mark: item.package_mark,
           trl_images: item.trl_images || [],
         })),
+        rates: ratesToSave(),
       }, { removedImages, adoptedLineIds: adopted });
 
       if (result.success) {
@@ -413,7 +495,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       } else {
         triggerError();
         const errorMessage = serverText(result.error, connectionHint());
-        if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
+        if (result.rateError) {
+          showRateRefusal(result.rateError, result.error);
+        } else if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
           showAlert(stockProtectedTitle(), stockProtectedMessage());
         } else {
           showAlert(saveFailedTitle(), errorMessage);
@@ -577,6 +661,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
       <View style={styles.contentWrapper}>
         <ScrollView
+          ref={scrollRef}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -680,6 +765,24 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             )}
           </View>
 
+          {/* Rates */}
+          <View onLayout={(e) => { ratesY.current = e.nativeEvent.layout.y; }} testID="grn-rates-section">
+            {renderSectionHeader(tr('grn.rates.title'))}
+            <View style={styles.card}>
+              <GrnRatesSection
+                rows={pricedRows}
+                status={stored.status}
+                offline={stored.offline}
+                oneTime={rateCtx.priceType === 'one_time'}
+                day={rateCtx.day}
+                onChange={setSheetRow}
+                onAdd={setSheetRow}
+                onUndo={undoRateEntry}
+                onRetry={() => { void stored.refresh(); }}
+              />
+            </View>
+          </View>
+
           {/* Summary */}
           {renderSectionHeader(tr('grn.review.summary'))}
           <View style={styles.card}>
@@ -705,6 +808,16 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           }
         />
       </View>
+
+      <GrnRateSheet
+        visible={sheetRow !== null}
+        onClose={() => setSheetRow(null)}
+        row={sheetRow}
+        input={preloadInput}
+        customerName={header.customer_name || tr('common.unknown')}
+        priceTypeText={rateCtx.priceType === 'one_time' ? tr('grn.header.oneTime') : tr('grn.header.monthly')}
+        onSave={saveRateEntry}
+      />
 
       {/* Confirm Submit Dialog */}
       <ConfirmDialog

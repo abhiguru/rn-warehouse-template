@@ -15,6 +15,7 @@ type Row = Record<string, unknown>;
 type Query = { table: string; filters: Array<[string, string, unknown]> };
 const mockQueries: Query[] = [];
 let mockAnswer: (query: Query) => { data: unknown; error: unknown };
+let mockDetails: { data: unknown; error: unknown } = { data: { data: { grn: { rates: [] } } }, error: null };
 
 jest.mock('@/config/supabaseConfig', () => {
   const builder = (table: string) => {
@@ -37,6 +38,7 @@ jest.mock('@/config/supabaseConfig', () => {
     getCurrentConfig: () => ({ url: 'https://facility.invalid' }),
     getAuthenticatedClient: async () => ({
       from: builder,
+      rpc: async () => mockDetails,
       storage: { from: () => ({ createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null }) }) },
     }),
   };
@@ -82,6 +84,7 @@ const server = (failing?: 'header' | 'item') => (query: Query) => {
 
 beforeEach(() => {
   mockQueries.length = 0;
+  mockDetails = { data: { data: { grn: { rates: [] } } }, error: null };
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -115,6 +118,31 @@ describe('opening a GRN for editing', () => {
     expect((await loadGRNData(GRN_ID)).success).toBe(true);
 
     expect(await grnUpdateIdempotencyKey(GRN_ID, body)).not.toBe(before);
+  });
+
+  // Backend migration 86: the rates for this GRN only are part of what Save sends back, so the load reads them.
+  it('seeds the form with the rates for this GRN only from get_grn_details', async () => {
+    mockAnswer = server();
+    mockDetails = {
+      data: { data: { grn: { rates: [{ id: 'r1', item_id: ITEM, item_name: 'Example Potatoes', price_type: 'monthly', weight_min: 41, weight_max: 60, unit_price: '4.50', labour_rate: 1, tax_percent: 5, archived: false }] } } },
+      error: null,
+    };
+    const result = await loadGRNData(GRN_ID);
+    expect(result.data?.grnRates).toEqual([{ item_id: ITEM, weight_min: 41, weight_max: 60, unit_price: 4.5, labour_rate: 1, tax_percent: 5 }]);
+  });
+
+  it('has no rates of its own for an older server without them', async () => {
+    mockAnswer = server();
+    mockDetails = { data: { data: { grn: {} } }, error: null };
+    expect((await loadGRNData(GRN_ID)).data?.grnRates).toEqual([]);
+  });
+
+  it('fails when the rates cannot be read, instead of opening with an empty set that Save would send', async () => {
+    mockAnswer = server();
+    mockDetails = { data: null, error: { message: 'Network request failed', code: '' } };
+    const result = await loadGRNData(GRN_ID);
+    expect(result.success).toBe(false);
+    expect(result.data).toBeUndefined();
   });
 
   it('asks for confirmed photos only', async () => {

@@ -529,6 +529,10 @@ export const listAllRates = (): Promise<ItemStoragePrice[]> => readRates({});
 /** Every rate of one item (one item never has more than a page). */
 export const listItemRates = (itemId: string): Promise<ItemStoragePrice[]> => readRates({ item_ids: [itemId] });
 
+/** Every rate (ended ones too) of these items, for the rates of a GRN. */
+export const listRatesOfItems = (itemIds: string[]): Promise<ItemStoragePrice[]> =>
+  itemIds.length === 0 ? Promise.resolve([]) : readRates({ item_ids: itemIds });
+
 /** The active items, by name (the items table, as the item pickers read it). */
 export const listActiveItems = async (): Promise<ActiveItem[]> => {
   const client = await getAuthenticatedClient();

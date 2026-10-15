@@ -44,6 +44,9 @@ const mockItems = [
 ];
 let mockForm: Record<string, unknown>;
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
+jest.mock('@/features/grn/rates/useGrnRates', () => require('@/tests/helpers/grnRatesMock').grnRatesModuleMock());
+jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null }));
+jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
 
 // Children are stand-ins that keep their props, so the test can press their buttons.
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));

@@ -334,6 +334,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
           header: result.data.header,
           items: result.data.items,
           grnId: id,
+          grnRates: result.data.grnRates,
         }));
       } else {
         if (globalSessionId === currentSessionId) {

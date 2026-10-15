@@ -18,6 +18,9 @@ import { serverText } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
 import { invalidateReportQueries } from '@/lib/queryClient';
+import type { RatesPayloadEntry } from '@/features/grn/rates/types';
+import { grnRatesFromDetails } from '@/features/grn/rates/grnRateModel';
+import { RateRefusal, isRateRefusalCode, serverNeedsUpdateForRates } from '@/features/grn/rates/rateErrors';
 
 // Identifiers, counts and error codes only: a GRN's names, notes, photo
 // addresses and the server's messages never reach the device log.
@@ -41,6 +44,8 @@ const getFullImageUrl = (storagePath: string): string => {
 interface CreateGRNPayload {
   header: Omit<GRNHeaderData, 'gr_no'> & { gr_no?: string };
   items: Omit<GRNItemData, 'grn_trl_id' | 'stock'>[];
+  /** `p_rates` (migration 86): the rates saved with the GRN. Absent: the old call, no rate check. */
+  rates?: RatesPayloadEntry[];
 }
 
 interface UpdateGRNPayload {
@@ -55,6 +60,8 @@ interface UpdateGRNPayload {
     stock?: number;    // Current stock level
     note?: string;     // Item-level note
   })[];
+  /** `p_rates` (migration 86): the rates saved with the GRN. Absent: the old call, no rate check. */
+  rates?: RatesPayloadEntry[];
 }
 
 /**
@@ -243,6 +250,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       p_leon: payload.header.leon || false,
       p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
       p_items: rpcItems,
+      // Part of what the idempotency key hashes: the same form with other rates is another save.
+      ...(payload.rates ? { p_rates: payload.rates } : {}),
     };
     const { data, error } = await authenticatedClient.rpc('save_grn', {
       ...rpcPayload,
@@ -251,11 +260,13 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 
     if (error) {
       log.error('save_grn failed', loggableError(error));
+      if (payload.rates && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
       throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
     if (!data || !data.success) {
-      log.error('save_grn returned failure');
+      log.error('save_grn returned failure', { errorCode: data?.error_code });
+      if (isRateRefusalCode(data?.error_code)) throw new RateRefusal(data.error_code, serverText(data?.message ?? data?.error, t('grn.form.creationFailed')), data?.data);
       throw new Error(serverText(data?.message, t('grn.form.creationFailed')));
     }
     // The write changed what reports count: a report on screen asks again (SR-10).
@@ -300,6 +311,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     return {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.createFailed'),
+      rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
     };
   } finally {
     finishMutation?.();
@@ -456,7 +468,9 @@ const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
     p_leon: payload.header.leon || null, // ✅ New: leon flag
     p_pricing_mode: payload.header.pricing_mode || null, // ✅ New: pricing mode
     p_items: rpcItems,
-    p_images: rpcImages
+    p_images: rpcImages,
+    // Part of what the idempotency key hashes: the same form with other rates is another save.
+    ...(payload.rates ? { p_rates: payload.rates } : {}),
   };
 
   return { normalizedItems, rpcImages, rpcRequest };
@@ -509,6 +523,8 @@ export const updateGRN = async (
       log.warn('update_grn does not take an idempotency key on this server; sent without it');
       ({ data, error } = await authenticatedClient.rpc('update_grn', rpcRequest));
     }
+    // With rates, a server that still refuses the call has no p_rates (migration 86 missing).
+    if (error && payload.rates && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
 
     if (error) {
       log.error('update_grn failed', loggableError(error));
@@ -531,6 +547,9 @@ export const updateGRN = async (
       // Handle stock protection from RPC response
       if (rpcResult?.error_code === 'STOCK_PROTECTED') {
         throw new Error(`Stock Protection: ${rpcResult.message}`);
+      }
+      if (isRateRefusalCode(rpcResult?.error_code)) {
+        throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected')), rpcResult?.data);
       }
 
       throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected')));
@@ -620,6 +639,7 @@ export const updateGRN = async (
       success: false,
       error: errorMessage,
       outcomeUnknown,
+      rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
     };
   } finally {
     finishMutation?.();
@@ -868,12 +888,21 @@ export const loadGRNData = async (grnId: string) => {
       };
     });
 
+    // The rates for this GRN only (migration 86). Saving sends the complete set back, so a set that
+    // could not be read fails the load, like the photo lists: it must not look empty.
+    const { data: details, error: detailsError } = await authenticatedClient.rpc('get_grn_details', { p_grn_id: grnId });
+    if (detailsError) {
+      log.error('Failed to read the rates of the GRN', loggableError(detailsError));
+      throw detailsError;
+    }
+    const grnRates = grnRatesFromDetails((details?.data ?? details)?.grn?.rates);
+
     // The form now shows what the server holds: saves from here on are new saves.
     beginGrnEditSession(grnId);
 
     return {
       success: true,
-      data: { header, items },
+      data: { header, items, grnRates },
     };
   } catch (error) {
     log.error('Error loading GRN', loggableError(error));
