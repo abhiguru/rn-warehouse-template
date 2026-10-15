@@ -12,14 +12,14 @@ import {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { Input } from '@/components/ui/Input';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { wholeKg } from '@/features/item-pricing/editModel';
-import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
+import { addDays, dateText } from '@/features/item-pricing/rateText';
 import { rowWeightText } from './GrnRatesSection';
+import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
 import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
 import { useModalSheet } from '@/hooks/useModalSheet';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -79,33 +79,6 @@ const makeStyles = (th: ThemeTokens) => ({
   row: { flexDirection: 'row' as const, gap: space.md },
   half: { flex: 1 },
 });
-
-/** The facts of a change as the lines of the confirmation. */
-export function confirmationLines(facts: ChangeFacts, row: PricedRow, customerName: string, oneTime: boolean): string[] {
-  const pct = (n: number) => localizeDigits(String(n));
-  const lines = [
-    t('grn.rates.confirm.item', { item: row.item_name, band: bandText(facts.band.weight_min, facts.band.weight_max) }),
-    facts.scope === 'customer' ? t('grn.rates.confirm.forCustomer', { customer: customerName }) : t('grn.rates.confirm.forEveryone'),
-    t('grn.rates.confirm.rent', { old: money(facts.old.unit_price), new: money(facts.next.unit_price) }),
-    ...(oneTime ? [] : [t('grn.rates.confirm.labour', { old: money(facts.old.labour_rate), new: money(facts.next.labour_rate) })]),
-    t('grn.rates.confirm.tax', { old: pct(facts.old.tax_percent), new: pct(facts.next.tax_percent) }),
-    facts.to
-      ? t('grn.rates.confirm.period', { from: dateText(facts.from), to: dateText(facts.to) })
-      : t('grn.rates.confirm.periodOpen', { from: dateText(facts.from) }),
-  ];
-  const oldRent = money(facts.old.unit_price);
-  if ('lastDay' in facts.ends) lines.push(t('grn.rates.confirm.endsOn', { rent: oldRent, date: dateText(facts.ends.lastDay) }));
-  else if ('replaced' in facts.ends) lines.push(t('grn.rates.confirm.replaced', { rent: oldRent, date: dateText(facts.from) }));
-  else lines.push(t('grn.rates.confirm.overrides', { customer: customerName, rent: oldRent }));
-  if (facts.resumes) lines.push(t('grn.rates.confirm.resumes', { rent: money(facts.resumes.figures.unit_price), date: dateText(facts.resumes.from) }));
-  if (facts.keepsOwn) lines.push(t('grn.rates.confirm.keepsOwn', { customer: customerName, rent: money(facts.keepsOwn.rent) }));
-  lines.push(
-    facts.scope === 'customer'
-      ? t('grn.rates.confirm.reachesCustomer', { customer: customerName, date: dateText(facts.from) })
-      : t('grn.rates.confirm.reachesEveryone', { date: dateText(facts.from) }),
-  );
-  return lines;
-}
 
 export function GrnRateSheet({ visible, onClose, row, input, customerName, priceTypeText, onSave }: GrnRateSheetProps) {
   const styles = useThemedStyles(makeStyles);
@@ -209,7 +182,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
 
   const subtitle = t('grn.rates.sheet.subtitle', { item: row.item_name, weight: rowWeightText(row.weight) });
   const context = t('grn.rates.sheet.context', { date: dateText(input.ctx.day), customer: customerName, type: priceTypeText });
-  const lines = facts ? confirmationLines(facts.facts, row, customerName, oneTime) : [];
+  const summary = facts ? rateChangeSummary(facts.facts, row, customerName, oneTime) : null;
 
   return (
     <>
@@ -337,17 +310,12 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
         </BottomSheetScrollView>
       </BottomSheetModal>
 
-      <ConfirmDialog
-        visible={facts !== null}
-        title={t('grn.rates.confirm.title')}
-        message={lines.join('\n')}
-        confirmText={t('grn.rates.confirm.change')}
-        middleText={t('grn.rates.confirm.onlyGrn')}
-        cancelText={t('grn.rates.confirm.back')}
-        onConfirm={() => { if (facts) onSave(facts.entry); setFacts(null); }}
-        onMiddle={() => { if (facts) onSave({ ...facts.entry, scope: 'grn', to: null }); setFacts(null); }}
-        onCancel={() => setFacts(null)}
-        variant="warning"
+      <RateChangeDialog
+        summary={summary}
+        scope={facts?.facts.scope ?? 'everyone'}
+        onChangeRate={() => { if (facts) onSave(facts.entry); setFacts(null); }}
+        onOnlyGrn={() => { if (facts) onSave({ ...facts.entry, scope: 'grn', to: null }); setFacts(null); }}
+        onBack={() => setFacts(null)}
         testID="rate-confirm"
       />
     </>
