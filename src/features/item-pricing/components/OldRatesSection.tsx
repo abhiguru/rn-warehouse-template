@@ -10,7 +10,8 @@ import { StatusTag } from '@/components/ui/StatusTag';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, typography, radius, type ThemeTokens } from '@/theme/tokens';
-import type { ItemStoragePrice } from '@/types/item-pricing.types';
+import type { ItemGrnRate, ItemStoragePrice } from '@/types/item-pricing.types';
+import { grnOnlyFigures, grnOnlyLine } from './GrnOnlyRatesSection';
 import { dateText, rangeText, rentRange, unitText } from '../rateText';
 
 export interface OldRatesSectionProps {
@@ -18,6 +19,8 @@ export interface OldRatesSectionProps {
   rows: ItemStoragePrice[];
   /** Name the customer on each old rate (item page); off on a customer's own page. */
   showCustomer?: boolean;
+  /** Rates for one GRN only whose GRN is invoiced (archived), listed with the old rates. */
+  archivedGrnRates?: ItemGrnRate[];
 }
 
 interface OldRate {
@@ -54,15 +57,16 @@ const makeStyles = (th: ThemeTokens) => ({
   rows: { gap: space.md },
 });
 
-export function OldRatesSection({ rows, showCustomer = true }: OldRatesSectionProps) {
+export function OldRatesSection({ rows, showCustomer = true, archivedGrnRates = [] }: OldRatesSectionProps) {
   const styles = useThemedStyles(makeStyles);
   const [open, setOpen] = useState(false);
   const groups = useMemo(() => groupOldRates(rows), [rows]);
-  if (groups.length === 0) return null;
+  const total = groups.length + archivedGrnRates.length;
+  if (total === 0) return null;
   return (
     <View style={styles.wrap}>
       <Button type="tertiary" onPress={() => setOpen(v => !v)} accessibilityState={{ expanded: open }} testID="old-rates-toggle">
-        {open ? t('pricing.item.hideOld') : t('pricing.item.showOld', { count: groups.length })}
+        {open ? t('pricing.item.hideOld') : t('pricing.item.showOld', { count: total })}
       </Button>
       {open ? (
         <View style={styles.card} testID="old-rates">
@@ -80,6 +84,13 @@ export function OldRatesSection({ rows, showCustomer = true }: OldRatesSectionPr
               </View>
             );
           })}
+          {archivedGrnRates.map(rate => (
+            <View key={rate.id} style={styles.rows} testID={`old-grn-rate-${rate.id}`}>
+              <Text style={styles.rate}>{grnOnlyLine(rate)}</Text>
+              <Text style={styles.note}>{grnOnlyFigures(rate)}</Text>
+              <StatusTag status="neutral" icon={null} label={t('grn.details.ratesArchived')} />
+            </View>
+          ))}
         </View>
       ) : null}
     </View>

@@ -32,6 +32,7 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 import { useGRNDetailTab } from '@/hooks/useGRNDetailTab';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
 import {
@@ -685,6 +686,7 @@ function GRNDetailScreen() {
               supervisor_details={grn.supervisor_details}
               registration={grn.registration}
               note={grn.note}
+              rates={(grn as { rates?: RpcGrnRate[] }).rates}
               pricing_mode={grn.pricing_mode}
               grn_id={grn.id}
               gr_no={grn.gr_no}

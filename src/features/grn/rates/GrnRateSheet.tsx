@@ -319,6 +319,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
                 onChange={choice => setTo(choice === 'none' ? null : defaultTo(scope, row.item_id, { weight_min: wholeKg(from) ?? 0, weight_max: wholeKg(upTo) ?? 0 }, input) ?? addDays(input.ctx.day, 30))}
                 accessibilityLabel={t('grn.rates.sheet.lastDay')}
               />
+              {to === null && errors.to ? <Text style={styles.error} accessibilityRole="alert">{errors.to}</Text> : null}
               {to !== null ? (
                 <DatePickerInput
                   value={parseLocalISODate(to)}

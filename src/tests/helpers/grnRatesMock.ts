@@ -11,6 +11,6 @@ export const grnRatesModuleMock = () => ({
     })),
     status: 'ready',
     offline: false,
-    refresh: jest.fn(),
+    refresh: async () => {},
   }),
 });

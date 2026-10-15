@@ -295,6 +295,20 @@ export interface RpcGrnItemFull extends RpcGrnItemDetails {
   item_details: RpcItemDetails | null;
 }
 
+/** A rate for one GRN only, as get_grn_details returns it. `archived`: the GRN is invoiced, the invoice has its own figures. */
+export interface RpcGrnRate {
+  id: string;
+  item_id: string;
+  item_name: string;
+  price_type: 'monthly' | 'one_time';
+  weight_min: number;
+  weight_max: number;
+  unit_price: number;
+  labour_rate: number;
+  tax_percent: number;
+  archived: boolean;
+}
+
 /**
  * Full GRN details from get_grn_details RPC
  * Source: RPC_DOCUMENTATION.md - GRNDetails schema
@@ -320,6 +334,8 @@ export interface RpcGrnDetails {
   statistics: RpcGrnStatistics;
   invoices_summary: RpcGrnInvoicesSummary;
   dispatches_summary: RpcGrnDispatchesSummary;
+  /** Rates for this GRN only (backend migration 86); absent from an older server. */
+  rates?: RpcGrnRate[];
 }
 
 /**

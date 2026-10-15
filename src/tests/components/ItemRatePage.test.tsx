@@ -10,7 +10,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import ItemRatesPage from '../../../app/item-rates/[itemId]';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
-import { replaceItemRates, undoRateChange } from '@/services/item-pricing-service';
+import { getItemGrnRates, replaceItemRates, undoRateChange } from '@/services/item-pricing-service';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { F1, ITEMS, ORCHARD_B, row } from '@/tests/helpers/ratesFixtures';
@@ -32,7 +32,7 @@ jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: jest.fn(() => false
 jest.mock('@/features/item-pricing/useItemRates', () => ({ useItemRatesFor: jest.fn() }));
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: jest.fn() }));
 jest.mock('@/features/item-pricing/contract', () => ({ ...jest.requireActual('@/features/item-pricing/contract'), notifyRatesChanged: jest.fn() }));
-jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), undoRateChange: jest.fn() }));
+jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), undoRateChange: jest.fn(), getItemGrnRates: jest.fn() }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn().mockResolvedValue([]) } }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
@@ -67,6 +67,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-10-14T10:00:00+05:30'));
   jest.clearAllMocks();
+  jest.mocked(getItemGrnRates).mockResolvedValue([]);
   // No standard rate unless a test gives one.
   jest.mocked(useStandardRate).mockReturnValue({ rate: null, status: 'ready', refresh: jest.fn(), key: 'k' });
 });
@@ -457,5 +458,37 @@ describe('Standard / This item tags', () => {
     } finally {
       setLanguage('en');
     }
+  });
+});
+
+describe('For GRNs only (backend migration 86)', () => {
+  const grnRate = (over: Record<string, unknown>) => ({
+    id: 'g1', gr_id: 'gr1', gr_no: 'A0010', grn_date: '2026-10-12', customer_id: 'c1', customer_name: 'Review Orchard A',
+    price_type: 'monthly', weight_min: 11, weight_max: 20, unit_price: 4.5, labour_rate: 1.5, tax_percent: 5,
+    archived: false, created_at: '2026-10-12T05:00:00Z', ...over,
+  });
+
+  it('lists the rates set for one GRN only, a row per GRN, and the archived ones under Old rates', async () => {
+    jest.mocked(getItemGrnRates).mockResolvedValue([grnRate({}), grnRate({ id: 'g2', gr_no: 'A0007', grn_date: '2026-09-01', archived: true })] as never);
+    await open('admin');
+    await act(async () => { await Promise.resolve(); });
+    const section = tree.root.find(n => n.props.testID === 'grn-only-section');
+    const lines = section.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+    expect(lines).toEqual(['For GRNs only', 'For GRN A0010 only · Review Orchard A · 12 Oct 2026', '11–20 kg · ₹4.50 rent · ₹1.50 labour · 5% tax']);
+    expect(shown(tree)).not.toContain('A0007');
+    await act(async () => { byId(tree, 'old-rates-toggle')[0].props.onPress(); });
+    expect(shown(tree)).toContain('For GRN A0007 only · Review Orchard A · 1 Sep 2026');
+    expect(shown(tree)).toContain('Archived once invoiced');
+  });
+
+  it('shows nothing when there is none, and one line of text when they cannot be loaded', async () => {
+    await open('admin');
+    await act(async () => { await Promise.resolve(); });
+    expect(tree.root.findAll(n => n.props.testID === 'grn-only-section')).toHaveLength(0);
+    act(() => tree.unmount());
+    jest.mocked(getItemGrnRates).mockRejectedValue(new Error('down'));
+    await open('admin');
+    await act(async () => { await Promise.resolve(); });
+    expect(shown(tree)).toContain("Couldn't load the rates set for single GRNs.");
   });
 });

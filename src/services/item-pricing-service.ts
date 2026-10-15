@@ -14,6 +14,7 @@ import type {
   ItemPriceHistoryResponse,
   ItemPriceHistoryParams,
   ActiveItem,
+  ItemGrnRate,
   ReplaceRatesInput,
   ReplaceRatesResult,
   UndoRateChangeInput,
@@ -532,6 +533,42 @@ export const listItemRates = (itemId: string): Promise<ItemStoragePrice[]> => re
 /** Every rate (ended ones too) of these items, for the rates of a GRN. */
 export const listRatesOfItems = (itemIds: string[]): Promise<ItemStoragePrice[]> =>
   itemIds.length === 0 ? Promise.resolve([]) : readRates({ item_ids: itemIds });
+
+/**
+ * The rates set for one GRN only on this item (backend migration 86), active ones first. A server without
+ * the function (an older one) has none: an empty list. Throws when the facility cannot be reached.
+ */
+export const getItemGrnRates = async (itemId: string): Promise<ItemGrnRate[]> => {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_item_grn_rates', { p_item_id: itemId })), RPC_TIMEOUT_MS, 'GRN rates');
+  if (error) {
+    handleGlobalAuthError(error);
+    if (isMissingFunction(error, 'get_item_grn_rates')) return [];
+    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates for GRNs could not be loaded');
+  }
+  const response = unwrapArrayResponse(data) as { success?: unknown; data?: { rates?: unknown } | null } | null;
+  if (!response || response.success !== true) {
+    handleGlobalAuthError(response);
+    throw new Error('The rates for GRNs could not be loaded');
+  }
+  const rows = Array.isArray(response.data?.rates) ? (response.data!.rates as Array<Record<string, unknown>>) : [];
+  return rows.map(r => ({
+    id: String(r.id),
+    gr_id: String(r.gr_id),
+    gr_no: String(r.gr_no ?? ''),
+    grn_date: String(r.grn_date ?? '').slice(0, 10),
+    customer_id: (r.customer_id as string | null) ?? null,
+    customer_name: (r.customer_name as string | null) ?? null,
+    price_type: r.price_type === 'one_time' ? 'one_time' : 'monthly',
+    weight_min: Number(r.weight_min),
+    weight_max: Number(r.weight_max),
+    unit_price: Number(r.unit_price),
+    labour_rate: Number(r.labour_rate),
+    tax_percent: Number(r.tax_percent),
+    archived: r.archived === true,
+    created_at: String(r.created_at ?? ''),
+  }));
+};
 
 /** The active items, by name (the items table, as the item pickers read it). */
 export const listActiveItems = async (): Promise<ActiveItem[]> => {
