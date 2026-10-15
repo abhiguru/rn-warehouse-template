@@ -16,6 +16,7 @@ import { showAlert } from '@/utils/alert';
 import { F1, ITEMS, ORCHARD_B, row } from '@/tests/helpers/ratesFixtures';
 import { notifyRatesChanged } from '@/features/item-pricing/contract';
 import { CustomerPickerSheet } from '@/features/item-pricing/components/CustomerPickerSheet';
+import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 
 let mockRole = 'admin';
 jest.mock('@/store/hooks', () => ({
@@ -29,6 +30,7 @@ jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: jest.fn(() => false) }));
 jest.mock('@/features/item-pricing/useItemRates', () => ({ useItemRatesFor: jest.fn() }));
+jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: jest.fn() }));
 jest.mock('@/features/item-pricing/contract', () => ({ ...jest.requireActual('@/features/item-pricing/contract'), notifyRatesChanged: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), undoRateChange: jest.fn() }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn().mockResolvedValue([]) } }));
@@ -65,6 +67,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-10-14T10:00:00+05:30'));
   jest.clearAllMocks();
+  // No standard rate unless a test gives one.
+  jest.mocked(useStandardRate).mockReturnValue({ rate: null, status: 'ready', refresh: jest.fn(), key: 'k' });
 });
 afterEach(() => {
   act(() => tree.unmount());
@@ -381,5 +385,77 @@ describe('Add customer rate', () => {
     expect(router.push).toHaveBeenLastCalledWith(
       expect.objectContaining({ pathname: '/item-rates/edit', params: expect.objectContaining({ mode: 'addCustomer', customer_id: 'orchard-a' }) }),
     );
+  });
+});
+
+describe('Standard / This item tags', () => {
+  const tier = (min: number, max: number, rent: number, labour = 2.5, tax = 5) => ({ weight_min: min, weight_max: max, unit_price: rent, labour_rate: labour, tax_percent: tax });
+  const standard = (tiers: ReturnType<typeof tier>[]) =>
+    jest.mocked(useStandardRate).mockReturnValue({ rate: { tiers, updatedAt: null, updatedByName: null }, status: 'ready', refresh: jest.fn(), key: 'k' });
+  const tagsOf = () => tree.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-') && typeof n.type === 'function' && n.props.label).map(n => `${n.props.testID}:${n.props.label}`);
+
+  it('tags the band of a one-band monthly rate Standard when weights, rent, labour and tax equal a tier', async () => {
+    standard([tier(0, 100, 11, 3, 5)]);
+    await open('admin');
+    expect(tagsOf()).toEqual(['band-tag-0:Standard']);
+  });
+
+  it('tags it This item when the rent, labour or tax differs from every tier', async () => {
+    for (const other of [tier(0, 100, 11.5, 3, 5), tier(0, 100, 11, 3.5, 5), tier(0, 100, 11, 3, 12)]) {
+      standard([other]);
+      await open('admin');
+      expect(tagsOf()).toEqual(['band-tag-0:This item']);
+      act(() => tree.unmount());
+    }
+    await open('admin');
+  });
+
+  it('tags it This item when the weights differ although the figures match', async () => {
+    standard([tier(0, 50, 11, 3, 5)]);
+    await open('admin');
+    expect(tagsOf()).toEqual(['band-tag-0:This item']);
+  });
+
+  it('tags each band of a several-band rate on its own', async () => {
+    standard([tier(0, 40, 6), tier(41, 100, 9)]);
+    await open('admin', { itemRates: itemRows('garlic') }, { itemId: 'garlic' });
+    // garlic: 0-40 at 6.00 matches; 41-100 at 9.50 does not match 9.00
+    expect(tagsOf()).toEqual(['band-tag-0:Standard', 'band-tag-1:This item']);
+  });
+
+  it('has no tags at all when the standard rate is empty, not loaded or could not be read', async () => {
+    standard([]);
+    await open('admin');
+    expect(tagsOf()).toEqual([]);
+    act(() => tree.unmount());
+    jest.mocked(useStandardRate).mockReturnValue({ rate: null, status: 'loading', refresh: jest.fn(), key: 'k' });
+    await open('admin');
+    expect(tagsOf()).toEqual([]);
+    act(() => tree.unmount());
+    jest.mocked(useStandardRate).mockReturnValue({ rate: null, status: 'error', refresh: jest.fn(), key: 'k' });
+    await open('admin');
+    expect(tagsOf()).toEqual([]);
+  });
+
+  it('tags the monthly card only, not a one-time card with the same figures', async () => {
+    standard([tier(0, 100, 11, 3, 5)]);
+    const oneTime = row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 11, labour_rate: 0, tax_percent: 5, price_type: 'one_time', effective_from: '2025-01-01' });
+    await open('admin', { itemRates: { item: ITEMS.find(i => i.id === 'cumin')!, rows: [...F1.filter(r => r.item_id === 'cumin'), oneTime] } });
+    const monthly = tree.root.find(n => n.props.testID === 'rate-card-monthly');
+    const once = tree.root.find(n => n.props.testID === 'rate-card-one_time');
+    expect(monthly.findAll(n => n.props.testID === 'band-tag-0' && n.props.label)).toHaveLength(1);
+    expect(once.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-'))).toHaveLength(0);
+  });
+
+  it('says Standard in the status tag in Gujarati too', async () => {
+    standard([tier(0, 100, 11, 3, 5)]);
+    const { setLanguage } = jest.requireActual('@/i18n');
+    setLanguage('gu');
+    try {
+      await open('admin');
+      expect(tagsOf()).toEqual(['band-tag-0:પ્રમાણભૂત']);
+    } finally {
+      setLanguage('en');
+    }
   });
 });

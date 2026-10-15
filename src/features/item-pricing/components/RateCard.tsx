@@ -14,7 +14,8 @@ import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import type { UpcomingGroup } from '../rateModel';
 import { applicableRate } from '../rateModel';
 import { addDays, bandText, dateText, money, percentRange, rentRange, todayDay, unitText } from '../rateText';
-import { BandList } from './BandList';
+import type { TierTag } from '../standardRate';
+import { BandList, TierTagView } from './BandList';
 import { RateStrip } from './RateStrip';
 
 export interface RateCardProps {
@@ -38,6 +39,8 @@ export interface RateCardProps {
   onUndoStop: () => void;
   /** Disable actions while one runs. */
   busy?: boolean;
+  /** One tag per band in force ('Standard' or 'This item'): a default monthly rate only, and only when the standard rate is known. */
+  tags?: TierTag[] | null;
 }
 
 const TABULAR = ['tabular-nums' as const];
@@ -89,6 +92,7 @@ export function RateCard(props: RateCardProps) {
             <>
               <Text style={styles.figure} accessibilityRole="header">{money(bands[0].unit_price)}</Text>
               <Text style={styles.unit}>{unitText(priceType)}</Text>
+              {props.tags?.[0] ? <TierTagView tag={props.tags[0]} testID="band-tag-0" /> : null}
               <View>
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.band.weightEach')} value={bandText(bands[0].weight_min, bands[0].weight_max)} showDivider />
                 {oneTime ? null : (
@@ -101,7 +105,7 @@ export function RateCard(props: RateCardProps) {
           ) : (
             <>
               <Text style={styles.unit}>{unitText(priceType)}</Text>
-              <BandList bands={bands} priceType={priceType} />
+              <BandList bands={bands} priceType={priceType} tags={props.tags} />
               <View>
                 {oneTime || new Set(bands.map(b => b.labour_rate)).size > 1 ? null : (
                   <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourValue', { amount: money(bands[0].labour_rate) })} showDivider />
