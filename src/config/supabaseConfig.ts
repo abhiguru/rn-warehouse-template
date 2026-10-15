@@ -8,6 +8,7 @@ import {
 import type { UserProfile } from '@/types/user.types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { digestOf } from '@/utils/tokenDigest';
 import { clearSecureSessionMarker } from '@/utils/secureSessionMarker';
 import { checkOTPRateLimit, recordOTPRequest } from '@/utils/otpRateLimiter';
 import { CACHE_DURATION_LONG_MS } from '@/config/cacheConfig';
@@ -30,6 +31,13 @@ const SECURE_KEYS = {
   TOKEN_EXPIRES: 'secure_token_expires',
   ENROLLMENT_TOKEN: 'secure_enrollment_token',
   OPERATOR_IDENTITY: 'secure_operator_identity',
+  /**
+   * Written when a sign-out starts and removed once the session keys are really gone: a digest
+   * of the refresh token being removed, or `*` when it could not be read. A start that finds it
+   * next to a session with that refresh token (or `*`) removes the session again and stays
+   * signed out. Not a session key on purpose; clearStoredTokensRaw never deletes it.
+   */
+  SIGNED_OUT: 'secure_signed_out',
 } as const;
 
 // The backend uses custom OTP sessions, not GoTrue. Keep the bootstrap client anonymous.
@@ -824,7 +832,16 @@ async function completeOperatorSignIn(data: Record<string, unknown>, generation:
     const enrollmentToken = data.enrollment_token;
     if (typeof enrollmentToken !== 'string' || !enrollmentToken)
       return { success: false, error: t('errors.auth.enrollmentInvalidResponse') };
-    await SecureStore.setItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN, enrollmentToken);
+    // Written in the credential queue and checked again afterwards, like storeTokens: a switch
+    // that began meanwhile must not leave this facility's enrollment token under the next one.
+    const kept = await serializeCredentials(async () => {
+      if (generation !== getSessionGeneration()) return false;
+      await SecureStore.setItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN, enrollmentToken);
+      if (generation === getSessionGeneration()) return true;
+      await clearPendingEnrollment().catch(() => {});
+      return false;
+    });
+    if (!kept) return { success: false, error: t('errors.auth.sessionChanged') };
     return { success: true, data: { action: 'pending', pendingEnrollment: true, userProfile: null } };
   }
   if (data.action !== 'login')
@@ -1057,14 +1074,43 @@ export const signOut = async (options?: { localOnly?: boolean }) => {
   const storedPromise = options?.localOnly ? undefined : serializeCredentials(readStoredToken);
   advanceSessionGeneration();
   const cleanup = serializeCredentials(async () => {
-    await clearStoredTokensRaw();
+    const cleared = await clearEndedSession();
     await clearSecureSessionMarker();
+    return cleared;
   });
   const stored = await storedPromise;
-  await cleanup;
+  const cleared = await cleanup;
   if (stored?.refreshToken) await revokeSession(stored.refreshToken);
-  return { success: true };
+  // `success` says whether this phone really removed the session from its secure storage.
+  return { success: cleared };
 };
+
+/**
+ * Ends the stored session (run inside the credential queue): the sign-out marker first, then
+ * the session keys; the marker is removed once they are all gone. True when they are. If not,
+ * the marker stays and the next start removes the session (readStoredToken).
+ */
+async function clearEndedSession(): Promise<boolean> {
+  let digest: string | null = null;
+  try {
+    const refreshToken = await SecureStore.getItemAsync(SECURE_KEYS.REFRESH_TOKEN);
+    if (refreshToken) digest = digestOf(refreshToken);
+  } catch {
+    digest = '*';
+  }
+  let marked = false;
+  if (digest !== null) {
+    try {
+      await SecureStore.setItemAsync(SECURE_KEYS.SIGNED_OUT, digest);
+      marked = true;
+    } catch {
+      // Without the marker the clear below is still tried; its result is what is reported.
+    }
+  }
+  const cleared = await clearStoredTokensRaw();
+  if (cleared && marked) await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT).catch(() => {});
+  return cleared;
+}
 
 async function revokeSession(refreshToken: string) {
   try {
@@ -1450,6 +1496,16 @@ const readStoredToken = async (): Promise<{
     let expiresAtStr = await SecureStore.getItemAsync(
       SECURE_KEYS.TOKEN_EXPIRES
     );
+    // A session that an earlier sign-out could not remove is removed now and stays signed out.
+    // A marker for another session, or with no session, is old and is removed.
+    const marker = await SecureStore.getItemAsync(SECURE_KEYS.SIGNED_OUT);
+    if (marker != null) {
+      if (refreshToken && (marker === '*' || marker === digestOf(refreshToken))) {
+        if (await clearStoredTokensRaw()) await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT).catch(() => {});
+        return { isValid: false };
+      }
+      if (!authToken && !refreshToken) await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT).catch(() => {});
+    }
     const operator = getActiveOperatorServer();
     if (operator && authToken) {
       const identity = await SecureStore.getItemAsync(SECURE_KEYS.OPERATOR_IDENTITY);
@@ -1589,6 +1645,13 @@ const storeTokensRaw = async (
       SECURE_KEYS.TOKEN_EXPIRES,
       expiresAt.toString()
     );
+    // A sign-out marker of an earlier session is not this one's. If it cannot be removed it is
+    // overwritten with an empty value, which matches no session (a `*` marker would end this one).
+    try {
+      await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT);
+    } catch {
+      await SecureStore.setItemAsync(SECURE_KEYS.SIGNED_OUT, '');
+    }
   } catch {
     // Never downgrade to unencrypted storage or log native errors that may echo
     // the value being written. Login/refresh must fail when persistence fails.
@@ -1622,24 +1685,32 @@ export const clearStoredTokens = () => {
 
 // Clear all stored tokens
 // S2/S3 Fix: Clears from both SecureStore and AsyncStorage
-const clearStoredTokensRaw = async () => {
+const clearStoredTokensRaw = async (): Promise<boolean> => {
   clearAuthenticatedClientCache();
-  try {
-    // Clear from SecureStore
-    await SecureStore.deleteItemAsync(SECURE_KEYS.AUTH_TOKEN).catch(() => {});
-    await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN).catch(
-      () => {}
-    );
-    await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES).catch(
-      () => {}
-    );
-    await SecureStore.deleteItemAsync(SECURE_KEYS.OPERATOR_IDENTITY).catch(() => {});
+  // True only when every session key was really deleted (a delete that rejects is retried once).
+  let all = true;
+  const remove = async (key: string) => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await SecureStore.deleteItemAsync(key);
+        return;
+      } catch {
+        // tried once more, then reported
+      }
+    }
+    all = false;
+  };
+  for (const key of [
+    SECURE_KEYS.AUTH_TOKEN,
+    SECURE_KEYS.REFRESH_TOKEN,
+    SECURE_KEYS.TOKEN_EXPIRES,
+    SECURE_KEYS.OPERATOR_IDENTITY,
     // Obsolete alternate helper used this expiry spelling.
-    await SecureStore.deleteItemAsync('secure_token_expires_at').catch(
-      () => {}
-    );
-    await SecureStore.deleteItemAsync('cached_user_profile').catch(() => {});
-
+    'secure_token_expires_at',
+    'cached_user_profile',
+  ])
+    await remove(key);
+  try {
     // Also clear any legacy tokens from AsyncStorage
     await AsyncStorage.multiRemove([
       'auth_token',
@@ -1651,6 +1722,7 @@ const clearStoredTokensRaw = async () => {
   } catch (error) {
     console.error('[Auth] Error clearing tokens:');
   }
+  return all;
 };
 
 /// S8 Fix: Cache TTL for user profile - using centralized config

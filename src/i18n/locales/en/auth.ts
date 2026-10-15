@@ -93,6 +93,8 @@ export const auth = {
     confirmTitle: 'Sign out?',
     confirmMessage: "You'll need your mobile number and a one-time code to sign in again.",
     couldNotTitle: "Couldn't sign out",
+    notCleared:
+      "This phone couldn't remove your sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone.",
   },
   // Waiting for a facility to approve access (app/pending-enrollment.tsx)
   enrollment: {

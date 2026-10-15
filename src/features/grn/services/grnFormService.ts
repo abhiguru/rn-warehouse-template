@@ -77,6 +77,22 @@ export interface GRNPhotoSaveReport {
   removalFailures: number;
 }
 
+/** A line whose quantity `update_grn` left unchanged because it already has dispatches (migration 86). */
+export interface GRNSkippedStockLine {
+  grn_trl_item_id: string;
+  item_name: string;
+  /** English server text; the app words the warning itself and does not show this. */
+  reason: string;
+  current_qty: number;
+  current_stock: number;
+  dispatched_qty: number;
+}
+
+/** The `stats` object `update_grn` returns. */
+export interface GRNUpdateStats {
+  items_skipped_stock?: GRNSkippedStockLine[];
+}
+
 /** Upload a saved GRN's photos; a failure of the whole step fails every photo, never the save. */
 const uploadPhotosOfSavedGRN = async (
   grnId: string,
@@ -634,7 +650,7 @@ export const updateGRN = async (
       data: {
         id: rpcResult.gr_id || grnId,
         message: rpcResult.message,
-        stats: rpcResult.stats,
+        stats: rpcResult.stats as GRNUpdateStats | undefined,
         photos,
       },
     };

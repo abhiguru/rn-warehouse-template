@@ -7,6 +7,8 @@ import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { formatWeightEach } from '@/utils/formatters';
+import { updateGRN } from '@/features/grn/services/grnFormService';
+import { setLanguage } from '@/i18n/language';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
@@ -166,6 +168,61 @@ describe('GRN review step weights', () => {
     expect(cells(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, rack R1, mark M1']);
     // The line's other tags are still drawn.
     expect(texts(tree)).toEqual(expect.arrayContaining(['Rack R1', 'Mark M1']));
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+// P4-07: the server leaves the quantity of a dispatched line unchanged and reports it in stats.items_skipped_stock.
+describe('GRN review step: save of an edit with lines the server did not change', () => {
+  const NO_PHOTOS = { uploadedCount: 0, failed: [], removalFailures: 0 };
+  // The submitted line has qty 10 (LINES[0]); the server kept 7, so the quantity really was left unchanged.
+  const skipped = { grn_trl_item_id: LINES[0].grn_trl_id, item_name: 'Test Item Alpha', reason: 'Cannot update qty/stock - item has 3 units dispatched', current_qty: 7, current_stock: 7, dispatched_qty: 3 };
+  afterEach(() => setLanguage('en'));
+
+  async function saveEdit(skippedStock: unknown[]) {
+    (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: 'grn-1', message: 'ok', stats: { items_skipped_stock: skippedStock }, photos: NO_PHOTOS } });
+    const tree = await render('edit');
+    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await act(async () => { await visibleDialogs(tree)[0].props.onConfirm(); });
+    return tree;
+  }
+  const snackbarText = (tree: ReactTestRenderer) => String(tree.root.findByType('Snackbar' as never).props.children.props.children);
+
+  it('warns, naming the item and its dispatched count', async () => {
+    const tree = await saveEdit([skipped]);
+    const text = snackbarText(tree);
+    expect(text).toContain('Some quantities were not changed because those items are already dispatched');
+    expect(text).toContain('• Test Item Alpha: 3 already dispatched');
+    expect(text).not.toContain('Cannot update');
+    expect(text).not.toBe('GRN A0010 saved.');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('shows just the item name when the entry has no numeric dispatched count', async () => {
+    const tree = await saveEdit([{ ...skipped, dispatched_qty: undefined }]);
+    expect(snackbarText(tree)).toMatch(/dispatched:\n• Test Item Alpha$/);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('writes the count in Gujarati digits in Gujarati', async () => {
+    setLanguage('gu');
+    const tree = await saveEdit([skipped]);
+    const text = snackbarText(tree);
+    expect(text).toContain('Test Item Alpha');
+    expect(text).toContain('૩');
+    expect(text).not.toMatch(/3/);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('does not warn for a dispatched line whose quantity was not changed (the server lists every dispatched line)', async () => {
+    const tree = await saveEdit([{ ...skipped, current_qty: LINES[0].qty }]);
+    expect(snackbarText(tree)).toBe('GRN A0010 saved.');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('control: an empty skipped list gives the plain saved message', async () => {
+    const tree = await saveEdit([]);
+    expect(snackbarText(tree)).toBe('GRN A0010 saved.');
     await act(async () => { tree.unmount(); });
   });
 });

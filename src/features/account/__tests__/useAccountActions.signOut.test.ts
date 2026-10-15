@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useAccountActions } from '../useAccountActions';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
-import { setLanguage } from '@/i18n';
+import { setLanguage, t } from '@/i18n';
 
 let mockCentralOn = false;
 const mockDispatch = jest.fn((action: unknown) => ({ unwrap: async () => action }));
@@ -86,5 +86,33 @@ describe('Sign out is not drawn as dangerous', () => {
     await render();
     act(() => hook.deletion.open());
     expect(hook.deletion.dialog.variant).toBe('danger');
+  });
+});
+
+describe('Sign out without central login: the phone could not clear its storage', () => {
+  const { showAlert } = jest.requireMock('@/utils/alert') as { showAlert: jest.Mock };
+  const { router } = jest.requireMock('expo-router') as { router: { replace: jest.Mock } };
+  const run = async (localCleared: boolean) => {
+    mockCentralOn = false;
+    mockDispatch.mockImplementationOnce(() => ({ unwrap: async () => ({ localCleared }) }));
+    showAlert.mockClear();
+    router.replace.mockClear();
+    await render();
+    act(() => hook.request('signOut'));
+    await act(async () => {
+      hook.dialog.onConfirm();
+    });
+  };
+
+  it('localCleared false: shows the notCleared alert and still goes to /login', async () => {
+    await run(false);
+    expect(showAlert).toHaveBeenCalledWith(t('auth.signOut.couldNotTitle'), t('auth.signOut.notCleared'));
+    expect(router.replace).toHaveBeenCalledWith('/login');
+  });
+
+  it('localCleared true: no alert', async () => {
+    await run(true);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/login');
   });
 });

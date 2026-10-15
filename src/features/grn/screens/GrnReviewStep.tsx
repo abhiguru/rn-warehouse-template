@@ -480,12 +480,20 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }, { removedImages, adoptedLineIds: adopted });
 
       if (result.success) {
-        const resultData = result.data as { data?: { items_skipped_stock?: Array<{ item_name: string; reason: string }> }; items_skipped_stock?: Array<{ item_name: string; reason: string }> } | undefined;
-        const skippedItems = resultData?.data?.items_skipped_stock || resultData?.items_skipped_stock;
+        // The server lists every dispatched line on every save; only a quantity that differs from the kept one was really refused.
+        const skippedItems = result.data?.stats?.items_skipped_stock?.filter((entry) => {
+          const sent = items.find((item) => item.grn_trl_id === entry.grn_trl_item_id);
+          if (!sent || typeof entry.current_qty !== 'number') return true;
+          return Number(sent.qty) !== Number(entry.current_qty);
+        });
 
         if (skippedItems && skippedItems.length > 0) {
           triggerWarning();
-          const skippedText = skippedItems.map((item) => `• ${item.item_name}: ${item.reason}`).join('\n');
+          const skippedText = skippedItems
+            .map((item) => `• ${typeof item.dispatched_qty === 'number'
+              ? tr('grn.review.skippedLine', { item: item.item_name, qty: formatNumber(item.dispatched_qty) })
+              : item.item_name}`)
+            .join('\n');
           setSnackbarMessage(tr('grn.review.savedWithSkipped', { items: skippedText }));
         } else {
           triggerSuccess();
