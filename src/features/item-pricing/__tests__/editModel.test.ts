@@ -183,9 +183,19 @@ describe('weight bands', () => {
     expect(removeBand(added, 2).bands.map(b => b.upTo)).toEqual(['40', '100']);
   });
 
-  it('removing the last band gives its weights to the band before', () => {
+  it('removing the last band drops it: the range gets shorter and the band before keeps its own "Up to"', () => {
     const removed = removeBand(draft, 1);
-    expect(removed.bands.map(b => b.upTo)).toEqual(['100']);
+    expect(removed.bands.map(b => b.upTo)).toEqual(['40']);
+  });
+
+  it('removing a middle band gives its weights to the band before', () => {
+    const three = { ...draft, bands: [{ upTo: '10', rent: '3.00' }, { upTo: '20', rent: '4.00' }, { upTo: '50', rent: '5.00' }] };
+    expect(removeBand(three, 1).bands.map(b => [b.upTo, b.rent])).toEqual([['20', '3.00'], ['50', '5.00']]);
+  });
+
+  it('Up to 1, Up to 8, remove the rest ends at 8 (the Eggs recipe)', () => {
+    const eggs = { ...draft, bands: [{ upTo: '1', rent: '1.00' }, { upTo: '8', rent: '2.00' }, { upTo: '50', rent: '3.00' }] };
+    expect(removeBand(eggs, 2).bands.map(b => b.upTo)).toEqual(['1', '8']);
   });
 
   it('removing the first band lets the next one start at the first weight', () => {

@@ -21,7 +21,7 @@ export interface CopyTiersSheetProps {
 }
 
 export function CopyTiersSheet({ visible, onClose, itemId, priceType, today, onPick }: CopyTiersSheetProps) {
-  const { items, rates, status } = useItemRates();
+  const { items, rates, status, refresh } = useItemRates();
   const inForce = useMemo(() => {
     const byItem = new Map<string, ItemStoragePrice[]>();
     for (const row of rates) {
@@ -47,6 +47,8 @@ export function CopyTiersSheet({ visible, onClose, itemId, priceType, today, onP
       items={offered}
       title={t('pricing.edit.copyTitle')}
       emptyText={status === 'ready' ? t('pricing.edit.copyNone') : t('pricing.edit.copyLoading')}
+      loadError={status === 'error'}
+      onRetry={() => { void refresh(); }}
     />
   );
 }

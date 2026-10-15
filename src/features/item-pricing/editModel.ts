@@ -278,14 +278,17 @@ export function appendEmptyBand(draft: Draft): Draft {
 }
 
 /**
- * Removes a band; the band before takes over its weights (the first band's weights go to the next).
- * A band whose "Up to" is still empty (just added) has no weights to hand over: the band before keeps its own.
+ * Removes a band. The LAST band is dropped and the range gets shorter (the band before keeps its own
+ * "Up to": owner decision 6, so "Up to 1, Up to 8, remove the rest" ends at 8). Any other band hands
+ * its weights to the band before it (the first band's weights go to the next).
+ * A band whose "Up to" is still empty (just added) has no weights to hand over either way.
  */
 export function removeBand(draft: Draft, index: number): Draft {
   if (draft.bands.length < 2 || index < 0 || index >= draft.bands.length) return draft;
   const removed = draft.bands[index];
   const bands = draft.bands.filter((_, i) => i !== index);
-  if (index > 0 && removed.upTo.trim() !== '') bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
+  const last = index === draft.bands.length - 1;
+  if (index > 0 && !last && removed.upTo.trim() !== '') bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
   return { ...draft, bands };
 }
 
@@ -454,6 +457,11 @@ export function switchNewRateType(draft: Draft, ctx: EditorContext, priceType: P
     draft: { ...seeded.draft, startsOn: draft.startsOn, startsOnChoice: draft.startsOnChoice },
     copied: seeded.copied,
   };
+}
+
+/** The draft with every rent cleared: rents copied from another item are rents of one price type only. */
+export function withoutRents(draft: Draft): Draft {
+  return { ...draft, bands: draft.bands.map(b => ({ ...b, rent: '' })) };
 }
 
 interface OpenArgs {

@@ -10,6 +10,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -48,6 +49,7 @@ const makeStyles = (th: ThemeTokens) => ({
     backgroundColor: th.surface.field,
     borderColor: th.border.field,
   },
+  rowDisabled: { opacity: 0.5 },
   rowError: { borderWidth: 2, borderColor: th.status.negative.border },
   rowText: { ...typography.body, color: th.text.primary, flexShrink: 1 },
   rowPlaceholder: { ...typography.body, color: th.text.placeholder, flexShrink: 1 },
@@ -58,7 +60,8 @@ const makeStyles = (th: ThemeTokens) => ({
 function SourceRow({ source, onSource, error }: Pick<ItemRateChoiceProps, 'source' | 'onSource' | 'error'>) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
-  const { items, rates, status } = useItemRates();
+  const { items, rates, status, refresh } = useItemRates();
+  const offline = useIsOffline();
   const [open, setOpen] = useState(false);
   const offered = useMemo(() => {
     const day = todayDay();
@@ -68,11 +71,15 @@ function SourceRow({ source, onSource, error }: Pick<ItemRateChoiceProps, 'sourc
     });
   }, [items, rates]);
 
+  // Offline with nothing loaded there is nothing to pick from, and nothing would ever arrive.
+  const blocked = offline && status !== 'ready';
   return (
     <>
       <Pressable
-        style={[styles.row, !!error && styles.rowError]}
+        style={[styles.row, !!error && styles.rowError, blocked && styles.rowDisabled]}
         onPress={() => setOpen(true)}
+        disabled={blocked}
+        accessibilityState={{ disabled: blocked }}
         accessibilityRole="button"
         accessibilityLabel={source ? t('items.form.rateItemSelected', { item: source.name }) : t('items.form.ratePickItem')}
         testID="rate-source-row"
@@ -88,6 +95,8 @@ function SourceRow({ source, onSource, error }: Pick<ItemRateChoiceProps, 'sourc
         items={offered}
         title={t('items.form.ratePickItem')}
         emptyText={status === 'ready' ? t('items.form.rateNoItems') : t('pricing.edit.copyLoading')}
+        loadError={status === 'error'}
+        onRetry={() => { void refresh(); }}
       />
     </>
   );

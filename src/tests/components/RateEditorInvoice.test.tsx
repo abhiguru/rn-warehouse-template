@@ -117,3 +117,10 @@ it('Back with nothing typed saves nothing; typing then makes the guard ask', asy
   expect(mockGuard.title).toBe('Discard this rate?');
   expect(replaceItemRates).not.toHaveBeenCalled();
 });
+
+it('has no "Copy weight bands from another item" in invoice mode (the rate belongs to this customer and line)', async () => {
+  const t = await open(line);
+  expect(t.root.findAll(n => n.props.testID === 'copy-tiers')).toHaveLength(0);
+  const own = await open({ ...line, customer_id: ORCHARD_A.id });
+  expect(own.root.findAll(n => n.props.testID === 'copy-tiers')).toHaveLength(0);
+});

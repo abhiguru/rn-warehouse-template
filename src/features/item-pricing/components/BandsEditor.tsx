@@ -204,6 +204,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
           </View>
         );
       })}
+      {draft.bands.length >= 2 ? <Text style={styles.note} testID="remove-band-note">{t('pricing.edit.removeBandNote')}</Text> : null}
       {errors.bands ? <Text style={styles.error} accessibilityRole="alert">{errors.bands}</Text> : null}
       {addBlock === 'max' ? (
         <Text style={styles.note}>{t('pricing.edit.bandsFull')}</Text>

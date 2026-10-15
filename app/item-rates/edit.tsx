@@ -50,6 +50,7 @@ import {
   resyncToday,
   savedStop,
   switchNewRateType,
+  withoutRents,
   setBandField,
   setStartsOn,
   summaryLines,
@@ -122,6 +123,8 @@ const RateEditorScreen: React.FC = () => {
   useEffect(() => {
     let live = true;
     setLoaded({ state: 'loading' });
+    // The draft is rebuilt from the server: it no longer holds another item's copied bands.
+    setCopiedFrom(null);
     if (!params.item_id) {
       setLoaded({ state: 'error', message: t('pricing.edit.notFound') });
       return;
@@ -413,9 +416,13 @@ const RateEditorScreen: React.FC = () => {
 
   const switchType = (value: PriceType) => {
     const next = switchNewRateType(current, ctx, value);
-    setLoaded(cur => (cur.state === 'ready' ? { ...cur, draft: next.draft, context: { ...cur.context, copied: next.copied } } : cur));
+    // Bands copied from another item: its rents are rents of the other price type, so they are cleared
+    // when nothing of this type was found to take their place; either way the note no longer applies.
+    const nextDraft = copiedFrom && !next.copied && value !== current.priceType ? withoutRents(next.draft) : next.draft;
+    if (value !== current.priceType) setCopiedFrom(null);
+    setLoaded(cur => (cur.state === 'ready' ? { ...cur, draft: nextDraft, context: { ...cur.context, copied: next.copied } } : cur));
     setStrip(null);
-    if (checked.current) setErrors(validate(next.draft, ctx).errors);
+    if (checked.current) setErrors(validate(nextDraft, ctx).errors);
   };
 
   const canCopyTiers = !ctx.customerId && !ctx.invoice;

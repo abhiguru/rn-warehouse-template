@@ -26,6 +26,9 @@ export interface ItemPickerSheetProps {
   title: string;
   /** Shown when the sheet has no items to offer at all. */
   emptyText?: string;
+  /** The items could not be loaded: the sheet says so and offers Try again (onRetry). */
+  loadError?: boolean;
+  onRetry?: () => void;
 }
 
 export const ITEM_PICKER_SNAP_POINTS = ['90%', '95%'];
@@ -36,7 +39,7 @@ const makeStyles = (th: ThemeTokens) => ({
   detail: { ...typography.subhead, color: th.text.secondary },
 });
 
-export function ItemPickerSheet({ visible, onClose, onSelect, items, title, emptyText }: ItemPickerSheetProps) {
+export function ItemPickerSheet({ visible, onClose, onSelect, items, title, emptyText, loadError, onRetry }: ItemPickerSheetProps) {
   const styles = useThemedStyles(makeStyles);
   const [lastQuery, setLastQuery] = React.useState('');
   const searchFn = useCallback(async (query: string): Promise<PickableItem[]> => {
@@ -61,6 +64,7 @@ export function ItemPickerSheet({ visible, onClose, onSelect, items, title, empt
     [styles],
   );
 
+  const nothingText = loadError ? t('pricing.itemPicker.loadError') : (emptyText ?? t('pricing.itemPicker.initial'));
   return (
     <SearchableBottomSheet<PickableItem>
       isVisible={visible}
@@ -73,8 +77,9 @@ export function ItemPickerSheet({ visible, onClose, onSelect, items, title, empt
       keyExtractor={i => i.id}
       snapPoints={ITEM_PICKER_SNAP_POINTS}
       minQueryLength={0}
-      emptyInitialText={emptyText ?? t('pricing.itemPicker.initial')}
-      emptySearchText={items.length === 0 ? (emptyText ?? t('pricing.itemPicker.initial')) : t('pricing.itemPicker.empty', { search: lastQuery })}
+      emptyInitialText={nothingText}
+      emptySearchText={items.length === 0 ? nothingText : t('pricing.itemPicker.empty', { search: lastQuery })}
+      emptyAction={loadError && onRetry ? { label: t('pricing.list.tryAgain'), onPress: onRetry } : undefined}
     />
   );
 }

@@ -361,6 +361,10 @@ class ItemService {
     );
 
     if (!result.success || !result.data) {
+      // PGRST202: this facility's create_item has no Standard rate / Same as another item parameters (migration 85 missing).
+      if (result.errorCode === 'PGRST202') {
+        return { success: false, message: t('pricing.standard.error.serverNeedsUpdate'), error: result.error };
+      }
       return {
         success: false,
         message: result.message,

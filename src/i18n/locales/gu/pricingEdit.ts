@@ -31,6 +31,7 @@ export const pricingEdit: Translation<typeof source> = {
     now: 'હાલ {{amount}}',
     addBand: 'વજન મર્યાદા ઉમેરો',
     removeBand: '{{band}} ની મર્યાદા કાઢો',
+    removeBandNote: 'વજન મર્યાદા કાઢો તો તેનું વજન આગળની મર્યાદાને મળે છે. છેલ્લી મર્યાદા કાઢો તો વજનની હદ ટૂંકી થાય છે.',
     outsidePay: 'આ વજનની બહારના નંગ મૂળ દર ભરે છે.',
     gapHint: '{{band}}: મૂળ દર',
     labour: 'નંગ દીઠ મજૂરી',

@@ -87,6 +87,8 @@ in Gujarati script; **English** = left in English letters.
 | Stock aging | માલ કેટલા દિવસથી પડ્યો છે | translate | Owner's choice |
 | Facility (one cold storage) | કોલ્ડ સ્ટોરેજ | Gujarati letters | Owner's choice |
 | District | જિલ્લો | translate | Draft |
+| Standard (rate every new item gets) | પ્રમાણભૂત | translate | Draft |
+| Weight band (a range of bag weights with one rate; English "weight band", not "tier", in the rate editor) | વજન મર્યાદા | translate | Draft |
 | Warehouse, godown | વખાર | translate | Owner's choice |
 | Photo | ફોટો | Gujarati letters | Checked |
 | Order status: open | બાકી | translate | Owner's choice |

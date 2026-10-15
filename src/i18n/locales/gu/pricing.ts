@@ -23,6 +23,7 @@ export const pricing: Translation<typeof source> = {
     allChanges: 'બધા દરના ફેરફારો',
     addRate: 'આઇટમમાં વજન મર્યાદા ઉમેરો',
     addPickTitle: 'આઇટમ પસંદ કરો',
+    addNone: 'દર ઉમેરવા માટે કોઈ સક્રિય આઇટમ નથી.',
     loadingLabel: 'દર લોડ થઈ રહ્યા છે',
     loadErrorTitle: 'દર લોડ થઈ શક્યા નહીં',
     loadErrorText: 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
@@ -169,11 +170,13 @@ export const pricing: Translation<typeof source> = {
     error: {
       managerOnly: 'પ્રમાણભૂત દર ફક્ત એડમિન અથવા સુપરવાઇઝર નક્કી કરી શકે છે.',
       unconfirmed: 'પ્રમાણભૂત દર સચવાયો કે નહીં તે ખાતરી થઈ શકી નથી. ફરી પ્રયાસ કરતા પહેલાં આ સ્ક્રીન બંધ કરીને ફરી ખોલો.',
+      serverNeedsUpdate: 'પ્રમાણભૂત દર માટે આ સુવિધાના સર્વરને અપડેટ જોઈએ.',
     },
   },
   itemPicker: {
     placeholder: 'આઇટમ શોધો',
     initial: 'આઇટમના નામનો ભાગ લખો.',
+    loadError: 'આઇટમ લોડ થઈ શકી નથી.',
     empty: '"{{search}}" સાથે કોઈ આઇટમ મળતી નથી.',
   },
   form: {

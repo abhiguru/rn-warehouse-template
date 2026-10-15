@@ -307,7 +307,16 @@ export default function ItemPricingScreen() {
           removeClippedSubviews={false}
         />
       ) : null}
-      <ItemPickerSheet visible={picking} onClose={() => setPicking(false)} onSelect={addForItem} items={items} title={t('pricing.list.addPickTitle')} />
+      <ItemPickerSheet
+        visible={picking}
+        onClose={() => setPicking(false)}
+        onSelect={addForItem}
+        items={items}
+        title={t('pricing.list.addPickTitle')}
+        emptyText={status === 'ready' ? t('pricing.list.addNone') : t('pricing.edit.copyLoading')}
+        loadError={status === 'error'}
+        onRetry={() => { void refresh(); }}
+      />
     </View>
   );
 }

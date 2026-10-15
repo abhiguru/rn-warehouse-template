@@ -21,6 +21,7 @@ export const pricing = {
     allChanges: 'All rate changes',
     addRate: 'Add a weight band to an item',
     addPickTitle: 'Choose an item',
+    addNone: 'There are no active items to add a rate for.',
     loadingLabel: 'Loading rates',
     loadErrorTitle: "Couldn't load rates",
     loadErrorText: 'Check your connection and try again.',
@@ -167,11 +168,13 @@ export const pricing = {
     error: {
       managerOnly: 'Only an administrator or supervisor can set the standard rate.',
       unconfirmed: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.",
+      serverNeedsUpdate: "This facility's server needs an update before the standard rate is available.",
     },
   },
   itemPicker: {
     placeholder: 'Search items',
     initial: 'Type part of the item name.',
+    loadError: "Couldn't load the items.",
     empty: 'No items match "{{search}}".',
   },
   form: {

@@ -15,6 +15,7 @@ import { F1, ITEMS, row } from '@/tests/helpers/ratesFixtures';
 
 let mockGuard: { hasChanges: boolean } = { hasChanges: false };
 let sheetProps: Record<string, any> = {};
+let mockOffline = false;
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
@@ -24,6 +25,7 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({ itemService: { createItem: jest.fn() } }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({
@@ -44,7 +46,7 @@ jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: j
 
 const tier = (min: number, max: number, rent: number) => ({ weight_min: min, weight_max: max, unit_price: rent, labour_rate: 1, tax_percent: 5 });
 const standard = (tiers: ReturnType<typeof tier>[], status: 'ready' | 'loading' | 'error' = 'ready') =>
-  jest.mocked(useStandardRate).mockReturnValue({ rate: status === 'ready' ? { tiers, updatedAt: null, updatedByName: null } : null, status, refresh: jest.fn(), key: 'k' });
+  jest.mocked(useStandardRate).mockReturnValue({ rate: status === 'ready' ? { tiers, updatedAt: null, updatedByName: null } : null, status, refresh: jest.fn(), key: 'k', serverNeedsUpdate: false });
 
 let tree: ReactTestRenderer;
 const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
@@ -62,6 +64,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGuard = { hasChanges: false };
   sheetProps = {};
+  mockOffline = false;
   standard([tier(0, 10, 3), tier(11, 20, 4)]);
   jest.mocked(useItemRates).mockReturnValue({
     items: ITEMS, rates: F1, status: 'ready', refreshing: false, lastUpdated: 1, refreshError: false, error: null, refresh: jest.fn(), itemRates: () => undefined,
@@ -167,5 +170,29 @@ describe('Add item: Rate', () => {
     } finally {
       setLanguage('en');
     }
+  });
+
+  // Review A7
+  it('says the items could not be loaded, with Try again, instead of "Loading items…" for ever', async () => {
+    const refresh = jest.fn();
+    jest.mocked(useItemRates).mockReturnValue({ items: [], rates: [], status: 'error', refreshing: false, lastUpdated: null, refreshError: true, error: new Error('x'), refresh, itemRates: () => undefined } as never);
+    await open();
+    await act(async () => { radio('Same as another item').props.onPress(); });
+    await act(async () => { button('rate-source-row').props.onPress(); });
+    expect(sheetProps.emptySearchText).toBe("Couldn't load the items.");
+    expect(sheetProps.emptyAction.label).toBe('Try again');
+    sheetProps.emptyAction.onPress();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('offline with nothing loaded, the item row is disabled; with the items loaded it still opens', async () => {
+    mockOffline = true;
+    jest.mocked(useItemRates).mockReturnValue({ items: [], rates: [], status: 'loading', refreshing: false, lastUpdated: null, refreshError: false, error: null, refresh: jest.fn(), itemRates: () => undefined } as never);
+    await open();
+    await act(async () => { radio('Same as another item').props.onPress(); });
+    expect(button('rate-source-row').props.disabled).toBe(true);
+    jest.mocked(useItemRates).mockReturnValue({ items: ITEMS, rates: F1, status: 'ready', refreshing: false, lastUpdated: 1, refreshError: false, error: null, refresh: jest.fn(), itemRates: () => undefined } as never);
+    await act(async () => { tree.update(<ItemFormScreen />); });
+    expect(button('rate-source-row').props.disabled).toBe(false);
   });
 });

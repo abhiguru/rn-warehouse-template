@@ -555,7 +555,7 @@ export const getStandardRate = async (): Promise<StandardRate> => {
   if (error) {
     itemPricingLogger.error('get_standard_rate RPC error:', error);
     handleGlobalAuthError(error);
-    if (isMissingFunction(error, 'get_standard_rate')) throw new Error(t('pricing.error.serverNeedsUpdate'));
+    if (isMissingFunction(error, 'get_standard_rate')) throw Object.assign(new Error(t('pricing.standard.error.serverNeedsUpdate')), { code: 'SERVER_NEEDS_UPDATE' });
     throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The standard rate could not be loaded');
   }
   const response = unwrapArrayResponse(data) as { success?: unknown; data?: { tiers?: unknown; updated_at?: unknown; updated_by_name?: unknown } | null } | null;

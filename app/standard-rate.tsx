@@ -11,13 +11,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,11 +43,13 @@ import {
   tiersOf,
   validateStandard,
 } from '@/features/item-pricing/standardRate';
-import { useStandardRate, rememberStandardRate } from '@/features/item-pricing/useStandardRate';
+import { useStandardRate, rememberStandardRate, clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import type { FieldNode, FieldRegistry } from '@/features/item-pricing/components/fieldLink';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
+
+const ABOVE_KEYBOARD = space.xxl;
 
 interface Form {
   draft: Draft;
@@ -55,7 +61,8 @@ export default function StandardRateScreen() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const offline = useIsOffline();
-  const { rate, status, refresh, key } = useStandardRate();
+  const { rate, status, refresh, key, serverNeedsUpdate } = useStandardRate();
+  const { height: windowHeight } = useWindowDimensions();
 
   const [form, setForm] = useState<Form | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -65,14 +72,32 @@ export default function StandardRateScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const nodes = useRef<Record<string, FieldNode | null>>({});
   const [barHeight, setBarHeight] = useState(0);
+  const scrollY = useRef(0);
+  const keyboardTop = useRef<number | null>(null);
+  const focusedKey = useRef<string | null>(null);
+  const barHeightRef = useRef(0);
+  const windowHeightRef = useRef(windowHeight);
+  windowHeightRef.current = windowHeight;
 
-  // The form is made once, from the standard rate as first loaded; a later refresh does not overwrite typing.
+  // The screen always reads the standard rate again when it opens: a copy cached by an item page or
+  // Add item may be older than what another phone saved, and Save sends every tier on the screen.
+  const [fresh, setFresh] = useState<'loading' | 'ok' | 'error'>('loading');
+  const readFresh = useCallback(() => {
+    setFresh('loading');
+    refresh().then(() => setFresh('ok'), () => setFresh('error'));
+  }, [refresh]);
   useEffect(() => {
-    if (!rate || form) return;
+    readFresh();
+    // Once per mount and facility.
+  }, [key]);
+
+  // The form is made once, from the standard rate as freshly read; a later refresh does not overwrite typing.
+  useEffect(() => {
+    if (!rate || form || fresh !== 'ok') return;
     const today = todayDay();
     const draft = standardDraft(rate.tiers, today);
     setForm({ draft, initial: draft, ctx: standardContext(today) });
-  }, [rate, form]);
+  }, [rate, form, fresh]);
 
   const changed = !!form && hasChanges(form.draft, form.initial);
   const { leaveWithoutAsking } = useLeaveGuard({ hasChanges: changed });
@@ -83,17 +108,44 @@ export default function StandardRateScreen() {
     if (checked.current && form) setErrors(validateStandard(next, form.ctx).errors);
   }, [form]);
 
+  // Keyboard: a focused field scrolls above the Save bar, as in the rate editor.
+  const ensureVisible = useCallback((fieldKey: string) => {
+    const node = nodes.current[fieldKey];
+    if (!node) return;
+    node.measureInWindow((_x, y, _w, h) => {
+      const barTop = (keyboardTop.current ?? windowHeightRef.current) - barHeightRef.current;
+      const hidden = y + h + ABOVE_KEYBOARD - barTop;
+      if (hidden > 0) scrollRef.current?.scrollTo({ y: scrollY.current + hidden, animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', event => {
+      keyboardTop.current = event.endCoordinates.screenY;
+      if (focusedKey.current) ensureVisible(focusedKey.current);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => { keyboardTop.current = null; });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [ensureVisible]);
+
   const order = useMemo(() => (form ? fieldOrder(form.draft, null) : []), [form]);
   const fields: FieldRegistry = useMemo(
     () => ({
       register: (fieldKey, node) => { nodes.current[fieldKey] = node; },
-      onFocus: () => {},
+      onFocus: fieldKey => {
+        focusedKey.current = fieldKey;
+        ensureVisible(fieldKey);
+      },
       next: fieldKey => {
         const following = nodes.current[order[order.indexOf(fieldKey) + 1]];
         if (following) following.focus();
+        else Keyboard.dismiss();
       },
     }),
-    [order],
+    [order, ensureVisible],
   );
 
   const scrollToError = (fieldKey: string) => {
@@ -102,7 +154,7 @@ export default function StandardRateScreen() {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
       return;
     }
-    node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, y - 160), animated: true }));
+    node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - 160), animated: true }));
   };
 
   const submit = async () => {
@@ -136,6 +188,7 @@ export default function StandardRateScreen() {
         scrollToError(target);
         return;
       }
+      if (result.outcomeUnknown) clearStandardRateCache();
       setStrip(result.message ?? t('pricing.error.generic'));
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     } finally {
@@ -156,13 +209,13 @@ export default function StandardRateScreen() {
     return (
       <View style={styles.container}>
         {header}
-        {status === 'error' ? (
+        {fresh === 'error' || status === 'error' ? (
           <RatesState
             icon="alert-circle-outline"
             title={t('pricing.standard.loadErrorTitle')}
-            text={t('pricing.list.loadErrorText')}
+            text={serverNeedsUpdate ? t('pricing.standard.error.serverNeedsUpdate') : t('pricing.list.loadErrorText')}
             actionLabel={t('pricing.list.tryAgain')}
-            onAction={() => { void refresh().catch(() => {}); }}
+            onAction={readFresh}
             testID="standard-load-error"
           />
         ) : (
@@ -186,6 +239,8 @@ export default function StandardRateScreen() {
           contentContainerStyle={[styles.body, { paddingBottom: Math.max(space.max, barHeight + space.lg) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => { scrollY.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={16}
         >
           {strip ? <EditorStrip variant="critical" message={strip} testID="standard-error" /> : null}
           <Text style={styles.note} testID="standard-note">{t('pricing.standard.note')}</Text>
@@ -195,7 +250,10 @@ export default function StandardRateScreen() {
         <View
           style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, space.md) }]}
           testID="save-bar"
-          onLayout={(e: LayoutChangeEvent) => setBarHeight(e.nativeEvent.layout.height)}
+          onLayout={(e: LayoutChangeEvent) => {
+            barHeightRef.current = e.nativeEvent.layout.height;
+            setBarHeight(e.nativeEvent.layout.height);
+          }}
         >
           {helper ? <Text style={styles.helper}>{helper}</Text> : null}
           <Button

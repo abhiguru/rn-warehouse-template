@@ -55,6 +55,8 @@ export interface UseStandardRateResult {
   refresh: () => Promise<void>;
   /** The cache key of this person and facility, for rememberStandardRate. */
   key: string;
+  /** The last read failed because the facility's server has no standard rate yet (migration 85 missing). */
+  serverNeedsUpdate?: boolean;
 }
 
 export function useStandardRate(): UseStandardRateResult {
@@ -63,6 +65,7 @@ export function useStandardRate(): UseStandardRateResult {
   const stored = useSyncExternalStore(subscribe, () => snapshot);
   const data = stored && stored.key === key ? stored : null;
   const [failed, setFailed] = useState(false);
+  const [needsUpdate, setNeedsUpdate] = useState(false);
 
   const load = useCallback((): Promise<void> => {
     if (!inFlight || inFlightKey !== key) {
@@ -88,8 +91,10 @@ export function useStandardRate(): UseStandardRateResult {
     try {
       await load();
       setFailed(false);
+      setNeedsUpdate(false);
     } catch (e) {
       setFailed(true);
+      setNeedsUpdate((e as { code?: unknown })?.code === 'SERVER_NEEDS_UPDATE');
       throw e;
     }
   }, [load]);
@@ -99,5 +104,5 @@ export function useStandardRate(): UseStandardRateResult {
     // Once per mount and facility.
   }, [key]);
 
-  return { rate: data?.rate ?? null, status: data ? 'ready' : failed ? 'error' : 'loading', refresh, key };
+  return { rate: data?.rate ?? null, status: data ? 'ready' : failed ? 'error' : 'loading', refresh, key, serverNeedsUpdate: needsUpdate };
 }

@@ -3,11 +3,14 @@
  * that counts the items that got the rate, the leave guard and offline.
  */
 import React from 'react';
+import { ScrollView, TextInput } from 'react-native';
+import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { getStandardRate, setStandardRate } from '@/services/item-pricing-service';
-import { clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
+import { clearStandardRateCache, rememberStandardRate } from '@/features/item-pricing/useStandardRate';
+import { setLanguage } from '@/i18n';
 import { inputsWithLabel, textsOf } from '@/tests/helpers/rateEditorFixtures';
 import { showToast } from '@/utils/toast';
 import StandardRateScreen from '../../../app/standard-rate';
@@ -62,6 +65,7 @@ beforeEach(() => {
   mockGuard = { hasChanges: false };
 });
 afterEach(() => {
+  setLanguage('en');
   act(() => tree?.unmount());
   tree = undefined;
 });
@@ -127,12 +131,21 @@ describe('Standard rate', () => {
     expect(jest.mocked(setStandardRate).mock.calls[0][0]).toEqual([...FOUR, tier(51, 80, 7)]);
   });
 
-  it('removes a tier and the one before takes its weights', async () => {
+  it('removing the last tier drops it: the range ends at the tier before', async () => {
     const t = await open(FOUR);
     await act(async () => { t.root.find(n => n.props.testID === 'band-3-remove' && typeof n.props.onPress === 'function').props.onPress(); });
     jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
     await act(async () => { saveButton(t).props.onPress(); });
-    expect(jest.mocked(setStandardRate).mock.calls[0][0]).toEqual([tier(0, 10, 3), tier(11, 20, 4), tier(21, 50, 5)]);
+    expect(jest.mocked(setStandardRate).mock.calls[0][0]).toEqual([tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5)]);
+  });
+
+  it('removing a middle tier gives its weights to the tier before', async () => {
+    const t = await open(FOUR);
+    await act(async () => { t.root.find(n => n.props.testID === 'band-1-remove' && typeof n.props.onPress === 'function').props.onPress(); });
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(jest.mocked(setStandardRate).mock.calls[0][0]).toEqual([tier(0, 20, 3), tier(21, 30, 5), tier(31, 50, 6)]);
+    expect(textsOf(t)).toContain('Removing a band gives its weights to the band before it. Removing the last band shortens the range.');
   });
 
   it('puts the server\'s refusal on the tier and field it names, and stays', async () => {
@@ -172,5 +185,97 @@ describe('Standard rate', () => {
     await act(async () => { tree = create(<StandardRateScreen />); });
     expect(tree!.root.findAll(n => n.props.testID === 'standard-load-error').length).toBeGreaterThan(0);
     expect(textsOf(tree!)).toContain("Couldn't load the standard rate");
+  });
+
+  // Review A1: the form is built from a fresh read, never from a copy another screen left in the cache.
+  it('shows what the server holds now, not the copy an item page cached, and saves that', async () => {
+    rememberStandardRate('test-facility|u1', { tiers: [tier(0, 10, 3), tier(11, 50, 4)], updatedAt: null, updatedByName: null });
+    const t = await open(FOUR);
+    expect(value(t, 'Up to')).toEqual(['10', '20', '30', '50']);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: FOUR, itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(jest.mocked(setStandardRate).mock.calls[0][0]).toEqual(FOUR);
+  });
+
+  it('waits for the fresh read instead of showing the cached copy first', async () => {
+    rememberStandardRate('test-facility|u1', { tiers: [tier(0, 10, 3)], updatedAt: null, updatedByName: null });
+    let release!: (v: { tiers: ReturnType<typeof tier>[]; updatedAt: null; updatedByName: null }) => void;
+    jest.mocked(getStandardRate).mockReturnValue(new Promise(r => { release = r; }));
+    await act(async () => { tree = create(<StandardRateScreen />); });
+    expect(inputsWithLabel(tree!, 'Up to')).toHaveLength(0);
+    await act(async () => { release({ tiers: FOUR, updatedAt: null, updatedByName: null }); });
+    expect(value(tree!, 'Up to')).toEqual(['10', '20', '30', '50']);
+  });
+
+  it('after an unknown outcome the cache is cleared, so the next opening reads the server again', async () => {
+    const t = await open(FOUR);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: false, errorCode: 'UNKNOWN', message: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.", outcomeUnknown: true });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(t.root.find(n => n.props.testID === 'standard-error' && n.props.message).props.message).toMatch(/couldn't confirm/);
+    act(() => t.unmount());
+    jest.mocked(getStandardRate).mockReturnValue(new Promise(() => {}));
+    await act(async () => { tree = create(<StandardRateScreen />); });
+    expect(inputsWithLabel(tree!, 'Up to')).toHaveLength(0);
+    expect(getStandardRate).toHaveBeenCalledTimes(2);
+  });
+
+  // Review A6
+  it('says the facility server needs an update when it has no standard rate yet', async () => {
+    jest.mocked(getStandardRate).mockRejectedValue(Object.assign(new Error('x'), { code: 'SERVER_NEEDS_UPDATE' }));
+    await act(async () => { tree = create(<StandardRateScreen />); });
+    expect(textsOf(tree!)).toContain("This facility's server needs an update before the standard rate is available.");
+  });
+
+  it('Try again reads the server again and shows the tiers', async () => {
+    jest.mocked(getStandardRate).mockRejectedValueOnce(new Error('down'));
+    await act(async () => { tree = create(<StandardRateScreen />); });
+    jest.mocked(getStandardRate).mockResolvedValue({ tiers: FOUR, updatedAt: null, updatedByName: null });
+    await act(async () => { tree!.root.find(n => n.props.testID === 'standard-load-error').props.onAction(); });
+    expect(value(tree!, 'Up to')).toEqual(['10', '20', '30', '50']);
+  });
+
+  // Review A10
+  it('refuses a tax above 100, a rate with three decimals and an Up to below its From, and sends nothing', async () => {
+    const t = await open(FOUR);
+    await fillAll(t);
+    await type(t, 'Tax', 0, '101');
+    await type(t, 'Rent per bag, per month', 1, '4.125');
+    await type(t, 'Up to', 2, '15');
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).not.toHaveBeenCalled();
+    expect(inputsWithLabel(t, 'Tax')[0].props.error).toBe('Enter a tax rate from 0 to 100.');
+    expect(inputsWithLabel(t, 'Rent per bag, per month')[1].props.error).toBe('Enter a rent of 0 or more.');
+    expect(inputsWithLabel(t, 'Up to')[2].props.error).toBe('Must be more than 20 kg; this band starts at 21 kg.');
+  });
+
+  it.each(['INVALID_BAND', 'BANDS_GAP', 'BANDS_OVERLAP'] as const)('puts a server %s on the Up to of the tier it names', async code => {
+    const t = await open(FOUR);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: false, errorCode: code, message: 'Check the weights.', tierIndex: 1 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(inputsWithLabel(t, 'Up to')[1].props.error).toBe('Check the weights.');
+  });
+
+  it('shows the figures in Gujarati digits and still sends 0-9', async () => {
+    setLanguage('gu');
+    const t = await open([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)]);
+    const shown = t.root.findAllByType(TextInput).map(n => n.props.value);
+    expect(shown).toEqual(expect.arrayContaining(['૧૦', '૫૦', '૫', '૧૨']));
+    expect(shown.some(v => /[0-9]/.test(String(v)))).toBe(false);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).toHaveBeenCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)]);
+  });
+
+  // Review A5: an error above the fold scrolls to the field by its place in the content, not its place on the window.
+  it('scrolls to the first wrong field using the scroll offset as well as the field position', async () => {
+    const t = await open();
+    const scrollTo = jest.fn();
+    const scroll = t.root.findByType(ScrollView);
+    (scroll.instance ?? {}).scrollTo = scrollTo;
+    await act(async () => { scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 300 } } }); });
+    const fields = t.root.findByType(BandsEditor).props.fields;
+    fields.register('band.0.rent', { focus: jest.fn(), measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 500, 100, 40) });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(scrollTo).toHaveBeenCalledWith({ y: 640, animated: true });
   });
 });

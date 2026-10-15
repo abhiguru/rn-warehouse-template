@@ -305,6 +305,25 @@ describe('Add in the header and the setup strip', () => {
     expect(offered.map((i: { id: string }) => i.id)).toEqual(ITEMS.map(i => i.id));
   });
 
+  // Review A7: the picker says what is going on instead of "Type part of the item name." over nothing.
+  it('Add while the items are still loading says so', async () => {
+    await open('admin', { items: [], rates: [], status: 'loading', lastUpdated: null });
+    act(() => addButton()[0].props.onPress());
+    expect(sheetProps.emptyInitialText).toBe('Loading items…');
+    expect(sheetProps.emptyAction).toBeUndefined();
+  });
+
+  it('Add after the items failed to load says so and offers Try again', async () => {
+    const refresh = jest.fn().mockResolvedValue(undefined);
+    await open('admin', { items: [], rates: [], status: 'error', lastUpdated: null, refresh });
+    act(() => addButton()[0].props.onPress());
+    expect(sheetProps.emptyInitialText).toBe("Couldn't load the items.");
+    expect(sheetProps.emptyAction.label).toBe('Try again');
+    const before = refresh.mock.calls.length;
+    sheetProps.emptyAction.onPress();
+    expect(refresh.mock.calls.length).toBe(before + 1);
+  });
+
   it('a customer account has no Add button', async () => {
     await open('customer');
     expect(addButton()).toHaveLength(0);
