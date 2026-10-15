@@ -43,7 +43,7 @@ describe('getStandardRate', () => {
     rpc.mockResolvedValue({ data: { success: false }, error: null });
     await expect(getStandardRate()).rejects.toThrow();
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.get_standard_rate' } });
-    await expect(getStandardRate()).rejects.toThrow(t('pricing.error.serverNeedsUpdate'));
+    await expect(getStandardRate()).rejects.toThrow(t('pricing.standard.error.serverNeedsUpdate'));
   });
 });
 

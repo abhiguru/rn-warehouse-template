@@ -64,6 +64,7 @@ jest.mock('@/services/item-pricing-service', () => ({
   listActiveItems: jest.fn(async () => [{ id: 'i1', name: 'Potato', packaging: 'Bag' }]),
   listAllRates: jest.fn(async () => [mockPrice]),
   listItemRates: jest.fn(async () => [mockPrice]),
+  getItemGrnRates: jest.fn(async () => []),
 }));
 jest.mock('@/components/list/ListSkeletonCard', () => ({ ListSkeletonCard: () => null }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));

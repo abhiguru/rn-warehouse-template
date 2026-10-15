@@ -7,7 +7,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { Text } from 'react-native';
 import { Input } from '@/components/ui/Input';
 import { GrnRateSheet } from '../GrnRateSheet';
-import { priceRows, contextKey } from '../grnRateModel';
+import { priceRows, type RateContext } from '../grnRateModel';
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 
 jest.mock('@/store/hooks', () => ({
@@ -36,7 +36,7 @@ const stored = (min: number, max: number, rent: number, from: string, customer: 
   id: `r${(seq += 1)}`, item_id: 'gur', item_name: 'Fictional Gur', customer_id: customer, customer_name: customer ? 'Fictional Traders' : null, price_type: 'monthly',
   unit_price: rent, weight_min: min, weight_max: max, labour_rate: 1.5, tax_percent: 5, effective_from: from, effective_to: to, created_at: '', created_by: '',
 });
-const ctx = { customerId: 'cust-a', day: DAY, priceType: 'monthly' as PriceType };
+const ctx: RateContext = { customerId: 'cust-a', day: DAY, priceType: 'monthly' as PriceType };
 
 let tree: ReactTestRenderer | undefined;
 const onSave = jest.fn();

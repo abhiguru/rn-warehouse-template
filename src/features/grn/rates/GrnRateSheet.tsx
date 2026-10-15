@@ -116,7 +116,6 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const preload = useMemo(
     () => (row ? (row.rate ? preloadChange(row, row.rate, input) : preloadAdd(row, input)) : null),
     // The preload is made once per opening; later reads of the rates do not rewrite what is typed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [row?.key, visible],
   );
 
@@ -134,7 +133,6 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     if (visible) sheet.present();
     else sheet.dismiss();
     // present/dismiss are stable
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
