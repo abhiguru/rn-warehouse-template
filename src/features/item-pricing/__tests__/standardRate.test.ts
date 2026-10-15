@@ -1,6 +1,6 @@
 import { setLanguage } from '@/i18n';
 import type { ItemStoragePrice, StandardTier } from '@/types/item-pricing.types';
-import { appendEmptyBand, fromOf, setBandField, setUpTo } from '../editModel';
+import { appendEmptyBand, fromOf, setBandField, setUpTo, type Draft } from '../editModel';
 import {
   fieldForRefusal,
   standardContext,
@@ -54,7 +54,7 @@ describe('the draft', () => {
 });
 
 describe('the checks', () => {
-  const filled = () => {
+  const filled = (): Draft => {
     const d = standardDraft([], TODAY);
     return { ...d, bands: d.bands.map(b => ({ ...b, rent: '3', labour: '1', tax: '5' })) };
   };
@@ -72,7 +72,7 @@ describe('the checks', () => {
   });
 
   it('refuses an Up to below its From, a fraction, a third decimal and a tax over 100', () => {
-    let d = filled();
+    let d: Draft = filled();
     d = setUpTo(d, 1, '10');
     expect(validateStandard(d, ctx).errors['band.1.upTo']).toBeDefined();
     d = setUpTo(filled(), 0, '10.5');

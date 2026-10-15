@@ -49,4 +49,27 @@ describe('pricing in Gujarati', () => {
     expect(weightBandLabel(0, 50)).toBe('૦–૫૦ કિલો');
     expect(priceTypeLabel('one_time')).toBe('એક વખત');
   });
+  it('words the standard rate, its tags and its strip in Gujarati, with the owner\'s દર for a rate', () => {
+    expect(t('pricing.standard.title', undefined, 'gu')).toBe('પ્રમાણભૂત દર');
+    expect(t('pricing.standard.tagStandard', undefined, 'gu')).toBe('પ્રમાણભૂત');
+    expect(t('pricing.standard.tagThisItem', undefined, 'gu')).toBe('આ આઇટમનો');
+    expect(t('pricing.standard.setupStrip', undefined, 'gu')).toBe('દરેક આઇટમનો દર હોય તે માટે પ્રમાણભૂત દર નક્કી કરો.');
+    expect(t('pricing.standard.setupAskAdmin', undefined, 'gu')).toBe('પ્રમાણભૂત દર નક્કી કરવા એડમિન અથવા સુપરવાઇઝરને કહો.');
+  });
+  it('counts the items that got the standard rate', () => {
+    expect(t('pricing.standard.itemsGotIt', { count: 55 })).toBe('55 items got it.');
+    expect(t('pricing.standard.itemsGotIt', { count: 1 })).toBe('1 item got it.');
+    expect(t('pricing.standard.itemsGotIt', { count: 55 }, 'gu')).toBe('૫૫ આઇટમને તે મળ્યો.');
+    expect(t('pricing.standard.itemsGotIt', { count: 1 }, 'gu')).toBe('૧ આઇટમને તે મળ્યો.');
+  });
+  it('no longer has the need-a-rate texts', () => {
+    expect(() => t('pricing.list.needRate' as never)).not.toThrow();
+    expect(t('pricing.list.needRate' as never)).toBe('pricing.list.needRate');
+    expect(t('pricing.list.filterNeedsRate' as never)).toBe('pricing.list.filterNeedsRate');
+  });
+  it('names the Add button and the copy-from-item texts in Gujarati', () => {
+    expect(t('pricing.list.addRate', undefined, 'gu')).toBe('આઇટમમાં વજન મર્યાદા ઉમેરો');
+    expect(t('pricing.edit.copyTiers', undefined, 'gu')).toBe('બીજી આઇટમની વજન મર્યાદાઓ લો…');
+    expect(t('pricing.edit.copiedFromItem', { item: 'ફિક્શનલ' }, 'gu')).toBe('ફિક્શનલ ની વજન મર્યાદાઓ લીધી છે. જે અલગ હોય તે બદલો.');
+  });
 });

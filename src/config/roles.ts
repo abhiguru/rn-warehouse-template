@@ -94,10 +94,10 @@ export function canOpenScreen(
     case 'userManagement':
     case 'masterData':
     case 'itemPriceHistory':
-      // The price history too: staff change prices, but the server gives the record of the
-      // changes to managers only (get_item_price_history, migration 48).
     case 'standardRate':
-      // The standard rate: staff read it, but only managers set it (set_standard_rate, migration 85).
+      // The price history too: staff change prices, but the server gives the record of the
+      // changes to managers only (get_item_price_history, migration 48). Likewise the standard
+      // rate: staff read it, only managers set it (set_standard_rate, migration 85).
       return isManager(role);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';

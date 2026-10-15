@@ -27,7 +27,7 @@ afterEach(() => logs.forEach(l => l.mockRestore()));
 describe('getStandardRate', () => {
   it('reads the tiers ordered by weight with who saved them and when', async () => {
     rpc.mockResolvedValue({
-      data: { success: true, data: { tiers: [tier(11, 20, 4), tier(0, 10, '3.00'), { weight_min: 'x' }], updated_at: '2026-10-15T08:00:00Z', updated_by_name: 'Dev Admin' } },
+      data: { success: true, data: { tiers: [tier(11, 20, 4), { ...tier(0, 10, 3), unit_price: '3.00' }, { weight_min: 'x' }], updated_at: '2026-10-15T08:00:00Z', updated_by_name: 'Dev Admin' } },
       error: null,
     });
     expect(await getStandardRate()).toEqual({ tiers: [tier(0, 10, 3), tier(11, 20, 4)], updatedAt: '2026-10-15T08:00:00Z', updatedByName: 'Dev Admin' });
