@@ -30,6 +30,8 @@ const DEFAULT_TAB_ICON_SIZE = iconSizes.md;
  * "Needs action" counts use destructive.fill / destructive.onFill instead.
  */
 const BADGE_SIZE = 18;
+/** Tab labels stop growing past this system font scale, so the bar keeps its height at large text. */
+export const TAB_LABEL_FONT_CAP = 1.5;
 
 // ============================================================================
 // TYPES
@@ -182,7 +184,7 @@ export function GenericDetailTabNavigator<T extends string>({
                 style={[dynamicStyles.label, isActive && dynamicStyles.labelActive]}
                 numberOfLines={1}
                 {...singleLineText()}
-                maxFontSizeMultiplier={1.6}
+                maxFontSizeMultiplier={TAB_LABEL_FONT_CAP}
               >
                 {tab.label}
               </Text>

@@ -103,3 +103,69 @@ describe('large text', () => {
     expect(heights[1]).toBeGreaterThan(heights[2]);
   });
 });
+
+describe('header at large text (from font scale 1.5)', () => {
+  const mountAt = (scale: number, make: (m: Record<string, any>) => React.ReactElement) => {
+    jest.resetModules();
+    jest.doMock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+      __esModule: true,
+      default: () => ({ width: 411, height: 891, scale: 2.6, fontScale: scale }),
+    }));
+    const modules = {
+      inv: require('../../invoice-details/InvoiceHeroHeader'),
+      grn: require('../../grn-details/GRNHeroHeader'),
+      disp: require('../DispatchHeroHeader'),
+    };
+    const R = require('react-test-renderer');
+    let tr!: ReactTestRenderer;
+    R.act(() => {
+      tr = R.create(make(modules));
+    });
+    return { tr, modules };
+  };
+  const allText = (t: ReactTestRenderer) =>
+    t.root.findAll(n => (n.type as unknown) === 'Text');
+  const has = (t: ReactTestRenderer, s: string) => allText(t).some(n => [n.props.children].flat(3).join('') === s);
+  const invoice = (m: Record<string, any>, amount = 12345, tax = 600) =>
+    React.createElement(m.inv.InvoiceHeroHeader, { invoice_number: 10005, date: '2026-09-29', total_items: 3, total_amount: amount, tax_amount: tax, customer_name: 'Cold Chain' });
+
+  it.each([
+    ['invoice', (m: Record<string, any>) => invoice(m), 'Invoice', '10005'],
+    ['GRN', (m: Record<string, any>) => React.createElement(m.grn.GRNHeroHeader, { gr_no: 'GRN77', date: '2026-03-03', total_qty: 5, total_stock: 5, total_dispatched: 0, customer_name: 'Cold Chain' }), 'GRN', 'GRN77'],
+    ['dispatch', (m: Record<string, any>) => React.createElement(m.disp.DispatchHeroHeader, { disp_no: 'DSP77', date: '2026-03-03', total_items: 2, total_quantity: 9, customer_name: 'Cold Chain' }), 'Dispatch', 'DSP77'],
+  ])('%s: identity shown at 1.3, hidden from 1.5, customer line kept, texts capped', (_n, make, label, number) => {
+    const normal = mountAt(1.3, make).tr;
+    expect(has(normal, label)).toBe(true);
+    expect(has(normal, number)).toBe(true);
+    const big = mountAt(2, make).tr;
+    expect(has(big, label)).toBe(false);
+    expect(has(big, number)).toBe(false);
+    expect(allText(big).some(n => [n.props.children].flat(3).join('').includes('Cold Chain'))).toBe(true);
+    // The header's own texts are capped at 1.5 (the shared status tag keeps its own 1.6).
+    const capped = allText(big).filter(n => n.props.maxFontSizeMultiplier === 1.5);
+    expect(capped.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('invoice: three figures in one row when they fit, stacked rows when they do not', () => {
+    const flatStyle = (n: { props: { style?: unknown } }) => Object.assign({}, ...[n.props.style].flat(3).filter(Boolean));
+    const rowStyle = (t: ReactTestRenderer) =>
+      t.root.findAll(n => (n.type as unknown) === 'View' && n.props.style && flatStyle(n).justifyContent === 'space-between' && flatStyle(n).borderTopWidth !== undefined).map(flatStyle)[0] ?? {};
+    const small = mountAt(2, m => invoice(m, 12345, 600)).tr;
+    expect(rowStyle(small).flexDirection).toBe('row');
+    expect(rowStyle(small).flexWrap).toBeUndefined();
+    const { modules } = mountAt(2, m => invoice(m));
+    expect(modules.inv.figuresFitOneRow(['3', '₹12,345.00', '₹600.00'], 2, 379)).toBe(true);
+    expect(modules.inv.figuresFitOneRow(['3', '₹1,26,80,08,932.00', '₹19,21,23,594.00'], 2, 379)).toBe(false);
+  });
+
+  it('GRN: progress bar shown at 1.3, hidden at 2.0 while the legend text stays', () => {
+    const make = (m: Record<string, any>) =>
+      React.createElement(m.grn.GRNHeroHeader, { gr_no: 'G1', date: '2026-03-03', total_qty: 10, total_stock: 6, total_dispatched: 4 });
+    const bar = (t: ReactTestRenderer) => t.root.findAll(n => n.type && (n.type as any).name === 'FioriSegmentedProgress');
+    const normal = mountAt(1.3, make).tr;
+    expect(bar(normal)).toHaveLength(1);
+    const big = mountAt(2, make).tr;
+    expect(bar(big)).toHaveLength(0);
+    expect(allText(big).some(n => [n.props.children].flat(3).join('').includes('60%'))).toBe(true);
+  });
+});

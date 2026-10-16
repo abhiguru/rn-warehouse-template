@@ -240,7 +240,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
   // Every column as wide as its widest value; big numbers move the middle column under the first.
   const linesWidth = numberColumnWidth(screen, LINES_WIDTH, groups.map((group) => formatNumber(group.lines.length)), [formatNumber(totals.lines)]);
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.bags)), [formatNumber(totals.bags)]);
-  const table = useStackedWhen(screen, crowded(rowWidth(screen), [linesWidth, bagsWidth]));
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), [linesWidth, bagsWidth], undefined, screen.scale));
   const lineBagsWidth = numberColumnWidth(screen, BAGS_WIDTH, items.map((line) => formatNumber(line.dispatch_quantity)));
   // The mark column grows with its longest mark, up to a third of the lines' row; longer marks wrap.
   const nestedRow = nestedRowWidth(screen);
@@ -249,7 +249,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
     Math.max(screen.numberWidth(MARK_WIDTH), Math.ceil(longestMark * (typography.subhead.fontSize ?? 15) * MARK_EM * screen.scale)),
     Math.floor(nestedRow / 3)
   );
-  const nestedStacked = table.stacked || crowded(nestedRow, [markWidth, lineBagsWidth], 0);
+  const nestedStacked = table.stacked || crowded(nestedRow, [markWidth, lineBagsWidth], 0, screen.scale);
   const widths = useMemo(
     () => ({ lines: linesWidth, bags: bagsWidth, mark: markWidth, lineBags: lineBagsWidth, nestedStacked }),
     [linesWidth, bagsWidth, markWidth, lineBagsWidth, nestedStacked]

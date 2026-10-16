@@ -297,6 +297,9 @@ interface Widths {
   lineBags: number;
   lineAmount: number;
   nestedStacked: boolean;
+  /** The amount on its own line, right-aligned under the item (or the dispatch): even stacked, its column would crowd the first. */
+  amountUnder: boolean;
+  lineAmountUnder: boolean;
 }
 
 const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table, widths }: GroupRowProps) {
@@ -304,7 +307,8 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
   const own = useThemedStyles(makeStyles);
   const details = lotLine(group);
   const rates = rateLine(group);
-  const { bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked } = widths;
+  const { bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder } =
+    widths;
   const lines = group.dispatch_items;
 
   return (
@@ -328,11 +332,14 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
           <Text style={styles.primary}>{group.item_name}</Text>
           {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
           <Text style={styles.secondary}>{nb(table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates)}</Text>
+          {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
         </View>
         {!table.stacked ? (
           <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(group.total_dispatch_qty)}</Text>
         ) : null}
-        <Text style={[styles.number, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text>
+        {!amountUnder ? (
+          <Text style={[styles.number, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text>
+        ) : null}
       </Pressable>
 
       {expanded ? (
@@ -341,7 +348,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
             <View style={styles.nestedHeader}>
               <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.dispatch')}</HeaderCell>
               {!nestedStacked ? <HeaderCell numeric style={{ width: lineBagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
-              <HeaderCell numeric style={{ width: lineAmountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
+              <HeaderCell numeric style={lineAmountUnder ? undefined : { width: lineAmountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
             </View>
             {lines.map((line, index) => {
               const id = line.dispatch_id;
@@ -377,20 +384,25 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
                     {line.tax > 0 ? (
                       <Text style={styles.secondary}>{tr('invoice.detailsTable.inclTax', { amount: formatInvoiceAmount(line.tax) })}</Text>
                     ) : null}
+                    {lineAmountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text> : null}
                   </View>
                   {!nestedStacked ? (
                     <Text style={[styles.number, { width: lineBagsWidth }]} {...ONE_LINE}>{formatNumber(line.dispatch_qty)}</Text>
                   ) : null}
-                  <Text style={[styles.number, { width: lineAmountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text>
+                  {!lineAmountUnder ? (
+                    <Text style={[styles.number, { width: lineAmountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text>
+                  ) : null}
                 </Pressable>
               );
             })}
           </View>
           <Text style={styles.secondary}>
-            {tr('invoice.detailsTable.baseAndTax', {
-              base: formatInvoiceAmount(group.total_base_amount),
-              tax: formatInvoiceAmount(group.total_tax_amount),
-            })}
+            {nb(
+              tr('invoice.detailsTable.baseAndTax', {
+                base: formatInvoiceAmount(group.total_base_amount),
+                tax: formatInvoiceAmount(group.total_tax_amount),
+              })
+            )}
           </Text>
         </View>
       ) : null}
@@ -416,7 +428,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   // 25 % of the row move the bags under the item (owner, 2026-10-16), as large text does.
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.total_dispatch_qty)), [formatNumber(totalBags)]);
   const amountWidth = numberColumnWidth(screen, AMOUNT_WIDTH, groups.map((group) => formatInvoiceAmount(group.total_amount)), [formatInvoiceAmount(totalAmount)]);
-  const table = useStackedWhen(screen, crowded(rowWidth(screen), [bagsWidth, amountWidth]));
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), [bagsWidth, amountWidth], undefined, screen.scale));
   const dispatchLines = groups.flatMap((group) => group.dispatch_items);
   const lineBagsWidth = numberColumnWidth(screen, BAGS_WIDTH, dispatchLines.map((line) => formatNumber(line.dispatch_qty)));
   const lineAmountWidth = numberColumnWidth(
@@ -424,10 +436,13 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     AMOUNT_WIDTH,
     dispatchLines.map((line) => formatInvoiceAmount(roundMoney(line.line_item_amount + line.tax)))
   );
-  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [lineBagsWidth, lineAmountWidth], 0);
+  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [lineBagsWidth, lineAmountWidth], 0, screen.scale);
+  // At large text with amounts in crores even the amount column alone crowds the first: it goes under.
+  const amountUnder = table.stacked && crowded(rowWidth(screen), [amountWidth], undefined, screen.scale);
+  const lineAmountUnder = nestedStacked && crowded(nestedRowWidth(screen), [lineAmountWidth], 0, screen.scale);
   const widths = useMemo(
-    () => ({ bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked }),
-    [bagsWidth, amountWidth, lineBagsWidth, lineAmountWidth, nestedStacked]
+    () => ({ bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder }),
+    [bagsWidth, amountWidth, lineBagsWidth, lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder]
   );
   // A single lot starts open; a tap flips any lot.
   const single = groups.length === 1;
@@ -474,7 +489,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         <RowChevron expandable={false} expanded={false} />
         <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.item')}</HeaderCell>
         {!table.stacked ? <HeaderCell numeric style={{ width: bagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
-        <HeaderCell numeric style={{ width: amountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
+        <HeaderCell numeric style={amountUnder ? undefined : { width: amountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
       </View>
     </View>
   );
@@ -497,11 +512,14 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
           <Text style={styles.primaryStrong}>{tr('invoice.detailsTable.total')}</Text>
           <Text style={styles.secondary}>{nb(`${groupCount} · ${lineCount}`)}</Text>
           {table.stacked ? <Text style={styles.secondary}>{nb(bags(totalBags))}</Text> : null}
+          {amountUnder ? <Text style={styles.numberStrong} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text> : null}
         </View>
         {!table.stacked ? (
           <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(totalBags)}</Text>
         ) : null}
-        <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text>
+        {!amountUnder ? (
+          <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text>
+        ) : null}
       </View>
       <View style={own.cardEnd}>
         <Text style={styles.secondary} testID="invoice-lines-note">{tr('invoice.detailsTable.linesNote')}</Text>

@@ -225,7 +225,7 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, items.map((item) => formatNumber(item.dispatch_quantity)), [formatNumber(totals.bags)]);
   const grnWidth = sourceColumnWidth(items, screen, [grnCount], grnHeading);
   // A long GRN/received or a big quantity would squeeze the item names: the GRN cell goes under the item.
-  const table = useStackedWhen(screen, crowded(rowWidth(screen), [grnWidth, bagsWidth], 0));
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), [grnWidth, bagsWidth], 0, screen.scale));
 
   const header = (
     <View style={styles.cardTop}>

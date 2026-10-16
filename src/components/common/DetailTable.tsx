@@ -104,10 +104,18 @@ export function numberColumnWidth(
  */
 export const FIRST_COLUMN_SHARE = 0.25;
 
-/** Whether columns of these widths, with the gaps before them, leave the first column less than FIRST_COLUMN_SHARE of `row`. */
-export function crowded(row: number, columns: readonly number[], lead: number = CHEVRON_LEAD): boolean {
+/** The least width the first column keeps at any text size, in em of its text: room for an ordinary word. */
+export const FIRST_COLUMN_EM = 5;
+
+/**
+ * Whether columns of these widths, with the gaps before them, leave the first column less than
+ * FIRST_COLUMN_SHARE of `row`, or less than FIRST_COLUMN_EM at text size `scale` (at font scale
+ * 2.0 a quarter of the row held only four or five letters, and words broke mid-word).
+ */
+export function crowded(row: number, columns: readonly number[], lead: number = CHEVRON_LEAD, scale = 1): boolean {
   const taken = columns.reduce((sum, width) => sum + width + space.sm, lead);
-  return row - taken < row * FIRST_COLUMN_SHARE;
+  const least = Math.max(row * FIRST_COLUMN_SHARE, FIRST_COLUMN_EM * (typography.subhead.fontSize ?? 15) * scale);
+  return row - taken < least;
 }
 
 /** The layout with the middle columns stacked when the table's own columns crowd the first one. */

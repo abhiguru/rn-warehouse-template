@@ -245,14 +245,14 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   // Every column as wide as its widest value; big numbers move the middle column under the first.
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.bags)), [formatNumber(totalBags)]);
   const countWidth = screen.wide ? numberColumnWidth(screen, COUNT_WIDTH, groups.map((group) => formatNumber(group.dispatches.length))) : null;
-  const table = useStackedWhen(screen, crowded(rowWidth(screen), countWidth === null ? [bagsWidth] : [countWidth, bagsWidth]));
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), countWidth === null ? [bagsWidth] : [countWidth, bagsWidth], undefined, screen.scale));
   const lineBagsWidth = numberColumnWidth(
     screen,
     BAGS_WIDTH,
     groups.flatMap((group) => group.dispatches.map((d) => formatNumber(d.disp_quantity)))
   );
   const dateWidth = screen.numberWidth(DATE_WIDTH);
-  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [dateWidth, lineBagsWidth], 0);
+  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [dateWidth, lineBagsWidth], 0, screen.scale);
   const shownCount = table.stacked ? null : countWidth;
   const widths = useMemo(
     () => ({ count: shownCount, bags: bagsWidth, date: dateWidth, lineBags: lineBagsWidth, nestedStacked }),

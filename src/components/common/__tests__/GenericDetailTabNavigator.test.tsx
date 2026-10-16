@@ -72,3 +72,11 @@ describe('GenericDetailTabNavigator', () => {
     labels.forEach(l => expect(l.props.numberOfLines).toBe(1));
   });
 });
+
+describe('tab label growth cap', () => {
+  it('caps the labels at 1.5x', () => {
+    mount('items');
+    const labels = tree.root.findAll(n => (n.type as unknown) === 'Text' && tabs.some(t => t.label === n.props.children));
+    labels.forEach(l => expect(l.props.maxFontSizeMultiplier).toBe(1.5));
+  });
+});

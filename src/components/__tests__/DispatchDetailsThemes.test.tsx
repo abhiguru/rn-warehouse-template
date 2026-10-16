@@ -12,6 +12,11 @@ import { DispatchItemsTab } from '@/components/dispatch-details/DispatchItemsTab
 import { DispatchInvoicesTab } from '@/components/dispatch-details/DispatchInvoicesTab';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
+// Font scale 1: from 1.5 the header hides its number, which the title bar already shows.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 411, height: 891, scale: 2.6, fontScale: 1 }),
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),

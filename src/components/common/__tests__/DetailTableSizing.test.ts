@@ -3,7 +3,7 @@
  * 25 % rule that stacks the middle columns, and the no-break spaces that keep a number with its unit.
  */
 import { setLanguage } from '@/i18n';
-import { FIRST_COLUMN_SHARE, crowded, nb, nestedRowWidth, numberColumnWidth, rowWidth } from '../DetailTable';
+import { FIRST_COLUMN_EM, FIRST_COLUMN_SHARE, crowded, nb, nestedRowWidth, numberColumnWidth, rowWidth } from '../DetailTable';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -45,6 +45,16 @@ describe('crowded', () => {
     expect(crowded(row, [78, 124])).toBe(false);
     // ₹1,26,80,21,275.58 (182 dp, bold) and 10,82,348 bags (95 dp): 353 − 32 − 103 − 190 = 28 is left.
     expect(crowded(row, [95, 182])).toBe(true);
+  });
+
+  it('keeps at least FIRST_COLUMN_EM of text width at large text, where a quarter of the row is only a few letters', () => {
+    expect(FIRST_COLUMN_EM).toBe(5);
+    const nested = nestedRowWidth({ width: 411 }); // 335 dp
+    // ₹61,91,75,500.00 at 2.0 (242 dp) leaves 85 dp: over a quarter (84) but under 5 em (150 dp).
+    expect(crowded(nested, [242], 0)).toBe(false);
+    expect(crowded(nested, [242], 0, 2)).toBe(true);
+    // At 1.3 the quarter decides for an ordinary invoice: 112 dp is left, the least is 98.
+    expect(crowded(rowWidth({ width: 411 }), [78, 115], undefined, 1.3)).toBe(false);
   });
 
   it('measures a table inside an open row on its own, narrower row and without a chevron', () => {

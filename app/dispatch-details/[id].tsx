@@ -514,8 +514,8 @@ function DispatchDetailScreen() {
             <HeaderBackButton />
           ),
           headerTitle: () => (
-            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
-              {tr('common.dispatch')}
+            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {[tr('common.dispatch'), formatIdentifier(dispatch.disp_no)].filter(Boolean).join(' ')}
             </Text>
           ),
         }}

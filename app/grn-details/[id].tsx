@@ -697,6 +697,11 @@ function GRNDetailScreen() {
           headerShadowVisible: false,
           headerTitleAlign: 'center',
           title: tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) }),
+          headerTitle: () => (
+            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })}
+            </Text>
+          ),
           // Custom back button so Back always returns, even after a deep link
           headerLeft: () => (
             <HeaderBackButton />

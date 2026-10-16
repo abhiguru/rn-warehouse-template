@@ -280,7 +280,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     items.flatMap((item) => [formatNumber(item.qty), formatNumber(item.stock)]),
     [formatNumber(totals.received), formatNumber(totals.stock)]
   );
-  const table = useStackedWhen(screen, crowded(rowWidth(screen), [width, width]));
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), [width, width], undefined, screen.scale));
 
   const toggle = useCallback((id: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);

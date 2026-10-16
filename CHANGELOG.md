@@ -7,7 +7,8 @@ quantities up to 9,87,654, an invoice above ₹1 billion) and two visual reviews
 - Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
   sized to its widest value or total, so numbers line up from row to row and never split
   ("10,82,34" / "8"). When huge numbers would leave the first column under 25 % of the row, the
-  middle columns move under the first, as at large text; ordinary data keeps its columns.
+  middle columns move under the first, as at large text; ordinary data keeps its columns. At large
+  text an amount in crores goes on its own line under the item, so the item keeps whole words.
 - Dispatch Items: the GRN/Received column is sized to the GRN/received text, and a long mark is
   cut with "…" at the normal size instead of shrinking until unreadable.
 - Invoice Line items: the tax of a dispatch line sits under its period, so the dispatch numbers
@@ -20,8 +21,11 @@ quantities up to 9,87,654, an invoice above ₹1 billion) and two visual reviews
 - Invoice form step 2: a fade at the scroll edge of the dispatch table, the mark chip cut with
   "…" inside its column, a straight accent bar on an open group, chips outlined on the open fill,
   the chevron and Qty on the first line, "Applies to this line" for one line.
-- Detail page headers: the figures stay on one line (the invoice page lists them one per row),
-  the subtitles wrap instead of being cut, and the headers are tighter from font scale 1.5. The
+- Detail page headers: the figures stay on one line (the invoice page lists them one per row
+  when they do not fit side by side), and the subtitles wrap instead of being cut. From font
+  scale 1.5 the headers give the table room: the document label and big number are hidden (the
+  title bar shows the number; the Dispatch title now reads "Dispatch <number>"), header texts and
+  tab labels stop growing at 1.5×, and the GRN page hides its stock bar (its figures stay). The
   doubled bottom inset above the Android navigation bar is gone (iOS keeps its inset). The
   selected tab scrolls into view, so "Invoices" is no longer cut on the GRN page.
 

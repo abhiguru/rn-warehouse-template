@@ -161,6 +161,27 @@ describe('invoice Items table', () => {
     expect(number.props.numberOfLines).toBe(1);
   });
 
+  it('at font scale 2.0 puts a huge amount on its own line under the item, right-aligned, so the item keeps its words', () => {
+    mockFontScale = 2;
+    mockWidth = 411;
+    const onion = (id: string, qty: number, total: number, tax: number) =>
+      line({ id, item_name: 'Big Qty Onion', grn_item_id: 'lot-onion', package_mark: 'BQ-1', dispatch_no: `WWDG880${id}`, dispatch_qty: qty, server_total_amount: total, server_tax_amount: tax });
+    render(<InvoiceLineItemsTab items={[onion('1', 500000, 619175500, 94450500), onion('2', 487654, 618258225.76, 94310576.81)]} />);
+
+    const row = byTestId('invoice-group-row-lot-onion');
+    const amount = row.findAll((n) => (n.type as unknown) === 'Text' && n.props.children === '₹1,23,74,33,725.76')[0];
+    // In the item's column (no fixed width), right-aligned like the other numbers.
+    expect(StyleSheet.flatten(amount.props.style)).toMatchObject({ textAlign: 'right' });
+    expect(StyleSheet.flatten(amount.props.style).width).toBeUndefined();
+    const lineAmount = byTestId('invoice-group-lines-lot-onion').findAll(
+      (n) => (n.type as unknown) === 'Text' && n.props.children === '₹61,91,75,500.00'
+    )[0];
+    expect(StyleSheet.flatten(lineAmount.props.style).width).toBeUndefined();
+    expect(textOf(byTestId('invoice-group-lines-lot-onion'))).toMatch(
+      /^Dispatch\|Amount\|WWDG8801\|10 May\|35 days · 1.5 months · 5,00,000 bags\|incl. ₹9,44,50,500.00 tax\|₹61,91,75,500.00\|/
+    );
+  });
+
   it('moves the bags under the item and the lines at large text', () => {
     mockFontScale = 2;
     render(<InvoiceLineItemsTab items={[cumin1, cumin2]} />);

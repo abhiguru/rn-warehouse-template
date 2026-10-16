@@ -407,11 +407,11 @@ function InvoiceDetailScreen() {
               accessibilityRole="header"
               accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
             >
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
                 {tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
               </Text>
               {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
-              <Text style={styles.headerSubtitle} numberOfLines={2}>
+              <Text style={styles.headerSubtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
                 {grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: formatIdentifier(grnNumber) }) : formattedDate}
               </Text>
             </View>
