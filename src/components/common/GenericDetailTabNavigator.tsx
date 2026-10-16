@@ -6,13 +6,14 @@
  *
  */
 
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   View,
   ScrollView,
   Text,
   StyleSheet,
   Pressable,
+  type LayoutChangeEvent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -29,6 +30,8 @@ const DEFAULT_TAB_ICON_SIZE = iconSizes.md;
  * "Needs action" counts use destructive.fill / destructive.onFill instead.
  */
 const BADGE_SIZE = 18;
+/** Tab labels stop growing past this system font scale, so the bar keeps its height at large text. */
+export const TAB_LABEL_FONT_CAP = 1.5;
 
 // ============================================================================
 // TYPES
@@ -93,6 +96,30 @@ export function GenericDetailTabNavigator<T extends string>({
   const t = useTokens();
   const dynamicStyles = useThemedStyles(makeStyles);
 
+  // Keep the selected tab fully visible: with many tabs or large text the row scrolls,
+  // and the last tab would otherwise be clipped at the screen edge ("Invoic").
+  const scrollRef = useRef<ScrollView>(null);
+  const tabBounds = useRef<Record<string, { x: number; width: number }>>({});
+  const viewportWidth = useRef(0);
+  const scrollActiveIntoView = useCallback(() => {
+    const bounds = tabBounds.current[activeTab as string];
+    if (!bounds || viewportWidth.current <= 0) return;
+    const x = Math.max(0, bounds.x + bounds.width / 2 - viewportWidth.current / 2);
+    scrollRef.current?.scrollTo({ x, animated: true });
+  }, [activeTab]);
+  useEffect(() => {
+    scrollActiveIntoView();
+  }, [scrollActiveIntoView]);
+  const handleTabLayout = (key: string) => (e: LayoutChangeEvent) => {
+    const { x, width } = e.nativeEvent.layout;
+    tabBounds.current[key] = { x, width };
+    if (key === (activeTab as string)) scrollActiveIntoView();
+  };
+  const handleViewportLayout = (e: LayoutChangeEvent) => {
+    viewportWidth.current = e.nativeEvent.layout.width;
+    scrollActiveIntoView();
+  };
+
   // No haptic on tab change: haptics are only for saves and toggles (§9).
   const handleTabPress = (tabKey: T) => {
     if (tabKey !== activeTab) {
@@ -111,6 +138,8 @@ export function GenericDetailTabNavigator<T extends string>({
   return (
     <View style={dynamicStyles.container} accessibilityRole="tablist">
       <ScrollView
+        ref={scrollRef}
+        onLayout={handleViewportLayout}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -123,6 +152,7 @@ export function GenericDetailTabNavigator<T extends string>({
           return (
             <Pressable
               key={tab.key}
+              onLayout={handleTabLayout(tab.key)}
               style={({ pressed }) => [
                 styles.tab,
                 pressed && !isActive && dynamicStyles.tabPressed,
@@ -154,7 +184,7 @@ export function GenericDetailTabNavigator<T extends string>({
                 style={[dynamicStyles.label, isActive && dynamicStyles.labelActive]}
                 numberOfLines={1}
                 {...singleLineText()}
-                maxFontSizeMultiplier={1.6}
+                maxFontSizeMultiplier={TAB_LABEL_FONT_CAP}
               >
                 {tab.label}
               </Text>
@@ -234,7 +264,7 @@ const styles = StyleSheet.create({
     minHeight: touchTarget + space.lg,
     flexGrow: 1,
     minWidth: 64,
-    paddingHorizontal: space.sm,
+    paddingHorizontal: space.xs,
     paddingVertical: space.sm,
     position: 'relative',
   },

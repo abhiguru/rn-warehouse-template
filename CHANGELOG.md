@@ -1,5 +1,61 @@
 # Changelog
 
+## Unreleased — Tables: columns that fit their numbers, a card that scrolls into view (2026-10-16)
+
+App only. Fixes from phone runs with stretch data on Dev (30-character names, 59-character marks,
+the edge cases the owner set: quantities and totals up to 9,999 bags, amounts up to ₹99,999.00) and
+visual reviews of their screenshots. The invoice amount column (84 dp at font scale 1) fits ₹99,999.00
+in bold and its Bags column (44 dp) fits 9,999, so a table at the edge keeps its columns at font
+scale 1.3 with room for the item names; larger numbers stack as a fallback.
+- Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
+  sized to its widest value or total, so numbers line up from row to row and never split
+  ("10,82,34" / "8"). When huge numbers would leave the first column under 25 % of the row, the
+  middle columns move under the first, as at large text; ordinary data keeps its columns. When a
+  stacked table's amount column would still crowd the item or take most of the row (large amounts
+  at large text), the amount goes on its own line under the item, so the item keeps whole words.
+- Dispatch Items: the GRN/Received column is sized to the GRN/received text, and a long mark is
+  cut with "…" at the normal size instead of shrinking until unreadable.
+- Invoice Line items: the tax of a dispatch line sits under its period, so the dispatch numbers
+  keep their width; the amount column is the same width on every row.
+- The card's end scrolls into view (it was cut off on Android): the card is drawn in parts and the
+  space round it is padding; rows overlap by a pixel so the card's edge has no seams. Row
+  dividers are 1 dp. Numbers keep their units at line breaks, and a line never starts with "·".
+  An open row's accent bar is its own view (as a 3 dp border it drew as two thin lines at 420 dpi).
+  The details of an open row start in line with the chevron. In light mode the open panel has its
+  own fill (#F0F3F6). The chevron sits on the first line at any text size. The GRN page's
+  Dispatches column shows from 600 dp. The Invoices tab's note is inside its card.
+- Invoice form step 2: a fade at the scroll edge of the dispatch table, the mark chip cut with
+  "…" inside its column, a straight accent bar on an open group, chips outlined on the open fill,
+  the chevron and Qty on the first line, "Applies to this line" for one line.
+- Detail page headers: the figures stay on one line (the invoice page lists them one per row
+  when they do not fit side by side), and the subtitles wrap instead of being cut. From font
+  scale 1.5 the headers give the table room: the document label and big number are hidden (the
+  title bar shows the number; the Dispatch title now reads "Dispatch <number>"), header texts and
+  tab labels stop growing at 1.5×, and the GRN page hides its stock bar (its figures stay). The
+  doubled bottom inset above the Android navigation bar is gone (iOS keeps its inset). The
+  selected tab scrolls into view, so "Invoices" is no longer cut on the GRN page.
+
+## Unreleased — Tables: clear edges in dark mode, a cleaner open row (2026-10-16)
+
+App only. Every table (the Dispatch, GRN and invoice pages' tabs, the invoice form's items table,
+and the reports table) takes its colours from a new `table` token group. In dark mode the card has
+a 1 dp outline (#4A5868), the heading row is lighter than the rows instead of darker, its text is
+the lighter grey (#A9B4BE, 6:1; the label grey was 4.1:1 there), and the row dividers are
+stronger. Light mode changes only slightly (a light outline, a slightly darker heading row). An open
+row and its details are now one panel on a slightly different fill with a 3 dp accent bar at the
+start and an accent chevron; the details use the panel's full width, and a table inside them is a
+small outlined card. The invoice form's open group has the same bar and fill.
+
+## Unreleased — Dispatch page Items: GRN and received in one cell, mark under it (2026-10-16)
+
+App only. On the Dispatch page's Items table the source GRN cell reads "GRN/received" (for example
+"Z0004/100": the GRN number and the bags received on that lot), with the lot's package mark under
+it instead of the GRN date (the GRNs tab keeps the date). The item cell keeps the weight of one bag.
+The received quantity no longer needs a row that opens, so the rows do not open. The column heading
+is "GRN/Received". The column is as wide as its longest text (GRN/received, mark, footer, heading)
+at the current font scale, at most half the row, and each of those stays on one line (shrinking a
+little rather than wrapping when it is longer).
+
 ## Unreleased — Dispatch, GRN and invoice pages: their lists as tables (2026-10-16)
 
 App only; no backend migration. The Dispatch page reads only the `get_dispatch_details` answer

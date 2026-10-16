@@ -11,10 +11,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   getGRNDetails,
@@ -697,6 +697,11 @@ function GRNDetailScreen() {
           headerShadowVisible: false,
           headerTitleAlign: 'center',
           title: tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) }),
+          headerTitle: () => (
+            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })}
+            </Text>
+          ),
           // Custom back button so Back always returns, even after a deep link
           headerLeft: () => (
             <HeaderBackButton />
@@ -704,7 +709,7 @@ function GRNDetailScreen() {
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
         {/* Hero Header - Quick Stats */}
         <GRNHeroHeader
           gr_no={grn.gr_no}

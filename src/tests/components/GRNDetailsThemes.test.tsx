@@ -7,6 +7,10 @@ import { GRNItemsTab } from '@/components/grn-details/GRNItemsTab';
 import { GRNImagesTab } from '@/components/grn-details/GRNImagesTab';
 
 let mockState: { theme: { preference: string; brand: string } } = { theme: { preference: 'light', brand: 'orange' } };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 411, height: 891, scale: 2.6, fontScale: 1 }),
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -29,7 +33,8 @@ function render(element: React.ReactElement, brand: string, mode: Mode) {
 function texts(tree: ReactTestRenderer): string[] {
   return tree.root
     .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => [].concat(node.props.children).join(''));
+    // A no-break space keeps a number with its unit on screen; read it as a space here.
+    .map(node => [].concat(node.props.children).join('').replace(/\u00A0/g, ' '));
 }
 
 describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
@@ -68,8 +73,10 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     act(() => tree.root.findAll(n => n.props.testID === 'grn-item-row-l1' && typeof n.props.onPress === 'function')[0].props.onPress());
     all = texts(tree);
     expect(all).toContain('Rack B-14');
+    // The open row's accent bar is the one brand-coloured fill (table.accent); no row or card is.
+    expect(tree.root.findAll(n => typeof n.type === 'string' && n.props.testID === 'table-open-bar').length).toBe(1);
     const backgrounds = tree.root
-      .findAll(n => typeof n.type === 'string')
+      .findAll(n => typeof n.type === 'string' && n.props.testID !== 'table-open-bar')
       .map(n => StyleSheet.flatten(n.props.style)?.backgroundColor)
       .filter(Boolean);
     expect(backgrounds).toEqual(expect.arrayContaining([t.surface.card, t.background.base]));

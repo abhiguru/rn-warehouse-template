@@ -321,7 +321,7 @@ async function open(store: Store, params?: Record<string, string>) {
       // The totals row is spoken as one element, as a month's row is: it is told apart by its separator.
       const isTotals = (node: ReactTestInstance) => {
         const style = StyleSheet.flatten(node.props.style) as Record<string, unknown> | undefined;
-        return style?.borderTopWidth === 1 && style?.borderTopColor === LIGHT.border.separator;
+        return style?.borderTopWidth === 1 && style?.borderTopColor === LIGHT.table.separator;
       };
       // Pinned half: the month of each row, and the row's spoken summary. Scrolling half: the figures.
       const pinnedRows = hostViews.filter(node => node.props.accessible === true && !isTotals(node));
@@ -1682,7 +1682,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     await one.press('Monthly breakdown');
     // The totals row: weight 600 over a separator (§13.7).
     expect(flat(textNode(one, '₹39,000')).fontWeight).toBe(fontWeight.semibold);
-    const totalsRow = one.tree.root.findAll(node => typeof node.type === 'string' && flat(node).borderTopColor === t.border.separator && flat(node).borderTopWidth === 1);
+    const totalsRow = one.tree.root.findAll(node => typeof node.type === 'string' && flat(node).borderTopColor === t.table.separator && flat(node).borderTopWidth === 1);
     expect(totalsRow.length).toBeGreaterThan(0);
   });
 
@@ -1724,7 +1724,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
       expect(text.props.adjustsFontSizeToFit).toBe(true);
       expect(text.props.minimumFontScale).toBeGreaterThanOrEqual(0.8);
       expect(text.props.minimumFontScale).toBeLessThanOrEqual(0.9);
-      expect(flat(text).color).toBe(t.text.secondary);
+      expect(flat(text).color).toBe(t.table.headerText);
     }
 
     // The count column is wider than the table's default 80, which broke the word at 1.3 times text size.

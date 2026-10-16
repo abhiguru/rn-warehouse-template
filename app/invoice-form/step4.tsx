@@ -12,6 +12,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -289,7 +290,7 @@ export default function InvoiceFormStep4() {
       </ScrollView>
 
       {/* Bottom action bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
         <Pressable
           style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={handleBack}

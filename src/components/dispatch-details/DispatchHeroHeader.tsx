@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
@@ -26,6 +26,11 @@ interface DispatchHeroHeaderProps {
   total_quantity: number;
   customer_name?: string;
 }
+
+/** From this system font scale the header tightens its spacing to leave the table room. */
+export const COMPACT_FONT_SCALE = 1.5;
+/** The header's texts stop growing past this system font scale (the tables keep full size). */
+export const HEADER_TEXT_CAP = 1.5;
 
 const makeStyles = (t: ThemeTokens) => ({
   surface: {
@@ -73,6 +78,9 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
+  subtitleCompact: { marginTop: 0 },
+  surfaceCompact: { paddingTop: space.sm, paddingBottom: space.sm },
+  statsCompact: { marginTop: space.sm },
   statLabel: {
     ...typography.caption1,
     color: t.text.secondary,
@@ -92,6 +100,7 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const compact = useWindowDimensions().fontScale >= COMPACT_FONT_SCALE;
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeItems = Number(total_items) || 0;
@@ -100,17 +109,18 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
   const subtitle = [customer_name, dateLabel].filter(Boolean).join(' · ');
 
   return (
-    <View style={styles.surface}>
-      <Text style={styles.docType}>{tr('common.dispatch')}</Text>
-      {!!disp_no && (
-        <Text style={styles.number} accessibilityRole="header">
+    <View style={[styles.surface, compact && styles.surfaceCompact]}>
+      {/* From the compact scale the title bar ("Dispatch <number>") already shows these two. */}
+      {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.dispatch')}</Text>}
+      {!compact && !!disp_no && (
+        <Text style={styles.number} accessibilityRole="header" maxFontSizeMultiplier={HEADER_TEXT_CAP}>
           {disp_no}
         </Text>
       )}
-      {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      {!!subtitle && <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text>}
 
       {/* Key facts */}
-      <View style={styles.statsContainer}>
+      <View style={[styles.statsContainer, compact && styles.statsCompact]}>
         <View
           style={styles.statChip}
           accessible
@@ -118,8 +128,10 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
         >
           <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
-            <Text style={styles.statValue}>{formatNumber(safeItems)}</Text>
-            <Text style={styles.statLabel}>{tr('dispatch.count.itemsLabel', { count: safeItems })}</Text>
+            <Text style={styles.statValue} maxFontSizeMultiplier={HEADER_TEXT_CAP} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {formatNumber(safeItems)}
+            </Text>
+            <Text style={styles.statLabel} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('dispatch.count.itemsLabel', { count: safeItems })}</Text>
           </View>
         </View>
 
@@ -130,8 +142,10 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
         >
           <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
-            <Text style={styles.statValue}>{formatNumber(safeQuantity)}</Text>
-            <Text style={styles.statLabel}>{tr('dispatch.count.bagsLabel', { count: safeQuantity })}</Text>
+            <Text style={styles.statValue} maxFontSizeMultiplier={HEADER_TEXT_CAP} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {formatNumber(safeQuantity)}
+            </Text>
+            <Text style={styles.statLabel} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('dispatch.count.bagsLabel', { count: safeQuantity })}</Text>
           </View>
         </View>
       </View>

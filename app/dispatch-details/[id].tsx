@@ -16,8 +16,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { View, Text, Platform, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
-import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -514,15 +514,15 @@ function DispatchDetailScreen() {
             <HeaderBackButton />
           ),
           headerTitle: () => (
-            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
-              {tr('common.dispatch')}
+            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {[tr('common.dispatch'), formatIdentifier(dispatch.disp_no)].filter(Boolean).join(' ')}
             </Text>
           ),
         }}
       />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
         {/* Hero Header - Quick Stats Only */}
         <DispatchHeroHeader
           disp_no={dispatch.disp_no}

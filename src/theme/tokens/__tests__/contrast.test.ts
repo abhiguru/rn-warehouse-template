@@ -11,7 +11,7 @@ function pairs(brand: (typeof BRANDS)[number], mode: Mode) {
   const list: Array<[string, string, string, number]> = [];
   const text = (name: string, fg: string, bg: string) => list.push([name, fg, bg, AA.text]);
   const ui = (name: string, fg: string, bg: string) => list.push([name, fg, bg, AA.large]);
-  for (const [bgName, bg] of [['background', t.background.base], ['card', t.surface.card], ['sheet', t.surface.sheet], ['pressed', t.surface.cardPressed]] as const) {
+  for (const [bgName, bg] of [['background', t.background.base], ['card', t.surface.card], ['sheet', t.surface.sheet], ['pressed', t.surface.cardPressed], ['table.insetFill', t.table.insetFill]] as const) {
     text(`text.primary on ${bgName}`, t.text.primary, bg);
     text(`text.secondary on ${bgName}`, t.text.secondary, bg);
     text(`brand.tint on ${bgName}`, t.brand.tint, bg);
@@ -41,6 +41,10 @@ function pairs(brand: (typeof BRANDS)[number], mode: Mode) {
   ui('border.field on field', t.border.field, t.surface.field);
   ui('border.fieldFocus on field', t.border.fieldFocus, t.surface.field);
   ui('interaction.focus on background', t.interaction.focus, t.background.base);
+  text('table.headerText on table.headerFill', t.table.headerText, t.table.headerFill);
+  ui('icon.secondary on table.headerFill (sort icon)', t.icon.secondary, t.table.headerFill);
+  ui('brand.tint on table.headerFill (sorted column)', t.brand.tint, t.table.headerFill);
+  ui('table.accent on table.insetFill', t.table.accent, t.table.insetFill);
   for (const s of STATUS) text(`status.${s}.text on its background`, t.status[s].text, t.status[s].background);
   return list;
 }

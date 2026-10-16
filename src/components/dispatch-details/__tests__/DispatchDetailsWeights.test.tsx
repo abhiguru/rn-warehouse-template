@@ -4,7 +4,7 @@
  * The Items and GRNs tables show the weight a lot stores, the weight of one bag,
  * under the item name. "50 kg" beside "4 bags" read like the weight of the line;
  * it reads "50 kg each". A lot without a weight shows no weight (it used to read
- * "0 kg"). The received quantity is in the Items row's details.
+ * "0 kg"). On the Items table the mark sits under "GRN/received" instead.
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
@@ -36,7 +36,7 @@ const item = (weight: Weight, over: { original_quantity?: number; package_mark?:
 });
 
 const texts = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
+  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join('').replace(/\u00A0/g, ' '));
 const icons = (tree: ReactTestRenderer): string[] =>
   tree.root.findAll((node) => (node.type as unknown) === 'Icon').map((node) => node.props.name as string);
 /** Children of host Views that are bare text or numbers: what React Native throws on. */
@@ -56,26 +56,15 @@ afterEach(() => {
   setLanguage('en');
 });
 
-/** The Items row, opened so its received quantity shows. */
-function openedItems(weight: Weight, over?: Parameters<typeof item>[1]) {
-  render(<DispatchItemsTab items={[item(weight, over)]} />);
-  const row = tree.root.findAll((node) => node.props.testID === 'dispatch-item-row-line-1' && typeof node.type !== 'string')[0];
-  if (!row.props.disabled) act(() => row.props.onPress());
-  return tree;
-}
-
 describe.each([
-  ['Items table', (weight: Weight, over?: Parameters<typeof item>[1]) => openedItems(weight, over)],
+  ['Items table', (weight: Weight, over?: Parameters<typeof item>[1]) => render(<DispatchItemsTab items={[item(weight, over)]} />)],
   // One source GRN starts expanded.
   ['GRNs table', (weight: Weight, over?: Parameters<typeof item>[1]) => render(<DispatchGRNsTab items={[item(weight, over)]} />)],
-])('%s', (name, show) => {
-  // The Items table joins the mark and the weight under the item; the GRNs table has a Mark column.
-  const weightLine = name === 'Items table' ? 'PM · 50 kg each' : '50 kg each';
-
+])('%s', (_name, show) => {
   it('writes the weight of one bag as "50 kg each" under the item', () => {
     show(50);
 
-    expect(texts(tree)).toContain(weightLine);
+    expect(texts(tree)).toContain('50 kg each');
     expect(texts(tree)).not.toContain('50 kg');
   });
 
@@ -103,8 +92,7 @@ describe.each([
   });
 });
 
-it('shows the bags received on the lot in the Items row details', () => {
-  openedItems(50);
-  expect(texts(tree)).toContain('Received 10 bags');
-  expect(icons(tree)).toContain('package-variant-closed');
+it('shows the bags received on the lot beside the GRN number, and the mark under them, on the Items table', () => {
+  render(<DispatchItemsTab items={[item(50)]} />);
+  expect(texts(tree)).toEqual(expect.arrayContaining(['311/10', 'PM']));
 });

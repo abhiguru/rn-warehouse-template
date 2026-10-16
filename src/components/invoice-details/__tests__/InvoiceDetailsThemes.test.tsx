@@ -7,6 +7,10 @@ import { getTokens } from '@/theme/tokens';
 
 let mockTheme = { preference: 'light', brand: 'orange' };
 
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 411, height: 891, scale: 2.6, fontScale: 1 }),
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (sel: (s: unknown) => unknown) => sel({ theme: mockTheme }),

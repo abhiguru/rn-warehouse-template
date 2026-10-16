@@ -3,6 +3,7 @@ import {
   View,
   Text,
   Pressable,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -178,7 +179,7 @@ export default function InvoiceEditStep2() {
       />
 
       {/* Bottom action bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
         <Pressable
           style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={handleBack}

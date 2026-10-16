@@ -15,9 +15,10 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 let mockFontScale = 1;
+let mockWidth = 360;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
-  default: () => ({ width: 360, height: 780, scale: 3, fontScale: mockFontScale }),
+  default: () => ({ width: mockWidth, height: 780, scale: 3, fontScale: mockFontScale }),
 }));
 
 const lot = (over: Partial<GRNItem> & { id: string }): GRNItem => ({
@@ -49,10 +50,12 @@ const render = (element: React.ReactElement) => {
 afterEach(() => {
   act(() => tree?.unmount());
   mockFontScale = 1;
+  mockWidth = 360;
 });
 
 const textOf = (node: ReactTestInstance): string =>
-  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('')).join('|');
+  // A no-break space keeps a number with its unit on screen; read it as a space here.
+  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('').replace(/\u00A0/g, ' ')).join('|');
 const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type !== 'string')[0];
 const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).length > 0;
 const press = (id: string) => act(() => byTestId(id).props.onPress());
@@ -128,13 +131,22 @@ describe('GRN Dispatches table', () => {
     g: [record('r3', 'd2', 'DD0042', '2026-10-11', 10)],
   };
 
-  it('summarises each lot in the server order; the first with dispatches starts open', () => {
+  it('shows the Dispatches column on a wide screen', () => {
+    mockWidth = 700;
     render(<GRNDispatchesTab items={[onions, potatoes, garlic]} dispatchesByItem={byItem} />);
 
     expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Dispatches\|Bags dispatched\|/);
-    expect(textOf(byTestId('grn-dispatch-row-o'))).toBe('Onions|60 received|0|0');
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received|2|20');
-    expect(textOf(byTestId('grn-dispatch-row-g'))).toBe('Garlic|G1|10 received|1|10');
+  });
+
+  it('summarises each lot in the server order; the first with dispatches starts open', () => {
+    render(<GRNDispatchesTab items={[onions, potatoes, garlic]} dispatchesByItem={byItem} />);
+
+    // On a phone the count goes under the item: the "Dispatches" heading is wider than its counts.
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
+    expect(textOf(byTestId('grn-dispatch-row-o'))).toBe('Onions|60 received · 0 dispatches|0');
+    expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
+    expect(textOf(byTestId('grn-dispatch-row-g'))).toBe('Garlic|G1|10 received · 1 dispatch|10');
     expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
     expect(has('grn-dispatch-lines-g')).toBe(false);
   });

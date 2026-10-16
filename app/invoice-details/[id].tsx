@@ -6,10 +6,10 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
-import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   getInvoiceDetails,
@@ -48,6 +48,13 @@ import { t as tr, formatIdentifier } from '@/i18n';
 // ============================================================================
 // STYLES
 // ============================================================================
+
+/** "29 Sep 2026 · GRN WMWM8881" breaks only after "·": a date or "GRN <number>" never splits. */
+const keepParts = (text: string): string =>
+  text
+    .split(' · ')
+    .map((part) => part.replace(/ /g, '\u00A0'))
+    .join('\u00A0· ');
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
   centerContainer: {
@@ -407,19 +414,19 @@ function InvoiceDetailScreen() {
               accessibilityRole="header"
               accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
             >
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
                 {tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
               </Text>
               {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
-              <Text style={styles.headerSubtitle} numberOfLines={2}>
-                {grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: formatIdentifier(grnNumber) }) : formattedDate}
+              <Text style={styles.headerSubtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
+                {keepParts(grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: formatIdentifier(grnNumber) }) : formattedDate)}
               </Text>
             </View>
           ),
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
         {/* Hero header */}
         <InvoiceHeroHeader
           invoice_number={invoice.invoice_number || 0}

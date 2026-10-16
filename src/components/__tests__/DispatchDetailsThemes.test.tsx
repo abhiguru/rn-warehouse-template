@@ -12,6 +12,11 @@ import { DispatchItemsTab } from '@/components/dispatch-details/DispatchItemsTab
 import { DispatchInvoicesTab } from '@/components/dispatch-details/DispatchInvoicesTab';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
+// Font scale 1: from 1.5 the header hides its number, which the title bar already shows.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 411, height: 891, scale: 2.6, fontScale: 1 }),
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -30,9 +35,10 @@ function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
   return tree;
 }
 
+// The open row's accent bar (table.accent) is the one brand-coloured fill a table may draw.
 function backgrounds(tree: ReactTestRenderer): string[] {
   return tree.root
-    .findAll(node => typeof node.type === 'string')
+    .findAll(node => typeof node.type === 'string' && node.props.testID !== 'table-open-bar')
     .map(node => StyleSheet.flatten(node.props.style)?.backgroundColor)
     .filter((c): c is string => typeof c === 'string');
 }
@@ -68,7 +74,7 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     const items = renderIn(brand, mode, <DispatchItemsTab items={[item]} onViewGRN={jest.fn()} />);
     expect(backgrounds(items)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(backgrounds(items)).not.toContain(t.brand.fill);
-    const grnNumber = items.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === '311')[0];
+    const grnNumber = items.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === '311/10')[0];
     expect(StyleSheet.flatten(grnNumber.props.style).color).toBe(t.brand.tint);
 
     const grns = renderIn(brand, mode, <DispatchGRNsTab items={[item]} onViewGRN={jest.fn()} />);

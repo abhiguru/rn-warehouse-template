@@ -27,6 +27,7 @@ import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
 import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { InlineValidation } from '@/components/fiori';
+import { OPEN_ACCENT, TABLE_OUTLINE, numberColumnWidth } from '@/components/common/DetailTable';
 import { RateInput, type RateDraftChange, type RateSelection } from '@/features/invoice/components/RateInput';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';
 import { parseRateInput, type RateField } from '@/features/invoice/utils/amountInput';
@@ -87,6 +88,10 @@ export const invoiceTableColumnWidths = (fontScale: number): Record<ColumnKey, n
   return widths;
 };
 
+/** A money rate always with two decimals, as the pricing field shows it: "0.50", "1,250.00". */
+export const formatRate = (value: number): string =>
+  localizeDigits(new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value));
+
 // Format number with Indian grouping - show decimals only if needed
 const formatNumber = (value: number, maxDecimals: number = 2): string => {
   if (!value) return localizeDigits('0');
@@ -96,6 +101,13 @@ const formatNumber = (value: number, maxDecimals: number = 2): string => {
 
 /** A value too long for its column shrinks instead of breaking onto a second line. */
 const oneLine = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
+
+/** The scroll-edge fade is this many strips of this width, from opaque at the edge to faint. */
+const FADE_STRIPS = 6;
+const FADE_STRIP_WIDTH = 5;
+const FADE_OPACITIES = Array.from({ length: FADE_STRIPS }, (_, i) => Math.round((0.9 - (i * 0.8) / (FADE_STRIPS - 1)) * 100) / 100);
+/** Fewer dp than this from an end counts as at the end. */
+const SCROLL_EDGE_SLACK = 2;
 
 const tabular = { fontVariant: ['tabular-nums' as const] };
 
@@ -135,23 +147,50 @@ const makeStyles = (t: ThemeTokens) => ({
   groupCard: {
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
+    borderWidth: TABLE_OUTLINE,
+    borderColor: t.table.outline,
     overflow: 'hidden' as const,
     ...t.shadow[2],
   },
-  // An open group is two list rows, the group and its table, drawn as one card
+  // An open group is two list rows, the group and its table, drawn as one card with the accent bar
   groupCardOpen: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
   },
   tableCard: {
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
+    borderTopWidth: 0,
+  },
+  // The accent bar of an open group: one straight bar inside each of its two cards (the group card
+  // and the table card), so it keeps its width at the rounded corners (the card clips it) and the
+  // two bars meet where the cards do. It sits over the card's padding, which is wider than the bar.
+  accentBar: {
+    position: 'absolute' as const,
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: OPEN_ACCENT,
+    backgroundColor: t.table.accent,
+  },
+  // Edge fades of the scrolling table: strips of the card colour that grow fainter inward.
+  fadeEdge: {
+    position: 'absolute' as const,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row' as const,
+  },
+  fadeStrip: {
+    width: FADE_STRIP_WIDTH,
+    backgroundColor: t.surface.card,
   },
 
   // Group header
   groupHeader: {
     flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    // The chevron and the total sit on the first text line, not in the middle of the block.
+    alignItems: 'flex-start' as const,
     minHeight: layout.objectCellMinHeight,
     padding: space.lg,
     gap: space.sm,
@@ -160,8 +199,15 @@ const makeStyles = (t: ThemeTokens) => ({
   groupHeaderPressed: {
     backgroundColor: t.surface.cardPressed,
   },
+  groupHeaderOpen: {
+    backgroundColor: t.table.insetFill,
+  },
   groupHeaderContent: {
     flex: 1,
+    minWidth: 0,
+  },
+  chevronCell: {
+    justifyContent: 'center' as const,
   },
   groupTitle: {
     ...typography.headline,
@@ -183,8 +229,17 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.xxs,
     borderRadius: radius.field,
     gap: space.xs,
+    // A long mark stays in the content column and is cut with "…".
+    maxWidth: '100%' as const,
+    flexShrink: 1,
+  },
+  // On an open group's header the neutral fill is close to the panel fill: the outline keeps the chip readable.
+  metaBadgeOpen: {
+    borderWidth: TABLE_OUTLINE,
+    borderColor: t.table.outline,
   },
   metaText: {
+    flexShrink: 1,
     ...typography.caption1,
     ...tabular,
     fontWeight: fontWeight.semibold,
@@ -207,13 +262,13 @@ const makeStyles = (t: ThemeTokens) => ({
 
   // Group pricing section
   bulkPricingSection: {
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.insetFill,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
+    borderTopColor: t.table.divider,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   bulkPricingHeader: {
     flexDirection: 'row' as const,
@@ -298,9 +353,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   tableHeaderRow: {
     flexDirection: 'row' as const,
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.headerFill,
     borderBottomWidth: 1,
-    borderBottomColor: t.border.separator,
+    borderBottomColor: t.table.separator,
     minHeight: ROW_MIN_HEIGHT,
   },
   tableHeaderCell: {
@@ -311,7 +366,7 @@ const makeStyles = (t: ThemeTokens) => ({
   tableHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
+    color: t.table.headerText,
   },
   tableTotalText: {
     fontWeight: fontWeight.semibold,
@@ -323,13 +378,14 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
     minHeight: ROW_MIN_HEIGHT,
   },
   tableDataCell: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    justifyContent: 'center' as const,
+    // Values sit on the first text line of the row, as in the object-page tables.
+    justifyContent: 'flex-start' as const,
     minHeight: ROW_MIN_HEIGHT,
   },
   tableDataText: {
@@ -361,6 +417,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderWidth: 2,
     borderColor: 'transparent',
     borderRadius: radius.field,
+    // The 2 dp ghost border takes the place of 2 dp of padding: the text stays on the line of its neighbours.
+    paddingVertical: space.sm - 2,
   },
   editableCellPressed: {
     backgroundColor: t.surface.cardPressed,
@@ -399,7 +457,7 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: ROW_MIN_HEIGHT,
     backgroundColor: t.surface.card,
     borderTopWidth: 1,
-    borderTopColor: t.border.separator,
+    borderTopColor: t.table.separator,
     paddingHorizontal: space.lg,
     paddingVertical: space.sm,
   },
@@ -551,8 +609,21 @@ function byGroup<V>(entries: Record<string, V>, groupOf: Map<string, string>): M
   return result;
 }
 
-const makeColumnStyles = (fontScale: number) => {
+/**
+ * The Total column's width: the designed width, or more where the widest line total
+ * (bold, with its cell paddings) needs it, so a lakh-sized total is not drawn shrunk.
+ */
+export const invoiceTotalColumnWidth = (fontScale: number, totals: readonly string[]): number => {
+  const designed = invoiceTableColumnWidths(fontScale).total;
+  const scale = Math.min(Math.max(fontScale, 1), MAX_COLUMN_FONT_SCALE);
+  const table = { scale, numberWidth: (base: number) => Math.ceil(base * scale) };
+  const textSize = typography.subhead.fontSize ?? 15;
+  return Math.max(designed, numberColumnWidth(table, 0, [], totals, textSize) + space.md * 2);
+};
+
+const makeColumnStyles = (fontScale: number, totalWidth?: number) => {
   const width = invoiceTableColumnWidths(fontScale);
+  if (totalWidth !== undefined) width.total = Math.max(width.total, totalWidth);
   return StyleSheet.create({
     colDispatch: { width: width.dispatch, alignItems: 'flex-start' },
     colQty: { width: width.qty, alignItems: 'flex-end' },
@@ -579,7 +650,11 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   const { fontScale } = useWindowDimensions();
   const language = getLanguage();
   // Column widths: text left, numbers right. They differ by language too.
-  const cols = useMemo(() => makeColumnStyles(fontScale), [fontScale, language]);
+  const totalWidth = useMemo(
+    () => invoiceTotalColumnWidth(fontScale, items.map((item) => formatInvoiceAmount(item.item_total))),
+    [items, fontScale, language]
+  );
+  const cols = useMemo(() => makeColumnStyles(fontScale, totalWidth), [fontScale, language, totalWidth]);
   const t = useTokens();
 
   // Get bulk pricing from Redux
@@ -1022,6 +1097,7 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
   t,
 }: InvoiceGroupRowProps) {
   const { allItems } = itemGroup;
+  const { fontScale } = useWindowDimensions();
   const groupTotalText = formatInvoiceAmount(groupTotal);
   const groupRateError = RATE_FIELDS.map((field) => fields[field].error).find(Boolean);
   const groupFieldStyle = (field: RateField) => [styles.field, !!fields[field].error && styles.fieldError];
@@ -1048,7 +1124,7 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
     <View style={[styles.groupCard, isExpanded && styles.groupCardOpen]}>
       {/* Group header - tappable */}
       <Pressable
-        style={({ pressed }) => [styles.groupHeader, pressed && styles.groupHeaderPressed]}
+        style={({ pressed }) => [styles.groupHeader, isExpanded && styles.groupHeaderOpen, pressed && styles.groupHeaderPressed]}
         onPress={toggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
@@ -1058,26 +1134,28 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
             : tr('invoice.table.groupA11yNoWeight', spoken)
         }
       >
-        <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={iconSize.lg} color={t.icon.secondary} />
+        <View style={[styles.chevronCell, { height: Math.round(typography.headline.lineHeight * fontScale) }]} testID="group-chevron">
+          <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={iconSize.lg} color={isExpanded ? t.table.accent : t.icon.secondary} />
+        </View>
         <View style={styles.groupHeaderContent}>
           <Text style={styles.groupTitle} numberOfLines={2}>
             {itemGroup.item_name}
           </Text>
           <View style={styles.groupMeta}>
-            <View style={styles.metaBadge}>
+            <View style={[styles.metaBadge, isExpanded && styles.metaBadgeOpen]}>
               <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.metaText}>{itemGroup.package_mark}</Text>
+              <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">{itemGroup.package_mark}</Text>
             </View>
             {weightTags.map((weightEach) => (
-              <View key={weightEach} style={styles.metaBadge}>
+              <View key={weightEach} style={[styles.metaBadge, isExpanded && styles.metaBadgeOpen]}>
                 <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
-                <Text style={styles.metaText}>{weightEach}</Text>
+                <Text style={styles.metaText} numberOfLines={1}>{weightEach}</Text>
               </View>
             ))}
-            <View style={styles.metaBadge}>
+            <View style={[styles.metaBadge, isExpanded && styles.metaBadgeOpen]}>
               <Text style={styles.metaText}>{tr('invoice.table.grnQty', { qty: formatNumber(itemGroup.gr_quantity) })}</Text>
             </View>
-            <View style={styles.metaBadge}>
+            <View style={[styles.metaBadge, isExpanded && styles.metaBadgeOpen]}>
               <Text style={styles.metaText}>{tr('invoice.table.dispatchedQty', { qty: formatNumber(itemGroup.total_dispatched) })}</Text>
             </View>
           </View>
@@ -1172,6 +1250,7 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
           <Text style={styles.collapsedText}>{tr('invoice.table.showDispatches', { count: allItems.length })}</Text>
         </Pressable>
       )}
+      {isExpanded && <View style={styles.accentBar} pointerEvents="none" testID="accent-bar" />}
     </View>
   );
 });
@@ -1214,6 +1293,20 @@ const InvoiceLinesTable = React.memo(function InvoiceLinesTable({
   // The table opens where it was left when the list draws it again.
   const [initialOffset] = useState(() => ({ x: actions.offsetOf(groupKey), y: 0 }));
 
+  // Whether more columns are out of sight on the left and on the right: the edge fades.
+  const scrollState = useRef({ x: initialOffset.x, viewWidth: 0, contentWidth: 0 }).current;
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const measure = (change: Partial<typeof scrollState>) => {
+    (Object.keys(change) as (keyof typeof scrollState)[]).forEach((key) => {
+      if (change[key] !== undefined) scrollState[key] = change[key] as number;
+    });
+    // Nothing is known about the sizes before the first layout: no fade then.
+    const known = scrollState.viewWidth > 0 && scrollState.contentWidth > 0;
+    const left = known && scrollState.x > SCROLL_EDGE_SLACK;
+    const right = known && scrollState.x + scrollState.viewWidth < scrollState.contentWidth - SCROLL_EDGE_SLACK;
+    setEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+  };
+
   // The message for a table cell of this group whose text was not accepted (first line first).
   const cellError =
     cellErrors === EMPTY_RECORD
@@ -1239,13 +1332,20 @@ const InvoiceLinesTable = React.memo(function InvoiceLinesTable({
   return (
     <View style={[styles.groupCard, styles.tableCard]}>
       <View style={styles.tableContainer}>
+        <View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator
           bounces={false}
           contentOffset={initialOffset}
           scrollEventThrottle={16}
-          onScroll={(event) => actions.rememberOffset(groupKey, event.nativeEvent.contentOffset.x)}
+          onLayout={(event) => measure({ viewWidth: event.nativeEvent.layout.width })}
+          onContentSizeChange={(width) => measure({ contentWidth: width })}
+          onScroll={(event) => {
+            const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+            actions.rememberOffset(groupKey, contentOffset.x);
+            measure({ x: contentOffset.x, viewWidth: layoutMeasurement?.width, contentWidth: contentSize?.width });
+          }}
         >
           <View>
             {/* Header row */}
@@ -1292,6 +1392,9 @@ const InvoiceLinesTable = React.memo(function InvoiceLinesTable({
             })}
           </View>
         </ScrollView>
+        {edges.left && <ScrollFade side="left" styles={styles} />}
+        {edges.right && <ScrollFade side="right" styles={styles} />}
+        </View>
 
         {allItems.length > lines.length && (
           <Pressable
@@ -1315,9 +1418,28 @@ const InvoiceLinesTable = React.memo(function InvoiceLinesTable({
           <Text style={styles.tableFooterTotal}>{groupTotalText}</Text>
         </View>
       </View>
+      <View style={styles.accentBar} pointerEvents="none" testID="accent-bar" />
     </View>
   );
 });
+
+/** The fade at one edge of the scrolling table: it tells that more columns are out of sight there. */
+function ScrollFade({ side, styles }: { side: 'left' | 'right'; styles: Styles }) {
+  // Opaque at the edge, fainter inward; the strips of the left edge run the other way.
+  const opacities = side === 'left' ? FADE_OPACITIES : [...FADE_OPACITIES].reverse();
+  return (
+    <View
+      pointerEvents="none"
+      testID={`scroll-fade-${side}`}
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.fadeEdge, side === 'left' ? { left: 0 } : { right: 0 }]}
+    >
+      {opacities.map((opacity, index) => (
+        <View key={index} style={[styles.fadeStrip, { opacity }]} />
+      ))}
+    </View>
+  );
+}
 
 interface InvoiceLineRowProps {
   item: InvoiceItemData;
@@ -1397,8 +1519,8 @@ const InvoiceLineRow = React.memo(function InvoiceLineRow({ item, editingField, 
         <Text style={styles.secondaryText} {...oneLine}>{formatCount(item.no_of_days, 'day')}</Text>
       </View>
 
-      {renderEditableCell('charge', cols.colCharge, tr('invoice.label.charge'), item.charge > 0 ? formatNumber(item.charge) : '—')}
-      {renderEditableCell('labour_rate', cols.colLabour, tr('invoice.label.labourRate'), item.labour_rate > 0 ? formatNumber(item.labour_rate) : '—')}
+      {renderEditableCell('charge', cols.colCharge, tr('invoice.label.charge'), item.charge > 0 ? formatRate(item.charge) : '—')}
+      {renderEditableCell('labour_rate', cols.colLabour, tr('invoice.label.labourRate'), item.labour_rate > 0 ? formatRate(item.labour_rate) : '—')}
       {renderEditableCell('tax', cols.colTax, tr('invoice.itemCard.taxA11y'), item.tax > 0 ? formatNumber(item.tax, 1) : '—')}
 
       {/* Total - calculated */}

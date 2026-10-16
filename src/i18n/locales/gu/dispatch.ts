@@ -407,6 +407,8 @@ export const dispatch: Translation<typeof source> = {
     table: {
       item: 'આઇટમ',
       sourceGrn: 'આવક પાવતી',
+      sourceGrnReceived: 'આવક પાવતી/આવક',
+      grnNumbered: 'આવક પાવતી {{number}}',
       bagsDispatched: 'જાવકના નંગ',
       itemLines: 'જથ્થા',
       mark: 'માર્કો',
@@ -419,7 +421,6 @@ export const dispatch: Translation<typeof source> = {
       lineRowLabel: '{{item}}{{details}}, {{bags}} જાવક થઈ',
       grnRowLabel: '{{source}}, {{lines}}, {{bags}} જાવક થઈ',
       openGrnAction: 'આવક પાવતી {{number}} ખોલો',
-      showReceived: 'આ જથ્થાની આવકના નંગ બતાવે છે',
       showLines: 'આ આવક પાવતીના જથ્થા બતાવે છે',
       itemsTotalLabel: 'કુલ: {{grns}}માંથી {{lines}}, {{bags}} જાવક થઈ',
       grnsTotalLabel: 'કુલ: {{grns}}, {{lines}}, {{bags}} જાવક થઈ',

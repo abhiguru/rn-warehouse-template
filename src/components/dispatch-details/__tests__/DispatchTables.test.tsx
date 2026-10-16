@@ -6,14 +6,17 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
-import { DispatchItemsTab } from '../DispatchItemsTab';
+import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { OPEN_ACCENT, TABLE_OUTLINE } from '@/components/common/DetailTable';
+import { DispatchItemsTab, sourceColumnWidth } from '../DispatchItemsTab';
 import { DispatchGRNsTab } from '../DispatchGRNsTab';
 import { DispatchInvoicesTab } from '../DispatchInvoicesTab';
 import type { DispatchItem, InvoiceTable } from '../dispatchDetailsModel';
 
+let mockTheme = { preference: 'light', brand: 'orange' };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
-  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: mockTheme }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 let mockFontScale = 1;
@@ -50,29 +53,35 @@ afterEach(() => {
   act(() => tree?.unmount());
   mockFontScale = 1;
   mockWidth = 360;
+  mockTheme = { preference: 'light', brand: 'orange' };
   setLanguage('en');
 });
 
 const textOf = (node: ReactTestInstance): string =>
-  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('')).join('|');
+  // A no-break space keeps a number with its unit on screen; read it as a space here.
+  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('').replace(/\u00A0/g, ' ')).join('|');
 const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type !== 'string')[0];
 const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).length > 0;
 const press = (id: string) => act(() => byTestId(id).props.onPress());
 
 describe('Items table', () => {
-  it('shows one row per line with the mark and weight under the item and the GRN date under its number', () => {
-    render(<DispatchItemsTab items={[rice, wheat, item({ id: 'r2', package_mark: 'B2', dispatch_quantity: 5 })]} />);
+  it('shows one row per line: the weight under the item, "GRN/received" with the mark under it', () => {
+    render(<DispatchItemsTab items={[rice, wheat, item({ id: 'r2', package_mark: 'B2', dispatch_quantity: 5, original_quantity: 60 })]} />);
 
-    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|PM · 50 kg each|0161|15 Oct|25');
-    // Two lots of one item stay two rows.
-    expect(textOf(byTestId('dispatch-item-row-r2'))).toBe('Basmati Rice|B2 · 50 kg each|0161|15 Oct|5');
-    // No mark and no weight: no line under the item.
-    expect(textOf(byTestId('dispatch-item-row-w'))).toBe('Wheat|0161|15 Oct|40');
+    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|50 kg each|0161/100|PM|25');
+    // Two lots of one item stay two rows, each with its own received and mark.
+    expect(textOf(byTestId('dispatch-item-row-r2'))).toBe('Basmati Rice|50 kg each|0161/60|B2|5');
+    // No mark, no weight, no received quantity: the GRN number alone.
+    expect(textOf(byTestId('dispatch-item-row-w'))).toBe('Wheat|0161|40');
+    // The GRN date is on the GRNs tab, not here.
+    expect(textOf(byTestId('dispatch-items-table'))).not.toMatch(/15 Oct/);
   });
 
-  it('heads the columns Item, Source GRN, Bags dispatched', () => {
+  it('heads the columns Item, GRN/Received, Bags dispatched, the middle heading on one line', () => {
     render(<DispatchItemsTab items={[rice]} />);
-    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Source GRN\|Bags dispatched\|/);
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|GRN\/Received\|Bags dispatched\|/);
+    const heading = tree.root.findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'GRN/Received')[0];
+    expect(heading.props.numberOfLines).toBe(1);
   });
 
   it('totals the bags, item lines and distinct source GRNs in the footer', () => {
@@ -94,26 +103,24 @@ describe('Items table', () => {
     expect(byTestId('dispatch-item-row-r').props.accessibilityActions).toEqual([{ name: 'openGrn', label: 'Open GRN 0161' }]);
   });
 
-  it('shows "—" for a missing GRN number and date, never today', () => {
-    render(<DispatchItemsTab items={[item({ id: 'x', grn_id: null, grn_no: null, grn_date: null })]} />);
+  it('says the GRN, the bags received and the mark, and shows "—" for a missing GRN number', () => {
+    render(<DispatchItemsTab items={[rice, item({ id: 'x', grn_id: null, grn_no: null, grn_date: null })]} />);
 
-    expect(textOf(byTestId('dispatch-item-row-x'))).toBe('Basmati Rice|PM · 50 kg each|—|—|25');
-    expect(byTestId('dispatch-item-row-x').props.accessibilityLabel).toBe('Basmati Rice, PM · 50 kg each, from GRN not available, 25 bags dispatched');
+    expect(byTestId('dispatch-item-row-r').props.accessibilityLabel).toBe(
+      'Basmati Rice, 50 kg each, from GRN 0161, Received 100 bags, Mark PM, 25 bags dispatched'
+    );
+    expect(textOf(byTestId('dispatch-item-row-x'))).toBe('Basmati Rice|50 kg each|—/100|PM|25');
+    expect(byTestId('dispatch-item-row-x').props.accessibilityLabel).toBe(
+      'Basmati Rice, 50 kg each, from GRN not available, Received 100 bags, Mark PM, 25 bags dispatched'
+    );
   });
 
-  it('expands a row to the bags received on the lot, and a row without them does not expand', () => {
+  it('has rows that do not open: everything is in the row', () => {
     render(<DispatchItemsTab items={[rice, wheat]} />);
 
-    expect(has('dispatch-item-details-r')).toBe(false);
-    expect(byTestId('dispatch-item-row-r').props.accessibilityState).toEqual({ expanded: false });
-    press('dispatch-item-row-r');
-    expect(textOf(byTestId('dispatch-item-details-r'))).toBe('Received 100 bags');
-    expect(byTestId('dispatch-item-row-r').props.accessibilityState).toEqual({ expanded: true });
-    press('dispatch-item-row-r');
-    expect(has('dispatch-item-details-r')).toBe(false);
-
-    expect(byTestId('dispatch-item-row-w').props.disabled).toBe(true);
-    expect(byTestId('dispatch-item-row-w').props.accessibilityState).toBeUndefined();
+    expect(byTestId('dispatch-item-row-r').props.onPress).toBeUndefined();
+    expect(byTestId('dispatch-item-row-r').props.accessibilityState).toBeUndefined();
+    expect(tree.root.findAll((n) => (n.type as unknown) === 'Icon' && /^chevron/.test(n.props.name))).toEqual([]);
   });
 
   it('moves the GRN under the item at large text, so the bags column keeps its width', () => {
@@ -121,7 +128,7 @@ describe('Items table', () => {
     render(<DispatchItemsTab items={[rice]} />);
 
     expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
-    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|PM · 50 kg each|0161|15 Oct|25');
+    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|50 kg each|0161/100|PM|25');
     expect(textOf(byTestId('dispatch-items-total'))).toBe('Total|1 item line · 1 GRN|25');
   });
 
@@ -134,7 +141,62 @@ describe('Items table', () => {
     expect(nameText.props.numberOfLines).toBeUndefined();
     const bagsText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === '12,500')[0];
     expect(StyleSheet.flatten(bagsText.props.style).width).toBe(Math.ceil(76 * 1.3));
-    expect(bagsText.props.numberOfLines).toBeUndefined();
+    // A number stays on one line: its column is sized to fit it.
+    expect(bagsText.props.numberOfLines).toBe(1);
+  });
+
+  it('sizes the GRN/Received column to its longest text, so "DV0010/110" stays on one line', () => {
+    mockFontScale = 1.3;
+    mockWidth = 411;
+    const longLot = item({ id: 'l', grn_no: 'DV0010', original_quantity: 110, package_mark: null });
+    render(<DispatchItemsTab items={[rice, longLot]} />);
+
+    const cell = byTestId('dispatch-item-grn-l');
+    const source = cell.findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'DV0010/110')[0];
+    // One line, shrinking a little rather than wrapping.
+    expect(source.props.numberOfLines).toBe(1);
+    expect(source.props.adjustsFontSizeToFit).toBe(true);
+    // The column takes the width its longest text needs at font scale 1.3: the larger of "DV0010/110"
+    // (10 × 15 × 0.62) and the heading "GRN/Received" (12 × 13 × 0.6), × 1.3, plus 4.
+    let column = cell.parent!;
+    while (typeof column.type !== 'string') column = column.parent!;
+    expect(StyleSheet.flatten(column.props.style).width).toBe(Math.ceil(Math.max(10 * 15 * 0.62, 12 * 13 * 0.6) * 1.3) + 4);
+    // A mark is cut with "…" at the normal size, never shrunk (Android ignores minimumFontScale).
+    const mark = byTestId('dispatch-item-grn-r').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'PM')[0];
+    expect(mark.props.numberOfLines).toBe(1);
+    expect(mark.props.ellipsizeMode).toBe('tail');
+    expect(mark.props.adjustsFontSizeToFit).toBeUndefined();
+  });
+
+  it('sizes the column to the GRN/received text, the footer and the heading, not to the mark', () => {
+    const table = { scale: 1 };
+    const base = sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table);
+    expect(base).toBe(Math.ceil(7 * 15 * 0.62) + 4);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table, ['12 GRNs'])).toBe(base);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table, ['123 GRNs'])).toBe(Math.ceil(8 * 15 * 0.62) + 4);
+    // The heading counts too: "GRN/Received" is wider than "Z0004/1".
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table, [], 'GRN/Received')).toBe(Math.ceil(12 * 13 * 0.6) + 4);
+  });
+
+  it('moves the GRN cell under the item when a long GRN/received would squeeze the item names, and cuts a long mark', () => {
+    mockFontScale = 1.3;
+    mockWidth = 411;
+    const mark = 'BL/STRETCH-LOT-0001/LONG-PACKAGE-MARK-FOR-WRAP-TEST/ABCDEFG';
+    render(<DispatchItemsTab items={[item({ id: 'b', grn_no: 'WMWM8881', original_quantity: 9999, dispatch_quantity: 5000, package_mark: mark })]} />);
+
+    // "WMWM8881/9,999" (an 8-character GRN number, the longest allowed) needs about 173 dp: the item
+    // column would keep under 5 em at font scale 1.3.
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
+    expect(textOf(byTestId('dispatch-item-row-b'))).toBe(`Basmati Rice|50 kg each|WMWM8881/9,999|${mark}|5,000`);
+    const markText = byTestId('dispatch-item-row-b').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === mark)[0];
+    expect(markText.props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'tail' });
+  });
+
+  it('keeps three columns for an ordinary lot at font scale 1.3 on a 411 dp phone', () => {
+    mockFontScale = 1.3;
+    mockWidth = 411;
+    render(<DispatchItemsTab items={[item({ id: 'z', grn_no: 'Z0004', original_quantity: 100 })]} />);
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|GRN\/Received\|Bags dispatched\|/);
   });
 
   it('keeps the empty and loading states', () => {
@@ -165,6 +227,56 @@ describe('GRNs table', () => {
     const lines = byTestId('dispatch-grn-lines-grn-161');
     expect(textOf(lines)).toBe('Item|Mark|Bags dispatched|Basmati Rice|50 kg each|PM|25|Wheat|—|40');
     expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityState).toEqual({ expanded: true });
+  });
+
+  describe.each(BRANDS.flatMap((brand) => (['light', 'dark'] as Mode[]).map((mode) => [brand, mode] as const)))('%s %s', (brand, mode) => {
+    it('draws the card outlined and an open row with its lines as one panel with an accent bar', () => {
+      mockTheme = { preference: mode, brand };
+      const t = getTokens(brand, mode);
+      render(<DispatchGRNsTab items={[older, rice]} />);
+      // The nearest drawn view around a row: the panel when the row is open.
+      const panelOf = (id: string) => {
+        let node = byTestId(id).parent;
+        while (node && typeof node.type !== 'string') node = node.parent;
+        return (StyleSheet.flatten(node?.props.style) ?? {}) as Record<string, unknown>;
+      };
+      const chevronOf = (id: string) => byTestId(id).findAll((n) => (n.type as unknown) === 'Icon')[0].props;
+      const flat = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style) as Record<string, unknown>;
+
+      // The card is drawn in parts, so its end scrolls into view: the list content has padding only
+      // (Android leaves a content container's margins out of the scroll range).
+      const list = tree.root.findAll((n) => n.props.contentContainerStyle !== undefined)[0];
+      const content = StyleSheet.flatten(list.props.contentContainerStyle) as Record<string, unknown>;
+      expect(content).toMatchObject({ paddingTop: expect.any(Number), paddingBottom: expect.any(Number) });
+      expect(content.marginTop ?? content.marginBottom ?? content.borderWidth).toBeUndefined();
+      const outlined = (n: ReactTestInstance) => typeof n.type === 'string' && flat(n)?.borderColor === t.table.outline;
+      const top = tree.root.findAll((n) => outlined(n) && flat(n).borderTopLeftRadius !== undefined)[0];
+      expect(flat(top)).toMatchObject({ borderWidth: TABLE_OUTLINE, borderBottomWidth: 0 });
+      const bottom = tree.root.findAll((n) => outlined(n) && flat(n).borderBottomLeftRadius !== undefined)[0];
+      expect(flat(bottom)).toMatchObject({ borderWidth: TABLE_OUTLINE, borderTopWidth: 0 });
+      // A closed row carries the card's sides and no panel.
+      expect(panelOf('dispatch-grn-row-grn-159')).toMatchObject({ borderLeftWidth: TABLE_OUTLINE, borderRightWidth: TABLE_OUTLINE, borderColor: t.table.outline });
+      expect(panelOf('dispatch-grn-row-grn-159').backgroundColor).toBeUndefined();
+      expect(chevronOf('dispatch-grn-row-grn-159')).toMatchObject({ name: 'chevron-right', color: t.icon.secondary });
+
+      press('dispatch-grn-row-grn-159');
+      expect(panelOf('dispatch-grn-row-grn-159')).toMatchObject({
+        backgroundColor: t.table.insetFill,
+        borderLeftWidth: TABLE_OUTLINE,
+        borderBottomColor: t.table.separator,
+      });
+      // The bar is its own view laid over the panel's start (as a 3 dp border it drew as two lines).
+      const bar = tree.root.findAll((n) => typeof n.type === 'string' && n.props.testID === 'table-open-bar');
+      expect(bar).toHaveLength(1);
+      expect(flat(bar[0])).toMatchObject({ position: 'absolute', left: 0, top: 0, bottom: 0, width: OPEN_ACCENT, backgroundColor: t.table.accent });
+      expect(chevronOf('dispatch-grn-row-grn-159')).toMatchObject({ name: 'chevron-down', color: t.table.accent });
+      // The lines are a small table of their own: rows on the card colour, a heading on the heading fill.
+      const lines = byTestId('dispatch-grn-lines-grn-159');
+      const nested = lines.findAll((n) => typeof n.type === 'string' && flat(n)?.borderColor === t.table.outline)[0];
+      expect(flat(nested)).toMatchObject({ backgroundColor: t.surface.card, borderWidth: TABLE_OUTLINE });
+      expect(nested.findAll((n) => typeof n.type === 'string' && flat(n)?.backgroundColor === t.table.headerFill).length).toBeGreaterThan(0);
+      expect(panelOf('dispatch-grn-row-grn-161').backgroundColor).toBeUndefined();
+    });
   });
 
   it('expands and collapses a row on tap and opens the GRN only from View GRN', () => {

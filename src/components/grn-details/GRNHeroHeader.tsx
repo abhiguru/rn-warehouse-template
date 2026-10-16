@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, useWindowDimensions } from 'react-native';
 import { FioriSegmentedProgress } from '@/components/FioriLinearProgress';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
@@ -29,6 +29,11 @@ interface GRNHeroHeaderProps {
   customer_name?: string;
 }
 
+
+/** From this system font scale the header tightens its spacing to leave the table room. */
+export const COMPACT_FONT_SCALE = 1.5;
+/** The header's texts stop growing past this system font scale (the tables keep full size). */
+export const HEADER_TEXT_CAP = 1.5;
 
 // ============================================================================
 // STYLES
@@ -66,6 +71,11 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   progressSection: { marginTop: space.md },
+  metaCompact: { marginTop: 0 },
+  containerCompact: { paddingTop: space.sm, paddingBottom: space.sm },
+  factsCompact: { marginTop: space.sm },
+  progressCompact: { marginTop: space.xs },
+  legendRowCompact: { marginBottom: 0 },
   legendRow: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
@@ -101,6 +111,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const compact = useWindowDimensions().fontScale >= COMPACT_FONT_SCALE;
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeQty = Number(total_qty) || 0;
@@ -127,7 +138,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compact && styles.containerCompact]}>
       <View style={styles.titleRow}>
         <View
           style={styles.titleBlock}
@@ -135,12 +146,11 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           accessibilityRole="header"
           accessibilityLabel={[tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate].filter(Boolean).join(', ')}
         >
-          <Text style={styles.docType}>{tr('common.grn')}</Text>
-          <Text style={styles.number}>{gr_no}</Text>
+          {/* From the compact scale the title bar ("GRN <number>") already shows these two. */}
+          {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.grn')}</Text>}
+          {!compact && <Text style={styles.number} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{gr_no}</Text>}
           {meta ? (
-            <Text style={styles.meta} numberOfLines={2}>
-              {meta}
-            </Text>
+            <Text style={[styles.meta, compact && styles.metaCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{meta}</Text>
           ) : null}
         </View>
 
@@ -155,7 +165,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
       </View>
 
       {/* Key facts */}
-      <View style={styles.facts}>
+      <View style={[styles.facts, compact && styles.factsCompact]}>
         {facts.map(fact => (
           <View
             key={fact.key}
@@ -163,10 +173,12 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
             accessible
             accessibilityLabel={`${fact.label}: ${formatNumber(fact.value)}`}
           >
-            <Text style={styles.factLabel} numberOfLines={1}>
+            <Text style={styles.factLabel} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_CAP}>
               {fact.label}
             </Text>
-            <Text style={styles.factValue}>{formatNumber(fact.value)}</Text>
+            <Text style={styles.factValue} maxFontSizeMultiplier={HEADER_TEXT_CAP} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {formatNumber(fact.value)}
+            </Text>
           </View>
         ))}
       </View>
@@ -174,34 +186,37 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
       {/* Stock and dispatch split */}
       {safeQty > 0 && (
         <View
-          style={styles.progressSection}
+          style={[styles.progressSection, compact && styles.progressCompact]}
           accessible
           accessibilityLabel={tr('grn.stock.splitLabel', { stock: stockPercentage, dispatched: dispatchPercentage })}
         >
-          <View style={styles.legendRow}>
+          <View style={[styles.legendRow, compact && styles.legendRowCompact]}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: stockSegmentColor }]} />
-              <Text style={styles.legendText}>
-                {tr('grn.stock.inStock')}{' '}<Text style={styles.legendValue}>{formatNumber(stockPercentage)}%</Text>
+              <Text style={styles.legendText} maxFontSizeMultiplier={HEADER_TEXT_CAP}>
+                {tr('grn.stock.inStock')}{' '}<Text style={styles.legendValue} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{formatNumber(stockPercentage)}%</Text>
               </Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: dispatchSegmentColor }]} />
-              <Text style={styles.legendText}>
-                {tr('grn.stock.dispatched')}{' '}<Text style={styles.legendValue}>{formatNumber(dispatchPercentage)}%</Text>
+              <Text style={styles.legendText} maxFontSizeMultiplier={HEADER_TEXT_CAP}>
+                {tr('grn.stock.dispatched')}{' '}<Text style={styles.legendValue} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{formatNumber(dispatchPercentage)}%</Text>
               </Text>
             </View>
           </View>
 
-          <FioriSegmentedProgress
-            segments={[
-              { value: safeStock, color: stockSegmentColor },
-              { value: safeDispatched, color: dispatchSegmentColor },
-            ]}
-            total={safeQty}
-            size="prominent"
-            showLabels={false}
-          />
+          {/* The bar repeats the figures above; from the compact scale only the legend text stays. */}
+          {!compact && (
+            <FioriSegmentedProgress
+              segments={[
+                { value: safeStock, color: stockSegmentColor },
+                { value: safeDispatched, color: dispatchSegmentColor },
+              ]}
+              total={safeQty}
+              size="prominent"
+              showLabels={false}
+            />
+          )}
         </View>
       )}
     </View>

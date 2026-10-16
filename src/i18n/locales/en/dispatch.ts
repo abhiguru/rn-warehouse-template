@@ -404,6 +404,8 @@ export const dispatch = {
     table: {
       item: 'Item',
       sourceGrn: 'Source GRN',
+      sourceGrnReceived: 'GRN/Received',
+      grnNumbered: 'GRN {{number}}',
       bagsDispatched: 'Bags dispatched',
       itemLines: 'Item lines',
       mark: 'Mark',
@@ -416,7 +418,6 @@ export const dispatch = {
       lineRowLabel: '{{item}}{{details}}, {{bags}} dispatched',
       grnRowLabel: '{{source}}, {{lines}}, {{bags}} dispatched',
       openGrnAction: 'Open GRN {{number}}',
-      showReceived: 'Shows the bags received on this lot',
       showLines: 'Shows the item lines from this GRN',
       itemsTotalLabel: 'Total: {{lines}} from {{grns}}, {{bags}} dispatched',
       grnsTotalLabel: 'Total: {{grns}}, {{lines}}, {{bags}} dispatched',
