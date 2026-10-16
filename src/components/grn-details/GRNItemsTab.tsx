@@ -6,8 +6,8 @@
  * |   PM · 50 kg each  |          |          |
  *
  * - One row per GRN line (lot), in the server's order (line ids are time-based: the order of
- *   entry). The mark and the weight of one bag sit under the item; a Low stock or Fully
- *   dispatched tag under them (the In stock column already says the rest).
+ *   entry). The mark and the weight of one bag sit under the item; a Low stock tag under them
+ *   (the In stock column already says "in stock" and "0").
  * - Tapping a row shows the bags dispatched, the rack and the packaging, and "View dispatches".
  * - Three columns, as the style guide asks on phones; at large text Received moves under the
  *   item. Footer: item lines and both totals.
@@ -59,8 +59,8 @@ interface GRNItemsTabProps {
   onViewItemDispatches?: (item: GRNItem) => void;
 }
 
-/** Number column width at font scale 1: room for "12,500" and a one-word heading. */
-const NUMBER_WIDTH = 68;
+/** Number column width at font scale 1: room for "12,500" and the heading "Received". */
+const NUMBER_WIDTH = 60;
 
 const makeStyles = (t: ThemeTokens) => ({
   tag: {
@@ -159,8 +159,9 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
   const t = useTokens();
   const details = lotLine(item);
   const status = getGRNStockStatus(item.stock, item.qty);
-  // In stock is what the column says; only the other states get a tag.
-  const tag = status && status.status !== 'positive' ? status : null;
+  // The In stock column already says "in stock" and "0"; only Low stock, which a number alone
+  // does not show, gets a tag (a long "Fully dispatched" tag was cut at font scale 1.3).
+  const tag = status && status.status === 'critical' ? status : null;
   const dispatched = dispatchedOf(item);
   const width = table.numberWidth(NUMBER_WIDTH);
   const label = [

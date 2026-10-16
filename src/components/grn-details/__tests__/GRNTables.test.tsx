@@ -66,11 +66,12 @@ describe('GRN Items table', () => {
     expect(textOf(byTestId('grn-item-row-p2'))).toBe('Potatoes|PM2 · 50 kg each|40|40');
   });
 
-  it('tags only Low stock and Fully dispatched, and shows no weight line for a lot without mark or weight', () => {
+  it('tags only Low stock, and shows no weight line for a lot without mark or weight', () => {
     render(<GRNItemsTab items={[potatoes, onions, garlic]} />);
 
     expect(textOf(byTestId('grn-item-row-o'))).toBe('Onions|Low stock|60|5');
-    expect(textOf(byTestId('grn-item-row-g'))).toBe('Garlic|G1|Fully dispatched|10|0');
+    // Nothing left: the In stock column says 0, no tag repeats it.
+    expect(textOf(byTestId('grn-item-row-g'))).toBe('Garlic|G1|10|0');
     expect(textOf(byTestId('grn-item-row-p'))).not.toMatch(/In stock/);
     expect(byTestId('grn-item-row-o').props.accessibilityLabel).toBe('Onions, 60 received, 5 in stock, Low stock');
   });

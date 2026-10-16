@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Dispatch and GRN pages: their lists as tables (2026-10-16)
+## Unreleased — Dispatch, GRN and invoice pages: their lists as tables (2026-10-16)
 
 App only; no backend migration. The Dispatch page reads only the `get_dispatch_details` answer
 it already used (its fields were checked against the live function, and
@@ -49,6 +49,19 @@ and `common/InvoicesTable.tsx` (style guide §13.7).
   be read or do not match every invoice of the GRN, the table falls back to the invoice numbers
   and the summary total.
 - `GRNItemCard` and `GRNItemDispatchTable` are removed, with the text keys only they used.
+- Items tab: only a Low stock tag shows under an item (a "Fully dispatched" tag was cut to
+  "Fully dispatc…" at font scale 1.3, and the In stock column already reads 0).
+
+### Invoice page
+- **Items**: one table (Item | Bags | Amount) in place of a large card per GRN lot with a
+  sideways-scrolling six-column table inside and a separate summary card. A row shows the lot's
+  mark and weight of one bag and its rates ("Rate ₹9.00 · Labour ₹3.00 · Tax 5%"); it opens to the
+  dispatch lines (Dispatch | Bags | Amount) with the date, days and months charged under each
+  dispatch number and the tax under the amount, and the lot's amount before tax and its tax. One lot
+  starts open. Amounts are the server's line totals with tax. The footer adds the rows (items,
+  dispatch lines, bags, amount); a note says the invoice total, after its rounding and discount, is
+  on the Breakdown tab, and "View GRN" opens the invoice's GRN. Dispatch numbers open the dispatch.
+- `InvoiceLineItemGroup` and `InvoiceLineItemCard` are removed, with the text keys only they used.
 
 Gujarati text for the new keys was drafted by Claude and waits for the owner's reading.
 

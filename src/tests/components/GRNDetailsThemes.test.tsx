@@ -59,9 +59,9 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
       mode
     );
     let all = texts(tree);
-    // Everything dispatched is the normal end of a GRN: neutral, not an error
-    expect(all).toContain('Fully dispatched');
+    // Everything dispatched is the normal end of a GRN: In stock reads 0, no error tag
     expect(all).not.toContain('Out of stock');
+    expect(all).not.toContain('Low stock');
     // The weight of one package, after the mark.
     expect(all).toContain('PT · 1,250.5 kg each');
     expect(all.some(text => /1,250\.5 kg$/.test(text))).toBe(false);
