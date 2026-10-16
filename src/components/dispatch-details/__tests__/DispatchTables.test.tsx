@@ -3,6 +3,7 @@
  * expansion, totals, the invoice fallback, narrow and wide screens and large text.
  */
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
 import { DispatchItemsTab } from '../DispatchItemsTab';
@@ -122,6 +123,18 @@ describe('Items table', () => {
     expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
     expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|PM · 50 kg each|0161|15 Oct|25');
     expect(textOf(byTestId('dispatch-items-total'))).toBe('Total|1 item line · 1 GRN|25');
+  });
+
+  it('wraps a long item name in full and widens the bags column with the text size', () => {
+    const name = 'Extra Long Basmati Rice Premium Aged Sella Golden Export Grade 1121';
+    mockFontScale = 1.3;
+    render(<DispatchItemsTab items={[item({ id: 'l', item_name: name, dispatch_quantity: 12500 })]} />);
+
+    const nameText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === name)[0];
+    expect(nameText.props.numberOfLines).toBeUndefined();
+    const bagsText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === '12,500')[0];
+    expect(StyleSheet.flatten(bagsText.props.style).width).toBe(Math.ceil(76 * 1.3));
+    expect(bagsText.props.numberOfLines).toBeUndefined();
   });
 
   it('keeps the empty and loading states', () => {
