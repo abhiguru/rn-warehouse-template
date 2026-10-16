@@ -23,6 +23,9 @@ export const TABLE_WIDE_WIDTH = 600;
 export interface TableLayout {
   stacked: boolean;
   wide: boolean;
+  /** The text size factor (at least 1) and the window width in dp, for columns sized to their text. */
+  scale: number;
+  width: number;
   /** A number column's width for its width at font scale 1. */
   numberWidth: (base: number) => number;
 }
@@ -36,9 +39,11 @@ export function useTableLayout(): TableLayout {
     () => ({
       stacked: scale >= TABLE_STACK_SCALE,
       wide,
+      scale,
+      width,
       numberWidth: (base: number) => Math.ceil(base * scale),
     }),
-    [scale, wide]
+    [scale, wide, width]
   );
 }
 

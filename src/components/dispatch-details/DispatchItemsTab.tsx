@@ -18,7 +18,7 @@ import React, { useMemo } from 'react';
 import { View, Text, FlatList, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, space, typography } from '@/theme/tokens';
+import { iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -38,8 +38,7 @@ const BAGS_WIDTH = 76;
 
 const makeStyles = (t: ThemeTokens) => ({
   grnColumn: {
-    flex: 0.8,
-    minWidth: 0,
+    flexShrink: 0,
   },
   stackedGrn: {
     marginTop: space.xs,
@@ -94,6 +93,30 @@ export function sourceText(item: Pick<DispatchItem, 'grn_no' | 'original_quantit
   return item.original_quantity !== undefined ? `${number}/${formatNumber(item.original_quantity)}` : number;
 }
 
+/** Average glyph widths, in em, of the GRN cell's two lines (semibold subhead, footnote). */
+const SOURCE_EM = 0.62;
+const MARK_EM = 0.6;
+
+/**
+ * The width of the GRN/Received column: wide enough for its longest "GRN/received" and mark at
+ * this text size, so neither wraps (owner, 2026-10-16), and at most half the row; anything
+ * longer shrinks to fit on its one line instead of wrapping.
+ */
+export function sourceColumnWidth(
+  items: readonly Pick<DispatchItem, 'grn_no' | 'original_quantity' | 'package_mark'>[],
+  table: Pick<TableLayout, 'scale' | 'width'>,
+  extra: readonly string[] = []
+): number {
+  const longest = (texts: string[]) => texts.reduce((max, text) => Math.max(max, text.length), 0);
+  const source = longest([...items.map(sourceText), ...extra]) * (typography.subhead.fontSize ?? 15) * SOURCE_EM;
+  const mark = longest(items.map((item) => item.package_mark ?? '')) * (typography.footnote.fontSize ?? 13) * MARK_EM;
+  const row = table.width - 2 * layout.marginCompact - 2 * space.md;
+  return Math.min(Math.ceil(Math.max(source, mark) * table.scale) + space.xs, Math.floor(row / 2));
+}
+
+/** One line that shrinks a little rather than wrap (the column is sized to fit it). */
+const ONE_LINE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.75 } as const;
+
 /** The GRN date for display, "—" when the GRN has none (never today). */
 export const grnDateText = (date: string | null): string => (toDate(date) ? formatDate(date, 'short') : '—');
 
@@ -114,9 +137,10 @@ interface ItemRowProps {
   item: DispatchItem;
   onViewGRN?: (grn_id: string) => void;
   table: TableLayout;
+  grnWidth: number;
 }
 
-const ItemRow = React.memo(function ItemRow({ item, onViewGRN, table }: ItemRowProps) {
+const ItemRow = React.memo(function ItemRow({ item, onViewGRN, table, grnWidth }: ItemRowProps) {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const weight = formatWeightEach(item.weight);
@@ -136,8 +160,8 @@ const ItemRow = React.memo(function ItemRow({ item, onViewGRN, table }: ItemRowP
       style={({ pressed }) => [styles.linkTarget, pressed && canOpenGrn && styles.linkPressed]}
       testID={`dispatch-item-grn-${item.id}`}
     >
-      <Text style={canOpenGrn ? styles.link : styles.primary}>{sourceText(item)}</Text>
-      {item.package_mark ? <Text style={styles.secondary}>{item.package_mark}</Text> : null}
+      <Text style={canOpenGrn ? styles.link : styles.primary} {...ONE_LINE}>{sourceText(item)}</Text>
+      {item.package_mark ? <Text style={styles.secondary} {...ONE_LINE}>{item.package_mark}</Text> : null}
     </Pressable>
   );
 
@@ -167,7 +191,7 @@ const ItemRow = React.memo(function ItemRow({ item, onViewGRN, table }: ItemRowP
         {weight !== null ? <Text style={styles.secondary}>{weight}</Text> : null}
         {table.stacked ? <View style={own.stackedGrn}>{grnCell}</View> : null}
       </View>
-      {!table.stacked ? <View style={own.grnColumn}>{grnCell}</View> : null}
+      {!table.stacked ? <View style={[own.grnColumn, { width: grnWidth }]}>{grnCell}</View> : null}
       <Text style={[styles.number, { width: table.numberWidth(BAGS_WIDTH) }]}>{formatNumber(item.dispatch_quantity)}</Text>
     </View>
   );
@@ -185,17 +209,18 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   const totals = useMemo(() => itemTotals(items), [items]);
 
   const bagsWidth = table.numberWidth(BAGS_WIDTH);
+  const lineCount = tr('dispatch.details.table.lineCount', { count: totals.lines });
+  const grnCount = tr('dispatch.details.table.grnCount', { count: totals.grns });
+  const grnWidth = sourceColumnWidth(items, table, [grnCount]);
 
   const header = (
     <View style={styles.headerRow}>
       <HeaderCell style={styles.grow}>{tr('dispatch.details.table.item')}</HeaderCell>
-      {!table.stacked ? <HeaderCell style={own.grnColumn}>{tr('dispatch.details.table.sourceGrnReceived')}</HeaderCell> : null}
+      {!table.stacked ? <HeaderCell style={[own.grnColumn, { width: grnWidth }]}>{tr('dispatch.details.table.sourceGrnReceived')}</HeaderCell> : null}
       <HeaderCell numeric style={{ width: bagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
     </View>
   );
 
-  const lineCount = tr('dispatch.details.table.lineCount', { count: totals.lines });
-  const grnCount = tr('dispatch.details.table.grnCount', { count: totals.grns });
   const footer = (
     <View>
       <View
@@ -209,8 +234,8 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
           <Text style={styles.secondary}>{table.stacked ? `${lineCount} · ${grnCount}` : lineCount}</Text>
         </View>
         {!table.stacked ? (
-          <View style={own.grnColumn}>
-            <Text style={styles.primaryStrong}>{grnCount}</Text>
+          <View style={[own.grnColumn, { width: grnWidth }]}>
+            <Text style={styles.primaryStrong} {...ONE_LINE}>{grnCount}</Text>
           </View>
         ) : null}
         <Text style={[styles.numberStrong, { width: bagsWidth }]}>{formatNumber(totals.bags)}</Text>
@@ -249,7 +274,7 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
       contentContainerStyle={styles.card}
       data={items}
       keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <ItemRow item={item} onViewGRN={onViewGRN} table={table} />}
+      renderItem={({ item }) => <ItemRow item={item} onViewGRN={onViewGRN} table={table} grnWidth={grnWidth} />}
       ListHeaderComponent={header}
       ListFooterComponent={footer}
       showsVerticalScrollIndicator={false}

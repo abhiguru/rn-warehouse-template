@@ -6,7 +6,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
-import { DispatchItemsTab } from '../DispatchItemsTab';
+import { DispatchItemsTab, sourceColumnWidth } from '../DispatchItemsTab';
 import { DispatchGRNsTab } from '../DispatchGRNsTab';
 import { DispatchInvoicesTab } from '../DispatchInvoicesTab';
 import type { DispatchItem, InvoiceTable } from '../dispatchDetailsModel';
@@ -135,6 +135,35 @@ describe('Items table', () => {
     const bagsText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === '12,500')[0];
     expect(StyleSheet.flatten(bagsText.props.style).width).toBe(Math.ceil(76 * 1.3));
     expect(bagsText.props.numberOfLines).toBeUndefined();
+  });
+
+  it('sizes the GRN/Received column to its longest text, so "DV0010/110" stays on one line', () => {
+    mockFontScale = 1.3;
+    const longLot = item({ id: 'l', grn_no: 'DV0010', original_quantity: 110, package_mark: null });
+    render(<DispatchItemsTab items={[rice, longLot]} />);
+
+    const cell = byTestId('dispatch-item-grn-l');
+    const source = cell.findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'DV0010/110')[0];
+    // One line, shrinking a little rather than wrapping.
+    expect(source.props.numberOfLines).toBe(1);
+    expect(source.props.adjustsFontSizeToFit).toBe(true);
+    // The column takes the width "DV0010/110" needs at font scale 1.3: 10 × 15 × 0.62 × 1.3, plus 4.
+    let column = cell.parent!;
+    while (typeof column.type !== 'string') column = column.parent!;
+    expect(StyleSheet.flatten(column.props.style).width).toBe(Math.ceil(10 * 15 * 0.62 * 1.3) + 4);
+    const mark = byTestId('dispatch-item-grn-r').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'PM')[0];
+    expect(mark.props.numberOfLines).toBe(1);
+  });
+
+  it('widens the column for a longer mark or the footer, and never past half the row', () => {
+    const table = { scale: 1, width: 411 };
+    const base = sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table);
+    expect(base).toBe(Math.ceil(7 * 15 * 0.62) + 4);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: 'BL/REPEAT-LOT-0001' }], table))
+      .toBe(Math.ceil(18 * 13 * 0.6) + 4);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table, ['12 GRNs'])).toBe(base);
+    // At a large scale the column stops at half the row (411 − 32 − 24 = 355; half 177).
+    expect(sourceColumnWidth([{ grn_no: 'DV0010', original_quantity: 12500, package_mark: null }], { scale: 3, width: 411 })).toBe(177);
   });
 
   it('keeps the empty and loading states', () => {
