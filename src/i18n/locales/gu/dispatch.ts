@@ -407,7 +407,7 @@ export const dispatch: Translation<typeof source> = {
     table: {
       item: 'આઇટમ',
       sourceGrn: 'આવક પાવતી',
-      sourceGrnReceived: 'આવક પાવતી/આવક નંગ',
+      sourceGrnReceived: 'આવક પાવતી/આવક',
       grnNumbered: 'આવક પાવતી {{number}}',
       bagsDispatched: 'જાવકના નંગ',
       itemLines: 'જથ્થા',

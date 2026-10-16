@@ -404,7 +404,7 @@ export const dispatch = {
     table: {
       item: 'Item',
       sourceGrn: 'Source GRN',
-      sourceGrnReceived: 'Source GRN/Received',
+      sourceGrnReceived: 'GRN/Received',
       grnNumbered: 'GRN {{number}}',
       bagsDispatched: 'Bags dispatched',
       itemLines: 'Item lines',

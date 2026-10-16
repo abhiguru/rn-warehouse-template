@@ -199,8 +199,20 @@ export const RowChevron: React.FC<{ expandable: boolean; expanded: boolean }> = 
   );
 };
 
-/** A muted column heading. */
-export const HeaderCell: React.FC<{ children: string; style?: object; numeric?: boolean }> = ({ children, style, numeric }) => {
+/** One line that shrinks a little rather than wrap, for a cell whose column is sized to fit it. */
+export const ONE_LINE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.75 } as const;
+
+/** A muted column heading; `oneLine` keeps it on one line in a column sized to fit it. */
+export const HeaderCell: React.FC<{ children: string; style?: object; numeric?: boolean; oneLine?: boolean }> = ({
+  children,
+  style,
+  numeric,
+  oneLine,
+}) => {
   const styles = useThemedStyles(makeTableStyles);
-  return <Text style={[styles.headerCell, numeric && styles.headerNumber, style]}>{children}</Text>;
+  return (
+    <Text style={[styles.headerCell, numeric && styles.headerNumber, style]} {...(oneLine ? ONE_LINE : {})}>
+      {children}
+    </Text>
+  );
 };

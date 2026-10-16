@@ -1,9 +1,9 @@
 /**
  * DispatchItemsTab - the dispatch's lines as a table (docs/STYLE_GUIDE.md §13.7)
  *
- * | Item                 | Source GRN/Received | Bags dispatched |
- * | Basmati Rice         | 0161/100            |              25 |
- * |   50 kg each         | PM                  |                 |
+ * | Item                 | GRN/Received | Bags dispatched |
+ * | Basmati Rice         | 0161/100     |              25 |
+ * |   50 kg each         | PM           |                 |
  *
  * - One row per dispatch line: two lots of the same item are two rows.
  * - The weight of one bag sits under the item. The source GRN number and the bags received on
@@ -23,7 +23,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { itemTotals, type DispatchItem } from './dispatchDetailsModel';
-import { HeaderCell, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
+import { HeaderCell, ONE_LINE, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
 
 export type { DispatchItem } from './dispatchDetailsModel';
 
@@ -93,29 +93,27 @@ export function sourceText(item: Pick<DispatchItem, 'grn_no' | 'original_quantit
   return item.original_quantity !== undefined ? `${number}/${formatNumber(item.original_quantity)}` : number;
 }
 
-/** Average glyph widths, in em, of the GRN cell's two lines (semibold subhead, footnote). */
+/** Average glyph widths, in em, of the GRN cell's lines (semibold subhead; footnote, heading). */
 const SOURCE_EM = 0.62;
 const MARK_EM = 0.6;
 
 /**
- * The width of the GRN/Received column: wide enough for its longest "GRN/received" and mark at
- * this text size, so neither wraps (owner, 2026-10-16), and at most half the row; anything
- * longer shrinks to fit on its one line instead of wrapping.
+ * The width of the GRN/Received column: wide enough for its longest "GRN/received", mark,
+ * footer and heading at this text size, so none wraps (owner, 2026-10-16), and at most half the
+ * row; anything longer shrinks to fit on its one line instead of wrapping.
  */
 export function sourceColumnWidth(
   items: readonly Pick<DispatchItem, 'grn_no' | 'original_quantity' | 'package_mark'>[],
   table: Pick<TableLayout, 'scale' | 'width'>,
-  extra: readonly string[] = []
+  extra: readonly string[] = [],
+  heading = ''
 ): number {
   const longest = (texts: string[]) => texts.reduce((max, text) => Math.max(max, text.length), 0);
   const source = longest([...items.map(sourceText), ...extra]) * (typography.subhead.fontSize ?? 15) * SOURCE_EM;
-  const mark = longest(items.map((item) => item.package_mark ?? '')) * (typography.footnote.fontSize ?? 13) * MARK_EM;
+  const mark = longest([...items.map((item) => item.package_mark ?? ''), heading]) * (typography.footnote.fontSize ?? 13) * MARK_EM;
   const row = table.width - 2 * layout.marginCompact - 2 * space.md;
   return Math.min(Math.ceil(Math.max(source, mark) * table.scale) + space.xs, Math.floor(row / 2));
 }
-
-/** One line that shrinks a little rather than wrap (the column is sized to fit it). */
-const ONE_LINE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.75 } as const;
 
 /** The GRN date for display, "—" when the GRN has none (never today). */
 export const grnDateText = (date: string | null): string => (toDate(date) ? formatDate(date, 'short') : '—');
@@ -211,12 +209,13 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   const bagsWidth = table.numberWidth(BAGS_WIDTH);
   const lineCount = tr('dispatch.details.table.lineCount', { count: totals.lines });
   const grnCount = tr('dispatch.details.table.grnCount', { count: totals.grns });
-  const grnWidth = sourceColumnWidth(items, table, [grnCount]);
+  const grnHeading = tr('dispatch.details.table.sourceGrnReceived');
+  const grnWidth = sourceColumnWidth(items, table, [grnCount], grnHeading);
 
   const header = (
     <View style={styles.headerRow}>
       <HeaderCell style={styles.grow}>{tr('dispatch.details.table.item')}</HeaderCell>
-      {!table.stacked ? <HeaderCell style={[own.grnColumn, { width: grnWidth }]}>{tr('dispatch.details.table.sourceGrnReceived')}</HeaderCell> : null}
+      {!table.stacked ? <HeaderCell oneLine style={[own.grnColumn, { width: grnWidth }]}>{grnHeading}</HeaderCell> : null}
       <HeaderCell numeric style={{ width: bagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
     </View>
   );

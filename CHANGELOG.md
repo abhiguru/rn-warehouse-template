@@ -6,7 +6,9 @@ App only. On the Dispatch page's Items table the source GRN cell reads "GRN/rece
 "Z0004/100": the GRN number and the bags received on that lot), with the lot's package mark under
 it instead of the GRN date (the GRNs tab keeps the date). The item cell keeps the weight of one bag.
 The received quantity no longer needs a row that opens, so the rows do not open. The column heading
-is "Source GRN/Received".
+is "GRN/Received". The column is as wide as its longest text (GRN/received, mark, footer, heading)
+at the current font scale, at most half the row, and each of those stays on one line (shrinking a
+little rather than wrapping when it is longer).
 
 ## Unreleased — Dispatch, GRN and invoice pages: their lists as tables (2026-10-16)
 

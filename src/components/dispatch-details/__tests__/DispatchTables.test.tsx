@@ -72,9 +72,11 @@ describe('Items table', () => {
     expect(textOf(byTestId('dispatch-items-table'))).not.toMatch(/15 Oct/);
   });
 
-  it('heads the columns Item, Source GRN/Received, Bags dispatched', () => {
+  it('heads the columns Item, GRN/Received, Bags dispatched, the middle heading on one line', () => {
     render(<DispatchItemsTab items={[rice]} />);
-    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Source GRN\/Received\|Bags dispatched\|/);
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|GRN\/Received\|Bags dispatched\|/);
+    const heading = tree.root.findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'GRN/Received')[0];
+    expect(heading.props.numberOfLines).toBe(1);
   });
 
   it('totals the bags, item lines and distinct source GRNs in the footer', () => {
@@ -147,10 +149,11 @@ describe('Items table', () => {
     // One line, shrinking a little rather than wrapping.
     expect(source.props.numberOfLines).toBe(1);
     expect(source.props.adjustsFontSizeToFit).toBe(true);
-    // The column takes the width "DV0010/110" needs at font scale 1.3: 10 × 15 × 0.62 × 1.3, plus 4.
+    // The column takes the width its longest text needs at font scale 1.3: the larger of "DV0010/110"
+    // (10 × 15 × 0.62) and the heading "GRN/Received" (12 × 13 × 0.6), × 1.3, plus 4.
     let column = cell.parent!;
     while (typeof column.type !== 'string') column = column.parent!;
-    expect(StyleSheet.flatten(column.props.style).width).toBe(Math.ceil(10 * 15 * 0.62 * 1.3) + 4);
+    expect(StyleSheet.flatten(column.props.style).width).toBe(Math.ceil(Math.max(10 * 15 * 0.62, 12 * 13 * 0.6) * 1.3) + 4);
     const mark = byTestId('dispatch-item-grn-r').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'PM')[0];
     expect(mark.props.numberOfLines).toBe(1);
   });
@@ -162,6 +165,9 @@ describe('Items table', () => {
     expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: 'BL/REPEAT-LOT-0001' }], table))
       .toBe(Math.ceil(18 * 13 * 0.6) + 4);
     expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table, ['12 GRNs'])).toBe(base);
+    // The heading counts too: "GRN/Received" is wider than "Z0004/1".
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table, [], 'GRN/Received'))
+      .toBe(Math.ceil(12 * 13 * 0.6) + 4);
     // At a large scale the column stops at half the row (411 − 32 − 24 = 355; half 177).
     expect(sourceColumnWidth([{ grn_no: 'DV0010', original_quantity: 12500, package_mark: null }], { scale: 3, width: 411 })).toBe(177);
   });
