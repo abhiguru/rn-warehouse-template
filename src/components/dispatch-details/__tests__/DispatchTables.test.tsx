@@ -147,8 +147,10 @@ describe('Items table', () => {
 });
 
 describe('GRNs table', () => {
-  it('summarises each source GRN, newest first, collapsed when there are several', () => {
-    render(<DispatchGRNsTab items={[older, rice, wheat]} />);
+  it('summarises each source GRN in the order its lines came, collapsed when there are several', () => {
+    render(<DispatchGRNsTab items={[rice, older, wheat]} />);
+    const rows = tree.root.findAll((n) => typeof n.props.testID === 'string' && n.props.testID.startsWith('dispatch-grn-row-') && typeof n.type !== 'string');
+    expect([...new Set(rows.map((n) => n.props.testID))]).toEqual(['dispatch-grn-row-grn-161', 'dispatch-grn-row-grn-159']);
 
     expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15 Oct|2|65');
     expect(textOf(byTestId('dispatch-grn-row-grn-159'))).toBe('0159|14 Oct|1|50');

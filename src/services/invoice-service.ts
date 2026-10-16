@@ -411,6 +411,45 @@ export const getAssignedCustomerInvoices = async (
   }
 };
 
+/** How many invoices of one GRN are read for its Invoices tab; more than any GRN has. */
+const GRN_INVOICE_LIMIT = 200;
+
+export interface GrnInvoiceRowsRequest {
+  grnId: string;
+  grnNo: string;
+  /** The GRN's customer: narrows the list, and a customer account must be assigned to it. */
+  customerId?: string | null;
+  /** admin, supervisor or staff read the staff list; a customer account its own invoices. */
+  warehouseRole: boolean;
+  assignedCustomerIds?: string[];
+}
+
+/**
+ * The invoices of one GRN, for its Invoices tab, from the invoice list the account may read:
+ * get_invoices_list for warehouse roles, get_customer_invoice_summary for a customer account
+ * (getAssignedCustomerInvoices). Both search by GRN number, which also matches longer numbers,
+ * so the rows are kept only when their GRN id is this GRN's. The server decides who sees what.
+ */
+export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise<{ success: boolean; invoices: Invoice[] }> => {
+  const params = {
+    p_limit: GRN_INVOICE_LIMIT,
+    p_offset: 0,
+    p_customer_id: request.customerId || undefined,
+    p_search_grn_no: request.grnNo,
+    p_sort_field: 'inv_date',
+    p_sort_direction: 'asc' as const,
+  };
+  try {
+    const result = request.warehouseRole
+      ? await getInvoicesList(params)
+      : await getAssignedCustomerInvoices(request.assignedCustomerIds ?? [], params);
+    if (!result.success || !result.data) return { success: false, invoices: [] };
+    return { success: true, invoices: result.data.invoices.filter(invoice => invoice.grn?.id === request.grnId) };
+  } catch {
+    return { success: false, invoices: [] };
+  }
+};
+
 // Invoice Details - Updated to match actual backend response
 export interface InvoiceDetail {
   invoice_id: string;

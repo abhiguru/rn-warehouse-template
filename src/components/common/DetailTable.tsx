@@ -1,7 +1,7 @@
 /**
- * Shared look of the dispatch page's Items, GRNs and Invoices tables, after the GRN page's
- * dispatch table (grn-details/GRNItemDispatchTable.tsx, docs/STYLE_GUIDE.md §13.7):
- * a card, a header row of muted headings on background.base, thin dividers, right-aligned
+ * Shared look of the object-page tables (docs/STYLE_GUIDE.md §13.7): the Dispatch page's
+ * Items, GRNs and Invoices tabs and the GRN page's Items, Dispatches and Invoices tabs.
+ * A card, a header row of muted headings on background.base, thin dividers, right-aligned
  * tabular numbers, and a totals row in weight 600 under a 1 px separator.
  *
  * Number columns widen with the text size so a quantity is never cut; from font scale

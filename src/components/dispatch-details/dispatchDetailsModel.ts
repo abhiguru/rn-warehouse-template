@@ -14,6 +14,7 @@ import type {
   RpcDispatchInvoicesSummary,
   RpcDispatchItemDetails,
 } from '@/types/rpc-canonical.types';
+import { invoiceTableFrom, type InvoiceTable } from '@/components/common/invoiceTable';
 
 export interface DispatchItem {
   /** The dispatch line's id: stable, and unique within the dispatch. */
@@ -43,24 +44,7 @@ export interface GrnGroup {
   bags: number;
 }
 
-export interface InvoiceRow {
-  key: string;
-  /** Null in the fallback: the row then cannot be opened. */
-  invoice_id: string | null;
-  invoice_no: number;
-  invoice_date: string | null;
-  /** The whole invoice's total; null in the fallback. */
-  total: number | null;
-}
-
-export interface InvoiceTable {
-  rows: InvoiceRow[];
-  /** Each linked invoice's whole total added once (invoices_summary.total_amount). */
-  total: number;
-  count: number;
-  /** False when the rows are the summary's invoice numbers only. */
-  detailed: boolean;
-}
+export type { InvoiceRow, InvoiceTable } from '@/components/common/invoiceTable';
 
 const text = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -79,7 +63,7 @@ const optionalNumber = (value: unknown): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-/** The table rows of a dispatch's lines, in the order the server sent them. */
+/** The table rows of a dispatch's lines, in the order the server sent them (about the order of entry). */
 export function mapDispatchItems(lines: readonly RpcDispatchItemDetails[] | null | undefined, unknownItem: string): DispatchItem[] {
   return (lines ?? []).map((line, index) => ({
     id: text(line.id) ?? `line-${index}`,
@@ -94,34 +78,13 @@ export function mapDispatchItems(lines: readonly RpcDispatchItemDetails[] | null
   }));
 }
 
-const time = (date: string | null): number => {
-  if (!date) return Number.NEGATIVE_INFINITY;
-  const t = new Date(date).getTime();
-  return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
-};
-
-const compareText = (a: string | null, b: string | null) =>
-  (a ?? '').localeCompare(b ?? '', 'en', { numeric: true, sensitivity: 'base' });
-
 /**
- * Newest GRN first (a GRN without a date last), then GRN number, then item name, then the
- * line id. The server sends lines in line-id order, which is no order a person can follow.
+ * The source GRNs of a dispatch, each with its lines, in the order the lines came. The server
+ * sends lines by id, and line ids are time-based (uuid v1), so that is about the order of entry.
  */
-function compareLines(a: DispatchItem, b: DispatchItem): number {
-  return (
-    time(b.grn_date) - time(a.grn_date) ||
-    compareText(b.grn_no, a.grn_no) ||
-    compareText(a.item_name, b.item_name) ||
-    a.id.localeCompare(b.id)
-  );
-}
-
-export const sortDispatchItems = (items: readonly DispatchItem[]): DispatchItem[] => [...items].sort(compareLines);
-
-/** The source GRNs of a dispatch, newest first, each with its lines. */
 export function groupBySourceGrn(items: readonly DispatchItem[]): GrnGroup[] {
   const groups = new Map<string, GrnGroup>();
-  for (const item of sortDispatchItems(items)) {
+  for (const item of items) {
     const key = item.grn_id ?? `line:${item.id}`;
     let group = groups.get(key);
     if (!group) {
@@ -149,37 +112,18 @@ export function itemTotals(items: readonly DispatchItem[]): ItemTotals {
   };
 }
 
-/** The invoice rows of the Invoices tab; see the file header for the fallback. */
+/** The invoice rows of the Invoices tab, from the invoice each line carries (common/invoiceTable). */
 export function buildInvoiceTable(
   lines: readonly RpcDispatchItemDetails[] | null | undefined,
   summary: RpcDispatchInvoicesSummary | null | undefined
 ): InvoiceTable {
-  const total = count(summary?.total_amount);
-  const invoiceCount = count(summary?.total_invoices);
-  const byId = new Map<string, InvoiceRow>();
-  for (const line of lines ?? []) {
-    const invoice = line.invoice_details;
-    const id = text(invoice?.invoice_id);
-    const number = optionalNumber(invoice?.invoice_no);
-    if (!invoice || !id || number === undefined || byId.has(id)) continue;
-    byId.set(id, {
-      key: id,
-      invoice_id: id,
-      invoice_no: number,
-      invoice_date: text(invoice.invoice_date),
-      total: optionalNumber(invoice.total) ?? null,
-    });
-  }
-  const detailed = Array.from(byId.values());
-  if (invoiceCount > 0 && detailed.length === invoiceCount && detailed.every((row) => row.total !== null)) {
-    detailed.sort((a, b) => time(a.invoice_date) - time(b.invoice_date) || a.invoice_no - b.invoice_no);
-    return { rows: detailed, total, count: invoiceCount, detailed: true };
-  }
-  const numbers = (summary?.invoice_numbers ?? []).filter((n): n is number => Number.isFinite(Number(n)));
-  return {
-    rows: numbers.map((n, index) => ({ key: `number:${n}:${index}`, invoice_id: null, invoice_no: Number(n), invoice_date: null, total: null })),
-    total,
-    count: invoiceCount,
-    detailed: false,
-  };
+  return invoiceTableFrom(
+    (lines ?? []).map((line) => ({
+      invoice_id: line.invoice_details?.invoice_id,
+      invoice_no: line.invoice_details?.invoice_no,
+      invoice_date: line.invoice_details?.invoice_date,
+      total: line.invoice_details?.total,
+    })),
+    summary
+  );
 }

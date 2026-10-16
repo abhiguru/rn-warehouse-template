@@ -4,13 +4,13 @@
  *
  * A weight that is there is the weight of one package and says so: "50 kg
  * each" (owner's decision of 2026-10-14). A line without one shows no weight.
+ * Both GRN tables write it under the item, after the mark: "M1 · 50 kg each".
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import GRNItemDispatchTable from '@/components/grn-details/GRNItemDispatchTable';
-import { GRNItemCard } from '@/components/grn-details/GRNItemCard';
-import type { GRNItem } from '@/components/grn-details/GRNItemsTab';
+import { GRNDispatchesTab } from '@/components/grn-details/GRNDispatchesTab';
+import { GRNItemsTab, type GRNItem } from '@/components/grn-details/GRNItemsTab';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -18,6 +18,11 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+let mockFontScale = 2;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 360, height: 780, scale: 3, fontScale: mockFontScale }),
+}));
 
 const item = (weight: number | null | undefined) =>
   ({ id: 'line-1', item_name: 'Example Potatoes', qty: 10, stock: 10, weight, package_mark: 'M1', rack: '', packaging: 'Bag' }) as unknown as GRNItem;
@@ -48,24 +53,26 @@ const spoken = (tree: ReactTestRenderer) =>
 const mounted: ReactTestRenderer[] = [];
 afterEach(() => act(() => mounted.splice(0).forEach(tree => tree.unmount())));
 
-describe('GRN Dispatches tab, item header', () => {
-  // Review 2026-10-14, finding 7. At font scale 2.0 on a 360 dp phone the mark and
-  // "1,250 kg each" do not fit side by side; the row must wrap, not clip the weight.
-  it('the mark and the weight wrap onto a second line instead of being cut', () => {
-    const tree = render(<GRNItemDispatchTable item={item(1250)} dispatches={[]} />);
-    const mark = tree.root.find(node => (node.type as unknown) === 'Text' && node.props.children === 'M1');
-    let row = mark.parent!;
-    while (typeof row.type !== 'string') row = row.parent!;
-    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
-    // Neither text is cut: no line limit, and each may shrink to the row's width.
-    for (const text of [mark, tree.root.find(node => (node.type as unknown) === 'Text' && /1,250 kg each/.test([].concat(node.props.children).join('')))]) {
-      expect(text.props.numberOfLines).toBeUndefined();
-      expect(StyleSheet.flatten(text.props.style).flexShrink).toBe(1);
-    }
+const dispatch = { id: 'r1', dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', disp_quantity: 3, customer_name: '', registration: '', supervisor_name: '' };
+
+describe.each([
+  ['Items table', (weight: number | null | undefined) => render(<GRNItemsTab items={[item(weight)]} />)],
+  ['Dispatches table', (weight: number | null | undefined) => render(<GRNDispatchesTab items={[item(weight)]} dispatchesByItem={{ 'line-1': [dispatch] }} />)],
+])('GRN %s, the line under the item', (_name, show) => {
+  // Review 2026-10-14, finding 7: at font scale 2.0 on a 360 dp phone a long mark and
+  // "1,250 kg each" must wrap, never be cut.
+  it('writes the mark and the weight in full, with no line limit, at font scale 2', () => {
+    mockFontScale = 2;
+    const tree = show(1250);
+    const line = tree.root.find(node => (node.type as unknown) === 'Text' && node.props.children === 'M1 · 1,250 kg each');
+    expect(line.props.numberOfLines).toBeUndefined();
+    let column = line.parent!;
+    while (typeof column.type !== 'string') column = column.parent!;
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ flex: 1, minWidth: 0 });
   });
 
   it.each([[0], [null], [undefined]])('renders nothing for a weight of %p, not a bare 0', (weight) => {
-    const tree = render(<GRNItemDispatchTable item={item(weight)} dispatches={[]} />);
+    const tree = show(weight);
     expect(looseText(tree)).toEqual([]);
     expect(texts(tree).some(text => /kg/.test(text))).toBe(false);
     // The mark is still there: only the weight is left out.
@@ -73,26 +80,21 @@ describe('GRN Dispatches tab, item header', () => {
   });
 
   it('shows a weight that is there as the weight of one package', () => {
-    const tree = render(<GRNItemDispatchTable item={item(50)} dispatches={[]} />);
+    const tree = show(50);
     expect(looseText(tree)).toEqual([]);
-    expect(texts(tree)).toContain('50 kg each');
-    expect(texts(tree)).not.toContain('50 kg');
+    expect(texts(tree)).toContain('M1 · 50 kg each');
+    expect(texts(tree).some(text => /\b50 kg$/.test(text))).toBe(false);
   });
 });
 
-describe('GRN Items tab, item card', () => {
-  it.each([[0], [null], [undefined]])('shows no weight, and no "Weight" label, for a line with weight %p', (weight) => {
-    const tree = render(<GRNItemCard item_name="Example Potatoes" qty={10} stock={10} total_dispatched={0} weight={weight} />);
-    expect(texts(tree).some(text => /kg/.test(text))).toBe(false);
-    expect(texts(tree)).not.toContain('Weight');
-    expect(spoken(tree)).toBe('Example Potatoes, 10 received, In stock, 10 in stock, 0 dispatched');
+describe('GRN Items table, what a screen reader says', () => {
+  it.each([[0], [null], [undefined]])('says no weight for a line with weight %p', (weight) => {
+    const tree = render(<GRNItemsTab items={[item(weight)]} />);
+    expect(spoken(tree)).toBe('Example Potatoes, M1, 10 received, 10 in stock');
   });
 
-  it('shows "50 kg each" under the label "Weight", and says it', () => {
-    const tree = render(<GRNItemCard item_name="Example Potatoes" qty={10} stock={10} total_dispatched={0} weight={50} />);
-    const all = texts(tree);
-    expect(all.slice(all.indexOf('Weight'), all.indexOf('Weight') + 2)).toEqual(['Weight', '50 kg each']);
-    expect(all).not.toContain('Weight each');
-    expect(spoken(tree)).toBe('Example Potatoes, 10 received, In stock, 10 in stock, 0 dispatched, 50 kg each');
+  it('says the weight of one package', () => {
+    const tree = render(<GRNItemsTab items={[item(50)]} />);
+    expect(spoken(tree)).toBe('Example Potatoes, M1 · 50 kg each, 10 received, 10 in stock');
   });
 });

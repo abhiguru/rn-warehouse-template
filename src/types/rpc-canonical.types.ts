@@ -273,10 +273,15 @@ export interface RpcGrnStatistics {
 /**
  * GRN invoices summary object
  */
+/**
+ * GRN invoices summary: the GRN's invoices, each once. `total_amount` adds their stored totals
+ * (with tax, less discount); there is no separate figure before or with tax.
+ */
 export interface RpcGrnInvoicesSummary {
   total_invoices: number;
   total_amount: number;
-  invoice_numbers: string[];
+  /** invoice.inv_no, as numbers. */
+  invoice_numbers: number[];
 }
 
 /**

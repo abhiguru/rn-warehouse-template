@@ -478,4 +478,18 @@ export const components = {
   tabBar: {
     tabWithBadge: '{{label}}, {{count}} need action',
   },
+  // The Invoices table of an object page (Dispatch and GRN pages)
+  invoiceTable: {
+    numbered: 'Invoice {{number}}',
+    invoice: 'Invoice',
+    date: 'Date',
+    invoiceTotal: 'Invoice total',
+    total: 'Total',
+    invoiceCount: { one: '{{count}} invoice', other: '{{count}} invoices' },
+    dateUnavailable: 'date not available',
+    rowLabel: 'Invoice {{number}}, {{date}}, invoice total {{amount}}',
+    totalLabel: 'Total of {{invoices}}: {{amount}}',
+    opensInvoice: 'Opens the invoice',
+    fallbackNote: 'Dates and amounts of each invoice are not available here. The total adds the whole linked invoices.',
+  },
 };

@@ -21,8 +21,8 @@ import { iconSize, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { itemTotals, sortDispatchItems, type DispatchItem } from './dispatchDetailsModel';
-import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from './DispatchTable';
+import { itemTotals, type DispatchItem } from './dispatchDetailsModel';
+import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
 
 export type { DispatchItem } from './dispatchDetailsModel';
 
@@ -199,7 +199,6 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
   const table = useTableLayout();
-  const rows = useMemo(() => sortDispatchItems(items), [items]);
   const totals = useMemo(() => itemTotals(items), [items]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -278,7 +277,7 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
     <FlatList
       style={styles.list}
       contentContainerStyle={styles.card}
-      data={rows}
+      data={items}
       keyExtractor={(item) => item.id}
       extraData={expanded}
       renderItem={({ item }) => (

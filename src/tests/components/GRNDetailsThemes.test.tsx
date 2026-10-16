@@ -3,7 +3,6 @@ import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { GRNHeroHeader } from '@/components/grn-details/GRNHeroHeader';
-import { GRNItemCard } from '@/components/grn-details/GRNItemCard';
 import { GRNItemsTab } from '@/components/grn-details/GRNItemsTab';
 import { GRNImagesTab } from '@/components/grn-details/GRNImagesTab';
 
@@ -53,23 +52,28 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
-  it('renders an item card with tokens and a status word', () => {
+  it('renders an item row with tokens and a status word', () => {
     const tree = render(
-      <GRNItemCard item_name="Potato" qty={120} stock={0} total_dispatched={120} weight={1250.5} rack="B-14" package_mark="PT" />,
+      <GRNItemsTab items={[{ id: 'l1', item_name: 'Potato', qty: 120, stock: 0, weight: 1250.5, rack: 'B-14', package_mark: 'PT' }]} />,
       brand,
       mode
     );
-    const all = texts(tree);
+    let all = texts(tree);
     // Everything dispatched is the normal end of a GRN: neutral, not an error
     expect(all).toContain('Fully dispatched');
     expect(all).not.toContain('Out of stock');
-    // The weight of one package, under the plain label.
-    expect(all).toContain('Weight');
-    expect(all).toContain('1,250.5 kg each');
-    expect(all).not.toContain('1,250.5 kg');
+    // The weight of one package, after the mark.
+    expect(all).toContain('PT · 1,250.5 kg each');
+    expect(all.some(text => /1,250\.5 kg$/.test(text))).toBe(false);
+    act(() => tree.root.findAll(n => n.props.testID === 'grn-item-row-l1' && typeof n.props.onPress === 'function')[0].props.onPress());
+    all = texts(tree);
     expect(all).toContain('Rack B-14');
-    const card = tree.root.findAll(n => (n.type as unknown) === 'View')[0];
-    expect(StyleSheet.flatten(card.props.style).backgroundColor).toBe(t.surface.card);
+    const backgrounds = tree.root
+      .findAll(n => typeof n.type === 'string')
+      .map(n => StyleSheet.flatten(n.props.style)?.backgroundColor)
+      .filter(Boolean);
+    expect(backgrounds).toEqual(expect.arrayContaining([t.surface.card, t.background.base]));
+    expect(backgrounds).not.toContain(t.brand.fill);
     act(() => tree.unmount());
   });
 

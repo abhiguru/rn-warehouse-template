@@ -521,8 +521,6 @@ export const grn = {
     dispatched: 'Dispatched',
     splitLabel: '{{stock}}% in stock, {{dispatched}}% dispatched',
     receivedCount: '{{quantity}} received',
-    inStockCount: '{{quantity}} in stock',
-    dispatchedCount: '{{quantity}} dispatched',
   },
 
   status: {
@@ -556,9 +554,7 @@ export const grn = {
     emptyMessage: 'Dispatches of items from this GRN appear here.',
     emptyForItem: 'Dispatches of {{item}} appear here.',
     emptyForGrn: 'Dispatches from this GRN appear here.',
-    itemSummaryLabel: '{{item}}, {{dispatched}} of {{total}} bags dispatched, {{dispatches}}',
     dispatchedOfTotal: '{{dispatched}} of {{total}}',
-    itemNotDispatched: 'This item has not been dispatched yet.',
     rowLabel: 'Dispatch {{number}}, {{bags}}, {{date}}',
     rowLabelDateFirst: 'Dispatch {{number}}, {{date}}, {{bags}}',
     openHint: 'Opens the dispatch',
@@ -584,17 +580,30 @@ export const grn = {
     filterHeader: 'Header',
   },
 
-  // Invoices tab
-  invoices: {
-    emptyTitle: 'No invoices yet',
-    emptySubtitle: 'Invoices created for this GRN appear here.',
-    summaryTitle: 'Financial summary',
-    invoiceUnit: { one: 'Invoice', other: 'Invoices' },
-    amountBeforeTax: 'Amount before tax',
-    amountBeforeTaxLabel: 'Amount before tax {{amount}}',
-    totalWithTax: 'Total with tax',
-    totalWithTaxLabel: 'Total with tax {{amount}}',
-    invoiceWithNumber: 'Invoice {{number}}',
+  // The Items, Dispatches and Invoices tables of the GRN page
+  detailsTable: {
+    item: 'Item',
+    dispatches: 'Dispatches',
+    bagsDispatched: 'Bags dispatched',
+    dispatch: 'Dispatch',
+    date: 'Date',
+    bags: 'Bags',
+    total: 'Total',
+    lineCount: { one: '{{count}} item line', other: '{{count}} item lines' },
+    dispatchCount: { one: '{{count}} dispatch', other: '{{count}} dispatches' },
+    dispatchedBags: 'Dispatched {{bags}}',
+    packaging: 'Packaging {{packaging}}',
+    itemRowLabel: '{{item}}{{details}}, {{received}} received, {{stock}} in stock',
+    showItemDetails: 'Shows the bags dispatched, rack and packaging',
+    viewDispatches: 'View dispatches',
+    viewDispatchesHint: 'Shows the dispatches of this GRN',
+    itemsTotalLabel: 'Total: {{lines}}, {{received}} received, {{stock}} in stock',
+    dispatchItemRowLabel: '{{item}}{{details}}, {{dispatches}}, {{dispatched}} of {{received}} bags dispatched',
+    showDispatches: 'Shows the dispatches of this item',
+    dispatchesTotalLabel: 'Total: {{dispatches}}, {{bags}} dispatched',
+    invoicesNote: 'Each amount is the invoice total, with tax and less any discount.',
+    invoicesEmpty: 'No invoices for this GRN.',
+    loadingInvoices: 'Loading invoices…',
   },
 
   // GRNs of a dispatch (dispatch details)

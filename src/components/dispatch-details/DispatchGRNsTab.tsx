@@ -23,7 +23,7 @@ import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from 
 import { t as tr, formatIdentifier } from '@/i18n';
 import { groupBySourceGrn, itemTotals, type DispatchItem, type GrnGroup } from './dispatchDetailsModel';
 import { grnDateText } from './DispatchItemsTab';
-import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from './DispatchTable';
+import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
 
 export type { GrnGroup } from './dispatchDetailsModel';
 

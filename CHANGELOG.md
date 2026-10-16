@@ -1,10 +1,15 @@
 # Changelog
 
-## Unreleased — Dispatch page: Items, GRNs and Invoices as tables (2026-10-16)
+## Unreleased — Dispatch and GRN pages: their lists as tables (2026-10-16)
 
-App only; no backend migration. Every figure comes from the `get_dispatch_details` answer the
-app already reads (its fields were checked against the live function, and
-`RpcDispatchItemDetails` now lists them).
+App only; no backend migration. The Dispatch page reads only the `get_dispatch_details` answer
+it already used (its fields were checked against the live function, and
+`RpcDispatchItemDetails` now lists them). The GRN page's Invoices tab also reads the invoice
+list the account may already read (`get_invoices_list` for staff, `get_customer_invoice_summary`
+for a customer account), matched to the GRN by id. Both pages share `common/DetailTable.tsx`
+and `common/InvoicesTable.tsx` (style guide §13.7).
+
+### Dispatch page
 
 - **Items**: a table (Item | Source GRN | Bags dispatched) in place of one card per line, one row
   per dispatch line, so two lots of one item stay two rows. The mark and the weight of one bag
@@ -23,10 +28,29 @@ app already reads (its fields were checked against the live function, and
   the column is "Invoice total" and a note says so. If the lines do not name every invoice, the
   table falls back to the invoice numbers with no date, amount or link, and the summary total.
   Empty: "No invoices linked to this dispatch."
-- Rows are sorted newest GRN first, then GRN number and item name (the server sends them in
-  line-id order). At font scale 1.5 and above the middle columns move under the first, and number
-  columns widen with the text, so no quantity is cut. Light and dark themes use tokens only.
-- Gujarati text for the new keys was drafted by Claude and waits for the owner's reading.
+- Rows keep the server's order, which is the order of entry (line ids are time-based); GRN groups
+  follow their first line. At font scale 1.5 and above the middle columns move under the first,
+  and number columns widen with the text, so no quantity is cut. Light and dark themes use tokens
+  only.
+
+### GRN page
+- **Items**: a table (Item | Received | In stock) in place of one card per lot. The mark and the
+  weight of one bag sit under the item, with a Low stock or Fully dispatched tag (the In stock
+  column says the rest). A row opens to the bags dispatched, rack and packaging, and "View
+  dispatches". Footer: item lines and both totals. At large text Received moves under the item.
+- **Dispatches**: one table (Item | Dispatches | Bags dispatched) in place of one card per lot. A
+  row opens to its dispatches (Dispatch | Date | Bags), each opening the dispatch; the first lot
+  with dispatches starts open, as before. The footer counts each dispatch once even when it took
+  several lots.
+- **Invoices**: the count and table of the Dispatch page in place of three tiles. The tiles were
+  wrong: "Total with tax" read a field the server never sends (always ₹0), and "Amount before
+  tax" showed the stored invoice totals, which include tax. Each amount is now labelled "Invoice
+  total" (with tax, less any discount). A spinner shows while the rows are read; if they cannot
+  be read or do not match every invoice of the GRN, the table falls back to the invoice numbers
+  and the summary total.
+- `GRNItemCard` and `GRNItemDispatchTable` are removed, with the text keys only they used.
+
+Gujarati text for the new keys was drafted by Claude and waits for the owner's reading.
 
 ## Unreleased — fixes from the outside backend review (2026-10-15)
 

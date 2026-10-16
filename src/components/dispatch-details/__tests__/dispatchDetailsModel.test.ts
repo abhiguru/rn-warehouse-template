@@ -7,7 +7,6 @@ import {
   groupBySourceGrn,
   itemTotals,
   mapDispatchItems,
-  sortDispatchItems,
 } from '../dispatchDetailsModel';
 import type { RpcDispatchItemDetails } from '@/types/rpc-canonical.types';
 
@@ -106,15 +105,15 @@ describe('groupBySourceGrn', () => {
     'Unknown Item'
   );
 
-  it('groups by GRN id, newest GRN first, with item lines and bags of this dispatch', () => {
+  it('groups by GRN id in the order the lines came, with item lines and bags of this dispatch', () => {
     const groups = groupBySourceGrn(items);
 
     expect(groups.map((g) => [g.key, g.grn_no, g.lines.length, g.bags])).toEqual([
       ['grn-161', '0161', 2, 65],
       ['grn-159', '0159', 1, 50],
     ]);
-    // Lines keep their ids (the rendering keys), in item-name order within a GRN.
-    expect(groups[0].lines.map((l) => l.id)).toEqual(['r', 'w']);
+    // Lines keep their ids (the rendering keys) and their order within a GRN.
+    expect(groups[0].lines.map((l) => l.id)).toEqual(['w', 'r']);
   });
 
   it('never merges two GRNs that share a number but not an id', () => {
@@ -138,13 +137,6 @@ describe('groupBySourceGrn', () => {
       ['line:a', null, 1],
       ['line:b', null, 1],
     ]);
-  });
-
-  it('puts a GRN without a date after the dated ones', () => {
-    const sorted = sortDispatchItems(
-      mapDispatchItems([line({ id: 'n', grn: { id: 'g-n', gr_no: '0001', date: null } }), line({ id: 'd', grn: { id: 'g-d', gr_no: '0002', date: '2026-01-01' } })], 'Unknown Item')
-    );
-    expect(sorted.map((s) => s.id)).toEqual(['d', 'n']);
   });
 });
 

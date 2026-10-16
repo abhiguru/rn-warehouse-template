@@ -1,0 +1,186 @@
+/**
+ * The GRN page's Items and Dispatches tables: rows, tags, expansion, links, totals,
+ * large text and the old loading, failure and empty states.
+ */
+import React from 'react';
+import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { GRNItemsTab, type GRNItem } from '../GRNItemsTab';
+import { GRNDispatchesTab } from '../GRNDispatchesTab';
+import type { DispatchRecord } from '@/services/grn-detail-service';
+
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+}));
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+let mockFontScale = 1;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 360, height: 780, scale: 3, fontScale: mockFontScale }),
+}));
+
+const lot = (over: Partial<GRNItem> & { id: string }): GRNItem => ({
+  item_name: 'Potatoes',
+  qty: 100,
+  stock: 80,
+  weight: 50,
+  package_mark: 'PM',
+  rack: 'B-14',
+  packaging: 'Jute bag',
+  ...over,
+});
+const potatoes = lot({ id: 'p' });
+const onions = lot({ id: 'o', item_name: 'Onions', qty: 60, stock: 5, weight: 0, package_mark: null, rack: null, packaging: null });
+const garlic = lot({ id: 'g', item_name: 'Garlic', qty: 10, stock: 0, package_mark: 'G1', weight: null });
+const potatoesLot2 = lot({ id: 'p2', package_mark: 'PM2', qty: 40, stock: 40 });
+
+const record = (id: string, dispatchId: string, no: string, date: string, qty: number): DispatchRecord => ({
+  id, dispatch_id: dispatchId, disp_no: no, disp_date: date, disp_quantity: qty, customer_name: '', registration: '', supervisor_name: '',
+});
+
+let tree: ReactTestRenderer;
+const render = (element: React.ReactElement) => {
+  act(() => {
+    tree = create(element);
+  });
+  return tree;
+};
+afterEach(() => {
+  act(() => tree?.unmount());
+  mockFontScale = 1;
+});
+
+const textOf = (node: ReactTestInstance): string =>
+  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('')).join('|');
+const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type !== 'string')[0];
+const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).length > 0;
+const press = (id: string) => act(() => byTestId(id).props.onPress());
+
+describe('GRN Items table', () => {
+  it('heads Item, Received, In stock and shows one row per lot, two lots of one item apart', () => {
+    render(<GRNItemsTab items={[potatoes, potatoesLot2, onions, garlic]} />);
+
+    expect(textOf(byTestId('grn-items-table'))).toMatch(/^Item\|Received\|In stock\|/);
+    expect(textOf(byTestId('grn-item-row-p'))).toBe('Potatoes|PM · 50 kg each|100|80');
+    expect(textOf(byTestId('grn-item-row-p2'))).toBe('Potatoes|PM2 · 50 kg each|40|40');
+  });
+
+  it('tags only Low stock and Fully dispatched, and shows no weight line for a lot without mark or weight', () => {
+    render(<GRNItemsTab items={[potatoes, onions, garlic]} />);
+
+    expect(textOf(byTestId('grn-item-row-o'))).toBe('Onions|Low stock|60|5');
+    expect(textOf(byTestId('grn-item-row-g'))).toBe('Garlic|G1|Fully dispatched|10|0');
+    expect(textOf(byTestId('grn-item-row-p'))).not.toMatch(/In stock/);
+    expect(byTestId('grn-item-row-o').props.accessibilityLabel).toBe('Onions, 60 received, 5 in stock, Low stock');
+  });
+
+  it('opens a row to the bags dispatched, rack and packaging, and View dispatches', () => {
+    const onViewItemDispatches = jest.fn();
+    render(<GRNItemsTab items={[potatoes]} onViewItemDispatches={onViewItemDispatches} />);
+
+    expect(has('grn-item-details-p')).toBe(false);
+    press('grn-item-row-p');
+    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 bags|Rack B-14|Packaging Jute bag|View dispatches');
+    expect(byTestId('grn-item-row-p').props.accessibilityState).toEqual({ expanded: true });
+    press('grn-item-dispatches-p');
+    expect(onViewItemDispatches).toHaveBeenCalledWith(potatoes);
+  });
+
+  it('uses the dispatch summary when it is there, and offers no View dispatches for a lot not dispatched', () => {
+    render(<GRNItemsTab items={[lot({ id: 'x', stock: 100, dispatch_summary: { total_dispatched: 0 } }), lot({ id: 'y', stock: 70, dispatch_summary: { total_dispatched: 25 } })]} onViewItemDispatches={jest.fn()} />);
+
+    press('grn-item-row-x');
+    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 bags|Rack B-14|Packaging Jute bag');
+    press('grn-item-row-y');
+    expect(textOf(byTestId('grn-item-details-y'))).toMatch(/^Dispatched 25 bags\|/);
+  });
+
+  it('totals the lots, the bags received and the bags in stock', () => {
+    render(<GRNItemsTab items={[potatoes, onions, garlic]} />);
+
+    expect(textOf(byTestId('grn-items-total'))).toBe('Total|3 item lines|170|85');
+    expect(byTestId('grn-items-total').props.accessibilityLabel).toBe('Total: 3 item lines, 170 received, 85 in stock');
+  });
+
+  it('moves Received under the item at large text', () => {
+    mockFontScale = 2;
+    render(<GRNItemsTab items={[potatoes]} />);
+
+    expect(textOf(byTestId('grn-items-table'))).toMatch(/^Item\|In stock\|/);
+    expect(textOf(byTestId('grn-item-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received|80');
+    expect(textOf(byTestId('grn-items-total'))).toBe('Total|1 item line · 100 received|80');
+  });
+
+  it('keeps the empty and loading states', () => {
+    render(<GRNItemsTab items={[]} />);
+    expect(textOf(tree.root)).toMatch(/^No items/);
+    act(() => tree.unmount());
+    render(<GRNItemsTab items={[]} loading />);
+    expect(textOf(tree.root)).toBe('Loading items…');
+  });
+});
+
+describe('GRN Dispatches table', () => {
+  const byItem = {
+    p: [record('r1', 'd1', 'DD0041', '2026-10-09', 12), record('r2', 'd2', 'DD0042', '2026-10-11', 8)],
+    g: [record('r3', 'd2', 'DD0042', '2026-10-11', 10)],
+  };
+
+  it('summarises each lot in the server order; the first with dispatches starts open', () => {
+    render(<GRNDispatchesTab items={[onions, potatoes, garlic]} dispatchesByItem={byItem} />);
+
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Dispatches\|Bags dispatched\|/);
+    expect(textOf(byTestId('grn-dispatch-row-o'))).toBe('Onions|60 received|0|0');
+    expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received|2|20');
+    expect(textOf(byTestId('grn-dispatch-row-g'))).toBe('Garlic|G1|10 received|1|10');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
+    expect(has('grn-dispatch-lines-g')).toBe(false);
+  });
+
+  it('does not open a lot that has no dispatches', () => {
+    render(<GRNDispatchesTab items={[onions, potatoes]} dispatchesByItem={byItem} />);
+    expect(byTestId('grn-dispatch-row-o').props.disabled).toBe(true);
+    expect(byTestId('grn-dispatch-row-o').props.accessibilityState).toBeUndefined();
+  });
+
+  it('opens and closes rows on tap and opens a dispatch by its id', () => {
+    const onViewDispatch = jest.fn();
+    render(<GRNDispatchesTab items={[potatoes, garlic]} dispatchesByItem={byItem} onViewDispatch={onViewDispatch} />);
+
+    press('grn-dispatch-row-g');
+    expect(has('grn-dispatch-lines-g')).toBe(true);
+    press('grn-dispatch-line-r3');
+    expect(onViewDispatch).toHaveBeenCalledWith('d2');
+    press('grn-dispatch-row-p');
+    expect(has('grn-dispatch-lines-p')).toBe(false);
+  });
+
+  it('totals the bags and counts each dispatch once, even when it took several lots', () => {
+    render(<GRNDispatchesTab items={[potatoes, garlic]} dispatchesByItem={byItem} />);
+
+    expect(textOf(byTestId('grn-dispatches-total'))).toBe('Total|2 dispatches|30');
+    expect(byTestId('grn-dispatches-total').props.accessibilityLabel).toBe('Total: 2 dispatches, 30 bags dispatched');
+  });
+
+  it('moves the count under the item and the date under the number at large text', () => {
+    mockFontScale = 2;
+    render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={byItem} />);
+
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
+    expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
+  });
+
+  it('keeps the loading, failure and empty states', () => {
+    render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={{}} loading />);
+    expect(textOf(tree.root)).toBe('Loading dispatches…');
+    act(() => tree.unmount());
+    const onRetry = jest.fn();
+    render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={{}} error="Customer access denied" onRetry={onRetry} />);
+    expect(textOf(tree.root)).toBe("Couldn't load dispatches|Customer access denied|Try again");
+    act(() => tree.unmount());
+    render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={{ p: [] }} />);
+    expect(textOf(tree.root)).toBe('No dispatches yet|Dispatches of items from this GRN appear here.');
+  });
+});
