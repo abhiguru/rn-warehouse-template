@@ -14,6 +14,12 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+// The owner's phone: 411 dp wide at font scale 1.3 (jest's default window is font scale 2).
+let mockFontScale = 1.3;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 411, height: 891, scale: 2.6, fontScale: mockFontScale }),
+}));
 
 const read = getGrnItemRates as jest.Mock;
 const lot = (over: Partial<RpcGrnItemRate>): RpcGrnItemRate => ({
@@ -28,10 +34,13 @@ let tree: ReactTestRenderer;
 const mount = async (el: React.ReactElement) => { await act(async () => { tree = create(el); }); };
 const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
 beforeEach(() => jest.clearAllMocks());
-afterEach(() => act(() => tree.unmount()));
+afterEach(() => {
+  act(() => tree.unmount());
+  mockFontScale = 1.3;
+});
 
 describe('GrnItemRates', () => {
-  it('shows each source tag, the weight of one bag, and monthly figures with the band', async () => {
+  it('is a table, Item | Rent (₹) | Labour (₹) | Tax (%), one row per lot with its weight, band and source tag', async () => {
     read.mockResolvedValue(answer([
       lot({ grn_item_id: 'a', source: 'grn' }),
       lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', weight: 30, source: 'customer', unit_price: 3 }),
@@ -40,16 +49,44 @@ describe('GrnItemRates', () => {
     await mount(<GrnItemRates grnId="g1" />);
     expect(texts()).toEqual([
       'RATES',
-      'Fictional Gur', '25 kg each', '0–50 kg · ₹4.50 rent · ₹1.50 labour · 5% tax', 'This GRN only',
-      'Fictional Rice', '30 kg each', '0–50 kg · ₹3.00 rent · ₹1.50 labour · 5% tax', 'Customer rate',
-      'Fictional Eggs', '10 kg each', '0–50 kg · ₹2.00 rent · ₹0.50 labour · 12% tax', 'Item rate',
+      'Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)',
+      'Fictional Gur', '25 kg each · 0–50 kg', 'This GRN only', '4.50', '1.50', '5',
+      'Fictional Rice', '30 kg each · 0–50 kg', 'Customer rate', '3.00', '1.50', '5',
+      'Fictional Eggs', '10 kg each · 0–50 kg', 'Item rate', '2.00', '0.50', '12',
+      'Rent and labour per bag, per month.',
     ]);
   });
 
-  it('invoice source has no band; varies adds a second tag; one-time leaves labour out', async () => {
+  it('gives each number column one width, so the values line up under their heading', async () => {
+    read.mockResolvedValue(answer([lot({ grn_item_id: 'a', unit_price: 99.95 }), lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', unit_price: 4.3 })]));
+    await mount(<GrnItemRates grnId="g1" />);
+    const widthOf = (text: string) => {
+      const node = tree.root.findAll(n => n.type === Text && [n.props.children].flat().join('') === text)[0];
+      return [node.props.style].flat(Infinity).reduce((w: number | undefined, st: { width?: number } | false | undefined) => (st && st.width !== undefined ? st.width : w), undefined);
+    };
+    expect(widthOf('99.95')).toBe(widthOf('4.30'));
+    expect(widthOf('Rent (₹)')).toBe(widthOf('4.30'));
+  });
+
+  it('invoice source has no band; varies adds a second tag; a one-time GRN has no Labour column', async () => {
     read.mockResolvedValue(answer([lot({ source: 'invoice', weight_min: null, weight_max: null, unit_price: 4.3, varies: true })], 'one_time'));
     await mount(<GrnItemRates grnId="g1" />);
-    expect(texts()).toEqual(['RATES', 'Fictional Gur', '25 kg each', '₹4.30 rent · 5% tax', 'On the invoice', 'differs by dispatch']);
+    expect(texts()).toEqual([
+      'RATES', 'Item', 'Rent (₹)', 'Tax (%)',
+      'Fictional Gur', '25 kg each', 'On the invoice', 'differs by dispatch', '4.30', '5',
+      'Rent per bag, once.',
+    ]);
+  });
+
+  it('at large text keeps the Rent column and moves labour and tax under the item', async () => {
+    mockFontScale = 2;
+    read.mockResolvedValue(answer([lot({ source: 'grn' })]));
+    await mount(<GrnItemRates grnId="g1" />);
+    expect(texts()).toEqual([
+      'RATES', 'Item', 'Rent (₹)',
+      'Fictional Gur', '25 kg each · 0–50 kg · Labour ₹1.50 · Tax 5%', 'This GRN only', '4.50',
+      'Rent and labour per bag, per month.',
+    ]);
   });
 
   it('shares one row between lots with the same item, weight and figures, and splits on a different weight or figure', () => {
@@ -58,10 +95,14 @@ describe('GrnItemRates', () => {
     expect(groups.map(g => g.weight)).toEqual([25, 50, 25]);
   });
 
-  it('a lot with no rate shows "No rate set" and no figures', async () => {
+  it('a lot with no rate shows "No rate set" and "—" in its number cells', async () => {
     read.mockResolvedValue(answer([lot({ source: null, unit_price: null, labour_rate: null, tax_percent: null, weight_min: null, weight_max: null })]));
     await mount(<GrnItemRates grnId="g1" />);
-    expect(texts()).toEqual(['RATES', 'Fictional Gur', '25 kg each', 'No rate set']);
+    expect(texts()).toEqual([
+      'RATES', 'Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)',
+      'Fictional Gur', '25 kg each', 'No rate set', '—', '—', '—',
+      'Rent and labour per bag, per month.',
+    ]);
   });
 
   it('shows a loading row first, then the rows', async () => {

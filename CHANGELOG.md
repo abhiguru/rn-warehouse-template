@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — GRN Overview: the Rates as a table (2026-10-16)
+
+App only (uses backend migration 88, already deployed). The Rates section on the GRN page's
+Overview tab is now a table in the object-page style (common/DetailTable): Item | Rent (₹) |
+Labour (₹) | Tax (%). The item cell holds the name, the weight of one bag with the rate's weight
+band, and the source tag (This GRN only, Customer rate, Item rate, On the invoice). Each number
+column has one width, so the values line up under their headings. A one-time GRN has no Labour
+column. At large text, labour and tax move under the item. A note under the rows gives the unit
+(per bag, per month or once). A lot without a rate shows "No rate set" and "—".
+
 ## Unreleased — GRN details: Rates for every item on the Overview tab (2026-10-16)
 
 Needs backend migration 88 (`get_grn_item_rates`): merge and deploy the backend first. On a server
