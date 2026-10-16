@@ -351,6 +351,7 @@ export const grn = {
     tableNoteOneTime: 'Rent per bag, once.',
     rentAmount: 'Rent {{amount}}',
     opensItemPricing: 'Opens the item in Item pricing.',
+    opensCustomerPricing: "Opens {{customer}}'s own rate.",
     yourRateTitle: 'Your rate',
     yourRateForGrn: 'GRN {{number}}, goods received on {{date}}',
     yourRateOn: 'Goods received on {{date}}',

@@ -22,6 +22,7 @@ import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 
 // Using snake_case to match backend RPC types
 interface CustomerDetails {
+  id?: string;
   name: string;
   mobile?: string | null;
   email?: string | null;
@@ -140,7 +141,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       )}
 
       {/* SECTION: RATES (the rate each item is invoiced at; the GRN-only rates on a server without migration 88) */}
-      <GrnItemRates grnId={grn_id} grnNumber={gr_no} fallbackRates={rates} />
+      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} fallbackRates={rates} />
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}

@@ -17,6 +17,13 @@
   button, after an item is picked, opens that item's page with an empty band ready in the box instead of
   the old edit screen (an item without a default rate shows "Add default rate" there). Customers' own
   rates are found under Customers → customer → Pricing.
+- **GRN → Overview → Rates: a manager's tap goes to the rate's home (owner, 2026-10-16).** For an
+  administrator or supervisor a row whose rate is the item's default opens the item's page in Item
+  pricing with today's rates (no day, so no "You're looking at..." section); a row with the customer's own
+  rate opens that customer's Pricing tab on the item's box (`customerPricingPath`, needs the customer
+  page's Pricing tab). A rate typed on this GRN only, a rate taken from an invoice and a row without a
+  rate are plain rows, not links. Staff still get no link; a customer still gets "Your rate". New text:
+  "Opens {{customer}}'s own rate." (screen-reader hint).
 
 ## Unreleased — GRN Overview: the Rates as a table; a tap leads to Item pricing or "Your rate" (2026-10-16)
 

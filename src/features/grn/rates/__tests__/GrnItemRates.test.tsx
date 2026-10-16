@@ -37,6 +37,7 @@ const only = (): RpcGrnRate => ({ id: 'r1', item_id: 'gur', item_name: 'Fictiona
 
 let tree: ReactTestRenderer;
 const mount = async (el: React.ReactElement) => { await act(async () => { tree = create(el); }); };
+const links = () => tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function');
 const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
 beforeEach(() => jest.clearAllMocks());
 afterEach(() => {
@@ -116,22 +117,41 @@ describe('GrnItemRates', () => {
     ]);
   });
 
-  it('an administrator or supervisor opens the item in Item pricing on the GRN\'s day, a row without a rate too', async () => {
+  const noRate = { source: null, unit_price: null, labour_rate: null, tax_percent: null, weight_min: null, weight_max: null } as const;
+  const rowsBySource = [
+    lot({ grn_item_id: 'a', item_id: 'gur', item_name: 'Fictional Gur', source: 'item' }),
+    lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', source: 'customer', unit_price: 3 }),
+    lot({ grn_item_id: 'c', item_id: 'egg', item_name: 'Fictional Eggs', source: 'grn', unit_price: 2 }),
+    lot({ grn_item_id: 'd', item_id: 'tea', item_name: 'Fictional Tea', source: 'invoice', unit_price: 6 }),
+    lot({ grn_item_id: 'e', item_id: 'ajwain', item_name: 'Fictional Ajwain', ...noRate }),
+  ];
+
+  it.each(['admin', 'supervisor'])('a %s taps an item rate to the item\'s page, today\'s rates (no day), and a customer rate to the customer\'s Pricing tab on that item', async role => {
     const { router } = require('expo-router');
-    const rows = [lot({ grn_item_id: 'a' }), lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', source: null, unit_price: null, labour_rate: null, tax_percent: null, weight_min: null, weight_max: null })];
-    for (const role of ['admin', 'supervisor']) {
-      mockRole = role;
-      read.mockResolvedValue(answer(rows));
-      await mount(<GrnItemRates grnId="g1" grnNumber="WM0001" />);
-      const links = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function');
-      expect(links).toHaveLength(2);
-      expect(links[0].props.accessibilityRole).toBe('button');
-      expect(links[0].props.accessibilityHint).toBe('Opens the item in Item pricing.');
-      act(() => links[1].props.onPress());
-      expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'rice', on: '2026-10-01' } });
-      act(() => tree.unmount());
-    }
+    mockRole = role;
+    read.mockResolvedValue(answer(rowsBySource));
+    await mount(<GrnItemRates grnId="g1" grnNumber="WM0001" customerId="cust-1" customerName="Fictional Traders" />);
+    // Only the 'item' and 'customer' rows are links: 'grn', 'invoice' and no-rate rows are plain rows.
+    expect(links()).toHaveLength(2);
+    expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.', "Opens Fictional Traders's own rate."]);
+    act(() => links()[0].props.onPress());
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur' } });
+    expect(router.push.mock.calls[router.push.mock.calls.length - 1][0].params).not.toHaveProperty('on');
+    act(() => links()[1].props.onPress());
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/customer/[id]', params: { id: 'cust-1', tab: 'pricing', item: 'rice' } });
+    // The plain rows keep their label (with the source) for a screen reader.
+    const plain = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.type === 'string' && n.props.accessibilityRole !== 'button');
+    expect(plain.map(n => n.props.accessibilityLabel)).toEqual([
+      'Fictional Eggs, This GRN only, Rent ₹2.00, Labour ₹1.50, Tax 5%',
+      'Fictional Tea, On the invoice, Rent ₹6.00, Labour ₹1.50, Tax 5%',
+      'Fictional Ajwain, No rate set',
+    ]);
+  });
+
+  it('a customer rate is not a link while the GRN\'s customer is unknown', async () => {
+    read.mockResolvedValue(answer(rowsBySource));
     await mount(<GrnItemRates grnId="g1" />);
+    expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.']);
   });
 
   it('staff get the table only: no row is a link to the price list', async () => {
@@ -216,6 +236,15 @@ describe('GRNOverviewTab Rates section', () => {
     const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
     act(() => row.props.onPress());
     expect(router.push).toHaveBeenCalledWith({ pathname: '/grn-rate/[grnId]/[itemId]', params: { grnId: 'g1', itemId: 'gur', no: 'WM0001' } });
+  });
+
+  it('passes the GRN\'s customer on: a manager\'s tap on a customer rate opens that customer\'s Pricing tab', async () => {
+    const { router } = require('expo-router');
+    read.mockResolvedValue(answer([lot({ item_id: 'rice', item_name: 'Fictional Rice', source: 'customer' })]));
+    await mount(<GRNOverviewTab grn_id="g1" gr_no="WM0001" pricing_mode="MONTHLY" customer_details={{ id: 'cust-9', name: 'Fictional Traders' }} />);
+    act(() => links()[0].props.onPress());
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/customer/[id]', params: { id: 'cust-9', tab: 'pricing', item: 'rice' } });
+    expect(links()[0].props.accessibilityHint).toBe("Opens Fictional Traders's own rate.");
   });
 
   it('falls back to the GRN-only rates on an older server', async () => {

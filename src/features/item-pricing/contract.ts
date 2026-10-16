@@ -60,3 +60,7 @@ export const notifyRatesChanged = (itemId: string): void => {
   changeCounts.set(itemId, ratesChangeCount(itemId) + 1);
   listeners.forEach(fn => fn(itemId));
 };
+
+/** A customer's page on its Pricing tab, optionally on one item's box (the page reads `tab` and `item`). */
+export const customerPricingPath = (customerId: string, itemId?: string) =>
+  ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
