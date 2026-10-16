@@ -15,18 +15,6 @@ jest.mock('@/store/hooks', () => ({
 }));
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/grn-details/GRNItemDispatchTable', () => ({
-  GRNItemDispatchTable: () => {
-    const { Text } = require('react-native');
-    return <Text>dispatch row</Text>;
-  },
-}));
-jest.mock('@/components/grn-details/GRNItemCard', () => ({
-  GRNItemCard: ({ total_dispatched }: { total_dispatched: number }) => {
-    const { Text } = require('react-native');
-    return <Text>{`dispatched:${total_dispatched}`}</Text>;
-  },
-}));
 
 const item = {
   id: 'line-a',
@@ -64,5 +52,11 @@ it('derives a safe dispatched total from quantity and stock while history loads'
     renderer = create(<GRNItemsTab items={[item]} />);
   });
 
-  expect(renderer.root.findByProps({ children: 'dispatched:20' })).toBeTruthy();
+  // Open the row: its details say how many bags were dispatched.
+  await act(async () => {
+    renderer.root.findAll(node => node.props.testID === 'grn-item-row-line-a' && typeof node.props.onPress === 'function')[0].props.onPress();
+  });
+  expect(renderer.root.findByProps({ children: 'Dispatched 20 bags' })).toBeTruthy();
+  // The list renders its cells in batches after mount; unmount so none lands after the test.
+  act(() => renderer.unmount());
 });

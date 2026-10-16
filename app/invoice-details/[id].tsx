@@ -380,14 +380,6 @@ function InvoiceDetailScreen() {
     itemsSummary?.total_items ??
     invoice.summary?.total_items ??
     lineItems.length;
-  const totalDispatchQty =
-    itemsSummary?.totalDispatchQty ??
-    itemsSummary?.total_quantity ??
-    invoice.summary?.total_quantity;
-  const lineItemsTotal =
-    itemsSummary?.totalAmount ??
-    itemsSummary?.total_amount ??
-    invoice.total;
 
   // Date per style guide §12.3, e.g. "9 Oct 2026"
   const formattedDate = formatDate(invoice.invoice_date || new Date());
@@ -475,9 +467,6 @@ function InvoiceDetailScreen() {
             <InvoiceLineItemsTab
               items={lineItems}
               loading={loading}
-              total_items={totalItems}
-              total_dispatch_qty={totalDispatchQty}
-              total_amount={lineItemsTotal}
               on_view_grn={handleViewGRN}
               on_view_dispatch={handleViewDispatch}
             />

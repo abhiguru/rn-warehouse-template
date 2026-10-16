@@ -59,6 +59,9 @@ import { formatCount } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
+import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
+import { invoiceTableFrom } from '@/components/common/invoiceTable';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
 const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
@@ -138,6 +141,11 @@ function GRNDetailScreen() {
   >({});
   const [loadingDispatches, setLoadingDispatches] = useState(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  // The Invoices tab's rows, read when the tab opens, for the summary they were read against
+  // (`key`); null invoices: they could not be read, so the table falls back to the summary.
+  const [grnInvoices, setGrnInvoices] = useState<{ key: string; invoices: Invoice[] | null } | null>(null);
+  const invoiceRequestKey = useRef<string | null>(null);
+  const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
   const [canEdit, setCanEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
@@ -402,6 +410,35 @@ function GRNDetailScreen() {
     }
   }, [activeTab, data]);
 
+  // The summary the Invoices tab's rows must match; a refetch that changes it reads them again.
+  const invoiceKey = data?.grn
+    ? `${data.grn.id}|${data.grn.invoices_summary?.total_invoices ?? 0}|${data.grn.invoices_summary?.total_amount ?? 0}`
+    : null;
+  useEffect(() => {
+    const grn = data?.grn;
+    if (activeTab !== 'invoices' || !grn || !invoiceKey) return;
+    if ((grn.invoices_summary?.total_invoices ?? 0) === 0) return;
+    if (grnInvoices?.key === invoiceKey || invoiceRequestKey.current === invoiceKey) return;
+    invoiceRequestKey.current = invoiceKey;
+    getGrnInvoiceRows({
+      grnId: grn.id,
+      grnNo: grn.gr_no,
+      customerId: grn.customer_details?.id,
+      warehouseRole: isWarehouseRole,
+      assignedCustomerIds,
+    }).then((result) => {
+      // A later summary (or another GRN) replaced this request: drop the answer.
+      if (invoiceRequestKey.current !== invoiceKey) return;
+      invoiceRequestKey.current = null;
+      setGrnInvoices({ key: invoiceKey, invoices: result.success ? result.invoices : null });
+    });
+  }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds]);
+
+  // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
+  const handleViewInvoice = (invoiceId: string) => {
+    router.push(`/invoice-details/${invoiceId}`);
+  };
+
   // Handle edit action
   const handleEditGRN = () => {
     router.push(`/grn-edit/${id}/step1`);
@@ -589,14 +626,12 @@ function GRNDetailScreen() {
   // Safe to destructure - we know data.grn exists (typed as RpcGrnDetails - snake_case)
   const { grn } = data;
 
-  // Enrich items with dispatch summaries (all snake_case)
+  // Enrich items with dispatch summaries (all snake_case). Until the history is read there is
+  // none, and the Items table counts received less in stock instead of showing 0 dispatched.
   const items: GRNItem[] = (grn.items || []).map((item) => ({
     ...item,
-    dispatch_summary: (item as any).dispatch_summary ||
-      itemDispatchSummaries[item.id] || {
-        total_dispatched: 0,
-        dispatch_count: 0,
-      },
+    dispatch_summary: (item as { dispatch_summary?: GRNItem['dispatch_summary'] }).dispatch_summary ||
+      itemDispatchSummaries[item.id],
   }));
 
   // Statistics from backend (already snake_case via RpcGrnStatistics)
@@ -613,6 +648,18 @@ function GRNDetailScreen() {
     total_amount: 0,
     invoice_numbers: [],
   };
+  // Rows only when they were read for this summary; otherwise the summary's numbers.
+  const invoiceRows = grnInvoices?.key === invoiceKey ? grnInvoices.invoices : null;
+  const invoiceTable = invoiceTableFrom(
+    invoiceRows?.map((invoice) => ({
+      invoice_id: invoice.invoice_id,
+      invoice_no: invoice.invoice_number,
+      invoice_date: invoice.invoice_date,
+      total: invoice.total,
+    })),
+    invoiceSummary
+  );
+  const invoicesLoading = invoiceSummary.total_invoices > 0 && grnInvoices?.key !== invoiceKey;
 
   // Dispatches summary (snake_case)
   const dispatchSummary = grn.dispatches_summary || {
@@ -730,7 +777,7 @@ function GRNDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <GRNInvoicesTab invoiceSummary={invoiceSummary} />
+            <GRNInvoicesTab invoices={invoiceTable} loading={invoicesLoading} onViewInvoice={handleViewInvoice} />
           )}
         </View>
       </View>

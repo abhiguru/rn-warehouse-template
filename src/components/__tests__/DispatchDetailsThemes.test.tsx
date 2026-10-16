@@ -7,9 +7,9 @@ import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { DispatchHeroHeader } from '@/components/dispatch-details/DispatchHeroHeader';
-import { DispatchItemCard } from '@/components/dispatch-details/DispatchItemCard';
 import { DispatchGRNsTab } from '@/components/dispatch-details/DispatchGRNsTab';
 import { DispatchItemsTab } from '@/components/dispatch-details/DispatchItemsTab';
+import { DispatchInvoicesTab } from '@/components/dispatch-details/DispatchInvoicesTab';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -38,6 +38,7 @@ function backgrounds(tree: ReactTestRenderer): string[] {
 }
 
 const item = {
+  id: 'i1',
   item_name: 'Potatoes',
   dispatch_quantity: 4,
   grn_no: '311',
@@ -63,29 +64,28 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     expect(tree.root.findByProps({ accessibilityRole: 'header' }).props.children).toBe('D42');
   });
 
-  it('renders DispatchItemCard as a token object cell', () => {
-    const tree = renderIn(brand, mode, <DispatchItemCard {...item} onViewGRN={jest.fn()} />);
-    const bgs = backgrounds(tree);
-    expect(bgs).toContain(t.surface.card);
-    expect(bgs).toContain(t.status.neutral.background);
-    expect(bgs).not.toContain(t.brand.fill);
-  });
+  it('renders the three tables as token cards on background.base, with the link in brand.tint', () => {
+    const items = renderIn(brand, mode, <DispatchItemsTab items={[item]} onViewGRN={jest.fn()} />);
+    expect(backgrounds(items)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds(items)).not.toContain(t.brand.fill);
+    const grnNumber = items.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === '311')[0];
+    expect(StyleSheet.flatten(grnNumber.props.style).color).toBe(t.brand.tint);
 
-  it('renders the items and GRNs tabs on background.base', () => {
-    const items = renderIn(brand, mode, <DispatchItemsTab items={[{ id: 'i1', ...item }]} />);
-    expect(backgrounds(items)).toContain(t.background.base);
+    const grns = renderIn(brand, mode, <DispatchGRNsTab items={[item]} onViewGRN={jest.fn()} />);
+    expect(backgrounds(grns)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds(grns)).not.toContain(t.brand.fill);
 
-    const grns = renderIn(
+    const invoices = renderIn(
       brand,
       mode,
-      <DispatchGRNsTab
-        grns={[{ grn_id: 'g1', grn_no: '311', grn_date: '2026-10-09', items: [item] }]}
-        onViewGRN={jest.fn()}
+      <DispatchInvoicesTab
+        invoices={{ detailed: true, count: 1, total: 1906, rows: [{ key: 'v1', invoice_id: 'v1', invoice_no: 42, invoice_date: '2026-10-09', total: 1906 }] }}
       />
     );
-    expect(backgrounds(grns)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds(invoices)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds(invoices)).not.toContain(t.brand.fill);
 
-    const empty = renderIn(brand, mode, <DispatchGRNsTab grns={[]} />);
+    const empty = renderIn(brand, mode, <DispatchGRNsTab items={[]} />);
     expect(empty.root.findByProps({ children: 'No GRNs for this dispatch' })).toBeTruthy();
   });
 });

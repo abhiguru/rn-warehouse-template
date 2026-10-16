@@ -8,7 +8,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { DocumentSuccessDialog } from '@/components/DocumentSuccessDialog';
-import { GRNItemDispatchTable } from '@/components/grn-details/GRNItemDispatchTable';
+import { GRNDispatchesTab } from '@/components/grn-details/GRNDispatchesTab';
 import { GRNDispatchTimeline } from '@/components/grn-details/GRNDispatchTimeline';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
@@ -103,15 +103,15 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     const table = renderIn(
       brand,
       mode,
-      <GRNItemDispatchTable
-        item={{ id: 'a', item_name: 'Potatoes', qty: 10 } as any}
-        dispatches={[
-          { id: 'r1', dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', disp_quantity: 3 } as any,
-        ]}
-        defaultExpanded
+      <GRNDispatchesTab
+        items={[{ id: 'a', item_name: 'Potatoes', qty: 10, stock: 7 }]}
+        dispatchesByItem={{
+          a: [{ id: 'r1', dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', disp_quantity: 3 } as any],
+        }}
       />
     );
-    expect(backgrounds(table)).toContain(t.background.base);
+    expect(backgrounds(table)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds(table)).not.toContain(t.brand.fill);
 
     const timeline = renderIn(
       brand,

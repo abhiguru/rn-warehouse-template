@@ -43,9 +43,10 @@ import {
   DispatchImagesTab,
   DispatchInvoicesTab,
   TabKey,
-  DispatchItem,
-  GRNInfo,
   DispatchImageData,
+  mapDispatchItems,
+  itemTotals,
+  buildInvoiceTable,
 } from '@/components/dispatch-details';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
 import * as ImagePicker from 'expo-image-picker';
@@ -253,6 +254,11 @@ function DispatchDetailScreen() {
     router.push(`/grn-details/${grnId}`);
   };
 
+  // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
+  const handleViewInvoice = (invoiceId: string) => {
+    router.push(`/invoice-details/${invoiceId}`);
+  };
+
   // Handle dispatch edit
   const handleEditDispatch = () => {
     if (!id) return;
@@ -426,39 +432,9 @@ function DispatchDetailScreen() {
 
   const { dispatch } = data;
 
-  // Prepare items for DispatchItemsTab (snake_case from backend)
-  const items: DispatchItem[] = (dispatch.items || []).map((item: any) => ({
-    id: item.id || item.grn_item_id,
-    item_name: item.item_details?.name || item.item_name || tr('dispatch.details.unknownItem'),
-    dispatch_quantity: item.disp_qty || item.dispatch_quantity || 0,
-    grn_no: item.grn_details?.gr_no || item.grn_no || tr('dispatch.details.notAvailable'),
-    grn_date: item.grn_details?.date || item.grn_date || new Date().toISOString(),
-    grn_id: item.grn_details?.id || item.grn_id,
-    original_quantity: item.grn_item_details?.qty || item.original_qty,
-    weight: item.grn_item_details?.weight || item.weight,
-    package_mark: item.grn_item_details?.package_mark || item.package_mark,
-  }));
-
-  // Prepare GRNs grouped data
-  const grnsMap = new Map<string, GRNInfo>();
-  items.forEach((item) => {
-    if (!grnsMap.has(item.grn_no)) {
-      grnsMap.set(item.grn_no, {
-        grn_id: item.grn_id || '',
-        grn_no: item.grn_no,
-        grn_date: item.grn_date,
-        items: [],
-      });
-    }
-    grnsMap.get(item.grn_no)!.items.push({
-      item_name: item.item_name,
-      dispatch_quantity: item.dispatch_quantity,
-      original_quantity: item.original_quantity,
-      weight: item.weight,
-      package_mark: item.package_mark,
-    });
-  });
-  const grns: GRNInfo[] = Array.from(grnsMap.values());
+  // One row per dispatch line, from the fields get_dispatch_details sends (dispatchDetailsModel).
+  const items = mapDispatchItems(dispatch.items, tr('dispatch.details.unknownItem'));
+  const grnCount = itemTotals(items).grns;
 
   // Statistics (snake_case from backend)
   const statistics = dispatch.statistics || {
@@ -469,12 +445,8 @@ function DispatchDetailScreen() {
     total_invoice_amount: 0,
   };
 
-  // Invoice summary (snake_case from backend)
-  const invoiceSummary = dispatch.invoices_summary || {
-    total_invoices: 0,
-    total_amount: 0,
-    invoice_numbers: [],
-  };
+  // Each linked invoice once, from the invoice its lines carry; the summary is the fallback.
+  const invoiceTable = buildInvoiceTable(dispatch.items, dispatch.invoices_summary);
 
   // A photo can be added after submit (testvm2 issue 4): the create flow's photo
   // section sits below the item list and is easy to miss.
@@ -565,9 +537,9 @@ function DispatchDetailScreen() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           item_count={items.length}
-          grn_count={grns.length}
+          grn_count={grnCount}
           image_count={dispatchImages.length}
-          invoice_count={invoiceSummary.total_invoices}
+          invoice_count={invoiceTable.count}
         />
 
         {/* Tab Content */}
@@ -601,7 +573,7 @@ function DispatchDetailScreen() {
 
           {activeTab === 'grns' && (
             <DispatchGRNsTab
-              grns={grns}
+              items={items}
               onViewGRN={handleViewGRN}
             />
           )}
@@ -616,7 +588,7 @@ function DispatchDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <DispatchInvoicesTab invoiceSummary={invoiceSummary} />
+            <DispatchInvoicesTab invoices={invoiceTable} onViewInvoice={handleViewInvoice} />
           )}
         </View>
       </View>

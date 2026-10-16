@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased — Dispatch, GRN and invoice pages: their lists as tables (2026-10-16)
+
+App only; no backend migration. The Dispatch page reads only the `get_dispatch_details` answer
+it already used (its fields were checked against the live function, and
+`RpcDispatchItemDetails` now lists them). The GRN page's Invoices tab also reads the invoice
+list the account may already read (`get_invoices_list` for staff, `get_customer_invoice_summary`
+for a customer account), matched to the GRN by id. Both pages share `common/DetailTable.tsx`
+and `common/InvoicesTable.tsx` (style guide §13.7).
+
+### Dispatch page
+
+- **Items**: a table (Item | Source GRN | Bags dispatched) in place of one card per line, one row
+  per dispatch line, so two lots of one item stay two rows. The mark and the weight of one bag
+  ("PM · 50 kg each") sit under the item, the GRN date under its number. The GRN number opens the
+  GRN only when the line has a GRN id. A row expands to the bags received on its lot. The footer
+  totals the bags, item lines and source GRNs. A GRN without a date shows "—" (it used to show
+  today's date).
+- **GRNs**: an expandable table (Source GRN | Item lines | Bags dispatched), grouped by GRN id (it
+  was grouped by GRN number; a line without a GRN id is its own row and cannot be opened). A row
+  opens to its lines (Item | Mark | Bags dispatched) and a separate "View GRN" button; one GRN
+  starts open. Totals in the footer.
+- **Invoices**: a count and a table (Invoice | Invoice total, with the date under the number on
+  phones and in its own column from 600 dp) in place of the two large tiles. Each invoice once,
+  amounts with two decimals; a row opens the invoice page, where PDF and sharing stay. The amounts
+  are whole invoice totals (an invoice bills one GRN and can include other dispatches' lines), so
+  the column is "Invoice total" and a note says so. If the lines do not name every invoice, the
+  table falls back to the invoice numbers with no date, amount or link, and the summary total.
+  Empty: "No invoices linked to this dispatch."
+- Rows keep the server's order, which is the order of entry (line ids are time-based); GRN groups
+  follow their first line. At font scale 1.5 and above the middle columns move under the first,
+  and number columns widen with the text, so no quantity is cut. Light and dark themes use tokens
+  only.
+
+### GRN page
+- **Items**: a table (Item | Received | In stock) in place of one card per lot. The mark and the
+  weight of one bag sit under the item, with a Low stock or Fully dispatched tag (the In stock
+  column says the rest). A row opens to the bags dispatched, rack and packaging, and "View
+  dispatches". Footer: item lines and both totals. At large text Received moves under the item.
+- **Dispatches**: one table (Item | Dispatches | Bags dispatched) in place of one card per lot. A
+  row opens to its dispatches (Dispatch | Date | Bags), each opening the dispatch; the first lot
+  with dispatches starts open, as before. The footer counts each dispatch once even when it took
+  several lots.
+- **Invoices**: the count and table of the Dispatch page in place of three tiles. The tiles were
+  wrong: "Total with tax" read a field the server never sends (always ₹0), and "Amount before
+  tax" showed the stored invoice totals, which include tax. Each amount is now labelled "Invoice
+  total" (with tax, less any discount). A spinner shows while the rows are read; if they cannot
+  be read or do not match every invoice of the GRN, the table falls back to the invoice numbers
+  and the summary total.
+- `GRNItemCard` and `GRNItemDispatchTable` are removed, with the text keys only they used.
+- Items tab: only a Low stock tag shows under an item (a "Fully dispatched" tag was cut to
+  "Fully dispatc…" at font scale 1.3, and the In stock column already reads 0).
+
+### Invoice page
+- **Items**: one table (Item | Bags | Amount) in place of a large card per GRN lot with a
+  sideways-scrolling six-column table inside and a separate summary card. A row shows the lot's
+  mark and weight of one bag and its rates ("Rate ₹9.00 · Labour ₹3.00 · Tax 5%"); it opens to the
+  dispatch lines (Dispatch | Bags | Amount) with the date, days and months charged under each
+  dispatch number and the tax under the amount, and the lot's amount before tax and its tax. One lot
+  starts open. Amounts are the server's line totals with tax. The footer adds the rows (items,
+  dispatch lines, bags, amount); a note says the invoice total, after its rounding and discount, is
+  on the Breakdown tab, and "View GRN" opens the invoice's GRN. Dispatch numbers open the dispatch.
+- `InvoiceLineItemGroup` and `InvoiceLineItemCard` are removed, with the text keys only they used.
+
+Gujarati text for the new keys was drafted by Claude and waits for the owner's reading.
+
 ## Unreleased — fixes from the outside backend review (2026-10-15)
 
 Works with any backend; backend migration 87 adds the `ALREADY_CONFIRMED` answer that lets the

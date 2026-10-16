@@ -835,7 +835,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 
 | Component | Spec |
 |---|---|
-| Object cell (list rows in `list-items/*`, `OrderItemCard`, `DispatchGroupCard`, `DispatchHistoryCard`, `CustomerOrderGroupCard`, `RecentDispatchedOrderCard`, `ReportCustomerCard`, `ItemRateRow`, `grn/components/SavedItemCard`, `invoice/components/InvoiceItemCard`, `*-details/*ItemCard`, `InvoiceLineItemCard`) | Min height 72. Optional avatar or icon (44). Title `headline` `text.primary`, two lines max. Subtitle `subhead` `text.secondary`. Footnote `footnote` `text.secondary`. Right side: main value (`headline`, tabular), status tag under it. Chevron `icon.secondary` when it drills down. Pressed `surface.cardPressed`. |
+| Object cell (list rows in `list-items/*`, `OrderItemCard`, `DispatchGroupCard`, `DispatchHistoryCard`, `CustomerOrderGroupCard`, `RecentDispatchedOrderCard`, `ReportCustomerCard`, `ItemRateRow`, `grn/components/SavedItemCard`, `invoice/components/InvoiceItemCard`, `*-details/*ItemCard`) | Min height 72. Optional avatar or icon (44). Title `headline` `text.primary`, two lines max. Subtitle `subhead` `text.secondary`. Footnote `footnote` `text.secondary`. Right side: main value (`headline`, tabular), status tag under it. Chevron `icon.secondary` when it drills down. Pressed `surface.cardPressed`. |
 | `ui/Card.tsx` | `surface.card`, `radius.card`, `shadow[2]`, padding from `CardPadding` (`compact` 12, `default` 16, `comfortable` 20, `spacious` 24). Header: title `headline`, subtitle `subhead`. `selected` adds a 2 px `brand.tint` border and a check. `error` shows a negative message strip. `loading` shows a skeleton. Shadow sizes map `sm` to 1, `md` to 2, `lg` to 3, `xl` to 4. |
 | `fiori/KeyValueCell.tsx` | Key `subhead` `text.secondary`, value `body` `text.primary` (`emphasized` uses 600). `inline` layout: key left, value right; `stacked`: key above value. Actionable values use `brand.tint` and a chevron. Switch to stacked at large text sizes. |
 | `ui/SectionHeader.tsx` | `footnote`, capitals, `text.secondary`, 16 side padding, 24 above and 8 below; optional count and a tertiary action on the right. `SectionFooter` uses `footnote` `text.secondary`. |
@@ -852,7 +852,7 @@ A surcharge (a negative discount) shows with a plus sign in `text.primary`; a di
 
 A pin is the exception to the one-tap rule: it changes nothing but the person's own view and is undone by the same tap, so a star may sit at the end of a row as a one-tap control. It is a separate target beside the row's own (not inside it), at least `touchTarget` square with 8 between the two, a button with `accessibilityState={{ selected }}` and a whole-sentence label ("Pin GRN activity to the top" / "Unpin GRN activity"). Pinned shows the filled `star` in `brand.tint`; not pinned shows `star-outline` in `icon.primary`, so the glyph, not colour alone, carries the state. Used by `reports/ReportHubRow.tsx` on the Reports tab.
 
-### 13.7 Tables — `FioriDataTable.tsx`, `fiori/FioriDataTable.tsx`, `reports/FioriDataTable.tsx`, `grn-details/GRNItemDispatchTable.tsx`, `invoice/components/InvoiceItemsTable.tsx`
+### 13.7 Tables — `FioriDataTable.tsx`, `fiori/FioriDataTable.tsx`, `reports/FioriDataTable.tsx`, `common/DetailTable.tsx` (with `common/InvoicesTable.tsx`), `invoice/components/InvoiceItemsTable.tsx`
 
 The three `FioriDataTable` copies follow one spec and are merged during migration.
 
@@ -864,6 +864,7 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 - On phones, tables with more than three columns scroll horizontally with the first column pinned, or turn into object cells. Show a fade at the scroll edge.
 - Editable cells follow the editable-cell rule in section 13.2.
 - Empty cells show "—".
+- Object-page tables (`common/DetailTable.tsx`: the Dispatch and GRN pages' Items, GRNs, Dispatches and Invoices tabs, and the invoice page's Items tab) sit in one card, one row per record. Details of a row (received quantity, rack, the lines of a group) open under it on a tap, with a chevron at the start of the row; a link inside a row is a separate target of at least `touchTarget` and is also offered to screen readers as an action on the row. Number columns widen with the text size; from font scale 1.5 the middle columns move under the first. A date goes under its number on phones and gets its own column from 600 dp.
 - Pinning the first column and the scroll-edge fade are required for new tables with more than three columns; the existing invoice and dispatch tables scroll as a whole until they are rebuilt.
 
 ### 13.8 Headers and navigation

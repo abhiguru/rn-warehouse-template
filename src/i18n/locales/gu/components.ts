@@ -476,4 +476,18 @@ export const components: Translation<typeof source> = {
   tabBar: {
     tabWithBadge: '{{label}}, {{count}} બાકી',
   },
+  // The Invoices table of an object page (Dispatch and GRN pages)
+  invoiceTable: {
+    numbered: 'ઇન્વૉઇસ {{number}}',
+    invoice: 'ઇન્વૉઇસ',
+    date: 'તારીખ',
+    invoiceTotal: 'ઇન્વૉઇસની કુલ રકમ',
+    total: 'કુલ',
+    invoiceCount: { one: '{{count}} ઇન્વૉઇસ', other: '{{count}} ઇન્વૉઇસ' },
+    dateUnavailable: 'તારીખ ઉપલબ્ધ નથી',
+    rowLabel: 'ઇન્વૉઇસ {{number}}, {{date}}, ઇન્વૉઇસની કુલ રકમ {{amount}}',
+    totalLabel: '{{invoices}}ની કુલ રકમ: {{amount}}',
+    opensInvoice: 'ઇન્વૉઇસ ખોલે છે',
+    fallbackNote: 'દરેક ઇન્વૉઇસની તારીખ અને રકમ અહીં ઉપલબ્ધ નથી. કુલમાં જોડાયેલાં આખાં ઇન્વૉઇસની રકમ છે.',
+  },
 };
