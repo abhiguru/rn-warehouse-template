@@ -17,7 +17,7 @@ import {
   ActionsSection,
 } from '@/components/common/overview-tab';
 import { t as tr } from '@/i18n';
-import { GrnOnlyRates } from '@/features/grn/rates/GrnOnlyRates';
+import { GrnItemRates } from '@/features/grn/rates/GrnItemRates';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 
 // Using snake_case to match backend RPC types
@@ -139,8 +139,8 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         </>
       )}
 
-      {/* SECTION: RATES FOR THIS GRN ONLY */}
-      {rates && rates.length > 0 ? <GrnOnlyRates rates={rates} /> : null}
+      {/* SECTION: RATES (the rate each item is invoiced at; the GRN-only rates on a server without migration 88) */}
+      <GrnItemRates grnId={grn_id} fallbackRates={rates} />
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}

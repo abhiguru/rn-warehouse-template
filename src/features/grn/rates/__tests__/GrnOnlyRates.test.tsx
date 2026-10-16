@@ -10,6 +10,8 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
+// No GRN id: the Rates section reads nothing and falls back to the GRN-only rates.
+jest.mock('expo-router', () => ({ useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const rate = (over: Partial<RpcGrnRate>): RpcGrnRate => ({

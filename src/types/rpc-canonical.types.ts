@@ -314,6 +314,32 @@ export interface RpcGrnRate {
   archived: boolean;
 }
 
+/** One lot's rate in get_grn_item_rates (backend migration 88). Figures are null when `source` is null. */
+export interface RpcGrnItemRate {
+  grn_item_id: string;
+  item_id: string;
+  item_name: string;
+  weight: number;
+  source: 'invoice' | 'grn' | 'customer' | 'item' | null;
+  unit_price: number | null;
+  labour_rate: number | null;
+  tax_percent: number | null;
+  /** Null for the 'invoice' source. */
+  weight_min: number | null;
+  weight_max: number | null;
+  /** The lot's invoice lines differ (source 'invoice' only). */
+  varies: boolean;
+}
+
+/** get_grn_item_rates data: the rate each lot of a GRN is invoiced at, in the order of the GRN's items. */
+export interface RpcGrnItemRates {
+  gr_id: string;
+  grn_date: string;
+  price_type: 'monthly' | 'one_time';
+  invoiced: boolean;
+  rates: RpcGrnItemRate[];
+}
+
 /**
  * Full GRN details from get_grn_details RPC
  * Source: RPC_DOCUMENTATION.md - GRNDetails schema
