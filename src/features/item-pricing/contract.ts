@@ -51,10 +51,17 @@ export const grnListPath = (itemId: string) => ({ pathname: '/item-rates/[itemId
 /** The Pricing tab of a customer, on the box of one item when `itemId` is given. */
 export const customerPricingPath = (customerId: string, itemId?: string) =>
   ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
-export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string) =>
+/** The box of one customer's own rate for one item. `add` opens the box for a new rate at once (the Pricing tab's "+ Add item"). */
+export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, add?: boolean) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',
-    params: { itemId, customerId, ...(on ? { on } : {}), ...(customerName ? { customer_name: customerName } : {}) },
+    params: {
+      itemId,
+      customerId,
+      ...(on ? { on } : {}),
+      ...(customerName ? { customer_name: customerName } : {}),
+      ...(add ? { add: '1' } : {}),
+    },
   }) as const;
 export const editorPath = (params: EditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;

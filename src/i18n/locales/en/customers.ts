@@ -87,6 +87,7 @@ export const customers = {
   page: {
     loadFailed: "Couldn't open this customer. Check your connection and try again.",
     activate: 'Activate customer',
+    tabOverview: 'Overview',
   },
   // Short field names on the customer page.
   fields: {

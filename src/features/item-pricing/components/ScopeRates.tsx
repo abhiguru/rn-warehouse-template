@@ -66,6 +66,8 @@ export interface ScopeRatesProps {
   onDirty: (dirty: boolean) => void;
   /** Open the first box with one more empty band (`add_band` of the item page's link). */
   addBand?: boolean;
+  /** Open the box for a new rate at once when the scope has no rate (the customer's "+ Add item"): no extra band. */
+  openAdd?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -306,6 +308,7 @@ export function ScopeRates({
   onBar,
   onDirty,
   addBand,
+  openAdd,
 }: ScopeRatesProps) {
   const styles = useThemedStyles(makeStyles);
   const actions = useRateActions(item);
@@ -320,7 +323,7 @@ export function ScopeRates({
 
   const [modes, setModes] = useState<Partial<Record<PriceType, PlanMode>>>({});
   const [adding, setAdding] = useState<{ priceType?: PriceType; nonce: number } | null>(
-    () => (addBand && writable && plan.plans.length === 0 ? { nonce: 0 } : null),
+    () => ((addBand || openAdd) && writable && plan.plans.length === 0 ? { nonce: 0 } : null),
   );
   const [reports, setReports] = useState<Record<string, BoxReport>>({});
   // A save is done; the rows that come back close the correction or the new rate that was saved.

@@ -34,6 +34,23 @@
 - **The day control is behind a link.** "Change date", "Back to today" and "You're looking at rates for…" are
   hidden; "See rates on another day" at the bottom of the page shows them. A day other than today shows the
   rate cards read-only, as before; a link that carries a day opens the controls at once.
+- **Customers → customer has a Pricing tab (owner, 2026-10-16).** The customer page has the tabs
+  "Overview | Pricing" for administrators and supervisors (anyone else sees the Overview alone, no tab bar;
+  the page is for managers anyway). The Overview is the page as it was. **Pricing**: "ITEMS WITH THEIR OWN
+  RATE (N)" with "+ Add item"; a row per item the customer has an own rate for (item name, "since {date}",
+  a line per weight band "band · rent · labour · tax", "Default rate: ₹x per bag, per month", tags New rate /
+  Rate ends, a chevron), by item name; the footer "All other items are charged at the default rate."; with no
+  own rate yet, "{customer} has no rates of their own yet." and the same "+ Add item". "+ Add item" lists the
+  active items that have no own rate for this customer and opens that item's box already seeded from the
+  default rate. A row opens the customer's rate box of that item
+  (`item-rates/[itemId]/customer/[customerId]`): the same rate box as the item page, typed over in place, with a
+  Save bar and "Starts on", "Default rate: …" beside it, Correct / Stop under it, "Add one-time rate" /
+  "Add monthly rate", old rates folded, and the day control behind "See rates on another day". "From" of a
+  band is editable there. The old separate edit screens are no longer used by this page. A link with
+  `tab=pricing&item=…` (the item page's customer list, GRN → Rates) lands on the Pricing tab and opens that
+  box once, so Back returns to the tab. New texts: "Pricing" (tab; Gujarati દર), "Overview" (tab), "Add
+  item", "Add an item rate for {{customer}}", "Items with their own rate", "since {{date}}", and the footer and
+  empty texts above. App only.
 - The "Add" link of the Item pricing list can open the item with one more empty band in the box
   (`add_band`). New routes `item-rates/[itemId]/customers` and `item-rates/[itemId]/grns` (same access as
   the item page: administrators and supervisors). App only; the backend is unchanged by this part.

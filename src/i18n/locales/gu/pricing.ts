@@ -113,6 +113,17 @@ export const pricing: Translation<typeof source> = {
   customersList: {
     title: 'વેપારીના પોતાના દર',
   },
+  // The Pricing tab of a customer (Customers -> a customer -> Pricing).
+  customerTab: {
+    title: 'દર',
+    sectionTitle: 'પોતાનો દર ધરાવતી આઇટમ',
+    addItem: 'આઇટમ ઉમેરો',
+    pickTitle: '{{customer}} માટે આઇટમનો દર ઉમેરો',
+    pickNone: 'દર ઉમેરવા માટે બીજી કોઈ આઇટમ નથી.',
+    footer: 'બાકીની બધી આઇટમ મૂળ દરે લાગે છે.',
+    empty: '{{customer}} ના પોતાના દર હજુ નથી.',
+    since: '{{date}} થી',
+  },
   grnList: {
     title: 'એક જ આવક પાવતી માટે લખેલા દર',
     empty: 'આ આઇટમ માટે કોઈ આવક પાવતીનો પોતાનો દર નથી.',

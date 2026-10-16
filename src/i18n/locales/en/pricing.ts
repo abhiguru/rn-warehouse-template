@@ -113,6 +113,17 @@ export const pricing = {
   customersList: {
     title: 'Customer rates',
   },
+  // The Pricing tab of a customer (Customers -> a customer -> Pricing).
+  customerTab: {
+    title: 'Pricing',
+    sectionTitle: 'Items with their own rate',
+    addItem: 'Add item',
+    pickTitle: 'Add an item rate for {{customer}}',
+    pickNone: 'There is no other item to add a rate for.',
+    footer: 'All other items are charged at the default rate.',
+    empty: '{{customer}} has no rates of their own yet.',
+    since: 'since {{date}}',
+  },
   grnList: {
     title: 'Rates typed on single GRNs',
     empty: 'No GRN has a rate of its own for this item.',

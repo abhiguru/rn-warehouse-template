@@ -90,6 +90,7 @@ export const customers: Translation<typeof source> = {
   page: {
     loadFailed: 'આ વેપારી ખોલી શકાયા નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
     activate: 'વેપારી સક્રિય કરો',
+    tabOverview: 'સારાંશ',
   },
   // Short field names on the customer page.
   fields: {

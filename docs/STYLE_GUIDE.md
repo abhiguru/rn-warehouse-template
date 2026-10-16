@@ -998,6 +998,7 @@ For one order, GRN, dispatch, invoice, customer, item or sensor.
 2. Detail tabs: Overview first, then Items, related documents (GRNs, Dispatches, Invoices), Images, History.
 3. Overview: key-value sections, contact card, notes, actions section.
 4. Edits open the form flow. After saving, return to the object page with a success snackbar.
+5. Tabs by page: GRN (Overview, Items, Dispatches, Images, Invoices), dispatch, invoice, and customer (Overview | Pricing, managers only: with one tab there is no bar; `CustomerTabNavigator`, icon `tag`; the Pricing tab is a list of the customer's own item rates whose rows open a rate box).
 
 ### 14.3 Wizard (multi-step form)
 

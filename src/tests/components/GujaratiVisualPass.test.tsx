@@ -4,7 +4,7 @@
  *  - Document numbers are identifiers: shown in 0-9 on the list cards, also when
  *    the data holds them as numbers (the invoice number is a number).
  *  - A financial year is a period: shown in the language's digits.
- *  - Every tab of the GRN, dispatch and invoice pages has an icon that the bundled
+ *  - Every tab of the GRN, dispatch, invoice and customer pages has an icon that the bundled
  *    icon font can draw, whatever the language.
  *  - Report rows give each fact its own line in Gujarati and one joined line in English.
  */
@@ -18,6 +18,7 @@ import { RecentDispatchedOrderCard } from '@/components/list-items/RecentDispatc
 import { GRNTabNavigator } from '@/components/grn-details/GRNTabNavigator';
 import { DispatchTabNavigator } from '@/components/dispatch-details/DispatchTabNavigator';
 import { InvoiceTabNavigator } from '@/components/invoice-details/InvoiceTabNavigator';
+import { CustomerTabNavigator } from '@/components/customer-details/CustomerTabNavigator';
 import { TAB_ICONS } from '@/components/common/GenericDetailTabNavigator';
 import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { KPICard } from '@/components/reports/KPICard';
@@ -176,6 +177,7 @@ describe('tab icons on the details pages', () => {
     ['GRN', tab => <GRNTabNavigator activeTab={tab as never} onTabChange={jest.fn()} item_count={2} dispatch_count={1} image_count={1} invoice_count={1} />, ['overview', 'items', 'dispatches', 'images', 'invoices']],
     ['dispatch', tab => <DispatchTabNavigator activeTab={tab as never} onTabChange={jest.fn()} item_count={2} grn_count={1} image_count={1} invoice_count={1} />, ['overview', 'items', 'grns', 'images', 'invoices']],
     ['invoice', tab => <InvoiceTabNavigator active_tab={tab as never} on_tab_change={jest.fn()} item_count={2} />, ['overview', 'items', 'breakdown']],
+    ['customer', tab => <CustomerTabNavigator activeTab={tab as never} onTabChange={jest.fn()} />, ['overview', 'pricing']],
   ];
 
   it('every icon of the table is a glyph of the icon font, and none is the solid receipt', () => {

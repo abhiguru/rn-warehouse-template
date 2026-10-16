@@ -81,6 +81,7 @@ export const TAB_ICONS = {
   invoices: { filled: 'file-document', outline: 'file-document-outline' },
   lineItems: { filled: 'receipt-text', outline: 'receipt-text-outline' },
   breakdown: { filled: 'calculator-variant', outline: 'calculator-variant-outline' },
+  pricing: { filled: 'tag', outline: 'tag-outline' },
 } as const;
 
 // ============================================================================

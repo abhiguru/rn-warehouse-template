@@ -1,40 +1,46 @@
 /**
- * Customer-rate page (screen B2): one customer's own rate for one item, with the default rate
- * beside it. The same card and the same three actions as the item page; stopping this rate
- * puts the customer back on the default rate.
+ * The customer's rate box (screen B2): one customer's own rate for one item, opened from the customer's Pricing tab.
+ * The figures are typed over in place, in the same box as the item's default rate (ScopeRates with a customer): a
+ * Save bar with "Starts on" appears when something is changed, "Default rate: ..." sits beside the box, and Correct /
+ * Stop sit under it; stopping this rate puts the customer back on the default rate. A customer with no own rate for
+ * the item gets the strip that says so and "Add customer rate", which reveals a box seeded from the default rate
+ * (the Pricing tab's "+ Add item" opens it at once with `add=1`). Old rates are folded at the bottom, and the day
+ * control is behind the link "See rates on another day" (a day other than today is read-only).
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { editorPath, historyPath } from '@/features/item-pricing/contract';
+import { historyPath } from '@/features/item-pricing/contract';
 import { rateRights } from '@/features/item-pricing/rateRights';
-import { dateText, rentRange, todayDay, unitText } from '@/features/item-pricing/rateText';
+import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { planScope } from '@/features/item-pricing/scopePlan';
+import { useEditorFields } from '@/features/item-pricing/useEditorFields';
 import { useItemRatesFor } from '@/features/item-pricing/useItemRates';
-import { useRateActions, type RateScope } from '@/features/item-pricing/useRateActions';
-import { OtherDayStrip } from '@/features/item-pricing/components/OtherDayStrip';
+import type { EditorView } from '@/features/item-pricing/useRateEditor';
 import { OldRatesSection } from '@/features/item-pricing/components/OldRatesSection';
-import { RateCard } from '@/features/item-pricing/components/RateCard';
-import { RateStrip } from '@/features/item-pricing/components/RateStrip';
+import { OtherDayStrip } from '@/features/item-pricing/components/OtherDayStrip';
 import { RatesOnBar } from '@/features/item-pricing/components/RatesOnBar';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
+import { ScopeRates, type RateSaveBarState } from '@/features/item-pricing/components/ScopeRates';
+import { ScopeSaveBar } from '@/features/item-pricing/components/ScopeSaveBar';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatTime } from '@/utils/formatters';
-import type { PriceType } from '@/types/item-pricing.types';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const makeStyles = (th: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: th.background.base },
+  flex: { flex: 1 },
   header: {
     paddingBottom: space.sm,
     paddingHorizontal: space.sm,
@@ -46,38 +52,47 @@ const makeStyles = (th: ThemeTokens) => ({
   titles: { flex: 1 },
   title: { ...typography.headline, color: th.text.primary },
   subtitle: { ...typography.subhead, color: th.text.secondary },
-  compare: { ...typography.subhead, color: th.text.secondary, marginHorizontal: layout.marginCompact },
+  note: { ...typography.footnote, color: th.text.secondary, paddingHorizontal: layout.marginCompact, paddingBottom: space.sm },
   strip: { marginHorizontal: layout.marginCompact, gap: space.sm },
-  block: { gap: space.sm, marginBottom: space.lg },
+  block: { gap: space.md, marginBottom: space.lg },
+  link: { alignSelf: 'flex-start' as const, marginHorizontal: layout.marginCompact },
   skeleton: { gap: space.md },
+  otherDay: { gap: space.sm, marginTop: space.lg },
 });
 
 export default function CustomerRatePage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string; add?: string }>();
   const itemId = String(params.itemId ?? '');
   const customerId = String(params.customerId ?? '');
   const today = todayDay();
   const [day, setDay] = useState(typeof params.on === 'string' && DAY.test(params.on) ? params.on : today);
+  // The day control is behind a link; a link that carries a day opens it, so the page is never silently read-only.
+  const [dayOpen, setDayOpen] = useState(day !== today);
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const rights = rateRights(role);
-  // Rates are changed from today's rows only (a viewed day's figures are not what the server changes).
-  const writable = rights.canWrite && day === today;
   const offline = useIsOffline();
   const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
   const [pulling, setPulling] = useState(false);
 
+  // ---- the rate box: its cells, its Save bar, the leave guard ----
+  const [order, setOrder] = useState<string[]>([]);
+  const [bar, setBar] = useState<RateSaveBarState | null>(null);
+  const [anyDirty, setAnyDirty] = useState(false);
+  const view = useRef<EditorView | null>(null);
+  const { scrollRef, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop, keyboardUp } = useEditorFields(order, { trackKeyboard: true });
+  view.current = { scrollToTop, scrollToError };
+  useLeaveGuard({ hasChanges: anyDirty });
+
   const item = itemRates?.item ?? { id: itemId, name: '' };
-  const actions = useRateActions(item);
   const rows = useMemo(() => itemRates?.rows ?? [], [itemRates]);
   const own = useMemo(() => rows.filter(r => r.customer_id === customerId), [rows, customerId]);
   // The name outlives the rows: cancelling or undoing the customer's last own rate leaves no row to read it from.
   const knownName = useRef(typeof params.customer_name === 'string' ? params.customer_name : '');
   if (own[0]?.customer_name) knownName.current = own[0].customer_name;
   const customerName = knownName.current;
-  const plan = useMemo(() => planScope(own, day), [own, day]);
-  const defaultPlan = useMemo(() => planScope(rows.filter(r => r.customer_id === null), day), [rows, day]);
+  const ended = useMemo(() => planScope(own, day).ended, [own, day]);
 
   const onPull = useCallback(async () => {
     setPulling(true);
@@ -85,14 +100,10 @@ export default function CustomerRatePage() {
     setPulling(false);
   }, [refresh]);
 
-  const scopeOf = (priceType: PriceType, view: (typeof plan.plans)[number]['view']): RateScope => ({
-    priceType,
-    customerId,
-    customerName,
-    bands: view.inForce,
-    upcoming: view.upcoming,
-    stopsAfter: view.stopsAfter,
-  });
+  const backToToday = () => {
+    setDay(today);
+    setDayOpen(false);
+  };
 
   return (
     <View style={styles.container}>
@@ -139,13 +150,7 @@ export default function CustomerRatePage() {
       ) : null}
 
       {itemRates ? (
-        <>
-          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
-          {rights.canWrite && day !== today ? (
-            <View style={styles.strip}>
-              <OtherDayStrip day={day} onBack={() => setDay(today)} />
-            </View>
-          ) : null}
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {refreshError ? (
             <View style={styles.strip}>
               <InlineValidation variant="error" message={t('pricing.list.refreshFailed', { time: lastUpdated ? formatTime(new Date(lastUpdated)) : '' })} />
@@ -153,88 +158,66 @@ export default function CustomerRatePage() {
             </View>
           ) : null}
           <ScrollView
-            contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.huge + insets.bottom }}
+            ref={scrollRef}
+            style={styles.flex}
+            contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.huge + insets.bottom + (bar ? barHeight + space.lg : 0) }}
             refreshControl={<RefreshControl refreshing={pulling && refreshing} onRefresh={onPull} />}
+            keyboardShouldPersistTaps="handled"
+            onScroll={onScroll}
+            scrollEventThrottle={16}
           >
             <View style={styles.block}>
-              {plan.plans.length === 0 ? (
-                <View style={styles.strip}>
-                  <RateStrip variant="warning" message={t('pricing.customerRate.noneNow', { customer: customerName || '—' })} testID="no-own-rate" />
-                  {writable && customerId ? (
-                    <Button
-                      type="primary"
-                      size="fullWidth"
-                      disabled={offline}
-                      onPress={() => router.push(editorPath({ mode: 'addCustomer', item_id: itemId, item_name: item.name, customer_id: customerId, customer_name: customerName, price_type: defaultPlan.plans[0]?.priceType ?? 'monthly' }))}
-                      testID="add-customer-rate"
-                    >
-                      {t('pricing.action.addCustomer')}
-                    </Button>
-                  ) : null}
-                </View>
-              ) : null}
-              {plan.plans.map(({ priceType, view }) => {
-                const defaultView = defaultPlan.plans.find(p => p.priceType === priceType)?.view;
-                const defaultRows = defaultView?.inForce ?? [];
-                return (
-                  <View key={priceType} style={{ gap: space.sm }}>
-                    {defaultRows.length > 0 ? (
-                      <Text style={styles.compare} testID="default-is">
-                        {t('pricing.customerRate.defaultIs', {
-                          amount: rentRange(Math.min(...defaultRows.map(r => r.unit_price)), Math.max(...defaultRows.map(r => r.unit_price))),
-                          unit: unitText(priceType),
-                        })}
-                      </Text>
-                    ) : null}
-                    <RateCard
-                      priceType={priceType}
-                      bands={view.inForce}
-                      upcoming={view.upcoming}
-                      stopsAfter={view.stopsAfter}
-                      overlap={Boolean(view.overlap)}
-                      canCorrect={rights.canCorrect}
-                      canWrite={writable}
-                      offline={offline}
-                      busy={actions.busy}
-                      day={day}
-                      onChange={() => actions.change(scopeOf(priceType, view))}
-                      onCorrect={() => actions.correct(scopeOf(priceType, view))}
-                      onStop={() => actions.stop(scopeOf(priceType, view))}
-                      onEditUpcoming={() => actions.editUpcoming(scopeOf(priceType, view))}
-                      onCancelUpcoming={() => actions.askCancel(scopeOf(priceType, view))}
-                      onUndoStop={() => { void actions.undoStop(scopeOf(priceType, view)); }}
-                    />
-                  </View>
-                );
-              })}
-              {writable && customerName && plan.plans.length === 1 ? (
-                <Button
-                  type="tertiary"
-                  leftIcon="plus"
-                  disabled={offline}
-                  onPress={() =>
-                    router.push(
-                      editorPath({
-                        mode: 'addCustomer',
-                        item_id: itemId,
-                        item_name: item.name,
-                        customer_id: customerId,
-                        customer_name: customerName,
-                        price_type: plan.plans[0].priceType === 'monthly' ? 'one_time' : 'monthly',
-                      }),
-                    )
-                  }
-                  testID="add-other-type"
-                >
-                  {plan.plans[0].priceType === 'monthly' ? t('pricing.action.addOneTime') : t('pricing.action.addMonthly')}
-                </Button>
-              ) : null}
+              <ScopeRates
+                item={item}
+                customerId={customerId}
+                customerName={customerName}
+                rows={rows}
+                day={day}
+                today={today}
+                rights={rights}
+                offline={offline}
+                role={role}
+                fields={fields}
+                view={view}
+                onOrder={setOrder}
+                refreshRows={() => { void refresh(); }}
+                onBar={setBar}
+                onDirty={setAnyDirty}
+                openAdd={params.add === '1'}
+              />
             </View>
-            {rights.canSeeOldRates ? <OldRatesSection rows={plan.ended} showCustomer={false} /> : null}
+
+            {rights.canSeeOldRates ? <OldRatesSection rows={ended} showCustomer={false} /> : null}
+
+            {/* Another day: behind a link; read-only */}
+            {dayOpen ? (
+              <View style={styles.otherDay} testID="other-day">
+                {anyDirty ? (
+                  <Text style={styles.note}>{t('pricing.box.locked')}</Text>
+                ) : (
+                  <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
+                )}
+                {rights.canWrite && day !== today ? (
+                  <View style={styles.strip}>
+                    <OtherDayStrip day={day} onBack={backToToday} />
+                  </View>
+                ) : null}
+                {day === today && !anyDirty ? (
+                  <Button type="tertiary" style={styles.link} onPress={() => setDayOpen(false)} testID="other-day-hide">
+                    {t('common.close')}
+                  </Button>
+                ) : null}
+              </View>
+            ) : anyDirty ? null : (
+              <Button type="tertiary" style={styles.link} onPress={() => setDayOpen(true)} testID="other-day-link">
+                {t('pricing.item.otherDayLink')}
+              </Button>
+            )}
           </ScrollView>
-        </>
+
+          {bar ? <ScopeSaveBar bar={bar} collapsed={keyboardUp} onHeight={setBarHeight} /> : null}
+        </KeyboardAvoidingView>
       ) : null}
-      {actions.dialog}
     </View>
   );
 }

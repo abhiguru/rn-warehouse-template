@@ -7,35 +7,41 @@
  * edited shows. A section appears only when it has a value.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { SectionHeader } from '@/components/ui/SectionHeader';
-import { StatusTag } from '@/components/ui/StatusTag';
-import { ContactCard } from '@/components/common/overview-tab/ContactCard';
-import { KeyValueCell } from '@/components/fiori/KeyValueCell';
+import { CustomerOverviewTab } from '@/components/customer-details/CustomerOverviewTab';
+import { CustomerTabNavigator, type CustomerTabKey } from '@/components/customer-details/CustomerTabNavigator';
+import { CustomerPricingTab } from '@/features/item-pricing/components/CustomerPricingTab';
 import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { canOpenScreen } from '@/config/roles';
 import { customerService } from '@/services/customer-service';
+import { useAppSelector } from '@/store/hooks';
 import type { Customer } from '@/types/customer.types';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { showAlert } from '@/utils/alert';
-import { formatMobile } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 
-type Row = { label: string; value: string | undefined | null };
-
 export default function CustomerPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, tab, item } = useLocalSearchParams<{ id: string; tab?: string | string[]; item?: string | string[] }>();
   const isFocused = useIsFocused();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
+  const role = useAppSelector(state => state.auth.userProfile?.role);
+  // The Pricing tab is for the roles that may open Item pricing; anyone else sees the Overview alone, with no tab bar.
+  const canSeePricing = canOpenScreen(role, 'itemPricing');
+  const requestedTab = Array.isArray(tab) ? tab[0] : tab;
+  const [chosenTab, setActiveTab] = useState<CustomerTabKey>(requestedTab === 'pricing' ? 'pricing' : 'overview');
+  const activeTab: CustomerTabKey = canSeePricing ? chosenTab : 'overview';
+  // A link into the tab may name an item (`item`): its box opens once, so Back lands on the tab.
+  const autoItem = useRef<string | undefined>((Array.isArray(item) ? item[0] : item) || undefined);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -112,37 +118,6 @@ export default function CustomerPage() {
     );
   }, [shown, setActive]);
 
-  const sections: { title: string; rows: Row[] }[] = shown
-    ? [
-        {
-          title: tr('customers.form.address'),
-          rows: [
-            { label: tr('customers.fields.address'), value: shown.address },
-            { label: tr('customers.fields.city'), value: shown.city },
-            { label: tr('customers.fields.state'), value: shown.state },
-            { label: tr('customers.fields.pincode'), value: shown.pincode },
-          ],
-        },
-        {
-          title: tr('customers.form.taxDetails'),
-          rows: [
-            { label: tr('customers.fields.gst'), value: shown.gst },
-            { label: tr('customers.fields.pan'), value: shown.pan },
-          ],
-        },
-        {
-          title: tr('customers.form.contactPerson'),
-          rows: [
-            { label: tr('customers.fields.name'), value: shown.contact_name },
-            { label: tr('customers.fields.contactMobile'), value: shown.contact_mobile ? formatMobile(shown.contact_mobile) : undefined },
-            { label: tr('customers.fields.contactEmail'), value: shown.contact_email },
-          ],
-        },
-      ]
-        .map(section => ({ ...section, rows: section.rows.filter(row => !!row.value?.trim()) }))
-        .filter(section => section.rows.length > 0)
-    : [];
-
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
@@ -188,52 +163,21 @@ export default function CustomerPage() {
         </View>
       )}
 
-      {shown && (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={{ paddingBottom: insets.bottom + space.xxl }}
-          showsVerticalScrollIndicator={false}
-        >
-          {!shown.active && (
-            <View style={styles.status}>
-              <StatusTag status="neutral" label={tr('customers.list.statusDeactivated')} />
-            </View>
-          )}
-          <ContactCard
-            type={tr('common.customer')}
-            name={shown.name}
-            phone={shown.mobile || undefined}
-            email={shown.email || undefined}
-            iconName="account-outline"
-            iconColor={t.brand.tint}
-            iconBgColor={t.brand.subtle}
-          />
-          {sections.map(section => (
-            <View key={section.title}>
-              <SectionHeader title={section.title} />
-              <View style={styles.cells}>
-                {section.rows.map((row, index) => (
-                  <KeyValueCell
-                    key={row.label}
-                    keyLabel={row.label}
-                    value={row.value as string}
-                    showDivider={index < section.rows.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          ))}
-          <View style={styles.footer}>
-            <Button
-              type="tertiary"
-              variant={shown.active ? 'negative' : 'tint'}
-              onPress={onToggleActive}
-              disabled={busy}
-            >
-              {tr(shown.active ? 'customers.list.deactivateCustomer' : 'customers.page.activate')}
-            </Button>
-          </View>
-        </ScrollView>
+      {shown && canSeePricing && (
+        <CustomerTabNavigator activeTab={activeTab} onTabChange={setActiveTab} />
+      )}
+
+      {shown && activeTab === 'overview' && (
+        <CustomerOverviewTab customer={shown} busy={busy} onToggleActive={onToggleActive} />
+      )}
+
+      {shown && activeTab === 'pricing' && (
+        <CustomerPricingTab
+          customerId={shown.id}
+          customerName={shown.name}
+          openItemId={autoItem.current}
+          onOpened={() => { autoItem.current = undefined; }}
+        />
       )}
     </View>
   );
@@ -254,10 +198,6 @@ const makeStyles = (t: ThemeTokens) => ({
   navSide: { minWidth: 80 },
   navEnd: { alignItems: 'flex-end' as const },
   navTitle: { ...typography.headline, color: t.text.primary, flexShrink: 1, textAlign: 'center' as const },
-  scroll: { flex: 1 },
-  status: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, alignItems: 'flex-start' as const },
-  cells: { backgroundColor: t.surface.card, paddingHorizontal: layout.marginCompact },
-  footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.xl, alignItems: 'flex-start' as const },
   state: { flex: 1, padding: layout.marginCompact, gap: space.md, justifyContent: 'center' as const },
   stateText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
 });
