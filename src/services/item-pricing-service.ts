@@ -34,6 +34,7 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
+import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.types';
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
@@ -692,4 +693,47 @@ export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandar
     // A timeout or a lost answer: the server may have committed the change.
     return unconfirmed();
   }
+};
+
+const numOrNull = (v: unknown): number | null => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/**
+ * The rate each lot of a GRN is invoiced at (backend migration 88), in the order of the GRN's items. Null
+ * when the server lacks the function (an older one). Throws when the facility cannot be reached or refuses.
+ */
+export const getGrnItemRates = async (grnId: string): Promise<RpcGrnItemRates | null> => {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_grn_item_rates', { p_grn_id: grnId })), RPC_TIMEOUT_MS, 'GRN item rates');
+  if (error) {
+    handleGlobalAuthError(error);
+    if (isMissingFunction(error, 'get_grn_item_rates')) return null;
+    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates of the GRN could not be loaded');
+  }
+  const response = unwrapArrayResponse(data) as { success?: unknown; data?: Record<string, unknown> | null } | null;
+  if (!response || response.success !== true || !response.data) {
+    handleGlobalAuthError(response);
+    throw new Error('The rates of the GRN could not be loaded');
+  }
+  const d = response.data;
+  const rows = Array.isArray(d.rates) ? (d.rates as Array<Record<string, unknown>>) : [];
+  const sources = ['invoice', 'grn', 'customer', 'item'];
+  return {
+    gr_id: String(d.gr_id ?? grnId),
+    grn_date: String(d.grn_date ?? '').slice(0, 10),
+    price_type: d.price_type === 'one_time' ? 'one_time' : 'monthly',
+    invoiced: d.invoiced === true,
+    rates: rows.map(r => ({
+      grn_item_id: String(r.grn_item_id),
+      item_id: String(r.item_id),
+      item_name: String(r.item_name ?? ''),
+      weight: Number(r.weight) || 0,
+      source: sources.includes(r.source as string) ? (r.source as RpcGrnItemRate['source']) : null,
+      unit_price: numOrNull(r.unit_price),
+      labour_rate: numOrNull(r.labour_rate),
+      tax_percent: numOrNull(r.tax_percent),
+      weight_min: numOrNull(r.weight_min),
+      weight_max: numOrNull(r.weight_max),
+      varies: r.varies === true,
+    })),
+  };
 };

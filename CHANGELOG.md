@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — GRN details: Rates for every item on the Overview tab (2026-10-16)
+
+Needs backend migration 88 (`get_grn_item_rates`): merge and deploy the backend first. On a server
+without it the section stays as before: the "Rates for this GRN only" block when the GRN has such
+rates, otherwise nothing.
+- The Overview tab has a "Rates" section: one row per item and bag weight with the rate the GRN is
+  invoiced at (rent, labour and tax; one-time GRNs show no labour), and a tag for where it comes from:
+  This GRN only, Customer rate, Item rate, or On the invoice (with "differs by dispatch" when a lot's
+  invoice lines differ). An item with no rate shows "No rate set". Lots with the same item, weight and
+  figures share a row. Customers see the rates of their own GRNs. The section is read again when the
+  screen regains focus, and shows a short error with Retry when the server cannot be reached.
+
 ## Unreleased — Tables: columns that fit their numbers, a card that scrolls into view (2026-10-16)
 
 App only. Fixes from phone runs with stretch data on Dev (30-character names, 59-character marks,
