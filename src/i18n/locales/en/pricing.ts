@@ -92,6 +92,8 @@ export const pricing = {
     customerRates: 'Customer rates',
     grnOnlyTitle: 'For GRNs only',
     grnOnlyRow: 'For GRN {{number}} only · {{customer}} · {{date}}',
+    grnOnlyGrn: 'GRN {{number}}',
+    grnDate: 'GRN date',
     grnOnlyFailed: "Couldn't load the rates set for single GRNs.",
     noCustomerRates: 'No customer has their own rate for this item.',
     customerLine: '{{band}} · since {{date}}',

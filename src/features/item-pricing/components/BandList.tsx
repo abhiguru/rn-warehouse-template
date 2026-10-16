@@ -9,8 +9,11 @@ import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { bandText, money } from '../rateText';
 import type { TierTag } from '../standardRate';
 
+/** What a band row shows: a rate in force, or a rate set for one GRN only. */
+export type BandRow = Pick<ItemStoragePrice, 'id' | 'weight_min' | 'weight_max' | 'unit_price' | 'labour_rate' | 'tax_percent'>;
+
 export interface BandListProps {
-  bands: ItemStoragePrice[];
+  bands: BandRow[];
   priceType: PriceType;
   /** One tag per band ('Standard' or 'This item'), or none. Only a default monthly rate is tagged. */
   tags?: TierTag[] | null;

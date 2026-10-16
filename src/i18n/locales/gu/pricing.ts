@@ -93,6 +93,8 @@ export const pricing: Translation<typeof source> = {
     customerRates: 'વેપારીના પોતાના દર',
     grnOnlyTitle: 'ફક્ત આવક પાવતી માટે',
     grnOnlyRow: 'ફક્ત આવક પાવતી {{number}} માટે · {{customer}} · {{date}}',
+    grnOnlyGrn: 'આવક પાવતી {{number}}',
+    grnDate: 'આવક પાવતીની તારીખ',
     grnOnlyFailed: 'એક જ આવક પાવતી માટે મૂકેલા દર લોડ થઈ શક્યા નહીં.',
     noCustomerRates: 'આ આઇટમ માટે કોઈ વેપારીનો પોતાનો દર નથી.',
     customerLine: '{{band}} · {{date}} થી',

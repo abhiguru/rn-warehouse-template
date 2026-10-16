@@ -502,32 +502,55 @@ describe('Standard / This item tags', () => {
 });
 
 describe('For GRNs only (backend migration 86)', () => {
+  const cardTexts = (id: string) =>
+    tree.root.find(n => n.props.testID === id).findAllByType(Text)
+      .map(n => [n.props.children].flat(Infinity))
+      .filter(parts => parts.every(part => typeof part === 'string'))
+      .map(parts => parts.join(''));
   const grnRate = (over: Record<string, unknown>) => ({
     id: 'g1', gr_id: 'gr1', gr_no: 'A0010', grn_date: '2026-10-12', customer_id: 'c1', customer_name: 'Review Orchard A',
     price_type: 'monthly', weight_min: 11, weight_max: 20, unit_price: 4.5, labour_rate: 1.5, tax_percent: 5,
     archived: false, created_at: '2026-10-12T05:00:00Z', ...over,
   });
 
-  it('lists the rates set for one GRN only, a row per GRN, and the archived ones under Old rates', async () => {
+  it('lists the rates set for one GRN only, a card per GRN, and the archived ones under Old rates', async () => {
     jest.mocked(getItemGrnRates).mockResolvedValue([grnRate({}), grnRate({ id: 'g2', gr_no: 'A0007', grn_date: '2026-09-01', archived: true })] as never);
     await open('admin');
     await act(async () => { await Promise.resolve(); });
-    const section = tree.root.find(n => n.props.testID === 'grn-only-section');
-    const lines = section.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-    expect(lines).toEqual(['For GRNs only', 'For GRN A0010 only · Review Orchard A · 12 Oct 2026', '11–20 kg · ₹4.50 rent · ₹1.50 labour · 5% tax']);
+    expect(cardTexts('grn-only-section').slice(0, 2)).toEqual(['FOR GRNS ONLY', '1']);
+    expect(cardTexts('grn-only-card-gr1')).toEqual([
+      'GRN A0010', 'Review Orchard A', '₹4.50', '  per bag, per month',
+      'Weight each', '11–20 kg', 'Labour', '₹1.50 per bag', 'Tax', '5%', 'GRN date', '12 Oct 2026',
+    ]);
     expect(shown(tree)).not.toContain('A0007');
     await act(async () => { byId(tree, 'old-rates-toggle')[0].props.onPress(); });
     expect(shown(tree)).toContain('For GRN A0007 only · Review Orchard A · 1 Sep 2026');
     expect(shown(tree)).toContain('Archived once invoiced');
   });
 
+  it('puts the bands of one GRN in one card as a band list, and a one-time GRN has no labour', async () => {
+    jest.mocked(getItemGrnRates).mockResolvedValue([
+      grnRate({ id: 'b2', weight_min: 21, weight_max: 40, unit_price: 6 }),
+      grnRate({ id: 'b1' }),
+      grnRate({ id: 'o1', gr_id: 'gr5', gr_no: 'A0015', price_type: 'one_time', customer_name: null, unit_price: 9, tax_percent: 0 }),
+    ] as never);
+    await open('admin');
+    await act(async () => { await Promise.resolve(); });
+    expect(cardTexts('grn-only-section').slice(0, 2)).toEqual(['FOR GRNS ONLY', '2']);
+    expect(cardTexts('grn-only-card-gr1')).toEqual([
+      'GRN A0010', 'Review Orchard A', 'per bag, per month',
+      'Weight each', 'Rent per month', '11–20 kg', '₹4.50', '21–40 kg', '₹6.00',
+      'Labour', '₹1.50 per bag', 'Tax', '5%', 'GRN date', '12 Oct 2026',
+    ]);
+    expect(cardTexts('grn-only-card-gr5')).toEqual(['GRN A0015', '₹9.00', '  per bag, once', 'Weight each', '11–20 kg', 'Tax', '0%', 'GRN date', '12 Oct 2026']);
+  });
+
   it('read-only, shows only the rate of the GRN the page was opened from', async () => {
     jest.mocked(getItemGrnRates).mockResolvedValue([grnRate({}), grnRate({ id: 'g3', gr_id: 'gr3', gr_no: 'A0011', unit_price: 5 })] as never);
     await open('admin', {}, { itemId: 'cumin', readonly: '1', grn: 'gr3' });
     await act(async () => { await Promise.resolve(); });
-    const section = tree.root.find(n => n.props.testID === 'grn-only-section');
-    const lines = section.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-    expect(lines).toEqual(['For GRNs only', 'For GRN A0011 only · Review Orchard A · 12 Oct 2026', '11–20 kg · ₹5.00 rent · ₹1.50 labour · 5% tax']);
+    expect(tree.root.findAll(n => n.props.testID === 'grn-only-card-gr1')).toHaveLength(0);
+    expect(cardTexts('grn-only-card-gr3').slice(0, 4)).toEqual(['GRN A0011', 'Review Orchard A', '₹5.00', '  per bag, per month']);
     act(() => tree.unmount());
     // Opened from a GRN with no rate of its own: no GRN-only section at all.
     await open('admin', {}, { itemId: 'cumin', readonly: '1', grn: 'gr9' });
