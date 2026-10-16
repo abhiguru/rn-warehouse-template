@@ -8,10 +8,14 @@
  *
  * Owner, 2026-10-16: the item cell holds only the name (the weight of one bag only when an item has
  * more than one row, to tell them apart). The table is the GRN's applicable rates; for more, an
- * administrator or supervisor taps a row and lands on the item's page in Item pricing (the full list of
- * its rates, on the GRN's day), and Back returns to the GRN. Staff get the table only (no link to the
- * price list). A customer's row opens "Your rate" (app/grn-rate): only the rate their lots are invoiced
- * at, never the item's default or anyone else's, and their screen-reader label names no source either.
+ * administrator or supervisor taps a row and lands where that rate lives (owner, 2026-10-16), by the
+ * row's source: 'item' (the item's default rate) opens the item's page in Item pricing, today's rates
+ * (no day, so no "You're looking at..." section); 'customer' (the customer's own rate) opens the
+ * customer's Pricing tab on that item's box; 'grn' (typed on this GRN only), 'invoice' (taken from an
+ * invoice) and a row without a rate are plain rows, not links, because no rate card holds them. Back
+ * returns to the GRN. Staff get the table only (no link to the price list). A customer's row opens
+ * "Your rate" (app/grn-rate): only the rate their lots are invoiced at, never the item's default or
+ * anyone else's, and their screen-reader label names no source either.
  */
 import React, { useMemo } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
@@ -32,7 +36,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { isManager } from '@/config/roles';
-import { itemRatesPath } from '@/features/item-pricing/contract';
+import { customerPricingPath, itemRatesPath } from '@/features/item-pricing/contract';
 import { useAppSelector } from '@/store/hooks';
 import { localizeDigits, t } from '@/i18n';
 import { money } from '@/features/item-pricing/rateText';
@@ -101,19 +105,23 @@ export function repeatedItems(groups: RateGroup[]): Set<string> {
 export interface GrnItemRatesProps {
   grnId?: string | null;
   grnNumber?: string | null;
+  /** The GRN's customer: where a manager's tap on a 'customer' rate goes (its Pricing tab). */
+  customerId?: string | null;
+  /** The customer's name, for the hint of that tap. */
+  customerName?: string | null;
   fallbackRates?: RpcGrnRate[] | null;
 }
 
-export function GrnItemRates({ grnId, grnNumber, fallbackRates }: GrnItemRatesProps) {
+export function GrnItemRates({ grnId, grnNumber, customerId, customerName, fallbackRates }: GrnItemRatesProps) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
   const screen = useTableLayout();
-  const { rates, priceType, grnDate, status, retry } = useGrnItemRates(grnId);
+  const { rates, priceType, status, retry } = useGrnItemRates(grnId);
   const role = useAppSelector(state => state.auth?.userProfile?.role);
-  // Administrators and supervisors open the item in Item pricing; staff get no link to the price list;
-  // a customer's priced rows open "Your rate".
-  const opensItemPricing = isManager(role);
+  // Administrators and supervisors open the rate's home (see the header); staff get no link to the
+  // price list; a customer's priced rows open "Your rate".
+  const manager = isManager(role);
   const isCustomer = role === 'customer';
   const oneTime = priceType === 'one_time';
   const groups = useMemo(() => groupRates(rates), [rates]);
@@ -159,7 +167,9 @@ export function GrnItemRates({ grnId, grnNumber, fallbackRates }: GrnItemRatesPr
               const { rate } = group;
               const priced = rate.source !== null;
               const opensYourRate = isCustomer && priced && !!grnId;
-              const link = opensItemPricing || opensYourRate;
+              const managerTarget: 'item' | 'customer' | null =
+                manager && rate.source === 'item' ? 'item' : manager && rate.source === 'customer' && customerId ? 'customer' : null;
+              const link = managerTarget !== null || opensYourRate;
               const details = repeated.has(rate.item_id) ? formatWeightEach(group.weight) : null;
               // Stacked, labour and tax go under the item.
               const extra =
@@ -206,15 +216,23 @@ export function GrnItemRates({ grnId, grnNumber, fallbackRates }: GrnItemRatesPr
                   key={group.key}
                   onPress={() =>
                     router.push(
-                      opensItemPricing
-                        ? itemRatesPath(rate.item_id, grnDate ?? undefined)
-                        : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
+                      managerTarget === 'item'
+                        ? itemRatesPath(rate.item_id)
+                        : managerTarget === 'customer'
+                          ? customerPricingPath(customerId as string, rate.item_id)
+                          : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
                     )
                   }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
                   accessibilityRole="button"
                   accessibilityLabel={label}
-                  accessibilityHint={t(opensItemPricing ? 'grn.rates.opensItemPricing' : 'grn.rates.opensYourRate')}
+                  accessibilityHint={
+                    managerTarget === 'item'
+                      ? t('grn.rates.opensItemPricing')
+                      : managerTarget === 'customer'
+                        ? t('grn.rates.opensCustomerPricing', { customer: customerName ?? t('common.customer') })
+                        : t('grn.rates.opensYourRate')
+                  }
                   testID="grn-item-rate-row"
                 >
                   {cells}

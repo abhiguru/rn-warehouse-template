@@ -40,7 +40,6 @@ export interface ItemRates {
 }
 
 export interface ItemSummaryFilters {
-  customerIds?: string[];
   priceType?: 'all' | PriceType;
 }
 
@@ -49,7 +48,7 @@ export interface ItemSummary {
   name: string;
   /** Type of the rate the row shows: monthly if the item has one in force, else one-time, else null. */
   priceType: PriceType | null;
-  /** The rates shown in the row (the default's, or the chosen customer's own). */
+  /** The default rates shown in the row. */
   bands: ItemStoragePrice[];
   minRent: number | null;
   maxRent: number | null;
@@ -70,10 +69,6 @@ export interface ItemSummary {
   rateEnds: string | null;
   /** No default rate in force on the day. */
   noRateToday: boolean;
-  /** The Customer filter is set and this customer has a rate of their own. */
-  ownRate: boolean;
-  /** The Customer filter is set and the figure is the customer's own rate (name for the search line). */
-  ownRateCustomer: string | null;
   /** Rows in the shown scope that cover the same weights. */
   overlap: boolean;
 }
@@ -175,24 +170,8 @@ export function itemSummary(itemRates: ItemRates, day: string, filters: ItemSumm
   const headline = candidates.find(type => viewOf(type, null).inForce.length > 0) ?? null;
   const defaultView = headline ? viewOf(headline, null) : null;
 
-  // With a Customer filter the row shows what that customer pays: their own rate, else the default.
-  let bands = defaultView?.inForce ?? [];
-  let shownType = headline;
-  let ownRateCustomer: string | null = null;
-  let ownView: ScopeView | null = null;
-  const ids = filters.customerIds ?? [];
-  if (ids.length > 0) {
-    for (const type of candidates) {
-      const own = ids.map(id => ({ id, view: viewOf(type, id) })).find(c => c.view.inForce.length > 0);
-      if (own) {
-        bands = own.view.inForce;
-        ownView = own.view;
-        shownType = type;
-        ownRateCustomer = rows.find(r => r.customer_id === own.id)?.customer_name ?? null;
-        break;
-      }
-    }
-  }
+  const bands = defaultView?.inForce ?? [];
+  const shownType = headline;
 
   // Customers with a rate of their own (in force or coming), not those whose rates all ended.
   const customers = new Set<string>();
@@ -204,8 +183,6 @@ export function itemSummary(itemRates: ItemRates, day: string, filters: ItemSumm
   const anyDefaultInForce = defaults.some(r => rateState(r, day) === 'inForce');
   const hasShown = bands.length > 0;
   const labours = bands.map(b => b.labour_rate);
-  // The customer's full view (a following rate is known), not the in-force rows alone.
-  const shownView = ownView ?? defaultView;
 
   return {
     itemId: item.id,
@@ -222,10 +199,8 @@ export function itemSummary(itemRates: ItemRates, day: string, filters: ItemSumm
     weightMax: hasShown ? Math.max(...bands.map(b => b.weight_max)) : null,
     customerRateCount: customers.size,
     upcomingFrom: upcomingStarts.length > 0 ? upcomingStarts.sort()[0] : null,
-    rateEnds: shownView?.stopsAfter ?? null,
+    rateEnds: defaultView?.stopsAfter ?? null,
     noRateToday: !anyDefaultInForce,
-    ownRate: ownRateCustomer !== null,
-    ownRateCustomer,
     overlap: Boolean(defaultView?.overlap),
   };
 }

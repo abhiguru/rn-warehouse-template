@@ -349,6 +349,7 @@ export const grn: Translation<typeof source> = {
     tableNoteOneTime: 'ભાડું નંગ દીઠ, એક વખત.',
     rentAmount: 'ભાડું {{amount}}',
     opensItemPricing: 'આઇટમને આઇટમના દરમાં ખોલે છે.',
+    opensCustomerPricing: '{{customer}} નો પોતાનો દર ખોલે છે.',
     yourRateTitle: 'તમારો દર',
     yourRateForGrn: 'આવક પાવતી {{number}}, માલ આવ્યો {{date}}',
     yourRateOn: 'માલ આવ્યો {{date}}',

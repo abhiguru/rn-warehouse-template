@@ -2,10 +2,11 @@
  * Item pricing: the list (screen A of the item rate card).
  *
  * One row per active item with the rent in force on the chosen goods-received day. A row opens
- * the item page, where rates are read and changed. Search, the Customer / Type chips and the day
- * are applied on the phone over the rates already loaded. The header has the history icon and an
- * Add button (administrators, supervisors and staff): pick an item and the rate editor opens with
- * its tiers plus one empty tier. While some item has no rate at all (before the standard rate is
+ * the item page, where rates are read and changed. The list is items only: the search matches item
+ * names, the one chip is Type, and the day is applied on the phone over the rates already loaded
+ * (customers' own rates live on the Customers screen, Pricing tab). The header has the history icon and an
+ * Add button (whoever may change rates): pick an item and its page opens with an empty band
+ * ready in the box. While some item has no rate at all (before the standard rate is
  * first saved) a strip points to the Standard rate screen. There is no swipe and no Settings cog.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
@@ -24,10 +25,9 @@ import { FilterBar } from '@/features/filters/components/FilterBar';
 import { searchWords } from '@/features/filters/components/HighlightedText';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { useListFilters } from '@/features/filters/useListFilters';
-import { itemRatesPath, historyPath, editorPath } from '@/features/item-pricing/contract';
-import { rowsInForce } from '@/features/item-pricing/editModel';
+import { itemRatesPath, historyPath } from '@/features/item-pricing/contract';
 import { ITEM_RATES_CONFIG, ITEM_RATES_FILTERS } from '@/features/item-pricing/itemRatesFilters';
-import { groupByItem, itemSummary, rateState, type ItemSummary } from '@/features/item-pricing/rateModel';
+import { groupByItem, itemSummary, type ItemSummary } from '@/features/item-pricing/rateModel';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { ItemPickerSheet, type PickableItem } from '@/features/item-pricing/components/ItemPickerSheet';
 import { RatesOnBar } from '@/features/item-pricing/components/RatesOnBar';
@@ -43,11 +43,6 @@ import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 const SKELETON_ROWS = [0, 1, 2, 3, 4, 5, 6, 7];
-
-interface ListRow {
-  summary: ItemSummary;
-  matchedCustomer: { name: string; amount: number } | null;
-}
 
 const makeStyles = (th: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: th.background.base },
@@ -91,8 +86,8 @@ export default function ItemPricingScreen() {
   const groups = useMemo(() => groupByItem(rates, items), [rates, items]);
   // One summary per item for the day and the chips.
   const summaries = useMemo(
-    () => groups.map(group => itemSummary(group, day, { customerIds: request.customerIds, priceType: request.priceType })),
-    [groups, day, request.customerIds, request.priceType],
+    () => groups.map(group => itemSummary(group, day, { priceType: request.priceType })),
+    [groups, day, request.priceType],
   );
   // Some active item has no default rate rows at all (not even an ended one): the standard rate was never saved, or the item came before it.
   const someItemHasNoRate = useMemo(() => groups.some(group => !group.rows.some(r => r.customer_id === null)), [groups]);
@@ -100,49 +95,31 @@ export default function ItemPricingScreen() {
   const terms = useMemo(() => searchTerms(filters.search), [filters.search]);
   const words = useMemo(() => searchWords(filters.search), [filters.search]);
 
-  const rows = useMemo<ListRow[]>(() => {
-    const result: ListRow[] = [];
+  const rows = useMemo<ItemSummary[]>(() => {
+    const result: ItemSummary[] = [];
     for (const [index, group] of groups.entries()) {
       const summary = summaries[index];
-      if (request.customerIds.length > 0 && !group.rows.some(r => r.customer_id && request.customerIds.includes(r.customer_id) && rateState(r, day) !== 'ended')) continue;
       if (request.priceType !== 'all' && summary.bands.length === 0) continue;
-
-      // Search: the item name, and the names of customers who have their own rate on this item.
-      let matchedCustomer: ListRow['matchedCustomer'] = null;
-      if (terms.length > 0) {
-        const ownCustomers = [...new Set(group.rows.filter(r => r.customer_id && rateState(r, day) !== 'ended').map(r => r.customer_name ?? ''))];
-        if (!matchesSearch(terms, [group.item.name])) {
-          if (!matchesSearch(terms, [group.item.name, ...ownCustomers])) continue;
-          const name = ownCustomers.find(n => terms.some(term => n.toLowerCase().includes(term)));
-          const row = group.rows.find(r => r.customer_name === name && rateState(r, day) === 'inForce');
-          if (name && row) matchedCustomer = { name, amount: row.unit_price };
-        }
-      }
-      result.push({ summary, matchedCustomer });
+      // Search: the item name only.
+      if (terms.length > 0 && !matchesSearch(terms, [group.item.name])) continue;
+      result.push(summary);
     }
     if (terms.length > 0) {
-      const starts = (r: ListRow) => (r.summary.name.toLowerCase().startsWith(terms[0]) ? 0 : 1);
+      const starts = (r: ItemSummary) => (r.name.toLowerCase().startsWith(terms[0]) ? 0 : 1);
       return result.map((r, i) => ({ r, i })).sort((a, b) => starts(a.r) - starts(b.r) || a.i - b.i).map(x => x.r);
     }
     return result;
-  }, [groups, summaries, day, request, terms]);
+  }, [groups, summaries, request.priceType, terms]);
 
   const openItem = useCallback(
     (itemId: string) => router.push(itemRatesPath(itemId, day !== today ? day : undefined)),
     [day, today],
   );
-  // Add: the item's default monthly rate in force today (else its one-time rate) opens with one more empty tier; an item with neither starts a new default rate.
-  const addForItem = useCallback(
-    (item: PickableItem) => {
-      setPicking(false);
-      const own = rates.filter(r => r.item_id === item.id);
-      const onDay = todayDay();
-      const type = (['monthly', 'one_time'] as const).find(priceType => rowsInForce(own, { customerId: null, priceType }, onDay).length > 0);
-      const base = { item_id: item.id, item_name: item.name };
-      router.push(type ? editorPath({ ...base, mode: 'change', price_type: type, add_band: '1' }) : editorPath({ ...base, mode: 'add' }));
-    },
-    [rates],
-  );
+  // Add: the item page opens with an empty band ready in the box (an item with no default shows "Add default rate" there).
+  const addForItem = useCallback((item: PickableItem) => {
+    setPicking(false);
+    router.push(itemRatesPath(item.id, undefined, true));
+  }, []);
   const onPullRefresh = useCallback(async () => {
     setPulling(true);
     await refresh();
@@ -162,8 +139,8 @@ export default function ItemPricingScreen() {
   );
 
   const renderRow = useCallback(
-    ({ item }: { item: ListRow }) => (
-      <ItemRateRow summary={item.summary} onPress={openItem} words={words} matchedCustomer={item.matchedCustomer} />
+    ({ item }: { item: ItemSummary }) => (
+      <ItemRateRow summary={item} onPress={openItem} words={words} />
     ),
     [openItem, words],
   );
@@ -285,7 +262,7 @@ export default function ItemPricingScreen() {
         <FlatList
           data={rows}
           renderItem={renderRow}
-          keyExtractor={row => row.summary.itemId}
+          keyExtractor={row => row.itemId}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={pulling} onRefresh={onPullRefresh} colors={[th.brand.tint]} tintColor={th.brand.tint} progressBackgroundColor={th.surface.card} />

@@ -69,7 +69,7 @@ const texts = (tree: ReactTestRenderer) =>
 const shown = (tree: ReactTestRenderer) => texts(tree).join(' | ');
 /** The ids the list holds (a FlatList draws only the first screenful in a test). */
 const listed = (tree: ReactTestRenderer): string[] =>
-  tree.root.findByType(FlatList).props.data.map((row: { summary: { itemId: string } }) => row.summary.itemId);
+  tree.root.findByType(FlatList).props.data.map((row: { itemId: string }) => row.itemId);
 const rowButtons = (tree: ReactTestRenderer) =>
   tree.root.findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('item-rate-row-') && typeof node.props.onPress === 'function');
 
@@ -144,21 +144,24 @@ describe('Item pricing list', () => {
     expect(listed(tree)).toEqual(['cumin']);
   });
 
-  it('a customer name finds the item and the row says what that customer pays', async () => {
+  it('search matches item names only, not customer names', async () => {
     await open('admin');
+    // Review Orchard B has its own rate on Onion, but the list is items only.
     type('orchard b');
-    expect(listed(tree)).toEqual(['onion']);
-    expect(shown(tree)).toContain("Review Orchard B's own rate: ₹3.00");
+    expect(listed(tree)).toEqual([]);
+    expect(shown(tree)).not.toContain('own rate:');
+    expect(shown(tree)).toContain('No items match');
+    type('onion');
+    expect(listed(tree)).toContain('onion');
   });
 
-  it('the Customer chip narrows to that customer\'s items and tags the own rate (P-02)', async () => {
+  it('a Customer value left in a saved filter is ignored: all items are listed and no chip shows it', async () => {
     await open('admin');
     act(() => {
       store.dispatch(applyListFilters({ key: 'item-rates-list', values: { customers: [{ id: 'orchard-b', label: 'Review Orchard B' }] } }));
     });
-    expect(listed(tree)).toEqual(['onion']);
-    expect(shown(tree)).toContain('Own rate');
-    expect(shown(tree)).toContain('₹3.00');
+    expect(listed(tree)).toHaveLength(ITEMS.length);
+    expect(shown(tree)).not.toContain('Review Orchard B');
   });
 
   // CR-18
@@ -171,10 +174,12 @@ describe('Item pricing list', () => {
     expect(shown(tree)).toContain('Monthly rent per bag, for lots received on 14 Oct 2026.');
   });
 
-  it('has the chips Customer and Type, no Needs a rate chip, and no Filters chip or Sort and filter (P-35)', async () => {
+  it('has the chip Type only (no Customer chip), no Needs a rate chip, and no Filters chip or Sort and filter (P-35)', async () => {
     await open('admin');
     const s = shown(tree);
-    for (const label of ['Customer', 'Type']) expect(s).toContain(label);
+    expect(s).toContain('Type');
+    expect(s).not.toContain('Customer |');
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Customer' || /^Customer\b/.test(String(n.props.accessibilityLabel))).length).toBe(0);
     expect(s).not.toContain('Needs a rate');
     expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Filters' || /Sort and filter|Open all filters/i.test(String(n.props.accessibilityLabel))).length).toBe(0);
     const source = fs.readFileSync(path.join(__dirname, '../../../app/item-pricing.tsx'), 'utf8');
@@ -340,55 +345,30 @@ describe('Add in the header and the setup strip', () => {
     expect(addButton()[0].props.disabled).toBe(true);
   });
 
-  it('an item with a monthly default in force today opens in Change rate with one more tier', async () => {
+  it('an item with a default rate opens its page with an empty band ready (add_band)', async () => {
     await open('admin');
     act(() => addButton()[0].props.onPress());
     pick('garlic');
-    expect(router.push).toHaveBeenCalledWith({
-      pathname: '/item-rates/edit',
-      params: { item_id: 'garlic', item_name: 'Review Garlic Desi', mode: 'change', price_type: 'monthly', add_band: '1' },
-    });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'garlic', add_band: '1' } });
     expect(sheetProps.isVisible).toBe(false);
   });
 
-  it('an item with only a one-time default in force opens as one-time', async () => {
-    const rates = [...F1, row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 2, price_type: 'one_time', effective_from: '2025-01-01' })]
-      .filter(r => !(r.item_id === 'potato' && r.price_type === 'monthly'));
-    await open('admin', { rates });
-    pick('potato');
-    expect(router.push).toHaveBeenCalledWith({
-      pathname: '/item-rates/edit',
-      params: { item_id: 'potato', item_name: 'Review Potato Seed', mode: 'change', price_type: 'one_time', add_band: '1' },
-    });
+  it('an item with no default rate opens the same way (its page offers Add default rate)', async () => {
+    await open('admin');
+    pick('onion-small');
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'onion-small', add_band: '1' } });
   });
 
-  it('an item with no rate in force today starts a default rate, without the extra tier: none, only an ended one, only a coming one', async () => {
-    const rates = [
-      ...F1.filter(r => !['potato', 'ajwain-a'].includes(r.item_id)),
-      row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2025-01-01', effective_to: '2026-06-30' }),
-      row({ item_id: 'ajwain-a', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2027-01-01' }),
-    ];
-    await open('admin', { rates });
-    for (const id of ['onion-small', 'potato', 'ajwain-a']) {
-      jest.mocked(router.push).mockClear();
-      pick(id);
-      const item = ITEMS.find(i => i.id === id)!;
-      expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/edit', params: { item_id: id, item_name: item.name, mode: 'add' } });
-    }
-  });
-
-  it('uses today\'s rate, not the day the list shows', async () => {
+  it('does not carry the day the list shows', async () => {
     const original = Platform.OS;
     Platform.OS = 'android';
     try {
-      // Potato's rate ended on 30 Jun 2026: it is in force on 31 Mar 2026 (the day the list is moved to) but not today.
-      const rates = [...F1.filter(r => r.item_id !== 'potato'), row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2025-01-01', effective_to: '2026-06-30' })];
-      await open('admin', { rates });
+      await open('admin');
       act(() => tree.root.find(n => n.props.testID === 'change-date').props.onPress());
       act(() => tree.root.findByType('Picker' as never).props.onChange({ type: 'set' }, new Date(2026, 2, 31)));
       expect(shown(tree)).toContain('31 Mar 2026');
       pick('potato');
-      expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/edit', params: { item_id: 'potato', item_name: 'Review Potato Seed', mode: 'add' } });
+      expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'potato', add_band: '1' } });
     } finally {
       Platform.OS = original;
     }
