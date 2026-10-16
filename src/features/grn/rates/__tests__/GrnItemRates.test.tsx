@@ -126,12 +126,30 @@ describe('GrnItemRates', () => {
     expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1' } });
   });
 
-  it('a customer, who cannot open Item pricing, gets rows that are not links', async () => {
+  it('a customer, who cannot open Item pricing, gets "Your rate" for a priced row, and no link without a rate', async () => {
+    const { router } = require('expo-router');
     mockRole = 'customer';
-    read.mockResolvedValue(answer([lot({ grn_item_id: 'a' })]));
+    read.mockResolvedValue(answer([lot({ grn_item_id: 'a' }), lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', source: null, unit_price: null, labour_rate: null, tax_percent: null, weight_min: null, weight_max: null })]));
+    await mount(<GrnItemRates grnId="g1" grnNumber="WM0001" />);
+    const links = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function');
+    expect(links.map(r => r.props.accessibilityLabel)).toEqual(['Fictional Gur, Rent ₹4.50, Labour ₹1.50, Tax 5%']);
+    expect(links[0].props.accessibilityHint).toBe('Opens your rate.');
+    act(() => links[0].props.onPress());
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/grn-rate/[grnId]/[itemId]', params: { grnId: 'g1', itemId: 'gur', no: 'WM0001' } });
+  });
+
+  it('never tells a customer where a rate comes from, in the screen-reader label either; staff still hear it', async () => {
+    const rows = [lot({ grn_item_id: 'a', source: 'item' }), lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', source: 'customer', unit_price: 3 }), lot({ grn_item_id: 'c', item_id: 'egg', item_name: 'Fictional Eggs', source: 'grn', unit_price: 2 })];
+    const labels = () => tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.type === 'string').map(n => n.props.accessibilityLabel as string);
+    mockRole = 'customer';
+    read.mockResolvedValue(answer(rows));
     await mount(<GrnItemRates grnId="g1" />);
-    expect(tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')).toHaveLength(0);
-    expect(texts()).toContain('Fictional Gur');
+    expect(labels()).toEqual(['Fictional Gur, Rent ₹4.50, Labour ₹1.50, Tax 5%', 'Fictional Rice, Rent ₹3.00, Labour ₹1.50, Tax 5%', 'Fictional Eggs, Rent ₹2.00, Labour ₹1.50, Tax 5%']);
+    expect([...labels(), ...texts()].join(' ')).not.toMatch(/Item rate|Customer rate|This GRN only/);
+    act(() => tree.unmount());
+    mockRole = 'staff';
+    await mount(<GrnItemRates grnId="g1" />);
+    expect(labels()[0]).toContain('Item rate');
   });
 
   it('shows a loading row first, then the rows', async () => {

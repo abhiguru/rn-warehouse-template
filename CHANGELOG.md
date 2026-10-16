@@ -21,6 +21,13 @@ opened from (a new `grn` parameter). The "How an invoice picks a rate" link stay
 number of GRNs and one card per GRN, laid out like the rate card above it: "GRN A0010" and the
 customer, the rent with its unit, then Weight each, Labour, Tax and GRN date as rows. A GRN with
 several weight bands shows them as a band list in its one card; a one-time GRN has no Labour row.
+A customer's row opens "Your rate" (new route `grn-rate/[grnId]/[itemId]`), not the item's rate card,
+which customers cannot open: only the rate their own lots of that item are invoiced at, read from
+get_grn_item_rates, with the rent and its unit, Weight each, Labour and Tax, and the GRN number and day
+above. The source is never named to a customer (no "Item rate", "Customer rate" or "This GRN only",
+in the screen-reader label either), so an item's default rate reads as the customer's own. Lots of
+different bag weights with different rates get a card each; an invoiced GRN shows the invoice's
+figures and says so; a row without a rate is not a link.
 
 ## Unreleased — GRN details: Rates for every item on the Overview tab (2026-10-16)
 

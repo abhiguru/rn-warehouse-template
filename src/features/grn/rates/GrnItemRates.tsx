@@ -8,7 +8,9 @@
  *
  * Owner, 2026-10-16: the item cell holds only the name (the weight of one bag only when an item has
  * more than one row, to tell them apart); a row opens the item's rate card read-only, on the GRN's day,
- * for those who may open Item pricing, and Back lands on the GRN again.
+ * for those who may open Item pricing, and Back lands on the GRN again. A customer's row opens "Your rate"
+ * (app/grn-rate): only the rate their lots are invoiced at, never the item's default or anyone else's,
+ * and their screen-reader label names no source either.
  */
 import React, { useMemo } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
@@ -38,6 +40,7 @@ import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
 import { GrnOnlyRates } from './GrnOnlyRates';
 import { useGrnItemRates } from './useGrnItemRates';
+import { yourRatePath } from './paths';
 
 /** Column widths at font scale 1; each grows with its widest value. */
 const RENT_WIDTH = 56;
@@ -94,15 +97,16 @@ export function repeatedItems(groups: RateGroup[]): Set<string> {
   return repeated;
 }
 
-export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; fallbackRates?: RpcGrnRate[] | null }) {
+export function GrnItemRates({ grnId, grnNumber, fallbackRates }: { grnId?: string | null; grnNumber?: string | null; fallbackRates?: RpcGrnRate[] | null }) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
   const screen = useTableLayout();
   const { rates, priceType, grnDate, status, retry } = useGrnItemRates(grnId);
   const role = useAppSelector(state => state.auth?.userProfile?.role);
-  // Customers cannot open Item pricing (roles.ts): for them the rows are not links.
+  // Customers cannot open Item pricing (roles.ts): their priced rows open "Your rate" instead.
   const canOpen = canOpenScreen(role, 'itemPricing');
+  const isCustomer = !canOpen && role === 'customer';
   const oneTime = priceType === 'one_time';
   const groups = useMemo(() => groupRates(rates), [rates]);
   const repeated = useMemo(() => repeatedItems(groups), [groups]);
@@ -146,6 +150,8 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
             {groups.map(group => {
               const { rate } = group;
               const priced = rate.source !== null;
+              const opensYourRate = isCustomer && priced && !!grnId;
+              const link = canOpen || opensYourRate;
               const details = repeated.has(rate.item_id) ? formatWeightEach(group.weight) : null;
               // Stacked, labour and tax go under the item.
               const extra =
@@ -158,7 +164,8 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
               const label = [
                 group.item_name,
                 details,
-                priced ? t(SOURCE_LABEL[rate.source!]) : t('grn.rates.noRateSet'),
+                // A customer is never told where the rate comes from (default, customer or GRN rate).
+                priced ? (isCustomer ? null : t(SOURCE_LABEL[rate.source!])) : t('grn.rates.noRateSet'),
                 rate.varies ? t('grn.rates.tagVaries') : null,
                 priced ? t('grn.rates.rentAmount', { amount: money(rate.unit_price ?? 0) }) : null,
                 priced && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }) : null,
@@ -169,7 +176,7 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
               const cells = (
                 <>
                   <View style={table.grow}>
-                    <Text style={canOpen ? table.link : table.primary}>{group.item_name}</Text>
+                    <Text style={link ? table.link : table.primary}>{group.item_name}</Text>
                     {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
                     {!priced ? (
                       <View style={own.tags}>
@@ -186,14 +193,20 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
                   ) : null}
                 </>
               );
-              return canOpen ? (
+              return link ? (
                 <Pressable
                   key={group.key}
-                  onPress={() => router.push(itemRatesPath(rate.item_id, grnDate ?? undefined, true, grnId ?? undefined))}
+                  onPress={() =>
+                    router.push(
+                      canOpen
+                        ? itemRatesPath(rate.item_id, grnDate ?? undefined, true, grnId ?? undefined)
+                        : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
+                    )
+                  }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
                   accessibilityRole="button"
                   accessibilityLabel={label}
-                  accessibilityHint={t('grn.rates.opensItemRates')}
+                  accessibilityHint={t(canOpen ? 'grn.rates.opensItemRates' : 'grn.rates.opensYourRate')}
                   testID="grn-item-rate-row"
                 >
                   {cells}
