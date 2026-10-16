@@ -5,6 +5,7 @@ import {
   TextInput,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -423,7 +424,7 @@ export default function InvoiceEditStep1() {
       </KeyboardAwareScrollView>
 
       {/* Bottom action bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
         <Pressable
           style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleNext}

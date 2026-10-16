@@ -7,14 +7,17 @@ quantities up to 9,87,654, an invoice above ₹1 billion) and two visual reviews
 - Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
   sized to its widest value or total, so numbers line up from row to row and never split
   ("10,82,34" / "8"). When huge numbers would leave the first column under 25 % of the row, the
-  middle columns move under the first, as at large text; ordinary data keeps its columns. At large
-  text an amount in crores goes on its own line under the item, so the item keeps whole words.
+  middle columns move under the first, as at large text; ordinary data keeps its columns. When a
+  stacked table's amount column would still crowd the item or take most of the row (amounts in
+  crores), the amount goes on its own line under the item, so the item keeps whole words.
 - Dispatch Items: the GRN/Received column is sized to the GRN/received text, and a long mark is
   cut with "…" at the normal size instead of shrinking until unreadable.
 - Invoice Line items: the tax of a dispatch line sits under its period, so the dispatch numbers
   keep their width; the amount column is the same width on every row.
 - The card's end scrolls into view (it was cut off on Android): the card is drawn in parts and the
-  space round it is padding. Row dividers are 1 dp. Numbers keep their units at line breaks.
+  space round it is padding; rows overlap by a pixel so the card's edge has no seams. Row
+  dividers are 1 dp. Numbers keep their units at line breaks, and a line never starts with "·".
+  An open row's accent bar is its own view (as a 3 dp border it drew as two thin lines at 420 dpi).
   The details of an open row start in line with the chevron. In light mode the open panel has its
   own fill (#F0F3F6). The chevron sits on the first line at any text size. The GRN page's
   Dispatches column shows from 600 dp. The Invoices tab's note is inside its card.

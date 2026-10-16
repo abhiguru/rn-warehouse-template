@@ -12,6 +12,7 @@ import {
   TextInput,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -361,7 +362,7 @@ export default function InvoiceFormStep1() {
       </KeyboardAwareScrollView>
 
       {/* Bottom action bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
         {/* Waits for the invoice number: Next would otherwise find the field empty. */}
         <Pressable
           style={({ pressed }) => [

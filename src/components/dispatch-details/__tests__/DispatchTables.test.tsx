@@ -261,10 +261,13 @@ describe('GRNs table', () => {
       press('dispatch-grn-row-grn-159');
       expect(panelOf('dispatch-grn-row-grn-159')).toMatchObject({
         backgroundColor: t.table.insetFill,
-        borderLeftWidth: OPEN_ACCENT,
-        borderLeftColor: t.table.accent,
+        borderLeftWidth: TABLE_OUTLINE,
         borderBottomColor: t.table.separator,
       });
+      // The bar is its own view laid over the panel's start (as a 3 dp border it drew as two lines).
+      const bar = tree.root.findAll((n) => typeof n.type === 'string' && n.props.testID === 'table-open-bar');
+      expect(bar).toHaveLength(1);
+      expect(flat(bar[0])).toMatchObject({ position: 'absolute', left: 0, top: 0, bottom: 0, width: OPEN_ACCENT, backgroundColor: t.table.accent });
       expect(chevronOf('dispatch-grn-row-grn-159')).toMatchObject({ name: 'chevron-down', color: t.table.accent });
       // The lines are a small table of their own: rows on the card colour, a heading on the heading fill.
       const lines = byTestId('dispatch-grn-lines-grn-159');

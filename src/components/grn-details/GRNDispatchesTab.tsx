@@ -26,6 +26,7 @@ import { DispatchRecord } from '@/services/grn-detail-service';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
+  OpenBar,
   HeaderCell,
   ONE_LINE,
   RowChevron,
@@ -216,6 +217,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
           </View>
         </View>
       ) : null}
+      {open ? <OpenBar /> : null}
     </View>
   );
 });

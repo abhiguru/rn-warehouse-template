@@ -24,6 +24,7 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { groupBySourceGrn, itemTotals, type DispatchItem, type GrnGroup } from './dispatchDetailsModel';
 import { grnDateText } from './DispatchItemsTab';
 import {
+  OpenBar,
   HeaderCell,
   ONE_LINE,
   RowChevron,
@@ -223,6 +224,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
           ) : null}
         </View>
       ) : null}
+      {expanded ? <OpenBar /> : null}
     </View>
   );
 });

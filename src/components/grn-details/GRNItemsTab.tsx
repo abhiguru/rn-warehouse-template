@@ -25,6 +25,7 @@ import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters'
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr } from '@/i18n';
 import {
+  OpenBar,
   HeaderCell,
   ONE_LINE,
   RowChevron,
@@ -249,6 +250,7 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
           ) : null}
         </View>
       ) : null}
+      {expanded ? <OpenBar /> : null}
     </View>
   );
 });

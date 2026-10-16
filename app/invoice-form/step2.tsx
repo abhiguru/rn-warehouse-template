@@ -11,6 +11,7 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router } from 'expo-router';
@@ -378,7 +379,7 @@ export default function InvoiceFormStep2() {
       />
 
       {/* Bottom action bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
         <Pressable
           style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={handleBack}

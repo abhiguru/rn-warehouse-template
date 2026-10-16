@@ -35,9 +35,10 @@ function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
   return tree;
 }
 
+// The open row's accent bar (table.accent) is the one brand-coloured fill a table may draw.
 function backgrounds(tree: ReactTestRenderer): string[] {
   return tree.root
-    .findAll(node => typeof node.type === 'string')
+    .findAll(node => typeof node.type === 'string' && node.props.testID !== 'table-open-bar')
     .map(node => StyleSheet.flatten(node.props.style)?.backgroundColor)
     .filter((c): c is string => typeof c === 'string');
 }

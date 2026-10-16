@@ -27,6 +27,7 @@ import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/i
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
+  OpenBar,
   HeaderCell,
   ONE_LINE,
   RowChevron,
@@ -207,6 +208,8 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
 /** Bags and Amount column widths at font scale 1; both grow with their widest value. */
 const BAGS_WIDTH = 60;
 const AMOUNT_WIDTH = 88;
+/** In a stacked table, an amount column wider than this share of the row goes on its own line. */
+const LAST_COLUMN_SHARE = 0.45;
 
 const makeStyles = (t: ThemeTokens) => ({
   /** Under the totals row, inside the card: the note and the GRN link. */
@@ -406,6 +409,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
           </Text>
         </View>
       ) : null}
+      {expanded ? <OpenBar /> : null}
     </View>
   );
 });
@@ -437,9 +441,14 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     dispatchLines.map((line) => formatInvoiceAmount(roundMoney(line.line_item_amount + line.tax)))
   );
   const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [lineBagsWidth, lineAmountWidth], 0, screen.scale);
-  // At large text with amounts in crores even the amount column alone crowds the first: it goes under.
-  const amountUnder = table.stacked && crowded(rowWidth(screen), [amountWidth], undefined, screen.scale);
-  const lineAmountUnder = nestedStacked && crowded(nestedRowWidth(screen), [lineAmountWidth], 0, screen.scale);
+  // Stacked, an amount column that would still crowd the first, or take most of the row beside
+  // several lines of text (amounts in crores), goes under the item: the text gets the full width.
+  const amountUnder =
+    table.stacked &&
+    (crowded(rowWidth(screen), [amountWidth], undefined, screen.scale) || amountWidth > rowWidth(screen) * LAST_COLUMN_SHARE);
+  const lineAmountUnder =
+    nestedStacked &&
+    (crowded(nestedRowWidth(screen), [lineAmountWidth], 0, screen.scale) || lineAmountWidth > nestedRowWidth(screen) * LAST_COLUMN_SHARE);
   const widths = useMemo(
     () => ({ bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder }),
     [bagsWidth, amountWidth, lineBagsWidth, lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder]

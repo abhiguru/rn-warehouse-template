@@ -73,8 +73,10 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     act(() => tree.root.findAll(n => n.props.testID === 'grn-item-row-l1' && typeof n.props.onPress === 'function')[0].props.onPress());
     all = texts(tree);
     expect(all).toContain('Rack B-14');
+    // The open row's accent bar is the one brand-coloured fill (table.accent); no row or card is.
+    expect(tree.root.findAll(n => typeof n.type === 'string' && n.props.testID === 'table-open-bar').length).toBe(1);
     const backgrounds = tree.root
-      .findAll(n => typeof n.type === 'string')
+      .findAll(n => typeof n.type === 'string' && n.props.testID !== 'table-open-bar')
       .map(n => StyleSheet.flatten(n.props.style)?.backgroundColor)
       .filter(Boolean);
     expect(backgrounds).toEqual(expect.arrayContaining([t.surface.card, t.background.base]));

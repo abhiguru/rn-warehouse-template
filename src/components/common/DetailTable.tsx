@@ -18,7 +18,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { getLanguage } from '@/i18n/language';
@@ -129,7 +129,11 @@ const NBSP = ' ';
  * ("50 kg each", "21 months", "Tax 18%", "Rate ₹9.00"), leaving the breaks around "·".
  */
 export const nb = (text: string): string =>
-  text.replace(/([\d૦-૯]) (?=[^\s·\d૦-૯])/g, `$1${NBSP}`).replace(/([^\s·]) (?=[₹\d૦-૯])/g, `$1${NBSP}`);
+  text
+    .replace(/([\d૦-૯]) (?=[^\s·\d૦-૯])/g, `$1${NBSP}`)
+    .replace(/([^\s·]) (?=[₹\d૦-૯])/g, `$1${NBSP}`)
+    // A line never starts with "·": it stays at the end of the line before.
+    .replace(/ ·/g, `${NBSP}·`);
 
 export const makeTableStyles = (t: ThemeTokens) => ({
   list: {
@@ -152,11 +156,12 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     borderColor: t.table.outline,
     overflow: 'hidden' as const,
   },
-  /** Round every body row: the card's sides. */
+  /** Round every body row: the card's sides. Rows overlap by a pixel, so rounding leaves no seam in the edge. */
   cardSides: {
     borderLeftWidth: TABLE_OUTLINE,
     borderRightWidth: TABLE_OUTLINE,
     borderColor: t.table.outline,
+    marginBottom: -StyleSheet.hairlineWidth,
   },
   /** The bottom of the card, round the totals row and anything under it. */
   cardBottom: {
@@ -214,25 +219,30 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardPressed,
   },
   /**
-   * An open row with its details: one panel on table.insetFill with an accent bar at the start
-   * (in place of the card's left edge, after cardSides), closed by a separator. The row and the
-   * details inside give up the bar's extra width, so their content stays in line with the chevron.
+   * An open row with its details: one panel on table.insetFill, closed by a separator, with an
+   * accent bar (OpenBar) laid over its start. The bar is its own view: as a 3 dp border beside
+   * the 1 dp card edges it drew as two thin lines on a 420 dpi phone.
    */
   group: {
     backgroundColor: t.table.insetFill,
-    borderLeftWidth: OPEN_ACCENT,
-    borderLeftColor: t.table.accent,
     borderBottomWidth: 1,
     borderBottomColor: t.table.separator,
   },
+  groupBar: {
+    position: 'absolute' as const,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: OPEN_ACCENT,
+    backgroundColor: t.table.accent,
+  },
   rowOpen: {
-    paddingLeft: space.md + TABLE_OUTLINE - OPEN_ACCENT,
     backgroundColor: 'transparent',
     borderBottomWidth: 0,
   },
   /** Under an open row, the full width of the panel, starting in line with the chevron. */
   details: {
-    paddingLeft: space.md + TABLE_OUTLINE - OPEN_ACCENT,
+    paddingLeft: space.md,
     paddingRight: space.md,
     paddingTop: space.xs,
     paddingBottom: space.md,
@@ -338,6 +348,12 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     opacity: 0.6,
   },
 });
+
+/** The accent bar of an open row and its details: the last child of the `group` view, so it draws on top. */
+export const OpenBar: React.FC = () => {
+  const styles = useThemedStyles(makeTableStyles);
+  return <View style={styles.groupBar} pointerEvents="none" testID="table-open-bar" />;
+};
 
 /** The chevron of an expandable row, or the same width of space for one that is not. */
 export const RowChevron: React.FC<{ expandable: boolean; expanded: boolean }> = ({ expandable, expanded }) => {

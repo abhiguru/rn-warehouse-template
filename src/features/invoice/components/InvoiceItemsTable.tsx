@@ -27,7 +27,7 @@ import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
 import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { InlineValidation } from '@/components/fiori';
-import { OPEN_ACCENT, TABLE_OUTLINE } from '@/components/common/DetailTable';
+import { OPEN_ACCENT, TABLE_OUTLINE, numberColumnWidth } from '@/components/common/DetailTable';
 import { RateInput, type RateDraftChange, type RateSelection } from '@/features/invoice/components/RateInput';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';
 import { parseRateInput, type RateField } from '@/features/invoice/utils/amountInput';
@@ -87,6 +87,10 @@ export const invoiceTableColumnWidths = (fontScale: number): Record<ColumnKey, n
   });
   return widths;
 };
+
+/** A money rate always with two decimals, as the pricing field shows it: "0.50", "1,250.00". */
+export const formatRate = (value: number): string =>
+  localizeDigits(new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value));
 
 // Format number with Indian grouping - show decimals only if needed
 const formatNumber = (value: number, maxDecimals: number = 2): string => {
@@ -605,8 +609,21 @@ function byGroup<V>(entries: Record<string, V>, groupOf: Map<string, string>): M
   return result;
 }
 
-const makeColumnStyles = (fontScale: number) => {
+/**
+ * The Total column's width: the designed width, or more where the widest line total
+ * (bold, with its cell paddings) needs it, so a lakh-sized total is not drawn shrunk.
+ */
+export const invoiceTotalColumnWidth = (fontScale: number, totals: readonly string[]): number => {
+  const designed = invoiceTableColumnWidths(fontScale).total;
+  const scale = Math.min(Math.max(fontScale, 1), MAX_COLUMN_FONT_SCALE);
+  const table = { scale, numberWidth: (base: number) => Math.ceil(base * scale) };
+  const textSize = typography.subhead.fontSize ?? 15;
+  return Math.max(designed, numberColumnWidth(table, 0, [], totals, textSize) + space.md * 2);
+};
+
+const makeColumnStyles = (fontScale: number, totalWidth?: number) => {
   const width = invoiceTableColumnWidths(fontScale);
+  if (totalWidth !== undefined) width.total = Math.max(width.total, totalWidth);
   return StyleSheet.create({
     colDispatch: { width: width.dispatch, alignItems: 'flex-start' },
     colQty: { width: width.qty, alignItems: 'flex-end' },
@@ -633,7 +650,11 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   const { fontScale } = useWindowDimensions();
   const language = getLanguage();
   // Column widths: text left, numbers right. They differ by language too.
-  const cols = useMemo(() => makeColumnStyles(fontScale), [fontScale, language]);
+  const totalWidth = useMemo(
+    () => invoiceTotalColumnWidth(fontScale, items.map((item) => formatInvoiceAmount(item.item_total))),
+    [items, fontScale, language]
+  );
+  const cols = useMemo(() => makeColumnStyles(fontScale, totalWidth), [fontScale, language, totalWidth]);
   const t = useTokens();
 
   // Get bulk pricing from Redux
@@ -1498,8 +1519,8 @@ const InvoiceLineRow = React.memo(function InvoiceLineRow({ item, editingField, 
         <Text style={styles.secondaryText} {...oneLine}>{formatCount(item.no_of_days, 'day')}</Text>
       </View>
 
-      {renderEditableCell('charge', cols.colCharge, tr('invoice.label.charge'), item.charge > 0 ? formatNumber(item.charge) : '—')}
-      {renderEditableCell('labour_rate', cols.colLabour, tr('invoice.label.labourRate'), item.labour_rate > 0 ? formatNumber(item.labour_rate) : '—')}
+      {renderEditableCell('charge', cols.colCharge, tr('invoice.label.charge'), item.charge > 0 ? formatRate(item.charge) : '—')}
+      {renderEditableCell('labour_rate', cols.colLabour, tr('invoice.label.labourRate'), item.labour_rate > 0 ? formatRate(item.labour_rate) : '—')}
       {renderEditableCell('tax', cols.colTax, tr('invoice.itemCard.taxA11y'), item.tax > 0 ? formatNumber(item.tax, 1) : '—')}
 
       {/* Total - calculated */}

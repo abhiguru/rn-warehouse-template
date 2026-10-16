@@ -48,6 +48,13 @@ import { t as tr, formatIdentifier } from '@/i18n';
 // ============================================================================
 // STYLES
 // ============================================================================
+
+/** "29 Sep 2026 · GRN WMWM8881" breaks only after "·": a date or "GRN <number>" never splits. */
+const keepParts = (text: string): string =>
+  text
+    .split(' · ')
+    .map((part) => part.replace(/ /g, '\u00A0'))
+    .join('\u00A0· ');
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
   centerContainer: {
@@ -412,7 +419,7 @@ function InvoiceDetailScreen() {
               </Text>
               {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
               <Text style={styles.headerSubtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
-                {grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: formatIdentifier(grnNumber) }) : formattedDate}
+                {keepParts(grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: formatIdentifier(grnNumber) }) : formattedDate)}
               </Text>
             </View>
           ),
