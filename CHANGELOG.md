@@ -12,6 +12,11 @@ without a rate shows "No rate set" and "—".
 A row opens the item's rate card read-only, on the GRN's day, for admin, supervisor and staff
 (customers cannot open Item pricing), and Back returns to the GRN. The rate card and a customer's
 rate page take a new `readonly` parameter that turns off every change.
+The read-only card is cut down to the rate on the GRN's day: no Change date or Back to today, no
+Changes button, no later rate or stop notice, no explanation notes or old rates; the figure and its
+unit share one line and the values are short ("₹3.00 per bag", "5%", "Since 1 Apr 2026"); Customer
+rates show only when there are some, and "For GRNs only" lists only the rate of the GRN the card was
+opened from (a new `grn` parameter). The "How an invoice picks a rate" link stays.
 
 ## Unreleased — GRN details: Rates for every item on the Overview tab (2026-10-16)
 

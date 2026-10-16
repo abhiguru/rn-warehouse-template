@@ -137,6 +137,36 @@ describe('item page: Review Cumin Bold on 14 Oct 2026', () => {
     expect(texts(tree).join(' ')).toContain('Review Cumin Bold');
   });
 
+  it('read-only on the GRN\'s day: the rate in short form, without date controls, Changes, the later rate, notes or old rates', async () => {
+    await open('admin', {}, { itemId: 'cumin', on: '2026-10-01', readonly: '1' });
+    const s = shown(tree);
+    expect(s).toContain('Rates for lots received on 1 Oct 2026');
+    // A different day from today, so a page that is not fixed would offer Back to today.
+    expect(byId(tree, 'change-date')).toHaveLength(0);
+    expect(byId(tree, 'back-to-today')).toHaveLength(0);
+    expect(byId(tree, 'item-changes')).toHaveLength(0);
+    const card = tree.root.find(n => n.props.testID === 'rate-card-monthly');
+    const text = card.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+    expect(text).toEqual(expect.arrayContaining(['₹11.00', '  per bag, per month', '0–100 kg', '₹3.00 per bag', '5%', 'Since 1 Apr 2026']));
+    expect(text).not.toContain('₹3.00 per bag, charged once at dispatch');
+    expect(text).not.toContain('Lots received since 1 Apr 2026');
+    expect(s).not.toContain('From 1 Jan 2027');
+    expect(s).not.toContain('All customers pay this unless they have their own rate.');
+    expect(s).not.toContain('CUSTOMER RATES');
+    expect(s).not.toContain('Show 1 old rate');
+    expect(s).not.toContain('Invoices use the rate in force');
+    expect(byId(tree, 'how-link').length).toBeGreaterThan(0);
+  });
+
+  it('read-only keeps Customer rates when there are some, and a row opens the customer\'s rate read-only', async () => {
+    await open('admin', { itemRates: itemRows('onion') }, { itemId: 'onion', on: '2026-10-01', readonly: '1' });
+    expect(shown(tree)).toContain('CUSTOMER RATES');
+    press(tree, 'customer-rate-row-orchard-b');
+    expect(router.push).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: expect.objectContaining({ customerId: 'orchard-b', readonly: '1' }) }),
+    );
+  });
+
   it('staff cannot correct: no Correct button, the reason is shown (P-45)', async () => {
     await open('staff');
     expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);
@@ -489,6 +519,20 @@ describe('For GRNs only (backend migration 86)', () => {
     await act(async () => { byId(tree, 'old-rates-toggle')[0].props.onPress(); });
     expect(shown(tree)).toContain('For GRN A0007 only · Review Orchard A · 1 Sep 2026');
     expect(shown(tree)).toContain('Archived once invoiced');
+  });
+
+  it('read-only, shows only the rate of the GRN the page was opened from', async () => {
+    jest.mocked(getItemGrnRates).mockResolvedValue([grnRate({}), grnRate({ id: 'g3', gr_id: 'gr3', gr_no: 'A0011', unit_price: 5 })] as never);
+    await open('admin', {}, { itemId: 'cumin', readonly: '1', grn: 'gr3' });
+    await act(async () => { await Promise.resolve(); });
+    const section = tree.root.find(n => n.props.testID === 'grn-only-section');
+    const lines = section.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+    expect(lines).toEqual(['For GRNs only', 'For GRN A0011 only · Review Orchard A · 12 Oct 2026', '11–20 kg · ₹5.00 rent · ₹1.50 labour · 5% tax']);
+    act(() => tree.unmount());
+    // Opened from a GRN with no rate of its own: no GRN-only section at all.
+    await open('admin', {}, { itemId: 'cumin', readonly: '1', grn: 'gr9' });
+    await act(async () => { await Promise.resolve(); });
+    expect(tree.root.findAll(n => n.props.testID === 'grn-only-section')).toHaveLength(0);
   });
 
   it('shows nothing when there is none, and one line of text when they cannot be loaded', async () => {

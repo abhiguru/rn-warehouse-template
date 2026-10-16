@@ -73,6 +73,11 @@ export const pricing = {
     defaultNote: 'All customers pay this unless they have their own rate.',
     labour: 'Labour',
     labourValue: '{{amount}} per bag, charged once at dispatch',
+    // The short values of the read-only card (opened from a GRN's Rates).
+    labourShort: '{{amount}} per bag',
+    taxShort: '{{percent}}%',
+    sinceShort: 'Since {{date}}',
+    rangeShort: '{{from}} – {{to}}',
     tax: 'Tax',
     taxValue: '{{percent}}% on rent and labour',
     inForce: 'In force',

@@ -107,7 +107,7 @@ export default function CustomerRatePage() {
             </Text>
             <Text style={styles.subtitle} numberOfLines={2}>{item.name}</Text>
           </View>
-          {rights.canSeeChanges && itemRates ? (
+          {rights.canSeeChanges && itemRates && !readOnly ? (
             <Button
               type="tertiary"
               leftIcon="history"
@@ -142,7 +142,7 @@ export default function CustomerRatePage() {
 
       {itemRates ? (
         <>
-          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
+          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} fixed={readOnly} />
           {rights.canWrite && !readOnly && day !== today ? (
             <View style={styles.strip}>
               <OtherDayStrip day={day} onBack={() => setDay(today)} />
@@ -189,6 +189,7 @@ export default function CustomerRatePage() {
                       </Text>
                     ) : null}
                     <RateCard
+                      compact={readOnly}
                       priceType={priceType}
                       bands={view.inForce}
                       upcoming={view.upcoming}
@@ -232,7 +233,7 @@ export default function CustomerRatePage() {
                 </Button>
               ) : null}
             </View>
-            {rights.canSeeOldRates ? <OldRatesSection rows={plan.ended} showCustomer={false} /> : null}
+            {rights.canSeeOldRates && !readOnly ? <OldRatesSection rows={plan.ended} showCustomer={false} /> : null}
           </ScrollView>
         </>
       ) : null}

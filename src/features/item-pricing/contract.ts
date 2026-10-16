@@ -37,9 +37,15 @@ export type StopParams = {
   price_type: PriceType;
 };
 
-/** `readOnly`: the page offers no change at all (opened from a GRN's Rates, 2026-10-16). */
-export const itemRatesPath = (itemId: string, on?: string, readOnly?: boolean) =>
-  ({ pathname: '/item-rates/[itemId]', params: { itemId, ...(on ? { on } : {}), ...(readOnly ? { readonly: '1' } : {}) } }) as const;
+/**
+ * `readOnly`: the page offers no change at all (opened from a GRN's Rates, 2026-10-16); `grnId`: that
+ * GRN, whose own rate is the only GRN-only rate the read-only page shows.
+ */
+export const itemRatesPath = (itemId: string, on?: string, readOnly?: boolean, grnId?: string) =>
+  ({
+    pathname: '/item-rates/[itemId]',
+    params: { itemId, ...(on ? { on } : {}), ...(readOnly ? { readonly: '1' } : {}), ...(grnId ? { grn: grnId } : {}) },
+  }) as const;
 export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, readOnly?: boolean) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',

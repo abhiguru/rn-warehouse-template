@@ -91,7 +91,7 @@ function customerRows(rows: ItemStoragePrice[], day: string) {
 export default function ItemRatesPage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; on?: string; readonly?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; on?: string; readonly?: string; grn?: string }>();
   // Opened read-only (from a GRN's Rates): no change is offered, whatever the role or day.
   const readOnly = params.readonly === '1';
   const itemId = String(params.itemId ?? '');
@@ -167,7 +167,7 @@ export default function ItemRatesPage() {
         <View style={styles.headerRow}>
           <HeaderBackButton />
           <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>{item.name}</Text>
-          {rights.canSeeChanges && itemRates ? (
+          {rights.canSeeChanges && itemRates && !readOnly ? (
             <Button type="tertiary" leftIcon="history" onPress={() => router.push(historyPath({ item_id: itemId, item_name: item.name }))} testID="item-changes">
               {t('pricing.action.changes')}
             </Button>
@@ -205,7 +205,7 @@ export default function ItemRatesPage() {
 
       {itemRates ? (
         <>
-          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
+          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} fixed={readOnly} />
           {rights.canWrite && !readOnly && day !== today ? (
             <View style={styles.strip}>
               <OtherDayStrip day={day} onBack={() => setDay(today)} />
@@ -224,7 +224,7 @@ export default function ItemRatesPage() {
           >
             {/* Default rate */}
             <SectionHeader title={t('pricing.item.default')} />
-            <Text style={styles.note}>{t('pricing.item.defaultNote')}</Text>
+            {readOnly ? null : <Text style={styles.note}>{t('pricing.item.defaultNote')}</Text>}
             <View style={styles.block}>
               {defaults.plans.length === 0 ? (
                 <View style={[styles.strip, { gap: space.sm }]}>
@@ -267,6 +267,7 @@ export default function ItemRatesPage() {
                     offline={offline}
                     busy={actions.busy}
                     tags={priceType === 'monthly' ? tierTags(view.inForce, standard.rate?.tiers) : null}
+                    compact={readOnly}
                     day={day}
                     onChange={() => actions.change(scopeOf(priceType, view))}
                     onCorrect={() => actions.correct(scopeOf(priceType, view))}
@@ -291,45 +292,49 @@ export default function ItemRatesPage() {
               ) : null}
             </View>
 
-            {/* Customer rates */}
-            <SectionHeader
-              title={t('pricing.item.customerRates')}
-              count={customers.length}
-              action={writable && customers.length > 0 ? { label: t('pricing.action.addCustomer'), onPress: () => setPicking(true) } : undefined}
-            />
-            <View style={styles.block}>
-              {customers.length === 0 ? (
-                <View style={[styles.strip, { gap: space.sm }]}>
-                  <Text style={styles.note}>{t('pricing.item.noCustomerRates')}</Text>
-                  {writable ? (
-                    <Button type="secondary" disabled={offline} onPress={() => setPicking(true)} testID="add-customer-rate">
-                      {t('pricing.action.addCustomer')}
-                    </Button>
-                  ) : null}
+            {/* Customer rates (read-only: only when there are any) */}
+            {readOnly && customers.length === 0 ? null : (
+              <>
+                <SectionHeader
+                  title={t('pricing.item.customerRates')}
+                  count={customers.length}
+                  action={writable && customers.length > 0 ? { label: t('pricing.action.addCustomer'), onPress: () => setPicking(true) } : undefined}
+                />
+                <View style={styles.block}>
+                  {customers.length === 0 ? (
+                    <View style={[styles.strip, { gap: space.sm }]}>
+                      <Text style={styles.note}>{t('pricing.item.noCustomerRates')}</Text>
+                      {writable ? (
+                        <Button type="secondary" disabled={offline} onPress={() => setPicking(true)} testID="add-customer-rate">
+                          {t('pricing.action.addCustomer')}
+                        </Button>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <View style={styles.customerRows}>
+                      {customers.map(c => (
+                        <CustomerRateRow
+                          key={c.id}
+                          customerId={c.id}
+                          customerName={c.name}
+                          bands={c.bands}
+                          newRateFrom={c.newRateFrom}
+                          onPress={id => router.push(customerRatePath(itemId, id, day !== today ? day : undefined, c.name, readOnly))}
+                        />
+                      ))}
+                    </View>
+                  )}
                 </View>
-              ) : (
-                <View style={styles.customerRows}>
-                  {customers.map(c => (
-                    <CustomerRateRow
-                      key={c.id}
-                      customerId={c.id}
-                      customerName={c.name}
-                      bands={c.bands}
-                      newRateFrom={c.newRateFrom}
-                      onPress={id => router.push(customerRatePath(itemId, id, day !== today ? day : undefined, c.name, readOnly))}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
+              </>
+            )}
 
-            {/* Rates for one GRN only */}
-            <GrnOnlyRatesSection rates={grnRates} failed={grnRatesFailed} />
+            {/* Rates for one GRN only (read-only: only the rate of the GRN it was opened from) */}
+            <GrnOnlyRatesSection rates={readOnly ? (grnRates ?? []).filter(r => r.gr_id === params.grn) : grnRates} failed={grnRatesFailed} />
 
             {/* Old rates */}
-            {rights.canSeeOldRates ? <OldRatesSection rows={allEnded} archivedGrnRates={(grnRates ?? []).filter(r => r.archived)} /> : null}
+            {rights.canSeeOldRates && !readOnly ? <OldRatesSection rows={allEnded} archivedGrnRates={(grnRates ?? []).filter(r => r.archived)} /> : null}
 
-            <Text style={styles.foot}>{t('pricing.item.rule')}</Text>
+            {readOnly ? null : <Text style={styles.foot}>{t('pricing.item.rule')}</Text>}
             <Button type="tertiary" style={styles.link} onPress={() => setHowOpen(true)} testID="how-link">
               {t('pricing.item.howLink')}
             </Button>

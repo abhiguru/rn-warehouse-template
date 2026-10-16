@@ -189,7 +189,7 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
               return canOpen ? (
                 <Pressable
                   key={group.key}
-                  onPress={() => router.push(itemRatesPath(rate.item_id, grnDate ?? undefined, true))}
+                  onPress={() => router.push(itemRatesPath(rate.item_id, grnDate ?? undefined, true, grnId ?? undefined))}
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
                   accessibilityRole="button"
                   accessibilityLabel={label}

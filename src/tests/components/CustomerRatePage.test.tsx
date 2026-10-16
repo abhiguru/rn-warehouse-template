@@ -121,6 +121,23 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
   });
 });
 
+// Opened read-only from a GRN's Rates (2026-10-16): the rate on the GRN's day and nothing else.
+describe('read-only, from a GRN', () => {
+  it('shows the rate in short form, with no action, date control, Changes or old rates', async () => {
+    mockParams = { itemId: 'onion', customerId: 'orchard-b', on: '2026-10-01', readonly: '1' };
+    const rows = [...F1.filter(r => r.item_id === 'onion'), { ...F1.find(r => r.customer_id === 'orchard-b')!, id: 'old', unit_price: 2.5, effective_from: '2025-01-01', effective_to: '2025-12-31' }];
+    await open('supervisor', data(rows));
+    for (const id of ['rate-change', 'rate-correct', 'rate-stop', 'add-customer-rate', 'customer-changes', 'change-date', 'back-to-today']) expect(byId(tree, id)).toHaveLength(0);
+    const s = texts(tree);
+    expect(s).toContain('Rates for lots received on 1 Oct 2026');
+    expect(s.some(x => x.startsWith("You're looking at rates"))).toBe(false);
+    expect(s.join(' ')).not.toContain('Show 1 old rate');
+    const card = tree.root.find(n => n.props.testID === 'rate-card-monthly');
+    const text = card.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+    expect(text).toEqual(expect.arrayContaining(['₹3.00', '  per bag, per month', '₹1.50 per bag', '5%', 'Since 1 Jan 2026']));
+  });
+});
+
 // CR-04: write actions belong to today's rows only.
 describe('another day than today', () => {
   const WRITE_IDS = ['rate-change', 'rate-correct', 'rate-stop', 'edit-upcoming', 'cancel-upcoming', 'undo-stop', 'add-customer-rate'];

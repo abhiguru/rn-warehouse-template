@@ -19,6 +19,8 @@ export interface RatesOnBarProps {
   day: string;
   today: string;
   onChangeDay: (day: string) => void;
+  /** The day is fixed (a read-only card opened from a GRN): no Change date, no Back to today. */
+  fixed?: boolean;
 }
 
 const makeStyles = (th: ThemeTokens) => ({
@@ -41,7 +43,7 @@ export const dayLimits = (today: string) => ({
   max: parseLocalISODate(addDays(today, 365 * 2)),
 });
 
-export function RatesOnBar({ text, day, today, onChangeDay }: RatesOnBarProps) {
+export function RatesOnBar({ text, day, today, onChangeDay, fixed = false }: RatesOnBarProps) {
   const styles = useThemedStyles(makeStyles);
   const { tokens: th, resolvedMode } = useTheme();
   const [open, setOpen] = useState(false);
@@ -60,16 +62,18 @@ export function RatesOnBar({ text, day, today, onChangeDay }: RatesOnBarProps) {
   return (
     <View style={styles.bar}>
       <Text style={styles.text} accessibilityLiveRegion="polite" testID="rates-on-text">{text}</Text>
-      <View style={styles.actions}>
-        <Button type="tertiary" leftIcon="calendar-outline" onPress={show} testID="change-date">
-          {t('pricing.list.changeDate')}
-        </Button>
-        {day !== today ? (
-          <Button type="tertiary" onPress={() => onChangeDay(today)} testID="back-to-today">
-            {t('pricing.list.backToToday')}
+      {fixed ? null : (
+        <View style={styles.actions}>
+          <Button type="tertiary" leftIcon="calendar-outline" onPress={show} testID="change-date">
+            {t('pricing.list.changeDate')}
           </Button>
-        ) : null}
-      </View>
+          {day !== today ? (
+            <Button type="tertiary" onPress={() => onChangeDay(today)} testID="back-to-today">
+              {t('pricing.list.backToToday')}
+            </Button>
+          ) : null}
+        </View>
+      )}
       {open && Platform.OS === 'android' ? (
         <DateTimePicker
           value={draft}

@@ -116,14 +116,14 @@ describe('GrnItemRates', () => {
     ]);
   });
 
-  it('a row opens the item\'s rate card read-only on the GRN\'s day', async () => {
+  it('a row opens the item\'s rate card read-only on the GRN\'s day, naming the GRN', async () => {
     const { router } = require('expo-router');
     read.mockResolvedValue(answer([lot({ grn_item_id: 'a' })]));
     await mount(<GrnItemRates grnId="g1" />);
     const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
     expect(row.props.accessibilityRole).toBe('button');
     act(() => row.props.onPress());
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1' } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1' } });
   });
 
   it('a customer, who cannot open Item pricing, gets rows that are not links', async () => {
