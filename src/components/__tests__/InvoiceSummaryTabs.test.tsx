@@ -47,20 +47,24 @@ describe.each(THEMES)('invoice summary tabs in %s %s', (brand, mode) => {
   });
 
   it('dispatch tab shows the empty state', () => {
-    const tree = render(<DispatchInvoicesTab invoiceSummary={{ total_invoices: 0, total_amount: 0 }} />, brand, mode);
-    const title = textNodes(tree).find(n => joined(n) === 'No invoices yet');
+    const tree = render(<DispatchInvoicesTab invoices={{ detailed: false, count: 0, total: 0, rows: [] }} />, brand, mode);
+    const title = textNodes(tree).find(n => joined(n) === 'No invoices linked to this dispatch.');
     expect(title).toBeDefined();
     expect(title!.props.accessibilityRole).toBe('header');
     act(() => tree.unmount());
   });
 
-  it('dispatch tab lists invoices with the total', () => {
+  it('dispatch tab lists invoices with two-decimal amounts and the total in primary text', () => {
     const tree = render(
-      <DispatchInvoicesTab invoiceSummary={{ total_invoices: 1, total_amount: 1906, invoice_numbers: [42] }} />,
+      <DispatchInvoicesTab
+        invoices={{ detailed: true, count: 1, total: 1906, rows: [{ key: 'v1', invoice_id: 'v1', invoice_no: 42, invoice_date: '2026-10-09', total: 1906 }] }}
+      />,
       brand, mode
     );
-    expect(textNodes(tree).some(n => joined(n) === '₹1,906')).toBe(true);
-    expect(textNodes(tree).some(n => joined(n) === 'Invoice 42')).toBe(true);
+    const amounts = textNodes(tree).filter(n => joined(n) === '₹1,906.00');
+    expect(amounts).toHaveLength(2);
+    expect(StyleSheet.flatten(amounts[1].props.style).color).toBe(t.text.primary);
+    expect(textNodes(tree).some(n => joined(n) === '42')).toBe(true);
     act(() => tree.unmount());
   });
 });

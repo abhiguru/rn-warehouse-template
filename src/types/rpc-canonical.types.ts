@@ -457,30 +457,51 @@ export interface RpcDispatchListItem {
 }
 
 /**
- * Dispatch item details in dispatch details response
+ * One dispatch line in the get_dispatch_details response, as the function builds it
+ * (checked against the live definition on 2026-10-16). `id` is the dispatch line; the
+ * receipt lot is `grn_item_details` and `weight` is the weight of one bag of it.
  */
 export interface RpcDispatchItemDetails {
   id: string;
   disp_qty: number;
-  grn_id: string;
-  grn_item_id: string;
+  grn_id: string | null;
+  grn_item_id: string | null;
   grn_item_details: {
     id: string;
     qty: number;
     stock: number;
+    weight: number | null;
+    rack?: string | null;
+    package_mark: string | null;
     item_name: string;
     packaging: string | null;
+    pricing_mode?: string | null;
+    trl_img_url?: string | null;
   } | null;
   grn_details: {
     id: string;
     gr_no: string;
-    date: string;
+    date: string | null;
+    registration?: string | null;
+    customer_name?: string | null;
+    supervisor_name?: string | null;
+    sender_name?: string | null;
+    invoiced?: boolean | null;
+    out_of_stock?: boolean | null;
   } | null;
   item_details: RpcItemDetails | null;
+  /** The invoice that bills this line; `total` is the whole invoice's total. */
   invoice_details: {
-    id: string;
-    invoice_no: string;
-    invoice_number: number;
+    invoice_trl_id: string;
+    invoice_id: string;
+    duration?: number | null;
+    no_of_days?: number | null;
+    charge?: number | null;
+    tax?: number | null;
+    labour_rate?: number | null;
+    invoice_no: number;
+    invoice_date: string | null;
+    total: number | null;
   } | null;
 }
 
@@ -504,7 +525,9 @@ export interface RpcDispatchGrnsSummary {
 }
 
 /**
- * Dispatch invoices summary
+ * Dispatch invoices summary: each invoice that bills a line of the dispatch, counted
+ * once. `total_amount` adds those invoices' whole totals (migration 68), so it includes
+ * any other dispatches' lines on the same invoices.
  */
 export interface RpcDispatchInvoicesSummary {
   total_invoices: number;

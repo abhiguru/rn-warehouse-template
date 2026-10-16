@@ -33,7 +33,7 @@ describe('grn texts in Gujarati', () => {
 
   it('builds a sentence from formatted values', () => {
     setLanguage('gu');
-    expect(t('grn.sourceGrns.receivedBags', { bags: formatCount(50, 'bag') })).toBe('આવક ૫૦ નંગ');
+    expect(t('dispatch.details.received', { bags: formatCount(50, 'bag') })).toBe('આવક ૫૦ નંગ');
     expect(t('grn.upload.fileTooLarge', { size: formatNumber(12.34, 1) })).toBe(
       'ફાઇલ (૧૨.૩MB) બહુ મોટી છે. વધુમાં વધુ ૧૦MB ચાલશે.'
     );

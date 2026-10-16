@@ -7,8 +7,8 @@
 export { DispatchHeroHeader } from './DispatchHeroHeader';
 export { DispatchTabNavigator, type TabKey } from './DispatchTabNavigator';
 export { DispatchOverviewTab } from './DispatchOverviewTab';
-export { DispatchItemCard, type DispatchItemCardProps } from './DispatchItemCard';
 export { DispatchItemsTab, type DispatchItem } from './DispatchItemsTab';
-export { DispatchGRNsTab, type GRNInfo } from './DispatchGRNsTab';
+export { DispatchGRNsTab, type GrnGroup } from './DispatchGRNsTab';
 export { DispatchImagesTab, type DispatchImageData } from './DispatchImagesTab';
-export { DispatchInvoicesTab, type InvoiceSummary } from './DispatchInvoicesTab';
+export { DispatchInvoicesTab, type InvoiceTable } from './DispatchInvoicesTab';
+export { mapDispatchItems, groupBySourceGrn, itemTotals, buildInvoiceTable } from './dispatchDetailsModel';

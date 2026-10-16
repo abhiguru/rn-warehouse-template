@@ -601,11 +601,5 @@ export const grn = {
   sourceGrns: {
     emptyTitle: 'No GRNs for this dispatch',
     emptySubtitle: 'GRNs whose items are in this dispatch appear here.',
-    heading: 'Source GRNs',
-    itemsDispatched: { one: '{{count}} item dispatched', other: '{{count}} items dispatched' },
-    cardLabel: 'GRN {{number}}, {{items}}',
-    cardLabelWithDate: 'GRN {{number}}, {{date}}, {{items}}',
-    openHint: 'Opens the GRN',
-    receivedBags: 'Received {{bags}}',
   },
 };

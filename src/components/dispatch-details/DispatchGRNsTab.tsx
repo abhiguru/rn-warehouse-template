@@ -1,173 +1,91 @@
 /**
- * DispatchGRNsTab Component - SAP Fiori object cells (docs/STYLE_GUIDE.md §13.6)
+ * DispatchGRNsTab - the dispatch's source GRNs as an expandable table (docs/STYLE_GUIDE.md §13.7)
  *
- * Shows all GRNs involved in this dispatch
- * Features:
- * - List of GRN cards
- * - Each GRN shows items from that GRN
- * - Pressable to navigate to GRN details
+ * | Source GRN | Item lines | Bags dispatched |
+ * | › 0161     |          2 |              65 |
+ * |   15 Oct   |            |                 |
+ *
+ * - Groups are keyed by GRN id (dispatchDetailsModel.groupBySourceGrn); a line without one
+ *   is its own group and cannot be opened.
+ * - Tapping a row shows its lines (Item / Mark / Bags dispatched, the weight of one bag
+ *   under the item) and a separate "View GRN" action. A single GRN starts expanded.
+ * - Item lines count dispatch lines, so two lots of one item count two. Every quantity
+ *   is this dispatch's. Footer: totals. Virtualized (FlatList).
  */
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, FlatList, Pressable, LayoutAnimation, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  typography,
-  trackedText,
-} from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate, formatWeightEach } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { groupBySourceGrn, itemTotals, type DispatchItem, type GrnGroup } from './dispatchDetailsModel';
+import { grnDateText } from './DispatchItemsTab';
+import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from './DispatchTable';
 
-// Using snake_case to match backend RPC types
-interface GRNItemSummary {
-  item_name: string;
-  dispatch_quantity: number;
-  original_quantity?: number;
-  weight?: number;
-  package_mark?: string;
-}
-
-export interface GRNInfo {
-  grn_id: string;
-  grn_no: string;
-  grn_date: string;
-  items: GRNItemSummary[];
-}
+export type { GrnGroup } from './dispatchDetailsModel';
 
 interface DispatchGRNsTabProps {
-  grns: GRNInfo[];
+  items: DispatchItem[];
   onViewGRN?: (grn_id: string) => void;
 }
 
-const bags = (qty: number) => formatCount(qty, 'bag');
+/** Column widths at font scale 1. */
+const LINES_WIDTH = 56;
+const BAGS_WIDTH = 76;
+const MARK_WIDTH = 88;
 
 const makeStyles = (t: ThemeTokens) => ({
-  container: {
-    flex: 1,
-    backgroundColor: t.background.base,
-  },
-  content: {
-    paddingHorizontal: layout.marginCompact,
-    paddingTop: space.md,
-    paddingBottom: space.xxl,
-  },
-  sectionHeaderText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
-    paddingBottom: space.sm,
-  },
-  card: {
-    backgroundColor: t.surface.card,
-    borderRadius: radius.card,
-    marginBottom: space.sm,
+  lineTable: {
+    borderRadius: radius.field,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
     overflow: 'hidden' as const,
-    ...t.shadow[2],
   },
-  cardPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-  grnHeader: {
+  lineHeader: {
     flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    padding: space.lg,
-    paddingBottom: space.md,
-    minHeight: layout.objectCellMinHeight,
+    alignItems: 'flex-end' as const,
+    gap: space.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    backgroundColor: t.background.base,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
-  grnHeaderLeft: {
+  lineRow: {
     flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    flex: 1,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    minHeight: 36,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.s6,
   },
-  iconCircle: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.subtle,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginRight: space.md,
-  },
-  grnInfo: {
-    flex: 1,
-  },
-  grnNo: {
-    ...typography.headline,
-    color: t.text.primary,
-  },
-  grnDate: {
-    ...typography.footnote,
-    color: t.text.secondary,
-  },
-  itemsSection: {
+  lineDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: t.border.divider,
-    paddingHorizontal: space.lg,
-    paddingTop: space.sm,
-    paddingBottom: space.md,
   },
-  itemsLabel: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
-    marginBottom: space.sm,
+  markCell: {
+    minWidth: 0,
   },
-  itemsContainer: {
+  viewGrn: {
+    alignSelf: 'flex-start' as const,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: space.xs,
-  },
-  itemCard: {
-    backgroundColor: t.background.base,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    marginLeft: -space.sm,
     borderRadius: radius.button,
-    padding: space.sm,
   },
-  itemRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    gap: space.sm,
+  viewGrnPressed: {
+    backgroundColor: t.brand.subtle,
   },
-  itemName: {
-    ...typography.subhead,
-    flex: 1,
-    color: t.text.primary,
-  },
-  quantityText: {
+  viewGrnText: {
     ...typography.subhead,
     fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  itemDetailsRow: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    marginTop: space.s6,
-    gap: space.s6,
-  },
-  detailPill: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.status.neutral.background,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    gap: space.xs,
-  },
-  detailPillText: {
-    ...typography.caption1,
-    color: t.status.neutral.text,
-    fontVariant: ['tabular-nums' as const],
+    color: t.brand.tint,
   },
   emptyContainer: {
     flex: 1,
@@ -193,128 +111,197 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
+const bags = (qty: number) => formatCount(qty, 'bag');
+
+function grnSpoken(group: Pick<GrnGroup, 'grn_no' | 'grn_date'>): string {
+  if (!group.grn_no) return tr('dispatch.details.table.grnUnavailable');
+  const date = toDate(group.grn_date) ? formatDate(group.grn_date, 'short') : tr('dispatch.details.table.dateUnavailable');
+  return tr('dispatch.details.grnLabelWithDate', { number: formatIdentifier(group.grn_no), date });
+}
+
+interface GroupRowProps {
+  group: GrnGroup;
+  expanded: boolean;
+  onToggle: (key: string) => void;
+  onViewGRN?: (grn_id: string) => void;
+  table: TableLayout;
+}
+
+const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewGRN, table }: GroupRowProps) {
+  const styles = useThemedStyles(makeTableStyles);
+  const own = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const lines = tr('dispatch.details.table.lineCount', { count: group.lines.length });
+  const grnId = group.grn_id;
+  const canOpen = !!(grnId && onViewGRN);
+  const linesWidth = table.numberWidth(LINES_WIDTH);
+  const bagsWidth = table.numberWidth(BAGS_WIDTH);
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => onToggle(group.key)}
+        style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={tr('dispatch.details.table.grnRowLabel', { source: grnSpoken(group), lines, bags: bags(group.bags) })}
+        accessibilityHint={tr('dispatch.details.table.showLines')}
+        accessibilityState={{ expanded }}
+        testID={`dispatch-grn-row-${group.key}`}
+      >
+        <RowChevron expandable expanded={expanded} />
+        <View style={styles.grow}>
+          <Text style={styles.primaryStrong}>{group.grn_no ?? '—'}</Text>
+          <Text style={styles.secondary}>{grnDateText(group.grn_date)}</Text>
+          {table.stacked ? <Text style={styles.secondary}>{lines}</Text> : null}
+        </View>
+        {!table.stacked ? (
+          <Text style={[styles.number, { width: linesWidth }]}>{formatNumber(group.lines.length)}</Text>
+        ) : null}
+        <Text style={[styles.number, { width: bagsWidth }]}>{formatNumber(group.bags)}</Text>
+      </Pressable>
+
+      {expanded ? (
+        <View style={styles.details} testID={`dispatch-grn-lines-${group.key}`}>
+          <View style={own.lineTable}>
+            <View style={own.lineHeader}>
+              <HeaderCell style={styles.grow}>{tr('dispatch.details.table.item')}</HeaderCell>
+              {!table.stacked ? (
+                <HeaderCell style={[own.markCell, { width: table.numberWidth(MARK_WIDTH) }]}>{tr('dispatch.details.table.mark')}</HeaderCell>
+              ) : null}
+              <HeaderCell numeric style={{ width: bagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
+            </View>
+            {group.lines.map((line, index) => {
+              const weight = formatWeightEach(line.weight);
+              const mark = line.package_mark || null;
+              // Stacked, the mark joins the weight under the item.
+              const under = table.stacked ? [mark, weight].filter(Boolean).join(' · ') : weight;
+              return (
+                <View
+                  key={line.id}
+                  style={[own.lineRow, index > 0 && own.lineDivider]}
+                  accessible
+                  accessibilityLabel={tr('dispatch.details.table.lineRowLabel', {
+                    item: line.item_name,
+                    details: [mark, weight].filter(Boolean).map((part) => `, ${part}`).join(''),
+                    bags: bags(line.dispatch_quantity),
+                  })}
+                  testID={`dispatch-grn-line-${line.id}`}
+                >
+                  <View style={styles.grow}>
+                    <Text style={styles.primary}>{line.item_name}</Text>
+                    {under ? <Text style={styles.secondary}>{under}</Text> : null}
+                  </View>
+                  {!table.stacked ? (
+                    <Text style={[styles.primary, own.markCell, { width: table.numberWidth(MARK_WIDTH) }]}>{mark ?? '—'}</Text>
+                  ) : null}
+                  <Text style={[styles.number, { width: bagsWidth }]}>{formatNumber(line.dispatch_quantity)}</Text>
+                </View>
+              );
+            })}
+          </View>
+          {canOpen ? (
+            <Pressable
+              onPress={() => {
+                if (grnId) onViewGRN?.(grnId);
+              }}
+              style={({ pressed }) => [own.viewGrn, pressed && own.viewGrnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(group.grn_no) })}
+              accessibilityHint={tr('dispatch.details.opensGrn')}
+              testID={`dispatch-grn-view-${group.key}`}
+            >
+              <Text style={own.viewGrnText}>{tr('dispatch.grnSheet.viewGrn')}</Text>
+              <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+});
+
 export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
-  grns,
+  items,
   onViewGRN,
 }) => {
-  const styles = useThemedStyles(makeStyles);
+  const styles = useThemedStyles(makeTableStyles);
+  const own = useThemedStyles(makeStyles);
   const t = useTokens();
+  const table = useTableLayout();
+  const groups = useMemo(() => groupBySourceGrn(items), [items]);
+  const totals = useMemo(() => itemTotals(items), [items]);
+  // One GRN starts open; several start closed. A key that is open stays open on refresh.
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
+  const single = groups.length === 1;
+  const isOpen = useCallback((key: string) => (single ? !toggled.has(key) : toggled.has(key)), [single, toggled]);
 
-  const handleGRNPress = (grn_id: string) => {
-    if (onViewGRN) {
-      onViewGRN(grn_id);
-    }
-  };
+  const toggle = useCallback((key: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setToggled((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
-  if (grns.length === 0) {
+  if (groups.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} style={styles.emptyIcon} />
-        <Text style={styles.emptyTitle}>{tr('grn.sourceGrns.emptyTitle')}</Text>
-        <Text style={styles.emptySubtitle}>
-          {tr('grn.sourceGrns.emptySubtitle')}
-        </Text>
+      <View style={own.emptyContainer}>
+        <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} style={own.emptyIcon} />
+        <Text style={own.emptyTitle}>{tr('grn.sourceGrns.emptyTitle')}</Text>
+        <Text style={own.emptySubtitle}>{tr('grn.sourceGrns.emptySubtitle')}</Text>
       </View>
     );
   }
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
+  const linesWidth = table.numberWidth(LINES_WIDTH);
+  const bagsWidth = table.numberWidth(BAGS_WIDTH);
+  const lineCount = tr('dispatch.details.table.lineCount', { count: totals.lines });
+  const grnCount = tr('dispatch.details.table.grnCount', { count: totals.grns });
+
+  const header = (
+    <View style={styles.headerRow}>
+      <RowChevron expandable={false} expanded={false} />
+      <HeaderCell style={styles.grow}>{tr('dispatch.details.table.sourceGrn')}</HeaderCell>
+      {!table.stacked ? <HeaderCell numeric style={{ width: linesWidth }}>{tr('dispatch.details.table.itemLines')}</HeaderCell> : null}
+      <HeaderCell numeric style={{ width: bagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
+    </View>
+  );
+
+  const footer = (
+    <View
+      style={styles.footerRow}
+      accessible
+      accessibilityLabel={tr('dispatch.details.table.grnsTotalLabel', { grns: grnCount, lines: lineCount, bags: bags(totals.bags) })}
+      testID="dispatch-grns-total"
     >
-      <Text style={styles.sectionHeaderText} accessibilityRole="header">{tr('grn.sourceGrns.heading')}</Text>
+      <RowChevron expandable={false} expanded={false} />
+      <View style={styles.grow}>
+        <Text style={styles.primaryStrong}>{tr('dispatch.details.table.total')}</Text>
+        <Text style={styles.secondary}>{table.stacked ? `${grnCount} · ${lineCount}` : grnCount}</Text>
+      </View>
+      {!table.stacked ? <Text style={[styles.numberStrong, { width: linesWidth }]}>{formatNumber(totals.lines)}</Text> : null}
+      <Text style={[styles.numberStrong, { width: bagsWidth }]}>{formatNumber(totals.bags)}</Text>
+    </View>
+  );
 
-      {grns.map((grn) => {
-        const dateLabel = toDate(grn.grn_date) ? formatDate(grn.grn_date, 'short') : '';
-        const itemCount = tr('grn.sourceGrns.itemsDispatched', { count: grn.items.length });
-        return (
-          <Pressable
-            key={grn.grn_id}
-            onPress={() => handleGRNPress(grn.grn_id)}
-            disabled={!onViewGRN}
-            accessibilityRole={onViewGRN ? 'button' : undefined}
-            accessibilityLabel={
-              dateLabel
-                ? tr('grn.sourceGrns.cardLabelWithDate', { number: formatIdentifier(grn.grn_no), date: dateLabel, items: itemCount })
-                : tr('grn.sourceGrns.cardLabel', { number: formatIdentifier(grn.grn_no), items: itemCount })
-            }
-            accessibilityHint={onViewGRN ? tr('grn.sourceGrns.openHint') : undefined}
-            style={({ pressed }) => [
-              styles.card,
-              pressed && onViewGRN && styles.cardPressed,
-            ]}
-          >
-            {/* GRN Header */}
-            <View style={styles.grnHeader}>
-              <View style={styles.grnHeaderLeft}>
-                <View style={styles.iconCircle}>
-                  <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-                </View>
-                <View style={styles.grnInfo}>
-                  <Text style={styles.grnNo}>{tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.grn_no) })}</Text>
-                  {!!dateLabel && <Text style={styles.grnDate}>{dateLabel}</Text>}
-                </View>
-              </View>
-              {onViewGRN && (
-                <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-              )}
-            </View>
-
-            {/* Items Section */}
-            <View style={styles.itemsSection}>
-              <Text style={styles.itemsLabel}>{itemCount}</Text>
-
-              <View style={styles.itemsContainer}>
-                {grn.items.map((item, index) => {
-                  // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
-                  const weightEach = formatWeightEach(item.weight);
-                  return (
-                    <View key={index} style={styles.itemCard}>
-                      <View style={styles.itemRow}>
-                        <Text style={styles.itemName} numberOfLines={2}>
-                          {item.item_name}
-                        </Text>
-                        <Text style={styles.quantityText}>{bags(item.dispatch_quantity)}</Text>
-                      </View>
-                      {/* Item Details Row */}
-                      {(item.original_quantity !== undefined || weightEach !== null || !!item.package_mark) && (
-                        <View style={styles.itemDetailsRow}>
-                          {item.original_quantity !== undefined && (
-                            <View style={styles.detailPill}>
-                              <Icon name="package-variant-closed" size={iconSize.sm} color={t.status.neutral.text} />
-                              <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                                {tr('grn.sourceGrns.receivedBags', { bags: bags(item.original_quantity) })}
-                              </Text>
-                            </View>
-                          )}
-                          {weightEach !== null && (
-                            <View style={styles.detailPill}>
-                              <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
-                              <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                                {weightEach}
-                              </Text>
-                            </View>
-                          )}
-                          {item.package_mark && (
-                            <View style={styles.detailPill}>
-                              <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
-                              <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                                {item.package_mark}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+  return (
+    <FlatList
+      style={styles.list}
+      contentContainerStyle={styles.card}
+      data={groups}
+      keyExtractor={(group) => group.key}
+      extraData={toggled}
+      renderItem={({ item }) => (
+        <GroupRow group={item} expanded={isOpen(item.key)} onToggle={toggle} onViewGRN={onViewGRN} table={table} />
+      )}
+      ListHeaderComponent={header}
+      ListFooterComponent={footer}
+      showsVerticalScrollIndicator={false}
+      maxToRenderPerBatch={10}
+      windowSize={10}
+      testID="dispatch-grns-table"
+    />
   );
 };

@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — Dispatch page: Items, GRNs and Invoices as tables (2026-10-16)
+
+App only; no backend migration. Every figure comes from the `get_dispatch_details` answer the
+app already reads (its fields were checked against the live function, and
+`RpcDispatchItemDetails` now lists them).
+
+- **Items**: a table (Item | Source GRN | Bags dispatched) in place of one card per line, one row
+  per dispatch line, so two lots of one item stay two rows. The mark and the weight of one bag
+  ("PM · 50 kg each") sit under the item, the GRN date under its number. The GRN number opens the
+  GRN only when the line has a GRN id. A row expands to the bags received on its lot. The footer
+  totals the bags, item lines and source GRNs. A GRN without a date shows "—" (it used to show
+  today's date).
+- **GRNs**: an expandable table (Source GRN | Item lines | Bags dispatched), grouped by GRN id (it
+  was grouped by GRN number; a line without a GRN id is its own row and cannot be opened). A row
+  opens to its lines (Item | Mark | Bags dispatched) and a separate "View GRN" button; one GRN
+  starts open. Totals in the footer.
+- **Invoices**: a count and a table (Invoice | Invoice total, with the date under the number on
+  phones and in its own column from 600 dp) in place of the two large tiles. Each invoice once,
+  amounts with two decimals; a row opens the invoice page, where PDF and sharing stay. The amounts
+  are whole invoice totals (an invoice bills one GRN and can include other dispatches' lines), so
+  the column is "Invoice total" and a note says so. If the lines do not name every invoice, the
+  table falls back to the invoice numbers with no date, amount or link, and the summary total.
+  Empty: "No invoices linked to this dispatch."
+- Rows are sorted newest GRN first, then GRN number and item name (the server sends them in
+  line-id order). At font scale 1.5 and above the middle columns move under the first, and number
+  columns widen with the text, so no quantity is cut. Light and dark themes use tokens only.
+- Gujarati text for the new keys was drafted by Claude and waits for the owner's reading.
+
 ## Unreleased — fixes from the outside backend review (2026-10-15)
 
 Works with any backend; backend migration 87 adds the `ALREADY_CONFIRMED` answer that lets the

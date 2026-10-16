@@ -589,11 +589,5 @@ export const grn: Translation<typeof source> = {
   sourceGrns: {
     emptyTitle: 'આ જાવક માટે કોઈ આવક પાવતી નથી',
     emptySubtitle: 'જે આવક પાવતીની આઇટમ આ જાવકમાં છે તે અહીં દેખાશે.',
-    heading: 'કઈ આવક પાવતીમાંથી',
-    itemsDispatched: { one: '{{count}} આઇટમની જાવક', other: '{{count}} આઇટમની જાવક' },
-    cardLabel: 'આવક પાવતી {{number}}, {{items}}',
-    cardLabelWithDate: 'આવક પાવતી {{number}}, {{date}}, {{items}}',
-    openHint: 'આવક પાવતી ખોલે છે',
-    receivedBags: 'આવક {{bags}}',
   },
 };
