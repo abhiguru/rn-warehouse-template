@@ -144,4 +144,30 @@ it('STALE_RATES shows the message and asks for the rows again; the new rows open
   expect(latest.ready).toBe(true);
   expect(latest.dirty).toBe(false);
   expect(latest.draft!.bands[0].rent).toBe('11.00');
+  // The message is for the new draft: it stays; the field errors of the old one go.
+  expect(latest.strip).toBe('Rates changed.');
+});
+
+it('a draft opened from new rows has none of the field errors of the last one', async () => {
+  await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '')));
+  await act(async () => { await latest.submit(); });
+  expect(latest.errors['band.0.rent']).toBe('Enter a rent of 0 or more.');
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(cuminRows()) })));
+  expect(latest.errors).toEqual({});
+  // And nothing is shown for a field the person has not touched yet: no error appears while typing.
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  expect(latest.errors).toEqual({});
+});
+
+it.each(['BANDS_OVERLAP', 'BANDS_GAP'] as const)('%s puts the message under the bands as well as in the strip', async errorCode => {
+  await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  replace.mockResolvedValueOnce({ success: false, errorCode, message: 'The bands do not fit.' });
+  await act(async () => { await latest.submit(); });
+  expect(latest.errors.bands).toBe('The bands do not fit.');
+  expect(latest.strip).toBe('The bands do not fit.');
+  expect(onSaved).not.toHaveBeenCalled();
 });

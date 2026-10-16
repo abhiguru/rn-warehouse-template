@@ -145,8 +145,12 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     // The Add button of the list asks for one more empty band; `initial` stays without it, so leaving untouched asks first.
     const draft = params?.add_band === '1' ? appendEmptyBand(opened.draft) : opened.draft;
     setCore({ rows, draft, initial: opened.draft, ctx: opened.context });
-    // The draft is rebuilt from the server: it no longer holds another item's copied bands.
+    // The draft is rebuilt from the server: it no longer holds another item's copied bands, nor the errors of the last
+    // one. The strip stays: a refused save (STALE_RATES) reads the rows again and the message is for the new draft.
     setCopiedFrom(null);
+    setErrors({});
+    setLater(null);
+    checked.current = false;
   }
 
   const ready = !!rows && !!core && core.rows === rows;
@@ -260,6 +264,14 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       if (result.outcomeUnknown) {
         // The change may be saved: the pages behind read the item again.
         notifyRatesChanged(context.itemId);
+      }
+      if (result.errorCode === 'BANDS_OVERLAP' || result.errorCode === 'BANDS_GAP') {
+        // The bands as a whole are wrong: the message sits under the bands as well as in the strip.
+        const message = result.message ?? t('pricing.error.generic');
+        setErrors(current => ({ ...current, bands: message }));
+        setStrip(message);
+        view?.current?.scrollToError('bands');
+        return;
       }
       if (result.errorCode === 'INVALID_DATE') {
         // The day is outside what the server accepts: say so at the field, and learn the oldest allowed day from the answer.

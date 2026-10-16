@@ -37,8 +37,20 @@ export type StopParams = {
   price_type: PriceType;
 };
 
-export const itemRatesPath = (itemId: string, on?: string) =>
-  ({ pathname: '/item-rates/[itemId]', params: on ? { itemId, on } : { itemId } }) as const;
+/** The item page. `on` opens it on another day (read-only); `addBand` opens the default box with one more empty band. */
+export const itemRatesPath = (itemId: string, on?: string, addBand?: boolean) =>
+  ({
+    pathname: '/item-rates/[itemId]',
+    params: { itemId, ...(on ? { on } : {}), ...(addBand ? { add_band: '1' } : {}) },
+  }) as const;
+/** The customers who have their own rate for the item (`on`: the day the item page was looking at). */
+export const customerListPath = (itemId: string, on?: string) =>
+  ({ pathname: '/item-rates/[itemId]/customers', params: on ? { itemId, on } : { itemId } }) as const;
+/** The rates typed on single GRNs for the item. */
+export const grnListPath = (itemId: string) => ({ pathname: '/item-rates/[itemId]/grns', params: { itemId } }) as const;
+/** The Pricing tab of a customer, on the box of one item when `itemId` is given. */
+export const customerPricingPath = (customerId: string, itemId?: string) =>
+  ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
 export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',

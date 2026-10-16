@@ -107,6 +107,28 @@ export const pricing = {
     offlineChange: 'Connect to change rates.',
     notFound: 'This item is no longer active.',
     back: 'Back',
+    // The item page after the rate box (2026-10-16): one line each for what moved to its own screen.
+    otherDayLink: 'See rates on another day',
+    customerRatesLink: 'Customer rates for this item ({{count}})',
+    grnRatesLink: 'Rates typed on single GRNs ({{count}})',
+  },
+  customersList: {
+    title: 'Customer rates',
+  },
+  grnList: {
+    title: 'Rates typed on single GRNs',
+  },
+  // The rate box: the band table that is edited in place.
+  box: {
+    hint: 'Tap a figure to change it.',
+    cellA11y: '{{field}}, {{band}}, {{unit}}',
+    discard: 'Discard',
+    locked: 'Save or discard the other change first.',
+    unitRupees: 'rupees {{unit}}',
+    unitLabour: 'rupees per bag',
+    unitKg: 'kilograms',
+    unitPercent: 'percent',
+    allBands: 'all weight bands',
   },
   customerRate: {
     title: "{{customer}}'s own rate",

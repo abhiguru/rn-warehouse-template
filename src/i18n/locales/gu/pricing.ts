@@ -108,6 +108,26 @@ export const pricing: Translation<typeof source> = {
     offlineChange: 'દર બદલવા ઇન્ટરનેટ જોડો.',
     notFound: 'આ આઇટમ હવે ચાલુ નથી.',
     back: 'પાછળ',
+    otherDayLink: 'બીજા દિવસના દર જુઓ',
+    customerRatesLink: 'આ આઇટમ માટે વેપારીના દર ({{count}})',
+    grnRatesLink: 'એક જ આવક પાવતી માટે લખેલા દર ({{count}})',
+  },
+  customersList: {
+    title: 'વેપારીના પોતાના દર',
+  },
+  grnList: {
+    title: 'એક જ આવક પાવતી માટે લખેલા દર',
+  },
+  box: {
+    hint: 'બદલવા માટે આંકડા પર ટૅપ કરો.',
+    cellA11y: '{{field}}, {{band}}, {{unit}}',
+    discard: 'ફેરફાર છોડી દો',
+    locked: 'પહેલાં બીજો ફેરફાર સાચવો અથવા છોડી દો.',
+    unitRupees: 'રૂપિયા, {{unit}}',
+    unitLabour: 'રૂપિયા, નંગ દીઠ',
+    unitKg: 'કિલો',
+    unitPercent: 'ટકા',
+    allBands: 'બધી વજન મર્યાદા',
   },
   customerRate: {
     title: '{{customer}} નો પોતાનો દર',
