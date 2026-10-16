@@ -61,7 +61,7 @@ describe('Your rate', () => {
       'GRN WM0001, goods received on 1 Oct 2026',
       'YOUR RATE',
       '₹4.50', '  per bag, per month',
-      'Weight each', '0–50 kg', 'Labour', '₹1.50 per bag', 'Tax', '5%',
+      'Weight each', '25 kg', 'Labour', '₹1.50 per bag', 'Tax', '5%',
     ]);
     const all = texts().join(' ');
     expect(all).not.toMatch(/default|Item rate|Customer rate|This GRN only|Standard/i);
@@ -79,18 +79,18 @@ describe('Your rate', () => {
     expect(texts()).toEqual(customer);
   });
 
-  it('gives each rate of the item its own card, titled with the bag weight, when its lots differ', async () => {
+  it('gives each rate of the item its own card with the weight of the bags, never the band of the rate', async () => {
     read.mockResolvedValue(answer([lot({ grn_item_id: 'a' }), lot({ grn_item_id: 'b', weight: 60, unit_price: 6, weight_min: 51, weight_max: 100 }), lot({ grn_item_id: 'c' })]));
     await open();
     expect(cards().map(c => c.props.testID)).toEqual(['your-rate-card-a', 'your-rate-card-b']);
-    expect(texts()).toEqual(expect.arrayContaining(['25 kg each', '60 kg each', '₹4.50', '₹6.00', '51–100 kg']));
+    expect(texts()).toEqual(expect.arrayContaining(['25 kg', '60 kg', '₹4.50', '₹6.00']));
+    expect(texts().join(' ')).not.toMatch(/0–50 kg|51–100 kg/);
   });
 
-  it('on an invoiced GRN shows the invoice\'s figures without a band, says so, and notes a rate that differs by dispatch', async () => {
+  it('on an invoiced GRN shows the invoice\'s figures, says so, and notes a rate that differs by dispatch', async () => {
     read.mockResolvedValue(answer([lot({ source: 'invoice', weight_min: null, weight_max: null, unit_price: 4.3, varies: true })]));
     await open();
     const s = texts();
-    expect(s).not.toContain('Weight each');
     expect(s).toContain('₹4.30');
     expect(s).toContain('Dispatches of these bags were invoiced at different rates. This is the rate of the first dispatch.');
     expect(s).toContain('As charged on the invoice.');

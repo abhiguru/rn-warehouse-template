@@ -5,8 +5,9 @@
  * customer's rate or the item's), it is shown as the customer's rate, with no source named. Staff open the
  * item's rate card instead (Item pricing, read-only).
  *
- * One card per distinct rate of the item on this GRN (lots of different bag weights may differ), titled with
- * the bag weight when there is more than one. Back returns to the GRN.
+ * One card per distinct rate of the item on this GRN (lots of different bag weights may differ), each with
+ * the weight of the customer's own bags, never the band of the rate row it came from (backend migration 89
+ * leaves the band out for a customer anyway). Back returns to the GRN.
  */
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -19,11 +20,11 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { groupRates, type RateGroup } from '@/features/grn/rates/GrnItemRates';
 import { useGrnItemRates } from '@/features/grn/rates/useGrnItemRates';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
-import { bandText, dateText, money, unitText } from '@/features/item-pricing/rateText';
+import { dateText, money, unitText } from '@/features/item-pricing/rateText';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
 import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
-import { formatWeightEach } from '@/utils/formatters';
+import { formatWeight } from '@/utils/formatters';
 
 const TABULAR = ['tabular-nums' as const];
 
@@ -42,7 +43,6 @@ const makeStyles = (th: ThemeTokens) => ({
   barText: { ...typography.footnote, color: th.text.secondary },
   block: { gap: space.md, marginBottom: space.lg },
   card: { backgroundColor: th.surface.card, borderRadius: radius.card, marginHorizontal: layout.marginCompact, padding: space.lg, gap: space.md },
-  cardTitle: { ...typography.headline, color: th.text.primary },
   figure: { ...typography.title3, color: th.text.primary, fontVariant: TABULAR },
   unit: { ...typography.subhead, color: th.text.secondary },
   note: { ...typography.footnote, color: th.text.secondary },
@@ -50,21 +50,20 @@ const makeStyles = (th: ThemeTokens) => ({
   skeleton: { gap: space.md, paddingTop: space.md },
 });
 
-function YourRateCard({ group, oneTime, titled }: { group: RateGroup; oneTime: boolean; titled: boolean }) {
+function YourRateCard({ group, oneTime }: { group: RateGroup; oneTime: boolean }) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const kv = fontScale >= 1.3 ? 'stacked' : 'inline';
   const { rate } = group;
-  const band = rate.weight_min !== null && rate.weight_max !== null ? bandText(rate.weight_min, rate.weight_max) : null;
+  const weight = Number(group.weight) > 0 ? formatWeight(Number(group.weight)) : null;
   return (
     <View style={styles.card} testID={`your-rate-card-${rate.grn_item_id}`}>
-      {titled ? <Text style={styles.cardTitle}>{formatWeightEach(group.weight)}</Text> : null}
       <Text accessibilityRole="header">
         <Text style={styles.figure}>{money(rate.unit_price ?? 0)}</Text>
         <Text style={styles.unit}>{`  ${unitText(oneTime ? 'one_time' : 'monthly')}`}</Text>
       </Text>
       <View>
-        {band ? <KeyValueCell layout={kv} keyLabel={t('pricing.band.weightEach')} value={band} showDivider /> : null}
+        {weight ? <KeyValueCell layout={kv} keyLabel={t('pricing.band.weightEach')} value={weight} showDivider /> : null}
         {oneTime ? null : (
           <KeyValueCell layout={kv} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourShort', { amount: money(rate.labour_rate ?? 0) })} showDivider />
         )}
@@ -138,7 +137,7 @@ export default function YourRatePage() {
         <ScrollView contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.huge + insets.bottom }}>
           <SectionHeader title={t('grn.rates.yourRateTitle')} />
           <View style={styles.block}>
-            {groups.map(group => <YourRateCard key={group.key} group={group} oneTime={oneTime} titled={groups.length > 1} />)}
+            {groups.map(group => <YourRateCard key={group.key} group={group} oneTime={oneTime} />)}
           </View>
           {onInvoice ? <Text style={styles.foot}>{t('grn.rates.yourRateInvoice')}</Text> : null}
         </ScrollView>
