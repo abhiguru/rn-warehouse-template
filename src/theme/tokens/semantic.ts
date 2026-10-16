@@ -164,6 +164,28 @@ export interface ThemeTokens {
     /** Full-screen photo viewer backdrop (the one place pure black is used). */
     imageBackdrop: string;
   };
+  /**
+   * Tables (style guide §13.7). A shadow does not show on the dark page, so a table card has an
+   * outline, and its heading row is lighter than the rows in dark mode, not darker.
+   */
+  table: {
+    /** 1 dp line around a table card and around a table inside an open row. */
+    outline: string;
+    /** Heading row fill and its text (4.5:1). */
+    headerFill: string;
+    headerText: string;
+    /** Between body rows. */
+    divider: string;
+    /** Under the heading row, above the totals row, and under an open row's details. */
+    separator: string;
+    /**
+     * An open row and its details, and other sections set into a table card (the invoice form's
+     * group pricing). Text and icons keep 4.5:1 on it; the dark heading fill is too light for labels.
+     */
+    insetFill: string;
+    /** The bar at the start of an open row and its details, and the open row's chevron. */
+    accent: string;
+  };
   /** Elevation levels 0-4 (Fiori: 0 headers, 1 raised rows, 2 cards, 3 toasts/menus, 4 popovers/sheets). */
   shadow: [ShadowToken, ShadowToken, ShadowToken, ShadowToken, ShadowToken];
   chart: readonly string[];
@@ -312,6 +334,27 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
       onBrandSubtle: light ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.12)',
       imageBackdrop: '#000000',
     },
+    // Dark: #4A5868 is 2.2:1 on the card and 2.5:1 on the page; Horizon's divider (#2E3742)
+    // is 1.3:1 and could not be seen. The label grey is only 4.1:1 on the heading fill.
+    table: light
+      ? {
+          outline: h.divider,
+          headerFill: h.shell,
+          headerText: h.label,
+          divider: h.divider,
+          separator: h.toolbarSeparator,
+          insetFill: h.background,
+          accent: brandGroup(brand, mode).tint,
+        }
+      : {
+          outline: '#4A5868',
+          headerFill: h.surfaceActive,
+          headerText: h.neutral.text,
+          divider: h.toolbarSeparator,
+          separator: '#4A5868',
+          insetFill: h.fieldReadOnly,
+          accent: brandGroup(brand, mode).tint,
+        },
     shadow: shadows(mode),
     chart: light ? horizonChart.light : horizonChart.dark,
     avatar: light ? horizonAvatar.light : horizonAvatar.dark,

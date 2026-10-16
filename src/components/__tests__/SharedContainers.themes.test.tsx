@@ -245,8 +245,8 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
           totals={{ name: 'Total', bags: 1240 }}
         />
       );
-      // Header on background.base, rows on surface.card, no alternate shading
-      expect(hasBackground(tree, t.background.base)).toBe(true);
+      // Header on table.headerFill, rows on surface.card, no alternate shading
+      expect(hasBackground(tree, t.table.headerFill)).toBe(true);
       expect(hasBackground(tree, t.surface.card)).toBe(true);
       const all = texts(tree);
       expect(all).toEqual(expect.arrayContaining(['Potato', '1,200', '₹1,23,456.50', 'Total', '1,240']));
@@ -279,7 +279,7 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         expect(header.props.adjustsFontSizeToFit).toBe(true);
         expect(header.props.minimumFontScale).toBeGreaterThanOrEqual(0.8);
         expect(header.props.minimumFontScale).toBeLessThanOrEqual(0.9);
-        expect(flatStyle(header.props.style).color).toBe(t.text.secondary);
+        expect(flatStyle(header.props.style).color).toBe(t.table.headerText);
       }
       act(() => tree.unmount());
     }

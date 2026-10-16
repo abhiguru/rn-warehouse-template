@@ -4,7 +4,7 @@
  * `fiori/FioriDataTable` and `reports/FioriDataTable` are thin wrappers around
  * this component, so all three import paths render the same table.
  *
- * - Header: footnote 600 in text.secondary on background.base, separator below.
+ * - Header: footnote 600 in table.headerText on table.headerFill, separator below.
  *   One line that shrinks slightly before it is cut, so a word never breaks.
  *   Sortable columns show a sort icon and announce the current order.
  * - Body: subhead in text.primary, rows at least 44 high (36 for read-only

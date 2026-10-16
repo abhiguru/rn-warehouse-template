@@ -67,10 +67,15 @@ const makeStyles = (t: ThemeTokens) => ({
     alignSelf: 'flex-start' as const,
     marginTop: space.xs,
   },
+  /** A detail under an open row: its icon centred under the chevron, its text under the item name. */
   detailLine: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: space.xs,
+    gap: space.sm,
+  },
+  detailIcon: {
+    width: iconSize.md,
+    textAlign: 'center' as const,
   },
   action: {
     alignSelf: 'flex-start' as const,
@@ -79,7 +84,8 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.xs,
     minHeight: touchTarget,
     paddingHorizontal: space.sm,
-    marginLeft: -space.sm,
+    // The text lines up with the details above.
+    marginLeft: iconSize.md,
     borderRadius: radius.button,
   },
   actionPressed: {
@@ -177,7 +183,7 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
     .join(', ');
 
   return (
-    <View>
+    <View style={expanded ? styles.group : undefined}>
       <Pressable
         onPress={() => onToggle(item.id)}
         style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
@@ -200,18 +206,18 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
       {expanded ? (
         <View style={styles.details} testID={`grn-item-details-${item.id}`}>
           <View style={own.detailLine}>
-            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
             <Text style={styles.secondary}>{tr('grn.detailsTable.dispatchedBags', { bags: bags(dispatched) })}</Text>
           </View>
           {item.rack ? (
             <View style={own.detailLine}>
-              <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
               <Text style={styles.secondary}>{tr('grn.item.rackWithValue', { rack: item.rack })}</Text>
             </View>
           ) : null}
           {item.packaging ? (
             <View style={own.detailLine}>
-              <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} />
+              <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
               <Text style={styles.secondary}>{tr('grn.detailsTable.packaging', { packaging: item.packaging })}</Text>
             </View>
           ) : null}

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Tables: clear edges in dark mode, a cleaner open row (2026-10-16)
+
+App only. Every table (the Dispatch, GRN and invoice pages' tabs, the invoice form's items table,
+and the reports table) takes its colours from a new `table` token group. In dark mode the card has
+a 1 dp outline (#4A5868), the heading row is lighter than the rows instead of darker, its text is
+the lighter grey (#A9B4BE, 6:1; the label grey was 4.1:1 there), and the row dividers are
+stronger. Light mode changes only slightly (a light outline, a slightly darker heading row). An open
+row and its details are now one panel on a slightly different fill with a 3 dp accent bar at the
+start and an accent chevron; the details use the panel's full width, and a table inside them is a
+small outlined card. The invoice form's open group has the same bar and fill.
+
 ## Unreleased — Dispatch page Items: GRN and received in one cell, mark under it (2026-10-16)
 
 App only. On the Dispatch page's Items table the source GRN cell reads "GRN/received" (for example

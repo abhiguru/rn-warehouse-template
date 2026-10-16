@@ -23,7 +23,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { itemTotals, type DispatchItem } from './dispatchDetailsModel';
-import { HeaderCell, ONE_LINE, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
+import { HeaderCell, ONE_LINE, TABLE_OUTLINE, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
 
 export type { DispatchItem } from './dispatchDetailsModel';
 
@@ -111,7 +111,7 @@ export function sourceColumnWidth(
   const longest = (texts: string[]) => texts.reduce((max, text) => Math.max(max, text.length), 0);
   const source = longest([...items.map(sourceText), ...extra]) * (typography.subhead.fontSize ?? 15) * SOURCE_EM;
   const mark = longest([...items.map((item) => item.package_mark ?? ''), heading]) * (typography.footnote.fontSize ?? 13) * MARK_EM;
-  const row = table.width - 2 * layout.marginCompact - 2 * space.md;
+  const row = table.width - 2 * layout.marginCompact - 2 * TABLE_OUTLINE - 2 * space.md;
   return Math.min(Math.ceil(Math.max(source, mark) * table.scale) + space.xs, Math.floor(row / 2));
 }
 

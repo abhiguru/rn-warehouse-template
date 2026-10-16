@@ -6,14 +6,17 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
+import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { OPEN_ACCENT, TABLE_OUTLINE } from '@/components/common/DetailTable';
 import { DispatchItemsTab, sourceColumnWidth } from '../DispatchItemsTab';
 import { DispatchGRNsTab } from '../DispatchGRNsTab';
 import { DispatchInvoicesTab } from '../DispatchInvoicesTab';
 import type { DispatchItem, InvoiceTable } from '../dispatchDetailsModel';
 
+let mockTheme = { preference: 'light', brand: 'orange' };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
-  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: mockTheme }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 let mockFontScale = 1;
@@ -50,6 +53,7 @@ afterEach(() => {
   act(() => tree?.unmount());
   mockFontScale = 1;
   mockWidth = 360;
+  mockTheme = { preference: 'light', brand: 'orange' };
   setLanguage('en');
 });
 
@@ -168,8 +172,8 @@ describe('Items table', () => {
     // The heading counts too: "GRN/Received" is wider than "Z0004/1".
     expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table, [], 'GRN/Received'))
       .toBe(Math.ceil(12 * 13 * 0.6) + 4);
-    // At a large scale the column stops at half the row (411 − 32 − 24 = 355; half 177).
-    expect(sourceColumnWidth([{ grn_no: 'DV0010', original_quantity: 12500, package_mark: null }], { scale: 3, width: 411 })).toBe(177);
+    // At a large scale the column stops at half the row (411 − 32 margins − 2 outline − 24 = 353; half 176).
+    expect(sourceColumnWidth([{ grn_no: 'DV0010', original_quantity: 12500, package_mark: null }], { scale: 3, width: 411 })).toBe(176);
   });
 
   it('keeps the empty and loading states', () => {
@@ -200,6 +204,43 @@ describe('GRNs table', () => {
     const lines = byTestId('dispatch-grn-lines-grn-161');
     expect(textOf(lines)).toBe('Item|Mark|Bags dispatched|Basmati Rice|50 kg each|PM|25|Wheat|—|40');
     expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityState).toEqual({ expanded: true });
+  });
+
+  describe.each(BRANDS.flatMap((brand) => (['light', 'dark'] as Mode[]).map((mode) => [brand, mode] as const)))('%s %s', (brand, mode) => {
+    it('draws the card outlined and an open row with its lines as one panel with an accent bar', () => {
+      mockTheme = { preference: mode, brand };
+      const t = getTokens(brand, mode);
+      render(<DispatchGRNsTab items={[older, rice]} />);
+      // The nearest drawn view around a row: the panel when the row is open.
+      const panelOf = (id: string) => {
+        let node = byTestId(id).parent;
+        while (node && typeof node.type !== 'string') node = node.parent;
+        return (StyleSheet.flatten(node?.props.style) ?? {}) as Record<string, unknown>;
+      };
+      const chevronOf = (id: string) => byTestId(id).findAll((n) => (n.type as unknown) === 'Icon')[0].props;
+      const flat = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style) as Record<string, unknown>;
+
+      // The card is the list's content container.
+      const card = tree.root.findAll((n) => n.props.contentContainerStyle !== undefined)[0];
+      expect(StyleSheet.flatten(card.props.contentContainerStyle)).toMatchObject({ borderColor: t.table.outline, borderWidth: TABLE_OUTLINE });
+      expect(panelOf('dispatch-grn-row-grn-159').backgroundColor).toBeUndefined();
+      expect(chevronOf('dispatch-grn-row-grn-159')).toMatchObject({ name: 'chevron-right', color: t.icon.secondary });
+
+      press('dispatch-grn-row-grn-159');
+      expect(panelOf('dispatch-grn-row-grn-159')).toMatchObject({
+        backgroundColor: t.table.insetFill,
+        borderLeftWidth: OPEN_ACCENT,
+        borderLeftColor: t.table.accent,
+        borderBottomColor: t.table.separator,
+      });
+      expect(chevronOf('dispatch-grn-row-grn-159')).toMatchObject({ name: 'chevron-down', color: t.table.accent });
+      // The lines are a small table of their own: rows on the card colour, a heading on the heading fill.
+      const lines = byTestId('dispatch-grn-lines-grn-159');
+      const nested = lines.findAll((n) => typeof n.type === 'string' && flat(n)?.borderColor === t.table.outline)[0];
+      expect(flat(nested)).toMatchObject({ backgroundColor: t.surface.card, borderWidth: TABLE_OUTLINE });
+      expect(nested.findAll((n) => typeof n.type === 'string' && flat(n)?.backgroundColor === t.table.headerFill).length).toBeGreaterThan(0);
+      expect(panelOf('dispatch-grn-row-grn-161').backgroundColor).toBeUndefined();
+    });
   });
 
   it('expands and collapses a row on tap and opens the GRN only from View GRN', () => {

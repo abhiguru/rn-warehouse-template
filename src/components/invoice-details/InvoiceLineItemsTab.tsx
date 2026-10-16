@@ -18,7 +18,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, LayoutAnimation } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, Pressable, LayoutAnimation } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -204,34 +204,6 @@ const makeStyles = (t: ThemeTokens) => ({
     minWidth: 88,
     alignItems: 'flex-end' as const,
   },
-  lineTable: {
-    borderRadius: radius.field,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: t.border.divider,
-    overflow: 'hidden' as const,
-  },
-  lineHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-end' as const,
-    gap: space.sm,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    backgroundColor: t.background.base,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-  lineRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.sm,
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.sm,
-  },
-  lineDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-  },
   smallRight: {
     ...typography.footnote,
     color: t.text.secondary,
@@ -324,7 +296,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
   const lines = group.dispatch_items;
 
   return (
-    <View>
+    <View style={expanded ? styles.group : undefined}>
       <Pressable
         onPress={() => onToggle(group.grn_item_id)}
         style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
@@ -351,8 +323,8 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
 
       {expanded ? (
         <View style={styles.details} testID={`invoice-group-lines-${group.grn_item_id}`}>
-          <View style={own.lineTable}>
-            <View style={own.lineHeader}>
+          <View style={styles.nested}>
+            <View style={styles.nestedHeader}>
               <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.dispatch')}</HeaderCell>
               {!table.stacked ? <HeaderCell numeric style={{ width: bagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
               <HeaderCell numeric style={own.amount}>{tr('invoice.detailsTable.amount')}</HeaderCell>
@@ -368,7 +340,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
                     if (id) onViewDispatch?.(id);
                   }}
                   disabled={!canOpen}
-                  style={({ pressed }) => [own.lineRow, index > 0 && own.lineDivider, pressed && canOpen && styles.rowPressed]}
+                  style={({ pressed }) => [styles.nestedRow, index > 0 && styles.nestedDivider, pressed && canOpen && styles.rowPressed]}
                   accessible
                   accessibilityRole={canOpen ? 'button' : undefined}
                   accessibilityLabel={tr('invoice.detailsTable.lineRowLabel', {

@@ -240,6 +240,21 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 | `border.fieldFocus` | `#0032A5` | `#9AD3FF` | `#0032A5` | `#9AD3FF` |
 | `border.button` | `#BCC3CA` | `#3A4A5A` | `#BCC3CA` | `#3A4A5A` |
 
+#### table
+
+A shadow does not show on the dark page, so a table card is outlined, and in dark mode its
+heading row is lighter than its rows rather than darker. `table.accent` is the brand tint.
+
+| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+|---|---|---|---|---|
+| `table.outline` | `#E5E5E5` | `#4A5868` | `#E5E5E5` | `#4A5868` |
+| `table.headerFill` | `#EFF1F2` | `#2A3440` | `#EFF1F2` | `#2A3440` |
+| `table.headerText` | `#556B82` | `#A9B4BE` | `#556B82` | `#A9B4BE` |
+| `table.divider` | `#E5E5E5` | `#3C4957` | `#E5E5E5` | `#3C4957` |
+| `table.separator` | `#D9D9D9` | `#4A5868` | `#D9D9D9` | `#4A5868` |
+| `table.insetFill` | `#F5F6F7` | `#242E38` | `#F5F6F7` | `#242E38` |
+| `table.accent` | `#A85000` | `#FFA733` | `#2E3192` | `#9DA0F0` |
+
 #### status
 
 | Token | Orange light | Orange dark | GCSA light | GCSA dark |
@@ -336,6 +351,7 @@ Elevation tokens `shadow[0]` to `shadow[4]`, `interaction.focusWidth` (2), `inte
 | `border.field` | Input outlines (meets 3:1) | Cards |
 | `border.fieldFocus` | Focused input outline | Brand decoration |
 | `border.button` | Outline of secondary buttons and segmented controls | |
+| `table.*` | Tables (§13.7): card outline, heading row, row dividers, header and totals separators, an open row's panel and its accent bar | Lists of cards, which use `surface.card` and `border.divider` |
 | `brand.fill` | Primary buttons, selected segment, active step, FAB, switch track on | Large areas, backgrounds, text |
 | `brand.onFill` | Text and icons on `brand.fill` | Anything else |
 | `brand.fillPressed` | `brand.fill` while pressed | |
@@ -520,7 +536,7 @@ Fiori uses five levels. Spread `t.shadow[n]`, which carries the iOS shadow and t
 Rules:
 
 - A card on a card has no shadow. Separate with a divider instead.
-- In dark mode, depth also comes from surface colour: `surface.card` is lighter than `background.base`.
+- In dark mode, depth also comes from surface colour: `surface.card` is lighter than `background.base`. A table card also gets a 1 dp `table.outline`, because the dark page shows neither the shadow nor the small step in colour clearly.
 - Never draw a shadow under text or icons.
 
 ---
@@ -856,10 +872,12 @@ A pin is the exception to the one-tap rule: it changes nothing but the person's 
 
 The three `FioriDataTable` copies follow one spec and are merged during migration.
 
-- Header row: `footnote` weight 600, `text.secondary`, `background.base` fill, bottom border `border.separator`. Sortable columns show a sort icon and announce the order.
-- Body rows: `body` or `subhead`, `text.primary`, min height 44 (36 for read-only compact tables), dividers `border.divider`. Alternate shading is not used.
+- Card: `surface.card`, `radius.card`, `shadow[2]` and a 1 dp `table.outline`.
+- Header row: `footnote` weight 600 in `table.headerText` on `table.headerFill`, bottom border 1 dp `table.separator`. In dark mode the fill is lighter than the rows, so the heading row never reads as a gap in the card. Sortable columns show a sort icon and announce the order.
+- Body rows: `body` or `subhead`, `text.primary`, min height 44 (36 for read-only compact tables), dividers `table.divider`. Alternate shading is not used.
 - Numbers are right-aligned with tabular figures. Text is left-aligned. Status uses a status tag.
-- Totals row: weight 600, top border 1 px `border.separator`.
+- Totals row: weight 600, top border 1 px `table.separator`.
+- An open row and its details are one panel: `table.insetFill`, a 3 dp `table.accent` bar at the start, a `table.separator` line under it, and the chevron in `table.accent`. The details use the full width of the panel (16 dp in from the bar). A table inside the details is a small card of its own: rows on `surface.card`, `radius.field`, a 1 dp `table.outline`, its heading row on `table.headerFill`. The invoice form's open group (its header card and its table card) carries the same bar and fill.
 - Rate columns may carry the unit in the header ("Charge (₹)") and show plain grouped numbers in the cells.
 - On phones, tables with more than three columns scroll horizontally with the first column pinned, or turn into object cells. Show a fade at the scroll edge.
 - Editable cells follow the editable-cell rule in section 13.2.

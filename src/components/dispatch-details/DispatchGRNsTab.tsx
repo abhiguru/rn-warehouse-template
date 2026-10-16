@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, Pressable, LayoutAnimation, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Pressable, LayoutAnimation } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -38,33 +38,10 @@ const BAGS_WIDTH = 76;
 const MARK_WIDTH = 88;
 
 const makeStyles = (t: ThemeTokens) => ({
-  lineTable: {
-    borderRadius: radius.field,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: t.border.divider,
-    overflow: 'hidden' as const,
-  },
-  lineHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-end' as const,
-    gap: space.sm,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    backgroundColor: t.background.base,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-  lineRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.sm,
+  /** Read-only lines: the compact row height. */
+  lineCompact: {
     minHeight: 36,
-    paddingHorizontal: space.sm,
     paddingVertical: space.s6,
-  },
-  lineDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
   },
   markCell: {
     minWidth: 0,
@@ -138,7 +115,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
   const bagsWidth = table.numberWidth(BAGS_WIDTH);
 
   return (
-    <View>
+    <View style={expanded ? styles.group : undefined}>
       <Pressable
         onPress={() => onToggle(group.key)}
         style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
@@ -162,8 +139,8 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
 
       {expanded ? (
         <View style={styles.details} testID={`dispatch-grn-lines-${group.key}`}>
-          <View style={own.lineTable}>
-            <View style={own.lineHeader}>
+          <View style={styles.nested}>
+            <View style={styles.nestedHeader}>
               <HeaderCell style={styles.grow}>{tr('dispatch.details.table.item')}</HeaderCell>
               {!table.stacked ? (
                 <HeaderCell style={[own.markCell, { width: table.numberWidth(MARK_WIDTH) }]}>{tr('dispatch.details.table.mark')}</HeaderCell>
@@ -178,7 +155,7 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
               return (
                 <View
                   key={line.id}
-                  style={[own.lineRow, index > 0 && own.lineDivider]}
+                  style={[styles.nestedRow, own.lineCompact, index > 0 && styles.nestedDivider]}
                   accessible
                   accessibilityLabel={tr('dispatch.details.table.lineRowLabel', {
                     item: line.item_name,

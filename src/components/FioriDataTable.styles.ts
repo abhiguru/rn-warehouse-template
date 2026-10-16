@@ -65,12 +65,12 @@ export const FIORI_DATA_TABLE = {
   },
   /** Legacy static colours (default brand, light mode). Use tokens instead. */
   colors: {
-    headerBackground: staticTokens.background.base,
+    headerBackground: staticTokens.table.headerFill,
     rowBackground: staticTokens.surface.card,
     rowBackgroundAlt: staticTokens.surface.card,
     selectionBackground: staticTokens.surface.selected,
-    border: staticTokens.border.divider,
-    headerText: staticTokens.text.secondary,
+    border: staticTokens.table.divider,
+    headerText: staticTokens.table.headerText,
     cellText: staticTokens.text.primary,
     cellTextPrimary: staticTokens.text.primary,
     cellTextTertiary: staticTokens.text.secondary,
@@ -99,8 +99,8 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   },
   framed: {
     borderRadius: radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: t.border.separator,
+    borderWidth: 1,
+    borderColor: t.table.outline,
     overflow: 'hidden' as const,
   },
   tableBody: {
@@ -119,7 +119,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
     paddingVertical: space.sm,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   loadingText: {
     ...typography.footnote,
@@ -129,9 +129,9 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   // Header container (legacy name)
   headerContainer: {
     flexDirection: 'row' as const,
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.headerFill,
     borderBottomWidth: 1,
-    borderBottomColor: t.border.separator,
+    borderBottomColor: t.table.separator,
   },
   scrollableHeaderArea: {
     flex: 1,
@@ -139,7 +139,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   tableRowContainer: {
     flexDirection: 'row' as const,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   scrollableRowArea: {
     flex: 1,
@@ -153,7 +153,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   stickyColumn: {
     backgroundColor: t.surface.card,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: t.border.separator,
+    borderRightColor: t.table.separator,
     zIndex: 1,
   },
   stickyBodyClip: {
@@ -163,7 +163,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   stickyHeaderCell: {
     justifyContent: 'center' as const,
     paddingHorizontal: D.cellPaddingH,
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.headerFill,
   },
   stickyDataCell: {
     justifyContent: 'center' as const,
@@ -197,12 +197,12 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
     flex: 1,
   },
 
-  // Header row: footnote 600, text.secondary, background.base, separator below
+  // Header row: footnote 600, table.headerText on table.headerFill, separator below
   headerRow: {
     flexDirection: 'row' as const,
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.headerFill,
     borderBottomWidth: 1,
-    borderBottomColor: t.border.separator,
+    borderBottomColor: t.table.separator,
   },
   headerCell: {
     justifyContent: 'flex-start' as const,
@@ -223,7 +223,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   },
   headerCellText: {
     ...FIORI_DATA_TABLE.typography.header,
-    color: t.text.secondary,
+    color: t.table.headerText,
     flexShrink: 1,
   },
   headerCellSortable: {
@@ -236,7 +236,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   rowAlt: {
     backgroundColor: t.surface.card,
@@ -256,7 +256,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     backgroundColor: t.surface.card,
     borderTopWidth: 1,
-    borderTopColor: t.border.separator,
+    borderTopColor: t.table.separator,
   },
   totalsText: {
     fontWeight: fontWeight.semibold,
@@ -331,7 +331,7 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
     paddingHorizontal: D.cellPaddingH,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   skeletonBlock: {
     height: space.md,

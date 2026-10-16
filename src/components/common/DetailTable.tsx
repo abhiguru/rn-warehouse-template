@@ -1,8 +1,10 @@
 /**
  * Shared look of the object-page tables (docs/STYLE_GUIDE.md §13.7): the Dispatch page's
  * Items, GRNs and Invoices tabs and the GRN page's Items, Dispatches and Invoices tabs.
- * A card, a header row of muted headings on background.base, thin dividers, right-aligned
- * tabular numbers, and a totals row in weight 600 under a 1 px separator.
+ * An outlined card, a header row of muted headings on table.headerFill, thin dividers,
+ * right-aligned tabular numbers, and a totals row in weight 600 under a 1 px separator.
+ * An open row and its details share one panel (table.insetFill) with an accent bar at the
+ * start; a table inside the details is a small outlined card of its own.
  *
  * Number columns widen with the text size so a quantity is never cut; from font scale
  * 1.5 (the stacking point of ItemRateRow) the middle columns move under the first one.
@@ -19,6 +21,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 export const TABLE_STACK_SCALE = 1.5;
 /** From this window width (dp) a date gets its own column instead of a line under the number. */
 export const TABLE_WIDE_WIDTH = 600;
+/** The outline of a table card, and the bar at the start of an open row (dp). */
+export const TABLE_OUTLINE = 1;
+export const OPEN_ACCENT = 3;
 
 export interface TableLayout {
   stacked: boolean;
@@ -59,6 +64,8 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     marginBottom: space.xxl,
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
+    borderWidth: TABLE_OUTLINE,
+    borderColor: t.table.outline,
     overflow: 'hidden' as const,
     ...t.shadow[2],
   },
@@ -69,14 +76,14 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     minHeight: layout.rowMinHeight,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    backgroundColor: t.background.base,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
+    backgroundColor: t.table.headerFill,
+    borderBottomWidth: 1,
+    borderBottomColor: t.table.separator,
   },
   headerCell: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
+    color: t.table.headerText,
   },
   row: {
     flexDirection: 'row' as const,
@@ -87,24 +94,64 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     paddingVertical: space.sm,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   rowPressed: {
     backgroundColor: t.surface.cardPressed,
   },
-  /** An expanded row: its details below carry the divider. */
+  /**
+   * An open row with its details: one panel on table.insetFill with an accent bar at the start,
+   * closed by a separator. The row and details inside give up the bar's width.
+   */
+  group: {
+    backgroundColor: t.table.insetFill,
+    borderLeftWidth: OPEN_ACCENT,
+    borderLeftColor: t.table.accent,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.table.separator,
+  },
   rowOpen: {
+    paddingLeft: space.md - OPEN_ACCENT,
+    backgroundColor: 'transparent',
     borderBottomWidth: 0,
   },
-  /** Under an expanded row: indented past the chevron. */
+  /** Under an open row, the full width of the panel. */
   details: {
-    paddingLeft: space.md + iconSize.md + space.sm,
+    paddingLeft: space.md - OPEN_ACCENT,
     paddingRight: space.md,
+    paddingTop: space.xs,
     paddingBottom: space.md,
+    gap: space.sm,
+  },
+  /** A table inside an open row's details: rows on the card colour, so it stands out from the panel. */
+  nested: {
+    borderRadius: radius.field,
+    borderWidth: TABLE_OUTLINE,
+    borderColor: t.table.outline,
     backgroundColor: t.surface.card,
+    overflow: 'hidden' as const,
+  },
+  nestedHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-end' as const,
+    gap: space.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    backgroundColor: t.table.headerFill,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-    gap: space.xs,
+    borderBottomColor: t.table.separator,
+  },
+  nestedRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.sm,
+  },
+  nestedDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.table.divider,
   },
   footerRow: {
     flexDirection: 'row' as const,
@@ -115,8 +162,8 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     paddingVertical: space.sm,
     backgroundColor: t.surface.card,
     borderTopWidth: 1,
-    borderTopColor: t.border.separator,
-    // The last body row's divider would double the separator.
+    borderTopColor: t.table.separator,
+    // The last body row's divider (or an open panel's separator) would double the separator.
     marginTop: -StyleSheet.hairlineWidth,
   },
   /** The column that takes the remaining width. */
@@ -193,7 +240,11 @@ export const RowChevron: React.FC<{ expandable: boolean; expanded: boolean }> = 
   return (
     <View style={styles.chevronCell}>
       {expandable ? (
-        <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={iconSize.md} color={t.icon.secondary} />
+        <Icon
+          name={expanded ? 'chevron-down' : 'chevron-right'}
+          size={iconSize.md}
+          color={expanded ? t.table.accent : t.icon.secondary}
+        />
       ) : null}
     </View>
   );

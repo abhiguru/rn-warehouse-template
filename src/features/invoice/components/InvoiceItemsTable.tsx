@@ -27,6 +27,7 @@ import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
 import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { InlineValidation } from '@/components/fiori';
+import { OPEN_ACCENT, TABLE_OUTLINE } from '@/components/common/DetailTable';
 import { RateInput, type RateDraftChange, type RateSelection } from '@/features/invoice/components/RateInput';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';
 import { parseRateInput, type RateField } from '@/features/invoice/utils/amountInput';
@@ -135,17 +136,25 @@ const makeStyles = (t: ThemeTokens) => ({
   groupCard: {
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
+    borderWidth: TABLE_OUTLINE,
+    borderColor: t.table.outline,
     overflow: 'hidden' as const,
     ...t.shadow[2],
   },
-  // An open group is two list rows, the group and its table, drawn as one card
+  // An open group is two list rows, the group and its table, drawn as one card with the accent bar
   groupCardOpen: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+    borderLeftWidth: OPEN_ACCENT,
+    borderLeftColor: t.table.accent,
   },
   tableCard: {
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: OPEN_ACCENT,
+    borderLeftColor: t.table.accent,
   },
 
   // Group header
@@ -159,6 +168,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   groupHeaderPressed: {
     backgroundColor: t.surface.cardPressed,
+  },
+  groupHeaderOpen: {
+    backgroundColor: t.table.insetFill,
   },
   groupHeaderContent: {
     flex: 1,
@@ -207,13 +219,13 @@ const makeStyles = (t: ThemeTokens) => ({
 
   // Group pricing section
   bulkPricingSection: {
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.insetFill,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
+    borderTopColor: t.table.divider,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
   },
   bulkPricingHeader: {
     flexDirection: 'row' as const,
@@ -298,9 +310,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   tableHeaderRow: {
     flexDirection: 'row' as const,
-    backgroundColor: t.background.base,
+    backgroundColor: t.table.headerFill,
     borderBottomWidth: 1,
-    borderBottomColor: t.border.separator,
+    borderBottomColor: t.table.separator,
     minHeight: ROW_MIN_HEIGHT,
   },
   tableHeaderCell: {
@@ -311,7 +323,7 @@ const makeStyles = (t: ThemeTokens) => ({
   tableHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
+    color: t.table.headerText,
   },
   tableTotalText: {
     fontWeight: fontWeight.semibold,
@@ -323,7 +335,7 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
+    borderBottomColor: t.table.divider,
     minHeight: ROW_MIN_HEIGHT,
   },
   tableDataCell: {
@@ -399,7 +411,7 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: ROW_MIN_HEIGHT,
     backgroundColor: t.surface.card,
     borderTopWidth: 1,
-    borderTopColor: t.border.separator,
+    borderTopColor: t.table.separator,
     paddingHorizontal: space.lg,
     paddingVertical: space.sm,
   },
@@ -1048,7 +1060,7 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
     <View style={[styles.groupCard, isExpanded && styles.groupCardOpen]}>
       {/* Group header - tappable */}
       <Pressable
-        style={({ pressed }) => [styles.groupHeader, pressed && styles.groupHeaderPressed]}
+        style={({ pressed }) => [styles.groupHeader, isExpanded && styles.groupHeaderOpen, pressed && styles.groupHeaderPressed]}
         onPress={toggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
@@ -1058,7 +1070,7 @@ const InvoiceGroupRow = React.memo(function InvoiceGroupRow({
             : tr('invoice.table.groupA11yNoWeight', spoken)
         }
       >
-        <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={iconSize.lg} color={t.icon.secondary} />
+        <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={iconSize.lg} color={isExpanded ? t.table.accent : t.icon.secondary} />
         <View style={styles.groupHeaderContent}>
           <Text style={styles.groupTitle} numberOfLines={2}>
             {itemGroup.item_name}
