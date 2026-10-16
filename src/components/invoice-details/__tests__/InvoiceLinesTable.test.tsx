@@ -158,18 +158,18 @@ describe('invoice Items table', () => {
     expect(StyleSheet.flatten(total.props.style).width).toBe(Math.ceil(84 * 1.3));
   });
 
-  it('beyond the design range (₹63 lakh), moves the bags under the item, and in the lines too', () => {
+  it('beyond the design range (₹12 crore), moves the bags under the item and the amount onto its own line', () => {
     mockFontScale = 1.3;
     mockWidth = 411;
     const onion = (id: string, qty: number, total: number, tax: number) =>
       line({ id, item_name: 'Big Qty Onion', grn_item_id: 'lot-onion', package_mark: 'BQ-1', dispatch_no: `WWDG880${id}`, dispatch_qty: qty, server_total_amount: total, server_tax_amount: tax });
-    render(<InvoiceLineItemsTab items={[onion('1', 50000, 3548260, 541260), onion('2', 49999, 2782583.08, 424461.83)]} />);
+    render(<InvoiceLineItemsTab items={[onion('1', 50000, 61917550, 9445050), onion('2', 49999, 63389807.18, 9669631.6)]} />);
 
     expect(textOf(byTestId('invoice-lines-table'))).toMatch(/^Item\|Amount\|/);
-    expect(textOf(byTestId('invoice-lines-total'))).toBe('Total|1 item · 2 dispatch lines|99,999 bags|₹63,30,843.08');
+    expect(textOf(byTestId('invoice-lines-total'))).toBe('Total|1 item · 2 dispatch lines|99,999 bags|₹12,53,07,357.18');
     // The lines stack too: the bags join the period, the dispatch number keeps its own line.
     expect(textOf(byTestId('invoice-group-lines-lot-onion'))).toMatch(
-      /^Dispatch\|Amount\|WWDG8801\|10 May\|35 days · 1.5 months · 50,000 bags\|incl. ₹5,41,260.00 tax\|₹35,48,260.00\|/
+      /^Dispatch\|Amount\|WWDG8801\|10 May\|35 days · 1.5 months · 50,000 bags\|incl. ₹94,45,050.00 tax\|₹6,19,17,550.00\|/
     );
     const number = byTestId('invoice-group-lines-lot-onion').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'WWDG8801')[0];
     expect(number.props.numberOfLines).toBe(1);

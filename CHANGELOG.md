@@ -5,7 +5,8 @@
 App only. Fixes from phone runs with stretch data on Dev (30-character names, 59-character marks,
 the edge cases the owner set: quantities and totals up to 9,999 bags, amounts up to ₹99,999.00) and
 visual reviews of their screenshots. The invoice amount column (84 dp at font scale 1) fits ₹99,999.00
-in bold, so a table at the edge keeps its columns at font scale 1.3; larger numbers stack as a fallback.
+in bold and its Bags column (44 dp) fits 9,999, so a table at the edge keeps its columns at font
+scale 1.3 with room for the item names; larger numbers stack as a fallback.
 - Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
   sized to its widest value or total, so numbers line up from row to row and never split
   ("10,82,34" / "8"). When huge numbers would leave the first column under 25 % of the row, the

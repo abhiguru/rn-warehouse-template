@@ -206,7 +206,8 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
 };
 
 /** Bags and Amount column widths at font scale 1; both grow with their widest value. */
-const BAGS_WIDTH = 60;
+/** Fits the design edge, "9,999" in weight 600, and the heading "Bags" (owner, 2026-10-16). */
+const BAGS_WIDTH = 44;
 /** Fits the design edge, "₹99,999.00" in weight 600 (81 dp at font scale 1; owner, 2026-10-16); larger amounts widen it. */
 const AMOUNT_WIDTH = 84;
 /** In a stacked table, an amount column wider than this share of the row goes on its own line. */

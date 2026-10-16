@@ -78,13 +78,13 @@ describe('nb', () => {
   const NBSP = ' ';
 
   it('keeps a number with the word after it and a label with the amount after it', () => {
-    expect(nb('50 kg each')).toBe(`50${NBSP}kg each`);
+    expect(nb('50 kg each')).toBe(`50${NBSP}kg${NBSP}each`);
     expect(nb('626 days · 21 months')).toBe(`626${NBSP}days${NBSP}· 21${NBSP}months`);
     expect(nb('Rate ₹49.95 · Labour ₹0.50 · Tax 18%')).toBe(`Rate${NBSP}₹49.95${NBSP}· Labour${NBSP}₹0.50${NBSP}· Tax${NBSP}18%`);
   });
 
   it('leaves the break after "·", never before it, so a mark and a weight can still part', () => {
-    expect(nb('BQ-1 · 50 kg each')).toBe(`BQ-1${NBSP}· 50${NBSP}kg each`);
+    expect(nb('BQ-1 · 50 kg each')).toBe(`BQ-1${NBSP}· 50${NBSP}kg${NBSP}each`);
   });
 
   it('does the same with Gujarati digits', () => {

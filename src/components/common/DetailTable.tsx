@@ -133,7 +133,9 @@ export const nb = (text: string): string =>
     .replace(/([\d૦-૯]) (?=[^\s·\d૦-૯])/g, `$1${NBSP}`)
     .replace(/([^\s·]) (?=[₹\d૦-૯])/g, `$1${NBSP}`)
     // A line never starts with "·": it stays at the end of the line before.
-    .replace(/ ·/g, `${NBSP}·`);
+    .replace(/ ·/g, `${NBSP}·`)
+    // "50 kg each" stays whole.
+    .replace(/ (?=each\b)/g, NBSP);
 
 export const makeTableStyles = (t: ThemeTokens) => ({
   list: {
@@ -155,6 +157,8 @@ export const makeTableStyles = (t: ThemeTokens) => ({
     borderBottomWidth: 0,
     borderColor: t.table.outline,
     overflow: 'hidden' as const,
+    // Overlaps the first row by a pixel, as the rows overlap each other: no seam under the heading.
+    marginBottom: -StyleSheet.hairlineWidth,
   },
   /** Round every body row: the card's sides. Rows overlap by a pixel, so rounding leaves no seam in the edge. */
   cardSides: {
