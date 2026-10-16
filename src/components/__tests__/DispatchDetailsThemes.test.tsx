@@ -68,7 +68,7 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     const items = renderIn(brand, mode, <DispatchItemsTab items={[item]} onViewGRN={jest.fn()} />);
     expect(backgrounds(items)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(backgrounds(items)).not.toContain(t.brand.fill);
-    const grnNumber = items.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === '311')[0];
+    const grnNumber = items.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === '311/10')[0];
     expect(StyleSheet.flatten(grnNumber.props.style).color).toBe(t.brand.tint);
 
     const grns = renderIn(brand, mode, <DispatchGRNsTab items={[item]} onViewGRN={jest.fn()} />);

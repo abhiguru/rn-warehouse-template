@@ -60,19 +60,21 @@ const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).leng
 const press = (id: string) => act(() => byTestId(id).props.onPress());
 
 describe('Items table', () => {
-  it('shows one row per line with the mark and weight under the item and the GRN date under its number', () => {
-    render(<DispatchItemsTab items={[rice, wheat, item({ id: 'r2', package_mark: 'B2', dispatch_quantity: 5 })]} />);
+  it('shows one row per line: the weight under the item, "GRN/received" with the mark under it', () => {
+    render(<DispatchItemsTab items={[rice, wheat, item({ id: 'r2', package_mark: 'B2', dispatch_quantity: 5, original_quantity: 60 })]} />);
 
-    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|PM · 50 kg each|0161|15 Oct|25');
-    // Two lots of one item stay two rows.
-    expect(textOf(byTestId('dispatch-item-row-r2'))).toBe('Basmati Rice|B2 · 50 kg each|0161|15 Oct|5');
-    // No mark and no weight: no line under the item.
-    expect(textOf(byTestId('dispatch-item-row-w'))).toBe('Wheat|0161|15 Oct|40');
+    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|50 kg each|0161/100|PM|25');
+    // Two lots of one item stay two rows, each with its own received and mark.
+    expect(textOf(byTestId('dispatch-item-row-r2'))).toBe('Basmati Rice|50 kg each|0161/60|B2|5');
+    // No mark, no weight, no received quantity: the GRN number alone.
+    expect(textOf(byTestId('dispatch-item-row-w'))).toBe('Wheat|0161|40');
+    // The GRN date is on the GRNs tab, not here.
+    expect(textOf(byTestId('dispatch-items-table'))).not.toMatch(/15 Oct/);
   });
 
-  it('heads the columns Item, Source GRN, Bags dispatched', () => {
+  it('heads the columns Item, Source GRN/Received, Bags dispatched', () => {
     render(<DispatchItemsTab items={[rice]} />);
-    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Source GRN\|Bags dispatched\|/);
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Source GRN\/Received\|Bags dispatched\|/);
   });
 
   it('totals the bags, item lines and distinct source GRNs in the footer', () => {
@@ -94,26 +96,24 @@ describe('Items table', () => {
     expect(byTestId('dispatch-item-row-r').props.accessibilityActions).toEqual([{ name: 'openGrn', label: 'Open GRN 0161' }]);
   });
 
-  it('shows "—" for a missing GRN number and date, never today', () => {
-    render(<DispatchItemsTab items={[item({ id: 'x', grn_id: null, grn_no: null, grn_date: null })]} />);
+  it('says the GRN, the bags received and the mark, and shows "—" for a missing GRN number', () => {
+    render(<DispatchItemsTab items={[rice, item({ id: 'x', grn_id: null, grn_no: null, grn_date: null })]} />);
 
-    expect(textOf(byTestId('dispatch-item-row-x'))).toBe('Basmati Rice|PM · 50 kg each|—|—|25');
-    expect(byTestId('dispatch-item-row-x').props.accessibilityLabel).toBe('Basmati Rice, PM · 50 kg each, from GRN not available, 25 bags dispatched');
+    expect(byTestId('dispatch-item-row-r').props.accessibilityLabel).toBe(
+      'Basmati Rice, 50 kg each, from GRN 0161, Received 100 bags, Mark PM, 25 bags dispatched'
+    );
+    expect(textOf(byTestId('dispatch-item-row-x'))).toBe('Basmati Rice|50 kg each|—/100|PM|25');
+    expect(byTestId('dispatch-item-row-x').props.accessibilityLabel).toBe(
+      'Basmati Rice, 50 kg each, from GRN not available, Received 100 bags, Mark PM, 25 bags dispatched'
+    );
   });
 
-  it('expands a row to the bags received on the lot, and a row without them does not expand', () => {
+  it('has rows that do not open: everything is in the row', () => {
     render(<DispatchItemsTab items={[rice, wheat]} />);
 
-    expect(has('dispatch-item-details-r')).toBe(false);
-    expect(byTestId('dispatch-item-row-r').props.accessibilityState).toEqual({ expanded: false });
-    press('dispatch-item-row-r');
-    expect(textOf(byTestId('dispatch-item-details-r'))).toBe('Received 100 bags');
-    expect(byTestId('dispatch-item-row-r').props.accessibilityState).toEqual({ expanded: true });
-    press('dispatch-item-row-r');
-    expect(has('dispatch-item-details-r')).toBe(false);
-
-    expect(byTestId('dispatch-item-row-w').props.disabled).toBe(true);
-    expect(byTestId('dispatch-item-row-w').props.accessibilityState).toBeUndefined();
+    expect(byTestId('dispatch-item-row-r').props.onPress).toBeUndefined();
+    expect(byTestId('dispatch-item-row-r').props.accessibilityState).toBeUndefined();
+    expect(tree.root.findAll((n) => (n.type as unknown) === 'Icon' && /^chevron/.test(n.props.name))).toEqual([]);
   });
 
   it('moves the GRN under the item at large text, so the bags column keeps its width', () => {
@@ -121,7 +121,7 @@ describe('Items table', () => {
     render(<DispatchItemsTab items={[rice]} />);
 
     expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
-    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|PM · 50 kg each|0161|15 Oct|25');
+    expect(textOf(byTestId('dispatch-item-row-r'))).toBe('Basmati Rice|50 kg each|0161/100|PM|25');
     expect(textOf(byTestId('dispatch-items-total'))).toBe('Total|1 item line · 1 GRN|25');
   });
 
