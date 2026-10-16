@@ -37,8 +37,8 @@ export type StopParams = {
   price_type: PriceType;
 };
 
-export const itemRatesPath = (itemId: string, on?: string) =>
-  ({ pathname: '/item-rates/[itemId]', params: on ? { itemId, on } : { itemId } }) as const;
+export const itemRatesPath = (itemId: string, on?: string, addBand?: boolean) =>
+  ({ pathname: '/item-rates/[itemId]', params: { itemId, ...(on ? { on } : {}), ...(addBand ? { add_band: '1' } : {}) } }) as const;
 export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',

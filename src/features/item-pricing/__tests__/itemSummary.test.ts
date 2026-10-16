@@ -1,5 +1,5 @@
 import { groupByItem, itemSummary } from '../rateModel';
-import { F1, ITEMS, ORCHARD_B, TODAY, row } from '@/tests/helpers/ratesFixtures';
+import { F1, ITEMS, TODAY, row } from '@/tests/helpers/ratesFixtures';
 
 const summaryOf = (id: string, filters = {}) => {
   const group = groupByItem(F1, ITEMS).find(g => g.item.id === id)!;
@@ -36,14 +36,12 @@ describe('itemSummary (F1, 14 Oct 2026)', () => {
     expect(s.priceType).toBeNull();
   });
 
-  it('with the Customer chip set the row shows that customer\'s own rate', () => {
-    const own = summaryOf('onion', { customerIds: ['orchard-b'] });
-    expect(own.ownRate).toBe(true);
-    expect(own.ownRateCustomer).toBe('Review Orchard B');
-    expect(own.minRent).toBe(3);
-    const other = summaryOf('onion', { customerIds: ['orchard-a'] });
-    expect(other.ownRate).toBe(false);
-    expect(other.minRent).toBe(3.5);
+  it('the row always shows the default rate; a customer\'s own rate only counts in customerRateCount', () => {
+    const s = summaryOf('onion');
+    expect(s.minRent).toBe(3.5);
+    expect(s.customerRateCount).toBe(1);
+    expect(s).not.toHaveProperty('ownRate');
+    expect(s).not.toHaveProperty('ownRateCustomer');
   });
 
   it('reads another day', () => {
@@ -66,16 +64,16 @@ describe('itemSummary (F1, 14 Oct 2026)', () => {
   });
 
   // CR-11
-  it('with the Customer chip, a customer rate that is followed by the next one is not "ending"; one that stops is', () => {
+  it('a default rate that is followed by the next one is not "ending"; one that stops is', () => {
     const followed = [
-      row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2026-01-01', effective_to: '2026-10-31', ...ORCHARD_B }),
-      row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2026-11-01', ...ORCHARD_B }),
+      row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2026-01-01', effective_to: '2026-10-31' }),
+      row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 4, effective_from: '2026-11-01' }),
     ];
     const group = groupByItem(followed, ITEMS).find(g => g.item.id === 'onion')!;
-    expect(itemSummary(group, TODAY, { customerIds: ['orchard-b'] }).rateEnds).toBeNull();
+    expect(itemSummary(group, TODAY).rateEnds).toBeNull();
 
-    const stopping = [row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2026-01-01', effective_to: '2026-12-31', ...ORCHARD_B })];
+    const stopping = [row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2026-01-01', effective_to: '2026-12-31' })];
     const g2 = groupByItem(stopping, ITEMS).find(g => g.item.id === 'onion')!;
-    expect(itemSummary(g2, TODAY, { customerIds: ['orchard-b'] }).rateEnds).toBe('2026-12-31');
+    expect(itemSummary(g2, TODAY).rateEnds).toBe('2026-12-31');
   });
 });

@@ -12,15 +12,13 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { iconSize, layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemSummary } from '../rateModel';
-import { bandText, dateText, money, percentRange, rentRange, unitText } from '../rateText';
+import { bandText, dateText, percentRange, rentRange, unitText } from '../rateText';
 
 export interface ItemRateRowProps {
   summary: ItemSummary;
   onPress: (itemId: string) => void;
   /** Lower-cased words of the search, to show in bold. */
   words?: string[];
-  /** The search found a customer with an own rate: the row says what that customer pays. */
-  matchedCustomer?: { name: string; amount: number } | null;
   testID?: string;
 }
 
@@ -47,7 +45,6 @@ const makeStyles = (th: ThemeTokens) => ({
   rent: { ...typography.headline, color: th.text.primary, fontVariant: TABULAR, textAlign: 'right' as const },
   rentStacked: { textAlign: 'left' as const },
   summary: { ...typography.subhead, color: th.text.secondary },
-  own: { ...typography.subhead, color: th.text.primary },
   tags: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.xs },
   divider: { height: 1, marginLeft: layout.marginCompact, backgroundColor: th.border.divider },
 });
@@ -64,10 +61,9 @@ export function summaryLine(s: ItemSummary): string {
   return parts.join(' · ');
 }
 
-/** The tags under the row (own rate, customer rates, new rate, no rate, rate ends), as text. */
+/** The tags under the row (customer rates, new rate, no rate, rate ends), as text. */
 function tagTexts(s: ItemSummary, skipNoRate = false): string[] {
   const tags: string[] = [];
-  if (s.ownRate) tags.push(t('pricing.tag.ownRate'));
   if (s.customerRateCount > 0) tags.push(t('pricing.tag.customerRates', { count: s.customerRateCount }));
   if (s.upcomingFrom) tags.push(t('pricing.tag.newRate', { date: dateText(s.upcomingFrom) }));
   if (s.noRateToday && !skipNoRate) tags.push(t('pricing.tag.noRate'));
@@ -92,7 +88,7 @@ export function rowA11y(s: ItemSummary): string {
   );
 }
 
-function ItemRateRowBase({ summary, onPress, words, matchedCustomer, testID }: ItemRateRowProps) {
+function ItemRateRowBase({ summary, onPress, words, testID }: ItemRateRowProps) {
   const th = useTokens();
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
@@ -125,11 +121,7 @@ function ItemRateRowBase({ summary, onPress, words, matchedCustomer, testID }: I
           </View>
           {stacked ? rent : null}
           <Text style={styles.summary}>{summaryLine(summary)}</Text>
-          {matchedCustomer ? (
-            <Text style={styles.own}>{t('pricing.row.ownRateLine', { customer: matchedCustomer.name, amount: money(matchedCustomer.amount) })}</Text>
-          ) : null}
           <View style={styles.tags}>
-            {summary.ownRate ? <StatusTag status="neutral" icon={null} label={t('pricing.tag.ownRate')} /> : null}
             {summary.customerRateCount > 0 ? (
               <StatusTag status="neutral" icon={null} label={t('pricing.tag.customerRates', { count: summary.customerRateCount })} />
             ) : null}

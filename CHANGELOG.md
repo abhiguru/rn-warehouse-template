@@ -11,6 +11,12 @@
   mentions prices. Needs backend migration 90 ("staff lose item pricing"); until it is deployed the server
   still accepts staff writes, but the app no longer offers them. Deploy the app first or together with
   migration 90, else a staff phone on the old app meets refusals (42501).
+- **Settings → Item pricing (the list) is items only (owner, 2026-10-16).** The search matches item
+  names, not the names of customers with their own rate; the Customer chip and the "{customer}'s own
+  rate" line are gone (a saved Customer filter is ignored). The "N customer rates" tag stays. The "+"
+  button, after an item is picked, opens that item's page with an empty band ready in the box instead of
+  the old edit screen (an item without a default rate shows "Add default rate" there). Customers' own
+  rates are found under Customers → customer → Pricing.
 
 ## Unreleased — GRN Overview: the Rates as a table; a tap leads to Item pricing or "Your rate" (2026-10-16)
 
