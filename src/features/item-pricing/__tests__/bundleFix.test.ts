@@ -173,14 +173,8 @@ describe('F17: a rate that is followed by another one is not stopping', () => {
   });
 });
 
-describe('F18: staff cannot move a planned rate to today', () => {
+describe('F18: a manager may move a planned rate to today', () => {
   const rows = [row(null, 0, 100, 11, '2026-04-01', '2026-10-31'), row(null, 0, 100, 12, '2026-11-01', null)];
-  it('refuses today before saving, with its own words', () => {
-    const { draft, context } = open('upcoming', { price_type: 'monthly', starts_on: '2026-11-01' }, rows, 'staff');
-    const toToday = validate(setStartsOn(draft, 'today', TODAY), context);
-    expect(toToday.errors.startsOn).toContain('only to a day after today');
-    expect(validate(setStartsOn(draft, 'other', '2026-11-05'), context).ok).toBe(true);
-  });
   it('an administrator may move it to today', () => {
     const { draft, context } = open('upcoming', { price_type: 'monthly', starts_on: '2026-11-01' }, rows, 'admin');
     expect(validate(setStartsOn(draft, 'today', TODAY), context).ok).toBe(true);

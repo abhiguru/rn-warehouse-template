@@ -1,19 +1,18 @@
 /**
- * The rate in force for one scope (default or one customer) and one price type, with what can
- * be done to it. All actions are visible buttons (no swipe). An upcoming rate is a strip under
- * the figure and never the figure itself (P-10).
+ * The rate in force for one scope (default or one customer) and one price type, read-only: another
+ * day, or a role that cannot write (the editable rate is ScopeRates' box). An upcoming rate is a
+ * strip under the figure and never the figure itself (P-10); a stop is a strip too.
  */
 import React from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 import { KeyValueCell } from '@/components/fiori/KeyValueCell';
-import { Button } from '@/components/ui/Button';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import type { UpcomingGroup } from '../rateModel';
 import { applicableRate } from '../rateModel';
-import { addDays, bandText, dateText, money, percentRange, rentRange, todayDay, unitText } from '../rateText';
+import { bandText, dateText, money, percentRange, rentRange, unitText } from '../rateText';
 import type { TierTag } from '../standardRate';
 import { BandList, TierTagView } from './BandList';
 import { RateStrip } from './RateStrip';
@@ -26,19 +25,8 @@ export interface RateCardProps {
   stopsAfter: string | null;
   /** Old data: two rates in force cover the same weights. */
   overlap: boolean;
-  canCorrect: boolean;
-  canWrite: boolean;
-  offline: boolean;
   /** The day the screen shows, for the rate invoices use on an overlap. */
   day: string;
-  onChange: () => void;
-  onCorrect: () => void;
-  onStop: () => void;
-  onEditUpcoming: () => void;
-  onCancelUpcoming: () => void;
-  onUndoStop: () => void;
-  /** Disable actions while one runs. */
-  busy?: boolean;
   /** One tag per band in force ('Standard' or 'This item'): a default monthly rate only, and only when the standard rate is known. */
   tags?: TierTag[] | null;
 }
@@ -55,10 +43,6 @@ const makeStyles = (th: ThemeTokens) => ({
   },
   figure: { ...typography.title3, color: th.text.primary, fontVariant: TABULAR },
   unit: { ...typography.subhead, color: th.text.secondary },
-  note: { ...typography.footnote, color: th.text.secondary },
-  actions: { gap: space.sm },
-  cardNote: { marginTop: -space.xs },
-  actionsRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm, alignItems: 'center' as const },
 });
 
 /** "Lots received since 1 Apr 2026" or "Lots received 1 Apr 2026 – 31 Dec 2026". */
@@ -69,15 +53,12 @@ export function inForceText(bands: ItemStoragePrice[]): string {
 }
 
 export function RateCard(props: RateCardProps) {
-  const { priceType, bands, upcoming, stopsAfter, overlap, canCorrect, canWrite, offline, busy } = props;
+  const { priceType, bands, upcoming, stopsAfter, overlap } = props;
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stackedLayout = fontScale >= 1.3 ? 'stacked' : 'inline';
-  const disabled = offline || Boolean(busy);
   const oneTime = priceType === 'one_time';
   const hasRate = bands.length > 0;
-  // Undo stop restarts the rate on the day after the last day: staff may do that only for a day still ahead.
-  const canUndoStop = canWrite && Boolean(stopsAfter) && (canCorrect || addDays(stopsAfter as string, 1) > todayDay());
 
   const upcomingAmount = upcoming ? rentRange(Math.min(...upcoming.rows.map(r => r.unit_price)), Math.max(...upcoming.rows.map(r => r.unit_price))) : '';
   const overlapRate = overlap
@@ -131,14 +112,6 @@ export function RateCard(props: RateCardProps) {
         <RateStrip
           variant="info"
           message={t('pricing.item.upcoming', { date: dateText(upcoming.startsOn), amount: upcomingAmount, unit: unitText(priceType) })}
-          actions={
-            canWrite
-              ? [
-                  { label: t('pricing.action.editUpcoming'), onPress: props.onEditUpcoming, disabled, testID: 'edit-upcoming' },
-                  { label: t('pricing.action.cancelUpcoming'), onPress: props.onCancelUpcoming, disabled, negative: true, testID: 'cancel-upcoming' },
-                ]
-              : undefined
-          }
         />
       ) : null}
 
@@ -146,44 +119,7 @@ export function RateCard(props: RateCardProps) {
         <RateStrip
           variant="warning"
           message={t('pricing.item.stops', { date: dateText(stopsAfter) })}
-          actions={canUndoStop ? [{ label: t('pricing.action.undoStop'), onPress: props.onUndoStop, disabled, testID: 'undo-stop' }] : undefined}
         />
-      ) : null}
-
-      {hasRate && stopsAfter && canWrite && !canUndoStop ? <Text style={[styles.note, styles.cardNote]}>{t('pricing.item.undoManagerOnly')}</Text> : null}
-
-      {hasRate && canWrite ? (
-        <View style={styles.actions}>
-          <View style={fontScale >= 1.3 ? styles.actions : styles.actionsRow}>
-            <Button
-              type="secondary"
-              leftIcon="pencil-outline"
-              size={fontScale >= 1.3 ? 'fullWidth' : 'standalone'}
-              onPress={props.onChange}
-              disabled={disabled}
-              testID="rate-change"
-            >
-              {t('pricing.action.change')}
-            </Button>
-            {canCorrect ? (
-              <Button type="tertiary" size={fontScale >= 1.3 ? 'fullWidth' : 'auto'} onPress={props.onCorrect} disabled={disabled} testID="rate-correct">
-                {t('pricing.action.correct')}
-              </Button>
-            ) : null}
-            <Button
-              type="tertiary"
-              variant="negative"
-              size={fontScale >= 1.3 ? 'fullWidth' : 'auto'}
-              onPress={props.onStop}
-              disabled={disabled}
-              testID="rate-stop"
-            >
-              {t('pricing.action.stop')}
-            </Button>
-          </View>
-          {canCorrect ? null : <Text style={styles.note}>{t('pricing.item.staffCorrectNote')}</Text>}
-          {offline ? <Text style={styles.note}>{t('pricing.item.offlineChange')}</Text> : null}
-        </View>
       ) : null}
     </View>
   );

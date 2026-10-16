@@ -85,12 +85,9 @@ export const pricing: Translation<typeof source> = {
     noDefault: 'આજે મૂળ દર નથી. આજે આવેલા {{item}} ના જથ્થાનો ઇન્વૉઇસમાં દર લાગી શકતો નથી.',
     onlyUpcoming: '{{date}} સુધી મૂળ દર નથી.',
     defaultEnded: 'મૂળ દર {{date}} એ પૂરો થયો.',
-    overlap: 'આ દિવસે {{band}} માટે બે દર છે. ઇન્વૉઇસમાં {{amount}} વપરાય છે (સાંકડી મર્યાદા, પછી નવી શરૂઆત). સુધારવા દર બદલો વાપરો.',
-    customerRates: 'વેપારીના પોતાના દર',
-    grnOnlyTitle: 'ફક્ત આવક પાવતી માટે',
+    overlap: 'આ દિવસે {{band}} માટે બે દર છે. ઇન્વૉઇસમાં {{amount}} વપરાય છે (સાંકડી મર્યાદા, પછી નવી શરૂઆત). સુધારવા દરના ખાનામાંના આંકડા બદલો.',
     grnOnlyRow: 'ફક્ત આવક પાવતી {{number}} માટે · {{customer}} · {{date}}',
     grnOnlyGrn: 'આવક પાવતી {{number}}',
-    grnDate: 'આવક પાવતીની તારીખ',
     grnOnlyFailed: 'એક જ આવક પાવતી માટે મૂકેલા દર લોડ થઈ શક્યા નહીં.',
     noCustomerRates: 'આ આઇટમ માટે કોઈ વેપારીનો પોતાનો દર નથી.',
     customerLine: '{{band}} · {{date}} થી',
@@ -101,8 +98,6 @@ export const pricing: Translation<typeof source> = {
     oldStillUsed: '{{from}} થી {{to}} સુધી આવેલા અને હજુ ઇન્વૉઇસ ન થયેલા જથ્થા માટે હજુ વપરાય છે.',
     rule: 'ઇન્વૉઇસમાં માલ આવ્યો તે દિવસે લાગુ દર વપરાય છે. વેપારીનો પોતાનો દર મૂળ દર કરતાં પહેલાં લાગે છે.',
     howLink: 'ઇન્વૉઇસ કયો દર પસંદ કરે છે',
-    undoManagerOnly: 'જે ફેરફાર શરૂ થઈ ગયો છે તે ફક્ત એડમિન અથવા સુપરવાઇઝર પાછો ખેંચી શકે છે.',
-    staffCorrectNote: 'લાગુ દર ફક્ત એડમિન અથવા સુપરવાઇઝર સુધારી શકે છે.',
     offlineChange: 'દર બદલવા ઇન્ટરનેટ જોડો.',
     notFound: 'આ આઇટમ હવે ચાલુ નથી.',
     back: 'પાછળ',
@@ -154,7 +149,6 @@ export const pricing: Translation<typeof source> = {
     close: 'બંધ કરો',
   },
   action: {
-    change: 'દર બદલો',
     correct: 'આ દર સુધારો',
     stop: 'આ દર બંધ કરો',
     addCustomer: 'વેપારીનો દર ઉમેરો',
@@ -180,13 +174,6 @@ export const pricing: Translation<typeof source> = {
   undo: {
     done: 'દર ચાલુ રહેશે.',
     failedTitle: 'બંધ કરેલો દર ફરી ચાલુ થઈ શક્યો નહીં',
-  },
-  picker: {
-    title: 'વેપારી પસંદ કરો',
-    placeholder: 'વેપારી શોધો',
-    initial: 'નામનો ભાગ અથવા મોબાઇલ નંબર લખો.',
-    empty: '"{{search}}" સાથે કોઈ વેપારી મળતો નથી. નામનો ભાગ અથવા મોબાઇલ નંબર અજમાવો.',
-    detail: '{{city}} · {{mobile}}',
   },
   // The facility's standard rate (backend migration 85): what a new item gets.
   standard: {

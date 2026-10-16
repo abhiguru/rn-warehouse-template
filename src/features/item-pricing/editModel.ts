@@ -78,7 +78,7 @@ export interface EditorContext {
   /** The earliest day a rate may start (the oldest GRN's day); absent: three years before today. */
   earliestStart?: string | null;
   /** Set when the editor was opened from an invoice line. */
-  invoice: null | { customerName: string | null; grnDate: string; staff: boolean; mixedDays: boolean };
+  invoice: null | { customerName: string | null; grnDate: string; mixedDays: boolean };
 }
 
 export interface Scope {
@@ -530,22 +530,14 @@ export function initialDraft({ mode: asked, params, rows, role, today, earliest 
     const lineWeight = lineKg(params.weight_max);
     const holdsLine = lineWeight === null || ownAll.some(r => r.weight_min <= lineWeight && lineWeight <= r.weight_max);
     const own = holdsLine ? ownAll : [];
-    const invoiceInfo = { customerName, grnDate, staff: !rights.canCorrect, mixedDays: params.grn_dates_differ === '1' };
-    // Staff change the rate from today, so the draft starts from the rate in force today (its bands), not the one of the old lot.
-    const ownNow = rights.canCorrect ? [] : rowsInForce(rows, scope, today);
-    const shown = ownNow.length > 0 ? ownNow : own;
-    if (shown.length > 0) {
-      const lined = applyLine(draftFromRows(shown, priceType, true, zeroStart), params);
-      if (rights.canCorrect) {
-        const start = own.map(r => day(r.effective_from)).sort()[0];
-        return {
-          draft: withStart(lined, 'fixed', start),
-          context: { ...base, mode: 'correct', priceTypeChoosable: false, invoice: invoiceInfo },
-        };
-      }
+    const invoiceInfo = { customerName, grnDate, mixedDays: params.grn_dates_differ === '1' };
+    // Item pricing is for managers: the customer's own rate that priced the line is corrected from its own start.
+    if (own.length > 0) {
+      const lined = applyLine(draftFromRows(own, priceType, true, zeroStart), params);
+      const start = own.map(r => day(r.effective_from)).sort()[0];
       return {
-        draft: withStart(lined, 'today', today),
-        context: { ...base, mode: 'change', priceTypeChoosable: false, invoice: invoiceInfo },
+        draft: withStart(lined, 'fixed', start),
+        context: { ...base, mode: 'correct', priceTypeChoosable: false, invoice: invoiceInfo },
       };
     }
     const source = rowsInForce(rows, defaultScope, grnDate);
@@ -558,7 +550,7 @@ export function initialDraft({ mode: asked, params, rows, role, today, earliest 
         ? draftFromRows(source, priceType, true, zeroStart)
         : emptyDraft(priceType, Math.max(100, weight));
     const lined = applyLine(filled, params);
-    const received = rights.canCorrect && grnDate < today;
+    const received = grnDate < today;
     return {
       draft: received ? withStart(lined, 'received', grnDate) : withStart(lined, 'today', today),
       context: { ...base, mode: 'addCustomer', priceTypeChoosable: false, copied: !keepOwn && source.length > 0, invoice: invoiceInfo },
@@ -634,8 +626,6 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
 
   if (!draft.startsOn) {
     errors.startsOn = t('pricing.edit.chooseDate');
-  } else if (ctx.mode !== 'correct' && !ctx.canStartInPast && draft.startsOn < ctx.today) {
-    errors.startsOn = t('pricing.error.pastDateNotAllowed');
   } else if (ctx.mode !== 'correct' && draft.startsOn < startFloor(ctx.today, ctx.earliestStart)) {
     // A day from the server is named; without one (an older server) the old three-year window is described.
     errors.startsOn = ctx.earliestStart
@@ -643,21 +633,6 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
       : t('pricing.error.invalidDateWindow');
   } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today, ctx.earliestStart)) {
     errors.startsOn = t('pricing.error.startTooFar');
-  } else if (
-    ctx.mode === 'upcoming' && !ctx.canStartInPast && ctx.originalStart !== null &&
-    draft.startsOn !== ctx.originalStart && draft.startsOn <= ctx.today
-  ) {
-    // The server lets staff move a planned rate only to a day after today.
-    errors.startsOn = t('pricing.edit.err.moveAfterToday');
-  }
-
-  // Staff cannot replace a rate that began today (the server answers RATE_IN_FORCE_MANAGER_ONLY): say so before saving.
-  if (
-    !errors.startsOn && !ctx.canStartInPast && (ctx.mode === 'change' || ctx.mode === 'addCustomer' || ctx.mode === 'add') &&
-    draft.startsOn === ctx.today &&
-    rowsInForce(ctx.rows.filter(r => !ctx.editingIds.includes(r.id)), { customerId: ctx.customerId, priceType: draft.priceType }, ctx.today).some(r => day(r.effective_from) === ctx.today)
-  ) {
-    errors.startsOn = t('pricing.error.rateInForceManagerOnly');
   }
 
   if (draft.bands.length > MAX_BANDS) errors.bands = t('pricing.error.tooManyBands');

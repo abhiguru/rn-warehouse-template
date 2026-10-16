@@ -27,7 +27,7 @@ import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { useEditorFields } from '@/features/item-pricing/useEditorFields';
 import type { EditorView } from '@/features/item-pricing/useRateEditor';
 import { CountLinkRow } from '@/features/item-pricing/components/CountLinkRow';
-import { groupByGrn } from '@/features/item-pricing/components/GrnOnlyRatesSection';
+import { groupByGrn } from '@/features/item-pricing/grnOnlyText';
 import { HowInvoiceSheet } from '@/features/item-pricing/components/HowInvoiceSheet';
 import { OldRatesSection } from '@/features/item-pricing/components/OldRatesSection';
 import { OtherDayStrip } from '@/features/item-pricing/components/OtherDayStrip';

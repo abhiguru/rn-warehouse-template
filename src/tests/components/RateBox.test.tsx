@@ -9,17 +9,21 @@ import { RateBox, type RateBoxProps } from '@/features/item-pricing/components/R
 import { setBandField } from '@/features/item-pricing/editModel';
 import { useRateEditor, type UseRateEditor, type UseRateEditorArgs } from '@/features/item-pricing/useRateEditor';
 import { replaceItemRates } from '@/services/item-pricing-service';
-import { garlicRows, onionRows } from '@/tests/helpers/rateEditorFixtures';
+import { garlicRows, gingerRows, onionRows } from '@/tests/helpers/rateEditorFixtures';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
+let mockOffline = false;
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
 jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), listItemRates: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
-jest.mock('@/features/item-pricing/components/CopyTiersSheet', () => ({ CopyTiersSheet: () => null }));
+let sheetProps: { visible?: boolean; itemId?: string; priceType?: string; onPick?: (item: { id: string; name: string }, rows: unknown[]) => void } | null = null;
+jest.mock('@/features/item-pricing/components/CopyTiersSheet', () => ({
+  CopyTiersSheet: (props: typeof sheetProps) => { sheetProps = props; return null; },
+}));
 
 let editor!: UseRateEditor;
 type Over = Partial<UseRateEditorArgs> & Pick<RateBoxProps, 'tags' | 'locked' | 'readOnly' | 'caption'>;
@@ -47,7 +51,11 @@ async function mount(over: Over = {}) {
   return tree!;
 }
 const WINDOW = Dimensions.get('window');
-beforeEach(() => Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } }));
+beforeEach(() => {
+  mockOffline = false;
+  sheetProps = null;
+  Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } });
+});
 afterEach(() => {
   act(() => tree?.unmount());
   tree = undefined;
@@ -56,6 +64,7 @@ afterEach(() => {
 });
 const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
 const byTestId = (id: string) => tree!.root.findAll(n => n.props.testID === id && typeof n.type === 'string');
+const copyButton = () => tree!.root.find(n => n.props.testID === 'copy-tiers' && typeof n.props.onPress === 'function');
 const tagLabels = () => tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-') && n.props.label).map(n => n.props.label);
 
 it('draws nothing until the rows are there', async () => {
@@ -121,6 +130,45 @@ describe('a new rate', () => {
     expect(byTestId('copy-tiers').length).toBeGreaterThan(0);
     const choice = tree!.root.findAll(n => n.props.accessibilityRole === 'radiogroup' || (Array.isArray(n.props.options) && n.props.options.length === 2));
     expect(choice.length).toBeGreaterThan(0);
+  });
+
+  it('Copy bands opens the sheet for this item and type; the item chosen replaces the bands and is named', async () => {
+    const empty: never[] = [];
+    await mount({ mode: 'add', rows: empty, priceType: undefined, item: { id: 'new-item', name: 'Review Onion Red Small' } });
+    expect(sheetProps).toBeNull();
+    await act(async () => { copyButton().props.onPress(); });
+    expect(sheetProps).toMatchObject({ visible: true, itemId: 'new-item', priceType: 'monthly' });
+    await act(async () => { sheetProps!.onPick!({ id: 'garlic', name: 'Review Garlic Desi' }, garlicRows()); });
+    expect(texts()).toContain('Weight bands copied from Review Garlic Desi. Change what is different.');
+    expect(editor.draft!.bands.map(b => [b.upTo, b.rent])).toEqual([['40', '6.00'], ['100', '9.50']]);
+    expect(editor.dirty).toBe(true);
+    // The sheet is closed again.
+    expect(tree!.root.findAll(n => n.props.visible === true && typeof n.props.onPick === 'function')).toHaveLength(0);
+  });
+
+  it('a second copy replaces the first and the note names the new item', async () => {
+    const empty: never[] = [];
+    await mount({ mode: 'add', rows: empty, priceType: undefined, item: { id: 'new-item', name: 'Review Onion Red Small' } });
+    const open = async () => { await act(async () => { copyButton().props.onPress(); }); };
+    await open();
+    await act(async () => { sheetProps!.onPick!({ id: 'garlic', name: 'Review Garlic Desi' }, garlicRows()); });
+    await open();
+    await act(async () => { sheetProps!.onPick!({ id: 'ginger', name: 'Review Ginger Fresh' }, gingerRows()); });
+    expect(editor.draft!.bands.map(b => b.upTo)).toEqual(['100']);
+    expect(texts().filter(x => x.startsWith('Weight bands copied from'))).toEqual(['Weight bands copied from Review Ginger Fresh. Change what is different.']);
+  });
+
+  it('Copy bands is off while offline', async () => {
+    mockOffline = true;
+    const empty: never[] = [];
+    await mount({ mode: 'add', rows: empty, priceType: undefined });
+    expect(copyButton().props.disabled).toBe(true);
+  });
+
+  it('Copy bands is hidden in a locked or read-only box', async () => {
+    const empty: never[] = [];
+    await mount({ mode: 'add', rows: empty, priceType: undefined, locked: true });
+    expect(byTestId('copy-tiers')).toHaveLength(0);
   });
 
   it('a change of a rate in force has no Copy bands and no type choice', async () => {

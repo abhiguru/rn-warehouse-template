@@ -1,12 +1,12 @@
 /**
- * Leaving the rate editor (P-01): the guard asks only when something changed, and with the
- * house wording of the form: "Discard this rate?" for a new rate, the default "Discard changes?" for a
- * change. (The hook itself, with the header Back, the Back key and the swipe, is tested in
+ * Leaving the rate editor of the invoice pencil (P-01): the guard asks only when something changed, and with the
+ * house wording of the form: "Discard this rate?" for a new customer rate, the default "Discard changes?" for a
+ * correction. (The hook itself, with the header Back, the Back key and the swipe, is tested in
  * src/hooks/__tests__/useLeaveGuard.test.tsx; here the screen's use of it.)
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { ORCHARD_A, chip, cuminRows, inputsWithLabel, onionRows } from '@/tests/helpers/rateEditorFixtures';
+import { ORCHARD_A, ORCHARD_B, chip, inputsWithLabel, onionRows } from '@/tests/helpers/rateEditorFixtures';
 import RateEditorScreen from '../../../app/item-rates/edit';
 
 let mockRole = 'admin';
@@ -42,7 +42,7 @@ jest.mock('@react-native-community/datetimepicker', () => ({
 }));
 
 let tree: ReactTestRenderer | undefined;
-async function open(params: Record<string, string>, rows = cuminRows(), role = 'admin') {
+async function open(params: Record<string, string>, rows = onionRows(), role = 'admin') {
   mockRole = role;
   mockParams = params;
   jest.mocked(listItemRates).mockResolvedValue(rows);
@@ -67,8 +67,21 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe('Change rate', () => {
-  const params = { mode: 'change', item_id: 'cumin', price_type: 'monthly' };
+const line = {
+  mode: 'invoice',
+  item_id: 'onion',
+  item_name: 'Review Onion Red',
+  price_type: 'monthly',
+  unit_price: '3',
+  labour_rate: '1.5',
+  tax_percent: '5',
+  weight_min: '0',
+  weight_max: '60',
+  grn_date: '2026-05-02',
+};
+
+describe('Correct rate (Orchard B has its own rate)', () => {
+  const params = { ...line, customer_id: ORCHARD_B.id, customer_name: ORCHARD_B.name };
 
   it('asks nothing when nothing was typed', async () => {
     await open(params);
@@ -76,18 +89,12 @@ describe('Change rate', () => {
     expect(mockGuard.title).toBeUndefined(); // the hook's default, "Discard changes?"
   });
 
-  it('asks once the rent was typed (12 in place of 11.00), and no longer when it is typed back', async () => {
+  it('asks once the rent was typed (3.50 in place of 3.00), and no longer when it is typed back', async () => {
     const t = await open(params);
-    await type(t, 'Rent per bag, per month', '12');
+    await type(t, 'Rent per bag, per month', '3.50');
     expect(mockGuard.hasChanges).toBe(true);
-    await type(t, 'Rent per bag, per month', '11.00');
+    await type(t, 'Rent per bag, per month', '3.00');
     expect(mockGuard.hasChanges).toBe(false);
-  });
-
-  it('asks after a start day was chosen, though no field was typed', async () => {
-    const t = await open(params);
-    await act(async () => { chip(t, 'Today').props.onPress(); });
-    expect(mockGuard.hasChanges).toBe(true);
   });
 
   it('asks after a weight band was added', async () => {
@@ -98,17 +105,22 @@ describe('Change rate', () => {
   });
 });
 
-describe('Add rate', () => {
-  it('a new rate asks "Discard this rate?", but only after a change (Today is preselected)', async () => {
-    const t = await open({ mode: 'addCustomer', item_id: 'onion', customer_id: ORCHARD_A.id, customer_name: ORCHARD_A.name, price_type: 'monthly' }, onionRows());
+describe('Add customer rate (Orchard A has none)', () => {
+  const params = { ...line, customer_id: ORCHARD_A.id, customer_name: ORCHARD_A.name };
+
+  it('asks "Discard this rate?", but only after a change (the received day is preselected)', async () => {
+    const t = await open(params);
     expect(mockGuard.hasChanges).toBe(false);
     expect(mockGuard.title).toBe('Discard this rate?');
     await type(t, 'Rent per bag, per month', '3.25');
     expect(mockGuard.hasChanges).toBe(true);
   });
-});
 
-it('a staff member sent to Correct rate is asked nothing: there is nothing to lose', async () => {
-  await open({ mode: 'correct', item_id: 'cumin', price_type: 'monthly' }, cuminRows(), 'staff');
-  expect(mockGuard.hasChanges).toBe(false);
+  it('asks after a start day was chosen, though no field was typed', async () => {
+    const t = await open(params);
+    await act(async () => { chip(t, 'Today').props.onPress(); });
+    expect(mockGuard.hasChanges).toBe(true);
+    await act(async () => { chip(t, 'Received 2 May 2026').props.onPress(); });
+    expect(mockGuard.hasChanges).toBe(false);
+  });
 });

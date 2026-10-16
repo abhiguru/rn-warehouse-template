@@ -1,8 +1,9 @@
 /**
- * Rate editor (pricing spec section 7). One screen for Change rate, Add default rate, Add customer
- * rate, Correct rate and Edit new rate, and the landing of the invoice pencil. It loads the item's
- * rates fresh (it writes money), keeps one draft, and saves everything in one call to the
- * server's replace_item_rates, so a failure never leaves the item with no rate or with two.
+ * Rate editor of the invoice pencil (pricing spec sections 7 and 10). The only way in is mode 'invoice' from the
+ * invoice form: the line and its goods-received day decide whether it corrects the customer's own rate in force
+ * (Correct rate) or adds one (Add customer rate). Every other rate is edited in its box on the item page and the
+ * customer's Pricing tab. It loads the item's rates fresh (it writes money), keeps one draft, and saves everything
+ * in one call to the server's replace_item_rates, so a failure never leaves the item with no rate or with two.
  *
  * Every date is a goods-received date: a rate that starts on a day is charged to lots received
  * from that day.
@@ -24,7 +25,6 @@ import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Input } from '@/components/ui/Input';
-import { SegmentedControl } from '@/components/ui/RadioButton';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -32,13 +32,12 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { listItemRates } from '@/services/item-pricing-service';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
-import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
-import type { EditorParams } from '@/features/item-pricing/contract';
-import { lotsRule, summaryLines, type EditorContext } from '@/features/item-pricing/editModel';
+import type { ItemStoragePrice } from '@/types/item-pricing.types';
+import type { InvoiceEditorParams } from '@/features/item-pricing/contract';
+import { lotsRule, summaryLines } from '@/features/item-pricing/editModel';
 import { laterDialogText } from '@/features/item-pricing/laterRates';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
-import { CopyTiersSheet } from '@/features/item-pricing/components/CopyTiersSheet';
 import { ChangeSummary } from '@/features/item-pricing/components/ChangeSummary';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import { fieldLink } from '@/features/item-pricing/components/fieldLink';
@@ -53,22 +52,11 @@ type Loaded =
   | { state: 'error'; message: string }
   | { state: 'ready'; rows: ItemStoragePrice[] };
 
-const TITLES: Record<EditorContext['mode'], 'change' | 'addDefault' | 'addCustomer' | 'correct' | 'upcoming'> = {
-  change: 'change',
-  add: 'addDefault',
-  addCustomer: 'addCustomer',
-  correct: 'correct',
-  upcoming: 'upcoming',
-};
-
-const isAddMode = (mode: EditorContext['mode']) => mode === 'add' || mode === 'addCustomer';
-
-/** The title while the rates load: the invoice and any unknown mode open as Change rate. */
-const titleFor = (mode: string | undefined): (typeof TITLES)[EditorContext['mode']] =>
-  mode && Object.prototype.hasOwnProperty.call(TITLES, mode) ? TITLES[mode as EditorContext['mode']] : 'change';
+/** The invoice line opens as a correction of the customer's own rate, or adds one. */
+const titleOf = (mode: string): 'correct' | 'addCustomer' => (mode === 'correct' ? 'correct' : 'addCustomer');
 
 const RateEditorScreen: React.FC = () => {
-  const params = useLocalSearchParams() as unknown as EditorParams;
+  const params = useLocalSearchParams() as unknown as InvoiceEditorParams;
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const { role } = useRoleBasedAccess();
@@ -76,13 +64,14 @@ const RateEditorScreen: React.FC = () => {
 
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
   const [attempt, setAttempt] = useState(0);
-  const [copyOpen, setCopyOpen] = useState(false);
 
   // ---- load the item's rates, fresh ----
   useEffect(() => {
     let live = true;
     setLoaded({ state: 'loading' });
-    if (!params.item_id) {
+    // Only the invoice pencil opens this screen, and it always names the customer of the invoice: any other link
+    // (another mode, or no customer, which would edit the default rate of everyone) is a rate that is not there.
+    if (!params.item_id || !params.customer_id || params.mode !== 'invoice') {
       setLoaded({ state: 'error', message: t('pricing.edit.notFound') });
       return;
     }
@@ -106,7 +95,7 @@ const RateEditorScreen: React.FC = () => {
     item: { id: params.item_id, name: params.item_name },
     customer: params.customer_id ? { id: params.customer_id, name: params.customer_name } : null,
     priceType: params.price_type,
-    mode: params.mode ?? 'change',
+    mode: 'invoice',
     params,
     rows: loaded.state === 'ready' ? loaded.rows : null,
     refreshRows: () => setAttempt(n => n + 1),
@@ -116,12 +105,12 @@ const RateEditorScreen: React.FC = () => {
     onSaved: () => leaveWithoutAsking(() => router.back()),
     view,
   });
-  const { draft, ctx: context, errors, strip, saving, later, copiedFrom, setDraft } = editor;
+  const { draft, ctx: context, errors, strip, saving, later, setDraft } = editor;
 
   // ---- leaving with unsaved work (P-01) ----
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: editor.dirty,
-    title: context && isAddMode(context.mode) ? t('pricing.edit.discardAdd') : undefined,
+    title: context?.mode === 'addCustomer' ? t('pricing.edit.discardAdd') : undefined,
   });
 
   // ---- keyboard: fields scroll above it, Next moves on (P-09) ----
@@ -141,7 +130,7 @@ const RateEditorScreen: React.FC = () => {
   if (loaded.state === 'error') {
     return (
       <View style={styles.container}>
-        {header(t('pricing.edit.title.change'))}
+        {header(t('pricing.edit.title.invoice'))}
         <View style={styles.body}>
           <EditorStrip variant="critical" message={`${t('pricing.edit.loadErrorTitle')}${loaded.message ? `. ${loaded.message}` : ''}`} />
           <Button type="secondary" leftIcon="refresh" onPress={() => setAttempt(n => n + 1)}>
@@ -155,7 +144,7 @@ const RateEditorScreen: React.FC = () => {
   if (loaded.state === 'loading' || !draft || !context) {
     return (
       <View style={styles.container}>
-        {header(t(`pricing.edit.title.${titleFor(params.mode)}`))}
+        {header(t('pricing.edit.title.invoice'))}
         <View style={styles.center}>
           <ActivityIndicator accessibilityLabel={t('pricing.edit.loading')} />
         </View>
@@ -165,65 +154,19 @@ const RateEditorScreen: React.FC = () => {
 
   const current = draft;
   const ctx = context;
-  const title = t(`pricing.edit.title.${TITLES[ctx.mode]}`);
-
-  if (ctx.mode === 'addCustomer' && !ctx.customerId) {
-    return (
-      <View style={styles.container}>
-        {header(title)}
-        <View style={styles.body}>
-          <EditorStrip variant="critical" message={t('pricing.edit.customerNeeded')} />
-        </View>
-      </View>
-    );
-  }
-
-  if (ctx.plannedGone) {
-    return (
-      <View style={styles.container}>
-        {header(title)}
-        <View style={styles.body}>
-          <EditorStrip variant="critical" message={t('pricing.error.notARateStart')} />
-          <Button type="secondary" onPress={() => router.back()}>
-            {t('common.back')}
-          </Button>
-        </View>
-      </View>
-    );
-  }
-
-  if (ctx.managerOnly) {
-    return (
-      <View style={styles.container}>
-        {header(title)}
-        <View style={styles.body}>
-          <EditorStrip variant="critical" message={t('pricing.edit.managerOnly')} />
-          <Button type="secondary" onPress={() => router.back()}>
-            {t('common.back')}
-          </Button>
-        </View>
-      </View>
-    );
-  }
+  const title = t(`pricing.edit.title.${titleOf(ctx.mode)}`);
 
   const oneTime = current.priceType === 'one_time';
   const perBand = current.bands.some(b => b.labour !== undefined);
   const lines = summaryLines(current, ctx);
   const rule = lotsRule(current, ctx);
   const inThePast = !!current.startsOn && current.startsOn < ctx.today && ctx.mode !== 'correct';
-  const saveLabel =
-    ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : ctx.mode === 'addCustomer' ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
+  const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : t('pricing.edit.saveCustomer');
   const noStart = !current.startsOn;
-  const forText = ctx.customerId ? ctx.customerName ?? '' : t('pricing.edit.forDefault');
+  const forText = ctx.customerName ?? '';
   const helper = offline ? t('pricing.error.offline') : noStart ? t('pricing.edit.chooseDate') : null;
   const first = later?.[0];
   const laterText = later && later.length > 0 && current.startsOn ? laterDialogText(later, current.startsOn, ctx.today) : null;
-
-  const canCopyTiers = !ctx.customerId && !ctx.invoice;
-  const copyTiers = (item: { id: string; name: string }, rows: ItemStoragePrice[]) => {
-    setCopyOpen(false);
-    editor.copyFrom(item, rows);
-  };
 
   return (
     <View style={styles.container}>
@@ -251,10 +194,6 @@ const RateEditorScreen: React.FC = () => {
           {ctx.invoice?.mixedDays ? (
             <EditorStrip variant="info" message={t('pricing.edit.invoiceMixedDays', { date: dateText(ctx.invoice.grnDate) })} />
           ) : null}
-          {ctx.invoice?.staff ? <EditorStrip variant="info" message={t('pricing.edit.invoiceStaff')} /> : null}
-          {ctx.invoice?.staff && current.startsOn && current.startsOn >= ctx.today ? (
-            <EditorStrip variant="info" message={t('pricing.edit.invoiceStaffLater', { date: dateText(current.startsOn) })} />
-          ) : null}
           {ctx.mode === 'correct' ? (
             <EditorStrip variant="critical" message={t('pricing.edit.correctWarning', { date: dateText(current.startsOn ?? '') })} />
           ) : null}
@@ -262,20 +201,7 @@ const RateEditorScreen: React.FC = () => {
           <View style={styles.card}>
             <KeyValueCell keyLabel={t('pricing.edit.item')} value={ctx.itemName} layout="stacked" />
             <KeyValueCell keyLabel={t('pricing.edit.for')} value={forText} layout="stacked" />
-            {ctx.priceTypeChoosable ? (
-              <SegmentedControl
-                label={t('pricing.edit.type')}
-                stacked
-                value={current.priceType}
-                onValueChange={value => editor.switchType(value as PriceType)}
-                options={[
-                  { value: 'monthly', label: priceTypeLabel('monthly') },
-                  { value: 'one_time', label: priceTypeLabel('one_time') },
-                ]}
-              />
-            ) : (
-              <KeyValueCell keyLabel={t('pricing.edit.type')} value={priceTypeLabel(current.priceType)} layout="stacked" />
-            )}
+            <KeyValueCell keyLabel={t('pricing.edit.type')} value={priceTypeLabel(current.priceType)} layout="stacked" />
           </View>
 
           <StartsOnField
@@ -293,19 +219,10 @@ const RateEditorScreen: React.FC = () => {
           {inThePast && ctx.canStartInPast ? (
             <EditorStrip variant="warning" message={t('pricing.edit.pastDate', { date: dateText(current.startsOn ?? '') })} />
           ) : null}
-          {copiedFrom ? (
-            <Text style={styles.note} testID="copied-from-item">{t('pricing.edit.copiedFromItem', { item: copiedFrom })}</Text>
-          ) : ctx.copied ? (
-            <Text style={styles.note}>{t('pricing.edit.copied')}</Text>
-          ) : null}
+          {ctx.copied ? <Text style={styles.note}>{t('pricing.edit.copied')}</Text> : null}
           {current.firstBandZeroed ? <Text style={styles.note}>{t('pricing.edit.firstBandZeroed')}</Text> : null}
 
           <BandsEditor draft={current} ctx={ctx} errors={errors} onChange={setDraft} fields={fields} />
-          {canCopyTiers ? (
-            <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="copy-tiers">
-              {t('pricing.edit.copyTiers')}
-            </Button>
-          ) : null}
 
           {oneTime ? (
             <Text style={styles.note}>{t('pricing.edit.oneTimeLabour')}</Text>
@@ -355,17 +272,6 @@ const RateEditorScreen: React.FC = () => {
           onHeight={setBarHeight}
         />
       </KeyboardAvoidingView>
-
-      {copyOpen ? (
-        <CopyTiersSheet
-          visible
-          onClose={() => setCopyOpen(false)}
-          itemId={ctx.itemId}
-          priceType={current.priceType}
-          today={ctx.today}
-          onPick={copyTiers}
-        />
-      ) : null}
 
       <ConfirmDialog
         visible={!!first}

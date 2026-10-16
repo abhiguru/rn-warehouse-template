@@ -139,6 +139,20 @@ describe('shared labour and tax (the bands do not differ)', () => {
     expect(tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.endsWith('-remove'))).toHaveLength(0);
   });
 
+  it('Add band is off with a reason until the last "Up to" is a whole number', async () => {
+    await mount(garlicRows(), 'garlic');
+    const add = () => tree!.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function');
+    expect(add().props.disabled).toBe(false);
+    await act(async () => { add().props.onPress(); });
+    // The new band starts at 101 kg and has an empty "Up to"; another one waits for it.
+    expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
+    expect(add().props.disabled).toBe(true);
+    expect(texts()).toContain('Enter the "Up to" weight of the last band first.');
+    await type('band-2-upTo', '150');
+    expect(add().props.disabled).toBe(false);
+    expect(texts()).not.toContain('Enter the "Up to" weight of the last band first.');
+  });
+
   it('a one-time rate has no labour row, only the note, and a tax row', async () => {
     const once = [rate('garlic', null, 0, 100, 9, 0, 5, '2025-01-01', null, 'one_time', 'Review Garlic Desi')];
     const { draft, context } = initialDraft({ mode: 'change', params: { mode: 'change', item_id: 'garlic', price_type: 'one_time' }, rows: once, role: 'admin', today: TODAY });

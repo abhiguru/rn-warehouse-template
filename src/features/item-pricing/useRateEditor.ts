@@ -281,11 +281,6 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         view?.current?.scrollToError('startsOn');
         return;
       }
-      if (result.errorCode === 'PAST_DATE_NOT_ALLOWED' && context.mode === 'upcoming' && !context.canStartInPast) {
-        setStrip(t('pricing.edit.err.moveAfterToday'));
-        view?.current?.scrollToTop();
-        return;
-      }
       if ((result.errorCode === 'INVALID_BAND' || result.errorCode === 'INVALID_AMOUNT') && result.bandIndex !== undefined) {
         const key = fieldForServer(result, data);
         setErrors(current => ({ ...current, [key]: result.message ?? '' }));

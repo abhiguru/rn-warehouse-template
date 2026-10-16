@@ -67,6 +67,19 @@
   page's Pricing tab). A rate typed on this GRN only, a rate taken from an invoice and a row without a
   rate are plain rows, not links. Staff still get no link; a customer still gets "Your rate". New text:
   "Opens {{customer}}'s own rate." (screen-reader hint).
+- **Cleanup: the edit screen is the invoice pencil's alone (2026-10-16).** `item-rates/edit` opens only with
+  `mode=invoice` and a customer (the price pencil of an invoice line); it resolves to Correct rate or Add
+  customer rate itself, and any other link (another mode, or no customer) shows "This rate has changed or no
+  longer exists." instead of editing something. Its Change rate, Add default rate, Edit new rate, copy bands,
+  customer-picker and manager-only branches are gone, and so are the staff branches of the editor (the staff
+  sentences of the invoice pencil, the past-day and "rate began today" checks for staff, the "move a new rate
+  only after today" check). Removed components: `CustomerPickerSheet` and the cards of `GrnOnlyRatesSection`
+  (the helpers `grnOnlyLine`, `grnOnlyFigures`, `groupByGrn` live in `grnOnlyText.ts`); `RateCard` is
+  read-only (no action props, no staff notes); `useRateActions` keeps stop, cancel new rate and undo stop.
+  Texts removed in English and Gujarati: the Change rate, Add default rate and "Customer rates" header texts,
+  the customer picker texts, the staff notes, `edit.err.moveAfterToday`, `customerNeeded`, `forDefault`.
+  "Use Change rate to fix it." (two rates cover the same weights) now reads "Change the figures in the box to
+  fix it.", and the correction warning no longer points to a Change rate button. App only.
 
 ## Unreleased — GRN Overview: the Rates as a table; a tap leads to Item pricing or "Your rate" (2026-10-16)
 

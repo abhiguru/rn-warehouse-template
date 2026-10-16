@@ -133,24 +133,6 @@ describe('CR-09: a default rate always starts at 0 kg', () => {
   });
 });
 
-describe('CR-16: staff change from the invoice pencil starts from the rate in force today', () => {
-  const rows = [
-    row(CUSTOMER_B, 0, 100, 3, '2026-01-01', '2026-03-31'),
-    row(CUSTOMER_B, 0, 40, 3, '2026-04-01', null),
-    row(CUSTOMER_B, 41, 100, 4, '2026-04-01', null),
-  ];
-
-  it('opens with the two current bands, not the old single band', () => {
-    const { draft, context } = open('invoice', {
-      customer_id: CUSTOMER_B, price_type: 'monthly', unit_price: '3', labour_rate: '3', tax_percent: '5',
-      weight_min: '0', weight_max: '30', grn_date: '2026-03-10',
-    }, rows, 'staff');
-    expect(context.mode).toBe('change');
-    expect(draft.bands.map(b => b.upTo)).toEqual(['40', '100']);
-    expect(draft.startsOn).toBe(TODAY);
-  });
-});
-
 describe('CR-14: what a customer pays after the stop', () => {
   const rows = [
     row(null, 0, 100, 3.5, '2025-01-01', '2027-03-31'),
@@ -161,16 +143,5 @@ describe('CR-14: what a customer pays after the stop', () => {
   it('is the default rate in force the day after the last day', () => {
     expect(rateAfterCustomerStop(rows, CUSTOMER_B, 'monthly', TODAY)).toEqual([3.5]);
     expect(rateAfterCustomerStop(rows, CUSTOMER_B, 'monthly', TODAY, '2027-04-01')).toEqual([4.5]);
-  });
-});
-
-describe('staff and a rate that began today', () => {
-  const rows = [row(null, 0, 100, 11, TODAY, null)];
-  it('is refused before saving for staff, not for a supervisor', () => {
-    const staff = open('change', { price_type: 'monthly' }, rows, 'staff');
-    expect(validate(setStartsOn(staff.draft, 'today', TODAY), staff.context).errors.startsOn)
-      .toBe('Only an administrator or supervisor can change a rate that is already in force.');
-    const boss = open('change', { price_type: 'monthly' }, rows, 'supervisor');
-    expect(validate(setStartsOn(boss.draft, 'today', TODAY), boss.context).errors.startsOn).toBeUndefined();
   });
 });

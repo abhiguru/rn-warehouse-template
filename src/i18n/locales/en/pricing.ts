@@ -84,12 +84,9 @@ export const pricing = {
     noDefault: "No default rate today. Invoices can't price {{item}} for lots received today.",
     onlyUpcoming: 'No default rate until {{date}}.',
     defaultEnded: 'The default rate ended on {{date}}.',
-    overlap: 'Two rates cover {{band}} on this day. Invoices use {{amount}} (the narrower band, then the newer start). Use Change rate to fix it.',
-    customerRates: 'Customer rates',
-    grnOnlyTitle: 'For GRNs only',
+    overlap: 'Two rates cover {{band}} on this day. Invoices use {{amount}} (the narrower band, then the newer start). Change the figures in the box to fix it.',
     grnOnlyRow: 'For GRN {{number}} only · {{customer}} · {{date}}',
     grnOnlyGrn: 'GRN {{number}}',
-    grnDate: 'GRN date',
     grnOnlyFailed: "Couldn't load the rates set for single GRNs.",
     noCustomerRates: 'No customer has their own rate for this item.',
     customerLine: '{{band}} · since {{date}}',
@@ -100,8 +97,6 @@ export const pricing = {
     oldStillUsed: 'Still used for lots received {{from}} – {{to}} that are not invoiced yet.',
     rule: "Invoices use the rate in force on the day the goods were received. A customer's own rate comes before the default rate.",
     howLink: 'How an invoice picks a rate',
-    undoManagerOnly: 'Only an administrator or supervisor can undo a change that has already begun.',
-    staffCorrectNote: 'Only an administrator or supervisor can correct a rate that is already in force.',
     offlineChange: 'Connect to change rates.',
     notFound: 'This item is no longer active.',
     back: 'Back',
@@ -155,7 +150,6 @@ export const pricing = {
     close: 'Close',
   },
   action: {
-    change: 'Change rate',
     correct: 'Correct this rate',
     stop: 'Stop this rate',
     addCustomer: 'Add customer rate',
@@ -181,13 +175,6 @@ export const pricing = {
   undo: {
     done: 'The rate continues.',
     failedTitle: "Couldn't undo the stop",
-  },
-  picker: {
-    title: 'Choose a customer',
-    placeholder: 'Search customers',
-    initial: 'Type part of the name or the mobile number.',
-    empty: 'No customers match "{{search}}". Try part of the name or the mobile number.',
-    detail: '{{city}} · {{mobile}}',
   },
   // The facility's standard rate (backend migration 85): what a new item gets.
   standard: {

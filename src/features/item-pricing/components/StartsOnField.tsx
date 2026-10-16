@@ -1,7 +1,7 @@
 /**
  * "Starts on": chips Today, 1 Nov 2026, 1 Apr 2027 and Other date. Every date is the day goods
  * were received (the rate applies to lots received from it). "Other date" opens the calendar at
- * once on Android, on the first of next month; staff cannot pick a day before today.
+ * once on Android, on the first of next month; without `canStartInPast` the calendar starts today.
  */
 import React from 'react';
 import { Platform, Text, View } from 'react-native';

@@ -1,11 +1,12 @@
 /**
- * The keyboard in the rate editor (P-09): the form shrinks above it, a focused field is scrolled
- * clear of it, the Next key walks Up to, Rent, Labour, Tax.
+ * The keyboard in the rate editor of the invoice pencil (P-09): the form shrinks above it, a focused field is
+ * scrolled clear of it, the Next key walks From, Up to, Rent of every band, then Labour, Tax. The line is Orchard B's own two-band
+ * Garlic rate, so the editor is a correction of a customer rate with two bands.
  */
 import React from 'react';
 import { Keyboard, KeyboardAvoidingView, ScrollView, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { garlicRows, inputWithLabel, inputsWithLabel } from '@/tests/helpers/rateEditorFixtures';
+import { ORCHARD_B, garlicRows, inputWithLabel, inputsWithLabel, rate } from '@/tests/helpers/rateEditorFixtures';
 import RateEditorScreen from '../../../app/item-rates/edit';
 
 let mockRole = 'admin';
@@ -55,9 +56,18 @@ let nodes: ReturnType<typeof fieldNodes> = [];
 /** The native node of the nth field whose accessibility label starts with this text. */
 const native = (label: string, index = 0) => nodes.filter(n => n.label.startsWith(label))[index].instance;
 
+const ownGarlic = () => [
+  ...garlicRows(),
+  rate('garlic', ORCHARD_B, 0, 40, 6, 2.5, 5, '2026-01-01', null, 'monthly', 'Review Garlic Desi'),
+  rate('garlic', ORCHARD_B, 41, 100, 9.5, 2.5, 5, '2026-01-01', null, 'monthly', 'Review Garlic Desi'),
+];
+
 async function open() {
-  mockParams = { mode: 'change', item_id: 'garlic', price_type: 'monthly' };
-  jest.mocked(listItemRates).mockResolvedValue(garlicRows());
+  mockParams = {
+    mode: 'invoice', item_id: 'garlic', item_name: 'Review Garlic Desi', customer_id: ORCHARD_B.id, customer_name: ORCHARD_B.name,
+    price_type: 'monthly', unit_price: '6', labour_rate: '2.5', tax_percent: '5', weight_min: '0', weight_max: '30', grn_date: '2026-05-02',
+  };
+  jest.mocked(listItemRates).mockResolvedValue(ownGarlic());
   await act(async () => { tree = create(<RateEditorScreen />); });
   nodes = fieldNodes(tree!);
   return tree!;
@@ -93,19 +103,25 @@ it('puts the fields in a scroll area that keeps taps working, inside a KeyboardA
 it('every number field has a Next key, the last one Done', async () => {
   const t = await open();
   const keys = (label: string) => inputsWithLabel(t, label).map(n => n.props.returnKeyType);
+  // A customer rate has a From on every band.
+  expect(keys('From')).toEqual(['next', 'next']);
   expect(keys('Up to')).toEqual(['next', 'next']);
   expect(keys('Rent per bag, per month')).toEqual(['next', 'next']);
   expect(keys('Labour per bag')).toEqual(['next']);
   expect(keys('Tax')).toEqual(['done']);
 });
 
-it('Next walks Up to, Rent, the next band, Labour, Tax and then closes the keyboard', async () => {
+it('Next walks From, Up to, Rent, the next band, Labour, Tax and then closes the keyboard', async () => {
   const t = await open();
   const submit = async (label: string, index = 0) => { await act(async () => { inputsWithLabel(t, label)[index].props.onSubmitEditing(); }); };
+  await submit('From', 0);
+  expect(native('Up to', 0).focus).toHaveBeenCalledTimes(1);
   await submit('Up to', 0);
   expect(native('Rent per bag, per month', 0).focus).toHaveBeenCalledTimes(1);
-  // Band 1's rent goes on to band 2's Up to.
+  // Band 1's rent goes on to band 2's From, and that to its Up to.
   await submit('Rent per bag, per month', 0);
+  expect(native('From', 1).focus).toHaveBeenCalledTimes(1);
+  await submit('From', 1);
   expect(native('Up to', 1).focus).toHaveBeenCalledTimes(1);
   await submit('Up to', 1);
   expect(native('Rent per bag, per month', 1).focus).toHaveBeenCalledTimes(1);
@@ -171,4 +187,5 @@ it('Labour and Tax select their text on focus, as Rent does', async () => {
   expect(sel('Tax')).toEqual([true]);
   expect(sel('Rent per bag, per month')).toEqual([true, true]);
   expect(sel('Up to')).toEqual([true, true]);
+  expect(sel('From')).toEqual([true, true]);
 });

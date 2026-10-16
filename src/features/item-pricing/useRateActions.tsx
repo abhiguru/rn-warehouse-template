@@ -1,5 +1,5 @@
 /**
- * What the item page and the customer-rate page do to a rate: open the editor or the stop
+ * What the item page and the customer-rate page do to a rate besides editing its box: open the stop
  * screen, cancel a rate that has not started (a dialog, then undo_rate_change), and undo a stop
  * (undo_rate_change from the day after the last day).
  * Each result ends with notifyRatesChanged so every screen that shows the item refetches it.
@@ -12,7 +12,7 @@ import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { editorPath, notifyRatesChanged, stopPath } from './contract';
+import { notifyRatesChanged, stopPath } from './contract';
 import type { UpcomingGroup } from './rateModel';
 import { cancelMessage } from './cancelText';
 import { addDays, dateText, rentRange } from './rateText';
@@ -34,19 +34,9 @@ export function useRateActions(item: { id: string; name: string }) {
   const who = (scope: RateScope) => ({
     ...(scope.customerId ? { customer_id: scope.customerId, customer_name: scope.customerName ?? undefined } : {}),
   });
-  const base = (scope: RateScope) => ({ item_id: item.id, item_name: item.name, price_type: scope.priceType, ...who(scope) });
 
-  const change = useCallback((scope: RateScope) => router.push(editorPath({ mode: 'change', ...base(scope) })), [item.id, item.name]);
-  const correct = useCallback(
-    (scope: RateScope) => router.push(editorPath({ mode: 'correct', ...base(scope), starts_on: scope.bands[0]?.effective_from })),
-    [item.id, item.name],
-  );
   const stop = useCallback(
     (scope: RateScope) => router.push(stopPath({ item_id: item.id, item_name: item.name, price_type: scope.priceType, ...who(scope) })),
-    [item.id, item.name],
-  );
-  const editUpcoming = useCallback(
-    (scope: RateScope) => router.push(editorPath({ mode: 'upcoming', ...base(scope), starts_on: scope.upcoming?.startsOn })),
     [item.id, item.name],
   );
   const askCancel = useCallback((scope: RateScope) => setCancelling(scope), []);
@@ -115,5 +105,5 @@ export function useRateActions(item: { id: string; name: string }) {
     />
   );
 
-  return { busy, change, correct, stop, editUpcoming, askCancel, undoStop, dialog };
+  return { busy, stop, askCancel, undoStop, dialog };
 }

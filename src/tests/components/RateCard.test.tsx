@@ -11,18 +11,13 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 
-const noop = () => undefined;
 const props = (over: Partial<RateCardProps>): RateCardProps => ({
   priceType: 'monthly',
   bands: [],
   upcoming: null,
   stopsAfter: null,
   overlap: false,
-  canCorrect: true,
-  canWrite: true,
-  offline: false,
   day: '2026-10-14',
-  onChange: noop, onCorrect: noop, onStop: noop, onEditUpcoming: noop, onCancelUpcoming: noop, onUndoStop: noop,
   ...over,
 });
 let tree: ReactTestRenderer;
@@ -59,9 +54,13 @@ describe('RateCard', () => {
     expect(texts()).toContain('Lots received 1 Apr 2026 – 31 Dec 2026');
   });
 
-  it('a read-only role sees the rate and no action buttons', () => {
-    render(props({ bands: [one], canWrite: false }));
-    expect(tree.root.findAll(n => n.props.testID === 'rate-change')).toHaveLength(0);
+  it('has no action button: it only shows the rate, the later rate and the stop', () => {
+    const stopped = { ...one, effective_to: '2026-12-31' };
+    const next = { startsOn: '2027-01-01', rows: [{ ...one, unit_price: 12, effective_from: '2027-01-01', effective_to: null }] };
+    render(props({ bands: [stopped], stopsAfter: '2026-12-31', upcoming: next }));
+    expect(texts()).toEqual(expect.arrayContaining(['From 1 Jan 2027: ₹12.00 per bag, per month', 'This rate stops after 31 Dec 2026.']));
+    expect(tree.root.findAll(n => ['rate-change', 'rate-correct', 'rate-stop', 'undo-stop', 'edit-upcoming', 'cancel-upcoming'].includes(n.props.testID))).toHaveLength(0);
+    expect(tree.root.findAll(n => n.props.accessibilityRole === 'button')).toHaveLength(0);
   });
 
   it('Gujarati unit and digits (P-43): no મુદત', () => {
@@ -72,17 +71,5 @@ describe('RateCard', () => {
     expect(s).toContain('નંગ દીઠ, માસિક');
     expect(s).toContain('૧ એપ્રિલ ૨૦૨૬ થી આવેલા જથ્થા માટે');
     expect(s.join(' ')).not.toContain('મુદત');
-  });
-
-  it('staff cannot undo a stop that has already begun: no Undo stop, the reason is shown; a manager can', () => {
-    const stopped = { ...one, effective_to: '2020-01-31' };
-    render(props({ bands: [stopped], stopsAfter: '2020-01-31', canCorrect: false }));
-    const undo = () => tree.root.findAll(n => n.props.testID === 'undo-stop' && typeof n.props.onPress === 'function');
-    expect(undo()).toHaveLength(0);
-    expect(texts()).toContain('Only an administrator or supervisor can undo a change that has already begun.');
-    act(() => tree.unmount());
-    render(props({ bands: [stopped], stopsAfter: '2020-01-31', canCorrect: true }));
-    expect(undo().length).toBeGreaterThan(0);
-    expect(texts()).not.toContain('Only an administrator or supervisor can undo a change that has already begun.');
   });
 });

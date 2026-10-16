@@ -13,7 +13,7 @@ import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { dateText } from '@/features/item-pricing/rateText';
 import { useItemRatesFor } from '@/features/item-pricing/useItemRates';
-import { grnOnlyFigures, groupByGrn } from '@/features/item-pricing/components/GrnOnlyRatesSection';
+import { grnOnlyFigures, groupByGrn } from '@/features/item-pricing/grnOnlyText';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t } from '@/i18n';

@@ -11,7 +11,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, typography, radius, type ThemeTokens } from '@/theme/tokens';
 import type { ItemGrnRate, ItemStoragePrice } from '@/types/item-pricing.types';
-import { grnOnlyFigures, grnOnlyLine } from './GrnOnlyRatesSection';
+import { grnOnlyFigures, grnOnlyLine } from '../grnOnlyText';
 import { dateText, rangeText, rentRange, unitText } from '../rateText';
 
 export interface OldRatesSectionProps {

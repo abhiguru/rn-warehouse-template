@@ -1,6 +1,7 @@
 /**
- * Saving in the rate editor: one call to replaceItemRates, a toast and no alert on success, the
- * server's refusals shown where they belong, the save bar outside the scroll area.
+ * Saving in the rate editor of the invoice pencil: one call to replaceItemRates, a toast and no alert on success, the
+ * server's refusals shown where they belong, the save bar outside the scroll area. (The same flow for every mode
+ * of the rate boxes is tested in src/features/item-pricing/__tests__/useRateEditor.test.ts.)
  */
 import React from 'react';
 import { Platform, ScrollView } from 'react-native';
@@ -13,7 +14,7 @@ import { subscribeRatesChanged } from '@/features/item-pricing/contract';
 import { listItemRates, replaceItemRates } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { chip, cuminRows, rate, garlicRows, inputsWithLabel, textsOf } from '@/tests/helpers/rateEditorFixtures';
+import { ORCHARD_A, ORCHARD_B, chip, rate, onionRows, inputsWithLabel, textsOf } from '@/tests/helpers/rateEditorFixtures';
 import RateEditorScreen from '../../../app/item-rates/edit';
 
 let mockParams: Record<string, string> = {};
@@ -44,7 +45,7 @@ const replace = jest.mocked(replaceItemRates);
 let tree: ReactTestRenderer | undefined;
 const originalOS = Platform.OS;
 
-async function open(params: Record<string, string>, rows = cuminRows()) {
+async function open(params: Record<string, string>, rows = onionRows()) {
   mockParams = params;
   jest.mocked(listItemRates).mockResolvedValue(rows);
   await act(async () => { tree = create(<RateEditorScreen />); });
@@ -60,7 +61,23 @@ const pickDay = async (t: ReactTestRenderer, year: number, month: number, day: n
   const calls = jest.mocked(DateTimePickerAndroid.open).mock.calls;
   await act(async () => { calls[calls.length - 1][0].onChange!({ type: 'set' } as never, new Date(year, month - 1, day)); });
 };
-const change = { mode: 'change', item_id: 'cumin', price_type: 'monthly' };
+// The invoice line: 60 kg of Onion Red received on 2 May 2026 (before today, 14 Oct 2026), charged 3.20.
+const line = {
+  mode: 'invoice',
+  item_id: 'onion',
+  item_name: 'Review Onion Red',
+  price_type: 'monthly',
+  unit_price: '3.2',
+  labour_rate: '1.75',
+  tax_percent: '5',
+  weight_min: '0',
+  weight_max: '60',
+  grn_date: '2026-05-02',
+};
+/** Orchard A has no rate of its own: the editor adds one. */
+const add = { ...line, customer_id: ORCHARD_A.id, customer_name: ORCHARD_A.name };
+/** Orchard B has its own rate since 1 Jan 2026: the editor corrects it. */
+const correct = { ...line, customer_id: ORCHARD_B.id, customer_name: ORCHARD_B.name };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -77,10 +94,8 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-it('saves job (b) in one call: 12.00 from 1 Jan 2027, with a toast, no alert, and the pages told', async () => {
-  const t = await open(change);
-  await pickDay(t, 2027, 1, 1);
-  await type(t, 'Rent per bag, per month', '12');
+it('saves a new customer rate in one call from the received day, with a toast, no alert, and the pages told', async () => {
+  const t = await open(add);
   const told: string[] = [];
   const stop = subscribeRatesChanged(id => told.push(id));
   replace.mockResolvedValue({ success: true });
@@ -90,16 +105,16 @@ it('saves job (b) in one call: 12.00 from 1 Jan 2027, with a toast, no alert, an
   expect(replace).toHaveBeenCalledTimes(1);
   expect(replace).toHaveBeenCalledWith({
     mode: 'change',
-    item_id: 'cumin',
-    customer_id: null,
+    item_id: 'onion',
+    customer_id: ORCHARD_A.id,
     price_type: 'monthly',
-    starts_on: '2027-01-01',
+    starts_on: '2026-05-02',
     seen_rows: expect.any(Array),
-    bands: [{ weight_min: 0, weight_max: 100, unit_price: 12, labour_rate: 3, tax_percent: 5 }],
+    bands: [{ weight_min: 0, weight_max: 100, unit_price: 3.2, labour_rate: 1.75, tax_percent: 5 }],
   });
-  expect(showToast).toHaveBeenCalledWith('New rate saved. Starts 1 Jan 2027.');
+  expect(showToast).toHaveBeenCalledWith('Customer rate saved.');
   expect(showAlert).not.toHaveBeenCalled();
-  expect(told).toEqual(['cumin']);
+  expect(told).toEqual(['onion']);
   expect(router.back).toHaveBeenCalledTimes(1);
   stop();
 });
@@ -109,29 +124,36 @@ it('the editor uses no other service call to write (create, update or delete)', 
 });
 
 it("a correction saves from the rate's own start day and toasts 'Correction saved.'", async () => {
-  const t = await open({ mode: 'correct', item_id: 'cumin', price_type: 'monthly' });
+  const t = await open(correct);
   replace.mockResolvedValue({ success: true });
   await act(async () => { save(t).props.onPress(); });
-  expect(replace).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2026-04-01' }));
+  expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'correct', customer_id: ORCHARD_B.id, starts_on: '2026-01-01' });
   expect(showToast).toHaveBeenCalledWith('Correction saved.');
 });
 
+// CR-02: the stop that the server keeps is named in the toast.
+it('the success toast says the rate still stops when the server kept the stop', async () => {
+  const rows = [...onionRows().filter(r => !r.customer_id), rate('onion', ORCHARD_B, 0, 100, 3, 1.5, 5, '2026-01-01', '2027-03-31', 'monthly', 'Review Onion Red')];
+  const t = await open(correct, rows);
+  expect(textsOf(t)).toContain('This rate still stops after 31 Mar 2027.');
+  replace.mockResolvedValueOnce({ success: true, keptEnd: '2027-03-31' });
+  await act(async () => { save(t).props.onPress(); });
+  expect(showToast).toHaveBeenCalledWith('Correction saved. This rate still stops after 31 Mar 2027.');
+});
+
 it('does not call the server while a field is wrong, and says which', async () => {
-  const t = await open(change);
-  await pickDay(t, 2027, 1, 1);
+  const t = await open(add);
   await type(t, 'Rent per bag, per month', '');
   await act(async () => { save(t).props.onPress(); });
   expect(replace).not.toHaveBeenCalled();
   expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBe('Enter a rent of 0 or more.');
   // Fixing the field clears the message.
-  await type(t, 'Rent per bag, per month', '12');
+  await type(t, 'Rent per bag, per month', '3.30');
   expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBeUndefined();
 });
 
 it('LATER_RATES_EXIST asks before replacing the planned rate, then sends replace_later', async () => {
-  const t = await open(change);
-  await pickDay(t, 2027, 1, 1);
-  await type(t, 'Rent per bag, per month', '12');
+  const t = await open(add);
   replace.mockResolvedValueOnce({
     success: false,
     errorCode: 'LATER_RATES_EXIST',
@@ -148,13 +170,12 @@ it('LATER_RATES_EXIST asks before replacing the planned rate, then sends replace
   replace.mockResolvedValueOnce({ success: true });
   await act(async () => { dialog.props.onConfirm(); });
   expect(replace).toHaveBeenCalledTimes(2);
-  expect(replace.mock.calls[1][0]).toMatchObject({ replace_later: true, starts_on: '2027-01-01' });
+  expect(replace.mock.calls[1][0]).toMatchObject({ replace_later: true, starts_on: '2026-05-02' });
   expect(router.back).toHaveBeenCalledTimes(1);
 });
 
 it('"Keep it" closes the question and sends nothing more', async () => {
-  const t = await open(change);
-  await pickDay(t, 2027, 1, 1);
+  const t = await open(add);
   replace.mockResolvedValueOnce({
     success: false,
     errorCode: 'LATER_RATES_EXIST',
@@ -167,91 +188,42 @@ it('"Keep it" closes the question and sends nothing more', async () => {
   expect(router.back).not.toHaveBeenCalled();
 });
 
-it('INVALID_BAND for band 2 puts the message under that band', async () => {
-  const t = await open({ mode: 'change', item_id: 'garlic', price_type: 'monthly' }, garlicRows());
-  await pickDay(t, 2027, 1, 1);
+it('INVALID_BAND puts the message under that band', async () => {
+  const t = await open(add);
+  await act(async () => { inputsWithLabel(t, 'Up to')[0].props.onChangeText('60'); });
+  await act(async () => { t.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function').props.onPress(); });
+  await act(async () => { inputsWithLabel(t, 'Up to')[1].props.onChangeText('100'); });
+  await type(t, 'Rent per bag, per month', '3.5', 1);
   replace.mockResolvedValueOnce({ success: false, errorCode: 'INVALID_BAND', bandIndex: 1, message: 'Enter whole kilograms, for example 40.' });
   await act(async () => { save(t).props.onPress(); });
+  expect(replace).toHaveBeenCalledTimes(1);
   expect(inputsWithLabel(t, 'Up to')[1].props.error).toBe('Enter whole kilograms, for example 40.');
   expect(inputsWithLabel(t, 'Up to')[0].props.error).toBeUndefined();
 });
 
 it('INVALID_AMOUNT on the rent of band 1 shows under that rent', async () => {
-  const t = await open(change);
-  await pickDay(t, 2027, 1, 1);
+  const t = await open(add);
   replace.mockResolvedValueOnce({ success: false, errorCode: 'INVALID_AMOUNT', bandIndex: 0, field: 'unit_price', message: 'Check the rent, labour and tax amounts.' });
   await act(async () => { save(t).props.onPress(); });
   expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBe('Check the rent, labour and tax amounts.');
 });
 
 it('PAST_DATE_NOT_ALLOWED shows a red strip at the top and keeps the typed values', async () => {
-  const t = await open(change);
+  const t = await open(add);
   await pickDay(t, 2026, 10, 1);
-  await type(t, 'Rent per bag, per month', '12');
+  await type(t, 'Rent per bag, per month', '3.9');
   replace.mockResolvedValueOnce({ success: false, errorCode: 'PAST_DATE_NOT_ALLOWED', message: 'Only an administrator or supervisor can start a rate in the past.' });
   await act(async () => { save(t).props.onPress(); });
   expect(textsOf(t)).toContain('Only an administrator or supervisor can start a rate in the past.');
-  expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.value).toBe('12');
+  expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.value).toBe('3.9');
   expect(showToast).not.toHaveBeenCalled();
   expect(router.back).not.toHaveBeenCalled();
 });
 
 it('the Save button is in a bar outside the scroll area', async () => {
-  const t = await open(change);
+  const t = await open(add);
   const scroll = t.root.findByType(ScrollView);
   expect(scroll.findAll(n => n.props.testID === 'save-bar')).toHaveLength(0);
   expect(t.root.findAll(n => n.props.testID === 'save-bar').length).toBeGreaterThan(0);
   expect(scroll.findAllByType(Button).some(b => String(b.props.children).startsWith('Save'))).toBe(false);
-});
-
-// CR-03: the question never calls a rate planned when it is in force today.
-it('LATER_RATES_EXIST names the later rate as the one in force today when it is', async () => {
-  const t = await open(change);
-  await pickDay(t, 2027, 1, 1);
-  replace.mockResolvedValueOnce({
-    success: false,
-    errorCode: 'LATER_RATES_EXIST',
-    later: [{ effective_from: '2026-04-01', weight_min: 0, weight_max: 100, unit_price: 11 }],
-  });
-  await act(async () => { save(t).props.onPress(); });
-  const dialog = t.root.findByType(ConfirmDialog);
-  expect(dialog.props.message).toBe('A rate from 1 Apr 2026 (₹11.00) comes after this date. Saving removes it. It is the rate in force today.');
-});
-
-it('Correct this rate sends the correct mode with the rate\'s own start and no later question can follow', async () => {
-  const t = await open({ mode: 'correct', item_id: 'cumin', price_type: 'monthly', starts_on: '2026-04-01' });
-  await type(t, 'Rent per bag, per month', '11.50');
-  replace.mockResolvedValueOnce({ success: true });
-  await act(async () => { save(t).props.onPress(); });
-  expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'correct', starts_on: '2026-04-01' });
-});
-
-// CR-02: the stop that the server keeps is named in the toast.
-it('the success toast says the rate still stops when the server kept the stop', async () => {
-  const rows = [rate('cumin', null, 0, 100, 11, 3, 5, '2026-04-01', '2027-03-31', 'monthly', 'Review Cumin Bold')];
-  const t = await open({ mode: 'correct', item_id: 'cumin', price_type: 'monthly', starts_on: '2026-04-01' }, rows);
-  expect(textsOf(t)).toContain('This rate still stops after 31 Mar 2027.');
-  await type(t, 'Rent per bag, per month', '11.50');
-  replace.mockResolvedValueOnce({ success: true, keptEnd: '2027-03-31' });
-  await act(async () => { save(t).props.onPress(); });
-  expect(showToast).toHaveBeenCalledWith('Correction saved. This rate still stops after 31 Mar 2027.');
-});
-
-// CR-01: Edit new rate keeps its date chips and moves the planned rate.
-it('Edit new rate with a moved date sends change with move_from; with the same date sends correct', async () => {
-  const rows = [...cuminRows(), rate('cumin', null, 0, 100, 12, 3, 5, '2027-01-01', null, 'monthly', 'Review Cumin Bold')];
-  const upcoming = { mode: 'upcoming', item_id: 'cumin', price_type: 'monthly', starts_on: '2027-01-01' };
-  const t = await open(upcoming, rows);
-  await pickDay(t, 2027, 2, 1);
-  expect(textsOf(t)).toContain('Moves the new rate from 1 Jan 2027 to 1 Feb 2027');
-  replace.mockResolvedValueOnce({ success: true });
-  await act(async () => { save(t).props.onPress(); });
-  expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'change', move_from: '2027-01-01', starts_on: '2027-02-01' });
-  act(() => t.unmount());
-
-  const u = await open(upcoming, rows);
-  await type(u, 'Rent per bag, per month', '12.50');
-  replace.mockResolvedValueOnce({ success: true });
-  await act(async () => { save(u).props.onPress(); });
-  expect(replace.mock.calls[1][0]).toMatchObject({ mode: 'correct', starts_on: '2027-01-01' });
 });

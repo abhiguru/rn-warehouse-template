@@ -264,12 +264,7 @@ describe('validate', () => {
     expect(oneTime.errors.labour).toBeUndefined();
   });
 
-  it('refuses a past day to staff but not to a supervisor', () => {
-    const staff = open('change', { item_id: CUMIN }, cuminRows, 'staff');
-    const past = startingOn(staff.draft, '2026-10-13');
-    expect(validate(past, staff.context).errors.startsOn).toBe(
-      'Only an administrator or supervisor can start a rate in the past.'
-    );
+  it('accepts a past day for a manager (item pricing is for managers)', () => {
     const manager = open('change', { item_id: CUMIN }, cuminRows, 'supervisor');
     expect(validate(startingOn(manager.draft, '2026-10-13'), manager.context).ok).toBe(true);
   });
@@ -476,7 +471,7 @@ describe('the invoice entry', () => {
     expect(draft.startsOnChoice).toBe('fixed');
     expect(draft.bands).toEqual([{ upTo: '100', rent: '3.20' }]);
     expect(draft.labour).toBe('1.75');
-    expect(context.invoice).toMatchObject({ grnDate: '2026-05-02', staff: false, customerName: 'Review Orchard B' });
+    expect(context.invoice).toMatchObject({ grnDate: '2026-05-02', customerName: 'Review Orchard B' });
   });
 
   it('admin, no own rate: adds a customer rate from the received day, bands copied from the default', () => {
@@ -488,18 +483,6 @@ describe('the invoice entry', () => {
     expect(draft.bands).toEqual([{ upTo: '100', rent: '3.20' }]);
     expect(draft.labour).toBe('1.75');
     expect(draft.tax).toBe('5');
-  });
-
-  it('staff: the same rows, but the rate starts today and the staff line shows', () => {
-    const own = open('invoice', line, orchardB, 'staff');
-    expect(own.context.mode).toBe('change');
-    expect(own.draft.startsOn).toBe(TODAY);
-    expect(own.draft.startsOnChoice).toBe('today');
-    expect(own.context.invoice?.staff).toBe(true);
-    const none = open('invoice', { ...line, customer_id: ORCH_A }, onionRows, 'staff');
-    expect(none.context.mode).toBe('addCustomer');
-    expect(none.draft.startsOnChoice).toBe('today');
-    expect(none.context.invoice?.staff).toBe(true);
   });
 
   it('no default rate either: one band up to the larger of 100 and the line weight', () => {

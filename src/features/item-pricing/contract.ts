@@ -1,20 +1,23 @@
 import type { PriceType } from '@/types/item-pricing.types';
 
-/** How the editor opens. 'invoice' is resolved by the editor itself (section 10). */
+/**
+ * How a rate form opens. The rate boxes (useRateEditor) use every mode; the edit screen (/item-rates/edit) is
+ * opened with 'invoice' only, by the price pencil of an invoice line, and resolves it to a mode itself (section 10).
+ */
 export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming' | 'invoice';
 
-/** Router params are strings. snake_case names are the ones the invoice screen already sends. */
+/** What a rate form needs to open. Router params are strings; snake_case names are the ones the invoice screen sends. */
 export type EditorParams = {
   mode: EditorMode;
   item_id: string;
   item_name?: string;
-  /** Missing = the default rate (all customers); for 'addCustomer' missing = the editor cannot open (the picker comes first). */
+  /** Missing = the default rate (all customers); for 'addCustomer' missing = the edit screen cannot open. */
   customer_id?: string;
   customer_name?: string;
   price_type?: PriceType;
   /** 'correct' and 'upcoming': the start (YYYY-MM-DD) of the rate being corrected or edited. 'change'/'add'/'addCustomer': a start to preselect. */
   starts_on?: string;
-  /** '1': the editor opens with one empty band added after the last (the Add button of the Item pricing list). */
+  /** '1': the form opens with one empty band added after the last (the Add button of the Item pricing list). */
   add_band?: '1';
   // Invoice prefill (mode 'invoice'): the line as the invoice shows it.
   unit_price?: string;
@@ -63,7 +66,9 @@ export const customerRatePath = (itemId: string, customerId: string, on?: string
       ...(add ? { add: '1' } : {}),
     },
   }) as const;
-export const editorPath = (params: EditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
+/** What the edit screen is opened with: the price pencil of an invoice line, nothing else. */
+export type InvoiceEditorParams = EditorParams & { mode: 'invoice' };
+export const editorPath = (params: InvoiceEditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
 export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string } = {}) =>
   ({ pathname: '/item-price-history', params: p }) as const;

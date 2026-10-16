@@ -24,7 +24,7 @@ import { lotsRule, summaryLines } from '../editModel';
 import { laterDialogText } from '../laterRates';
 import { applicableRate, type ScopeView } from '../rateModel';
 import type { RateRights } from '../rateRights';
-import { addDays, bandText, dateText, money, rentRange, unitText } from '../rateText';
+import { bandText, dateText, money, rentRange, unitText } from '../rateText';
 import { planScope } from '../scopePlan';
 import { tierTags, type TierTag } from '../standardRate';
 import { useRateActions, type RateScope } from '../useRateActions';
@@ -481,18 +481,8 @@ export function ScopeRates({
                 upcoming={upcoming}
                 stopsAfter={stopsAfter}
                 overlap={Boolean(scopeView.overlap)}
-                canCorrect={false}
-                canWrite={false}
-                offline={offline}
-                busy={busy}
                 tags={tags}
                 day={day}
-                onChange={() => undefined}
-                onCorrect={() => undefined}
-                onStop={() => undefined}
-                onEditUpcoming={() => undefined}
-                onCancelUpcoming={() => undefined}
-                onUndoStop={() => undefined}
               />
             </View>
           );
@@ -500,8 +490,7 @@ export function ScopeRates({
 
         const current = mode(priceType);
         const showBox = hasRate || current.mode === 'upcoming';
-        const canUndoStop = Boolean(stopsAfter) && (rights.canCorrect || addDays(stopsAfter as string, 1) > today);
-        const overlapRate = scopeView.overlap && hasRate
+                const overlapRate = scopeView.overlap && hasRate
           ? applicableRate(bands, { customer_id: bands[0].customer_id, weight: bands[0].weight_max, price_type: priceType, day })
           : undefined;
         const upcomingAmount = upcoming ? rentRange(Math.min(...upcoming.rows.map(r => r.unit_price)), Math.max(...upcoming.rows.map(r => r.unit_price))) : '';
@@ -576,7 +565,7 @@ export function ScopeRates({
                 <RateStrip
                   variant="warning"
                   message={t('pricing.item.stops', { date: dateText(stopsAfter) })}
-                  actions={canUndoStop ? [{ label: t('pricing.action.undoStop'), onPress: () => { void actions.undoStop(scopeOf(priceType, scopeView)); }, disabled: offline || busy, testID: 'undo-stop' }] : undefined}
+                  actions={[{ label: t('pricing.action.undoStop'), onPress: () => { void actions.undoStop(scopeOf(priceType, scopeView)); }, disabled: offline || busy, testID: 'undo-stop' }]}
                 />
               </View>
             ) : null}
