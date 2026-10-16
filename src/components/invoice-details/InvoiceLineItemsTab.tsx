@@ -207,7 +207,8 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
 
 /** Bags and Amount column widths at font scale 1; both grow with their widest value. */
 const BAGS_WIDTH = 60;
-const AMOUNT_WIDTH = 88;
+/** Fits the design edge, "₹99,999.00" in weight 600 (81 dp at font scale 1; owner, 2026-10-16); larger amounts widen it. */
+const AMOUNT_WIDTH = 84;
 /** In a stacked table, an amount column wider than this share of the row goes on its own line. */
 const LAST_COLUMN_SHARE = 0.45;
 
@@ -442,7 +443,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   );
   const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [lineBagsWidth, lineAmountWidth], 0, screen.scale);
   // Stacked, an amount column that would still crowd the first, or take most of the row beside
-  // several lines of text (amounts in crores), goes under the item: the text gets the full width.
+  // several lines of text (large amounts at large text), goes under the item: the text gets the full width.
   const amountUnder =
     table.stacked &&
     (crowded(rowWidth(screen), [amountWidth], undefined, screen.scale) || amountWidth > rowWidth(screen) * LAST_COLUMN_SHARE);

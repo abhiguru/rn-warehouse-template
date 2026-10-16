@@ -182,11 +182,12 @@ describe('Items table', () => {
     mockFontScale = 1.3;
     mockWidth = 411;
     const mark = 'BL/STRETCH-LOT-0001/LONG-PACKAGE-MARK-FOR-WRAP-TEST/ABCDEFG';
-    render(<DispatchItemsTab items={[item({ id: 'b', grn_no: 'WMWM8881', original_quantity: 987654, dispatch_quantity: 500000, package_mark: mark })]} />);
+    render(<DispatchItemsTab items={[item({ id: 'b', grn_no: 'WMWM8881', original_quantity: 9999, dispatch_quantity: 5000, package_mark: mark })]} />);
 
-    // "WMWM8881/9,87,654" needs about 210 dp: the item column would keep under 25 % of the row.
+    // "WMWM8881/9,999" (an 8-character GRN number, the longest allowed) needs about 173 dp: the item
+    // column would keep under 5 em at font scale 1.3.
     expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
-    expect(textOf(byTestId('dispatch-item-row-b'))).toBe(`Basmati Rice|50 kg each|WMWM8881/9,87,654|${mark}|5,00,000`);
+    expect(textOf(byTestId('dispatch-item-row-b'))).toBe(`Basmati Rice|50 kg each|WMWM8881/9,999|${mark}|5,000`);
     const markText = byTestId('dispatch-item-row-b').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === mark)[0];
     expect(markText.props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'tail' });
   });

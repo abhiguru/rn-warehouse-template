@@ -22,10 +22,15 @@ describe('numberColumnWidth', () => {
   });
 
   it('widens for the widest value, the bold total counting a little wider', () => {
-    // "10,82,348" in weight 600 at 1.3: (7 × 0.6 + 2 × 0.28) em × 15 × 1.3 = 92.8, plus 2.
-    expect(numberColumnWidth(layout(1.3), 60, ['9,87,654'], ['10,82,348'])).toBe(95);
-    // "₹1,23,74,33,725.76" at 1.3: (0.62 + 12 × 0.57 + 5 × 0.28) em × 15 × 1.3 = 172.8, plus 2.
-    expect(numberColumnWidth(layout(1.3), 88, ['₹1,23,74,33,725.76'])).toBe(175);
+    // The design edge (owner, 2026-10-16): 9,999 bags and ₹99,999.00, totals included. Both fit the
+    // columns' own widths at 1.3: "9,999" in weight 600 needs 52 dp of 78; "₹99,999.00" needs
+    // (0.62 + 7 × 0.6 + 2 × 0.28) em × 15 × 1.3 = 104.9, plus 2, of 110.
+    expect(numberColumnWidth(layout(1.3), 60, ['9,998'], ['9,999'])).toBe(78);
+    expect(numberColumnWidth(layout(1.3), 84, ['₹99,999.00'], ['₹99,999.00'])).toBe(110);
+    // Beyond the design range a column widens: "₹99,99,999.00" at 1.3, (0.62 + 9 × 0.57 + 3 × 0.28) em
+    // × 15 × 1.3 = 128.5, plus 2; in weight 600 (0.62 + 9 × 0.6 + 3 × 0.28) em = 133.8, plus 2.
+    expect(numberColumnWidth(layout(1.3), 84, ['₹99,99,999.00'])).toBe(131);
+    expect(numberColumnWidth(layout(1.3), 84, ['₹63,30,843.08'], ['₹99,99,999.00'])).toBe(136);
     // A lakh total keeps the width the column has anyway: "₹56,761.00" needs 107 dp of the 115.
     expect(numberColumnWidth(layout(1.3), 88, [], ['₹56,761.00'])).toBe(115);
   });
@@ -43,16 +48,20 @@ describe('crowded', () => {
     const row = rowWidth({ width: 411 }); // 353 dp
     // A lakh invoice at 1.3: bags 78, amount 124, after the chevron: 353 − 32 − 86 − 132 = 103 (29 %).
     expect(crowded(row, [78, 124])).toBe(false);
-    // ₹1,26,80,21,275.58 (182 dp, bold) and 10,82,348 bags (95 dp): 353 − 32 − 103 − 190 = 28 is left.
-    expect(crowded(row, [95, 182])).toBe(true);
+    // The design edge at 1.3, bags 78 and amount 110: 353 − 32 − 86 − 118 = 117 is left: three columns.
+    expect(crowded(row, [78, 110], undefined, 1.3)).toBe(false);
+    // Beyond it, ₹99,99,999.00 (136 dp, bold): 91 is left, over a quarter (88) at font scale 1 but
+    // under 5 em at 1.3 (98): it stacks at 1.3.
+    expect(crowded(row, [78, 136])).toBe(false);
+    expect(crowded(row, [78, 136], undefined, 1.3)).toBe(true);
   });
 
   it('keeps at least FIRST_COLUMN_EM of text width at large text, where a quarter of the row is only a few letters', () => {
     expect(FIRST_COLUMN_EM).toBe(5);
     const nested = nestedRowWidth({ width: 411 }); // 335 dp
-    // ₹61,91,75,500.00 at 2.0 (242 dp) leaves 85 dp: over a quarter (84) but under 5 em (150 dp).
-    expect(crowded(nested, [242], 0)).toBe(false);
-    expect(crowded(nested, [242], 0, 2)).toBe(true);
+    // ₹35,48,260.00 at 2.0 (200 dp) leaves 127 dp: over a quarter (84) but under 5 em (150 dp).
+    expect(crowded(nested, [200], 0)).toBe(false);
+    expect(crowded(nested, [200], 0, 2)).toBe(true);
     // At 1.3 the quarter decides for an ordinary invoice: 112 dp is left, the least is 98.
     expect(crowded(rowWidth({ width: 411 }), [78, 115], undefined, 1.3)).toBe(false);
   });
@@ -60,8 +69,8 @@ describe('crowded', () => {
   it('measures a table inside an open row on its own, narrower row and without a chevron', () => {
     expect(nestedRowWidth({ width: 411 })).toBe(rowWidth({ width: 411 }) - 2 - 16);
     expect(crowded(nestedRowWidth({ width: 411 }), [78, 114], 0)).toBe(false);
-    // ₹61,91,75,500.00 (159 dp) and 5,00,000 bags (80 dp): 335 − 88 − 167 = 80, under 84.
-    expect(crowded(nestedRowWidth({ width: 411 }), [80, 159], 0)).toBe(true);
+    // A line near the largest total, ₹35,48,260.00 (131 dp) and 20,000 bags (78 dp): 335 − 86 − 139 = 110.
+    expect(crowded(nestedRowWidth({ width: 411 }), [78, 131], 0, 1.3)).toBe(false);
   });
 });
 

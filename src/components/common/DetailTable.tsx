@@ -99,8 +99,8 @@ export function numberColumnWidth(
 /**
  * The least share of the row the first column keeps before the middle columns stack. At 25 %
  * ordinary data keeps its columns (an invoice with lakh totals at font scale 1.3 on a 411 dp
- * phone leaves the item column about 29 %, names wrapping by whole words), while amounts in
- * crores or six-digit quantities, which left 3–15 %, stack.
+ * phone leaves the item column about 29 %, names wrapping by whole words). The design edge,
+ * ₹99,99,999.00 and 99,999 bags, leaves 26 % at 1.3 and stacks on FIRST_COLUMN_EM instead.
  */
 export const FIRST_COLUMN_SHARE = 0.25;
 

@@ -39,7 +39,8 @@ export interface InvoicesTableProps {
 
 /** Date column width at font scale 1 ("15 Oct 2026"). */
 const DATE_WIDTH = 96;
-const AMOUNT_WIDTH = 88;
+/** Fits the design edge, "₹99,999.00" in weight 600 (81 dp at font scale 1; owner, 2026-10-16); larger amounts widen it. */
+const AMOUNT_WIDTH = 84;
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {

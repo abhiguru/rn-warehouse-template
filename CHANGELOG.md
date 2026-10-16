@@ -2,14 +2,16 @@
 
 ## Unreleased — Tables: columns that fit their numbers, a card that scrolls into view (2026-10-16)
 
-App only. Fixes from a phone run with stretch data on Dev (30-character names, 59-character marks,
-quantities up to 9,87,654, an invoice above ₹1 billion) and two visual reviews of its screenshots.
+App only. Fixes from phone runs with stretch data on Dev (30-character names, 59-character marks,
+the edge cases the owner set: quantities and totals up to 9,999 bags, amounts up to ₹99,999.00) and
+visual reviews of their screenshots. The invoice amount column (84 dp at font scale 1) fits ₹99,999.00
+in bold, so a table at the edge keeps its columns at font scale 1.3; larger numbers stack as a fallback.
 - Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
   sized to its widest value or total, so numbers line up from row to row and never split
   ("10,82,34" / "8"). When huge numbers would leave the first column under 25 % of the row, the
   middle columns move under the first, as at large text; ordinary data keeps its columns. When a
-  stacked table's amount column would still crowd the item or take most of the row (amounts in
-  crores), the amount goes on its own line under the item, so the item keeps whole words.
+  stacked table's amount column would still crowd the item or take most of the row (large amounts
+  at large text), the amount goes on its own line under the item, so the item keeps whole words.
 - Dispatch Items: the GRN/Received column is sized to the GRN/received text, and a long mark is
   cut with "…" at the normal size instead of shrinking until unreadable.
 - Invoice Line items: the tax of a dispatch line sits under its period, so the dispatch numbers
