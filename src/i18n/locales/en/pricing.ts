@@ -89,6 +89,7 @@ export const pricing = {
     onlyUpcoming: 'No default rate until {{date}}.',
     defaultEnded: 'The default rate ended on {{date}}.',
     overlap: 'Two rates cover {{band}} on this day. Invoices use {{amount}} (the narrower band, then the newer start). Use Change rate to fix it.',
+    customerRateFor: 'Rate for {{customer}}',
     customerRates: 'Customer rates',
     grnOnlyTitle: 'For GRNs only',
     grnOnlyRow: 'For GRN {{number}} only · {{customer}} · {{date}}',

@@ -6,6 +6,10 @@
  * The day shown is a goods-received day: the list's day arrives as `on`, and Change date moves it.
  * Each tier of a default monthly rate is tagged Standard (it equals a tier of the standard rate) or
  * This item; with no standard rate saved, or not readable, there are no tags.
+ *
+ * Opened read-only from a GRN's Rates with the GRN's customer (owner, 2026-10-16): that customer's own rate
+ * is a card like the default's ("Rate for …"), in place of the list of customer rows, so no rate that can
+ * apply to the GRN is behind a second tap; other customers' rates are left out.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -44,6 +48,8 @@ import { getItemGrnRates } from '@/services/item-pricing-service';
 import type { ItemGrnRate, ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** The actions of a read-only card: never shown, so never called. */
+const noop = () => undefined;
 
 const makeStyles = (th: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: th.background.base },
@@ -91,7 +97,7 @@ function customerRows(rows: ItemStoragePrice[], day: string) {
 export default function ItemRatesPage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; on?: string; readonly?: string; grn?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; on?: string; readonly?: string; grn?: string; customer?: string; customer_name?: string }>();
   // Opened read-only (from a GRN's Rates): no change is offered, whatever the role or day.
   const readOnly = params.readonly === '1';
   const itemId = String(params.itemId ?? '');
@@ -126,6 +132,13 @@ export default function ItemRatesPage() {
   const actions = useRateActions(item);
   const rows = useMemo(() => itemRates?.rows ?? [], [itemRates]);
   const defaults = useMemo(() => planScope(rows.filter(r => r.customer_id === null), day), [rows, day]);
+  // Read-only from a GRN: the GRN's customer, whose rates in force that day are shown as cards.
+  const grnCustomer = readOnly && params.customer ? String(params.customer) : null;
+  const grnCustomerPlans = useMemo(
+    () => (grnCustomer ? planScope(rows.filter(r => r.customer_id === grnCustomer), day).plans.filter(p => p.view.inForce.length > 0) : []),
+    [rows, day, grnCustomer],
+  );
+  const grnCustomerName = rows.find(r => r.customer_id === grnCustomer)?.customer_name ?? params.customer_name ?? '';
   const customers = useMemo(() => customerRows(rows, day), [rows, day]);
   const allEnded = useMemo(() => {
     const ended = rows.filter(r => r.effective_to && r.effective_to < day);
@@ -292,8 +305,37 @@ export default function ItemRatesPage() {
               ) : null}
             </View>
 
-            {/* Customer rates (read-only: only when there are any) */}
-            {readOnly && customers.length === 0 ? null : (
+            {/* Read-only from a GRN: the GRN customer's own rate as a card, when it has one */}
+            {grnCustomer ? (
+              grnCustomerPlans.length > 0 ? (
+                <View testID="grn-customer-rate">
+                  <SectionHeader title={t('pricing.item.customerRateFor', { customer: grnCustomerName })} />
+                  <View style={styles.block}>
+                    {grnCustomerPlans.map(({ priceType, view }) => (
+                      <RateCard
+                        key={priceType}
+                        compact
+                        priceType={priceType}
+                        bands={view.inForce}
+                        upcoming={view.upcoming}
+                        stopsAfter={view.stopsAfter}
+                        overlap={Boolean(view.overlap)}
+                        canCorrect={false}
+                        canWrite={false}
+                        offline={offline}
+                        day={day}
+                        onChange={noop}
+                        onCorrect={noop}
+                        onStop={noop}
+                        onEditUpcoming={noop}
+                        onCancelUpcoming={noop}
+                        onUndoStop={noop}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ) : null
+            ) : /* Customer rates (read-only: only when there are any) */ readOnly && customers.length === 0 ? null : (
               <>
                 <SectionHeader
                   title={t('pricing.item.customerRates')}

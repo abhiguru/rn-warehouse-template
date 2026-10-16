@@ -90,6 +90,7 @@ export const pricing: Translation<typeof source> = {
     onlyUpcoming: '{{date}} સુધી મૂળ દર નથી.',
     defaultEnded: 'મૂળ દર {{date}} એ પૂરો થયો.',
     overlap: 'આ દિવસે {{band}} માટે બે દર છે. ઇન્વૉઇસમાં {{amount}} વપરાય છે (સાંકડી મર્યાદા, પછી નવી શરૂઆત). સુધારવા દર બદલો વાપરો.',
+    customerRateFor: '{{customer}} માટે દર',
     customerRates: 'વેપારીના પોતાના દર',
     grnOnlyTitle: 'ફક્ત આવક પાવતી માટે',
     grnOnlyRow: 'ફક્ત આવક પાવતી {{number}} માટે · {{customer}} · {{date}}',

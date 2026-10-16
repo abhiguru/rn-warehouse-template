@@ -17,6 +17,10 @@ Changes button, no later rate or stop notice, no explanation notes or old rates;
 unit share one line and the values are short ("₹3.00 per bag", "5%", "Since 1 Apr 2026"); Customer
 rates show only when there are some, and "For GRNs only" lists only the rate of the GRN the card was
 opened from (a new `grn` parameter). The "How an invoice picks a rate" link stays.
+Opened from a GRN, the card also gets the GRN's customer (`customer`, `customer_name`): that customer's
+own rate is a card like the default's, "Rate for <customer>", in place of the list of customer rows, so
+no rate that can apply to the GRN is behind a second tap; other customers' rates are left out, and a
+customer without a rate of their own gets no section.
 "For GRNs only" (both views) is no longer one dense line per rate: it has a section header with the
 number of GRNs and one card per GRN, laid out like the rate card above it: "GRN A0010" and the
 customer, the rent with its unit, then Weight each, Labour, Tax and GRN date as rows. A GRN with

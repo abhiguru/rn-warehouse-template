@@ -167,6 +167,51 @@ describe('item page: Review Cumin Bold on 14 Oct 2026', () => {
     );
   });
 
+  describe('read-only from a GRN, with the GRN\'s customer', () => {
+    const plain = (id: string) =>
+      tree.root.find(n => n.props.testID === id).findAllByType(Text)
+        .map(n => [n.props.children].flat(Infinity))
+        .filter(parts => parts.every(part => typeof part === 'string'))
+        .map(parts => parts.join(''));
+    const ORCHARD_C = { customer_id: 'orchard-c', customer_name: 'Review Orchard C' };
+
+    it('shows that customer\'s own rate as a card like the default, with no list of rows to tap', async () => {
+      const rows = [...F1.filter(r => r.item_id === 'onion'), row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3.2, labour_rate: 1.5, effective_from: '2026-01-01', ...ORCHARD_C })];
+      await open('admin', { itemRates: { item: ITEMS.find(i => i.id === 'onion')!, rows } }, { itemId: 'onion', on: '2026-10-01', readonly: '1', customer: 'orchard-b', customer_name: 'Review Orchard B' });
+      expect(plain('grn-customer-rate')).toEqual([
+        'RATE FOR REVIEW ORCHARD B', '₹3.00', '  per bag, per month',
+        'Weight each', '0–100 kg', 'Labour', '₹1.50 per bag', 'Tax', '5%', 'In force', 'Since 1 Jan 2026',
+      ]);
+      // The default card is still there; no customer rows, no other customer's rate.
+      const cards = tree.root.findAll(n => n.props.testID === 'rate-card-monthly' && typeof n.type === 'string');
+      const firstPlain = (card: (typeof cards)[number]) =>
+        card.findAllByType(Text).map(n => [n.props.children].flat(Infinity)).find(parts => parts.every(part => typeof part === 'string'))?.join('');
+      expect(cards.map(firstPlain)).toEqual(['₹3.50', '₹3.00']);
+      expect(tree.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('customer-rate-row-'))).toHaveLength(0);
+      const s = shown(tree);
+      expect(s).not.toContain('CUSTOMER RATES');
+      expect(s).not.toContain('Review Orchard C');
+      expect(s).not.toContain('₹3.20');
+    });
+
+    it('shows no customer section when that customer has no rate of their own', async () => {
+      await open('admin', { itemRates: itemRows('onion') }, { itemId: 'onion', on: '2026-10-01', readonly: '1', customer: 'orchard-a', customer_name: 'Review Orchard A' });
+      expect(tree.root.findAll(n => n.props.testID === 'grn-customer-rate')).toHaveLength(0);
+      const s = shown(tree);
+      expect(s).not.toContain('CUSTOMER RATES');
+      expect(s).not.toContain('Review Orchard B');
+    });
+
+    it('takes the customer\'s rate in force on the GRN\'s day, not a later one', async () => {
+      const rows = [...F1.filter(r => r.item_id === 'onion').map(r => (r.customer_id ? { ...r, effective_to: '2026-10-31' } : r)), row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 2.8, labour_rate: 1.5, effective_from: '2026-11-01', ...ORCHARD_B })];
+      await open('admin', { itemRates: { item: ITEMS.find(i => i.id === 'onion')!, rows } }, { itemId: 'onion', on: '2026-10-01', readonly: '1', customer: 'orchard-b' });
+      const card = plain('grn-customer-rate');
+      expect(card.slice(0, 2)).toEqual(['RATE FOR REVIEW ORCHARD B', '₹3.00']);
+      expect(card).toContain('1 Jan 2026 – 31 Oct 2026');
+      expect(shown(tree)).not.toContain('₹2.80');
+    });
+  });
+
   it('staff cannot correct: no Correct button, the reason is shown (P-45)', async () => {
     await open('staff');
     expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);

@@ -116,14 +116,14 @@ describe('GrnItemRates', () => {
     ]);
   });
 
-  it('a row opens the item\'s rate card read-only on the GRN\'s day, naming the GRN', async () => {
+  it('a row opens the item\'s rate card read-only on the GRN\'s day, naming the GRN and its customer', async () => {
     const { router } = require('expo-router');
     read.mockResolvedValue(answer([lot({ grn_item_id: 'a' })]));
-    await mount(<GrnItemRates grnId="g1" />);
+    await mount(<GrnItemRates grnId="g1" customerId="c1" customerName="Fictional Farms" />);
     const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
     expect(row.props.accessibilityRole).toBe('button');
     act(() => row.props.onPress());
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1' } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1', customer: 'c1', customer_name: 'Fictional Farms' } });
   });
 
   it('a customer, who cannot open Item pricing, gets "Your rate" for a priced row, and no link without a rate', async () => {
@@ -190,6 +190,18 @@ describe('GRNOverviewTab Rates section', () => {
     expect(texts()).toContain('RATES');
     expect(texts()).not.toContain('RATES FOR THIS GRN ONLY');
     expect(texts()).toContain('Rent (₹)');
+  });
+
+  it('hands the GRN\'s customer to the rate card, so its own rate shows there as a card', async () => {
+    const { router } = require('expo-router');
+    read.mockResolvedValue(answer([lot({})]));
+    await mount(<GRNOverviewTab grn_id="g1" gr_no="WM0001" pricing_mode="MONTHLY" customer_details={{ id: 'c1', name: 'Fictional Farms' }} />);
+    const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
+    act(() => row.props.onPress());
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/item-rates/[itemId]',
+      params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1', customer: 'c1', customer_name: 'Fictional Farms' },
+    });
   });
 
   it('falls back to the GRN-only rates on an older server', async () => {

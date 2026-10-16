@@ -97,7 +97,16 @@ export function repeatedItems(groups: RateGroup[]): Set<string> {
   return repeated;
 }
 
-export function GrnItemRates({ grnId, grnNumber, fallbackRates }: { grnId?: string | null; grnNumber?: string | null; fallbackRates?: RpcGrnRate[] | null }) {
+export interface GrnItemRatesProps {
+  grnId?: string | null;
+  grnNumber?: string | null;
+  /** The GRN's customer: the staff rate card shows this customer's own rate as a card. */
+  customerId?: string | null;
+  customerName?: string | null;
+  fallbackRates?: RpcGrnRate[] | null;
+}
+
+export function GrnItemRates({ grnId, grnNumber, customerId, customerName, fallbackRates }: GrnItemRatesProps) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
@@ -199,7 +208,12 @@ export function GrnItemRates({ grnId, grnNumber, fallbackRates }: { grnId?: stri
                   onPress={() =>
                     router.push(
                       canOpen
-                        ? itemRatesPath(rate.item_id, grnDate ?? undefined, true, grnId ?? undefined)
+                        ? itemRatesPath(rate.item_id, grnDate ?? undefined, {
+                            readOnly: true,
+                            grnId: grnId ?? undefined,
+                            customerId: customerId ?? undefined,
+                            customerName: customerName ?? undefined,
+                          })
                         : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
                     )
                   }
