@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Item rates reorganised (2026-10-16)
+
+- **Staff have no Item pricing (owner, 2026-10-16).** Settings no longer offers Item pricing to staff, its
+  screens (the item list, an item's rates, the edit and stop screens, a customer's rate) send them home, and
+  the GRN form (new GRN and Edit) has no Rates step for them: no Rates block, no rate sheet, no check that
+  every line has a rate, and the save leaves `p_rates` out, so a GRN saved by staff is accepted as before
+  with no rate check and an administrator or supervisor sets the rates afterwards. The price pencil on the
+  invoice form is for administrators and supervisors only, and the role description of Staff no longer
+  mentions prices. Needs backend migration 90 ("staff lose item pricing"); until it is deployed the server
+  still accepts staff writes, but the app no longer offers them. Deploy the app first or together with
+  migration 90, else a staff phone on the old app meets refusals (42501).
+
 ## Unreleased — GRN Overview: the Rates as a table; a tap leads to Item pricing or "Your rate" (2026-10-16)
 
 App only (uses backend migration 88, already deployed; migration 89 for the customer's answer). The Rates

@@ -89,12 +89,13 @@ describe('signed in', () => {
     ['reports/stock-aging', 'allow', 'allow', 'allow', 'allow'],
     ['reports/item-stock-summary', 'allow', 'allow', 'allow', 'allow'],
     ['reports/operations-dashboard', 'allow', 'allow', 'home', 'home'],
-    ['item-pricing', 'allow', 'allow', 'allow', 'home'],
-    ['item-rates', 'allow', 'allow', 'allow', 'home'],
-    ['item-rates/[itemId]', 'allow', 'allow', 'allow', 'home'],
-    ['item-rates/[itemId]/customer/[customerId]', 'allow', 'allow', 'allow', 'home'],
-    ['item-rates/edit', 'allow', 'allow', 'allow', 'home'],
-    ['item-rates/stop', 'allow', 'allow', 'allow', 'home'],
+    // Item pricing is for administrators and supervisors (owner, 2026-10-16).
+    ['item-pricing', 'allow', 'allow', 'home', 'home'],
+    ['item-rates', 'allow', 'allow', 'home', 'home'],
+    ['item-rates/[itemId]', 'allow', 'allow', 'home', 'home'],
+    ['item-rates/[itemId]/customer/[customerId]', 'allow', 'allow', 'home', 'home'],
+    ['item-rates/edit', 'allow', 'allow', 'home', 'home'],
+    ['item-rates/stop', 'allow', 'allow', 'home', 'home'],
     ['item-price-history', 'allow', 'allow', 'home', 'home'],
     ['standard-rate', 'allow', 'allow', 'home', 'home'],
     ['sensors', 'allow', 'allow', 'allow', 'home'],
@@ -140,7 +141,7 @@ describe('by facility capability', () => {
   );
 
   it('a capability gates only its own routes', () => {
-    expect(decideRoute('item-pricing', withCapabilities('staff', OFF))).toBe('allow');
+    expect(decideRoute('item-pricing', withCapabilities('supervisor', OFF))).toBe('allow');
     expect(decideRoute('users', withCapabilities('admin', OFF))).toBe('allow');
     expect(decideRoute('settings', withCapabilities('staff', OFF))).toBe('allow');
   });

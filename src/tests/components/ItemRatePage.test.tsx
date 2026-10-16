@@ -127,13 +127,13 @@ describe('item page: Review Cumin Bold on 14 Oct 2026', () => {
     });
   });
 
-  it('staff cannot correct: no Correct button, the reason is shown (P-45)', async () => {
+  it('staff are not offered Item pricing; if the page were opened they would get no Change, Stop or Correct button and no old rates', async () => {
     await open('staff');
-    expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);
-    expect(byId(tree, 'rate-stop').length).toBeGreaterThan(0);
+    expect(byId(tree, 'rate-change').length).toBe(0);
+    expect(byId(tree, 'rate-stop').length).toBe(0);
     expect(byId(tree, 'rate-correct').length).toBe(0);
-    expect(shown(tree)).toContain('Only an administrator or supervisor can correct a rate that is already in force.');
     expect(byId(tree, 'item-changes').length).toBe(0);
+    expect(shown(tree)).not.toContain('old rate');
   });
 
   it('Changes is for an administrator or supervisor only (P-12)', async () => {
@@ -179,8 +179,8 @@ describe('item page: Review Cumin Bold on 14 Oct 2026', () => {
     expect(tree.root.find(n => n.props.testID === 'cancel-rate-dialog').props.visible).toBe(false);
   });
 
-  it('old rates are folded, readable by staff, and say Ended, not Expired (P-12, P-21)', async () => {
-    await open('staff');
+  it('old rates are folded, and say Ended, not Expired (P-12, P-21)', async () => {
+    await open('supervisor');
     expect(shown(tree)).toContain('Show 1 old rate');
     expect(shown(tree)).not.toContain('₹10.00');
     press(tree, 'old-rates-toggle');
@@ -262,11 +262,11 @@ describe('item page states', () => {
     expect(notifyRatesChanged).toHaveBeenCalledWith('onion');
   });
 
-  it('staff may undo a stop whose last day is today (the rate would restart tomorrow)', async () => {
+  it('staff, who are not offered Item pricing, get no Undo stop even on a stop whose last day is today', async () => {
     const stopped = [row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3.5, effective_from: '2025-01-01', effective_to: '2026-10-14' })];
     await open('staff', { itemRates: { item: ITEMS.find(i => i.id === 'onion')!, rows: stopped } }, { itemId: 'onion' });
     expect(shown(tree)).toContain('This rate stops after 14 Oct 2026.');
-    expect(byId(tree, 'undo-stop').length).toBeGreaterThan(0);
+    expect(byId(tree, 'undo-stop').length).toBe(0);
   });
 
   it('an item with no rate is a critical strip with Add default rate (P-10)', async () => {

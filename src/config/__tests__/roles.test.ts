@@ -55,8 +55,8 @@ describe('role by screen', () => {
   it.each([
     ['admin', [true, true, true, true, true, true, true, true, true]],
     ['supervisor', [true, true, true, true, true, false, true, true, true]],
-    // Staff change prices but do not read the record of the changes (server migration 48), nor set the standard rate (migration 85).
-    ['staff', [false, true, true, true, false, false, false, false, false]],
+    // Item pricing, its writing, the price history and the standard rate are for administrators and supervisors (owner, 2026-10-16; server migration 90).
+    ['staff', [false, false, false, true, false, false, false, false, false]],
     ['customer', [false, false, false, false, false, false, false, false, false]],
     [null, [false, false, false, false, false, false, false, false, false]],
   ])('%s', (role, expected) => {
@@ -122,7 +122,7 @@ describe('settings feature rows', () => {
   it.each([
     ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
     ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
-    ['staff', ['itemPricing', 'sensors']],
+    ['staff', ['sensors']],
     ['customer', []],
     [undefined, []],
   ])('%s sees %j', (role, rows) => {
@@ -132,7 +132,7 @@ describe('settings feature rows', () => {
   it.each([
     ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
     ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate']],
-    ['staff', ['itemPricing']],
+    ['staff', []],
     ['customer', []],
   ])('%s at a facility without sensors sees %j', (role, rows) => {
     expect(settingsFeatureRows(role, { printing: true, sensors: false, realtime: true, customerDocuments: true })).toEqual(rows);
@@ -140,7 +140,7 @@ describe('settings feature rows', () => {
 
   it('a facility with sensors keeps the Sensors row of the role', () => {
     const on = { printing: false, sensors: true, realtime: false, customerDocuments: false };
-    expect(settingsFeatureRows('staff', on)).toEqual(['itemPricing', 'sensors']);
+    expect(settingsFeatureRows('staff', on)).toEqual(['sensors']);
     expect(settingsFeatureRows('customer', on)).toEqual([]);
   });
 });

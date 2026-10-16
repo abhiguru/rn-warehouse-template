@@ -18,10 +18,11 @@ const mockDispatch = jest.fn();
 let mockGrnRates: unknown[] = [];
 let mockChanges: unknown[] = [];
 let mockInvoiced = false;
+let mockRole = 'supervisor';
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: [], saveUnconfirmed: false, grnRates: mockGrnRates, rateChanges: mockChanges, grnInvoiced: mockInvoiced } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { role: mockRole } }, grnForm: { items: [], removedImages: [], saveUnconfirmed: false, grnRates: mockGrnRates, rateChanges: mockChanges, grnInvoiced: mockInvoiced } }),
 }));
 
 const mockHeader = {
@@ -37,14 +38,16 @@ let mockForm: Record<string, unknown>;
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
 
 const mockRefresh = jest.fn(async () => {});
+const mockUseGrnRates = jest.fn();
 let mockRates: ItemStoragePrice[] = [];
 let mockStatus: 'loading' | 'ready' | 'error' = 'ready';
 jest.mock('@/features/grn/rates/useGrnRates', () => ({
-  useGrnRates: () => ({ rates: mockRates, status: mockStatus, offline: false, refresh: mockRefresh }),
+  useGrnRates: (...args: unknown[]) => (mockUseGrnRates(...args), { rates: mockRates, status: mockStatus, offline: false, refresh: mockRefresh }),
 }));
 let sheetProps: Record<string, any> = {};
 jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: (props: Record<string, unknown>) => { sheetProps = props; return null; } }));
-jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
+const mockUseStandardRate = jest.fn();
+jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (...args: unknown[]) => { mockUseStandardRate(...args); return { rate: null, status: 'ready' }; } }));
 
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
@@ -101,6 +104,7 @@ beforeEach(() => {
   mockGrnRates = [];
   mockChanges = [];
   mockInvoiced = false;
+  mockRole = 'supervisor';
   mockStatus = 'ready';
   mockItems = [line(1, 'gur', 'Fictional Gur', 12), line(2, 'rice', 'Fictional Rice', 30)];
   // Gur has the customer's own rate for 0-50 kg; rice has no rate at all.
@@ -266,6 +270,54 @@ describe('saving the rates with the GRN', () => {
   });
 });
 
+
+describe('staff set no rates on a GRN (owner, 2026-10-16)', () => {
+  // Rice has no stored rate: for a supervisor Create would be blocked on it, and the form holds a rate for this GRN only.
+  beforeEach(() => {
+    mockRole = 'staff';
+    mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }];
+  });
+
+  it('shows no Rates block, no rate sheet and reads no rates', async () => {
+    const tree = await render('create');
+    expect(texts(tree)).not.toContain('RATES');
+    expect(tree.root.findAll(n => n.props.testID === 'grn-rates-section')).toHaveLength(0);
+    expect(rowCount(tree)).toBe(0);
+    expect(sheetProps).toEqual({});
+    expect(mockUseGrnRates.mock.calls[0][0]).toEqual([]);
+    expect(mockUseStandardRate).toHaveBeenCalledWith(false);
+  });
+
+  it('create and edit save without p_rates, and a line without a rate does not block the save', async () => {
+    (createGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+    const tree = await render('create');
+    await press(tree);
+    expect(showAlert).not.toHaveBeenCalled();
+    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
+    expect((createGRN as jest.Mock).mock.calls[0][0].rates).toBeUndefined();
+    act(() => tree.unmount());
+
+    (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+    const edit = await render('edit');
+    await press(edit);
+    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to this GRN?')!.props.onConfirm(); });
+    expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toBeUndefined();
+  });
+
+  it('keeps the form untouched for the other price type (nothing is dropped, nobody is told)', async () => {
+    mockGrnRates = [{ price_type: 'one_time', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }];
+    await render('create');
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it('a supervisor of the same GRN still sees the block and sends the rates', async () => {
+    mockRole = 'supervisor';
+    const tree = await render('create');
+    expect(texts(tree)).toContain('RATES');
+    expect(mockUseStandardRate).toHaveBeenCalledWith(true);
+    expect(mockUseGrnRates.mock.calls[0][0]).toEqual(['gur', 'rice']);
+  });
+});
 
 describe('round 3', () => {
   const everyone = { item_id: 'gur', price_type: 'monthly', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'everyone', to: null, ctx: contextKey(CTX) };

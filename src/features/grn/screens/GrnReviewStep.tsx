@@ -75,6 +75,7 @@ import {
 } from '@/features/grn/rates/grnRateModel';
 import { rateRefusalText } from '@/features/grn/rates/rateErrors';
 import { useStandardRate } from '@/features/item-pricing/useStandardRate';
+import { canOpenScreen } from '@/config/roles';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -146,6 +147,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   // ---- Rates section ----
+  // Only administrators and supervisors set rates on a GRN (owner, 2026-10-16; the server refuses p_rates from
+  // staff from backend migration 90). For anyone else the step has no Rates block, nothing is read for it,
+  // no rate is checked and `p_rates` is left out of the save.
+  const role = useAppSelector((s) => s.auth?.userProfile?.role);
+  const canSetRates = canOpenScreen(role, 'itemPricing');
   const scrollRef = useRef<ScrollView>(null);
   const ratesY = useRef(0);
   const [sheetRow, setSheetRow] = useState<PricedRow | null>(null);
@@ -155,8 +161,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   );
   const ctxKey = contextKey(rateCtx);
   const rateRowList = useMemo(() => groupRows(items), [items]);
-  const stored = useGrnRates(rateRowList.map((r) => r.item_id), ctxKey);
-  const standard = useStandardRate();
+  const stored = useGrnRates(canSetRates ? rateRowList.map((r) => r.item_id) : [], ctxKey);
+  const standard = useStandardRate(canSetRates);
   const pricedRows = useMemo(
     () => priceRows(rateRowList, { rates: stored.rates, ctx: rateCtx, grnRates, changes: rateChanges }),
     [rateRowList, stored.rates, rateCtx, grnRates, rateChanges],
@@ -168,14 +174,14 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // The price type changed in the GRN's details: what was set for the other type goes (the server drops the
   // stored ones of the other type on its own), and the person is told once.
   useEffect(() => {
-    if (grnInvoiced) return;
+    if (!canSetRates || grnInvoiced) return;
     const next = dropOtherPriceType({ grnRates, changes: rateChanges }, rateCtx.priceType);
     if (!next.removed) return;
     dispatch(setGrnRates(next.grnRates));
     dispatch(setRateChanges(next.changes));
     setSnackbarMessage(tr('grn.review.ratesOtherTypeRemoved'));
     setSnackbarVisible(true);
-  }, [rateCtx.priceType, grnRates, rateChanges, grnInvoiced, dispatch]);
+  }, [rateCtx.priceType, grnRates, rateChanges, grnInvoiced, canSetRates, dispatch]);
   const scrollToRates = () => scrollRef.current?.scrollTo({ y: Math.max(0, ratesY.current - space.lg), animated: true });
   const saveRateEntry = (entry: SheetEntry) => {
     if (!sheetRow) return;
@@ -190,7 +196,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     dispatch(setRateChanges(next.changes));
   };
   /** `p_rates` as the form holds them now. */
-  const ratesToSave = () => buildRates({ grnRates, changes: rateChanges, ctx: rateCtx, lines: items, invoiced: grnInvoiced });
+  const ratesToSave = () => (canSetRates ? buildRates({ grnRates, changes: rateChanges, ctx: rateCtx, lines: items, invoiced: grnInvoiced }) : undefined);
   /** The server refused the rates: read them again and say why. */
   const showRateRefusal = (rateError: { code: string; data: unknown }, message: string) => {
     void stored.refresh();
@@ -276,13 +282,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     if (!isValid) return;
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
-    if (stored.status !== 'ready') {
+    if (canSetRates && stored.status !== 'ready') {
       showAlert(tr('grn.review.ratesNotLoadedTitle'), tr('grn.review.ratesNotLoadedMessage'));
       scrollToRates();
       return;
     }
     // An invoiced GRN is not checked: its invoice keeps its own figures and the server skips the check too.
-    if (!grnInvoiced && missingCount(pricedRows) > 0) {
+    if (canSetRates && !grnInvoiced && missingCount(pricedRows) > 0) {
       showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesMissingMessage'));
       scrollToRates();
       return;
@@ -798,26 +804,28 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             )}
           </View>
 
-          {/* Rates */}
-          <View onLayout={(e) => { ratesY.current = e.nativeEvent.layout.y; }} testID="grn-rates-section">
-            {renderSectionHeader(tr('grn.rates.title'), {
-              tag: !grnInvoiced && stored.status === 'ready' && missingCount(pricedRows) > 0 ? tr('grn.rates.withoutRate', { count: missingCount(pricedRows) }) : undefined,
-            })}
-            <View style={styles.card}>
-              <GrnRatesSection
-                rows={pricedRows}
-                status={stored.status}
-                offline={stored.offline}
-                oneTime={rateCtx.priceType === 'one_time'}
-                day={rateCtx.day}
-                invoiced={grnInvoiced}
-                onChange={setSheetRow}
-                onAdd={setSheetRow}
-                onUndo={undoRateEntry}
-                onRetry={() => { void stored.refresh(); }}
-              />
+          {/* Rates: administrators and supervisors only */}
+          {canSetRates ? (
+            <View onLayout={(e) => { ratesY.current = e.nativeEvent.layout.y; }} testID="grn-rates-section">
+              {renderSectionHeader(tr('grn.rates.title'), {
+                tag: !grnInvoiced && stored.status === 'ready' && missingCount(pricedRows) > 0 ? tr('grn.rates.withoutRate', { count: missingCount(pricedRows) }) : undefined,
+              })}
+              <View style={styles.card}>
+                <GrnRatesSection
+                  rows={pricedRows}
+                  status={stored.status}
+                  offline={stored.offline}
+                  oneTime={rateCtx.priceType === 'one_time'}
+                  day={rateCtx.day}
+                  invoiced={grnInvoiced}
+                  onChange={setSheetRow}
+                  onAdd={setSheetRow}
+                  onUndo={undoRateEntry}
+                  onRetry={() => { void stored.refresh(); }}
+                />
+              </View>
             </View>
-          </View>
+          ) : null}
 
           {/* Summary */}
           {renderSectionHeader(tr('grn.review.summary'))}
@@ -845,15 +853,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         />
       </View>
 
-      <GrnRateSheet
-        visible={sheetRow !== null}
-        onClose={() => setSheetRow(null)}
-        row={sheetRow}
-        input={preloadInput}
-        customerName={header.customer_name || tr('common.unknown')}
-        priceTypeText={rateCtx.priceType === 'one_time' ? tr('grn.header.oneTime') : tr('grn.header.monthly')}
-        onSave={saveRateEntry}
-      />
+      {canSetRates ? (
+        <GrnRateSheet
+          visible={sheetRow !== null}
+          onClose={() => setSheetRow(null)}
+          row={sheetRow}
+          input={preloadInput}
+          customerName={header.customer_name || tr('common.unknown')}
+          priceTypeText={rateCtx.priceType === 'one_time' ? tr('grn.header.oneTime') : tr('grn.header.monthly')}
+          onSave={saveRateEntry}
+        />
+      ) : null}
 
       {/* Confirm Submit Dialog */}
       <ConfirmDialog

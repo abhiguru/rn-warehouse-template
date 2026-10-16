@@ -276,10 +276,10 @@ describe('what each role is offered', () => {
   it.each([
     ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
     ['supervisor', true, ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
-    ['staff', true, ['itemPricing', 'sensors']],
+    ['staff', true, ['sensors']],
     ['customer', true, []],
     ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
-    ['staff', false, ['itemPricing']],
+    ['staff', false, []],
   ])('Settings feature rows for %s, sensors capability %s: %j', async (role, sensors, rows) => {
     signedInAs(role);
     await saveOperatorServer(FACILITY, false);

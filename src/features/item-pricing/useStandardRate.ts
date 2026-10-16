@@ -59,7 +59,8 @@ export interface UseStandardRateResult {
   serverNeedsUpdate?: boolean;
 }
 
-export function useStandardRate(): UseStandardRateResult {
+/** `enabled` false (the GRN form of a role that sets no rates) reads nothing; the result then stays 'loading'. */
+export function useStandardRate(enabled = true): UseStandardRateResult {
   const userId = useAppSelector(state => state.auth.userProfile?.id);
   const key = currentKey(userId);
   const stored = useSyncExternalStore(subscribe, () => snapshot);
@@ -100,9 +101,10 @@ export function useStandardRate(): UseStandardRateResult {
   }, [load]);
 
   useEffect(() => {
+    if (!enabled) return;
     refresh().catch(() => { /* the screen keeps what it has; status says error when it has nothing */ });
     // Once per mount and facility.
-  }, [key]);
+  }, [key, enabled]);
 
   return { rate: data?.rate ?? null, status: data ? 'ready' : failed ? 'error' : 'loading', refresh, key, serverNeedsUpdate: needsUpdate };
 }

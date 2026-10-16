@@ -69,7 +69,7 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
       'Supervisor',
       'Runs the warehouse: orders, GRNs, dispatches, invoices, prices, customers, items, and users who are not administrators. Cannot approve access requests.',
       'Staff',
-      'Orders, GRNs, dispatches, invoices and prices for every customer. Cannot manage customers, items or users.',
+      'Orders, GRNs, dispatches and invoices for every customer. Cannot manage customers, items, prices or users.',
       'Customer',
       'Places orders and sees stock, GRNs, dispatches, invoices and reports for the customers assigned to them.',
       'WHEN SOMETHING CHANGES',
@@ -86,7 +86,7 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
     (node) => typeof node.type !== 'string' && node.props.accessibilityState?.selected === true
   );
   expect(marked.map((node) => node.props.accessibilityLabel)).toEqual([
-    'Staff, Orders, GRNs, dispatches, invoices and prices for every customer. Cannot manage customers, items or users.',
+    'Staff, Orders, GRNs, dispatches and invoices for every customer. Cannot manage customers, items, prices or users.',
   ]);
 });
 

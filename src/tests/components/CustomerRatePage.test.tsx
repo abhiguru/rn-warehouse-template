@@ -87,10 +87,11 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     });
   });
 
-  it('staff get Change and Stop but not Correct, and no Changes button', async () => {
+  it('staff are not offered Item pricing; if the page were opened they would get no Change, Stop, Correct or Changes button', async () => {
     await open('staff');
     expect(byId(tree, 'rate-correct').length).toBe(0);
-    expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);
+    expect(byId(tree, 'rate-change').length).toBe(0);
+    expect(byId(tree, 'rate-stop').length).toBe(0);
     expect(byId(tree, 'customer-changes').length).toBe(0);
   });
 
@@ -116,7 +117,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
 
   it('keeps old rates of this customer folded and readable', async () => {
     const rows = [...F1.filter(r => r.item_id === 'onion'), { ...F1.find(r => r.customer_id === 'orchard-b')!, id: 'old', unit_price: 2.5, effective_from: '2025-01-01', effective_to: '2025-12-31' }];
-    await open('staff', data(rows));
+    await open('supervisor', data(rows));
     expect(texts(tree).join(' ')).toContain('Show 1 old rate');
   });
 });

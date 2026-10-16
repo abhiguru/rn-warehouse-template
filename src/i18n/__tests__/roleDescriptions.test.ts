@@ -11,10 +11,10 @@ describe('role descriptions', () => {
     expect(gu.users.roleDescription[role]).not.toBe(en.users.roleDescription[role]);
   });
 
-  it('says staff work with prices and cannot manage customers, items or users', () => {
+  it('says staff cannot manage customers, items, prices or users (Item pricing is for administrators and supervisors)', () => {
     const staff = en.users.roleDescription.staff;
-    expect(staff).toContain('prices');
-    expect(staff).toContain('Cannot manage customers, items or users.');
+    expect(staff).not.toContain('and prices');
+    expect(staff).toContain('Cannot manage customers, items, prices or users.');
     expect(staff).not.toContain('Cannot delete');
   });
 

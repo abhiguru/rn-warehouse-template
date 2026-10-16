@@ -12,7 +12,7 @@ export const users = {
   roleDescription: {
     admin: 'Everything, including access requests, users and administrators.',
     supervisor: 'Runs the warehouse: orders, GRNs, dispatches, invoices, prices, customers, items, and users who are not administrators. Cannot approve access requests.',
-    staff: 'Orders, GRNs, dispatches, invoices and prices for every customer. Cannot manage customers, items or users.',
+    staff: 'Orders, GRNs, dispatches and invoices for every customer. Cannot manage customers, items, prices or users.',
     customer: 'Places orders and sees stock, GRNs, dispatches, invoices and reports for the customers assigned to them.',
   },
   rolePicker: {

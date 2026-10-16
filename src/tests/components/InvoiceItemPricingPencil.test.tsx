@@ -293,11 +293,11 @@ it('opens one editor when the pencil is tapped twice while the price list is bei
   await act(async () => { tree.unmount(); });
 });
 
-// The server lets staff change prices (migration 45); a customer account never may.
+// Item pricing is for administrators and supervisors (owner, 2026-10-16; the server refuses staff from migration 90).
 it.each([
   ['admin', true],
   ['supervisor', true],
-  ['staff', true],
+  ['staff', false],
   ['customer', false],
 ])('pencil for %s: %s', async (role, offered) => {
   mockRole = role;

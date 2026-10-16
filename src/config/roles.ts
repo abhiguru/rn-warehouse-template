@@ -87,17 +87,16 @@ export function canOpenScreen(
   switch (screen) {
     case 'sensors':
       return isWarehouseUser(role) && (capabilities === undefined || capabilities.sensors);
-    case 'itemPricing':
-    case 'itemPricingWrite':
-      return isWarehouseUser(role);
     case 'operationsDashboard':
     case 'userManagement':
     case 'masterData':
+    case 'itemPricing':
+    case 'itemPricingWrite':
     case 'itemPriceHistory':
     case 'standardRate':
-      // The price history too: staff change prices, but the server gives the record of the
-      // changes to managers only (get_item_price_history, migration 48). Likewise the standard
-      // rate: staff read it, only managers set it (set_standard_rate, migration 85).
+      // Item pricing is for administrators and supervisors (owner, 2026-10-16); the server
+      // refuses staff from migration 90. The price history and the standard rate were
+      // manager-only before (get_item_price_history, migration 48; set_standard_rate, 85).
       return isManager(role);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';

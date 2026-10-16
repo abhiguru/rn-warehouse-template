@@ -293,7 +293,7 @@ describe('Add in the header and the setup strip', () => {
   const addButton = () => tree.root.findAll(n => n.props.testID === 'item-pricing-add' && typeof n.props.onPress === 'function');
   const pick = (id: string) => act(() => sheetProps.onSelect(ITEMS.find(i => i.id === id)));
 
-  it.each(['admin', 'supervisor', 'staff'])('a %s has the Add button, which opens the item picker over every item', async role => {
+  it.each(['admin', 'supervisor'])('a %s has the Add button, which opens the item picker over every item', async role => {
     await open(role);
     expect(addButton()).toHaveLength(1);
     expect(addButton()[0].props.accessibilityLabel).toBe('Add a weight band to an item');
@@ -303,6 +303,11 @@ describe('Add in the header and the setup strip', () => {
     expect(sheetProps.title).toBe('Choose an item');
     const offered = await sheetProps.searchFn('');
     expect(offered.map((i: { id: string }) => i.id)).toEqual(ITEMS.map(i => i.id));
+  });
+
+  it('staff, who are not offered Item pricing, get no Add button', async () => {
+    await open('staff');
+    expect(addButton()).toHaveLength(0);
   });
 
   // Review A7: the picker says what is going on instead of "Type part of the item name." over nothing.

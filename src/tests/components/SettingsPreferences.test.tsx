@@ -139,7 +139,7 @@ describe('Settings order', () => {
   it.each([
     ['admin', 7],
     ['supervisor', 6],
-    ['staff', 2],
+    ['staff', 1],
     ['customer', 0],
   ])('keeps the tool rows of the role (%s: %d)', async (role, count) => {
     signedInAs(role);
@@ -151,6 +151,16 @@ describe('Settings order', () => {
     );
     expect(shown.size).toBe(count);
     expect(byTestId('settings-section-tools').length > 0).toBe(count > 0);
+  });
+
+  it.each([
+    ['staff', false],
+    ['supervisor', true],
+    ['admin', true],
+  ])('offers Item pricing to %s: %s (administrators and supervisors only)', async (role, offered) => {
+    signedInAs(role);
+    await render();
+    expect(byTestId('settings-feature-itemPricing').length > 0).toBe(offered);
   });
 });
 
