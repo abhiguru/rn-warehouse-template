@@ -626,14 +626,12 @@ function GRNDetailScreen() {
   // Safe to destructure - we know data.grn exists (typed as RpcGrnDetails - snake_case)
   const { grn } = data;
 
-  // Enrich items with dispatch summaries (all snake_case)
+  // Enrich items with dispatch summaries (all snake_case). Until the history is read there is
+  // none, and the Items table counts received less in stock instead of showing 0 dispatched.
   const items: GRNItem[] = (grn.items || []).map((item) => ({
     ...item,
-    dispatch_summary: (item as any).dispatch_summary ||
-      itemDispatchSummaries[item.id] || {
-        total_dispatched: 0,
-        dispatch_count: 0,
-      },
+    dispatch_summary: (item as { dispatch_summary?: GRNItem['dispatch_summary'] }).dispatch_summary ||
+      itemDispatchSummaries[item.id],
   }));
 
   // Statistics from backend (already snake_case via RpcGrnStatistics)
