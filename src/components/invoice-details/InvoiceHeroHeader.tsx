@@ -6,7 +6,7 @@
  * tabular, right-aligned money.
  */
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -28,6 +28,9 @@ interface InvoiceHeroHeaderProps {
 
 const formatHeaderDate = (value: string) => (toDate(value) ? formatDate(value) : '');
 
+/** From this system font scale the header tightens its spacing to leave the table room. */
+export const COMPACT_FONT_SCALE = 1.5;
+
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -47,23 +50,32 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   subtitle: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  // One key-value row per fact: a long money figure gets the whole row width and stays on
+  // one line, instead of sharing a third of the width and breaking mid-number.
   factsRow: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
     marginTop: space.md,
     paddingTop: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: t.border.divider,
+    gap: space.xs,
+  },
+  fact: {
+    flexDirection: 'row' as const,
+    alignItems: 'baseline' as const,
+    justifyContent: 'space-between' as const,
     gap: space.md,
   },
-  fact: { flexGrow: 1, flexBasis: 90, gap: space.xxs },
-  factLabel: { ...typography.footnote, color: t.text.secondary },
+  factLabel: { ...typography.footnote, color: t.text.secondary, flexShrink: 0 },
   factValue: {
     ...typography.headline,
+    flexShrink: 1,
+    textAlign: 'right' as const,
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
   factValueTotal: { fontWeight: fontWeight.bold },
+  containerCompact: { paddingTop: space.sm, paddingBottom: space.sm },
+  factsRowCompact: { marginTop: space.sm, paddingTop: space.sm, gap: space.xxs },
 });
 
 // ============================================================================
@@ -78,6 +90,7 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   customer_name,
 }) => {
   const styles = useThemedStyles(makeStyles);
+  const compact = useWindowDimensions().fontScale >= COMPACT_FONT_SCALE;
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeItems = Number(total_items) || 0;
@@ -109,18 +122,23 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compact && styles.containerCompact]}>
       <View accessible accessibilityRole="header" accessibilityLabel={`${t('invoice.details.titleNumber', { number: formatIdentifier(invoice_number) })}${subtitle ? `, ${subtitle}` : ''}`}>
         <Text style={styles.docType}>{t('common.invoice')}</Text>
-        <Text style={styles.number}>{invoice_number}</Text>
-        {subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text> : null}
+        <Text style={styles.number} maxFontSizeMultiplier={compact ? COMPACT_FONT_SCALE : undefined}>{invoice_number}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
 
-      <View style={styles.factsRow}>
+      <View style={[styles.factsRow, compact && styles.factsRowCompact]}>
         {facts.map(fact => (
           <View key={fact.key} style={styles.fact} accessible accessibilityLabel={fact.a11y}>
             <Text style={styles.factLabel}>{fact.label}</Text>
-            <Text style={[styles.factValue, fact.emphasized && styles.factValueTotal]}>{fact.value}</Text>
+            <Text
+              style={[styles.factValue, fact.emphasized && styles.factValueTotal]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >{fact.value}</Text>
           </View>
         ))}
       </View>

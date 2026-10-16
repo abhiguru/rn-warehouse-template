@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — Tables: columns that fit their numbers, a card that scrolls into view (2026-10-16)
+
+App only. Fixes from a phone run with stretch data on Dev (30-character names, 59-character marks,
+quantities up to 9,87,654, an invoice above ₹1 billion) and two visual reviews of its screenshots.
+- Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
+  sized to its widest value or total, so numbers line up from row to row and never split
+  ("10,82,34" / "8"). When huge numbers would leave the first column under 30 % of the row, the
+  middle columns move under the first, as at large text; ordinary data keeps its columns.
+- Dispatch Items: the GRN/Received column is sized to the GRN/received text, and a long mark is
+  cut with "…" at the normal size instead of shrinking until unreadable.
+- Invoice Line items: the tax of a dispatch line sits under its period, so the dispatch numbers
+  keep their width; the amount column is the same width on every row.
+- The card's end scrolls into view (it was cut off on Android): the card is drawn in parts and the
+  space round it is padding. Row dividers are 1 dp. Numbers keep their units at line breaks.
+  The details of an open row start in line with the chevron. In light mode the open panel has its
+  own fill (#F0F3F6). The chevron sits on the first line at any text size. The GRN page's
+  Dispatches column shows from 600 dp. The Invoices tab's note is inside its card.
+- Invoice form step 2: a fade at the scroll edge of the dispatch table, the mark chip cut with
+  "…" inside its column, a straight accent bar on an open group, chips outlined on the open fill,
+  the chevron and Qty on the first line, "Applies to this line" for one line.
+- Detail page headers: the figures stay on one line (the invoice page lists them one per row),
+  the subtitles wrap instead of being cut, and the headers are tighter from font scale 1.5. The
+  doubled bottom inset above the Android navigation bar is gone (iOS keeps its inset). The
+  selected tab scrolls into view, so "Invoices" is no longer cut on the GRN page.
+
 ## Unreleased — Tables: clear edges in dark mode, a cleaner open row (2026-10-16)
 
 App only. Every table (the Dispatch, GRN and invoice pages' tabs, the invoice form's items table,

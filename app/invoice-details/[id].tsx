@@ -6,10 +6,10 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
-import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   getInvoiceDetails,
@@ -419,7 +419,7 @@ function InvoiceDetailScreen() {
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
         {/* Hero header */}
         <InvoiceHeroHeader
           invoice_number={invoice.invoice_number || 0}

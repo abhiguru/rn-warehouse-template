@@ -29,7 +29,8 @@ function render(element: React.ReactElement, brand: string, mode: Mode) {
 function texts(tree: ReactTestRenderer): string[] {
   return tree.root
     .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => [].concat(node.props.children).join(''));
+    // A no-break space keeps a number with its unit on screen; read it as a space here.
+    .map(node => [].concat(node.props.children).join('').replace(/\u00A0/g, ' '));
 }
 
 describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {

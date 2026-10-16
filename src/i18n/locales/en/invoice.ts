@@ -145,7 +145,7 @@ export const invoice = {
     dispatchedQty: 'Dispatched {{qty}}',
     groupPricing: 'Group pricing',
     editPricingA11y: 'Edit pricing for {{item}}',
-    appliesToAll: { one: 'Applies to all {{count}} line', other: 'Applies to all {{count}} lines' },
+    appliesToAll: { one: 'Applies to this line', other: 'Applies to all {{count}} lines' },
     // Placeholder of a group rate field whose lines do not all have the same rate.
     mixed: 'Mixed',
     chargeForA11y: 'Storage charge for {{item}}',

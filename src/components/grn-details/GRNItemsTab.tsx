@@ -24,7 +24,19 @@ import { StatusTag } from '@/components/ui';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr } from '@/i18n';
-import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
+import {
+  HeaderCell,
+  ONE_LINE,
+  RowChevron,
+  crowded,
+  makeTableStyles,
+  nb,
+  numberColumnWidth,
+  rowWidth,
+  useStackedWhen,
+  useTableLayout,
+  type TableLayout,
+} from '@/components/common/DetailTable';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -157,9 +169,11 @@ interface ItemRowProps {
   onToggle: (id: string) => void;
   onViewDispatches?: (item: GRNItem) => void;
   table: TableLayout;
+  /** The width of both number columns, the same for every row. */
+  width: number;
 }
 
-const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDispatches, table }: ItemRowProps) {
+const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDispatches, table, width }: ItemRowProps) {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -169,7 +183,6 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
   // does not show, gets a tag (a long "Fully dispatched" tag was cut at font scale 1.3).
   const tag = status && status.status === 'critical' ? status : null;
   const dispatched = dispatchedOf(item);
-  const width = table.numberWidth(NUMBER_WIDTH);
   const label = [
     tr('grn.detailsTable.itemRowLabel', {
       item: item.item_name,
@@ -183,7 +196,7 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
     .join(', ');
 
   return (
-    <View style={expanded ? styles.group : undefined}>
+    <View style={[styles.cardSides, expanded && styles.group]}>
       <Pressable
         onPress={() => onToggle(item.id)}
         style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
@@ -196,12 +209,12 @@ const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDi
         <RowChevron expandable expanded={expanded} />
         <View style={styles.grow}>
           <Text style={styles.primary}>{item.item_name}</Text>
-          {details !== null ? <Text style={styles.secondary}>{details}</Text> : null}
-          {table.stacked ? <Text style={styles.secondary}>{tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) })}</Text> : null}
+          {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
+          {table.stacked ? <Text style={styles.secondary}>{nb(tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) }))}</Text> : null}
           {tag ? <StatusTag status={tag.status} label={tag.label} icon={tag.icon} style={own.tag} /> : null}
         </View>
-        {!table.stacked ? <Text style={[styles.number, { width }]}>{formatNumber(item.qty)}</Text> : null}
-        <Text style={[styles.number, { width }]}>{formatNumber(item.stock)}</Text>
+        {!table.stacked ? <Text style={[styles.number, { width }]} {...ONE_LINE}>{formatNumber(item.qty)}</Text> : null}
+        <Text style={[styles.number, { width }]} {...ONE_LINE}>{formatNumber(item.stock)}</Text>
       </Pressable>
       {expanded ? (
         <View style={styles.details} testID={`grn-item-details-${item.id}`}>
@@ -251,7 +264,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
-  const table = useTableLayout();
+  const screen = useTableLayout();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const totals = useMemo(
     () => ({
@@ -260,6 +273,14 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     }),
     [items]
   );
+  // Both number columns as wide as the widest quantity or total, so none splits.
+  const width = numberColumnWidth(
+    screen,
+    NUMBER_WIDTH,
+    items.flatMap((item) => [formatNumber(item.qty), formatNumber(item.stock)]),
+    [formatNumber(totals.received), formatNumber(totals.stock)]
+  );
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), [width, width]));
 
   const toggle = useCallback((id: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -293,20 +314,21 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     );
   }
 
-  const width = table.numberWidth(NUMBER_WIDTH);
   const lineCount = tr('grn.detailsTable.lineCount', { count: items.length });
 
   const header = (
-    <View style={styles.headerRow}>
-      <RowChevron expandable={false} expanded={false} />
-      <HeaderCell style={styles.grow}>{tr('grn.detailsTable.item')}</HeaderCell>
-      {!table.stacked ? <HeaderCell numeric style={{ width }}>{tr('grn.stock.received')}</HeaderCell> : null}
-      <HeaderCell numeric style={{ width }}>{tr('grn.stock.inStock')}</HeaderCell>
+    <View style={styles.cardTop}>
+      <View style={styles.headerRow}>
+        <RowChevron expandable={false} expanded={false} />
+        <HeaderCell style={styles.grow}>{tr('grn.detailsTable.item')}</HeaderCell>
+        {!table.stacked ? <HeaderCell numeric style={{ width }}>{tr('grn.stock.received')}</HeaderCell> : null}
+        <HeaderCell numeric style={{ width }}>{tr('grn.stock.inStock')}</HeaderCell>
+      </View>
     </View>
   );
 
   const footer = (
-    <View>
+    <View style={styles.cardBottom}>
       <View
         style={styles.footerRow}
         accessible
@@ -321,11 +343,11 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
         <View style={styles.grow}>
           <Text style={styles.primaryStrong}>{tr('grn.detailsTable.total')}</Text>
           <Text style={styles.secondary}>
-            {table.stacked ? `${lineCount} · ${tr('grn.stock.receivedCount', { quantity: formatNumber(totals.received) })}` : lineCount}
+            {nb(table.stacked ? `${lineCount} · ${tr('grn.stock.receivedCount', { quantity: formatNumber(totals.received) })}` : lineCount)}
           </Text>
         </View>
-        {!table.stacked ? <Text style={[styles.numberStrong, { width }]}>{formatNumber(totals.received)}</Text> : null}
-        <Text style={[styles.numberStrong, { width }]}>{formatNumber(totals.stock)}</Text>
+        {!table.stacked ? <Text style={[styles.numberStrong, { width }]} {...ONE_LINE}>{formatNumber(totals.received)}</Text> : null}
+        <Text style={[styles.numberStrong, { width }]} {...ONE_LINE}>{formatNumber(totals.stock)}</Text>
       </View>
       {loading ? (
         <View style={own.loadingFooter} accessibilityRole="progressbar" accessibilityLabel={tr('grn.itemsTab.loadingLabel')}>
@@ -339,12 +361,12 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   return (
     <FlatList
       style={styles.list}
-      contentContainerStyle={styles.card}
+      contentContainerStyle={styles.content}
       data={items}
       keyExtractor={(item) => item.id}
       extraData={expanded}
       renderItem={({ item }) => (
-        <ItemRow item={item} expanded={expanded.has(item.id)} onToggle={toggle} onViewDispatches={onViewItemDispatches} table={table} />
+        <ItemRow item={item} expanded={expanded.has(item.id)} onToggle={toggle} onViewDispatches={onViewItemDispatches} table={table} width={width} />
       )}
       ListHeaderComponent={header}
       ListFooterComponent={footer}

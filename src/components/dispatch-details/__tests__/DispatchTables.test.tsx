@@ -58,7 +58,8 @@ afterEach(() => {
 });
 
 const textOf = (node: ReactTestInstance): string =>
-  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('')).join('|');
+  // A no-break space keeps a number with its unit on screen; read it as a space here.
+  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('').replace(/\u00A0/g, ' ')).join('|');
 const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type !== 'string')[0];
 const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).length > 0;
 const press = (id: string) => act(() => byTestId(id).props.onPress());
@@ -140,11 +141,13 @@ describe('Items table', () => {
     expect(nameText.props.numberOfLines).toBeUndefined();
     const bagsText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === '12,500')[0];
     expect(StyleSheet.flatten(bagsText.props.style).width).toBe(Math.ceil(76 * 1.3));
-    expect(bagsText.props.numberOfLines).toBeUndefined();
+    // A number stays on one line: its column is sized to fit it.
+    expect(bagsText.props.numberOfLines).toBe(1);
   });
 
   it('sizes the GRN/Received column to its longest text, so "DV0010/110" stays on one line', () => {
     mockFontScale = 1.3;
+    mockWidth = 411;
     const longLot = item({ id: 'l', grn_no: 'DV0010', original_quantity: 110, package_mark: null });
     render(<DispatchItemsTab items={[rice, longLot]} />);
 
@@ -158,22 +161,41 @@ describe('Items table', () => {
     let column = cell.parent!;
     while (typeof column.type !== 'string') column = column.parent!;
     expect(StyleSheet.flatten(column.props.style).width).toBe(Math.ceil(Math.max(10 * 15 * 0.62, 12 * 13 * 0.6) * 1.3) + 4);
+    // A mark is cut with "…" at the normal size, never shrunk (Android ignores minimumFontScale).
     const mark = byTestId('dispatch-item-grn-r').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'PM')[0];
     expect(mark.props.numberOfLines).toBe(1);
+    expect(mark.props.ellipsizeMode).toBe('tail');
+    expect(mark.props.adjustsFontSizeToFit).toBeUndefined();
   });
 
-  it('widens the column for a longer mark or the footer, and never past half the row', () => {
-    const table = { scale: 1, width: 411 };
-    const base = sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table);
+  it('sizes the column to the GRN/received text, the footer and the heading, not to the mark', () => {
+    const table = { scale: 1 };
+    const base = sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table);
     expect(base).toBe(Math.ceil(7 * 15 * 0.62) + 4);
-    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: 'BL/REPEAT-LOT-0001' }], table))
-      .toBe(Math.ceil(18 * 13 * 0.6) + 4);
-    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table, ['12 GRNs'])).toBe(base);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table, ['12 GRNs'])).toBe(base);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table, ['123 GRNs'])).toBe(Math.ceil(8 * 15 * 0.62) + 4);
     // The heading counts too: "GRN/Received" is wider than "Z0004/1".
-    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1, package_mark: null }], table, [], 'GRN/Received'))
-      .toBe(Math.ceil(12 * 13 * 0.6) + 4);
-    // At a large scale the column stops at half the row (411 − 32 margins − 2 outline − 24 = 353; half 176).
-    expect(sourceColumnWidth([{ grn_no: 'DV0010', original_quantity: 12500, package_mark: null }], { scale: 3, width: 411 })).toBe(176);
+    expect(sourceColumnWidth([{ grn_no: 'Z0004', original_quantity: 1 }], table, [], 'GRN/Received')).toBe(Math.ceil(12 * 13 * 0.6) + 4);
+  });
+
+  it('moves the GRN cell under the item when a long GRN/received would squeeze the item names, and cuts a long mark', () => {
+    mockFontScale = 1.3;
+    mockWidth = 411;
+    const mark = 'BL/STRETCH-LOT-0001/LONG-PACKAGE-MARK-FOR-WRAP-TEST/ABCDEFG';
+    render(<DispatchItemsTab items={[item({ id: 'b', grn_no: 'WMWM8881', original_quantity: 987654, dispatch_quantity: 500000, package_mark: mark })]} />);
+
+    // "WMWM8881/9,87,654" needs about 210 dp: the item column would keep under 30 % of the row.
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
+    expect(textOf(byTestId('dispatch-item-row-b'))).toBe(`Basmati Rice|50 kg each|WMWM8881/9,87,654|${mark}|5,00,000`);
+    const markText = byTestId('dispatch-item-row-b').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === mark)[0];
+    expect(markText.props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'tail' });
+  });
+
+  it('keeps three columns for an ordinary lot at font scale 1.3 on a 411 dp phone', () => {
+    mockFontScale = 1.3;
+    mockWidth = 411;
+    render(<DispatchItemsTab items={[item({ id: 'z', grn_no: 'Z0004', original_quantity: 100 })]} />);
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|GRN\/Received\|Bags dispatched\|/);
   });
 
   it('keeps the empty and loading states', () => {
@@ -220,9 +242,19 @@ describe('GRNs table', () => {
       const chevronOf = (id: string) => byTestId(id).findAll((n) => (n.type as unknown) === 'Icon')[0].props;
       const flat = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style) as Record<string, unknown>;
 
-      // The card is the list's content container.
-      const card = tree.root.findAll((n) => n.props.contentContainerStyle !== undefined)[0];
-      expect(StyleSheet.flatten(card.props.contentContainerStyle)).toMatchObject({ borderColor: t.table.outline, borderWidth: TABLE_OUTLINE });
+      // The card is drawn in parts, so its end scrolls into view: the list content has padding only
+      // (Android leaves a content container's margins out of the scroll range).
+      const list = tree.root.findAll((n) => n.props.contentContainerStyle !== undefined)[0];
+      const content = StyleSheet.flatten(list.props.contentContainerStyle) as Record<string, unknown>;
+      expect(content).toMatchObject({ paddingTop: expect.any(Number), paddingBottom: expect.any(Number) });
+      expect(content.marginTop ?? content.marginBottom ?? content.borderWidth).toBeUndefined();
+      const outlined = (n: ReactTestInstance) => typeof n.type === 'string' && flat(n)?.borderColor === t.table.outline;
+      const top = tree.root.findAll((n) => outlined(n) && flat(n).borderTopLeftRadius !== undefined)[0];
+      expect(flat(top)).toMatchObject({ borderWidth: TABLE_OUTLINE, borderBottomWidth: 0 });
+      const bottom = tree.root.findAll((n) => outlined(n) && flat(n).borderBottomLeftRadius !== undefined)[0];
+      expect(flat(bottom)).toMatchObject({ borderWidth: TABLE_OUTLINE, borderTopWidth: 0 });
+      // A closed row carries the card's sides and no panel.
+      expect(panelOf('dispatch-grn-row-grn-159')).toMatchObject({ borderLeftWidth: TABLE_OUTLINE, borderRightWidth: TABLE_OUTLINE, borderColor: t.table.outline });
       expect(panelOf('dispatch-grn-row-grn-159').backgroundColor).toBeUndefined();
       expect(chevronOf('dispatch-grn-row-grn-159')).toMatchObject({ name: 'chevron-right', color: t.icon.secondary });
 

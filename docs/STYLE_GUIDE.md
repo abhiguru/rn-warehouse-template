@@ -252,7 +252,7 @@ heading row is lighter than its rows rather than darker. `table.accent` is the b
 | `table.headerText` | `#556B82` | `#A9B4BE` | `#556B82` | `#A9B4BE` |
 | `table.divider` | `#E5E5E5` | `#3C4957` | `#E5E5E5` | `#3C4957` |
 | `table.separator` | `#D9D9D9` | `#4A5868` | `#D9D9D9` | `#4A5868` |
-| `table.insetFill` | `#F5F6F7` | `#242E38` | `#F5F6F7` | `#242E38` |
+| `table.insetFill` | `#F0F3F6` | `#242E38` | `#F0F3F6` | `#242E38` |
 | `table.accent` | `#A85000` | `#FFA733` | `#2E3192` | `#9DA0F0` |
 
 #### status
@@ -536,7 +536,7 @@ Fiori uses five levels. Spread `t.shadow[n]`, which carries the iOS shadow and t
 Rules:
 
 - A card on a card has no shadow. Separate with a divider instead.
-- In dark mode, depth also comes from surface colour: `surface.card` is lighter than `background.base`. A table card also gets a 1 dp `table.outline`, because the dark page shows neither the shadow nor the small step in colour clearly.
+- In dark mode, depth also comes from surface colour: `surface.card` is lighter than `background.base`. A table card also gets a 1 dp `table.outline`, because the dark page shows neither the shadow nor the small step in colour clearly. An object-page table on a FlatList is drawn in parts (see §13.7), so it has the outline and no shadow.
 - Never draw a shadow under text or icons.
 
 ---
@@ -872,17 +872,21 @@ A pin is the exception to the one-tap rule: it changes nothing but the person's 
 
 The three `FioriDataTable` copies follow one spec and are merged during migration.
 
-- Card: `surface.card`, `radius.card`, `shadow[2]` and a 1 dp `table.outline`.
+- Card: `surface.card`, `radius.card`, `shadow[2]` and a 1 dp `table.outline`. A table on a FlatList is drawn in parts (`cardTop` round the header row, `cardSides` on every row, `cardBottom` round the totals) with no shadow, and the space round it is padding on the list content (`content`), never margins: Android leaves a content container's margins out of the scroll range, which cut off the card's end.
 - Header row: `footnote` weight 600 in `table.headerText` on `table.headerFill`, bottom border 1 dp `table.separator`. In dark mode the fill is lighter than the rows, so the heading row never reads as a gap in the card. Sortable columns show a sort icon and announce the order.
-- Body rows: `body` or `subhead`, `text.primary`, min height 44 (36 for read-only compact tables), dividers `table.divider`. Alternate shading is not used.
+- Body rows: `body` or `subhead`, `text.primary`, min height 44 (36 for read-only compact tables), a one-line row centred in that height, dividers 1 dp `table.divider` (a hairline drew faint, and at some text sizes not at all). Alternate shading is not used.
 - Numbers are right-aligned with tabular figures. Text is left-aligned. Status uses a status tag.
 - Totals row: weight 600, top border 1 px `table.separator`.
-- An open row and its details are one panel: `table.insetFill`, a 3 dp `table.accent` bar at the start, a `table.separator` line under it, and the chevron in `table.accent`. The details use the full width of the panel (16 dp in from the bar). A table inside the details is a small card of its own: rows on `surface.card`, `radius.field`, a 1 dp `table.outline`, its heading row on `table.headerFill`. The invoice form's open group (its header card and its table card) carries the same bar and fill.
+- An open row and its details are one panel: `table.insetFill`, a 3 dp `table.accent` bar at the start, a `table.separator` line under it, and the chevron in `table.accent`. The details use the full width of the panel, starting in line with the chevron (the bar takes the card's left edge). A table inside the details is a small card of its own: rows on `surface.card`, `radius.field`, a 1 dp `table.outline`, its heading row on `table.headerFill`. The invoice form's open group (its header card and its table card) carries the same bar and fill.
 - Rate columns may carry the unit in the header ("Charge (₹)") and show plain grouped numbers in the cells.
 - On phones, tables with more than three columns scroll horizontally with the first column pinned, or turn into object cells. Show a fade at the scroll edge.
 - Editable cells follow the editable-cell rule in section 13.2.
 - Empty cells show "—".
-- Object-page tables (`common/DetailTable.tsx`: the Dispatch and GRN pages' Items, GRNs, Dispatches and Invoices tabs, and the invoice page's Items tab) sit in one card, one row per record. Details of a row (received quantity, rack, the lines of a group) open under it on a tap, with a chevron at the start of the row; a link inside a row is a separate target of at least `touchTarget` and is also offered to screen readers as an action on the row. Number columns widen with the text size; from font scale 1.5 the middle columns move under the first. A date goes under its number on phones and gets its own column from 600 dp.
+- Object-page tables (`common/DetailTable.tsx`: the Dispatch and GRN pages' Items, GRNs, Dispatches and Invoices tabs, and the invoice page's Items tab) sit in one card, one row per record. Details of a row (received quantity, rack, the lines of a group) open under it on a tap, with a chevron at the start of the row; a link inside a row is a separate target of at least `touchTarget` and is also offered to screen readers as an action on the row. A date goes under its number on phones and gets its own column from 600 dp. The GRN page's Dispatches column also shows only from 600 dp (its heading is wider than its counts); on a phone the count goes under the item.
+- Column widths in object-page tables: every number column has one width for the whole table, the width it has at font scale 1 grown with the text or, if wider, its widest value or total (`numberColumnWidth`), so numbers line up from row to row and never split. Numbers stay on one line. From font scale 1.5, or when the number columns would leave the first column less than 30 % of the row (`crowded`; huge amounts or six-digit quantities), the middle columns move under the first; ordinary data keeps its columns. A table inside an open row follows the same rule on its own row.
+- A cell sized to its text may shrink a little to stay on one line (`ONE_LINE`). Text the column is not sized for, such as a package mark under GRN/Received, is cut with "…" at the normal size (`CUT_LINE`) and shown in full elsewhere (the GRNs tab, the screen-reader label): Android ignores `minimumFontScale`, so shrinking it made it unreadable.
+- A number keeps its unit and a label keeps its amount at a line break ("50 kg each", "21 months", "Tax 18%"): `nb()` puts no-break spaces there and leaves the breaks around "·".
+- A note about a table's figures sits inside its card, under the totals.
 - Pinning the first column and the scroll-edge fade are required for new tables with more than three columns; the existing invoice and dispatch tables scroll as a whole until they are rebuilt.
 
 ### 13.8 Headers and navigation

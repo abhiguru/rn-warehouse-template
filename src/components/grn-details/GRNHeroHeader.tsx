@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, useWindowDimensions } from 'react-native';
 import { FioriSegmentedProgress } from '@/components/FioriLinearProgress';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
@@ -29,6 +29,9 @@ interface GRNHeroHeaderProps {
   customer_name?: string;
 }
 
+
+/** From this system font scale the header tightens its spacing to leave the table room. */
+export const COMPACT_FONT_SCALE = 1.5;
 
 // ============================================================================
 // STYLES
@@ -66,6 +69,9 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   progressSection: { marginTop: space.md },
+  containerCompact: { paddingTop: space.sm, paddingBottom: space.sm },
+  factsCompact: { marginTop: space.sm },
+  progressCompact: { marginTop: space.xs },
   legendRow: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
@@ -101,6 +107,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const compact = useWindowDimensions().fontScale >= COMPACT_FONT_SCALE;
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeQty = Number(total_qty) || 0;
@@ -127,7 +134,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compact && styles.containerCompact]}>
       <View style={styles.titleRow}>
         <View
           style={styles.titleBlock}
@@ -136,11 +143,9 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           accessibilityLabel={[tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate].filter(Boolean).join(', ')}
         >
           <Text style={styles.docType}>{tr('common.grn')}</Text>
-          <Text style={styles.number}>{gr_no}</Text>
+          <Text style={styles.number} maxFontSizeMultiplier={compact ? COMPACT_FONT_SCALE : undefined}>{gr_no}</Text>
           {meta ? (
-            <Text style={styles.meta} numberOfLines={2}>
-              {meta}
-            </Text>
+            <Text style={styles.meta}>{meta}</Text>
           ) : null}
         </View>
 
@@ -155,7 +160,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
       </View>
 
       {/* Key facts */}
-      <View style={styles.facts}>
+      <View style={[styles.facts, compact && styles.factsCompact]}>
         {facts.map(fact => (
           <View
             key={fact.key}
@@ -166,7 +171,9 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
             <Text style={styles.factLabel} numberOfLines={1}>
               {fact.label}
             </Text>
-            <Text style={styles.factValue}>{formatNumber(fact.value)}</Text>
+            <Text style={styles.factValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {formatNumber(fact.value)}
+            </Text>
           </View>
         ))}
       </View>
@@ -174,7 +181,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
       {/* Stock and dispatch split */}
       {safeQty > 0 && (
         <View
-          style={styles.progressSection}
+          style={[styles.progressSection, compact && styles.progressCompact]}
           accessible
           accessibilityLabel={tr('grn.stock.splitLabel', { stock: stockPercentage, dispatched: dispatchPercentage })}
         >

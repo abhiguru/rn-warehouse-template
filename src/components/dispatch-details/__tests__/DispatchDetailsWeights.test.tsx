@@ -36,7 +36,7 @@ const item = (weight: Weight, over: { original_quantity?: number; package_mark?:
 });
 
 const texts = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
+  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join('').replace(/\u00A0/g, ' '));
 const icons = (tree: ReactTestRenderer): string[] =>
   tree.root.findAll((node) => (node.type as unknown) === 'Icon').map((node) => node.props.name as string);
 /** Children of host Views that are bare text or numbers: what React Native throws on. */

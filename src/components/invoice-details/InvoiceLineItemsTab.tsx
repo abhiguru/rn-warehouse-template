@@ -26,7 +26,20 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
+import {
+  HeaderCell,
+  ONE_LINE,
+  RowChevron,
+  crowded,
+  makeTableStyles,
+  nb,
+  nestedRowWidth,
+  numberColumnWidth,
+  rowWidth,
+  useStackedWhen,
+  useTableLayout,
+  type TableLayout,
+} from '@/components/common/DetailTable';
 
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
@@ -191,25 +204,11 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
   return Array.from(groupMap.values());
 };
 
-/** Bags column width at font scale 1. */
+/** Bags and Amount column widths at font scale 1; both grow with their widest value. */
 const BAGS_WIDTH = 60;
+const AMOUNT_WIDTH = 88;
 
 const makeStyles = (t: ThemeTokens) => ({
-  amount: {
-    flexShrink: 0,
-    minWidth: 88,
-  },
-  amountCell: {
-    flexShrink: 0,
-    minWidth: 88,
-    alignItems: 'flex-end' as const,
-  },
-  smallRight: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    textAlign: 'right' as const,
-    fontVariant: ['tabular-nums' as const],
-  },
   /** Under the totals row, inside the card: the note and the GRN link. */
   cardEnd: {
     paddingHorizontal: space.md,
@@ -285,18 +284,31 @@ interface GroupRowProps {
   onToggle: (id: string) => void;
   onViewDispatch?: (dispatch_id: string) => void;
   table: TableLayout;
+  widths: Widths;
 }
 
-const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table }: GroupRowProps) {
+/**
+ * Column widths for the whole table, so every row lines up. `nestedStacked`: the bags go under
+ * the dispatch in the lines under a lot (big amounts would squeeze the dispatch numbers).
+ */
+interface Widths {
+  bags: number;
+  amount: number;
+  lineBags: number;
+  lineAmount: number;
+  nestedStacked: boolean;
+}
+
+const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table, widths }: GroupRowProps) {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const details = lotLine(group);
   const rates = rateLine(group);
-  const bagsWidth = table.numberWidth(BAGS_WIDTH);
+  const { bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked } = widths;
   const lines = group.dispatch_items;
 
   return (
-    <View style={expanded ? styles.group : undefined}>
+    <View style={[styles.cardSides, expanded && styles.group]}>
       <Pressable
         onPress={() => onToggle(group.grn_item_id)}
         style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
@@ -314,11 +326,13 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
         <RowChevron expandable expanded={expanded} />
         <View style={styles.grow}>
           <Text style={styles.primary}>{group.item_name}</Text>
-          {details !== null ? <Text style={styles.secondary}>{details}</Text> : null}
-          <Text style={styles.secondary}>{table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates}</Text>
+          {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
+          <Text style={styles.secondary}>{nb(table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates)}</Text>
         </View>
-        {!table.stacked ? <Text style={[styles.number, { width: bagsWidth }]}>{formatNumber(group.total_dispatch_qty)}</Text> : null}
-        <Text style={[styles.number, own.amount]}>{formatInvoiceAmount(group.total_amount)}</Text>
+        {!table.stacked ? (
+          <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(group.total_dispatch_qty)}</Text>
+        ) : null}
+        <Text style={[styles.number, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text>
       </Pressable>
 
       {expanded ? (
@@ -326,8 +340,8 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
           <View style={styles.nested}>
             <View style={styles.nestedHeader}>
               <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.dispatch')}</HeaderCell>
-              {!table.stacked ? <HeaderCell numeric style={{ width: bagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
-              <HeaderCell numeric style={own.amount}>{tr('invoice.detailsTable.amount')}</HeaderCell>
+              {!nestedStacked ? <HeaderCell numeric style={{ width: lineBagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
+              <HeaderCell numeric style={{ width: lineAmountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
             </View>
             {lines.map((line, index) => {
               const id = line.dispatch_id;
@@ -354,19 +368,20 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
                   testID={`invoice-line-${line.id}`}
                 >
                   <View style={styles.grow}>
-                    <Text style={canOpen ? styles.link : styles.primary}>{line.dispatch_no || '—'}</Text>
+                    <Text style={canOpen ? styles.link : styles.primary} {...ONE_LINE}>{line.dispatch_no || '—'}</Text>
                     <Text style={styles.secondary}>{dateText(line.dispatch_date)}</Text>
                     <Text style={styles.secondary}>
-                      {table.stacked ? `${periodText(line)} · ${bags(line.dispatch_qty)}` : periodText(line)}
+                      {nb(nestedStacked ? `${periodText(line)} · ${bags(line.dispatch_qty)}` : periodText(line))}
                     </Text>
-                  </View>
-                  {!table.stacked ? <Text style={[styles.number, { width: bagsWidth }]}>{formatNumber(line.dispatch_qty)}</Text> : null}
-                  <View style={own.amountCell}>
-                    <Text style={styles.number}>{formatInvoiceAmount(lineTotal)}</Text>
+                    {/* Under the period, not under the amount: a long tax line squeezed the dispatch column. */}
                     {line.tax > 0 ? (
-                      <Text style={own.smallRight}>{tr('invoice.detailsTable.inclTax', { amount: formatInvoiceAmount(line.tax) })}</Text>
+                      <Text style={styles.secondary}>{tr('invoice.detailsTable.inclTax', { amount: formatInvoiceAmount(line.tax) })}</Text>
                     ) : null}
                   </View>
+                  {!nestedStacked ? (
+                    <Text style={[styles.number, { width: lineBagsWidth }]} {...ONE_LINE}>{formatNumber(line.dispatch_qty)}</Text>
+                  ) : null}
+                  <Text style={[styles.number, { width: lineAmountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text>
                 </Pressable>
               );
             })}
@@ -392,9 +407,28 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
-  const table = useTableLayout();
+  const screen = useTableLayout();
 
   const groups = useMemo(() => groupItemsByGrnItem(items), [items]);
+  const totalBags = groups.reduce((sum, group) => sum + group.total_dispatch_qty, 0);
+  const totalAmount = roundMoney(groups.reduce((sum, group) => sum + group.total_amount, 0));
+  // Each column as wide as its widest value or total; amounts that leave the item column under
+  // 30 % of the row move the bags under the item (owner, 2026-10-16), as large text does.
+  const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.total_dispatch_qty)), [formatNumber(totalBags)]);
+  const amountWidth = numberColumnWidth(screen, AMOUNT_WIDTH, groups.map((group) => formatInvoiceAmount(group.total_amount)), [formatInvoiceAmount(totalAmount)]);
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), [bagsWidth, amountWidth]));
+  const dispatchLines = groups.flatMap((group) => group.dispatch_items);
+  const lineBagsWidth = numberColumnWidth(screen, BAGS_WIDTH, dispatchLines.map((line) => formatNumber(line.dispatch_qty)));
+  const lineAmountWidth = numberColumnWidth(
+    screen,
+    AMOUNT_WIDTH,
+    dispatchLines.map((line) => formatInvoiceAmount(roundMoney(line.line_item_amount + line.tax)))
+  );
+  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [lineBagsWidth, lineAmountWidth], 0);
+  const widths = useMemo(
+    () => ({ bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked }),
+    [bagsWidth, amountWidth, lineBagsWidth, lineAmountWidth, nestedStacked]
+  );
   // A single lot starts open; a tap flips any lot.
   const single = groups.length === 1;
   const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
@@ -428,9 +462,6 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     );
   }
 
-  const bagsWidth = table.numberWidth(BAGS_WIDTH);
-  const totalBags = groups.reduce((sum, group) => sum + group.total_dispatch_qty, 0);
-  const totalAmount = roundMoney(groups.reduce((sum, group) => sum + group.total_amount, 0));
   const groupCount = tr('invoice.detailsTable.groupCount', { count: groups.length });
   const lineCount = tr('invoice.detailsTable.lineCount', { count: items.length });
   // Every line of an invoice comes from one GRN; open it by id when known.
@@ -438,16 +469,18 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   const grnRef = grn?.grn_id || grn?.gr_no;
 
   const header = (
-    <View style={styles.headerRow}>
-      <RowChevron expandable={false} expanded={false} />
-      <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.item')}</HeaderCell>
-      {!table.stacked ? <HeaderCell numeric style={{ width: bagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
-      <HeaderCell numeric style={own.amount}>{tr('invoice.detailsTable.amount')}</HeaderCell>
+    <View style={styles.cardTop}>
+      <View style={styles.headerRow}>
+        <RowChevron expandable={false} expanded={false} />
+        <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.item')}</HeaderCell>
+        {!table.stacked ? <HeaderCell numeric style={{ width: bagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
+        <HeaderCell numeric style={{ width: amountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
+      </View>
     </View>
   );
 
   const footer = (
-    <View>
+    <View style={styles.cardBottom}>
       <View
         style={styles.footerRow}
         accessible
@@ -462,11 +495,13 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         <RowChevron expandable={false} expanded={false} />
         <View style={styles.grow}>
           <Text style={styles.primaryStrong}>{tr('invoice.detailsTable.total')}</Text>
-          <Text style={styles.secondary}>{`${groupCount} · ${lineCount}`}</Text>
-          {table.stacked ? <Text style={styles.secondary}>{bags(totalBags)}</Text> : null}
+          <Text style={styles.secondary}>{nb(`${groupCount} · ${lineCount}`)}</Text>
+          {table.stacked ? <Text style={styles.secondary}>{nb(bags(totalBags))}</Text> : null}
         </View>
-        {!table.stacked ? <Text style={[styles.numberStrong, { width: bagsWidth }]}>{formatNumber(totalBags)}</Text> : null}
-        <Text style={[styles.numberStrong, own.amount]}>{formatInvoiceAmount(totalAmount)}</Text>
+        {!table.stacked ? (
+          <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(totalBags)}</Text>
+        ) : null}
+        <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text>
       </View>
       <View style={own.cardEnd}>
         <Text style={styles.secondary} testID="invoice-lines-note">{tr('invoice.detailsTable.linesNote')}</Text>
@@ -494,11 +529,11 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
       keyExtractor={(group) => group.grn_item_id}
       extraData={toggled}
       renderItem={({ item }) => (
-        <GroupRow group={item} expanded={isOpen(item.grn_item_id)} onToggle={toggle} onViewDispatch={on_view_dispatch} table={table} />
+        <GroupRow group={item} expanded={isOpen(item.grn_item_id)} onToggle={toggle} onViewDispatch={on_view_dispatch} table={table} widths={widths} />
       )}
       ListHeaderComponent={header}
       ListFooterComponent={footer}
-      contentContainerStyle={styles.card}
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       maxToRenderPerBatch={10}
       windowSize={10}

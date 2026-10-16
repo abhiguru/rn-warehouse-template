@@ -25,7 +25,20 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { HeaderCell, RowChevron, makeTableStyles, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
+import {
+  HeaderCell,
+  ONE_LINE,
+  RowChevron,
+  crowded,
+  makeTableStyles,
+  nb,
+  nestedRowWidth,
+  numberColumnWidth,
+  rowWidth,
+  useStackedWhen,
+  useTableLayout,
+  type TableLayout,
+} from '@/components/common/DetailTable';
 import { GRNItem, lotLine } from './GRNItemsTab';
 
 interface GRNDispatchesTabProps {
@@ -104,15 +117,29 @@ interface ItemGroup {
   bags: number;
 }
 
+/**
+ * Column widths for the whole table. `count`: the Dispatches column, shown only on a wide screen
+ * (its heading is wider than its one-digit counts; on a phone the count goes under the item).
+ * `nestedStacked`: the date goes under the dispatch number in the lines under an item.
+ */
+interface Widths {
+  count: number | null;
+  bags: number;
+  date: number;
+  lineBags: number;
+  nestedStacked: boolean;
+}
+
 interface GroupRowProps {
   group: ItemGroup;
   expanded: boolean;
   onToggle: (id: string) => void;
   onViewDispatch: (dispatch_id: string) => void;
   table: TableLayout;
+  widths: Widths;
 }
 
-const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table }: GroupRowProps) {
+const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table, widths }: GroupRowProps) {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const { item, dispatches } = group;
@@ -121,11 +148,10 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
   const details = lotLine(item);
   const countText = tr('grn.detailsTable.dispatchCount', { count: dispatches.length });
   const received = tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) });
-  const countWidth = table.numberWidth(COUNT_WIDTH);
-  const bagsWidth = table.numberWidth(BAGS_WIDTH);
+  const { count: countWidth, bags: bagsWidth, date: dateWidth, lineBags: lineBagsWidth, nestedStacked } = widths;
 
   return (
-    <View style={open ? styles.group : undefined}>
+    <View style={[styles.cardSides, open && styles.group]}>
       <Pressable
         onPress={expandable ? () => onToggle(item.id) : undefined}
         disabled={!expandable}
@@ -146,11 +172,13 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
         <RowChevron expandable={expandable} expanded={open} />
         <View style={styles.grow}>
           <Text style={styles.primary}>{item.item_name}</Text>
-          {details !== null ? <Text style={styles.secondary}>{details}</Text> : null}
-          <Text style={styles.secondary}>{table.stacked ? `${received} · ${countText}` : received}</Text>
+          {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
+          <Text style={styles.secondary}>{nb(countWidth === null ? `${received} · ${countText}` : received)}</Text>
         </View>
-        {!table.stacked ? <Text style={[styles.number, { width: countWidth }]}>{formatNumber(dispatches.length)}</Text> : null}
-        <Text style={[styles.number, { width: bagsWidth }]}>{formatNumber(group.bags)}</Text>
+        {countWidth !== null ? (
+          <Text style={[styles.number, { width: countWidth }]} {...ONE_LINE}>{formatNumber(dispatches.length)}</Text>
+        ) : null}
+        <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(group.bags)}</Text>
       </Pressable>
 
       {open ? (
@@ -158,8 +186,8 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
           <View style={styles.nested}>
             <View style={styles.nestedHeader}>
               <HeaderCell style={styles.grow}>{tr('grn.detailsTable.dispatch')}</HeaderCell>
-              {!table.stacked ? <HeaderCell style={{ width: table.numberWidth(DATE_WIDTH) }}>{tr('grn.detailsTable.date')}</HeaderCell> : null}
-              <HeaderCell numeric style={{ width: bagsWidth }}>{tr('grn.detailsTable.bags')}</HeaderCell>
+              {!nestedStacked ? <HeaderCell style={{ width: dateWidth }}>{tr('grn.detailsTable.date')}</HeaderCell> : null}
+              <HeaderCell numeric style={{ width: lineBagsWidth }}>{tr('grn.detailsTable.bags')}</HeaderCell>
             </View>
             {dispatches.map((dispatch, index) => (
               <Pressable
@@ -177,12 +205,12 @@ const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onVie
               >
                 <View style={styles.grow}>
                   <Text style={styles.link}>{formatIdentifier(dispatch.disp_no)}</Text>
-                  {table.stacked ? <Text style={styles.secondary}>{dateText(dispatch.disp_date)}</Text> : null}
+                  {nestedStacked ? <Text style={styles.secondary}>{dateText(dispatch.disp_date)}</Text> : null}
                 </View>
-                {!table.stacked ? (
-                  <Text style={[styles.primary, { width: table.numberWidth(DATE_WIDTH) }]}>{dateText(dispatch.disp_date)}</Text>
+                {!nestedStacked ? (
+                  <Text style={[styles.primary, { width: dateWidth }]} {...ONE_LINE}>{dateText(dispatch.disp_date)}</Text>
                 ) : null}
-                <Text style={[styles.number, { width: bagsWidth }]}>{formatNumber(dispatch.disp_quantity)}</Text>
+                <Text style={[styles.number, { width: lineBagsWidth }]} {...ONE_LINE}>{formatNumber(dispatch.disp_quantity)}</Text>
               </Pressable>
             ))}
           </View>
@@ -203,7 +231,7 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
-  const table = useTableLayout();
+  const screen = useTableLayout();
 
   const groups = useMemo<ItemGroup[]>(
     () =>
@@ -212,6 +240,23 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
         return { item, dispatches, bags: dispatches.reduce((sum, d) => sum + (Number(d.disp_quantity) || 0), 0) };
       }),
     [items, dispatchesByItem]
+  );
+  const totalBags = groups.reduce((sum, group) => sum + group.bags, 0);
+  // Every column as wide as its widest value; big numbers move the middle column under the first.
+  const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.bags)), [formatNumber(totalBags)]);
+  const countWidth = screen.wide ? numberColumnWidth(screen, COUNT_WIDTH, groups.map((group) => formatNumber(group.dispatches.length))) : null;
+  const table = useStackedWhen(screen, crowded(rowWidth(screen), countWidth === null ? [bagsWidth] : [countWidth, bagsWidth]));
+  const lineBagsWidth = numberColumnWidth(
+    screen,
+    BAGS_WIDTH,
+    groups.flatMap((group) => group.dispatches.map((d) => formatNumber(d.disp_quantity)))
+  );
+  const dateWidth = screen.numberWidth(DATE_WIDTH);
+  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [dateWidth, lineBagsWidth], 0);
+  const shownCount = table.stacked ? null : countWidth;
+  const widths = useMemo(
+    () => ({ count: shownCount, bags: bagsWidth, date: dateWidth, lineBags: lineBagsWidth, nestedStacked }),
+    [shownCount, bagsWidth, dateWidth, lineBagsWidth, nestedStacked]
   );
   const firstWithDispatches = groups.find((group) => group.dispatches.length > 0)?.item.id;
   // The first line with dispatches starts open; a tap flips any line.
@@ -271,47 +316,48 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
     );
   }
 
-  const countWidth = table.numberWidth(COUNT_WIDTH);
-  const bagsWidth = table.numberWidth(BAGS_WIDTH);
-  const totalBags = groups.reduce((sum, group) => sum + group.bags, 0);
   const distinct = new Set(groups.flatMap((group) => group.dispatches.map((d) => d.dispatch_id))).size;
   const dispatchCount = tr('grn.detailsTable.dispatchCount', { count: distinct });
 
   const header = (
-    <View style={styles.headerRow}>
-      <RowChevron expandable={false} expanded={false} />
-      <HeaderCell style={styles.grow}>{tr('grn.detailsTable.item')}</HeaderCell>
-      {!table.stacked ? <HeaderCell numeric style={{ width: countWidth }}>{tr('grn.detailsTable.dispatches')}</HeaderCell> : null}
-      <HeaderCell numeric style={{ width: bagsWidth }}>{tr('grn.detailsTable.bagsDispatched')}</HeaderCell>
+    <View style={styles.cardTop}>
+      <View style={styles.headerRow}>
+        <RowChevron expandable={false} expanded={false} />
+        <HeaderCell style={styles.grow}>{tr('grn.detailsTable.item')}</HeaderCell>
+        {shownCount !== null ? <HeaderCell numeric style={{ width: shownCount }}>{tr('grn.detailsTable.dispatches')}</HeaderCell> : null}
+        <HeaderCell numeric style={{ width: bagsWidth }}>{tr('grn.detailsTable.bagsDispatched')}</HeaderCell>
+      </View>
     </View>
   );
 
   const footer = (
-    <View
-      style={styles.footerRow}
-      accessible
-      accessibilityLabel={tr('grn.detailsTable.dispatchesTotalLabel', { dispatches: dispatchCount, bags: bags(totalBags) })}
-      testID="grn-dispatches-total"
-    >
-      <RowChevron expandable={false} expanded={false} />
-      <View style={styles.grow}>
-        <Text style={styles.primaryStrong}>{tr('grn.detailsTable.total')}</Text>
-        <Text style={styles.secondary}>{dispatchCount}</Text>
+    <View style={styles.cardBottom}>
+      <View
+        style={styles.footerRow}
+        accessible
+        accessibilityLabel={tr('grn.detailsTable.dispatchesTotalLabel', { dispatches: dispatchCount, bags: bags(totalBags) })}
+        testID="grn-dispatches-total"
+      >
+        <RowChevron expandable={false} expanded={false} />
+        <View style={styles.grow}>
+          <Text style={styles.primaryStrong}>{tr('grn.detailsTable.total')}</Text>
+          <Text style={styles.secondary}>{nb(dispatchCount)}</Text>
+        </View>
+        {shownCount !== null ? <View style={{ width: shownCount }} /> : null}
+        <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(totalBags)}</Text>
       </View>
-      {!table.stacked ? <View style={{ width: countWidth }} /> : null}
-      <Text style={[styles.numberStrong, { width: bagsWidth }]}>{formatNumber(totalBags)}</Text>
     </View>
   );
 
   return (
     <FlatList
       style={styles.list}
-      contentContainerStyle={styles.card}
+      contentContainerStyle={styles.content}
       data={groups}
       keyExtractor={(group) => group.item.id}
       extraData={toggled}
       renderItem={({ item }) => (
-        <GroupRow group={item} expanded={isOpen(item.item.id)} onToggle={toggle} onViewDispatch={onViewDispatch} table={table} />
+        <GroupRow group={item} expanded={isOpen(item.item.id)} onToggle={toggle} onViewDispatch={onViewDispatch} table={table} widths={widths} />
       )}
       ListHeaderComponent={header}
       ListFooterComponent={footer}

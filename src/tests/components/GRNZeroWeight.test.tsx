@@ -45,7 +45,7 @@ function looseText(tree: ReactTestRenderer) {
 }
 
 const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join('').replace(/\u00A0/g, ' '));
 /** What a screen reader says for the card or header. */
 const spoken = (tree: ReactTestRenderer) =>
   tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string')[0].props.accessibilityLabel as string;
@@ -64,7 +64,7 @@ describe.each([
   it('writes the mark and the weight in full, with no line limit, at font scale 2', () => {
     mockFontScale = 2;
     const tree = show(1250);
-    const line = tree.root.find(node => (node.type as unknown) === 'Text' && node.props.children === 'M1 · 1,250 kg each');
+    const line = tree.root.find(node => (node.type as unknown) === 'Text' && String(node.props.children).replace(/\u00A0/g, ' ') === 'M1 · 1,250 kg each');
     expect(line.props.numberOfLines).toBeUndefined();
     let column = line.parent!;
     while (typeof column.type !== 'string') column = column.parent!;

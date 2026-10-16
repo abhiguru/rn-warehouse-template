@@ -34,7 +34,7 @@ function render(element: React.ReactElement) {
   });
   mounted.push(tree);
   return {
-    texts: () => tree.root.findAllByType(Text).map(node => [node.props.children].flat().join('')),
+    texts: () => tree.root.findAllByType(Text).map(node => [node.props.children].flat().join('').replace(/\u00A0/g, ' ')),
     /** Text drawn outside a Text (a `0` left by `weight && …`), which a phone refuses to draw. */
     bareTexts: () =>
       tree.root.findAll(node => (node.type as unknown) === 'View').flatMap(node => node.children.filter(child => typeof child === 'string')),

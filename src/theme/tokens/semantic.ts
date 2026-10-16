@@ -343,7 +343,8 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
           headerText: h.label,
           divider: h.divider,
           separator: h.toolbarSeparator,
-          insetFill: h.background,
+          // Not the page colour (#F5F6F7): an open panel in a white card must not read as a hole.
+          insetFill: '#F0F3F6',
           accent: brandGroup(brand, mode).tint,
         }
       : {
