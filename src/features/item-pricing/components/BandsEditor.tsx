@@ -19,14 +19,13 @@ import {
   setBandFrom,
   setFirstFrom,
   setUpTo,
-  appendBandBlock,
-  appendEmptyBand,
   removeBand,
   wholeKg,
   type Draft,
   type EditorContext,
 } from '../editModel';
 import { bandText } from '../rateText';
+import { BandsFooter } from './BandsFooter';
 import { fieldLink, type FieldRegistry } from './fieldLink';
 
 interface Props {
@@ -58,7 +57,6 @@ const makeStyles = (t: ThemeTokens) => ({
   unit: { ...typography.body, color: t.text.secondary },
   prefix: { ...typography.body, color: t.text.secondary },
   note: { ...typography.footnote, color: t.text.secondary },
-  error: { ...typography.footnote, color: t.status.negative.text },
 });
 
 export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
@@ -67,7 +65,6 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
   const stacked = fontScale >= STACK_FROM_SCALE;
   const oneTime = draft.priceType === 'one_time';
   const perBand = draft.bands.some(b => b.labour !== undefined);
-  const addBlock = appendBandBlock(draft);
   const rentLabel = oneTime ? t('pricing.edit.rentOnce') : t('pricing.edit.rentMonthly');
 
   return (
@@ -204,19 +201,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
           </View>
         );
       })}
-      {draft.bands.length >= 2 ? <Text style={styles.note} testID="remove-band-note">{t('pricing.edit.removeBandNote')}</Text> : null}
-      {errors.bands ? <Text style={styles.error} accessibilityRole="alert">{errors.bands}</Text> : null}
-      {addBlock === 'max' ? (
-        <Text style={styles.note}>{t('pricing.edit.bandsFull')}</Text>
-      ) : (
-        <>
-          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null} onPress={() => onChange(appendEmptyBand(draft))} testID="add-band">
-            {t('pricing.edit.addBand')}
-          </Button>
-          {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}
-        </>
-      )}
-      {ctx.customerId ? <Text style={styles.note}>{t('pricing.edit.outsidePay')}</Text> : null}
+      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} />
     </View>
   );
 }

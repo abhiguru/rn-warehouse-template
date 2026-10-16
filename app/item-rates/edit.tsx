@@ -7,21 +7,15 @@
  * Every date is a goods-received date: a rate that starts on a day is charged to lots received
  * from that day.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo,
   ActivityIndicator,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
-  useWindowDimensions,
   Text,
   View,
-  type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,50 +30,28 @@ import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
-import { listItemRates, replaceItemRates } from '@/services/item-pricing-service';
-import { getRateStartFloor } from '@/services/rateStartFloor';
-import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
-import { showToast } from '@/utils/toast';
-import { notifyRatesChanged, type EditorMode, type EditorParams } from '@/features/item-pricing/contract';
-import {
-  appendEmptyBand,
-  copyTiersFrom,
-  hasChanges,
-  initialDraft,
-  lotsRule,
-  resyncToday,
-  savedStop,
-  switchNewRateType,
-  withoutRents,
-  setBandField,
-  setStartsOn,
-  summaryLines,
-  toReplaceInput,
-  validate,
-  type Draft,
-  type EditorContext,
-  type StartsOnChoice,
-  fieldOrder,
-} from '@/features/item-pricing/editModel';
-import { rateRights } from '@/features/item-pricing/rateRights';
-import { laterDialogText, plannedOnDay } from '@/features/item-pricing/laterRates';
+import { listItemRates } from '@/services/item-pricing-service';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
+import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
+import type { EditorParams } from '@/features/item-pricing/contract';
+import { lotsRule, summaryLines, type EditorContext } from '@/features/item-pricing/editModel';
+import { laterDialogText } from '@/features/item-pricing/laterRates';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
 import { CopyTiersSheet } from '@/features/item-pricing/components/CopyTiersSheet';
 import { ChangeSummary } from '@/features/item-pricing/components/ChangeSummary';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
-import { fieldLink, type FieldNode, type FieldRegistry } from '@/features/item-pricing/components/fieldLink';
+import { fieldLink } from '@/features/item-pricing/components/fieldLink';
 import { StartsOnField } from '@/features/item-pricing/components/StartsOnField';
+import { RateSaveBar } from '@/features/item-pricing/components/RateSaveBar';
+import { useEditorFields } from '@/features/item-pricing/useEditorFields';
+import { useRateEditor, type EditorView } from '@/features/item-pricing/useRateEditor';
 import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
-
-/** A focused field ends this far above the keyboard (P-09). */
-const ABOVE_KEYBOARD = space.xxl;
 
 type Loaded =
   | { state: 'loading' }
   | { state: 'error'; message: string }
-  | { state: 'ready'; draft: Draft; initial: Draft; context: EditorContext };
+  | { state: 'ready'; rows: ItemStoragePrice[] };
 
 const TITLES: Record<EditorContext['mode'], 'change' | 'addDefault' | 'addCustomer' | 'correct' | 'upcoming'> = {
   change: 'change',
@@ -100,43 +72,23 @@ const RateEditorScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const { role } = useRoleBasedAccess();
-  const rights = rateRights(role);
   const offline = useIsOffline();
 
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
   const [attempt, setAttempt] = useState(0);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [strip, setStrip] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [later, setLater] = useState<NonNullable<ReplaceRatesResult['later']> | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
-  // The item whose tiers were copied into the draft (names the note under the start day).
-  const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
-  const checked = useRef(false);
-  // The sticky Save bar's measured height: the form scrolls clear of it, a field never ends under it.
-  const [barHeight, setBarHeight] = useState(0);
-  const barHeightRef = useRef(0);
-  const windowHeight = useWindowDimensions().height;
-  const windowHeightRef = useRef(windowHeight);
-  windowHeightRef.current = windowHeight;
 
   // ---- load the item's rates, fresh ----
   useEffect(() => {
     let live = true;
     setLoaded({ state: 'loading' });
-    // The draft is rebuilt from the server: it no longer holds another item's copied bands.
-    setCopiedFrom(null);
     if (!params.item_id) {
       setLoaded({ state: 'error', message: t('pricing.edit.notFound') });
       return;
     }
     listItemRates(params.item_id).then(
       rows => {
-        if (!live) return;
-        const opened = initialDraft({ mode: params.mode ?? 'change', params, rows, role, today: todayDay(), earliest: getRateStartFloor() });
-        // The Add button of the list asks for one more empty band; `initial` stays without it, so leaving untouched asks first.
-        const draft = params.add_band === '1' ? appendEmptyBand(opened.draft) : opened.draft;
-        setLoaded({ state: 'ready', draft, initial: opened.draft, context: opened.context });
+        if (live) setLoaded({ state: 'ready', rows });
       },
       (e: unknown) => {
         if (live) setLoaded({ state: 'error', message: e instanceof Error ? e.message : '' });
@@ -148,190 +100,33 @@ const RateEditorScreen: React.FC = () => {
     // The role and params are read once per load; a changed role is handled by the route guard.
   }, [params.item_id, params.mode, attempt]);
 
-  const ready = loaded.state === 'ready' ? loaded : null;
-  const draft = ready?.draft;
-  const context = ready?.context;
-
-  const setDraft = useCallback((next: Draft) => {
-    setLoaded(current => (current.state === 'ready' ? { ...current, draft: next } : current));
-    setStrip(null);
-    if (checked.current) setErrors(validate(next, context as EditorContext).errors);
-  }, [context]);
+  // ---- the draft and the save flow ----
+  const view = useRef<EditorView | null>(null);
+  const editor = useRateEditor({
+    item: { id: params.item_id, name: params.item_name },
+    customer: params.customer_id ? { id: params.customer_id, name: params.customer_name } : null,
+    priceType: params.price_type,
+    mode: params.mode ?? 'change',
+    params,
+    rows: loaded.state === 'ready' ? loaded.rows : null,
+    refreshRows: () => setAttempt(n => n + 1),
+    role,
+    today: todayDay,
+    // `leaveWithoutAsking` comes from the guard below, which needs `editor.dirty`.
+    onSaved: () => leaveWithoutAsking(() => router.back()),
+    view,
+  });
+  const { draft, ctx: context, errors, strip, saving, later, copiedFrom, setDraft } = editor;
 
   // ---- leaving with unsaved work (P-01) ----
-  const changed = !!ready && !ready.context.managerOnly && hasChanges(ready.draft, ready.initial);
   const { leaveWithoutAsking } = useLeaveGuard({
-    hasChanges: changed,
-    title: ready && isAddMode(ready.context.mode) ? t('pricing.edit.discardAdd') : undefined,
+    hasChanges: editor.dirty,
+    title: context && isAddMode(context.mode) ? t('pricing.edit.discardAdd') : undefined,
   });
 
   // ---- keyboard: fields scroll above it, Next moves on (P-09) ----
-  const scrollRef = useRef<ScrollView>(null);
-  const scrollY = useRef(0);
-  const keyboardTop = useRef<number | null>(null);
-  const focusedKey = useRef<string | null>(null);
-  const nodes = useRef<Record<string, FieldNode | null>>({});
-
-  const ensureVisible = useCallback((key: string) => {
-    const node = nodes.current[key];
-    if (!node) return;
-    node.measureInWindow((_x, y, _w, h) => {
-      // The Save bar sits on the keyboard's top edge, or on the window's bottom edge with no keyboard.
-      const barTop = (keyboardTop.current ?? windowHeightRef.current) - barHeightRef.current;
-      const hidden = y + h + ABOVE_KEYBOARD - barTop;
-      if (hidden > 0) scrollRef.current?.scrollTo({ y: scrollY.current + hidden, animated: true });
-    });
-  }, []);
-
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', event => {
-      keyboardTop.current = event.endCoordinates.screenY;
-      if (focusedKey.current) ensureVisible(focusedKey.current);
-    });
-    const hide = Keyboard.addListener('keyboardDidHide', () => {
-      keyboardTop.current = null;
-    });
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, [ensureVisible]);
-
-  const order = useMemo(() => (draft ? fieldOrder(draft, ready?.context.customerId ?? null) : []), [draft, ready]);
-
-  const fields: FieldRegistry = useMemo(
-    () => ({
-      register: (key, node) => {
-        nodes.current[key] = node;
-      },
-      onFocus: key => {
-        focusedKey.current = key;
-        ensureVisible(key);
-      },
-      next: key => {
-        const following = order[order.indexOf(key) + 1];
-        const node = following ? nodes.current[following] : null;
-        if (node) node.focus();
-        else Keyboard.dismiss();
-      },
-    }),
-    [order, ensureVisible]
-  );
-
-  // ---- save ----
-  const finish = useCallback(
-    (data: Draft, ctx: EditorContext, keptEndDay?: string | null) => {
-      notifyRatesChanged(ctx.itemId);
-      const message =
-        ctx.mode === 'correct'
-          ? t('pricing.edit.savedCorrection')
-          : ctx.mode === 'addCustomer'
-            ? t('pricing.edit.savedCustomer')
-            : t('pricing.edit.saved', { date: dateText(data.startsOn ?? '') });
-      // A scheduled stop is kept by the server: say so (its answer first, else what the draft knew).
-      const stop = savedStop(keptEndDay, data, ctx);
-      showToast(stop ? `${message} ${t('pricing.edit.stillStops', { date: dateText(stop) })}` : message);
-      leaveWithoutAsking(() => router.back());
-    },
-    [leaveWithoutAsking]
-  );
-
-  const fieldForServer = (result: ReplaceRatesResult, data: Draft): string => {
-    const i = result.bandIndex ?? 0;
-    const perBand = data.bands.some(b => b.labour !== undefined);
-    if (result.field === 'unit_price') return `band.${i}.rent`;
-    if (result.field === 'labour_rate') return perBand ? `band.${i}.labour` : 'labour';
-    if (result.field === 'tax_percent') return perBand ? `band.${i}.tax` : 'tax';
-    return `band.${i}.upTo`;
-  };
-
-  const scrollToError = (key: string) => {
-    const node = nodes.current[key];
-    if (!node) {
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-      return;
-    }
-    node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - 160), animated: true }));
-  };
-
-  const submit = async (replaceLater = false) => {
-    if (!ready || saving) return;
-    const { draft: data, context: ctx } = ready;
-    // Left open past midnight (India): the day chips move to the new day and the person looks again.
-    const moved = resyncToday(data, ctx, todayDay());
-    if (moved) {
-      const initial = resyncToday(ready.initial, ctx, todayDay())?.draft ?? ready.initial;
-      setLoaded({ state: 'ready', draft: moved.draft, initial, context: moved.ctx });
-      setStrip(t('pricing.edit.dayChanged'));
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-      return;
-    }
-    checked.current = true;
-    const check = validate(data, ctx);
-    setErrors(check.errors);
-    if (!check.ok) {
-      const keys = Object.keys(check.errors);
-      AccessibilityInfo.announceForAccessibility(t('pricing.form.fixFields', { count: keys.length }));
-      scrollToError(['startsOn', ...order].find(k => check.errors[k]) ?? keys[0]);
-      return;
-    }
-    // A planned rate that starts on the first day is deleted by the server without a question: ask here.
-    if (!replaceLater && ctx.mode !== 'correct' && data.startsOn) {
-      const hidden = plannedOnDay(ctx.rows, { customerId: ctx.customerId, priceType: data.priceType }, data.startsOn, ctx.today, ctx.editingIds);
-      if (hidden.length > 0) {
-        setLater(hidden);
-        return;
-      }
-    }
-    setSaving(true);
-    setStrip(null);
-    try {
-      const result = await replaceItemRates({ ...toReplaceInput(data, ctx), ...(replaceLater ? { replace_later: true } : {}) });
-      if (result.success) {
-        setLater(null);
-        finish(data, ctx, result.keptEnd);
-        return;
-      }
-      if (result.errorCode === 'LATER_RATES_EXIST' && result.later?.length) {
-        setLater(result.later);
-        return;
-      }
-      setLater(null);
-      if (result.errorCode === 'STALE_RATES') {
-        // Someone changed the rates meanwhile: load them again and say so.
-        setStrip(result.message ?? t('pricing.error.generic'));
-        setAttempt(n => n + 1);
-        return;
-      }
-      if (result.outcomeUnknown) {
-        // The change may be saved: the pages behind read the item again.
-        notifyRatesChanged(ctx.itemId);
-      }
-      if (result.errorCode === 'INVALID_DATE') {
-        // The day is outside what the server accepts: say so at the field, and learn the oldest allowed day from the answer.
-        const earliest = result.earliest;
-        if (earliest) setLoaded(cur => (cur.state === 'ready' ? { ...cur, context: { ...cur.context, earliestStart: earliest } } : cur));
-        setErrors(current => ({ ...current, startsOn: result.message ?? '' }));
-        scrollToError('startsOn');
-        return;
-      }
-      if (result.errorCode === 'PAST_DATE_NOT_ALLOWED' && ctx.mode === 'upcoming' && !ctx.canStartInPast) {
-        setStrip(t('pricing.edit.err.moveAfterToday'));
-        scrollRef.current?.scrollTo({ y: 0, animated: true });
-        return;
-      }
-      if ((result.errorCode === 'INVALID_BAND' || result.errorCode === 'INVALID_AMOUNT') && result.bandIndex !== undefined) {
-        const key = fieldForServer(result, data);
-        setErrors(current => ({ ...current, [key]: result.message ?? '' }));
-        scrollToError(key);
-        return;
-      }
-      setStrip(result.message ?? t('pricing.error.generic'));
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const { scrollRef, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop } = useEditorFields(editor.order);
+  view.current = { scrollToTop, scrollToError };
 
   // ---- drawing ----
   const header = (title: string) => (
@@ -342,17 +137,6 @@ const RateEditorScreen: React.FC = () => {
       </Text>
     </View>
   );
-
-  if (loaded.state === 'loading') {
-    return (
-      <View style={styles.container}>
-        {header(t(`pricing.edit.title.${titleFor(params.mode)}`))}
-        <View style={styles.center}>
-          <ActivityIndicator accessibilityLabel={t('pricing.edit.loading')} />
-        </View>
-      </View>
-    );
-  }
 
   if (loaded.state === 'error') {
     return (
@@ -368,7 +152,19 @@ const RateEditorScreen: React.FC = () => {
     );
   }
 
-  const { draft: current, context: ctx } = loaded;
+  if (loaded.state === 'loading' || !draft || !context) {
+    return (
+      <View style={styles.container}>
+        {header(t(`pricing.edit.title.${titleFor(params.mode)}`))}
+        <View style={styles.center}>
+          <ActivityIndicator accessibilityLabel={t('pricing.edit.loading')} />
+        </View>
+      </View>
+    );
+  }
+
+  const current = draft;
+  const ctx = context;
   const title = t(`pricing.edit.title.${TITLES[ctx.mode]}`);
 
   if (ctx.mode === 'addCustomer' && !ctx.customerId) {
@@ -423,25 +219,11 @@ const RateEditorScreen: React.FC = () => {
   const first = later?.[0];
   const laterText = later && later.length > 0 && current.startsOn ? laterDialogText(later, current.startsOn, ctx.today) : null;
 
-  const switchType = (value: PriceType) => {
-    const next = switchNewRateType(current, ctx, value);
-    // Bands copied from another item: its rents are rents of the other price type, so they are cleared
-    // when nothing of this type was found to take their place; either way the note no longer applies.
-    const nextDraft = copiedFrom && !next.copied && value !== current.priceType ? withoutRents(next.draft) : next.draft;
-    if (value !== current.priceType) setCopiedFrom(null);
-    setLoaded(cur => (cur.state === 'ready' ? { ...cur, draft: nextDraft, context: { ...cur.context, copied: next.copied } } : cur));
-    setStrip(null);
-    if (checked.current) setErrors(validate(nextDraft, ctx).errors);
-  };
-
   const canCopyTiers = !ctx.customerId && !ctx.invoice;
   const copyTiers = (item: { id: string; name: string }, rows: ItemStoragePrice[]) => {
     setCopyOpen(false);
-    setCopiedFrom(item.name);
-    setDraft(copyTiersFrom(current, rows));
+    editor.copyFrom(item, rows);
   };
-
-  const onStartsOn = (choice: StartsOnChoice, day: string) => setDraft(setStartsOn(current, choice, day));
 
   return (
     <View style={styles.container}>
@@ -453,9 +235,7 @@ const RateEditorScreen: React.FC = () => {
           contentContainerStyle={[styles.body, { paddingBottom: Math.max(space.max, barHeight + space.lg) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            scrollY.current = e.nativeEvent.contentOffset.y;
-          }}
+          onScroll={onScroll}
           scrollEventThrottle={16}
         >
           {strip ? <EditorStrip variant="critical" message={strip} testID="editor-error" /> : null}
@@ -487,7 +267,7 @@ const RateEditorScreen: React.FC = () => {
                 label={t('pricing.edit.type')}
                 stacked
                 value={current.priceType}
-                onValueChange={value => switchType(value as PriceType)}
+                onValueChange={value => editor.switchType(value as PriceType)}
                 options={[
                   { value: 'monthly', label: priceTypeLabel('monthly') },
                   { value: 'one_time', label: priceTypeLabel('one_time') },
@@ -507,7 +287,7 @@ const RateEditorScreen: React.FC = () => {
             receivedDay={ctx.invoice && ctx.mode === 'addCustomer' ? ctx.invoice.grnDate : null}
             fixed={current.startsOnChoice === 'fixed'}
             error={errors.startsOn}
-            onChange={onStartsOn}
+            onChange={editor.setStartsOn}
           />
           {rule ? <Text style={styles.rule}>{rule}</Text> : null}
           {inThePast && ctx.canStartInPast ? (
@@ -563,26 +343,17 @@ const RateEditorScreen: React.FC = () => {
           <ChangeSummary lines={lines} />
         </ScrollView>
 
-        <View
-          style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, space.md) }]}
-          testID="save-bar"
-          onLayout={(e: LayoutChangeEvent) => {
-            barHeightRef.current = e.nativeEvent.layout.height;
-            setBarHeight(e.nativeEvent.layout.height);
+        <RateSaveBar
+          helper={helper}
+          primary={{
+            label: saveLabel,
+            onPress: () => void editor.submit(),
+            disabled: saving || offline || noStart,
+            loading: saving,
+            loadingText: t('pricing.edit.saving'),
           }}
-        >
-          {helper ? <Text style={styles.helper}>{helper}</Text> : null}
-          <Button
-            type="primary"
-            size="fullWidth"
-            onPress={() => void submit()}
-            disabled={saving || offline || noStart}
-            loading={saving}
-            loadingText={t('pricing.edit.saving')}
-          >
-            {saveLabel}
-          </Button>
-        </View>
+          onHeight={setBarHeight}
+        />
       </KeyboardAvoidingView>
 
       {copyOpen ? (
@@ -604,8 +375,8 @@ const RateEditorScreen: React.FC = () => {
         confirmText={t('pricing.edit.laterConfirm')}
         cancelText={t('pricing.edit.laterKeep')}
         busy={saving}
-        onConfirm={() => void submit(true)}
-        onCancel={() => setLater(null)}
+        onConfirm={() => void editor.submit(true)}
+        onCancel={editor.dismissLater}
       />
     </View>
   );
@@ -638,15 +409,6 @@ const makeStyles = (t: ThemeTokens) => ({
   rule: { ...typography.subhead, color: t.text.secondary },
   note: { ...typography.footnote, color: t.text.secondary },
   affix: { ...typography.body, color: t.text.secondary },
-  helper: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' as const },
-  saveBar: {
-    paddingTop: space.md,
-    paddingHorizontal: layout.marginCompact,
-    gap: space.xs,
-    minHeight: touchTarget,
-    backgroundColor: t.surface.card,
-    ...t.shadow[3],
-  },
 });
 
 export default RateEditorScreen;
