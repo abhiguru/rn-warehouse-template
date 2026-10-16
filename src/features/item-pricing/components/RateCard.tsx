@@ -41,12 +41,6 @@ export interface RateCardProps {
   busy?: boolean;
   /** One tag per band in force ('Standard' or 'This item'): a default monthly rate only, and only when the standard rate is known. */
   tags?: TierTag[] | null;
-  /**
-   * The read-only card opened from a GRN's Rates (owner, 2026-10-16): the figure and its unit on one
-   * line, short values, and no tier tag, upcoming rate or stop strip (those are about days after today,
-   * not the GRN's day).
-   */
-  compact?: boolean;
 }
 
 const TABULAR = ['tabular-nums' as const];
@@ -67,16 +61,15 @@ const makeStyles = (th: ThemeTokens) => ({
   actionsRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm, alignItems: 'center' as const },
 });
 
-/** "Lots received since 1 Apr 2026" or "Lots received 1 Apr 2026 – 31 Dec 2026"; short: "Since 1 Apr 2026" / "1 Apr 2026 – 31 Dec 2026". */
-export function inForceText(bands: ItemStoragePrice[], short = false): string {
+/** "Lots received since 1 Apr 2026" or "Lots received 1 Apr 2026 – 31 Dec 2026". */
+export function inForceText(bands: ItemStoragePrice[]): string {
   const from = bands.reduce((min, b) => (b.effective_from < min ? b.effective_from : min), bands[0].effective_from);
   const to = bands[0].effective_to;
-  if (short) return to ? t('pricing.item.rangeShort', { from: dateText(from), to: dateText(to) }) : t('pricing.item.sinceShort', { date: dateText(from) });
   return to ? t('pricing.item.range', { from: dateText(from), to: dateText(to) }) : t('pricing.item.since', { date: dateText(from) });
 }
 
 export function RateCard(props: RateCardProps) {
-  const { priceType, bands, upcoming, stopsAfter, overlap, canCorrect, canWrite, offline, busy, compact = false } = props;
+  const { priceType, bands, upcoming, stopsAfter, overlap, canCorrect, canWrite, offline, busy } = props;
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stackedLayout = fontScale >= 1.3 ? 'stacked' : 'inline';
@@ -97,35 +90,16 @@ export function RateCard(props: RateCardProps) {
         <>
           {bands.length === 1 ? (
             <>
-              {compact ? (
-                <Text accessibilityRole="header">
-                  <Text style={styles.figure}>{money(bands[0].unit_price)}</Text>
-                  <Text style={styles.unit}>{`  ${unitText(priceType)}`}</Text>
-                </Text>
-              ) : (
-                <>
-                  <Text style={styles.figure} accessibilityRole="header">{money(bands[0].unit_price)}</Text>
-                  <Text style={styles.unit}>{unitText(priceType)}</Text>
-                </>
-              )}
-              {props.tags?.[0] && !compact ? <TierTagView tag={props.tags[0]} testID="band-tag-0" /> : null}
+              <Text style={styles.figure} accessibilityRole="header">{money(bands[0].unit_price)}</Text>
+              <Text style={styles.unit}>{unitText(priceType)}</Text>
+              {props.tags?.[0] ? <TierTagView tag={props.tags[0]} testID="band-tag-0" /> : null}
               <View>
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.band.weightEach')} value={bandText(bands[0].weight_min, bands[0].weight_max)} showDivider />
                 {oneTime ? null : (
-                  <KeyValueCell
-                    layout={stackedLayout}
-                    keyLabel={t('pricing.item.labour')}
-                    value={t(compact ? 'pricing.item.labourShort' : 'pricing.item.labourValue', { amount: money(bands[0].labour_rate) })}
-                    showDivider
-                  />
+                  <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourValue', { amount: money(bands[0].labour_rate) })} showDivider />
                 )}
-                <KeyValueCell
-                  layout={stackedLayout}
-                  keyLabel={t('pricing.item.tax')}
-                  value={t(compact ? 'pricing.item.taxShort' : 'pricing.item.taxValue', { percent: percentRange(Math.min(...bands.map(b => b.tax_percent)), Math.max(...bands.map(b => b.tax_percent))) })}
-                  showDivider
-                />
-                <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.inForce')} value={inForceText(bands, compact)} />
+                <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.tax')} value={t('pricing.item.taxValue', { percent: percentRange(Math.min(...bands.map(b => b.tax_percent)), Math.max(...bands.map(b => b.tax_percent))) })} showDivider />
+                <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.inForce')} value={inForceText(bands)} />
               </View>
             </>
           ) : (
@@ -134,20 +108,10 @@ export function RateCard(props: RateCardProps) {
               <BandList bands={bands} priceType={priceType} tags={props.tags} />
               <View>
                 {oneTime || new Set(bands.map(b => b.labour_rate)).size > 1 ? null : (
-                  <KeyValueCell
-                    layout={stackedLayout}
-                    keyLabel={t('pricing.item.labour')}
-                    value={t(compact ? 'pricing.item.labourShort' : 'pricing.item.labourValue', { amount: money(bands[0].labour_rate) })}
-                    showDivider
-                  />
+                  <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourValue', { amount: money(bands[0].labour_rate) })} showDivider />
                 )}
-                <KeyValueCell
-                  layout={stackedLayout}
-                  keyLabel={t('pricing.item.tax')}
-                  value={t(compact ? 'pricing.item.taxShort' : 'pricing.item.taxValue', { percent: percentRange(Math.min(...bands.map(b => b.tax_percent)), Math.max(...bands.map(b => b.tax_percent))) })}
-                  showDivider
-                />
-                <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.inForce')} value={inForceText(bands, compact)} />
+                <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.tax')} value={t('pricing.item.taxValue', { percent: percentRange(Math.min(...bands.map(b => b.tax_percent)), Math.max(...bands.map(b => b.tax_percent))) })} showDivider />
+                <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.inForce')} value={inForceText(bands)} />
               </View>
             </>
           )}
@@ -163,7 +127,7 @@ export function RateCard(props: RateCardProps) {
         </>
       ) : null}
 
-      {upcoming && !compact ? (
+      {upcoming ? (
         <RateStrip
           variant="info"
           message={t('pricing.item.upcoming', { date: dateText(upcoming.startsOn), amount: upcomingAmount, unit: unitText(priceType) })}
@@ -178,7 +142,7 @@ export function RateCard(props: RateCardProps) {
         />
       ) : null}
 
-      {hasRate && stopsAfter && !compact ? (
+      {hasRate && stopsAfter ? (
         <RateStrip
           variant="warning"
           message={t('pricing.item.stops', { date: dateText(stopsAfter) })}

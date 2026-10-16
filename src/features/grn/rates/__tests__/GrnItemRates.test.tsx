@@ -116,14 +116,30 @@ describe('GrnItemRates', () => {
     ]);
   });
 
-  it('a row opens the item\'s rate card read-only on the GRN\'s day, naming the GRN and its customer', async () => {
+  it('an administrator or supervisor opens the item in Item pricing on the GRN\'s day, a row without a rate too', async () => {
     const { router } = require('expo-router');
+    const rows = [lot({ grn_item_id: 'a' }), lot({ grn_item_id: 'b', item_id: 'rice', item_name: 'Fictional Rice', source: null, unit_price: null, labour_rate: null, tax_percent: null, weight_min: null, weight_max: null })];
+    for (const role of ['admin', 'supervisor']) {
+      mockRole = role;
+      read.mockResolvedValue(answer(rows));
+      await mount(<GrnItemRates grnId="g1" grnNumber="WM0001" />);
+      const links = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function');
+      expect(links).toHaveLength(2);
+      expect(links[0].props.accessibilityRole).toBe('button');
+      expect(links[0].props.accessibilityHint).toBe('Opens the item in Item pricing.');
+      act(() => links[1].props.onPress());
+      expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'rice', on: '2026-10-01' } });
+      act(() => tree.unmount());
+    }
+    await mount(<GrnItemRates grnId="g1" />);
+  });
+
+  it('staff get the table only: no row is a link to the price list', async () => {
+    mockRole = 'staff';
     read.mockResolvedValue(answer([lot({ grn_item_id: 'a' })]));
-    await mount(<GrnItemRates grnId="g1" customerId="c1" customerName="Fictional Farms" />);
-    const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
-    expect(row.props.accessibilityRole).toBe('button');
-    act(() => row.props.onPress());
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1', customer: 'c1', customer_name: 'Fictional Farms' } });
+    await mount(<GrnItemRates grnId="g1" />);
+    expect(tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')).toHaveLength(0);
+    expect(texts()).toEqual(expect.arrayContaining(['Fictional Gur', '4.50', '1.50', '5']));
   });
 
   it('a customer, who cannot open Item pricing, gets "Your rate" for a priced row, and no link without a rate', async () => {
@@ -192,16 +208,14 @@ describe('GRNOverviewTab Rates section', () => {
     expect(texts()).toContain('Rent (₹)');
   });
 
-  it('hands the GRN\'s customer to the rate card, so its own rate shows there as a card', async () => {
+  it('passes the GRN number on, for the customer\'s "Your rate" page', async () => {
     const { router } = require('expo-router');
+    mockRole = 'customer';
     read.mockResolvedValue(answer([lot({})]));
-    await mount(<GRNOverviewTab grn_id="g1" gr_no="WM0001" pricing_mode="MONTHLY" customer_details={{ id: 'c1', name: 'Fictional Farms' }} />);
+    await mount(<GRNOverviewTab grn_id="g1" gr_no="WM0001" pricing_mode="MONTHLY" />);
     const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
     act(() => row.props.onPress());
-    expect(router.push).toHaveBeenCalledWith({
-      pathname: '/item-rates/[itemId]',
-      params: { itemId: 'gur', on: '2026-10-01', readonly: '1', grn: 'g1', customer: 'c1', customer_name: 'Fictional Farms' },
-    });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/grn-rate/[grnId]/[itemId]', params: { grnId: 'g1', itemId: 'gur', no: 'WM0001' } });
   });
 
   it('falls back to the GRN-only rates on an older server', async () => {

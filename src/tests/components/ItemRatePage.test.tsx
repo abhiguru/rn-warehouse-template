@@ -127,91 +127,6 @@ describe('item page: Review Cumin Bold on 14 Oct 2026', () => {
     });
   });
 
-  it('opened read-only (from a GRN\'s Rates), an administrator gets no change, correct, stop or add', async () => {
-    await open('admin', {}, { itemId: 'cumin', readonly: '1' });
-    expect(byId(tree, 'rate-change')).toHaveLength(0);
-    expect(byId(tree, 'rate-correct')).toHaveLength(0);
-    expect(byId(tree, 'rate-stop')).toHaveLength(0);
-    expect(byId(tree, 'add-customer-rate')).toHaveLength(0);
-    // The rates themselves are still shown.
-    expect(texts(tree).join(' ')).toContain('Review Cumin Bold');
-  });
-
-  it('read-only on the GRN\'s day: the rate in short form, without date controls, Changes, the later rate, notes or old rates', async () => {
-    await open('admin', {}, { itemId: 'cumin', on: '2026-10-01', readonly: '1' });
-    const s = shown(tree);
-    expect(s).toContain('Rates for lots received on 1 Oct 2026');
-    // A different day from today, so a page that is not fixed would offer Back to today.
-    expect(byId(tree, 'change-date')).toHaveLength(0);
-    expect(byId(tree, 'back-to-today')).toHaveLength(0);
-    expect(byId(tree, 'item-changes')).toHaveLength(0);
-    const card = tree.root.find(n => n.props.testID === 'rate-card-monthly');
-    const text = card.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-    expect(text).toEqual(expect.arrayContaining(['₹11.00', '  per bag, per month', '0–100 kg', '₹3.00 per bag', '5%', 'Since 1 Apr 2026']));
-    expect(text).not.toContain('₹3.00 per bag, charged once at dispatch');
-    expect(text).not.toContain('Lots received since 1 Apr 2026');
-    expect(s).not.toContain('From 1 Jan 2027');
-    expect(s).not.toContain('All customers pay this unless they have their own rate.');
-    expect(s).not.toContain('CUSTOMER RATES');
-    expect(s).not.toContain('Show 1 old rate');
-    expect(s).not.toContain('Invoices use the rate in force');
-    expect(byId(tree, 'how-link').length).toBeGreaterThan(0);
-  });
-
-  it('read-only keeps Customer rates when there are some, and a row opens the customer\'s rate read-only', async () => {
-    await open('admin', { itemRates: itemRows('onion') }, { itemId: 'onion', on: '2026-10-01', readonly: '1' });
-    expect(shown(tree)).toContain('CUSTOMER RATES');
-    press(tree, 'customer-rate-row-orchard-b');
-    expect(router.push).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pathname: '/item-rates/[itemId]/customer/[customerId]', params: expect.objectContaining({ customerId: 'orchard-b', readonly: '1' }) }),
-    );
-  });
-
-  describe('read-only from a GRN, with the GRN\'s customer', () => {
-    const plain = (id: string) =>
-      tree.root.find(n => n.props.testID === id).findAllByType(Text)
-        .map(n => [n.props.children].flat(Infinity))
-        .filter(parts => parts.every(part => typeof part === 'string'))
-        .map(parts => parts.join(''));
-    const ORCHARD_C = { customer_id: 'orchard-c', customer_name: 'Review Orchard C' };
-
-    it('shows that customer\'s own rate as a card like the default, with no list of rows to tap', async () => {
-      const rows = [...F1.filter(r => r.item_id === 'onion'), row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3.2, labour_rate: 1.5, effective_from: '2026-01-01', ...ORCHARD_C })];
-      await open('admin', { itemRates: { item: ITEMS.find(i => i.id === 'onion')!, rows } }, { itemId: 'onion', on: '2026-10-01', readonly: '1', customer: 'orchard-b', customer_name: 'Review Orchard B' });
-      expect(plain('grn-customer-rate')).toEqual([
-        'RATE FOR REVIEW ORCHARD B', '₹3.00', '  per bag, per month',
-        'Weight each', '0–100 kg', 'Labour', '₹1.50 per bag', 'Tax', '5%', 'In force', 'Since 1 Jan 2026',
-      ]);
-      // The default card is still there; no customer rows, no other customer's rate.
-      const cards = tree.root.findAll(n => n.props.testID === 'rate-card-monthly' && typeof n.type === 'string');
-      const firstPlain = (card: (typeof cards)[number]) =>
-        card.findAllByType(Text).map(n => [n.props.children].flat(Infinity)).find(parts => parts.every(part => typeof part === 'string'))?.join('');
-      expect(cards.map(firstPlain)).toEqual(['₹3.50', '₹3.00']);
-      expect(tree.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('customer-rate-row-'))).toHaveLength(0);
-      const s = shown(tree);
-      expect(s).not.toContain('CUSTOMER RATES');
-      expect(s).not.toContain('Review Orchard C');
-      expect(s).not.toContain('₹3.20');
-    });
-
-    it('shows no customer section when that customer has no rate of their own', async () => {
-      await open('admin', { itemRates: itemRows('onion') }, { itemId: 'onion', on: '2026-10-01', readonly: '1', customer: 'orchard-a', customer_name: 'Review Orchard A' });
-      expect(tree.root.findAll(n => n.props.testID === 'grn-customer-rate')).toHaveLength(0);
-      const s = shown(tree);
-      expect(s).not.toContain('CUSTOMER RATES');
-      expect(s).not.toContain('Review Orchard B');
-    });
-
-    it('takes the customer\'s rate in force on the GRN\'s day, not a later one', async () => {
-      const rows = [...F1.filter(r => r.item_id === 'onion').map(r => (r.customer_id ? { ...r, effective_to: '2026-10-31' } : r)), row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 2.8, labour_rate: 1.5, effective_from: '2026-11-01', ...ORCHARD_B })];
-      await open('admin', { itemRates: { item: ITEMS.find(i => i.id === 'onion')!, rows } }, { itemId: 'onion', on: '2026-10-01', readonly: '1', customer: 'orchard-b' });
-      const card = plain('grn-customer-rate');
-      expect(card.slice(0, 2)).toEqual(['RATE FOR REVIEW ORCHARD B', '₹3.00']);
-      expect(card).toContain('1 Jan 2026 – 31 Oct 2026');
-      expect(shown(tree)).not.toContain('₹2.80');
-    });
-  });
-
   it('staff cannot correct: no Correct button, the reason is shown (P-45)', async () => {
     await open('staff');
     expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);
@@ -588,19 +503,6 @@ describe('For GRNs only (backend migration 86)', () => {
       'Labour', '₹1.50 per bag', 'Tax', '5%', 'GRN date', '12 Oct 2026',
     ]);
     expect(cardTexts('grn-only-card-gr5')).toEqual(['GRN A0015', '₹9.00', '  per bag, once', 'Weight each', '11–20 kg', 'Tax', '0%', 'GRN date', '12 Oct 2026']);
-  });
-
-  it('read-only, shows only the rate of the GRN the page was opened from', async () => {
-    jest.mocked(getItemGrnRates).mockResolvedValue([grnRate({}), grnRate({ id: 'g3', gr_id: 'gr3', gr_no: 'A0011', unit_price: 5 })] as never);
-    await open('admin', {}, { itemId: 'cumin', readonly: '1', grn: 'gr3' });
-    await act(async () => { await Promise.resolve(); });
-    expect(tree.root.findAll(n => n.props.testID === 'grn-only-card-gr1')).toHaveLength(0);
-    expect(cardTexts('grn-only-card-gr3').slice(0, 4)).toEqual(['GRN A0011', 'Review Orchard A', '₹5.00', '  per bag, per month']);
-    act(() => tree.unmount());
-    // Opened from a GRN with no rate of its own: no GRN-only section at all.
-    await open('admin', {}, { itemId: 'cumin', readonly: '1', grn: 'gr9' });
-    await act(async () => { await Promise.resolve(); });
-    expect(tree.root.findAll(n => n.props.testID === 'grn-only-section')).toHaveLength(0);
   });
 
   it('shows nothing when there is none, and one line of text when they cannot be loaded', async () => {

@@ -55,9 +55,7 @@ const makeStyles = (th: ThemeTokens) => ({
 export default function CustomerRatePage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string; readonly?: string }>();
-  // Opened read-only (from a GRN's Rates, through the item's page): no change is offered.
-  const readOnly = params.readonly === '1';
+  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string }>();
   const itemId = String(params.itemId ?? '');
   const customerId = String(params.customerId ?? '');
   const today = todayDay();
@@ -65,7 +63,7 @@ export default function CustomerRatePage() {
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const rights = rateRights(role);
   // Rates are changed from today's rows only (a viewed day's figures are not what the server changes).
-  const writable = !readOnly && rights.canWrite && day === today;
+  const writable = rights.canWrite && day === today;
   const offline = useIsOffline();
   const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
   const [pulling, setPulling] = useState(false);
@@ -107,7 +105,7 @@ export default function CustomerRatePage() {
             </Text>
             <Text style={styles.subtitle} numberOfLines={2}>{item.name}</Text>
           </View>
-          {rights.canSeeChanges && itemRates && !readOnly ? (
+          {rights.canSeeChanges && itemRates ? (
             <Button
               type="tertiary"
               leftIcon="history"
@@ -142,8 +140,8 @@ export default function CustomerRatePage() {
 
       {itemRates ? (
         <>
-          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} fixed={readOnly} />
-          {rights.canWrite && !readOnly && day !== today ? (
+          <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
+          {rights.canWrite && day !== today ? (
             <View style={styles.strip}>
               <OtherDayStrip day={day} onBack={() => setDay(today)} />
             </View>
@@ -189,7 +187,6 @@ export default function CustomerRatePage() {
                       </Text>
                     ) : null}
                     <RateCard
-                      compact={readOnly}
                       priceType={priceType}
                       bands={view.inForce}
                       upcoming={view.upcoming}
@@ -233,7 +230,7 @@ export default function CustomerRatePage() {
                 </Button>
               ) : null}
             </View>
-            {rights.canSeeOldRates && !readOnly ? <OldRatesSection rows={plan.ended} showCustomer={false} /> : null}
+            {rights.canSeeOldRates ? <OldRatesSection rows={plan.ended} showCustomer={false} /> : null}
           </ScrollView>
         </>
       ) : null}

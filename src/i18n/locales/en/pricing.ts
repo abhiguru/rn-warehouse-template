@@ -73,11 +73,9 @@ export const pricing = {
     defaultNote: 'All customers pay this unless they have their own rate.',
     labour: 'Labour',
     labourValue: '{{amount}} per bag, charged once at dispatch',
-    // The short values of the read-only card (opened from a GRN's Rates).
+    // Short values of the GRN rate cards (For GRNs only, Your rate).
     labourShort: '{{amount}} per bag',
     taxShort: '{{percent}}%',
-    sinceShort: 'Since {{date}}',
-    rangeShort: '{{from}} – {{to}}',
     tax: 'Tax',
     taxValue: '{{percent}}% on rent and labour',
     inForce: 'In force',
@@ -89,7 +87,6 @@ export const pricing = {
     onlyUpcoming: 'No default rate until {{date}}.',
     defaultEnded: 'The default rate ended on {{date}}.',
     overlap: 'Two rates cover {{band}} on this day. Invoices use {{amount}} (the narrower band, then the newer start). Use Change rate to fix it.',
-    customerRateFor: 'Rate for {{customer}}',
     customerRates: 'Customer rates',
     grnOnlyTitle: 'For GRNs only',
     grnOnlyRow: 'For GRN {{number}} only · {{customer}} · {{date}}',

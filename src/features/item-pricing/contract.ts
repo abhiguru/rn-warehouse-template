@@ -37,34 +37,12 @@ export type StopParams = {
   price_type: PriceType;
 };
 
-/**
- * How the item page is opened from a GRN's Rates (2026-10-16). `readOnly`: the page offers no change at all;
- * `grnId`: that GRN, whose own rate is the only GRN-only rate shown; `customerId` / `customerName`: the GRN's
- * customer, whose own rate is shown as a card on the page (no other customer's, and no tap to a second page).
- */
-export type ItemRatesView = { readOnly?: boolean; grnId?: string; customerId?: string; customerName?: string };
-export const itemRatesPath = (itemId: string, on?: string, view: ItemRatesView = {}) =>
-  ({
-    pathname: '/item-rates/[itemId]',
-    params: {
-      itemId,
-      ...(on ? { on } : {}),
-      ...(view.readOnly ? { readonly: '1' } : {}),
-      ...(view.grnId ? { grn: view.grnId } : {}),
-      ...(view.customerId ? { customer: view.customerId } : {}),
-      ...(view.customerName ? { customer_name: view.customerName } : {}),
-    },
-  }) as const;
-export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, readOnly?: boolean) =>
+export const itemRatesPath = (itemId: string, on?: string) =>
+  ({ pathname: '/item-rates/[itemId]', params: on ? { itemId, on } : { itemId } }) as const;
+export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',
-    params: {
-      itemId,
-      customerId,
-      ...(on ? { on } : {}),
-      ...(customerName ? { customer_name: customerName } : {}),
-      ...(readOnly ? { readonly: '1' } : {}),
-    },
+    params: { itemId, customerId, ...(on ? { on } : {}), ...(customerName ? { customer_name: customerName } : {}) },
   }) as const;
 export const editorPath = (params: EditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;

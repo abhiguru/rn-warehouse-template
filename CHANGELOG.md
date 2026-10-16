@@ -1,38 +1,33 @@
 # Changelog
 
-## Unreleased — GRN Overview: the Rates as a table, each row opening the rate card (2026-10-16)
+## Unreleased — GRN Overview: the Rates as a table; a tap leads to Item pricing or "Your rate" (2026-10-16)
 
-App only (uses backend migration 88, already deployed). The Rates section on the GRN page's
-Overview tab is now a table in the object-page style (common/DetailTable): Item | Rent (₹) |
-Labour (₹) | Tax (%), with the units in the headings and one width per number column, so the values
-line up under their headings. The item cell holds only the name (the weight of one bag only when
-an item has more than one row). A one-time GRN has no Labour column; at large text labour and tax
-move under the item; a note under the rows gives the unit (per bag, per month or once); a lot
+App only (uses backend migration 88, already deployed; migration 89 for the customer's answer). The Rates
+section on the GRN page's Overview tab is now a table in the object-page style (common/DetailTable):
+Item | Rent (₹) | Labour (₹) | Tax (%), with the units in the headings and one width per number column,
+so the values line up under their headings. The item cell holds only the name (the weight of one bag
+only when an item has more than one row). A one-time GRN has no Labour column; at large text labour and
+tax move under the item; a note under the rows gives the unit (per bag, per month or once); a lot
 without a rate shows "No rate set" and "—".
-A row opens the item's rate card read-only, on the GRN's day, for admin, supervisor and staff
-(customers cannot open Item pricing), and Back returns to the GRN. The rate card and a customer's
-rate page take a new `readonly` parameter that turns off every change.
-The read-only card is cut down to the rate on the GRN's day: no Change date or Back to today, no
-Changes button, no later rate or stop notice, no explanation notes or old rates; the figure and its
-unit share one line and the values are short ("₹3.00 per bag", "5%", "Since 1 Apr 2026"); Customer
-rates show only when there are some, and "For GRNs only" lists only the rate of the GRN the card was
-opened from (a new `grn` parameter). The "How an invoice picks a rate" link stays.
-Opened from a GRN, the card also gets the GRN's customer (`customer`, `customer_name`): that customer's
-own rate is a card like the default's, "Rate for <customer>", in place of the list of customer rows, so
-no rate that can apply to the GRN is behind a second tap; other customers' rates are left out, and a
-customer without a rate of their own gets no section.
-"For GRNs only" (both views) is no longer one dense line per rate: it has a section header with the
-number of GRNs and one card per GRN, laid out like the rate card above it: "GRN A0010" and the
-customer, the rent with its unit, then Weight each, Labour, Tax and GRN date as rows. A GRN with
+
+The table is the GRN's applicable rates. What a tap on a row does (owner, 2026-10-16):
+- **Administrator, supervisor:** the item's page in Item pricing, the same as from Settings (the full
+  list of the item's rates, with the usual actions), on the GRN's day; Back returns to the GRN. A row
+  without a rate opens it too, so a rate can be set.
+- **Staff:** nothing; staff get the table only, no link to the price list (Settings → Item pricing is
+  unchanged).
+- **Customer:** "Your rate" (new route `grn-rate/[grnId]/[itemId]`): only the rate their own lots of that
+  item are invoiced at, read from get_grn_item_rates, with the rent and its unit, Weight each (the weight
+  of the customer's own bags, never the band of the rate row), Labour and Tax, and the GRN number and day
+  above. The source is never named to a customer (no "Item rate", "Customer rate" or "This GRN only", in
+  the screen-reader label either), so an item's default rate reads as the customer's own. Lots of
+  different bag weights with different rates get a card each; an invoiced GRN shows the invoice's
+  figures and says so; a row without a rate is not a link.
+
+On the item page in Item pricing, "For GRNs only" is no longer one dense line per rate: it has a section
+header with the number of GRNs and one card per GRN, laid out like the rate card above it: "GRN A0010"
+and the customer, the rent with its unit, then Weight each, Labour, Tax and GRN date as rows. A GRN with
 several weight bands shows them as a band list in its one card; a one-time GRN has no Labour row.
-A customer's row opens "Your rate" (new route `grn-rate/[grnId]/[itemId]`), not the item's rate card,
-which customers cannot open: only the rate their own lots of that item are invoiced at, read from
-get_grn_item_rates, with the rent and its unit, Weight each (the weight of the customer's own bags, never
-the band of the rate row), Labour and Tax, and the GRN number and day above. The source is never named to a customer (no "Item rate", "Customer rate" or "This GRN only",
-in the screen-reader label either), so an item's default rate reads as the customer's own. Lots of
-different bag weights with different rates get a card each (backend migration 89 also stops sending a
-customer the source and the band); an invoiced GRN shows the invoice's
-figures and says so; a row without a rate is not a link.
 
 ## Unreleased — GRN details: Rates for every item on the Overview tab (2026-10-16)
 

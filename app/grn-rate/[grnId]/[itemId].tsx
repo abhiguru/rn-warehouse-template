@@ -2,8 +2,8 @@
  * "Your rate" (owner, 2026-10-16): what a customer sees on tapping a row of a GRN's Rates. Only the rate
  * their own lots of this item are invoiced at, read from get_grn_item_rates (backend migration 88), and never
  * the item's default rate or another customer's: whatever the server's source (invoice, this GRN, the
- * customer's rate or the item's), it is shown as the customer's rate, with no source named. Staff open the
- * item's rate card instead (Item pricing, read-only).
+ * customer's rate or the item's), it is shown as the customer's rate, with no source named. Administrators
+ * and supervisors open the item in Item pricing instead; staff rows are not links.
  *
  * One card per distinct rate of the item on this GRN (lots of different bag weights may differ), each with
  * the weight of the customer's own bags, never the band of the rate row it came from (backend migration 89
