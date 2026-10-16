@@ -94,6 +94,8 @@ describe('signed in', () => {
     ['item-rates', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]/customer/[customerId]', 'allow', 'allow', 'home', 'home'],
+    ['item-rates/[itemId]/customers', 'allow', 'allow', 'home', 'home'],
+    ['item-rates/[itemId]/grns', 'allow', 'allow', 'home', 'home'],
     ['item-rates/edit', 'allow', 'allow', 'home', 'home'],
     ['item-rates/stop', 'allow', 'allow', 'home', 'home'],
     ['item-price-history', 'allow', 'allow', 'home', 'home'],

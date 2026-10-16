@@ -117,6 +117,7 @@ export const pricing: Translation<typeof source> = {
   },
   grnList: {
     title: 'એક જ આવક પાવતી માટે લખેલા દર',
+    empty: 'આ આઇટમ માટે કોઈ આવક પાવતીનો પોતાનો દર નથી.',
   },
   box: {
     hint: 'બદલવા માટે આંકડા પર ટૅપ કરો.',

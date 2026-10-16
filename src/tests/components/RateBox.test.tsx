@@ -22,8 +22,8 @@ jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/features/item-pricing/components/CopyTiersSheet', () => ({ CopyTiersSheet: () => null }));
 
 let editor!: UseRateEditor;
-type Over = Partial<UseRateEditorArgs> & Pick<RateBoxProps, 'tags' | 'locked' | 'readOnly'>;
-function Harness({ tags, locked, readOnly, ...over }: Over) {
+type Over = Partial<UseRateEditorArgs> & Pick<RateBoxProps, 'tags' | 'locked' | 'readOnly' | 'caption'>;
+function Harness({ tags, locked, readOnly, caption, ...over }: Over) {
   editor = useRateEditor({
     item: { id: 'garlic', name: 'Review Garlic Desi' },
     customer: null,
@@ -36,7 +36,7 @@ function Harness({ tags, locked, readOnly, ...over }: Over) {
     onSaved: jest.fn(),
     ...over,
   });
-  return <RateBox editor={editor} tags={tags} locked={locked} readOnly={readOnly} testID="box" />;
+  return <RateBox editor={editor} tags={tags} locked={locked} readOnly={readOnly} caption={caption} testID="box" />;
 }
 
 // A stable array, so the draft is not reopened at every render.
@@ -67,6 +67,11 @@ it('shows the unit of the rate above its table', async () => {
   await mount();
   expect(texts()).toContain('per bag, per month');
   expect(byTestId('box-table').length).toBeGreaterThan(0);
+});
+
+it('shows the line since when the rate is in force under the unit, when it is given', async () => {
+  await act(async () => { tree = create(<Harness rows={ROWS} caption="Lots received since 1 Apr 2026" />); });
+  expect(texts()).toEqual(expect.arrayContaining(['per bag, per month', 'Lots received since 1 Apr 2026']));
 });
 
 it('shows the tags while nothing is changed and hides them once a figure is typed over', async () => {

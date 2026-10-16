@@ -29,7 +29,7 @@ import { planScope } from '../scopePlan';
 import { tierTags, type TierTag } from '../standardRate';
 import { useRateActions, type RateScope } from '../useRateActions';
 import { useRateEditor, type EditorView } from '../useRateEditor';
-import { RateCard } from './RateCard';
+import { RateCard, inForceText } from './RateCard';
 import { RateBox } from './RateBox';
 import { RateStrip } from './RateStrip';
 import { scopeFields, type FieldRegistry } from './fieldLink';
@@ -102,6 +102,8 @@ interface BoxProps {
   startsOn?: string;
   addBand?: boolean;
   tags?: TierTag[] | null;
+  /** Since when the rate in the box is in force. */
+  caption?: string;
   locked: boolean;
   shared: Shared;
   report: (id: string, report: BoxReport | null) => void;
@@ -122,7 +124,7 @@ const makeStyles = (th: ThemeTokens) => ({
   add: { alignSelf: 'flex-start' as const, marginHorizontal: layout.marginCompact },
 });
 
-function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
+function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
   const styles = useThemedStyles(makeStyles);
   const adding = mode === 'add' || mode === 'addCustomer';
   const [saved, setSaved] = useState(false);
@@ -244,6 +246,7 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, locked, shared
             editor={boxEditor}
             fields={scopeFields(shared.fields, id)}
             oneTime={priceType === 'one_time'}
+            caption={caption}
             tags={tags}
             locked={locked}
             testID={`rate-box-${id}`}
@@ -532,6 +535,7 @@ export function ScopeRates({
                 startsOn={current.startsOn}
                 addBand={bandFor(index) && current.mode === 'change'}
                 tags={tags}
+                caption={hasRate && current.mode !== 'upcoming' ? inForceText(bands) : undefined}
                 locked={activeId !== undefined && activeId !== priceType}
                 shared={shared}
                 report={report}

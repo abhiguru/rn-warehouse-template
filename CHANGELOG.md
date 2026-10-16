@@ -11,6 +11,32 @@
   mentions prices. Needs backend migration 90 ("staff lose item pricing"); until it is deployed the server
   still accepts staff writes, but the app no longer offers them. Deploy the app first or together with
   migration 90, else a staff phone on the old app meets refusals (42501).
+- **The item page edits the default rate in a box (owner, 2026-10-16).** Settings, Item pricing, an item:
+  under "DEFAULT RATE" the rate in force is a table, one row per weight band: "Up to (kg) | Rent (₹) |
+  Labour (₹) | Tax (%)", each figure typed over in place (a 2 px ring on the cell being typed in; the
+  upper weight, the rent, labour and tax; labour and tax are two rows under the table unless the bands
+  differ in them). "Add band" and a remove control per row are in the box, and "Copy weight bands from
+  another item" when a new rate is added. Tags Standard / This item stay under each band while nothing is
+  changed. As soon as a figure is changed a Save bar appears under the page with "Starts on" (Today, next
+  month, 1 April, another date; a manager may pick a past day and gets the existing warning), the lots
+  rule, the live "What changes" lines, Discard and Save; with the keyboard up it keeps only Discard and
+  Save. Leaving with a change unsaved asks first. The separate Change rate screen is gone from this page:
+  "Edit new rate" puts the planned rate into the box, "Correct this rate" puts the rate in force into it
+  with its start day fixed, and "Stop this rate" still opens the stop screen. An item with no rate shows
+  "Add default rate", and an item with one price type "Add one-time rate" / "Add monthly rate", which open
+  an empty box on the page. Only one box is edited at a time. At large text (1.3 and up), or when the
+  columns do not fit, the box shows one card per band instead of the table (the same fields).
+- **Customer rates and GRN rates are one line each.** "Customer rates for this item (N) ›" opens a new list
+  (Customer rates: a row per customer with an own rate, each opening that customer's Pricing tab, which the next step of this change builds);
+  "Add customer rate" has left the page, and customer rates are added under Customers, Pricing. "Rates typed
+  on single GRNs (N) ›" appears only when there are some; it opens a list with a row per GRN (number,
+  customer, day, figures) that opens the GRN. The cards of the GRN-only rates are no longer on the page.
+- **The day control is behind a link.** "Change date", "Back to today" and "You're looking at rates for…" are
+  hidden; "See rates on another day" at the bottom of the page shows them. A day other than today shows the
+  rate cards read-only, as before; a link that carries a day opens the controls at once.
+- The "Add" link of the Item pricing list can open the item with one more empty band in the box
+  (`add_band`). New routes `item-rates/[itemId]/customers` and `item-rates/[itemId]/grns` (same access as
+  the item page: administrators and supervisors). App only; the backend is unchanged by this part.
 
 ## Unreleased — GRN Overview: the Rates as a table; a tap leads to Item pricing or "Your rate" (2026-10-16)
 

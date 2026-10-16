@@ -117,6 +117,7 @@ export const pricing = {
   },
   grnList: {
     title: 'Rates typed on single GRNs',
+    empty: 'No GRN has a rate of its own for this item.',
   },
   // The rate box: the band table that is edited in place.
   box: {

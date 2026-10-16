@@ -26,6 +26,8 @@ import type { FieldRegistry } from './fieldLink';
 export interface RateBoxProps {
   editor: UseRateEditor;
   fields?: FieldRegistry;
+  /** A line under the unit: since when the rate is in force. */
+  caption?: string;
   /** Whether the rate is a one-time rate until the editor's draft says so (the draft decides once it is open). */
   oneTime?: boolean;
   /** One tag per band ('Standard' or 'This item'), shown while nothing in the box is changed. */
@@ -42,7 +44,7 @@ const makeStyles = (th: ThemeTokens) => ({
   note: { ...typography.footnote, color: th.text.secondary },
 });
 
-export function RateBox({ editor, fields, oneTime, tags, locked = false, readOnly = false, testID }: RateBoxProps) {
+export function RateBox({ editor, fields, caption, oneTime, tags, locked = false, readOnly = false, testID }: RateBoxProps) {
   const styles = useThemedStyles(makeStyles);
   const offline = useIsOffline();
   const [copyOpen, setCopyOpen] = useState(false);
@@ -70,6 +72,7 @@ export function RateBox({ editor, fields, oneTime, tags, locked = false, readOnl
         />
       ) : null}
       <Text style={styles.unit}>{unitText(priceType)}</Text>
+      {caption ? <Text style={styles.note} testID={`${testID}-caption`}>{caption}</Text> : null}
       {stripText ? <EditorStrip variant="critical" message={stripText} testID="editor-error" /> : null}
       {copiedFrom ? (
         <Text style={styles.note} testID="copied-from-item">{t('pricing.edit.copiedFromItem', { item: copiedFrom })}</Text>
