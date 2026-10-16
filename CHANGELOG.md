@@ -67,6 +67,13 @@
   page's Pricing tab). A rate typed on this GRN only, a rate taken from an invoice and a row without a
   rate are plain rows, not links. Staff still get no link; a customer still gets "Your rate". New text:
   "Opens {{customer}}'s own rate." (screen-reader hint).
+- **GRN → Overview → Rates: a rate typed on this GRN opens the GRN's Rates block (owner, 2026-10-17).** The
+  row was plain text and looked greyed out next to the links. For an administrator or supervisor who may edit
+  the GRN it now opens Edit GRN on its Review step (`grnRatesStepPath`, `focus: 'rates'`), scrolled to the
+  Rates block where that rate is set and changed. Opened this way, the step's Previous and the Back key put
+  steps 1 and 2 under it (step 1 replaced in, step 2 pushed) and Edit details opens step 1, so the wizard
+  still goes back one step at a time. A rate from an invoice and a row without a rate stay plain. New text:
+  "Opens Edit GRN at its Rates, where this rate is changed." (screen-reader hint).
 - **Cleanup: the edit screen is the invoice pencil's alone (2026-10-16).** `item-rates/edit` opens only with
   `mode=invoice` and a customer (the price pencil of an invoice line); it resolves to Correct rate or Add
   customer rate itself, and any other link (another mode, or no customer) shows "This rate has changed or no

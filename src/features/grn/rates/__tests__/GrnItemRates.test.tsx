@@ -130,19 +130,25 @@ describe('GrnItemRates', () => {
     const { router } = require('expo-router');
     mockRole = role;
     read.mockResolvedValue(answer(rowsBySource));
-    await mount(<GrnItemRates grnId="g1" grnNumber="WM0001" customerId="cust-1" customerName="Fictional Traders" />);
-    // Only the 'item' and 'customer' rows are links: 'grn', 'invoice' and no-rate rows are plain rows.
-    expect(links()).toHaveLength(2);
-    expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.', "Opens Fictional Traders's own rate."]);
+    await mount(<GrnItemRates grnId="g1" grnNumber="WM0001" customerId="cust-1" customerName="Fictional Traders" canEdit />);
+    // 'item', 'customer' and 'grn' rows are links: 'invoice' and no-rate rows are plain rows.
+    expect(links()).toHaveLength(3);
+    expect(links().map(n => n.props.accessibilityHint)).toEqual([
+      'Opens the item in Item pricing.',
+      "Opens Fictional Traders's own rate.",
+      'Opens Edit GRN at its Rates, where this rate is changed.',
+    ]);
     act(() => links()[0].props.onPress());
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur' } });
     expect(router.push.mock.calls[router.push.mock.calls.length - 1][0].params).not.toHaveProperty('on');
     act(() => links()[1].props.onPress());
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/customer/[id]', params: { id: 'cust-1', tab: 'pricing', item: 'rice' } });
+    // A rate typed on this GRN opens the GRN's edit on its Review step, at the Rates block (owner, 2026-10-17).
+    act(() => links()[2].props.onPress());
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step3', params: { id: 'g1', focus: 'rates' } });
     // The plain rows keep their label (with the source) for a screen reader.
     const plain = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.type === 'string' && n.props.accessibilityRole !== 'button');
     expect(plain.map(n => n.props.accessibilityLabel)).toEqual([
-      'Fictional Eggs, This GRN only, Rent ₹2.00, Labour ₹1.50, Tax 5%',
       'Fictional Tea, On the invoice, Rent ₹6.00, Labour ₹1.50, Tax 5%',
       'Fictional Ajwain, No rate set',
     ]);
@@ -152,6 +158,19 @@ describe('GrnItemRates', () => {
     read.mockResolvedValue(answer(rowsBySource));
     await mount(<GrnItemRates grnId="g1" />);
     expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.']);
+  });
+
+  it('a rate typed on this GRN is not a link for a manager who may not edit the GRN', async () => {
+    read.mockResolvedValue(answer(rowsBySource));
+    await mount(<GrnItemRates grnId="g1" customerId="cust-1" customerName="Fictional Traders" />);
+    expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.', "Opens Fictional Traders's own rate."]);
+  });
+
+  it('staff never get the GRN-rate link, even when they may edit the GRN', async () => {
+    mockRole = 'staff';
+    read.mockResolvedValue(answer(rowsBySource));
+    await mount(<GrnItemRates grnId="g1" customerId="cust-1" canEdit />);
+    expect(links()).toHaveLength(0);
   });
 
   it('staff get the table only: no row is a link to the price list', async () => {
@@ -245,6 +264,17 @@ describe('GRNOverviewTab Rates section', () => {
     act(() => links()[0].props.onPress());
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/customer/[id]', params: { id: 'cust-9', tab: 'pricing', item: 'rice' } });
     expect(links()[0].props.accessibilityHint).toBe("Opens Fictional Traders's own rate.");
+  });
+
+  it('passes can_edit on: a manager\'s tap on a rate typed on this GRN opens its Rates block only when the GRN may be edited', async () => {
+    const { router } = require('expo-router');
+    read.mockResolvedValue(answer([lot({ item_id: 'egg', item_name: 'Fictional Eggs', source: 'grn' })]));
+    await mount(<GRNOverviewTab grn_id="g1" gr_no="WM0001" pricing_mode="MONTHLY" />);
+    expect(links()).toHaveLength(0);
+    act(() => tree.unmount());
+    await mount(<GRNOverviewTab grn_id="g1" gr_no="WM0001" pricing_mode="MONTHLY" can_edit />);
+    act(() => links()[0].props.onPress());
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step3', params: { id: 'g1', focus: 'rates' } });
   });
 
   it('falls back to the GRN-only rates on an older server', async () => {

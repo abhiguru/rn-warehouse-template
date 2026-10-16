@@ -141,7 +141,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       )}
 
       {/* SECTION: RATES (the rate each item is invoiced at; the GRN-only rates on a server without migration 88) */}
-      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} fallbackRates={rates} />
+      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} canEdit={can_edit} fallbackRates={rates} />
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}

@@ -11,9 +11,10 @@
  * administrator or supervisor taps a row and lands where that rate lives (owner, 2026-10-16), by the
  * row's source: 'item' (the item's default rate) opens the item's page in Item pricing, today's rates
  * (no day, so no "You're looking at..." section); 'customer' (the customer's own rate) opens the
- * customer's Pricing tab on that item's box; 'grn' (typed on this GRN only), 'invoice' (taken from an
- * invoice) and a row without a rate are plain rows, not links, because no rate card holds them. Back
- * returns to the GRN. Staff get the table only (no link to the price list). A customer's row opens
+ * customer's Pricing tab on that item's box; 'grn' (typed on this GRN only) opens the GRN's edit on its
+ * Review step, scrolled to the Rates block where that rate is set (owner, 2026-10-17; only when the person
+ * may edit the GRN); 'invoice' (taken from an invoice) and a row without a rate are plain rows, not links.
+ * Back returns to the GRN. Staff get the table only (no link to the price list). A customer's row opens
  * "Your rate" (app/grn-rate): only the rate their lots are invoiced at, never the item's default or
  * anyone else's, and their screen-reader label names no source either.
  */
@@ -45,7 +46,7 @@ import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
 import { GrnOnlyRates } from './GrnOnlyRates';
 import { useGrnItemRates } from './useGrnItemRates';
-import { yourRatePath } from './paths';
+import { grnRatesStepPath, yourRatePath } from './paths';
 
 /** Column widths at font scale 1; each grows with its widest value. */
 const RENT_WIDTH = 56;
@@ -109,10 +110,12 @@ export interface GrnItemRatesProps {
   customerId?: string | null;
   /** The customer's name, for the hint of that tap. */
   customerName?: string | null;
+  /** The person may edit this GRN: a manager's tap on a rate typed on this GRN opens its Rates block. */
+  canEdit?: boolean;
   fallbackRates?: RpcGrnRate[] | null;
 }
 
-export function GrnItemRates({ grnId, grnNumber, customerId, customerName, fallbackRates }: GrnItemRatesProps) {
+export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEdit = false, fallbackRates }: GrnItemRatesProps) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
@@ -167,8 +170,15 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, fallb
               const { rate } = group;
               const priced = rate.source !== null;
               const opensYourRate = isCustomer && priced && !!grnId;
-              const managerTarget: 'item' | 'customer' | null =
-                manager && rate.source === 'item' ? 'item' : manager && rate.source === 'customer' && customerId ? 'customer' : null;
+              const managerTarget: 'item' | 'customer' | 'grn' | null = !manager
+                ? null
+                : rate.source === 'item'
+                  ? 'item'
+                  : rate.source === 'customer' && customerId
+                    ? 'customer'
+                    : rate.source === 'grn' && canEdit && grnId
+                      ? 'grn'
+                      : null;
               const link = managerTarget !== null || opensYourRate;
               const details = repeated.has(rate.item_id) ? formatWeightEach(group.weight) : null;
               // Stacked, labour and tax go under the item.
@@ -220,7 +230,9 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, fallb
                         ? itemRatesPath(rate.item_id)
                         : managerTarget === 'customer'
                           ? customerPricingPath(customerId as string, rate.item_id)
-                          : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
+                          : managerTarget === 'grn'
+                            ? grnRatesStepPath(grnId as string)
+                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
                     )
                   }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
@@ -231,7 +243,9 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, fallb
                       ? t('grn.rates.opensItemPricing')
                       : managerTarget === 'customer'
                         ? t('grn.rates.opensCustomerPricing', { customer: customerName ?? t('common.customer') })
-                        : t('grn.rates.opensYourRate')
+                        : managerTarget === 'grn'
+                          ? t('grn.rates.opensGrnRates')
+                          : t('grn.rates.opensYourRate')
                   }
                   testID="grn-item-rate-row"
                 >

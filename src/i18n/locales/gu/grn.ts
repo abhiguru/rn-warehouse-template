@@ -350,6 +350,7 @@ export const grn: Translation<typeof source> = {
     rentAmount: 'ભાડું {{amount}}',
     opensItemPricing: 'આઇટમને આઇટમના દરમાં ખોલે છે.',
     opensCustomerPricing: '{{customer}} નો પોતાનો દર ખોલે છે.',
+    opensGrnRates: 'આવક પાવતીમાં ફેરફાર તેના દર પર ખોલે છે, જ્યાં આ દર બદલાય છે.',
     yourRateTitle: 'તમારો દર',
     yourRateForGrn: 'આવક પાવતી {{number}}, માલ આવ્યો {{date}}',
     yourRateOn: 'માલ આવ્યો {{date}}',

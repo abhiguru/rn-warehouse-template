@@ -10,6 +10,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Snackbar } from 'react-native-paper';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
@@ -103,7 +104,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const t = useTokens();
 
   // Extract ID from URL params for edit mode
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
+  // Opened on this step from GRN → Overview → Rates, on a rate typed on this GRN (owner, 2026-10-17;
+  // features/grn/rates/paths.ts grnRatesStepPath): steps 1 and 2 are not under it, so going back puts
+  // them there first, and the step scrolls to its Rates block once the GRN has loaded.
+  const openedOnRates = mode === 'edit' && focus === 'rates';
 
   const {
     header,
@@ -154,6 +159,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const canSetRates = canOpenScreen(role, 'itemPricing');
   const scrollRef = useRef<ScrollView>(null);
   const ratesY = useRef(0);
+  // Scroll to Rates each time the block moves while the GRN loads, until the person scrolls.
+  const ratesFocusPending = useRef(openedOnRates);
   const [sheetRow, setSheetRow] = useState<PricedRow | null>(null);
   const rateCtx = useMemo(
     () => ({ customerId: header.customer_id || null, day: toCalendarDay(header.date || new Date()), priceType: priceTypeOf(header.pricing_mode) }),
@@ -218,18 +225,38 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const { totalItems, totalQty } = calculateTotals();
 
+  const editStep = (step: 1 | 2) => ({ pathname: step === 1 ? ('/grn-edit/[id]/step1' as const) : ('/grn-edit/[id]/step2' as const), params: { id } });
+
   const handlePrevious = () => {
     dispatch(setCurrentStep(2));
+    if (openedOnRates) {
+      router.replace(editStep(1));
+      router.push(editStep(2));
+      return;
+    }
     router.back();
   };
 
   const handleNavigateToHeader = () => {
     dispatch(setCurrentStep(1));
+    if (openedOnRates) {
+      router.replace(editStep(1));
+      return;
+    }
     router.back();
     requestAnimationFrame(() => {
       router.back();
     });
   };
+
+  // The Back key goes to step 2 as Previous does; on the normal way in, the stack already does that.
+  useBackHandler({
+    enabled: openedOnRates,
+    onBackPress: () => {
+      handlePrevious();
+      return true;
+    },
+  });
 
   const handleStepIndicatorPress = (stepNumber: number) => {
     if (stepNumber === STEP_NUMBERS.REVIEW) return;
@@ -701,6 +728,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       <View style={styles.contentWrapper}>
         <ScrollView
           ref={scrollRef}
+          onScrollBeginDrag={() => { ratesFocusPending.current = false; }}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -806,7 +834,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
           {/* Rates: administrators and supervisors only */}
           {canSetRates ? (
-            <View onLayout={(e) => { ratesY.current = e.nativeEvent.layout.y; }} testID="grn-rates-section">
+            <View
+              onLayout={(e) => {
+                ratesY.current = e.nativeEvent.layout.y;
+                if (ratesFocusPending.current && items.length > 0) scrollToRates();
+              }}
+              testID="grn-rates-section"
+            >
               {renderSectionHeader(tr('grn.rates.title'), {
                 tag: !grnInvoiced && stored.status === 'ready' && missingCount(pricedRows) > 0 ? tr('grn.rates.withoutRate', { count: missingCount(pricedRows) }) : undefined,
               })}

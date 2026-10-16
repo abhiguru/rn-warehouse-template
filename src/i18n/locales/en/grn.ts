@@ -352,6 +352,7 @@ export const grn = {
     rentAmount: 'Rent {{amount}}',
     opensItemPricing: 'Opens the item in Item pricing.',
     opensCustomerPricing: "Opens {{customer}}'s own rate.",
+    opensGrnRates: 'Opens Edit GRN at its Rates, where this rate is changed.',
     yourRateTitle: 'Your rate',
     yourRateForGrn: 'GRN {{number}}, goods received on {{date}}',
     yourRateOn: 'Goods received on {{date}}',

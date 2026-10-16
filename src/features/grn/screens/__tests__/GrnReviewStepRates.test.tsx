@@ -54,7 +54,10 @@ jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGri
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
 jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
-jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useLocalSearchParams: () => ({}), useFocusEffect: jest.fn() }));
+let mockParams: Record<string, string> = {};
+jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => mockParams, useFocusEffect: jest.fn() }));
+let backOptions: { enabled?: boolean; onBackPress?: () => boolean } = {};
+jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: (options: typeof backOptions) => { backOptions = options; } }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
@@ -110,6 +113,8 @@ beforeEach(() => {
   // Gur has the customer's own rate for 0-50 kg; rice has no rate at all.
   mockRates = [stored('gur', 0, 50, 3.5, 'cust-a'), stored('gur', 0, 50, 3)];
   sheetProps = {};
+  mockParams = {};
+  backOptions = {};
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
@@ -412,5 +417,58 @@ describe('round 3', () => {
     }
     expect(createGRN).toHaveBeenCalledTimes(2);
     expect(showAlert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('opened on the Rates block from GRN → Overview → Rates (owner, 2026-10-17)', () => {
+  const { router } = require('expo-router');
+  const scrollView = (tree: ReactTestRenderer) => tree.root.findByType(require('react-native').ScrollView);
+  const layoutRates = (tree: ReactTestRenderer, y: number) =>
+    act(() => { tree.root.find(n => n.props.testID === 'grn-rates-section' && typeof n.props.onLayout === 'function').props.onLayout({ nativeEvent: { layout: { y } } }); });
+
+  it('scrolls to the Rates block each time it moves while the GRN loads, and stops once the person scrolls', async () => {
+    mockParams = { id: GRN_ID, focus: 'rates' };
+    const tree = await render('edit');
+    const scrollTo = jest.spyOn(scrollView(tree).instance, 'scrollTo').mockImplementation(() => {});
+    layoutRates(tree, 600);
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 600 - 16, animated: true });
+    layoutRates(tree, 900);
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 900 - 16, animated: true });
+    act(() => { scrollView(tree).props.onScrollBeginDrag(); });
+    layoutRates(tree, 1000);
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+  });
+
+  it('the normal way in (from step 2) does not scroll, and Previous goes back one screen', async () => {
+    mockParams = { id: GRN_ID };
+    const tree = await render('edit');
+    const scrollTo = jest.spyOn(scrollView(tree).instance, 'scrollTo').mockImplementation(() => {});
+    layoutRates(tree, 600);
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(backOptions.enabled).toBe(false);
+    act(() => { one(tree, 'WizardBottomBar').props.onPrevious(); });
+    expect(router.back).toHaveBeenCalledTimes(1);
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('Previous and the Back key put steps 1 and 2 under it; Edit details opens step 1', async () => {
+    mockParams = { id: GRN_ID, focus: 'rates' };
+    const tree = await render('edit');
+    act(() => { one(tree, 'WizardBottomBar').props.onPrevious(); });
+    expect(router.replace).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step1', params: { id: GRN_ID } });
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step2', params: { id: GRN_ID } });
+    expect(router.back).not.toHaveBeenCalled();
+    jest.clearAllMocks();
+    expect(backOptions.enabled).toBe(true);
+    let handled = false;
+    act(() => { handled = backOptions.onBackPress!(); });
+    expect(handled).toBe(true);
+    expect(router.replace).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step1', params: { id: GRN_ID } });
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step2', params: { id: GRN_ID } });
+    jest.clearAllMocks();
+    act(() => { one(tree, 'GRNStepIndicator').props.onStepPress(1); });
+    expect(router.replace).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step1', params: { id: GRN_ID } });
+    expect(router.push).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
   });
 });
