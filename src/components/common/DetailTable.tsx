@@ -8,7 +8,7 @@
  *
  * Number columns are as wide as their widest value (the totals included) at the current text
  * size, so a number never splits. From font scale 1.5 (the stacking point of ItemRateRow), or
- * when the number columns would leave the first column less than 30 % of the row, the middle
+ * when the number columns would leave the first column less than 25 % of the row, the middle
  * columns move under the first one.
  *
  * On a FlatList the card is drawn in parts, so its end always scrolls into view: Android leaves
@@ -71,11 +71,13 @@ export const nestedRowWidth = (table: Pick<TableLayout, 'width'>): number =>
 /** The chevron cell and the gap after it, at the start of a row of an expandable table. */
 export const CHEVRON_LEAD = iconSize.md + space.sm;
 
-// Width of one character of a number, as a share of the font size: tabular digits are about
-// 0.56 em in Roboto and a little more in weight 600; Gujarati digits are a little wider.
-const DIGIT_EM = 0.58;
-const STRONG_DIGIT_EM = 0.62;
+// Widths of a number's characters, as a share of the font size, a little above Roboto's: tabular
+// digits 0.57 em (0.6 in weight 600), separators 0.28 em, ₹ and anything else 0.62 em. Gujarati
+// digits are a little wider. A cell may still shrink a little (ONE_LINE) if the estimate is short.
 const GUJARATI_DIGITS = 1.08;
+const charEm = (char: string, strong: boolean): number =>
+  /[\d૦-૯]/.test(char) ? (strong ? 0.6 : 0.57) : /[,.\s]/.test(char) ? 0.28 : 0.62;
+const emWidth = (text: string, strong: boolean): number => Array.from(text).reduce((sum, char) => sum + charEm(char, strong), 0);
 
 /**
  * A number column's width for a whole table: its width at font scale 1 grown with the text, or
@@ -90,16 +92,17 @@ export function numberColumnWidth(
   size: number = typography.subhead.fontSize ?? 15
 ): number {
   const factor = size * table.scale * (getLanguage() === 'gu' ? GUJARATI_DIGITS : 1);
-  const longest = (texts: readonly string[], em: number) => texts.reduce((max, text) => Math.max(max, text.length * em * factor), 0);
-  return Math.max(table.numberWidth(base), Math.ceil(Math.max(longest(values, DIGIT_EM), longest(strong, STRONG_DIGIT_EM))) + space.xxs);
+  const longest = (texts: readonly string[], bold: boolean) => texts.reduce((max, text) => Math.max(max, emWidth(text, bold) * factor), 0);
+  return Math.max(table.numberWidth(base), Math.ceil(Math.max(longest(values, false), longest(strong, true))) + space.xxs);
 }
 
 /**
- * The least share of the row the first column keeps before the middle columns stack. At 30 %
- * ordinary data keeps its columns (an invoice at font scale 1.3 on a 411 dp phone leaves the item
- * column about 32 %), while amounts above ₹1 crore or six-digit quantities stack.
+ * The least share of the row the first column keeps before the middle columns stack. At 25 %
+ * ordinary data keeps its columns (an invoice with lakh totals at font scale 1.3 on a 411 dp
+ * phone leaves the item column about 29 %, names wrapping by whole words), while amounts in
+ * crores or six-digit quantities, which left 3–15 %, stack.
  */
-export const FIRST_COLUMN_SHARE = 0.3;
+export const FIRST_COLUMN_SHARE = 0.25;
 
 /** Whether columns of these widths, with the gaps before them, leave the first column less than FIRST_COLUMN_SHARE of `row`. */
 export function crowded(row: number, columns: readonly number[], lead: number = CHEVRON_LEAD): boolean {

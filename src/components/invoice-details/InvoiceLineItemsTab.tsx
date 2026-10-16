@@ -413,7 +413,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   const totalBags = groups.reduce((sum, group) => sum + group.total_dispatch_qty, 0);
   const totalAmount = roundMoney(groups.reduce((sum, group) => sum + group.total_amount, 0));
   // Each column as wide as its widest value or total; amounts that leave the item column under
-  // 30 % of the row move the bags under the item (owner, 2026-10-16), as large text does.
+  // 25 % of the row move the bags under the item (owner, 2026-10-16), as large text does.
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.total_dispatch_qty)), [formatNumber(totalBags)]);
   const amountWidth = numberColumnWidth(screen, AMOUNT_WIDTH, groups.map((group) => formatInvoiceAmount(group.total_amount)), [formatInvoiceAmount(totalAmount)]);
   const table = useStackedWhen(screen, crowded(rowWidth(screen), [bagsWidth, amountWidth]));

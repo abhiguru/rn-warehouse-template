@@ -6,7 +6,7 @@ App only. Fixes from a phone run with stretch data on Dev (30-character names, 5
 quantities up to 9,87,654, an invoice above ₹1 billion) and two visual reviews of its screenshots.
 - Every number column on the Dispatch, GRN and invoice pages has one width for the whole table,
   sized to its widest value or total, so numbers line up from row to row and never split
-  ("10,82,34" / "8"). When huge numbers would leave the first column under 30 % of the row, the
+  ("10,82,34" / "8"). When huge numbers would leave the first column under 25 % of the row, the
   middle columns move under the first, as at large text; ordinary data keeps its columns.
 - Dispatch Items: the GRN/Received column is sized to the GRN/received text, and a long mark is
   cut with "…" at the normal size instead of shrinking until unreadable.

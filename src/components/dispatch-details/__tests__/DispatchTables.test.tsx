@@ -184,7 +184,7 @@ describe('Items table', () => {
     const mark = 'BL/STRETCH-LOT-0001/LONG-PACKAGE-MARK-FOR-WRAP-TEST/ABCDEFG';
     render(<DispatchItemsTab items={[item({ id: 'b', grn_no: 'WMWM8881', original_quantity: 987654, dispatch_quantity: 500000, package_mark: mark })]} />);
 
-    // "WMWM8881/9,87,654" needs about 210 dp: the item column would keep under 30 % of the row.
+    // "WMWM8881/9,87,654" needs about 210 dp: the item column would keep under 25 % of the row.
     expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|Bags dispatched\|/);
     expect(textOf(byTestId('dispatch-item-row-b'))).toBe(`Basmati Rice|50 kg each|WMWM8881/9,87,654|${mark}|5,00,000`);
     const markText = byTestId('dispatch-item-row-b').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === mark)[0];
