@@ -14,6 +14,8 @@ export type GrnItemRatesStatus = 'loading' | 'ready' | 'error' | 'unavailable';
 export interface UseGrnItemRatesResult {
   rates: RpcGrnItemRate[];
   priceType: 'monthly' | 'one_time';
+  /** The GRN's India day ('YYYY-MM-DD'): the day its rates are picked for. */
+  grnDate: string | null;
   status: GrnItemRatesStatus;
   retry: () => Promise<void>;
 }
@@ -21,6 +23,7 @@ export interface UseGrnItemRatesResult {
 export function useGrnItemRates(grnId?: string | null): UseGrnItemRatesResult {
   const [rates, setRates] = useState<RpcGrnItemRate[]>([]);
   const [priceType, setPriceType] = useState<'monthly' | 'one_time'>('monthly');
+  const [grnDate, setGrnDate] = useState<string | null>(null);
   const [status, setStatus] = useState<GrnItemRatesStatus>(grnId ? 'loading' : 'unavailable');
   const seq = useRef(0);
 
@@ -41,6 +44,7 @@ export function useGrnItemRates(grnId?: string | null): UseGrnItemRatesResult {
       }
       setRates(answer.rates);
       setPriceType(answer.price_type);
+      setGrnDate(answer.grn_date ?? null);
       setStatus('ready');
     } catch {
       if (mine !== seq.current) return;
@@ -57,5 +61,5 @@ export function useGrnItemRates(grnId?: string | null): UseGrnItemRatesResult {
     }, [load]),
   );
 
-  return { rates, priceType, status, retry: load };
+  return { rates, priceType, grnDate, status, retry: load };
 }

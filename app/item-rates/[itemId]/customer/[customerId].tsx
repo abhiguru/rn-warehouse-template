@@ -55,7 +55,9 @@ const makeStyles = (th: ThemeTokens) => ({
 export default function CustomerRatePage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string; readonly?: string }>();
+  // Opened read-only (from a GRN's Rates, through the item's page): no change is offered.
+  const readOnly = params.readonly === '1';
   const itemId = String(params.itemId ?? '');
   const customerId = String(params.customerId ?? '');
   const today = todayDay();
@@ -63,7 +65,7 @@ export default function CustomerRatePage() {
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const rights = rateRights(role);
   // Rates are changed from today's rows only (a viewed day's figures are not what the server changes).
-  const writable = rights.canWrite && day === today;
+  const writable = !readOnly && rights.canWrite && day === today;
   const offline = useIsOffline();
   const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
   const [pulling, setPulling] = useState(false);
@@ -141,7 +143,7 @@ export default function CustomerRatePage() {
       {itemRates ? (
         <>
           <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
-          {rights.canWrite && day !== today ? (
+          {rights.canWrite && !readOnly && day !== today ? (
             <View style={styles.strip}>
               <OtherDayStrip day={day} onBack={() => setDay(today)} />
             </View>

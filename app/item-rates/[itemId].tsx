@@ -91,14 +91,16 @@ function customerRows(rows: ItemStoragePrice[], day: string) {
 export default function ItemRatesPage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; on?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; on?: string; readonly?: string }>();
+  // Opened read-only (from a GRN's Rates): no change is offered, whatever the role or day.
+  const readOnly = params.readonly === '1';
   const itemId = String(params.itemId ?? '');
   const today = todayDay();
   const [day, setDay] = useState(typeof params.on === 'string' && DAY.test(params.on) ? params.on : today);
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const rights = rateRights(role);
   // Rates are changed from today's rows only (a viewed day's figures are not what the server changes).
-  const writable = rights.canWrite && day === today;
+  const writable = !readOnly && rights.canWrite && day === today;
   const offline = useIsOffline();
   const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
   // The standard rate is read once per page (from the session cache when it is there) for the Standard / This item tags.
@@ -204,7 +206,7 @@ export default function ItemRatesPage() {
       {itemRates ? (
         <>
           <RatesOnBar text={t('pricing.item.status', { date: dateText(day) })} day={day} today={today} onChangeDay={setDay} />
-          {rights.canWrite && day !== today ? (
+          {rights.canWrite && !readOnly && day !== today ? (
             <View style={styles.strip}>
               <OtherDayStrip day={day} onBack={() => setDay(today)} />
             </View>
@@ -314,7 +316,7 @@ export default function ItemRatesPage() {
                       customerName={c.name}
                       bands={c.bands}
                       newRateFrom={c.newRateFrom}
-                      onPress={id => router.push(customerRatePath(itemId, id, day !== today ? day : undefined, c.name))}
+                      onPress={id => router.push(customerRatePath(itemId, id, day !== today ? day : undefined, c.name, readOnly))}
                     />
                   ))}
                 </View>

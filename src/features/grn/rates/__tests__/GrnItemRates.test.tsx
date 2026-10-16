@@ -8,10 +8,15 @@ import { getGrnItemRates } from '@/services/item-pricing-service';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
 
 jest.mock('@/services/item-pricing-service', () => ({ getGrnItemRates: jest.fn() }));
-jest.mock('expo-router', () => ({ useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]) }));
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn() },
+  useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]),
+}));
+let mockRole = 'admin';
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
-  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: mockRole } } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 // The owner's phone: 411 dp wide at font scale 1.3 (jest's default window is font scale 2).
@@ -37,6 +42,7 @@ beforeEach(() => jest.clearAllMocks());
 afterEach(() => {
   act(() => tree.unmount());
   mockFontScale = 1.3;
+  mockRole = 'admin';
 });
 
 describe('GrnItemRates', () => {
@@ -47,12 +53,13 @@ describe('GrnItemRates', () => {
       lot({ grn_item_id: 'c', item_id: 'egg', item_name: 'Fictional Eggs', weight: 10, source: 'item', unit_price: 2, labour_rate: 0.5, tax_percent: 12 }),
     ]));
     await mount(<GrnItemRates grnId="g1" />);
+    // Only the name in the item cell (owner, 2026-10-16): the rate card has the details.
     expect(texts()).toEqual([
       'RATES',
       'Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)',
-      'Fictional Gur', '25 kg each · 0–50 kg', 'This GRN only', '4.50', '1.50', '5',
-      'Fictional Rice', '30 kg each · 0–50 kg', 'Customer rate', '3.00', '1.50', '5',
-      'Fictional Eggs', '10 kg each · 0–50 kg', 'Item rate', '2.00', '0.50', '12',
+      'Fictional Gur', '4.50', '1.50', '5',
+      'Fictional Rice', '3.00', '1.50', '5',
+      'Fictional Eggs', '2.00', '0.50', '12',
       'Rent and labour per bag, per month.',
     ]);
   });
@@ -71,22 +78,14 @@ describe('GrnItemRates', () => {
   it('invoice source has no band; varies adds a second tag; a one-time GRN has no Labour column', async () => {
     read.mockResolvedValue(answer([lot({ source: 'invoice', weight_min: null, weight_max: null, unit_price: 4.3, varies: true })], 'one_time'));
     await mount(<GrnItemRates grnId="g1" />);
-    expect(texts()).toEqual([
-      'RATES', 'Item', 'Rent (₹)', 'Tax (%)',
-      'Fictional Gur', '25 kg each', 'On the invoice', 'differs by dispatch', '4.30', '5',
-      'Rent per bag, once.',
-    ]);
+    expect(texts()).toEqual(['RATES', 'Item', 'Rent (₹)', 'Tax (%)', 'Fictional Gur', '4.30', '5', 'Rent per bag, once.']);
   });
 
   it('at large text keeps the Rent column and moves labour and tax under the item', async () => {
     mockFontScale = 2;
     read.mockResolvedValue(answer([lot({ source: 'grn' })]));
     await mount(<GrnItemRates grnId="g1" />);
-    expect(texts()).toEqual([
-      'RATES', 'Item', 'Rent (₹)',
-      'Fictional Gur', '25 kg each · 0–50 kg · Labour ₹1.50 · Tax 5%', 'This GRN only', '4.50',
-      'Rent and labour per bag, per month.',
-    ]);
+    expect(texts()).toEqual(['RATES', 'Item', 'Rent (₹)', 'Fictional Gur', 'Labour ₹1.50 · Tax 5%', '4.50', 'Rent and labour per bag, per month.']);
   });
 
   it('shares one row between lots with the same item, weight and figures, and splits on a different weight or figure', () => {
@@ -100,9 +99,39 @@ describe('GrnItemRates', () => {
     await mount(<GrnItemRates grnId="g1" />);
     expect(texts()).toEqual([
       'RATES', 'Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)',
-      'Fictional Gur', '25 kg each', 'No rate set', '—', '—', '—',
+      'Fictional Gur', 'No rate set', '—', '—', '—',
       'Rent and labour per bag, per month.',
     ]);
+  });
+
+  it('shows the weight of one bag only when an item has more than one row', async () => {
+    read.mockResolvedValue(answer([lot({ grn_item_id: 'a' }), lot({ grn_item_id: 'b', weight: 50, weight_min: 41, weight_max: 100, unit_price: 6 }), lot({ grn_item_id: 'c', item_id: 'rice', item_name: 'Fictional Rice' })]));
+    await mount(<GrnItemRates grnId="g1" />);
+    expect(texts()).toEqual([
+      'RATES', 'Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)',
+      'Fictional Gur', '25 kg each', '4.50', '1.50', '5',
+      'Fictional Gur', '50 kg each', '6.00', '1.50', '5',
+      'Fictional Rice', '4.50', '1.50', '5',
+      'Rent and labour per bag, per month.',
+    ]);
+  });
+
+  it('a row opens the item\'s rate card read-only on the GRN\'s day', async () => {
+    const { router } = require('expo-router');
+    read.mockResolvedValue(answer([lot({ grn_item_id: 'a' })]));
+    await mount(<GrnItemRates grnId="g1" />);
+    const row = tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')[0];
+    expect(row.props.accessibilityRole).toBe('button');
+    act(() => row.props.onPress());
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur', on: '2026-10-01', readonly: '1' } });
+  });
+
+  it('a customer, who cannot open Item pricing, gets rows that are not links', async () => {
+    mockRole = 'customer';
+    read.mockResolvedValue(answer([lot({ grn_item_id: 'a' })]));
+    await mount(<GrnItemRates grnId="g1" />);
+    expect(tree.root.findAll(n => n.props.testID === 'grn-item-rate-row' && typeof n.props.onPress === 'function')).toHaveLength(0);
+    expect(texts()).toContain('Fictional Gur');
   });
 
   it('shows a loading row first, then the rows', async () => {
@@ -142,7 +171,7 @@ describe('GRNOverviewTab Rates section', () => {
     await mount(<GRNOverviewTab grn_id="g1" pricing_mode="MONTHLY" rates={[only()]} />);
     expect(texts()).toContain('RATES');
     expect(texts()).not.toContain('RATES FOR THIS GRN ONLY');
-    expect(texts()).toContain('Item rate');
+    expect(texts()).toContain('Rent (₹)');
   });
 
   it('falls back to the GRN-only rates on an older server', async () => {
@@ -156,6 +185,6 @@ describe('GRNOverviewTab Rates section', () => {
     read.mockResolvedValue(answer([lot({})]));
     await mount(<GRNOverviewTab grn_id="g1" pricing_mode="MONTHLY" can_edit={false} can_delete={false} />);
     expect(texts()).toContain('RATES');
-    expect(texts()).toContain('Item rate');
+    expect(texts()).toContain('Rent (₹)');
   });
 });

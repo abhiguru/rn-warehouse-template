@@ -127,6 +127,16 @@ describe('item page: Review Cumin Bold on 14 Oct 2026', () => {
     });
   });
 
+  it('opened read-only (from a GRN\'s Rates), an administrator gets no change, correct, stop or add', async () => {
+    await open('admin', {}, { itemId: 'cumin', readonly: '1' });
+    expect(byId(tree, 'rate-change')).toHaveLength(0);
+    expect(byId(tree, 'rate-correct')).toHaveLength(0);
+    expect(byId(tree, 'rate-stop')).toHaveLength(0);
+    expect(byId(tree, 'add-customer-rate')).toHaveLength(0);
+    // The rates themselves are still shown.
+    expect(texts(tree).join(' ')).toContain('Review Cumin Bold');
+  });
+
   it('staff cannot correct: no Correct button, the reason is shown (P-45)', async () => {
     await open('staff');
     expect(byId(tree, 'rate-change').length).toBeGreaterThan(0);

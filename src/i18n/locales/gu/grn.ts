@@ -348,6 +348,7 @@ export const grn: Translation<typeof source> = {
     tableNoteMonthly: 'ભાડું અને મજૂરી નંગ દીઠ, માસિક.',
     tableNoteOneTime: 'ભાડું નંગ દીઠ, એક વખત.',
     rentAmount: 'ભાડું {{amount}}',
+    opensItemRates: 'આઇટમના દર ફક્ત જોવા માટે ખોલે છે.',
     itemRatesLoadError: 'આ આવક પાવતીના દર લોડ થઈ શક્યા નહીં.',
     changedCustomer: 'ફેરફાર · આ વેપારી',
     changedEveryone: 'ફેરફાર · બધા',

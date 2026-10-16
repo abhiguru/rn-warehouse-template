@@ -5,9 +5,14 @@
  * the headings and a note under the rows. A one-time GRN has no Labour column. At large text, or when
  * the numbers would crowd the item column, labour and tax move under the item. Lots with the same item,
  * weight and figures share a row. Falls back to the GRN-only rates when the server lacks the function.
+ *
+ * Owner, 2026-10-16: the item cell holds only the name (the weight of one bag only when an item has
+ * more than one row, to tell them apart); a row opens the item's rate card read-only, on the GRN's day,
+ * for those who may open Item pricing, and Back lands on the GRN again.
  */
 import React, { useMemo } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { SectionHeader } from '@/components/common/overview-tab';
 import {
   HeaderCell,
@@ -23,8 +28,11 @@ import {
 import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { canOpenScreen } from '@/config/roles';
+import { itemRatesPath } from '@/features/item-pricing/contract';
+import { useAppSelector } from '@/store/hooks';
 import { localizeDigits, t } from '@/i18n';
-import { bandText, money } from '@/features/item-pricing/rateText';
+import { money } from '@/features/item-pricing/rateText';
 import { space, type ThemeTokens } from '@/theme/tokens';
 import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -75,12 +83,15 @@ const amountText = (value: number | null): string => (value === null ? '—' : f
 /** A tax cell: "18" or "12.5" (the % is in the heading); "—" without a rate. */
 const taxText = (value: number | null): string => (value === null ? '—' : localizeDigits(String(value)));
 
-/** "25 kg each · 0–50 kg": the weight of one bag and the rate's weight band, when it has one. */
-export function weightLine(group: RateGroup): string | null {
-  const { rate } = group;
-  const band = rate.weight_min !== null && rate.weight_max !== null ? bandText(rate.weight_min, rate.weight_max) : null;
-  const parts = [formatWeightEach(group.weight), band].filter((part): part is string => !!part);
-  return parts.length > 0 ? parts.join(' · ') : null;
+/** The items that have more than one row: their rows show the weight of one bag to tell them apart. */
+export function repeatedItems(groups: RateGroup[]): Set<string> {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const group of groups) {
+    if (seen.has(group.rate.item_id)) repeated.add(group.rate.item_id);
+    seen.add(group.rate.item_id);
+  }
+  return repeated;
 }
 
 export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; fallbackRates?: RpcGrnRate[] | null }) {
@@ -88,9 +99,13 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
   const screen = useTableLayout();
-  const { rates, priceType, status, retry } = useGrnItemRates(grnId);
+  const { rates, priceType, grnDate, status, retry } = useGrnItemRates(grnId);
+  const role = useAppSelector(state => state.auth?.userProfile?.role);
+  // Customers cannot open Item pricing (roles.ts): for them the rows are not links.
+  const canOpen = canOpenScreen(role, 'itemPricing');
   const oneTime = priceType === 'one_time';
   const groups = useMemo(() => groupRates(rates), [rates]);
+  const repeated = useMemo(() => repeatedItems(groups), [groups]);
 
   const rentWidth = numberColumnWidth(screen, RENT_WIDTH, groups.map(g => amountText(g.rate.unit_price)));
   const labourWidth = numberColumnWidth(screen, LABOUR_WIDTH, groups.map(g => amountText(g.rate.labour_rate)));
@@ -131,8 +146,8 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
             {groups.map(group => {
               const { rate } = group;
               const priced = rate.source !== null;
-              const details = weightLine(group);
-              // Stacked, labour and tax join the weight line under the item.
+              const details = repeated.has(rate.item_id) ? formatWeightEach(group.weight) : null;
+              // Stacked, labour and tax go under the item.
               const extra =
                 stacked && priced
                   ? [oneTime ? null : t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }), t('pricing.row.tax', { percent: taxText(rate.tax_percent) })]
@@ -151,21 +166,16 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
               ]
                 .filter(Boolean)
                 .join(', ');
-              return (
-                <View key={group.key} style={table.row} accessible accessibilityLabel={label} testID="grn-item-rate-row">
+              const cells = (
+                <>
                   <View style={table.grow}>
-                    <Text style={table.primary}>{group.item_name}</Text>
+                    <Text style={canOpen ? table.link : table.primary}>{group.item_name}</Text>
                     {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
-                    <View style={own.tags}>
-                      {priced ? (
-                        <>
-                          <StatusTag status="neutral" label={t(SOURCE_LABEL[rate.source!])} />
-                          {rate.varies ? <StatusTag status="neutral" label={t('grn.rates.tagVaries')} /> : null}
-                        </>
-                      ) : (
+                    {!priced ? (
+                      <View style={own.tags}>
                         <StatusTag status="critical" label={t('grn.rates.noRateSet')} />
-                      )}
-                    </View>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={[table.number, { width: rentWidth }, !priced && own.missing]} {...ONE_LINE}>{amountText(rate.unit_price)}</Text>
                   {!stacked && !oneTime ? (
@@ -174,6 +184,23 @@ export function GrnItemRates({ grnId, fallbackRates }: { grnId?: string | null; 
                   {!stacked ? (
                     <Text style={[table.number, { width: taxWidth }, !priced && own.missing]} {...ONE_LINE}>{taxText(rate.tax_percent)}</Text>
                   ) : null}
+                </>
+              );
+              return canOpen ? (
+                <Pressable
+                  key={group.key}
+                  onPress={() => router.push(itemRatesPath(rate.item_id, grnDate ?? undefined, true))}
+                  style={({ pressed }) => [table.row, pressed && table.rowPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  accessibilityHint={t('grn.rates.opensItemRates')}
+                  testID="grn-item-rate-row"
+                >
+                  {cells}
+                </Pressable>
+              ) : (
+                <View key={group.key} style={table.row} accessible accessibilityLabel={label} testID="grn-item-rate-row">
+                  {cells}
                 </View>
               );
             })}

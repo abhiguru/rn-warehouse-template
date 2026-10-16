@@ -1,14 +1,17 @@
 # Changelog
 
-## Unreleased — GRN Overview: the Rates as a table (2026-10-16)
+## Unreleased — GRN Overview: the Rates as a table, each row opening the rate card (2026-10-16)
 
 App only (uses backend migration 88, already deployed). The Rates section on the GRN page's
 Overview tab is now a table in the object-page style (common/DetailTable): Item | Rent (₹) |
-Labour (₹) | Tax (%). The item cell holds the name, the weight of one bag with the rate's weight
-band, and the source tag (This GRN only, Customer rate, Item rate, On the invoice). Each number
-column has one width, so the values line up under their headings. A one-time GRN has no Labour
-column. At large text, labour and tax move under the item. A note under the rows gives the unit
-(per bag, per month or once). A lot without a rate shows "No rate set" and "—".
+Labour (₹) | Tax (%), with the units in the headings and one width per number column, so the values
+line up under their headings. The item cell holds only the name (the weight of one bag only when
+an item has more than one row). A one-time GRN has no Labour column; at large text labour and tax
+move under the item; a note under the rows gives the unit (per bag, per month or once); a lot
+without a rate shows "No rate set" and "—".
+A row opens the item's rate card read-only, on the GRN's day, for admin, supervisor and staff
+(customers cannot open Item pricing), and Back returns to the GRN. The rate card and a customer's
+rate page take a new `readonly` parameter that turns off every change.
 
 ## Unreleased — GRN details: Rates for every item on the Overview tab (2026-10-16)
 
