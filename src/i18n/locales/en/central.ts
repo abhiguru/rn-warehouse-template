@@ -89,6 +89,14 @@ export const central = {
     deleteMessage:
       'Your association sign-in and your name are deleted, and you are signed out on every phone. This cannot be undone.\n\nRecords at a cold storage are kept by that cold storage. Ask each one to remove them.',
     deleteFailedTitle: "Couldn't delete the account",
+    // "Sign out on all phones" (central service 0.4.0 and later); the dialog says that a cold
+    // storage already open on another phone stays open there until the person signs out there.
+    signOutAll: 'Sign out on all phones',
+    signOutAllSubtitle: 'Ends your association sign-in on every phone, this one included',
+    signOutAllTitle: 'Sign out on all phones?',
+    signOutAllMessage:
+      "You'll be signed out of your association account on every phone, this one included. A cold storage you already have open on another phone stays open there until you sign out on that phone.\n\nYou'll need your mobile number and a one-time code to sign in again.",
+    signOutAllFailedTitle: "Couldn't sign out on all phones",
   },
   signOut: {
     confirmMessage:
@@ -164,7 +172,9 @@ export const central = {
     smsUnavailable: "The code couldn't be sent just now. Try again in a few minutes.",
     unknownFacility: "This cold storage is not on the association's list, so association sign-in can't be used there.",
     invalidRequest: "The sign-in service didn't accept the request. Check what you entered and try again.",
-    sessionEnded: 'Your association sign-in has ended. Sign in again.',
+    sessionEnded: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.',
     catalogueInvalid: "The list of facilities couldn't be read. Try again later.",
+    signOutAllIncomplete: "This phone's association sign-in had already ended, so your other phones may still be signed in. Sign in again and use Sign out on all phones.",
+    notSupported: "This association service doesn't support signing out on all phones yet.",
   },
 };

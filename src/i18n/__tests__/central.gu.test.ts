@@ -43,7 +43,7 @@ describe('central login in Gujarati', () => {
     expect(t('central.facilities.title', undefined, 'gu')).toBe('મારાં કોલ્ડ સ્ટોરેજ');
     expect(t('central.facilities.add', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજ ઉમેરો');
     expect(t('central.switch.action', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજ બદલો');
-    expect(t('central.errors.sessionEnded', undefined, 'gu')).toBe('ઍસોસિએશનમાં તમારું લૉગિન પૂરું થઈ ગયું છે. ફરી લૉગિન કરો.');
+    expect(t('central.errors.sessionEnded', undefined, 'gu')).toContain('ઍસોસિએશનમાં તમારું લૉગિન પૂરું થઈ ગયું છે. ફરી લૉગિન કરો.');
     expect(t('central.signIn.endedTitle', undefined, 'gu')).toBe('લૉગઆઉટ થયું');
     expect(t('central.errors.tooManyAttempts', undefined, 'gu')).toBe('ઘણી વાર ખોટો OTP નખાયો છે. નવો OTP મગાવો.');
     const all = leaves(gujarati).map(([, text]) => text).join(' ');
@@ -86,6 +86,16 @@ describe('central login in Gujarati', () => {
     expect(message.split('\n\n')).toHaveLength(2);
     expect(message).toContain('કોલ્ડ સ્ટોરેજના રેકોર્ડ તે કોલ્ડ સ્ટોરેજ પાસે જ રહે છે.');
     expect(t('central.account.deleteMessage')).toContain('Records at a cold storage are kept by that cold storage.');
+  });
+
+  it('words "Sign out on all phones" with the glossary words, in two paragraphs (a draft for the owner)', () => {
+    expect(t('central.account.signOutAll')).toBe('Sign out on all phones');
+    expect(t('central.account.signOutAll', undefined, 'gu')).toBe('બધા ફોનમાંથી લૉગઆઉટ કરો');
+    const message = t('central.account.signOutAllMessage', undefined, 'gu');
+    expect(message.split('\n\n')).toHaveLength(2);
+    expect(message).toContain('ત્યાં ખુલ્લું રહેશે');
+    expect(t('central.account.signOutAllMessage')).toContain('stays open there until you sign out on that phone.');
+    expect(t('central.errors.notSupported', undefined, 'gu')).toContain('હજુ');
   });
 
   it('gives the new screens their titles in both languages', () => {

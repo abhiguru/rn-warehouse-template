@@ -12,6 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getActiveOperatorOrigin } from '@/config/operatorServer';
 import { withLocalizedBootstrapErrors } from '@/config/bootstrapErrors';
 import { createSessionReadFetch } from '@/config/supabaseConfig';
+import { discardBody } from '@/config/discardBody';
 import { getAuthToken } from '@/utils/authTokenUtils';
 import {
   httpOrigin,
@@ -180,10 +181,12 @@ class ConfigService {
               },
             }
           );
-          if (!response.ok)
+          if (!response.ok) {
+            discardBody(response);
             throw new Error(
               t('errors.server.configRequestFailedHttp', { status: String(response.status) })
             );
+          }
           return response.json();
         })(),
         new Promise<never>((_, reject) => {

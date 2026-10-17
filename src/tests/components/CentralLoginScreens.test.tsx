@@ -28,7 +28,7 @@ import {
 } from '@/config/centralSession';
 import { addMyFacility, loadMyFacilities, type MyFacility } from '@/config/centralFacilities';
 import { beginFacilitySmsSignIn, completeFacilityLink, openFacility, resendFacilityLinkCode } from '@/config/openFacility';
-import { deleteAccountEverywhere, signOutEverywhere } from '@/store/centralSignOut';
+import { deleteAccountEverywhere, signOutAllDevices, signOutEverywhere } from '@/store/centralSignOut';
 import { showAlert } from '@/utils/alert';
 import { setLanguage } from '@/i18n';
 
@@ -84,6 +84,7 @@ jest.mock('@/config/openFacility', () => ({
 }));
 jest.mock('@/store/centralSignOut', () => ({
   signOutEverywhere: jest.fn(async () => ({ ok: true })),
+  signOutAllDevices: jest.fn(async () => ({ ok: true })),
   deleteAccountEverywhere: jest.fn(async () => ({ ok: true })),
 }));
 // The language switch has its own controls and store access; it is not under test here.
@@ -265,7 +266,7 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
 
   it('the account: the number signed in with, the name and "Delete my account"', async () => {
     await render(<CentralAccountScreen />, brand, mode);
-    expect(texts()).toEqual(expect.arrayContaining(['Account', 'Signed in with +91 90000 00001', 'Save name', 'Delete my account']));
+    expect(texts()).toEqual(expect.arrayContaining(['Account', 'Signed in with +91 90000 00001', 'Save name', 'Sign out on all phones', 'Delete my account']));
     expect(tree!.root.find(node => node.props.testID === 'central-name' && typeof node.props.onChangeText === 'function').props.value).toBe('Asha Fictional');
     expect(hasBackground(t.background.base)).toBe(true);
   });
@@ -388,9 +389,9 @@ describe('central sign-in', () => {
   });
 
   it('explains once why the person was signed out', async () => {
-    setCentralState({ endedMessage: 'Your association sign-in has ended. Sign in again.' });
+    setCentralState({ endedMessage: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.' });
     await render(<CentralLoginScreen />);
-    expect(alerts()).toEqual([['Signed out', 'Your association sign-in has ended. Sign in again.']]);
+    expect(alerts()).toEqual([['Signed out', 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.']]);
     expect(getCentralState().endedMessage).toBeNull();
   });
 });
@@ -940,6 +941,118 @@ describe('the account', () => {
     await press(button('Delete my account'));
     await act(async () => { lastAlertButton('Delete my account').onPress?.(); });
     expect(alerts()[1]).toEqual(["Couldn't delete the account", "Couldn't reach the association's sign-in service. Check your connection and try again."]);
+  });
+
+  describe('"Sign out on all phones"', () => {
+    it('is a button above the delete area, and nothing happens until it is confirmed', async () => {
+      await render(<CentralAccountScreen />);
+      const labels = tree!.root.findAllByType(Button).map(node => node.props.children);
+      expect(labels).toEqual(['Save name', 'Sign out on all phones', 'Delete my account']);
+      expect(texts()).toContain('Ends your association sign-in on every phone, this one included');
+      await press(button('Sign out on all phones'));
+      expect(alerts()).toHaveLength(1);
+      expect(alerts()[0][0]).toBe('Sign out on all phones?');
+      // It says that every phone is signed out of the association account, and that an open facility stays open.
+      expect(alerts()[0][1]).toContain('signed out of your association account on every phone, this one included');
+      expect(alerts()[0][1]).toContain('A cold storage you already have open on another phone stays open there until you sign out on that phone.');
+      expect(signOutAllDevices).not.toHaveBeenCalled();
+      expect((alerts()[0][2] as Array<{ text: string; style?: string }>).map(entry => [entry.text, entry.style])).toEqual([
+        ['Cancel', 'cancel'],
+        ['Sign out on all phones', undefined],
+      ]);
+    });
+
+    it('signs out on all phones after the confirmation, and not after Cancel', async () => {
+      await render(<CentralAccountScreen />);
+      await press(button('Sign out on all phones'));
+      await act(async () => { lastAlertButton('Cancel').onPress?.(); });
+      expect(signOutAllDevices).not.toHaveBeenCalled();
+      await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
+      expect(signOutAllDevices).toHaveBeenCalledTimes(1);
+      expect(signOutAllDevices).toHaveBeenCalledWith(mockDispatch);
+      expect(deleteAccountEverywhere).not.toHaveBeenCalled();
+      expect(signOutEverywhere).not.toHaveBeenCalled();
+      // Nothing else is said: the route guard shows central sign-in.
+      expect(alerts()).toHaveLength(1);
+    });
+
+    it('is disabled, and the other buttons with it, while the sign-out runs; and the other way round', async () => {
+      let finish!: (value: { ok: true }) => void;
+      jest.mocked(signOutAllDevices).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      await render(<CentralAccountScreen />);
+      expect(button('Sign out on all phones').props.disabled).toBe(false);
+      await press(button('Sign out on all phones'));
+      await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
+      expect(button('Sign out on all phones').props.disabled).toBe(true);
+      expect(button('Sign out on all phones').props.loading).toBe(true);
+      expect(button('Save name').props.disabled).toBe(true);
+      expect(button('Delete my account').props.disabled).toBe(true);
+      await act(async () => { finish({ ok: true }); });
+      expect(button('Sign out on all phones').props.disabled).toBe(false);
+      expect(button('Delete my account').props.disabled).toBe(false);
+    });
+
+    it('is disabled while the name is being saved', async () => {
+      let finish!: (value: unknown) => void;
+      jest.mocked(updateCentralName).mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (value: unknown) => void; }));
+      await render(<CentralAccountScreen />);
+      await act(async () => { void button('Save name').props.onPress?.(); });
+      expect(button('Sign out on all phones').props.disabled).toBe(true);
+      await act(async () => { finish({ ok: true, user: USER }); });
+      expect(button('Sign out on all phones').props.disabled).toBe(false);
+    });
+
+    it.each([
+      [
+        'the service cannot be reached',
+        { ok: false, reason: 'central', failure: { ok: false, code: 'network', message: "Couldn't reach the association's sign-in service. Check your connection and try again." } },
+        ["Couldn't sign out on all phones", "Couldn't reach the association's sign-in service. Check your connection and try again."],
+      ],
+      [
+        'the association service does not have the call',
+        { ok: false, reason: 'central', failure: { ok: false, code: 'not_supported', message: "This association service doesn't support signing out on all phones yet." } },
+        ["Couldn't sign out on all phones", "This association service doesn't support signing out on all phones yet."],
+      ],
+      [
+        'a write is in flight',
+        { ok: false, reason: 'busy' },
+        ["Couldn't sign out on all phones", 'Finish the current operation before switching facilities.'],
+      ],
+      [
+        'this phone could not remove its copy',
+        { ok: false, reason: 'local_clear_failed' },
+        [
+          "Couldn't sign out",
+          "This phone couldn't remove your association sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone.",
+        ],
+      ],
+    ])('says why it did not happen when %s', async (_name, outcome, expected) => {
+      jest.mocked(signOutAllDevices).mockResolvedValueOnce(outcome as never);
+      await render(<CentralAccountScreen />);
+      await press(button('Sign out on all phones'));
+      await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
+      expect(alerts()[1]).toEqual(expected);
+      // The screen is usable again.
+      expect(button('Sign out on all phones').props.disabled).toBe(false);
+    });
+
+    it('says when the facility\'s own cleanup did not finish, although the association sign-in ended', async () => {
+      jest.mocked(signOutAllDevices).mockResolvedValueOnce({ ok: true, facilityCleanup: 'failed' });
+      await render(<CentralAccountScreen />);
+      await press(button('Sign out on all phones'));
+      await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
+      expect(alerts()[1]).toEqual(["Couldn't switch facility", 'Check your connection and try again.']);
+    });
+
+    it('is shown in Gujarati, with the dialog saying every phone and that an open facility stays open', async () => {
+      setLanguage('gu');
+      await render(<CentralAccountScreen />);
+      expect(texts()).toEqual(expect.arrayContaining(['બધા ફોનમાંથી લૉગઆઉટ કરો']));
+      await press(button('બધા ફોનમાંથી લૉગઆઉટ કરો'));
+      expect(alerts()[0][0]).toBe('બધા ફોનમાંથી લૉગઆઉટ કરવું છે?');
+      expect(alerts()[0][1]).toContain('આ ફોન સહિત બધા ફોનમાં');
+      expect(alerts()[0][1]).toContain('ત્યાં ખુલ્લું રહેશે');
+    });
   });
 });
 

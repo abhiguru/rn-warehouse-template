@@ -1,6 +1,7 @@
 /**
  * The central account (docs/CENTRAL_LOGIN.md): the name the association's
- * identity service holds, and "Delete my account". Reached from My facilities.
+ * identity service holds, "Sign out on all phones" and "Delete my account".
+ * Reached from My facilities.
  */
 import React, { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
@@ -11,7 +12,7 @@ import { CentralHeader } from '@/components/central/CentralHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAppDispatch } from '@/store/hooks';
-import { deleteAccountEverywhere } from '@/store/centralSignOut';
+import { deleteAccountEverywhere, signOutAllDevices } from '@/store/centralSignOut';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { updateCentralName } from '@/config/centralSession';
@@ -37,7 +38,8 @@ export default function CentralAccountScreen() {
   const [nameError, setNameError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const busy = saving || deleting;
+  const [signingOutAll, setSigningOutAll] = useState(false);
+  const busy = saving || deleting || signingOutAll;
 
   const saveName = async () => {
     if (busy) return;
@@ -82,6 +84,33 @@ export default function CentralAccountScreen() {
     ]);
   };
 
+  const signOutAll = async () => {
+    setSigningOutAll(true);
+    try {
+      // On success the central session is gone and the route guard shows central sign-in.
+      const result = await signOutAllDevices(dispatch);
+      if (result.ok) {
+        if (result.facilityCleanup === 'failed') showAlert(tr('central.switch.failedTitle'), tr('common.checkConnection'));
+      } else if (result.reason === 'central') {
+        showAlert(tr('central.account.signOutAllFailedTitle'), result.failure.message);
+      } else if (result.reason === 'local_clear_failed') {
+        // Ended at the service, but this phone's secure storage kept its copy: same words as "Sign out".
+        showAlert(tr('auth.signOut.couldNotTitle'), tr('central.signOut.notCleared'));
+      } else {
+        showAlert(tr('central.account.signOutAllFailedTitle'), tr('central.switch.busyMessage'));
+      }
+    } finally {
+      setSigningOutAll(false);
+    }
+  };
+
+  const confirmSignOutAll = () => {
+    showAlert(tr('central.account.signOutAllTitle'), tr('central.account.signOutAllMessage'), [
+      { text: tr('common.cancel'), style: 'cancel' },
+      { text: tr('central.account.signOutAll'), onPress: () => { void signOutAll(); } },
+    ]);
+  };
+
   return (
     <View style={styles.screen}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
@@ -121,6 +150,21 @@ export default function CentralAccountScreen() {
             {tr('central.account.saveName')}
           </Button>
 
+          <View style={styles.allPhones}>
+            <Button
+              type="secondary"
+              size="fullWidth"
+              leftIcon="cellphone-remove"
+              onPress={confirmSignOutAll}
+              disabled={busy}
+              loading={signingOutAll}
+              testID="central-sign-out-all"
+            >
+              {tr('central.account.signOutAll')}
+            </Button>
+            <Text style={styles.note}>{tr('central.account.signOutAllSubtitle')}</Text>
+          </View>
+
           <View style={styles.danger}>
             <Button
               type="secondary"
@@ -147,6 +191,8 @@ const makeStyles = (t: ThemeTokens) => ({
   content: { flexGrow: 1, paddingHorizontal: layout.marginCompact, paddingTop: space.xl },
   column: { width: '100%' as const, maxWidth: layout.maxFormWidth, alignSelf: 'center' as const, gap: space.lg },
   signedIn: { ...typography.subhead, color: t.text.secondary },
+  allPhones: { marginTop: space.xxl, gap: space.sm },
+  note: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' as const },
   danger: { marginTop: space.xxxl, gap: space.sm },
   dangerNote: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' as const },
 });
