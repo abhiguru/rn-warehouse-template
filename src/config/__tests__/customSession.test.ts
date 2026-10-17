@@ -50,6 +50,8 @@ import {
   isReadRequest,
   deviceExpiry,
   REQUEST_TIME_LIMIT_MS,
+  RequestTimeoutError,
+  clearAuthenticatedClientCache,
 } from '../supabaseConfig';
 import { getAppErrorCode } from '@/utils/appError';
 import { isOfflineFailure, categorizeError } from '@/utils/serviceErrorHandler';
@@ -346,7 +348,8 @@ it('waits for authenticated requests before allowing a server switch and blocks 
   const request = guardedFetch!('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
   expect(beginOperatorSwitch()).toBe(false);
   slow.resolve(operatorResponse({ data: [] }) as Response);
-  await request;
+  // A request is in flight until its answer has been read, as the supabase-js clients do.
+  await (await request).json();
   expect(beginOperatorSwitch()).toBe(true);
   await expect(guardedFetch!('http://localhost:18000/rest/v1/items')).rejects.toThrow('Session changed');
   endOperatorSwitch();
@@ -361,7 +364,7 @@ it('blocks direct authenticated writes and cancels pending document downloads on
   const write = writeFetch('https://warehouse.example.test/functions/v1/print-grn-preprinted', { method: 'POST' });
   expect(beginOperatorSwitch()).toBe(false);
   slowWrite.resolve(operatorResponse({ success: true }) as Response);
-  await write;
+  await (await write).json();
 
   let readSignal: AbortSignal | undefined;
   jest.mocked(global.fetch).mockImplementationOnce((_, init) => {
@@ -584,12 +587,12 @@ test('the anonymous client fetch waits for identity verification and is permitte
   await flush();
   expect(global.fetch).not.toHaveBeenCalled();
   gate.release(true);
-  await gated;
+  await (await gated).json();
   expect(global.fetch).toHaveBeenCalledTimes(1);
   gate.remove();
 
   expect(beginOperatorSwitch()).toBe(true);
-  await anonFetch!('http://localhost:18000/rest/v1/rpc/logout_session', { method: 'POST' });
+  await (await anonFetch!('http://localhost:18000/rest/v1/rpc/logout_session', { method: 'POST' })).json();
   expect(global.fetch).toHaveBeenCalledTimes(2);
   endOperatorSwitch();
 });
@@ -1122,6 +1125,8 @@ describe('an access token the server refuses as expired', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(refreshCalls()).toHaveLength(1);
     expect(secure.get('secure_auth_token')).toBe(renewed);
+    // Read, as the PostgREST client does: until then the write holds a server switch back.
+    await response.json();
   });
 
   test('a read that is refused again after the renewal is not repeated further', async () => {
@@ -1220,7 +1225,7 @@ test('a save in flight still holds a server switch back', async () => {
   const save = clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
   expect(beginOperatorSwitch()).toBe(false);
   slow.resolve(operatorResponse({ success: true }) as Response);
-  await save;
+  await (await save).json();
   expect(beginOperatorSwitch()).toBe(true);
   endOperatorSwitch();
 });
@@ -1304,8 +1309,161 @@ describe('a request the server never answers', () => {
   test('a request that is answered in time leaves no timer behind', async () => {
     const clientFetch = await authenticatedClientFetch();
     jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: true }) as Response);
-    await clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
+    await (await clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' })).json();
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+// M02: the time limit and the request's tracked life run until the answer is complete, body
+// included. A streaming fetch resolves at the headers; a body that never completes must still
+// time out, and a save whose body is still arriving must still hold a server switch back.
+describe('an answer whose body never completes (M02)', () => {
+  /** The headers arrive at once; the body only when `finish` is called. Its read ignores the abort. */
+  const answerWithHeldBody = (status = 200) => {
+    const signals: AbortSignal[] = [];
+    let finish: (body: unknown) => void = () => {};
+    jest.mocked(global.fetch).mockImplementation(async (_, init) => {
+      signals.push(init!.signal!);
+      const body = new Promise<unknown>(resolve => { finish = resolve; });
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: () => body,
+        text: async () => JSON.stringify(await body),
+      } as unknown as Response;
+    });
+    return { signals, finish: (body: unknown) => finish(body) };
+  };
+  const outcome = (read: Promise<unknown>) => {
+    const result: { value?: unknown; error?: unknown; settled: boolean } = { settled: false };
+    read.then(value => { result.value = value; result.settled = true; }, error => { result.error = error; result.settled = true; });
+    return result;
+  };
+  beforeEach(async () => {
+    await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+    jest.useFakeTimers();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  test('a read: the body read fails as a timeout once the read limit has passed, and the request is aborted', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    const { signals } = answerWithHeldBody();
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list', { method: 'POST' });
+    const body = outcome(response.json());
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.read - 1);
+    expect(body.settled).toBe(false);
+    expect(signals[0].aborted).toBe(false);
+    await jest.advanceTimersByTimeAsync(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(body.error).toBeInstanceOf(RequestTimeoutError);
+    // postgrest-js leaves an aborted request alone instead of sending it again.
+    expect((body.error as { code?: string }).code).toBe('ABORT_ERR');
+  });
+
+  test('a save: holds a server switch back while its body is arriving, until the write limit', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    const { signals } = answerWithHeldBody();
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
+    const body = outcome(response.json());
+    expect(beginOperatorSwitch()).toBe(false);
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.write - 1);
+    expect(body.settled).toBe(false);
+    expect(signals[0].aborted).toBe(false);
+    expect(beginOperatorSwitch()).toBe(false);
+    await jest.advanceTimersByTimeAsync(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(body.error).toBeInstanceOf(RequestTimeoutError);
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  test('a read whose body is arriving does not hold a server switch back: the switch aborts it and the read fails', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    const { signals } = answerWithHeldBody();
+    const response = await clientFetch('http://localhost:18000/rest/v1/customers?select=*');
+    const body = outcome(response.json());
+    expect(beginOperatorSwitch()).toBe(true);
+    expect(signals[0].aborted).toBe(true);
+    await flush();
+    // The platform's read ignored the abort; the read fails all the same.
+    expect(body.error).toMatchObject({ name: 'AbortError', message: 'Aborted' });
+    endOperatorSwitch();
+  });
+
+  test('a save whose session ends while its body is arriving (a forced sign-out) holds the switch back until the body is in, then its answer is dropped', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    const held = answerWithHeldBody();
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
+    const body = outcome(response.json());
+    // forceLeaveFacility (src/store/operatorSwitch.ts) signs out without the switch gate:
+    // the session generation moves while the save is still in flight.
+    advanceSessionGeneration();
+    expect(beginOperatorSwitch()).toBe(false);
+    held.finish({ success: true });
+    await flush();
+    expect((body.error as Error).message).toBe('Session changed');
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+    clearAuthenticatedClientCache();
+  });
+
+  test.each([
+    ['a save answered 204 No Content', 'http://localhost:18000/rest/v1/rpc/save_grn', 'POST', 204],
+    ['a HEAD count', 'http://localhost:18000/rest/v1/customers?select=*', 'HEAD', 200],
+  ])('%s has no body: the request ends with its headers', async (_, url, method, status) => {
+    const clientFetch = await authenticatedClientFetch();
+    answerWithHeldBody(status);
+    const response = await clientFetch(url, { method });
+    expect(response.status).toBe(status);
+    expect(jest.getTimerCount()).toBe(0);
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  test('a print or document answer whose body never completes fails in the app\'s words at the longer limit', async () => {
+    const writeFetch = createAuthenticatedFetch();
+    const { signals } = answerWithHeldBody();
+    const response = await writeFetch('https://warehouse.example.test/functions/v1/print-grn-preprinted', { method: 'POST' });
+    const body = outcome(response.json());
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.write + 1);
+    expect(body.settled).toBe(false);
+    expect(beginOperatorSwitch()).toBe(false);
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.transfer - REQUEST_TIME_LIMIT_MS.write);
+    expect(signals[0].aborted).toBe(true);
+    expect(getAppErrorCode(body.error)).toBe('TIMEOUT');
+    expect((body.error as Error).message).toBe(t('errors.network.requestTimedOut'));
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  test('session lifecycle traffic (a refresh) is held and limited the same way while its body is arriving', async () => {
+    initializeSupabase('http://localhost:18000', 'held-body-anon');
+    const anonFetch = jest.mocked(createClient).mock.calls.at(-1)![2]!.global!.fetch!;
+    const { signals } = answerWithHeldBody();
+    const response = await anonFetch('http://localhost:18000/rest/v1/rpc/refresh_jwt_token', { method: 'POST' });
+    const body = outcome(response.json());
+    expect(beginOperatorSwitch()).toBe(false);
+    await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.write + 1);
+    expect(signals[0].aborted).toBe(true);
+    expect(body.error).toBeInstanceOf(RequestTimeoutError);
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  test('a refresh answer that arrives after the session changed still reaches its caller, which reconciles it', async () => {
+    initializeSupabase('http://localhost:18000', 'held-body-anon');
+    const anonFetch = jest.mocked(createClient).mock.calls.at(-1)![2]!.global!.fetch!;
+    const held = answerWithHeldBody();
+    const response = await anonFetch('http://localhost:18000/rest/v1/rpc/refresh_jwt_token', { method: 'POST' });
+    const body = outcome(response.json());
+    advanceSessionGeneration();
+    held.finish({ success: true });
+    await flush();
+    expect(body).toEqual({ settled: true, value: { success: true } });
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+    clearAuthenticatedClientCache();
   });
 });
 

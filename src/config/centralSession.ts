@@ -218,15 +218,34 @@ async function centralFetch(
     const headers: Record<string, string> = { ...options.headers, Accept: 'application/json' };
     if (options.body) headers['Content-Type'] = 'application/json';
     if (options.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
-    // The race ends the wait even when the platform's fetch does not settle on abort.
-    const response = await Promise.race([
-      fetch(`${config.origin}${path}`, {
-        method,
-        headers,
-        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-        signal: controller.signal,
-        redirect: 'error',
-      }),
+    // The race ends the wait even when the platform's fetch, or its body read, does not
+    // settle on abort: the limit covers the whole answer, headers and body.
+    return await Promise.race([
+      (async (): Promise<Answer> => {
+        const response = await fetch(`${config.origin}${path}`, {
+          method,
+          headers,
+          ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+          signal: controller.signal,
+          redirect: 'error',
+        });
+        // React Native follows redirects whatever `redirect` says. Where the final
+        // address is known, an answer from another origin is not the service's.
+        if (response.url && !response.url.startsWith(`${config.origin}/`)) return { kind: 'transport', code: 'network' };
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+        if (!response.ok) {
+          const serviceCode = (body as { error?: { code?: unknown } } | null)?.error?.code;
+          return { kind: 'error', status: response.status, serviceCode, retryAfterSeconds: retryAfterOf(response) };
+        }
+        if (!body || typeof body !== 'object' || Array.isArray(body))
+          return { kind: 'error', status: response.status, serviceCode: undefined };
+        return { kind: 'ok', body: body as Record<string, unknown> };
+      })(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           timedOut = true;
@@ -237,22 +256,6 @@ async function centralFetch(
         (timer as { unref?: () => void }).unref?.();
       }),
     ]);
-    // React Native follows redirects whatever `redirect` says. Where the final
-    // address is known, an answer from another origin is not the service's.
-    if (response.url && !response.url.startsWith(`${config.origin}/`)) return { kind: 'transport', code: 'network' };
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    if (!response.ok) {
-      const serviceCode = (body as { error?: { code?: unknown } } | null)?.error?.code;
-      return { kind: 'error', status: response.status, serviceCode, retryAfterSeconds: retryAfterOf(response) };
-    }
-    if (!body || typeof body !== 'object' || Array.isArray(body))
-      return { kind: 'error', status: response.status, serviceCode: undefined };
-    return { kind: 'ok', body: body as Record<string, unknown> };
   } catch {
     return { kind: 'transport', code: timedOut ? 'timeout' : 'network' };
   } finally {

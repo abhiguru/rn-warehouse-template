@@ -1,4 +1,5 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
+import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
@@ -123,6 +124,7 @@ async function submitPrintJob(
     // Handle non-JSON responses (like 502 HTML error pages) without reading them.
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
       return {
         success: false,
         error: t('errors.print.serverUnavailable', { status: String(response.status) }),
