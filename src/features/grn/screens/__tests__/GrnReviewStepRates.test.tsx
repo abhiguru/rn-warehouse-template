@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, updateGRN } from '@/features/grn/services/grnFormService';
 import { setGrnRates, setRateChanges, setRemovedGrnRates } from '@/store/slices/grnFormSlice';
@@ -92,17 +92,19 @@ async function render(mode: 'create' | 'edit') {
 }
 const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
 const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
+/** react-test-renderer types `type` as an ElementType, but host components are named by a string. */
+const isHost = (n: ReactTestInstance, name: string) => (n.type as unknown) === name;
 const byId = (tree: ReactTestRenderer, id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.props.onPress === 'function');
 /**
  * The texts of one Rates table row, in reading order: the item, the line under it (weight, band, and at jest's
  * large text labour and tax), the tags, the rent cells (the struck rent under the rent), the actions.
  */
 const rowTexts = (tree: ReactTestRenderer, index: number) =>
-  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && n.type === 'View').findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
+  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && isHost(n, 'View')).findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
 /** What a screen reader says for a row's facts. */
 const rowA11y = (tree: ReactTestRenderer, index: number) =>
-  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && n.type === 'View').findAll(n => n.type === 'View' && typeof n.props.accessibilityLabel === 'string' && n.props.accessible === true)[0].props.accessibilityLabel;
-const rowCount = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.props.testID === 'string' && /^grn-rate-row-\d+$/.test(n.props.testID) && n.type === 'View').length;
+  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && isHost(n, 'View')).findAll(n => isHost(n, 'View') && typeof n.props.accessibilityLabel === 'string' && n.props.accessible === true)[0].props.accessibilityLabel;
+const rowCount = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.props.testID === 'string' && /^grn-rate-row-\d+$/.test(n.props.testID) && isHost(n, 'View')).length;
 const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
 const press = async (tree: ReactTestRenderer) => { await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); }); };
 
@@ -365,7 +367,7 @@ describe('round 3', () => {
   });
 
   it('Remove asks first; Cancel keeps the rate, Remove drops it; Undo change asks nothing', async () => {
-    const savedRice = { price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 };
+    const savedRice = { price_type: 'monthly' as const, item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 };
     mockGrnRates = [{ ...savedRice, saved: true }];
     const tree = await render('edit');
     expect(byId(tree, 'grn-rate-undo-1')[0].props.accessibilityLabel).toBe("Remove this GRN's own rate of Fictional Rice, 30 kg");
@@ -393,7 +395,7 @@ describe('round 3', () => {
   });
 
   it('after Remove the row says "Removed when you save" and Undo remove puts the rate back', async () => {
-    const savedRice = { price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5, saved: true };
+    const savedRice = { price_type: 'monthly' as const, item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5, saved: true };
     mockRemoved = [savedRice];
     const tree = await render('edit');
     // Rice has no other rate, so the row is without one, with the tag and Undo remove beside Add rate.
