@@ -12,8 +12,25 @@ jest.mock('expo-router', () => ({
   useGlobalSearchParams: jest.fn(),
 }));
 
+// The scheme comes from the build's own configuration (app.config.js sets it from
+// WAREHOUSE_APP_SCHEME), read through expo-constants, so the native registration and the replay
+// parser cannot disagree (M05).
+let mockScheme: string | string[] | undefined = 'warehousemanager';
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    get expoConfig() {
+      return mockScheme === undefined ? {} : { scheme: mockScheme };
+    },
+  },
+}));
+
 describe('parseDeepLinkUrl', () => {
   const originalScheme = process.env.EXPO_PUBLIC_APP_SCHEME;
+
+  beforeEach(() => {
+    mockScheme = 'warehousemanager';
+  });
 
   afterEach(() => {
     if (originalScheme === undefined) {
@@ -46,7 +63,7 @@ describe('parseDeepLinkUrl', () => {
   });
 
   it('uses the configured application scheme for the bootstrap exclusion', () => {
-    process.env.EXPO_PUBLIC_APP_SCHEME = 'warehouse-review';
+    mockScheme = 'warehouse-review';
 
     expect(
       parseDeepLinkUrl(
@@ -56,6 +73,82 @@ describe('parseDeepLinkUrl', () => {
     expect(parseDeepLinkUrl('warehouse-review://invoice-details/invoice-123')).toBe(
       '/invoice-details/invoice-123'
     );
+  });
+
+  describe('the scheme is the build\'s own, compared as text (M05)', () => {
+    it('reads a scheme that holds a plus sign: warehouse+review is replayed', () => {
+      mockScheme = 'warehouse+review';
+
+      expect(parseDeepLinkUrl('warehouse+review://grn-details/x')).toBe('/grn-details/x');
+      expect(
+        parseDeepLinkUrl('warehouse+review://expo-development-client/?url=http%3A%2F%2Flocalhost%3A18081')
+      ).toBeNull();
+    });
+
+    it('does not take a dot for a wildcard: warehouse.review does not match warehouseXreview', () => {
+      mockScheme = 'warehouse.review';
+
+      expect(parseDeepLinkUrl('warehouseXreview://grn-details/x')).toBeNull();
+      expect(parseDeepLinkUrl('warehouse.review://grn-details/x')).toBe('/grn-details/x');
+      // The bootstrap URL of another scheme is not the development client of this build either.
+      expect(parseDeepLinkUrl('warehouseXreview://expo-development-client/?url=x')).toBeNull();
+    });
+
+    it('does not take a plus sign for a quantifier: warehouse+review does not match warehouseeeereview', () => {
+      mockScheme = 'warehouse+review';
+
+      expect(parseDeepLinkUrl('warehouseeeereview://grn-details/x')).toBeNull();
+    });
+
+    it('accepts any scheme of the array form, and no other', () => {
+      mockScheme = ['warehouse-first', 'warehouse+second'];
+
+      expect(parseDeepLinkUrl('warehouse-first://grn-details/a')).toBe('/grn-details/a');
+      expect(parseDeepLinkUrl('warehouse+second://grn-details/b')).toBe('/grn-details/b');
+      expect(parseDeepLinkUrl('warehousemanager://grn-details/c')).toBeNull();
+      expect(
+        parseDeepLinkUrl('warehouse+second://expo-development-client/?url=http%3A%2F%2Flocalhost%3A18081')
+      ).toBeNull();
+    });
+
+    it('accepts an upper-case scheme (schemes are case-insensitive) and keeps the route\'s case', () => {
+      expect(parseDeepLinkUrl('WAREHOUSEMANAGER://grn-details/AbC-123')).toBe('/grn-details/AbC-123');
+      expect(parseDeepLinkUrl('WarehouseManager://invoice-details/Inv-9?Tab=Items#Top')).toBe(
+        '/invoice-details/Inv-9?Tab=Items#Top'
+      );
+      mockScheme = 'Warehouse-Review';
+      expect(parseDeepLinkUrl('warehouse-review://grn-details/Zz')).toBe('/grn-details/Zz');
+      // The bootstrap URL is recognised under an upper-case scheme too.
+      expect(
+        parseDeepLinkUrl('WAREHOUSE-REVIEW://expo-development-client/?url=http%3A%2F%2Flocalhost%3A18081')
+      ).toBeNull();
+    });
+
+    it('rejects a web address even when it is written in upper case', () => {
+      expect(parseDeepLinkUrl('HTTPS://facility.example/users')).toBeNull();
+      expect(parseDeepLinkUrl('Http://evil.example/grn-details/x')).toBeNull();
+    });
+
+    it('falls back to warehousemanager when the build names no scheme', () => {
+      mockScheme = undefined;
+      expect(parseDeepLinkUrl('warehousemanager://grn-details/x')).toBe('/grn-details/x');
+
+      mockScheme = [];
+      expect(parseDeepLinkUrl('warehousemanager://grn-details/x')).toBe('/grn-details/x');
+      expect(parseDeepLinkUrl('other://grn-details/x')).toBeNull();
+    });
+
+    it('does not read EXPO_PUBLIC_APP_SCHEME any more', () => {
+      process.env.EXPO_PUBLIC_APP_SCHEME = 'warehouse-ignored';
+
+      expect(parseDeepLinkUrl('warehouse-ignored://grn-details/x')).toBeNull();
+      expect(parseDeepLinkUrl('warehousemanager://grn-details/x')).toBe('/grn-details/x');
+    });
+
+    it('keeps refusing an empty route and a link that holds a line break', () => {
+      expect(parseDeepLinkUrl('warehousemanager://')).toBeNull();
+      expect(parseDeepLinkUrl('warehousemanager://grn-details/x\ny')).toBeNull();
+    });
   });
 });
 
