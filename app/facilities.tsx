@@ -25,7 +25,7 @@ import {
   soleApprovedFacility,
   type MyFacility,
 } from '@/config/centralFacilities';
-import { beginFacilitySmsSignIn, consumeOpenOutcome, openFacility } from '@/config/openFacility';
+import { beginFacilitySmsSignIn, consumeOpenOutcome, EARLIER_SESSION_TITLES, openFacility } from '@/config/openFacility';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -46,8 +46,7 @@ export const FACILITY_STATUS_VIEW: Record<FacilityStatus, { kind: StatusKind; la
  */
 const FAILED_TITLES: Partial<Record<OpenFailureReason, TranslationKey>> = {
   account_deletion: 'central.account.deleteFailedTitle',
-  previous_session_closed: 'central.open.previousClosedTitle',
-  previous_session_not_cleared: 'central.open.previousNotClearedTitle',
+  ...EARLIER_SESSION_TITLES,
 };
 
 export default function FacilitiesScreen() {

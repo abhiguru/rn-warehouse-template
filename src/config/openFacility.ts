@@ -54,6 +54,7 @@ import { forceLeaveFacility, leaveWithRetry, retryStaleFacilityCleanup, switchOp
 import { store } from '@/store';
 import { setUserProfile } from '@/store/slices/authSlice';
 import { localizeDigits, t, type TranslationKey } from '@/i18n';
+import { showAlert } from '@/utils/alert';
 
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
 
@@ -122,9 +123,15 @@ async function leaveStaleSession(server: OperatorServer): Promise<OpenOutcome> {
     : failed('previous_session_not_cleared', t('central.open.previousNotCleared'));
 }
 
+/** The titles of the answers about an earlier sign-in's session; neither names a facility. */
+export const EARLIER_SESSION_TITLES: Partial<Record<OpenFailureReason, TranslationKey>> = {
+  previous_session_closed: 'central.open.previousClosedTitle',
+  previous_session_not_cleared: 'central.open.previousNotClearedTitle',
+};
+
 /** The answers about an earlier sign-in's session: for whoever is on the phone now (see `publish`). */
-const isAboutEarlierSession = (outcome: OpenOutcome): boolean =>
-  outcome.kind === 'failed' && (outcome.reason === 'previous_session_closed' || outcome.reason === 'previous_session_not_cleared');
+const isAboutEarlierSession = (outcome: OpenOutcome): outcome is Extract<OpenOutcome, { kind: 'failed' }> =>
+  outcome.kind === 'failed' && EARLIER_SESSION_TITLES[outcome.reason] !== undefined;
 
 /**
  * True while the phone may still hold a session at `origin` for an earlier sign-in (see
@@ -317,21 +324,36 @@ async function open(ticket: Ticket | null, origin: string, fallbackName: string)
   return switchAndExchange(ticket, discovery);
 }
 
+/** Counts the opens begun; an open is the latest while no other has begun since it. */
+let openSeq = 0;
+
 /**
  * Hands the answer to whichever screen is mounted. An answer for a central
  * session that has ended meanwhile (signed out, refused, deleted, another
  * person signed in) is dropped: the next person to sign in must not be told
- * about the previous one's facility. The one exception says only that this
- * phone ended an earlier sign-in's facility session: it is for whoever uses the
- * phone now, and carries no facility name.
+ * about the previous one's facility.
+ *
+ * Such a late answer also leaves alone what belongs to the person on the phone
+ * now: the "opening" state (and with it the guard against a second open) when an
+ * open of theirs has begun since, and an answer of theirs still waiting to be
+ * shown. The one late answer that is told says only that this phone ended an
+ * earlier sign-in's facility session, without a facility name: on the list when
+ * nothing is waiting there, or else in a dialog of its own.
  */
-function publish(ticket: Ticket | null, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
-  const current = ticket !== null && isCurrent(ticket);
-  const shown = current || isAboutEarlierSession(outcome);
-  setCentralState({
-    opening: null,
-    outcome: shown ? { id: nextOutcomeId(), origin: current ? origin : '', name: current ? name : '', outcome } : null,
-  });
+function publish(ticket: Ticket | null, seq: number, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
+  const latest = seq === openSeq;
+  if (ticket !== null && isCurrent(ticket)) {
+    setCentralState({
+      ...(latest ? { opening: null } : {}),
+      outcome: { id: nextOutcomeId(), origin, name, outcome },
+    });
+    return outcome;
+  }
+  if (latest) setCentralState({ opening: null });
+  if (isAboutEarlierSession(outcome)) {
+    if (getCentralState().outcome === null) setCentralState({ outcome: { id: nextOutcomeId(), origin: '', name: '', outcome } });
+    else showAlert(t(EARLIER_SESSION_TITLES[outcome.reason]!), outcome.message);
+  }
   return outcome;
 }
 
@@ -365,11 +387,12 @@ export async function openFacility(origin: string, name: string): Promise<OpenOu
     return outcome;
   }
   const ticket = takeTicket();
+  const seq = ++openSeq;
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {
-    return publish(ticket, origin, name, await open(ticket, origin, name));
+    return publish(ticket, seq, origin, name, await open(ticket, origin, name));
   } catch {
-    return publish(ticket, origin, name, failed('failed', t('central.open.failed', { facility: name })));
+    return publish(ticket, seq, origin, name, failed('failed', t('central.open.failed', { facility: name })));
   }
 }
 
