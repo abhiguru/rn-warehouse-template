@@ -34,7 +34,9 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   (`renewAheadMs` in `src/config/sessionLifecycle.ts`), and not again within a minute of being issued.
 - `gatedFetch` aborts a request whose answer is not complete in time: 30 s for a read, 60 s for a write, 120 s for a
   Storage upload and the document and print functions (`REQUEST_TIME_LIMIT_MS`). The limit covers the body
-  as well as the headers, and a request stays in flight until its body has been read (a write holds a
+  as well as the headers: the global fetch since Expo SDK 57 is `expo/fetch`, which resolves at the headers
+  (unless a build sets `EXPO_PUBLIC_USE_RN_FETCH`), so a read's whole download gets 30 s. A request stays
+  in flight until its body has been read (a write holds a
   server switch back that long; a switch aborts a read's body read). A HEAD request and a 204, 205 or 304
   answer end with their headers; a body that is never read stays in flight until the limit, so code that
   returns without reading one (a gateway's error page) calls `discardBody` (`src/config/discardBody.ts`),

@@ -170,14 +170,21 @@ const BODY_METHODS = new Set(['json', 'text', 'arrayBuffer', 'blob', 'formData']
 /** Statuses whose answer never has a body. */
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
-/** True when nothing follows the headers: a HEAD request, a status without a body, or a null body. */
+/**
+ * True when nothing follows the headers: a HEAD request, a status without a body, or a null body.
+ * (expo/fetch never hands a null body, so there it is the method and the status.)
+ */
 function answerHasNoBody(input: RequestInfo | URL, init: RequestInit | undefined, response: Response): boolean {
   const request = typeof input === 'object' && input !== null && 'url' in input ? input : undefined;
   const method = String(init?.method ?? request?.method ?? 'GET').toUpperCase();
   return method === 'HEAD' || NULL_BODY_STATUSES.has(response.status) || response.body === null;
 }
 
-/** What a body read aborted by a server switch or the caller's signal rejects with; the text whatwg-fetch uses. */
+/**
+ * What a body read aborted by a server switch or the caller's signal rejects with. Named
+ * AbortError, as both platform fetches name theirs (expo/fetch says "The operation was
+ * aborted.", whatwg-fetch "Aborted"); nothing matches on the text.
+ */
 function abortedRead(): Error {
   const error = new Error('Aborted');
   error.name = 'AbortError';
@@ -202,7 +209,9 @@ async function gatedFetch(
   activeRequests.add(request);
   // The request is in flight, holds a server switch back (a write) or is aborted by one (a
   // read), and runs against its time limit until its answer is complete: the body as well as
-  // the headers, since a streaming fetch resolves at the headers. `release` ends all of that.
+  // the headers. The global fetch since Expo SDK 57 is expo/fetch (expo/src/winter, unless the
+  // build sets EXPO_PUBLIC_USE_RN_FETCH), and it resolves at the headers while the body is still
+  // arriving. `release` ends all of that.
   let timer: ReturnType<typeof setTimeout> | undefined;
   let released = false;
   const release = () => {
