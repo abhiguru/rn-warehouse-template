@@ -104,6 +104,21 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
+  it('draws the values table with the shared DataTable: a spoken label for each reading, 30 rows drawn first, no heading that sorts', () => {
+    const tree = render(brand, mode, <SensorHistoryChart readings={READINGS} aggregationInterval="1 hour" periodDays={7} />);
+    act(() => tree.root.findAll(n => n.props.accessibilityHint === 'Opens the full-screen chart and a table of values' && n.props.onPress)[0].props.onPress());
+    act(() => tree.root.findAll(n => n.props.accessibilityLabel === 'Table of values' && n.props.onPress)[0].props.onPress());
+    const table = tree.root.findAll(n => n.props.testID === 'sensor-history-table' && n.props.initialNumToRender !== undefined)[0];
+    expect(table.props.initialNumToRender).toBe(30);
+    const rows = tree.root.findAll(n => typeof n.type === 'string' && String(n.props.testID).startsWith('sensor-history-row-'));
+    expect(rows).toHaveLength(READINGS.length);
+    // The last reading has no values: the row says so as the cells do, with the dash.
+    expect(rows.map(row => String(row.props.accessibilityLabel).includes('−18.5°C'))).toEqual([true, false, false]);
+    expect(texts(tree).filter(s => s === '—')).toHaveLength(2);
+    expect(tree.root.findAll(n => String(n.props.testID).startsWith('sensor-history-table-sort-'))).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
   it('shows an empty state without readings', () => {
     const tree = render(brand, mode, <SensorHistoryChart readings={[]} aggregationInterval="1 day" periodDays={7} />);
     expect(texts(tree)).toContain('No history for this period');

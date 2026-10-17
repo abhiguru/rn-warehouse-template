@@ -27,7 +27,9 @@ import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { showAlert } from '@/utils/alert';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
-import { HeaderCell, ONE_LINE, makeTableStyles } from '@/components/common/DetailTable';
+import { ONE_LINE, makeTableStyles } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 import { amountText, taxText } from './GrnItemRates';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
@@ -149,8 +151,6 @@ const makeStyles = (th: ThemeTokens) => ({
   refToggle: { flexDirection: 'row' as const, alignItems: 'center' as const, minHeight: touchTarget, gap: space.sm, paddingHorizontal: space.md },
   refBody: { paddingHorizontal: space.sm, paddingBottom: space.sm, gap: space.xs },
   refToggleText: { ...typography.subhead, fontWeight: '600' as const, color: th.text.primary, flex: 1 },
-  refRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, paddingHorizontal: space.sm, paddingVertical: space.sm },
-  refCell: { width: 72 },
   footer: {
     paddingHorizontal: layout.marginCompact,
     paddingTop: space.sm,
@@ -160,9 +160,65 @@ const makeStyles = (th: ThemeTokens) => ({
   },
 });
 
+/** One row of the reference table: who the rate is for, and the rate (null: none). */
+interface ReferenceRow {
+  key: 'current' | 'customer' | 'everyone';
+  label: string;
+  rate: ReferenceRate | null;
+}
+
+const referenceColumn = createAppColumnHelper<ReferenceRow>();
+/** The width of a figure column of the reference table. */
+const REF_WIDTH = 72;
+
+/** "View customer and everyone rates": Who | Rent | Labour | Tax, one row per rate it is set against. */
+function ReferenceTable({ rows, oneTime }: { rows: ReferenceRow[]; oneTime: boolean }) {
+  const table = useThemedStyles(makeTableStyles);
+  const columns = useMemo(() => {
+    const figure = (header: string, id: string, pick: (rate: ReferenceRate) => number, text: (n: number | null) => string) =>
+      referenceColumn.display({
+        id,
+        header,
+        meta: { width: REF_WIDTH, numeric: true },
+        cell: ({ row }) => <Text style={table.number} {...ONE_LINE}>{text(row.original.rate ? pick(row.original.rate) : null)}</Text>,
+      });
+    return referenceColumn.columns([
+      referenceColumn.display({
+        id: 'who',
+        header: t('grn.rates.sheet.refWho'),
+        meta: { width: 'grow' },
+        cell: ({ row }) => (
+          <>
+            <Text style={table.primary} {...ONE_LINE}>{row.original.label}</Text>
+            <Text style={table.secondary} {...ONE_LINE}>
+              {row.original.rate ? bandText(row.original.rate.band.weight_min, row.original.rate.band.weight_max) : t('grn.rates.sheet.refNoneShort')}
+            </Text>
+          </>
+        ),
+      }),
+      figure(t('grn.rates.sheet.refRent'), 'rent', rate => rate.figures.unit_price, amountText),
+      ...(oneTime ? [] : [figure(t('grn.rates.sheet.refLabour'), 'labour', rate => rate.figures.labour_rate, amountText)]),
+      figure(t('grn.rates.sheet.refTax'), 'tax', rate => rate.figures.tax_percent, taxText),
+    ]);
+  }, [oneTime, table]);
+  const tanstack = useAppTable({ columns, data: rows, getRowId: row => row.key });
+
+  const rowLabel = ({ label, rate }: ReferenceRow) =>
+    rate
+      ? t(oneTime ? 'grn.rates.sheet.refA11yOneTime' : 'grn.rates.sheet.refA11y', {
+          who: label,
+          band: bandText(rate.band.weight_min, rate.band.weight_max),
+          rent: money(rate.figures.unit_price),
+          labour: money(rate.figures.labour_rate),
+          tax: localizeDigits(String(rate.figures.tax_percent)),
+        })
+      : t('grn.rates.sheet.refNone', { who: label });
+
+  return <DataTable table={tanstack} variant="nested" rowLabel={row => rowLabel(row.original)} rowTestID={row => `rate-ref-${row.original.key}`} />;
+}
+
 export function GrnRateSheet({ visible, onClose, row, input, customerName, priceTypeText, grnNumber, onSave }: GrnRateSheetProps) {
   const styles = useThemedStyles(makeStyles);
-  const table = useThemedStyles(makeTableStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -332,18 +388,6 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
       ? { band: { weight_min: row.rate.weight_min, weight_max: row.rate.weight_max }, figures: { unit_price: row.rate.unit_price, labour_rate: row.rate.labour_rate, tax_percent: row.rate.tax_percent } }
       : null;
   const currentLabel = row.rate?.source === 'change' ? t('grn.rates.sheet.refPending') : grnLabel;
-  const referenceRow = (key: 'current' | 'customer' | 'everyone', label: string, rate: ReferenceRate | null, first = false) => (
-    <View key={key} style={[styles.refRow, !first && table.nestedDivider]} accessible accessibilityLabel={rate ? t(oneTime ? 'grn.rates.sheet.refA11yOneTime' : 'grn.rates.sheet.refA11y', { who: label, band: bandText(rate.band.weight_min, rate.band.weight_max), rent: money(rate.figures.unit_price), labour: money(rate.figures.labour_rate), tax: localizeDigits(String(rate.figures.tax_percent)) }) : t('grn.rates.sheet.refNone', { who: label })} testID={`rate-ref-${key}`}>
-      <View style={table.grow}>
-        <Text style={table.primary} {...ONE_LINE}>{label}</Text>
-        <Text style={table.secondary} {...ONE_LINE}>{rate ? bandText(rate.band.weight_min, rate.band.weight_max) : t('grn.rates.sheet.refNoneShort')}</Text>
-      </View>
-      <Text style={[table.number, styles.refCell]} {...ONE_LINE}>{amountText(rate?.figures.unit_price ?? null)}</Text>
-      {oneTime ? null : <Text style={[table.number, styles.refCell]} {...ONE_LINE}>{amountText(rate?.figures.labour_rate ?? null)}</Text>}
-      <Text style={[table.number, styles.refCell]} {...ONE_LINE}>{taxText(rate?.figures.tax_percent ?? null)}</Text>
-    </View>
-  );
-
   const scopeOptions: { value: RateScope; label: string; a11yLabel?: string }[] = [
     // Read out as "This GRN, WMWM8885": the number alone does not say what the choice does (owner, 2026-10-17).
     { value: 'grn', label: grnLabel, a11yLabel: grnNumber ? t('grn.rates.sheet.forGrnA11y', { number: formatIdentifier(grnNumber) }) : undefined },
@@ -528,17 +572,14 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
           {referenceOpen ? (
           <View style={styles.refBody}>
           <Text style={styles.label} numberOfLines={1} testID="rate-ref-date">{t('grn.rates.sheet.refTitle', { date: dateText(input.ctx.day) })}</Text>
-          <View style={table.nested}>
-            <View style={table.nestedHeader}>
-              <HeaderCell oneLine style={table.grow}>{t('grn.rates.sheet.refWho')}</HeaderCell>
-              <HeaderCell oneLine numeric style={styles.refCell}>{t('grn.rates.sheet.refRent')}</HeaderCell>
-              {oneTime ? null : <HeaderCell oneLine numeric style={styles.refCell}>{t('grn.rates.sheet.refLabour')}</HeaderCell>}
-              <HeaderCell oneLine numeric style={styles.refCell}>{t('grn.rates.sheet.refTax')}</HeaderCell>
-            </View>
-            {current ? referenceRow('current', currentLabel, current, true) : null}
-            {referenceRow('customer', t('grn.rates.sheet.forCustomer'), reference.customer, !current)}
-            {referenceRow('everyone', t('grn.rates.sheet.forEveryone'), reference.everyone)}
-          </View>
+          <ReferenceTable
+            oneTime={oneTime}
+            rows={[
+              ...(current ? [{ key: 'current' as const, label: currentLabel, rate: current }] : []),
+              { key: 'customer' as const, label: t('grn.rates.sheet.forCustomer'), rate: reference.customer },
+              { key: 'everyone' as const, label: t('grn.rates.sheet.forEveryone'), rate: reference.everyone },
+            ]}
+          />
           </View>
           ) : null}
           </View>

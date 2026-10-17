@@ -298,17 +298,6 @@ export const components = {
     printingLabel: 'Printing',
     printing: 'Printing…',
   },
-  table: {
-    empty: 'No data to show.',
-    label: 'Data table',
-    notSorted: '{{column}}, not sorted',
-    sortedAscending: '{{column}}, sorted ascending',
-    sortedDescending: '{{column}}, sorted descending',
-    sortHint: 'Changes the sort order',
-    rowNumber: 'Row number',
-    editCell: 'Edit {{column}}, {{value}}',
-    loadingLabel: '{{label}}, loading',
-  },
   steps: {
     stepCompleted: 'Step {{step}} of {{total}}, {{name}}, completed',
     stepCurrent: 'Step {{step}} of {{total}}, {{name}}, current',

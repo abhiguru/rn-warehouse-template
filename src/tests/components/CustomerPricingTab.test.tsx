@@ -132,7 +132,7 @@ describe('a customer with several own rates', () => {
 });
 
 describe('+ Add item', () => {
-  it('offers the active items that have no own rate for this customer, and opens the new-rate box of the chosen one', async () => {
+  it('offers the active items that have no own rate for this customer, and opens the full-screen Add customer rate form for the chosen one', async () => {
     jest.mocked(useItemRates).mockReturnValue(result({ rates: [...F1, ...MORE] }));
     await mount();
     expect(sheetProps.isVisible).toBe(false);
@@ -145,8 +145,8 @@ describe('+ Add item', () => {
     await act(async () => { sheetProps.onSelect({ id: 'onion-small', name: 'Review Onion Red Small' }); });
     expect(sheetProps.isVisible).toBe(false);
     expect(router.push).toHaveBeenCalledWith({
-      pathname: '/item-rates/[itemId]/customer/[customerId]',
-      params: { itemId: 'onion-small', customerId: 'orchard-b', customer_name: 'Review Orchard B', add: '1' },
+      pathname: '/item-rates/[itemId]/customer-add/[customerId]',
+      params: { itemId: 'onion-small', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
     });
   });
 

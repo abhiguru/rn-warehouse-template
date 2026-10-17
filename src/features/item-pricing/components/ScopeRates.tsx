@@ -19,7 +19,8 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemStoragePrice, PriceType, StandardTier } from '@/types/item-pricing.types';
-import type { EditorMode } from '../contract';
+import { customerRateAddPath, type EditorMode } from '../contract';
+import { router } from 'expo-router';
 import { lotsRule, summaryLines } from '../editModel';
 import { laterDialogText } from '../laterRates';
 import { applicableRate, type ScopeView } from '../rateModel';
@@ -438,7 +439,8 @@ export function ScopeRates({
           type="primary"
           size="fullWidth"
           disabled={offline}
-          onPress={() => startAdding(undefined)}
+          // A customer's first rate for the item is added on the full-screen form (owner, 2026-10-17).
+          onPress={() => (customerId ? router.push(customerRateAddPath(item.id, customerId, customerName || undefined)) : startAdding(undefined))}
           testID={customerId ? 'add-customer-rate' : 'add-default'}
         >
           {customerId ? t('pricing.action.addCustomer') : t('pricing.action.addDefault')}

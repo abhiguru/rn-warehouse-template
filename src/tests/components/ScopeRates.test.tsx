@@ -423,17 +423,16 @@ describe('adding', () => {
     expect(host('add-other-type')).toHaveLength(0);
   });
 
-  it('a customer with no own rate: the strip and Add customer rate reveal a box seeded from the default, with From cells', async () => {
+  it('a customer with no own rate: the strip, and Add customer rate opens the full-screen Add customer rate form', async () => {
     await mount({ ...baseProps(itemRows('onion'), 'onion'), customerId: 'orchard-c', customerName: 'Review Orchard C' });
     expect(shown()).toContain('Review Orchard C has no rate of their own for this item now. Invoices use the default rate.');
     await press('add-customer-rate');
-    expect(cell('band-0-rent').props.value).toBe('3.50');
-    expect(cell('first-from').props.value).toBe('0');
-    expect(lastBar()!.saveLabel).toBe('Save customer rate');
-    await type('band-0-rent', '3.25');
-    jest.mocked(replaceItemRates).mockResolvedValue({ success: true } as never);
-    await act(async () => { lastBar()!.save.onPress(); });
-    expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ customer_id: 'orchard-c', item_id: 'onion', starts_on: TODAY }));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/item-rates/[itemId]/customer-add/[customerId]',
+      params: { itemId: 'onion', customerId: 'orchard-c', customer_name: 'Review Orchard C' },
+    });
+    // No box opens on this page; the form saves the rate (its own tests).
+    expect(cell('band-0-rent')).toBeUndefined();
   });
 
   it('a customer who has an own rate gets its box, and the default for comparison', async () => {

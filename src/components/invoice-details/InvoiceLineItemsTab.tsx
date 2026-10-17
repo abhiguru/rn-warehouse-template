@@ -15,10 +15,12 @@
  *   by the same rules only when they did not load. The footer adds the rows; the invoice total,
  *   after its rounding and discount, is on the Breakdown tab, and the note says so.
  * - Virtualized (FlatList); empty and loading states as before.
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable; the dispatch lines under a lot
+ *   are a nested table of their own.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, Pressable, LayoutAnimation } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -27,8 +29,6 @@ import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/i
 import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
-  OpenBar,
-  HeaderCell,
   ONE_LINE,
   RowChevron,
   crowded,
@@ -39,8 +39,9 @@ import {
   rowWidth,
   useStackedWhen,
   useTableLayout,
-  type TableLayout,
 } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable, useDefaultOpen } from '@/components/table/DataTable';
 
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
@@ -283,15 +284,6 @@ const rateLine = (group: InvoiceLineItemGroupData): string =>
 const periodText = (line: DispatchLineItem) =>
   `${formatCount(line.no_of_days, 'day')} · ${formatCount(Math.round(line.duration * 10) / 10, 'month')}`;
 
-interface GroupRowProps {
-  group: InvoiceLineItemGroupData;
-  expanded: boolean;
-  onToggle: (id: string) => void;
-  onViewDispatch?: (dispatch_id: string) => void;
-  table: TableLayout;
-  widths: Widths;
-}
-
 /**
  * Column widths for the whole table, so every row lines up. `nestedStacked`: the bags go under
  * the dispatch in the lines under a lot (big amounts would squeeze the dispatch numbers).
@@ -307,114 +299,103 @@ interface Widths {
   lineAmountUnder: boolean;
 }
 
-const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table, widths }: GroupRowProps) {
+const groupHelper = createAppColumnHelper<InvoiceLineItemGroupData>();
+const lineHelper = createAppColumnHelper<DispatchLineItem>();
+
+interface DispatchLinesProps {
+  group: InvoiceLineItemGroupData;
+  widths: Widths;
+  onViewDispatch?: (dispatch_id: string) => void;
+}
+
+/** The dispatch lines under an open lot (Dispatch | Bags | Amount) and the base and tax of the lot. */
+const DispatchLines: React.FC<DispatchLinesProps> = ({ group, widths, onViewDispatch }) => {
   const styles = useThemedStyles(makeTableStyles);
-  const own = useThemedStyles(makeStyles);
-  const details = lotLine(group);
-  const rates = rateLine(group);
-  const { bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder } =
-    widths;
-  const lines = group.dispatch_items;
+  const { lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, lineAmountUnder } = widths;
+
+  const columns = useMemo(
+    () =>
+      lineHelper.columns([
+        lineHelper.accessor((line) => line.dispatch_no || '—', {
+          id: 'dispatch',
+          header: tr('invoice.detailsTable.dispatch'),
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const line = info.row.original;
+            const canOpen = !!(line.dispatch_id && onViewDispatch);
+            const lineTotal = roundMoney(line.line_item_amount + line.tax);
+            return (
+              <>
+                <Text style={canOpen ? styles.link : styles.primary} {...ONE_LINE}>{line.dispatch_no || '—'}</Text>
+                <Text style={styles.secondary}>{dateText(line.dispatch_date)}</Text>
+                <Text style={styles.secondary}>
+                  {nb(nestedStacked ? `${periodText(line)} · ${bags(line.dispatch_qty)}` : periodText(line))}
+                </Text>
+                {/* Under the period, not under the amount: a long tax line squeezed the dispatch column. */}
+                {line.tax > 0 ? (
+                  <Text style={styles.secondary}>{tr('invoice.detailsTable.inclTax', { amount: formatInvoiceAmount(line.tax) })}</Text>
+                ) : null}
+                {lineAmountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text> : null}
+              </>
+            );
+          },
+        }),
+        ...(nestedStacked
+          ? []
+          : [
+              lineHelper.accessor('dispatch_qty', {
+                id: 'bags',
+                header: tr('invoice.detailsTable.bags'),
+                meta: { width: lineBagsWidth, numeric: true },
+                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatch_qty)}</Text>,
+              }),
+            ]),
+        lineHelper.accessor((line) => roundMoney(line.line_item_amount + line.tax), {
+          id: 'amount',
+          header: tr('invoice.detailsTable.amount'),
+          // Under the dispatch the amount has no column of its own, only its heading over the end of the row.
+          meta: { width: lineAmountUnder ? 'auto' : lineAmountWidth, numeric: true, headerOnly: lineAmountUnder },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(info.getValue())}</Text>,
+        }),
+      ]),
+    [nestedStacked, lineAmountUnder, lineBagsWidth, lineAmountWidth, onViewDispatch, styles]
+  );
+  const grid = useAppTable({ data: group.dispatch_items, columns, getRowId: (line) => line.id });
 
   return (
-    <View style={[styles.cardSides, expanded && styles.group]}>
-      <Pressable
-        onPress={() => onToggle(group.grn_item_id)}
-        style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={tr('invoice.detailsTable.groupRowLabel', {
-          item: group.item_name,
-          details: [details, rates].filter(Boolean).map((part) => `, ${part}`).join(''),
-          bags: bags(group.total_dispatch_qty),
-          amount: formatInvoiceAmount(group.total_amount),
-        })}
-        accessibilityHint={expanded ? tr('invoice.lineItem.hidesDispatchesHint') : tr('invoice.lineItem.showsDispatchesHint')}
-        accessibilityState={{ expanded }}
-        testID={`invoice-group-row-${group.grn_item_id}`}
-      >
-        <RowChevron expandable expanded={expanded} />
-        <View style={styles.grow}>
-          <Text style={styles.primary}>{group.item_name}</Text>
-          {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
-          <Text style={styles.secondary}>{nb(table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates)}</Text>
-          {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
-        </View>
-        {!table.stacked ? (
-          <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(group.total_dispatch_qty)}</Text>
-        ) : null}
-        {!amountUnder ? (
-          <Text style={[styles.number, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text>
-        ) : null}
-      </Pressable>
-
-      {expanded ? (
-        <View style={styles.details} testID={`invoice-group-lines-${group.grn_item_id}`}>
-          <View style={styles.nested}>
-            <View style={styles.nestedHeader}>
-              <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.dispatch')}</HeaderCell>
-              {!nestedStacked ? <HeaderCell numeric style={{ width: lineBagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
-              <HeaderCell numeric style={lineAmountUnder ? undefined : { width: lineAmountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
-            </View>
-            {lines.map((line, index) => {
-              const id = line.dispatch_id;
-              const canOpen = !!(id && onViewDispatch);
-              const lineTotal = roundMoney(line.line_item_amount + line.tax);
-              return (
-                <Pressable
-                  key={line.id}
-                  onPress={() => {
-                    if (id) onViewDispatch?.(id);
-                  }}
-                  disabled={!canOpen}
-                  style={({ pressed }) => [styles.nestedRow, index > 0 && styles.nestedDivider, pressed && canOpen && styles.rowPressed]}
-                  accessible
-                  accessibilityRole={canOpen ? 'button' : undefined}
-                  accessibilityLabel={tr('invoice.detailsTable.lineRowLabel', {
-                    number: formatIdentifier(line.dispatch_no || '—'),
-                    date: dateText(line.dispatch_date),
-                    bags: bags(line.dispatch_qty),
-                    period: periodText(line),
-                    amount: formatInvoiceAmount(lineTotal),
-                  })}
-                  accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
-                  testID={`invoice-line-${line.id}`}
-                >
-                  <View style={styles.grow}>
-                    <Text style={canOpen ? styles.link : styles.primary} {...ONE_LINE}>{line.dispatch_no || '—'}</Text>
-                    <Text style={styles.secondary}>{dateText(line.dispatch_date)}</Text>
-                    <Text style={styles.secondary}>
-                      {nb(nestedStacked ? `${periodText(line)} · ${bags(line.dispatch_qty)}` : periodText(line))}
-                    </Text>
-                    {/* Under the period, not under the amount: a long tax line squeezed the dispatch column. */}
-                    {line.tax > 0 ? (
-                      <Text style={styles.secondary}>{tr('invoice.detailsTable.inclTax', { amount: formatInvoiceAmount(line.tax) })}</Text>
-                    ) : null}
-                    {lineAmountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text> : null}
-                  </View>
-                  {!nestedStacked ? (
-                    <Text style={[styles.number, { width: lineBagsWidth }]} {...ONE_LINE}>{formatNumber(line.dispatch_qty)}</Text>
-                  ) : null}
-                  {!lineAmountUnder ? (
-                    <Text style={[styles.number, { width: lineAmountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={styles.secondary}>
-            {nb(
-              tr('invoice.detailsTable.baseAndTax', {
-                base: formatInvoiceAmount(group.total_base_amount),
-                tax: formatInvoiceAmount(group.total_tax_amount),
-              })
-            )}
-          </Text>
-        </View>
-      ) : null}
-      {expanded ? <OpenBar /> : null}
-    </View>
+    <>
+      <DataTable
+        table={grid}
+        variant="nested"
+        headerOneLine={false}
+        onRowPress={(row) => {
+          if (row.original.dispatch_id) onViewDispatch?.(row.original.dispatch_id);
+        }}
+        rowPressable={(row) => !!(row.original.dispatch_id && onViewDispatch)}
+        rowLabel={(row) => {
+          const line = row.original;
+          return tr('invoice.detailsTable.lineRowLabel', {
+            number: formatIdentifier(line.dispatch_no || '—'),
+            date: dateText(line.dispatch_date),
+            bags: bags(line.dispatch_qty),
+            period: periodText(line),
+            amount: formatInvoiceAmount(roundMoney(line.line_item_amount + line.tax)),
+          });
+        }}
+        rowHint={() => tr('invoice.lineItem.opensDispatchHint')}
+        rowTestID={(row) => `invoice-line-${row.original.id}`}
+      />
+      <Text style={styles.secondary}>
+        {nb(
+          tr('invoice.detailsTable.baseAndTax', {
+            base: formatInvoiceAmount(group.total_base_amount),
+            tax: formatInvoiceAmount(group.total_tax_amount),
+          })
+        )}
+      </Text>
+    </>
   );
-});
+};
 
 export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   items,
@@ -456,18 +437,50 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     [bagsWidth, amountWidth, lineBagsWidth, lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder]
   );
   // A single lot starts open; a tap flips any lot.
-  const single = groups.length === 1;
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
-  const isOpen = useCallback((id: string) => (single ? !toggled.has(id) : toggled.has(id)), [single, toggled]);
-  const toggle = useCallback((id: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setToggled((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const open = useDefaultOpen(groups.length === 1 ? [groups[0].grn_item_id] : []);
+
+  const columns = useMemo(
+    () =>
+      groupHelper.columns([
+        groupHelper.accessor('item_name', {
+          id: 'item',
+          header: tr('invoice.detailsTable.item'),
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const group = info.row.original;
+            const details = lotLine(group);
+            const rates = rateLine(group);
+            return (
+              <>
+                <Text style={styles.primary}>{group.item_name}</Text>
+                {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
+                <Text style={styles.secondary}>{nb(table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates)}</Text>
+                {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
+              </>
+            );
+          },
+        }),
+        ...(table.stacked
+          ? []
+          : [
+              groupHelper.accessor('total_dispatch_qty', {
+                id: 'bags',
+                header: tr('invoice.detailsTable.bags'),
+                meta: { width: bagsWidth, numeric: true },
+                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.total_dispatch_qty)}</Text>,
+              }),
+            ]),
+        groupHelper.accessor('total_amount', {
+          id: 'amount',
+          header: tr('invoice.detailsTable.amount'),
+          // Under the item the amount has no column of its own, only its heading over the end of the row.
+          meta: { width: amountUnder ? 'auto' : amountWidth, numeric: true, headerOnly: amountUnder },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(info.row.original.total_amount)}</Text>,
+        }),
+      ]),
+    [table.stacked, amountUnder, bagsWidth, amountWidth, styles]
+  );
+  const grid = useAppTable({ data: groups, columns, getRowId: (group) => group.grn_item_id, getRowCanExpand: () => true, ...open });
 
   if (loading && items.length === 0) {
     return (
@@ -494,19 +507,8 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   const grn = groups.find((group) => group.grn_id || group.gr_no);
   const grnRef = grn?.grn_id || grn?.gr_no;
 
-  const header = (
-    <View style={styles.cardTop}>
-      <View style={styles.headerRow}>
-        <RowChevron expandable={false} expanded={false} />
-        <HeaderCell style={styles.grow}>{tr('invoice.detailsTable.item')}</HeaderCell>
-        {!table.stacked ? <HeaderCell numeric style={{ width: bagsWidth }}>{tr('invoice.detailsTable.bags')}</HeaderCell> : null}
-        <HeaderCell numeric style={amountUnder ? undefined : { width: amountWidth }}>{tr('invoice.detailsTable.amount')}</HeaderCell>
-      </View>
-    </View>
-  );
-
   const footer = (
-    <View style={styles.cardBottom}>
+    <>
       <View
         style={styles.footerRow}
         accessible
@@ -548,24 +550,27 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
           </Pressable>
         ) : null}
       </View>
-    </View>
+    </>
   );
 
   return (
-    <FlatList
-      style={styles.list}
-      data={groups}
-      keyExtractor={(group) => group.grn_item_id}
-      extraData={toggled}
-      renderItem={({ item }) => (
-        <GroupRow group={item} expanded={isOpen(item.grn_item_id)} onToggle={toggle} onViewDispatch={on_view_dispatch} table={table} widths={widths} />
-      )}
-      ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      maxToRenderPerBatch={10}
-      windowSize={10}
+    <DataTable
+      table={grid}
+      list="flat"
+      renderDetail={(row) => <DispatchLines group={row.original} widths={widths} onViewDispatch={on_view_dispatch} />}
+      rowLabel={(row) => {
+        const group = row.original;
+        return tr('invoice.detailsTable.groupRowLabel', {
+          item: group.item_name,
+          details: [lotLine(group), rateLine(group)].filter(Boolean).map((part) => `, ${part}`).join(''),
+          bags: bags(group.total_dispatch_qty),
+          amount: formatInvoiceAmount(group.total_amount),
+        });
+      }}
+      rowHint={(row) => (row.getIsExpanded() ? tr('invoice.lineItem.hidesDispatchesHint') : tr('invoice.lineItem.showsDispatchesHint'))}
+      rowTestID={(row) => `invoice-group-row-${row.original.grn_item_id}`}
+      detailTestID={(row) => `invoice-group-lines-${row.original.grn_item_id}`}
+      footer={footer}
       testID="invoice-lines-table"
     />
   );

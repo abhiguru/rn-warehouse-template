@@ -13,10 +13,12 @@
  * - Footer: the bags dispatched and the number of distinct dispatches (one dispatch can take
  *   several lots, so it is not the sum of the column).
  * - Loading, failure (with Retry) and empty states as before.
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable; the lines under an item are a
+ *   nested table of their own.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, Pressable, LayoutAnimation } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -26,8 +28,6 @@ import { DispatchRecord } from '@/services/grn-detail-service';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
-  OpenBar,
-  HeaderCell,
   ONE_LINE,
   RowChevron,
   crowded,
@@ -38,8 +38,9 @@ import {
   rowWidth,
   useStackedWhen,
   useTableLayout,
-  type TableLayout,
 } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable, useDefaultOpen } from '@/components/table/DataTable';
 import { GRNItem, lotLine } from './GRNItemsTab';
 
 interface GRNDispatchesTabProps {
@@ -131,96 +132,73 @@ interface Widths {
   nestedStacked: boolean;
 }
 
-interface GroupRowProps {
-  group: ItemGroup;
-  expanded: boolean;
-  onToggle: (id: string) => void;
-  onViewDispatch: (dispatch_id: string) => void;
-  table: TableLayout;
+const groupHelper = createAppColumnHelper<ItemGroup>();
+const lineHelper = createAppColumnHelper<DispatchRecord>();
+
+interface DispatchLinesProps {
+  dispatches: DispatchRecord[];
   widths: Widths;
+  onViewDispatch: (dispatch_id: string) => void;
 }
 
-const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewDispatch, table, widths }: GroupRowProps) {
+/** The lines under an open item: Dispatch | Date | Bags (the date under the number when stacked), each opens the dispatch. */
+const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, widths, onViewDispatch }) => {
   const styles = useThemedStyles(makeTableStyles);
-  const own = useThemedStyles(makeStyles);
-  const { item, dispatches } = group;
-  const expandable = dispatches.length > 0;
-  const open = expandable && expanded;
-  const details = lotLine(item);
-  const countText = tr('grn.detailsTable.dispatchCount', { count: dispatches.length });
-  const received = tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) });
-  const { count: countWidth, bags: bagsWidth, date: dateWidth, lineBags: lineBagsWidth, nestedStacked } = widths;
+  const { date: dateWidth, lineBags: lineBagsWidth, nestedStacked } = widths;
+
+  const columns = useMemo(
+    () =>
+      lineHelper.columns([
+        lineHelper.accessor('disp_no', {
+          id: 'dispatch',
+          header: tr('grn.detailsTable.dispatch'),
+          meta: { width: 'grow' },
+          cell: (info) => (
+            <>
+              <Text style={styles.link}>{formatIdentifier(info.row.original.disp_no)}</Text>
+              {nestedStacked ? <Text style={styles.secondary}>{dateText(info.row.original.disp_date)}</Text> : null}
+            </>
+          ),
+        }),
+        ...(nestedStacked
+          ? []
+          : [
+              lineHelper.accessor('disp_date', {
+                id: 'date',
+                header: tr('grn.detailsTable.date'),
+                meta: { width: dateWidth },
+                cell: (info) => <Text style={styles.primary} {...ONE_LINE}>{dateText(info.row.original.disp_date)}</Text>,
+              }),
+            ]),
+        lineHelper.accessor('disp_quantity', {
+          id: 'bags',
+          header: tr('grn.detailsTable.bags'),
+          meta: { width: lineBagsWidth, numeric: true },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.disp_quantity)}</Text>,
+        }),
+      ]),
+    [nestedStacked, dateWidth, lineBagsWidth, styles]
+  );
+  const grid = useAppTable({ data: dispatches, columns, getRowId: (dispatch) => dispatch.id });
 
   return (
-    <View style={[styles.cardSides, open && styles.group]}>
-      <Pressable
-        onPress={expandable ? () => onToggle(item.id) : undefined}
-        disabled={!expandable}
-        style={({ pressed }) => [styles.row, open && styles.rowOpen, pressed && expandable && styles.rowPressed]}
-        accessible
-        accessibilityRole={expandable ? 'button' : undefined}
-        accessibilityLabel={tr('grn.detailsTable.dispatchItemRowLabel', {
-          item: item.item_name,
-          details: details ? `, ${details}` : '',
-          dispatches: countText,
-          dispatched: formatNumber(group.bags),
-          received: formatNumber(item.qty),
-        })}
-        accessibilityHint={expandable ? tr('grn.detailsTable.showDispatches') : undefined}
-        accessibilityState={expandable ? { expanded: open } : undefined}
-        testID={`grn-dispatch-row-${item.id}`}
-      >
-        <RowChevron expandable={expandable} expanded={open} />
-        <View style={styles.grow}>
-          <Text style={styles.primary}>{item.item_name}</Text>
-          {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
-          <Text style={styles.secondary}>{nb(countWidth === null ? `${received} · ${countText}` : received)}</Text>
-        </View>
-        {countWidth !== null ? (
-          <Text style={[styles.number, { width: countWidth }]} {...ONE_LINE}>{formatNumber(dispatches.length)}</Text>
-        ) : null}
-        <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(group.bags)}</Text>
-      </Pressable>
-
-      {open ? (
-        <View style={styles.details} testID={`grn-dispatch-lines-${item.id}`}>
-          <View style={styles.nested}>
-            <View style={styles.nestedHeader}>
-              <HeaderCell style={styles.grow}>{tr('grn.detailsTable.dispatch')}</HeaderCell>
-              {!nestedStacked ? <HeaderCell style={{ width: dateWidth }}>{tr('grn.detailsTable.date')}</HeaderCell> : null}
-              <HeaderCell numeric style={{ width: lineBagsWidth }}>{tr('grn.detailsTable.bags')}</HeaderCell>
-            </View>
-            {dispatches.map((dispatch, index) => (
-              <Pressable
-                key={dispatch.id}
-                onPress={() => onViewDispatch(dispatch.dispatch_id)}
-                style={({ pressed }) => [styles.nestedRow, index > 0 && styles.nestedDivider, pressed && styles.rowPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={tr('grn.dispatches.rowLabelDateFirst', {
-                  number: formatIdentifier(dispatch.disp_no),
-                  date: dateText(dispatch.disp_date),
-                  bags: bags(dispatch.disp_quantity),
-                })}
-                accessibilityHint={tr('grn.dispatches.openHint')}
-                testID={`grn-dispatch-line-${dispatch.id}`}
-              >
-                <View style={styles.grow}>
-                  <Text style={styles.link}>{formatIdentifier(dispatch.disp_no)}</Text>
-                  {nestedStacked ? <Text style={styles.secondary}>{dateText(dispatch.disp_date)}</Text> : null}
-                </View>
-                {!nestedStacked ? (
-                  <Text style={[styles.primary, { width: dateWidth }]} {...ONE_LINE}>{dateText(dispatch.disp_date)}</Text>
-                ) : null}
-                <Text style={[styles.number, { width: lineBagsWidth }]} {...ONE_LINE}>{formatNumber(dispatch.disp_quantity)}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
-      {open ? <OpenBar /> : null}
-    </View>
+    <DataTable
+      table={grid}
+      variant="nested"
+      headerOneLine={false}
+      onRowPress={(row) => onViewDispatch(row.original.dispatch_id)}
+      rowLabel={(row) =>
+        tr('grn.dispatches.rowLabelDateFirst', {
+          number: formatIdentifier(row.original.disp_no),
+          date: dateText(row.original.disp_date),
+          bags: bags(row.original.disp_quantity),
+        })
+      }
+      rowHint={() => tr('grn.dispatches.openHint')}
+      rowTestID={(row) => `grn-dispatch-line-${row.original.id}`}
+    />
   );
-});
+};
 
 export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   items,
@@ -261,21 +239,56 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
     [shownCount, bagsWidth, dateWidth, lineBagsWidth, nestedStacked]
   );
   const firstWithDispatches = groups.find((group) => group.dispatches.length > 0)?.item.id;
-  // The first line with dispatches starts open; a tap flips any line.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
-  const isOpen = useCallback(
-    (id: string) => (id === firstWithDispatches ? !toggled.has(id) : toggled.has(id)),
-    [firstWithDispatches, toggled]
+
+  const columns = useMemo(
+    () =>
+      groupHelper.columns([
+        groupHelper.accessor((group) => group.item.item_name, {
+          id: 'item',
+          header: tr('grn.detailsTable.item'),
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const { item, dispatches } = info.row.original;
+            const details = lotLine(item);
+            const countText = tr('grn.detailsTable.dispatchCount', { count: dispatches.length });
+            const received = tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) });
+            return (
+              <>
+                <Text style={styles.primary}>{item.item_name}</Text>
+                {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
+                <Text style={styles.secondary}>{nb(shownCount === null ? `${received} · ${countText}` : received)}</Text>
+              </>
+            );
+          },
+        }),
+        ...(shownCount === null
+          ? []
+          : [
+              groupHelper.accessor((group) => group.dispatches.length, {
+                id: 'dispatches',
+                header: tr('grn.detailsTable.dispatches'),
+                meta: { width: shownCount, numeric: true },
+                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatches.length)}</Text>,
+              }),
+            ]),
+        groupHelper.accessor('bags', {
+          id: 'bags',
+          header: tr('grn.detailsTable.bagsDispatched'),
+          meta: { width: bagsWidth, numeric: true },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.bags)}</Text>,
+        }),
+      ]),
+    [shownCount, bagsWidth, styles]
   );
-  const toggle = useCallback((id: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setToggled((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  // The first line with dispatches starts open; a tap flips any line. A line with no dispatches does not open.
+  const open = useDefaultOpen(firstWithDispatches === undefined ? [] : [firstWithDispatches]);
+  const grid = useAppTable({
+    data: groups,
+    columns,
+    getRowId: (group) => group.item.id,
+    getRowCanExpand: (row) => row.original.dispatches.length > 0,
+    ...open,
+  });
 
   if (loading) {
     return (
@@ -321,20 +334,8 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   const distinct = new Set(groups.flatMap((group) => group.dispatches.map((d) => d.dispatch_id))).size;
   const dispatchCount = tr('grn.detailsTable.dispatchCount', { count: distinct });
 
-  const header = (
-    <View style={styles.cardTop}>
-      <View style={styles.headerRow}>
-        <RowChevron expandable={false} expanded={false} />
-        <HeaderCell style={styles.grow}>{tr('grn.detailsTable.item')}</HeaderCell>
-        {shownCount !== null ? <HeaderCell numeric style={{ width: shownCount }}>{tr('grn.detailsTable.dispatches')}</HeaderCell> : null}
-        <HeaderCell numeric style={{ width: bagsWidth }}>{tr('grn.detailsTable.bagsDispatched')}</HeaderCell>
-      </View>
-    </View>
-  );
-
   const footer = (
-    <View style={styles.cardBottom}>
-      <View
+    <View
         style={styles.footerRow}
         accessible
         accessibilityLabel={tr('grn.detailsTable.dispatchesTotalLabel', { dispatches: dispatchCount, bags: bags(totalBags) })}
@@ -347,25 +348,29 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
         </View>
         {shownCount !== null ? <View style={{ width: shownCount }} /> : null}
         <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(totalBags)}</Text>
-      </View>
     </View>
   );
 
   return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.content}
-      data={groups}
-      keyExtractor={(group) => group.item.id}
-      extraData={toggled}
-      renderItem={({ item }) => (
-        <GroupRow group={item} expanded={isOpen(item.item.id)} onToggle={toggle} onViewDispatch={onViewDispatch} table={table} widths={widths} />
-      )}
-      ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      showsVerticalScrollIndicator={false}
-      maxToRenderPerBatch={10}
-      windowSize={10}
+    <DataTable
+      table={grid}
+      list="flat"
+      renderDetail={(row) => <DispatchLines dispatches={row.original.dispatches} widths={widths} onViewDispatch={onViewDispatch} />}
+      rowLabel={(row) => {
+        const { item, dispatches } = row.original;
+        const details = lotLine(item);
+        return tr('grn.detailsTable.dispatchItemRowLabel', {
+          item: item.item_name,
+          details: details ? `, ${details}` : '',
+          dispatches: tr('grn.detailsTable.dispatchCount', { count: dispatches.length }),
+          dispatched: formatNumber(row.original.bags),
+          received: formatNumber(item.qty),
+        });
+      }}
+      rowHint={() => tr('grn.detailsTable.showDispatches')}
+      rowTestID={(row) => `grn-dispatch-row-${row.original.item.id}`}
+      detailTestID={(row) => `grn-dispatch-lines-${row.original.item.id}`}
+      footer={footer}
       testID="grn-dispatches-table"
     />
   );

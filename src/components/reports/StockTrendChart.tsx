@@ -26,12 +26,15 @@
  * It draws no card of its own: the screen puts it in one.
  */
 import React, { useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LineChart } from 'react-native-gifted-charts';
 import { useReducedMotion } from 'react-native-reanimated';
+import { makeTableStyles } from '@/components/common/DetailTable';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -188,30 +191,10 @@ const makeStyles = (t: ThemeTokens) => ({
   body: { flex: 1, backgroundColor: t.surface.card },
   chartArea: { flex: 1, justifyContent: 'center' as const, paddingHorizontal: layout.marginCompact },
   chartScroll: { alignItems: 'flex-start' as const, paddingVertical: space.xl, gap: space.xs },
-  tableHeader: {
-    flexDirection: 'row' as const,
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    backgroundColor: t.background.base,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-  tableHeaderText: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.secondary },
-  tableRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: layout.rowMinHeight,
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.s6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
   tableCell: { ...typography.subhead, color: t.text.primary },
   // Under the month in progress: its figure is the stock as of today, not a month end.
   asOf: { ...typography.caption1, color: t.text.secondary },
-  tableNote: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: layout.marginCompact, paddingVertical: space.md },
-  colLabel: { flex: 1 },
-  colNumber: { flex: 1, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] },
+  tableNote: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingVertical: space.md },
   totals: {
     flexDirection: 'row' as const,
     justifyContent: 'space-around' as const,
@@ -225,6 +208,74 @@ const makeStyles = (t: ThemeTokens) => ({
   totalLabel: { ...typography.footnote, color: t.text.secondary, marginBottom: space.xs },
   totalValue: { ...typography.title3, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
 });
+
+/** A row of the table view: the month, and the stock the chart draws for it (the month in progress is "as of" today). */
+interface TrendRow {
+  id: string;
+  month: string;
+  stock: number;
+  now: boolean;
+}
+
+const trendHelper = createAppColumnHelper<TrendRow>();
+
+/**
+ * The table view of the full screen: Month | Stock at month end, one row per point of the chart. Built on the app's
+ * TanStack Table setup and drawn by the shared `DataTable` (§13.7); not sortable, the months are in time order.
+ */
+function TrendTable({ points, values, nowIndex, asOf }: { points: MonthlyTrendPoint[]; values: number[]; nowIndex: number; asOf: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const cell = useThemedStyles(makeTableStyles);
+  const rows = useMemo<TrendRow[]>(
+    () => points.map((point, index) => ({ id: point.month, month: monthYear(point.month), stock: values[index], now: index === nowIndex })),
+    [points, values, nowIndex]
+  );
+  const columns = useMemo(
+    () =>
+      trendHelper.columns([
+        trendHelper.accessor('month', {
+          header: tr('reports.customerActivity.trend.month'),
+          meta: { width: 'grow' },
+          cell: info => (
+            <View>
+              <Text style={styles.tableCell}>{info.getValue()}</Text>
+              {info.row.original.now ? <Text style={styles.asOf}>{tr('reports.customerActivity.trend.asOf', { date: asOf })}</Text> : null}
+            </View>
+          ),
+        }),
+        trendHelper.accessor('stock', {
+          header: tr('reports.customerActivity.trend.stockAtMonthEnd'),
+          meta: { width: 'grow', numeric: true },
+          cell: info => <Text style={cell.number}>{formatNumber(info.getValue())}</Text>,
+        }),
+      ]),
+    [styles, cell, asOf]
+  );
+  const table = useAppTable({ columns, data: rows, getRowId: row => row.id });
+
+  return (
+    <DataTable
+      table={table}
+      variant="card"
+      list="flat"
+      // The values the chart draws, the month in progress included: that one is not a month end.
+      rowLabel={row =>
+        row.original.now
+          ? tr('reports.customerActivity.trend.rowNowA11y', { month: row.original.month, date: asOf, stock: formatNumber(row.original.stock) })
+          : `${row.original.month}, ${formatNumber(row.original.stock)}`
+      }
+      rowTestID={row => `stock-trend-row-${row.id}`}
+      footer={
+        nowIndex >= 0 ? (
+          <Text style={styles.tableNote}>
+            {tr('reports.customerActivity.trend.footnoteNow', { month: rows[nowIndex].month, date: asOf })}
+          </Text>
+        ) : null
+      }
+      testID="stock-trend-table"
+    />
+  );
+}
 
 export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) {
   const t = useTokens();
@@ -438,43 +489,7 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
                 </ScrollView>
               </View>
             ) : (
-              <>
-                <View style={styles.tableHeader} accessibilityRole="header">
-                  <Text style={[styles.tableHeaderText, styles.colLabel]}>{tr('reports.customerActivity.trend.month')}</Text>
-                  <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('reports.customerActivity.trend.stockAtMonthEnd')}</Text>
-                </View>
-                <FlatList
-                  data={points}
-                  extraData={values}
-                  keyExtractor={item => item.month}
-                  renderItem={({ item, index }) => {
-                    // The values the chart draws, the month in progress included: that one is not a month end.
-                    const now = index === nowIndex;
-                    const month = monthYear(item.month);
-                    const stock = formatNumber(values[index]);
-                    return (
-                      <View
-                        style={styles.tableRow}
-                        accessible
-                        accessibilityLabel={now ? tr('reports.customerActivity.trend.rowNowA11y', { month, date: asOf, stock }) : `${month}, ${stock}`}
-                      >
-                        <View style={styles.colLabel}>
-                          <Text style={styles.tableCell}>{month}</Text>
-                          {now ? <Text style={styles.asOf}>{tr('reports.customerActivity.trend.asOf', { date: asOf })}</Text> : null}
-                        </View>
-                        <Text style={[styles.tableCell, styles.colNumber]}>{stock}</Text>
-                      </View>
-                    );
-                  }}
-                  ListFooterComponent={
-                    nowIndex >= 0 ? (
-                      <Text style={styles.tableNote}>
-                        {tr('reports.customerActivity.trend.footnoteNow', { month: monthYear(points[nowIndex].month), date: asOf })}
-                      </Text>
-                    ) : null
-                  }
-                />
-              </>
+              <TrendTable points={points} values={values} nowIndex={nowIndex} asOf={asOf} />
             )}
           </View>
 

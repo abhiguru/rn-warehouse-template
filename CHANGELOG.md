@@ -90,6 +90,25 @@
   totals under a separator; GRN PHOTOS in a nested card; ITEMS as a nested table Item | Qty with a Total row;
   RATES as a nested table Item | Rent (₹) | Labour (₹) | Tax (%) (labour and tax under the item when crowded, as
   the Overview's Rates), the weight of one bag under the item (no weight band, as on the Overview), the tags and the row's actions under it.
+- **Tables on TanStack Table v9 (2026-10-17).** `@tanstack/react-table` 9.2.4 (installed with scripts off). One setup,
+  `components/table/appTable.ts` (`createTableHook`: expanding + sorting, column meta for widths), and one renderer,
+  `components/table/DataTable.tsx` (card / nested, FlatList or map, open rows with the accent bar, totals footer,
+  sortable headers), drawn in the shared `common/DetailTable` styles. Moved onto it: GRN → Items / Dispatches /
+  Invoices, Dispatch → Items / GRNs / Invoices, Invoice → Line items, GRN Overview → Rates, the Review step's Items
+  and Rates, the rate screens' reference tables, the Old/New figures, the read-only band list, the Add customer rate
+  form's tables, Reports → Invoice history → Monthly breakdown, and the stock trend and sensor table views. New:
+  tap-to-sort headers (not sorted → ascending → descending; totals unchanged) on GRN/Dispatch → Invoices, GRN → Items,
+  Dispatch → Items (bags) and Monthly breakdown. Monthly breakdown fits the phone by width rules instead of a pinned,
+  sideways-scrolling column. Removed `FioriDataTable` and its styles and wrappers (1,442 lines). Left as they were, on
+  purpose: the invoice form's pricing table, the editable rate-band table and the item tables inside list cards.
+- **Customer → Pricing → + Add item: a full-screen "Add customer rate" form (2026-10-17).** Header "Add rate for
+  <customer> · Monthly" over the item; Type when it can be chosen; Starts on chips with "For lots received from …";
+  weight bands as an accordion (one open; titles "Band 1 · 0–10 kg", closed ones with their rate); From / Up to and
+  rent (and labour / tax per band, or once for every band) with + and −; Add weight band, Copy weight bands; "View
+  default rate" (closed by default); "What changes · from …" as a table once something changed, figures that differ
+  from the default in bold accent. Save pinned above the keyboard, disabled until a change; a focused field scrolls
+  above the keyboard; leaving with changes asks "Discard changes?"; a save returns to the Pricing tab. The customer
+  rate page's "Add customer rate" opens it too.
 - **Review → RATES: Change rate / Add rate is a full screen (2026-10-17).** Replaces the bottom sheet. Header: ✕
   at the start, then "Change rate · 1 kg each · Monthly" over the item name, each on one line (the price type is the
   GRN's, a fact here). Top to bottom:

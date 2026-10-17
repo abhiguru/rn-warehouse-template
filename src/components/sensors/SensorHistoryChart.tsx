@@ -17,14 +17,16 @@ import {
   Pressable,
   Modal,
   ScrollView,
-  FlatList,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-gifted-charts';
+import { ONE_LINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -160,6 +162,65 @@ function statsOf(values: Array<number | null>): SeriesStats | null {
   const present = values.filter((v): v is number => v !== null && !isNaN(v));
   if (present.length === 0) return null;
   return { min: Math.min(...present), max: Math.max(...present) };
+}
+
+/** The table view of the full screen: one row per reading. */
+const readingHelper = createAppColumnHelper<SensorHistoryReading>();
+/** Widths of the two figure columns at font scale 1 (dp): the header word ("Temperature") beside a value. */
+const TEMPERATURE_COLUMN_WIDTH = 88;
+const HUMIDITY_COLUMN_WIDTH = 72;
+
+/**
+ * Date and time | Temperature | Humidity, built on the app's TanStack Table setup and drawn by the shared `DataTable`
+ * (docs/STYLE_GUIDE.md §13.7). A long history is a virtualised list, drawn 30 rows at first as before; not sortable,
+ * the readings are in time order.
+ */
+function ReadingsTable({ readings, showTime }: { readings: SensorHistoryReading[]; showTime: boolean }) {
+  const cell = useThemedStyles(makeTableStyles);
+  const screen = useTableLayout();
+  const temperatureWidth = numberColumnWidth(screen, TEMPERATURE_COLUMN_WIDTH, readings.map(r => formatTemperature(r.temperature)));
+  const humidityWidth = numberColumnWidth(screen, HUMIDITY_COLUMN_WIDTH, readings.map(r => formatHumidity(r.humidity)));
+  const columns = useMemo(
+    () =>
+      readingHelper.columns([
+        readingHelper.accessor('timestamp', {
+          id: 'time',
+          header: showTime ? tr('sensors.chart.dateAndTime') : tr('common.date'),
+          meta: { width: 'grow' },
+          cell: info => <Text style={cell.primary}>{formatReadingTime(info.getValue(), showTime)}</Text>,
+        }),
+        readingHelper.accessor('temperature', {
+          header: tr('sensors.temperature'),
+          meta: { width: temperatureWidth, numeric: true },
+          cell: info => <Text style={cell.number} {...ONE_LINE}>{formatTemperature(info.getValue())}</Text>,
+        }),
+        readingHelper.accessor('humidity', {
+          header: tr('sensors.humidity'),
+          meta: { width: humidityWidth, numeric: true },
+          cell: info => <Text style={cell.number} {...ONE_LINE}>{formatHumidity(info.getValue())}</Text>,
+        }),
+      ]),
+    [cell, showTime, temperatureWidth, humidityWidth]
+  );
+  const table = useAppTable({ columns, data: readings, getRowId: (reading, index) => `${reading.timestamp}-${index}` });
+
+  return (
+    <DataTable
+      table={table}
+      variant="card"
+      list="flat"
+      rowLabel={row =>
+        tr('sensors.chart.rowLabel', {
+          time: formatReadingTime(row.original.timestamp, showTime),
+          temperature: formatTemperature(row.original.temperature),
+          humidity: formatHumidity(row.original.humidity),
+        })
+      }
+      rowTestID={row => `sensor-history-row-${row.id}`}
+      flatListProps={{ initialNumToRender: 30 }}
+      testID="sensor-history-table"
+    />
+  );
 }
 
 /**
@@ -392,41 +453,6 @@ const makeStyles = (t: ThemeTokens) =>
       alignItems: 'center',
       paddingVertical: space.lg,
     },
-    tableHeader: {
-      flexDirection: 'row',
-      paddingHorizontal: layout.marginCompact,
-      paddingVertical: space.sm,
-      backgroundColor: t.background.base,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: t.border.separator,
-    },
-    tableHeaderText: {
-      ...typography.footnote,
-      fontWeight: fontWeight.semibold,
-      color: t.text.secondary,
-    },
-    tableRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 36,
-      paddingHorizontal: layout.marginCompact,
-      paddingVertical: space.s6,
-      backgroundColor: t.surface.card,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: t.border.divider,
-    },
-    tableCell: {
-      ...typography.subhead,
-      color: t.text.primary,
-    },
-    colTime: {
-      flex: 2,
-    },
-    colNumber: {
-      flex: 1,
-      textAlign: 'right',
-      fontVariant: ['tabular-nums'],
-    },
     footer: {
       paddingHorizontal: layout.marginCompact,
       paddingTop: space.md,
@@ -643,25 +669,6 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     setFullscreenView('chart');
   };
 
-  const renderTableRow = ({ item }: { item: SensorHistoryReading }) => {
-    const time = formatReadingTime(item.timestamp, showTime);
-    return (
-      <View
-        style={styles.tableRow}
-        accessible
-        accessibilityLabel={tr('sensors.chart.rowLabel', {
-          time,
-          temperature: formatTemperature(item.temperature),
-          humidity: formatHumidity(item.humidity),
-        })}
-      >
-        <Text style={[styles.tableCell, styles.colTime]}>{time}</Text>
-        <Text style={[styles.tableCell, styles.colNumber]}>{formatTemperature(item.temperature)}</Text>
-        <Text style={[styles.tableCell, styles.colNumber]}>{formatHumidity(item.humidity)}</Text>
-      </View>
-    );
-  };
-
   return (
     <>
       {/* Compact Chart Card */}
@@ -816,17 +823,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
             </View>
           ) : (
             <View style={styles.fullscreenChartContainer}>
-              <View style={styles.tableHeader} accessibilityRole="header">
-                <Text style={[styles.tableHeaderText, styles.colTime]}>{showTime ? tr('sensors.chart.dateAndTime') : tr('common.date')}</Text>
-                <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('sensors.temperature')}</Text>
-                <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('sensors.humidity')}</Text>
-              </View>
-              <FlatList
-                data={readings}
-                keyExtractor={(item, index) => `${item.timestamp}-${index}`}
-                renderItem={renderTableRow}
-                initialNumToRender={30}
-              />
+              <ReadingsTable readings={readings} showTime={showTime} />
             </View>
           )}
 

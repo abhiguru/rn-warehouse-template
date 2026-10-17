@@ -62,7 +62,9 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { askAlert, showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
-import { HeaderCell, ONE_LINE, TABLE_OUTLINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
+import { ONE_LINE, TABLE_OUTLINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 import { GrnRatesSection } from '@/features/grn/rates/GrnRatesSection';
 import { GrnRateSheet } from '@/features/grn/rates/GrnRateSheet';
 import { useGrnRates } from '@/features/grn/rates/useGrnRates';
@@ -87,6 +89,7 @@ import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { canOpenScreen } from '@/config/roles';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 
@@ -785,24 +788,37 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   // The Qty column is as wide as its widest number, the total included.
   const qtyWidth = numberColumnWidth(screen, 40, items.map((item) => formatNumber(item.qty || 0)), [formatNumber(totalQty)]);
-  // The item cells, built again only when the lines, the mode or the theme change:
+  // What a line says about itself, worked out once per line (and per language): its weight as text and its screen-reader
+  // label. A dialog or a photo upload on this step, or one line changing, does not work out the other lines again.
+  const language = getLanguage();
+  const lineFacts = useMemo(() => itemFactsCache(), [language]);
+  // The Items table (Item | Qty). Its columns are built again only when the mode, the theme or the Qty width change:
   // a dialog or a photo upload on this step does not redraw every line.
-  const itemCells = useMemo(
+  const itemColumns = useMemo(
     () =>
-      items.map((item, index) => (
-        <GrnReviewItemCell
-          key={item.grn_trl_id || `item-${index}`}
-          item={item}
-          index={index}
-          first={index === 0}
-          isProtected={!isCreateMode && item.qty !== item.stock}
-          qtyWidth={qtyWidth}
-          styles={styles}
-          table={table}
-        />
-      )),
-    [items, isCreateMode, styles, table, qtyWidth]
+      itemColumnHelper.columns([
+        itemColumnHelper.display({
+          id: 'item',
+          header: tr('grn.rates.colItem'),
+          meta: { width: 'grow' },
+          cell: ({ row }) => (
+            <GrnReviewItemCell item={row.original} weightText={lineFacts.weightText(row.original)} isProtected={!isCreateMode && row.original.qty !== row.original.stock} styles={styles} table={table} />
+          ),
+        }),
+        itemColumnHelper.display({
+          id: 'qty',
+          header: tr('grn.item.qtyShort'),
+          meta: { width: qtyWidth, numeric: true },
+          cell: ({ row }) => <Text style={table.number} {...ONE_LINE}>{formatNumber(row.original.qty || 0)}</Text>,
+        }),
+      ]),
+    [isCreateMode, styles, table, qtyWidth, lineFacts]
   );
+  const itemsTable = useAppTable({
+    columns: itemColumns,
+    data: items,
+    getRowId: (item, index) => item.grn_trl_id || `item-${index}`,
+  });
 
   const grImages = header.gr_images ?? [];
   const ratesMissing = !grnInvoiced && stored.status === 'ready' ? missingCount(pricedRows) : 0;
@@ -959,17 +975,18 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 <Text style={styles.emptyStateSubtitle}>{tr('grn.review.emptySubtitle')}</Text>
               </View>
             ) : (
-              <View style={table.nested} testID="grn-review-items-table">
-                <View style={table.nestedHeader}>
-                  <HeaderCell style={table.grow}>{tr('grn.rates.colItem')}</HeaderCell>
-                  <HeaderCell numeric style={{ width: qtyWidth }}>{tr('grn.item.qtyShort')}</HeaderCell>
-                </View>
-                {itemCells}
-                <View style={styles.itemsTotal} accessible accessibilityLabel={`${tr('grn.review.totalQuantity')}, ${formatNumber(totalQty)}`}>
-                  <Text style={[table.primaryStrong, table.grow]}>{tr('common.total')}</Text>
-                  <Text style={[table.numberStrong, { width: qtyWidth }]} {...ONE_LINE}>{formatNumber(totalQty)}</Text>
-                </View>
-              </View>
+              <DataTable
+                table={itemsTable}
+                variant="nested"
+                testID="grn-review-items-table"
+                rowLabel={row => lineFacts.label(row.original, row.index, !isCreateMode && row.original.qty !== row.original.stock)}
+                footer={
+                  <View style={styles.itemsTotal} accessible accessibilityLabel={`${tr('grn.review.totalQuantity')}, ${formatNumber(totalQty)}`}>
+                    <Text style={[table.primaryStrong, table.grow]}>{tr('common.total')}</Text>
+                    <Text style={[table.numberStrong, { width: qtyWidth }]} {...ONE_LINE}>{formatNumber(totalQty)}</Text>
+                  </View>
+                }
+              />
             )}
           </View>
           </View>
@@ -1150,27 +1167,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 type GrnReviewStyles = ReturnType<typeof makeStyles>;
 type TableStyles = ReturnType<typeof makeTableStyles>;
 
-interface GrnReviewItemCellProps {
-  item: GRNItemData;
-  index: number;
-  first: boolean;
-  /** A stored line with dispatches: its quantity cannot change. */
-  isProtected: boolean;
-  /** The Qty column's width, the same in every row. */
-  qtyWidth: number;
-  styles: GrnReviewStyles;
-  table: TableStyles;
-}
+const itemColumnHelper = createAppColumnHelper<GRNItemData>();
 
-/** One line of the review's Items table (Item | Qty); drawn again only when its own props change. */
-const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, first, isProtected, qtyWidth, styles, table }: GrnReviewItemCellProps) {
+/** What a screen reader says for one line of the review's Items table. */
+function itemA11y(item: GRNItemData, index: number, isProtected: boolean, weightText: string | null): string {
   const qty = item.qty || 0;
-  // The weight of one package ("50 kg each"); null when the line has none, and then nothing is shown or said.
-  const weightText = formatWeightEach(item.weight);
   const rack = item.rack?.trim();
   const packageMark = item.package_mark?.trim();
   const imageCount = item.trl_images?.length || 0;
-  const a11yParts = [
+  return [
     tr('grn.item.itemNumber', { number: index + 1 }),
     item.item_name,
     item.packaging,
@@ -1180,23 +1185,68 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, f
     packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
     imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
     isProtected ? tr('grn.review.a11yDispatchedLocked') : undefined,
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
+ * The facts of the review's lines, kept per line object: its weight as text ("40 kg each"; null when it has none) and
+ * its screen-reader label. A line that did not change is not worked out again.
+ */
+function itemFactsCache() {
+  const cache = new WeakMap<GRNItemData, { weightText: string | null; labels: Map<string, string> }>();
+  const entry = (item: GRNItemData) => {
+    let found = cache.get(item);
+    if (!found) {
+      found = { weightText: formatWeightEach(item.weight), labels: new Map() };
+      cache.set(item, found);
+    }
+    return found;
+  };
+  return {
+    weightText: (item: GRNItemData) => entry(item).weightText,
+    label: (item: GRNItemData, index: number, isProtected: boolean) => {
+      const found = entry(item);
+      const key = `${index}|${isProtected}`;
+      let label = found.labels.get(key);
+      if (label === undefined) {
+        label = itemA11y(item, index, isProtected, found.weightText);
+        found.labels.set(key, label);
+      }
+      return label;
+    },
+  };
+}
+
+interface GrnReviewItemCellProps {
+  item: GRNItemData;
+  /** The weight of one package ("50 kg each"); null when the line has none, and then nothing is shown. */
+  weightText: string | null;
+  /** A stored line with dispatches: its quantity cannot change. */
+  isProtected: boolean;
+  styles: GrnReviewStyles;
+  table: TableStyles;
+}
+
+/** The Item cell of one line of the review's Items table: name, packaging and the tags. */
+const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightText, isProtected, styles, table }: GrnReviewItemCellProps) {
+  const rack = item.rack?.trim();
+  const packageMark = item.package_mark?.trim();
+  const imageCount = item.trl_images?.length || 0;
 
   return (
-    <View style={[styles.itemRow, !first && table.nestedDivider]} accessible accessibilityLabel={a11yParts.join(', ')}>
-      <View style={table.grow}>
-        <Text style={table.primaryStrong}>{item.item_name}</Text>
-        {item.packaging ? <Text style={table.secondary} numberOfLines={1}>{item.packaging}</Text> : null}
-        <View style={styles.itemTags}>
-          {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
-          {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
-          {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
-          {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
-          {isProtected && <StatusTag wrap status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />}
-        </View>
+    <>
+      <Text style={table.primaryStrong}>{item.item_name}</Text>
+      {item.packaging ? <Text style={table.secondary} numberOfLines={1}>{item.packaging}</Text> : null}
+      <View style={styles.itemTags}>
+        {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
+        {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
+        {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
+        {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
+        {isProtected && <StatusTag wrap status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />}
       </View>
-      <Text style={[table.number, { width: qtyWidth }]} {...ONE_LINE}>{formatNumber(qty)}</Text>
-    </View>
+    </>
   );
 });
 
@@ -1275,14 +1325,6 @@ const makeStyles = (t: ThemeTokens) => ({
 
   imagesSectionSubtitle: { ...typography.subhead, color: t.text.secondary, marginBottom: space.md },
 
-  itemRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.sm,
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.sm,
-  },
   itemTags: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.s6, marginTop: space.xs },
   itemsTotal: {
     flexDirection: 'row' as const,

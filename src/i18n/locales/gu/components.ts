@@ -300,17 +300,6 @@ export const components: Translation<typeof source> = {
     printingLabel: 'પ્રિન્ટ થઈ રહ્યું છે',
     printing: 'પ્રિન્ટ થઈ રહ્યું છે…',
   },
-  table: {
-    empty: 'બતાવવા માટે કોઈ ડેટા નથી.',
-    label: 'ડેટાનું કોષ્ટક',
-    notSorted: '{{column}}, સૉર્ટ કરેલું નથી',
-    sortedAscending: '{{column}}, ચઢતા ક્રમમાં સૉર્ટ કરેલું',
-    sortedDescending: '{{column}}, ઉતરતા ક્રમમાં સૉર્ટ કરેલું',
-    sortHint: 'સૉર્ટનો ક્રમ બદલે છે',
-    rowNumber: 'ક્રમ નંબર',
-    editCell: '{{column}}માં ફેરફાર કરો, {{value}}',
-    loadingLabel: '{{label}}, લોડ થઈ રહ્યું છે',
-  },
   steps: {
     stepCompleted: '{{total}}માંથી પગલું {{step}}, {{name}}, પૂર્ણ',
     stepCurrent: '{{total}}માંથી પગલું {{step}}, {{name}}, હાલનું',

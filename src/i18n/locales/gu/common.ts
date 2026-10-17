@@ -100,4 +100,11 @@ export const common: Translation<typeof source> = {
   noInternet: 'ઇન્ટરનેટ કનેક્શન નથી',
   discardChangesTitle: 'ફેરફાર છોડી દેવા છે?',
   discardChangesMessage: 'તમારા ફેરફાર સાચવવામાં આવ્યા નથી.',
+  // Tables (components/table/DataTable): a column header that sorts.
+  table: {
+    sortBy: '{{column}} પ્રમાણે ક્રમ, {{state}}',
+    sortedAsc: 'ચડતા ક્રમમાં',
+    sortedDesc: 'ઊતરતા ક્રમમાં',
+    notSorted: 'ક્રમ નથી',
+  },
 };

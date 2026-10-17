@@ -63,6 +63,14 @@ const textOf = (node: ReactTestInstance): string =>
 const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type !== 'string')[0];
 const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).length > 0;
 const press = (id: string) => act(() => byTestId(id).props.onPress());
+/** The width of the column a cell is in: the column's view (the cell itself, in a totals row). */
+const columnWidth = (node: ReactTestInstance): number | undefined => {
+  for (let n: ReactTestInstance | null = node; n; n = n.parent) {
+    const width = (StyleSheet.flatten(n.props.style) as { width?: unknown } | undefined)?.width;
+    if (typeof width === 'number') return width;
+  }
+  return undefined;
+};
 
 describe('Items table', () => {
   it('shows one row per line: the weight under the item, "GRN/received" with the mark under it', () => {
@@ -140,7 +148,7 @@ describe('Items table', () => {
     const nameText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === name)[0];
     expect(nameText.props.numberOfLines).toBeUndefined();
     const bagsText = byTestId('dispatch-item-row-l').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === '12,500')[0];
-    expect(StyleSheet.flatten(bagsText.props.style).width).toBe(Math.ceil(76 * 1.3));
+    expect(columnWidth(bagsText)).toBe(Math.ceil(76 * 1.3));
     // A number stays on one line: its column is sized to fit it.
     expect(bagsText.props.numberOfLines).toBe(1);
   });
@@ -396,5 +404,109 @@ describe('Invoices table', () => {
     setLanguage('gu');
     render(<DispatchInvoicesTab invoices={detailed} />);
     expect(textOf(byTestId('dispatch-invoices-total'))).toBe('કુલ|૨ ઇન્વૉઇસ|₹૧૫,૭૦૦.૦૦');
+  });
+});
+
+/** The ids of the rows with this test id prefix, in the order they are drawn. */
+const rowIds = (prefix: string): string[] => [
+  ...new Set(
+    tree.root
+      .findAll((n) => typeof n.type !== 'string' && typeof n.props.testID === 'string' && n.props.testID.startsWith(prefix))
+      .map((n) => n.props.testID.slice(prefix.length) as string)
+  ),
+];
+const sortLabel = (id: string): string => byTestId(id).props.accessibilityLabel;
+
+describe('Items table, sorting', () => {
+  // Drawn in this order: wheat (40 bags), rice (25), sugar (50): ascending is rice, wheat, sugar.
+  const lines = [wheat, rice, older];
+
+  it('sorts Bags dispatched not sorted → ascending → descending → not sorted, the footer staying the sum of every line', () => {
+    render(<DispatchItemsTab items={lines} />);
+    const sort = 'dispatch-items-table-sort-bags';
+    expect(rowIds('dispatch-item-row-')).toEqual(['w', 'r', 'o']);
+    expect(sortLabel(sort)).toBe('Sort by Bags dispatched, not sorted');
+
+    press(sort);
+    expect(rowIds('dispatch-item-row-')).toEqual(['r', 'w', 'o']);
+    expect(sortLabel(sort)).toBe('Sort by Bags dispatched, sorted ascending');
+    expect(textOf(byTestId('dispatch-items-total'))).toBe('Total|3 item lines|2 GRNs|115');
+    press(sort);
+    expect(rowIds('dispatch-item-row-')).toEqual(['o', 'w', 'r']);
+    expect(sortLabel(sort)).toBe('Sort by Bags dispatched, sorted descending');
+    expect(textOf(byTestId('dispatch-items-total'))).toBe('Total|3 item lines|2 GRNs|115');
+    press(sort);
+    expect(rowIds('dispatch-item-row-')).toEqual(['w', 'r', 'o']);
+    expect(sortLabel(sort)).toBe('Sort by Bags dispatched, not sorted');
+  });
+
+  it('sorts only the bags: Item and GRN/Received have no sort heading', () => {
+    render(<DispatchItemsTab items={lines} />);
+    expect(has('dispatch-items-table-sort-bags')).toBe(true);
+    expect(has('dispatch-items-table-sort-item')).toBe(false);
+    expect(has('dispatch-items-table-sort-grn')).toBe(false);
+  });
+
+  it('still opens the GRN of a line after sorting', () => {
+    const onViewGRN = jest.fn();
+    render(<DispatchItemsTab items={lines} onViewGRN={onViewGRN} />);
+    press('dispatch-items-table-sort-bags');
+    press('dispatch-item-grn-o');
+    expect(onViewGRN).toHaveBeenCalledWith('grn-159');
+  });
+});
+
+describe('Invoices table, sorting', () => {
+  // Drawn in this order: A (no. 9, 10 Oct, ₹900), B (no. 10, 5 Oct, ₹100), C (no. 2, 20 Oct, ₹500).
+  const invoices: InvoiceTable = {
+    detailed: true,
+    count: 3,
+    total: 1500,
+    rows: [
+      { key: 'a', invoice_id: 'a', invoice_no: 9, invoice_date: '2026-10-10', total: 900 },
+      { key: 'b', invoice_id: 'b', invoice_no: 10, invoice_date: '2026-10-05', total: 100 },
+      { key: 'c', invoice_id: 'c', invoice_no: 2, invoice_date: null, total: 500 },
+    ],
+  };
+
+  it('sorts the date with an unknown date last in either direction, and the total row stays the summary', () => {
+    mockWidth = 800;
+    render(<DispatchInvoicesTab invoices={invoices} />);
+    const table = 'dispatch-invoices-table';
+    press(`${table}-sort-date`);
+    expect(rowIds('dispatch-invoice-row-')).toEqual(['b', 'a', 'c']);
+    expect(sortLabel(`${table}-sort-date`)).toBe('Sort by Date, sorted ascending');
+    press(`${table}-sort-date`);
+    expect(rowIds('dispatch-invoice-row-')).toEqual(['a', 'b', 'c']);
+    expect(sortLabel(`${table}-sort-date`)).toBe('Sort by Date, sorted descending');
+    expect(textOf(byTestId('dispatch-invoices-total'))).toBe('Total|3 invoices|₹1,500.00');
+  });
+
+  it('sorts the invoice total, and a sorted row still opens its invoice', () => {
+    const onViewInvoice = jest.fn();
+    render(<DispatchInvoicesTab invoices={invoices} onViewInvoice={onViewInvoice} />);
+    press('dispatch-invoices-table-sort-total');
+    expect(rowIds('dispatch-invoice-row-')).toEqual(['b', 'c', 'a']);
+    expect(sortLabel('dispatch-invoices-table-sort-total')).toBe('Sort by Invoice total, sorted ascending');
+    press('dispatch-invoice-row-b');
+    expect(onViewInvoice).toHaveBeenCalledWith('b');
+  });
+
+  it('sorts a table of invoice numbers only by Invoice: it has no dates or amounts to order', () => {
+    mockWidth = 800;
+    const fallback: InvoiceTable = {
+      detailed: false,
+      count: 2,
+      total: 15700,
+      rows: [
+        { key: 'number:241:0', invoice_id: null, invoice_no: 241, invoice_date: null, total: null },
+        { key: 'number:97:1', invoice_id: null, invoice_no: 97, invoice_date: null, total: null },
+      ],
+    };
+    render(<DispatchInvoicesTab invoices={fallback} />);
+    expect(has('dispatch-invoices-table-sort-date')).toBe(false);
+    expect(has('dispatch-invoices-table-sort-total')).toBe(false);
+    press('dispatch-invoices-table-sort-invoice');
+    expect(rowIds('dispatch-invoice-row-')).toEqual(['number:97:1', 'number:241:0']);
   });
 });

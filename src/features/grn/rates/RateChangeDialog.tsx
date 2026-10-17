@@ -11,11 +11,16 @@
  *
  * The three actions are stacked (three side by side do not fit a phone): Change the rate, Only this GRN, Back.
  * Back, the Android back button and a tap on the scrim save nothing.
+ *
+ * The Old / New figures are a TanStack table (`components/table/appTable`, `useAppTable`) drawn here and not by
+ * `DataTable`: the dialog's table is a flat inset on the dialog (not an outlined card), its heading is hidden from screen
+ * readers (each row says its own figures), and the figure columns grow with the text instead of having a fixed width.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { Button } from '@/components/ui/Button';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
@@ -103,6 +108,8 @@ export interface RateChangeDialogProps {
   testID?: string;
 }
 
+const figureColumn = createAppColumnHelper<RateFigureLine>();
+
 const ICON_CIRCLE = layout.avatar.lg - space.xs;
 const TABULAR = ['tabular-nums' as const];
 /** The figure columns: wide enough for "₹1,234.50" at the default text size; they grow with larger text. */
@@ -161,6 +168,42 @@ export function RateChangeDialog({ summary, scope, onChangeRate, onOnlyGrn, onBa
   const th = useTokens();
   const insets = useSafeAreaInsets();
 
+  const columns = useMemo(
+    () =>
+      figureColumn.columns([
+        figureColumn.display({
+          id: 'label',
+          header: '',
+          meta: { width: 'grow' },
+          cell: ({ row }) => <Text style={styles.label}>{row.original.label}</Text>,
+        }),
+        figureColumn.display({
+          id: 'old',
+          header: t('grn.rates.confirm.colOld'),
+          meta: { width: VALUE_MIN_WIDTH, numeric: true },
+          cell: ({ row }) => <Text style={styles.value}>{row.original.old}</Text>,
+        }),
+        figureColumn.display({
+          id: 'arrow',
+          header: '',
+          meta: { width: iconSize.sm },
+          cell: ({ row }) => (
+            <View style={styles.arrow}>
+              {row.original.changed ? <Icon name="arrow-right" size={iconSize.sm} color={th.icon.secondary} /> : null}
+            </View>
+          ),
+        }),
+        figureColumn.display({
+          id: 'new',
+          header: t('grn.rates.confirm.colNew'),
+          meta: { width: VALUE_MIN_WIDTH, numeric: true },
+          cell: ({ row }) => <Text style={[styles.value, row.original.changed && styles.valueNew]}>{row.original.next}</Text>,
+        }),
+      ]),
+    [styles, th]
+  );
+  const figures = useAppTable({ columns, data: summary?.figures ?? [], getRowId: line => line.key });
+
   return (
     <Modal visible={summary !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onBack}>
       <View style={[styles.overlay, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>
@@ -186,29 +229,29 @@ export function RateChangeDialog({ summary, scope, onChangeRate, onOnlyGrn, onBa
 
               <View style={styles.table} testID="rate-confirm-figures">
                 <View style={[styles.tableRow, styles.tableHead]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-                  <Text style={styles.label} />
-                  <Text style={styles.headText}>{t('grn.rates.confirm.colOld')}</Text>
-                  <View style={styles.arrow} />
-                  <Text style={styles.headText}>{t('grn.rates.confirm.colNew')}</Text>
+                  {figures.getHeaderGroups()[0]?.headers.map(h => {
+                    const meta = h.column.columnDef.meta;
+                    const text = h.column.columnDef.header as string;
+                    if (meta?.width === 'grow') return <Text key={h.id} style={styles.label} />;
+                    return meta?.numeric ? <Text key={h.id} style={styles.headText}>{text}</Text> : <View key={h.id} style={styles.arrow} />;
+                  })}
                 </View>
-                {summary.figures.map(line => (
-                  <View
-                    key={line.key}
-                    style={styles.tableRow}
-                    accessible
-                    accessibilityLabel={line.changed
-                      ? t('grn.rates.confirm.figureA11y', { label: line.label, old: line.old, new: line.next })
-                      : t('grn.rates.confirm.figureSameA11y', { label: line.label, value: line.next })}
-                    testID={`rate-confirm-${line.key}`}
-                  >
-                    <Text style={styles.label}>{line.label}</Text>
-                    <Text style={styles.value}>{line.old}</Text>
-                    <View style={styles.arrow}>
-                      {line.changed ? <Icon name="arrow-right" size={iconSize.sm} color={th.icon.secondary} /> : null}
+                {figures.getRowModel().rows.map(row => {
+                  const line = row.original;
+                  return (
+                    <View
+                      key={row.id}
+                      style={styles.tableRow}
+                      accessible
+                      accessibilityLabel={line.changed
+                        ? t('grn.rates.confirm.figureA11y', { label: line.label, old: line.old, new: line.next })
+                        : t('grn.rates.confirm.figureSameA11y', { label: line.label, value: line.next })}
+                      testID={`rate-confirm-${line.key}`}
+                    >
+                      {row.getAllCells().map(cell => <figures.FlexRender key={cell.id} cell={cell} />)}
                     </View>
-                    <Text style={[styles.value, line.changed && styles.valueNew]}>{line.next}</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
 
               <View style={styles.part} testID="rate-confirm-period">

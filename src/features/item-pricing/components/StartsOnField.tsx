@@ -29,6 +29,8 @@ interface Props {
   fixed?: boolean;
   error?: string;
   onChange: (choice: StartsOnChoice, day: string) => void;
+  /** No red asterisk: a form where every field is required (the Add customer rate form, owner 2026-10-17). */
+  hideRequired?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -40,7 +42,7 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function StartsOnField({ choice, day, today, earliest, canStartInPast, receivedDay, fixed, error, onChange }: Props) {
+export function StartsOnField({ choice, day, today, earliest, canStartInPast, receivedDay, fixed, error, onChange, hideRequired = false }: Props) {
   const styles = useThemedStyles(makeStyles);
   const chips = startChips(today);
   const nextMonth = chips.find(c => c.id === 'nextMonth')?.day ?? today;
@@ -51,7 +53,7 @@ export function StartsOnField({ choice, day, today, earliest, canStartInPast, re
   const label = (
     <Text style={styles.label}>
       {t('pricing.edit.startsOn')}
-      <Text style={styles.required}> *</Text>
+      {hideRequired ? null : <Text style={styles.required}> *</Text>}
     </Text>
   );
 

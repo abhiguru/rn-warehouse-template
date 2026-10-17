@@ -11,11 +11,13 @@
  *   under them (in place of the GRN date, which the GRNs tab shows).
  * - The GRN cell opens the GRN only when the line has a GRN id.
  * - Footer: bags dispatched, item lines and distinct source GRNs.
+ * - Bags dispatched sorts from its heading (not sorted, ascending, descending); the footer stays the sum of every line.
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable.
  * - Virtualized (FlatList); loading and empty states as before.
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, FlatList, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, space, typography } from '@/theme/tokens';
@@ -25,7 +27,6 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { itemTotals, type DispatchItem } from './dispatchDetailsModel';
 import {
   CUT_LINE,
-  HeaderCell,
   ONE_LINE,
   crowded,
   makeTableStyles,
@@ -36,6 +37,8 @@ import {
   useTableLayout,
   type TableLayout,
 } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 
 export type { DispatchItem } from './dispatchDetailsModel';
 
@@ -49,9 +52,6 @@ interface DispatchItemsTabProps {
 const BAGS_WIDTH = 76;
 
 const makeStyles = (t: ThemeTokens) => ({
-  grnColumn: {
-    flexShrink: 0,
-  },
   stackedGrn: {
     marginTop: space.xs,
   },
@@ -143,70 +143,7 @@ function sourceSpoken(item: Pick<DispatchItem, 'grn_no' | 'original_quantity' | 
     .join(', ');
 }
 
-interface ItemRowProps {
-  item: DispatchItem;
-  onViewGRN?: (grn_id: string) => void;
-  table: TableLayout;
-  grnWidth: number;
-  bagsWidth: number;
-}
-
-const ItemRow = React.memo(function ItemRow({ item, onViewGRN, table, grnWidth, bagsWidth }: ItemRowProps) {
-  const styles = useThemedStyles(makeTableStyles);
-  const own = useThemedStyles(makeStyles);
-  const weight = formatWeightEach(item.weight);
-  const grnId = item.grn_id;
-  const canOpenGrn = !!(grnId && onViewGRN);
-  const openGrn = () => {
-    if (grnId && onViewGRN) onViewGRN(grnId);
-  };
-
-  const grnCell = (
-    <Pressable
-      onPress={openGrn}
-      disabled={!canOpenGrn}
-      // The row is one element for a screen reader; it offers this as an action instead.
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
-      style={({ pressed }) => [styles.linkTarget, pressed && canOpenGrn && styles.linkPressed]}
-      testID={`dispatch-item-grn-${item.id}`}
-    >
-      <Text style={canOpenGrn ? styles.link : styles.primary} {...ONE_LINE}>{sourceText(item)}</Text>
-      {item.package_mark ? <Text style={styles.secondary} {...CUT_LINE}>{item.package_mark}</Text> : null}
-    </Pressable>
-  );
-
-  const label = tr('dispatch.details.table.itemRowLabel', {
-    item: item.item_name,
-    details: weight ? `, ${weight}` : '',
-    source: sourceSpoken(item),
-    bags: bags(item.dispatch_quantity),
-  });
-  const actions = canOpenGrn
-    ? [{ name: 'openGrn', label: tr('dispatch.details.table.openGrnAction', { number: formatIdentifier(item.grn_no) }) }]
-    : undefined;
-
-  return (
-    <View
-      style={[styles.row, styles.cardSides]}
-      accessible
-      accessibilityLabel={label}
-      accessibilityActions={actions}
-      onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === 'openGrn') openGrn();
-      }}
-      testID={`dispatch-item-row-${item.id}`}
-    >
-      <View style={styles.grow}>
-        <Text style={styles.primary}>{item.item_name}</Text>
-        {weight !== null ? <Text style={styles.secondary}>{nb(weight)}</Text> : null}
-        {table.stacked ? <View style={own.stackedGrn}>{grnCell}</View> : null}
-      </View>
-      {!table.stacked ? <View style={[own.grnColumn, { width: grnWidth }]}>{grnCell}</View> : null}
-      <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(item.dispatch_quantity)}</Text>
-    </View>
-  );
-});
+const helper = createAppColumnHelper<DispatchItem>();
 
 export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   items,
@@ -226,19 +163,75 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   const grnWidth = sourceColumnWidth(items, screen, [grnCount], grnHeading);
   // A long GRN/received or a big quantity would squeeze the item names: the GRN cell goes under the item.
   const table = useStackedWhen(screen, crowded(rowWidth(screen), [grnWidth, bagsWidth], 0, screen.scale));
+  const stacked = table.stacked;
+  const openGrn = (item: DispatchItem) => {
+    if (item.grn_id && onViewGRN) onViewGRN(item.grn_id);
+  };
 
-  const header = (
-    <View style={styles.cardTop}>
-      <View style={styles.headerRow}>
-        <HeaderCell style={styles.grow}>{tr('dispatch.details.table.item')}</HeaderCell>
-        {!table.stacked ? <HeaderCell oneLine style={[own.grnColumn, { width: grnWidth }]}>{grnHeading}</HeaderCell> : null}
-        <HeaderCell numeric style={{ width: bagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
-      </View>
-    </View>
+
+  const grnCell = (item: DispatchItem) => {
+    const grnId = item.grn_id;
+    const canOpenGrn = !!(grnId && onViewGRN);
+    return (
+      <Pressable
+        onPress={() => openGrn(item)}
+        disabled={!canOpenGrn}
+        // The row is one element for a screen reader; it offers this as an action instead.
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        style={({ pressed }) => [styles.linkTarget, pressed && canOpenGrn && styles.linkPressed]}
+        testID={`dispatch-item-grn-${item.id}`}
+      >
+        <Text style={canOpenGrn ? styles.link : styles.primary} {...ONE_LINE}>{sourceText(item)}</Text>
+        {item.package_mark ? <Text style={styles.secondary} {...CUT_LINE}>{item.package_mark}</Text> : null}
+      </Pressable>
+    );
+  };
+
+  const columns = useMemo(
+    () =>
+      helper.columns([
+        helper.accessor('item_name', {
+          id: 'item',
+          header: tr('dispatch.details.table.item'),
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const item = info.row.original;
+            const weight = formatWeightEach(item.weight);
+            return (
+              <>
+                <Text style={styles.primary}>{item.item_name}</Text>
+                {weight !== null ? <Text style={styles.secondary}>{nb(weight)}</Text> : null}
+                {stacked ? <View style={own.stackedGrn}>{grnCell(item)}</View> : null}
+              </>
+            );
+          },
+        }),
+        ...(stacked
+          ? []
+          : [
+              helper.accessor('grn_no', {
+                id: 'grn',
+                header: grnHeading,
+                meta: { width: grnWidth, headerOneLine: true },
+                cell: (info) => grnCell(info.row.original),
+              }),
+            ]),
+        helper.accessor('dispatch_quantity', {
+          id: 'bags',
+          header: tr('dispatch.details.table.bagsDispatched'),
+          enableSorting: true,
+          sortFn: 'basic',
+          meta: { width: bagsWidth, numeric: true },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatch_quantity)}</Text>,
+        }),
+      ]),
+    [stacked, grnWidth, bagsWidth, grnHeading, styles, own, onViewGRN]
   );
+  const grid = useAppTable({ data: items, columns, getRowId: (item) => item.id });
 
   const footer = (
-    <View style={styles.cardBottom}>
+    <>
       <View
         style={styles.footerRow}
         accessible
@@ -247,10 +240,10 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
       >
         <View style={styles.grow}>
           <Text style={styles.primaryStrong}>{tr('dispatch.details.table.total')}</Text>
-          <Text style={styles.secondary}>{nb(table.stacked ? `${lineCount} · ${grnCount}` : lineCount)}</Text>
+          <Text style={styles.secondary}>{nb(stacked ? `${lineCount} · ${grnCount}` : lineCount)}</Text>
         </View>
-        {!table.stacked ? (
-          <View style={[own.grnColumn, { width: grnWidth }]}>
+        {!stacked ? (
+          <View style={{ width: grnWidth }}>
             <Text style={styles.primaryStrong} {...ONE_LINE}>{grnCount}</Text>
           </View>
         ) : null}
@@ -262,7 +255,7 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
           <Text style={own.loadingText}>{tr('dispatch.details.loadingItems')}</Text>
         </View>
       ) : null}
-    </View>
+    </>
   );
 
   if (loading && items.length === 0) {
@@ -285,18 +278,29 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   }
 
   return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.content}
-      data={items}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <ItemRow item={item} onViewGRN={onViewGRN} table={table} grnWidth={grnWidth} bagsWidth={bagsWidth} />}
-      ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      showsVerticalScrollIndicator={false}
-      maxToRenderPerBatch={10}
-      updateCellsBatchingPeriod={50}
-      windowSize={10}
+    <DataTable
+      table={grid}
+      list="flat"
+      rowLabel={(row) => {
+        const item = row.original;
+        const weight = formatWeightEach(item.weight);
+        return tr('dispatch.details.table.itemRowLabel', {
+          item: item.item_name,
+          details: weight ? `, ${weight}` : '',
+          source: sourceSpoken(item),
+          bags: bags(item.dispatch_quantity),
+        });
+      }}
+      rowActions={(row) =>
+        row.original.grn_id && onViewGRN
+          ? [{ name: 'openGrn', label: tr('dispatch.details.table.openGrnAction', { number: formatIdentifier(row.original.grn_no) }) }]
+          : undefined
+      }
+      onRowAction={(row, actionName) => {
+        if (actionName === 'openGrn') openGrn(row.original);
+      }}
+      rowTestID={(row) => `dispatch-item-row-${row.original.id}`}
+      footer={footer}
       testID="dispatch-items-table"
     />
   );

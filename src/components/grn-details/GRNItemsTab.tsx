@@ -11,11 +11,14 @@
  * - Tapping a row shows the bags dispatched, the rack and the packaging, and "View dispatches".
  * - Three columns, as the style guide asks on phones; at large text Received moves under the
  *   item. Footer: item lines and both totals.
+ * - Item, Received and In stock sort from their headings (not sorted, ascending, descending); the totals stay
+ *   the sums of every line. Received under the item at large text is no column and does not sort.
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable.
  * - Virtualized (FlatList); loading and empty states as before.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, Pressable, LayoutAnimation } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -25,8 +28,6 @@ import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters'
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr } from '@/i18n';
 import {
-  OpenBar,
-  HeaderCell,
   ONE_LINE,
   RowChevron,
   crowded,
@@ -36,8 +37,9 @@ import {
   rowWidth,
   useStackedWhen,
   useTableLayout,
-  type TableLayout,
 } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -164,96 +166,7 @@ export function lotLine(item: Pick<GRNItem, 'package_mark' | 'weight'>): string 
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-interface ItemRowProps {
-  item: GRNItem;
-  expanded: boolean;
-  onToggle: (id: string) => void;
-  onViewDispatches?: (item: GRNItem) => void;
-  table: TableLayout;
-  /** The width of both number columns, the same for every row. */
-  width: number;
-}
-
-const ItemRow = React.memo(function ItemRow({ item, expanded, onToggle, onViewDispatches, table, width }: ItemRowProps) {
-  const styles = useThemedStyles(makeTableStyles);
-  const own = useThemedStyles(makeStyles);
-  const t = useTokens();
-  const details = lotLine(item);
-  const status = getGRNStockStatus(item.stock, item.qty);
-  // The In stock column already says "in stock" and "0"; only Low stock, which a number alone
-  // does not show, gets a tag (a long "Fully dispatched" tag was cut at font scale 1.3).
-  const tag = status && status.status === 'critical' ? status : null;
-  const dispatched = dispatchedOf(item);
-  const label = [
-    tr('grn.detailsTable.itemRowLabel', {
-      item: item.item_name,
-      details: details ? `, ${details}` : '',
-      received: formatNumber(item.qty),
-      stock: formatNumber(item.stock),
-    }),
-    tag?.label,
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  return (
-    <View style={[styles.cardSides, expanded && styles.group]}>
-      <Pressable
-        onPress={() => onToggle(item.id)}
-        style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityHint={tr('grn.detailsTable.showItemDetails')}
-        accessibilityState={{ expanded }}
-        testID={`grn-item-row-${item.id}`}
-      >
-        <RowChevron expandable expanded={expanded} />
-        <View style={styles.grow}>
-          <Text style={styles.primary}>{item.item_name}</Text>
-          {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
-          {table.stacked ? <Text style={styles.secondary}>{nb(tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) }))}</Text> : null}
-          {tag ? <StatusTag status={tag.status} label={tag.label} icon={tag.icon} style={own.tag} /> : null}
-        </View>
-        {!table.stacked ? <Text style={[styles.number, { width }]} {...ONE_LINE}>{formatNumber(item.qty)}</Text> : null}
-        <Text style={[styles.number, { width }]} {...ONE_LINE}>{formatNumber(item.stock)}</Text>
-      </Pressable>
-      {expanded ? (
-        <View style={styles.details} testID={`grn-item-details-${item.id}`}>
-          <View style={own.detailLine}>
-            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
-            <Text style={styles.secondary}>{tr('grn.detailsTable.dispatchedBags', { bags: bags(dispatched) })}</Text>
-          </View>
-          {item.rack ? (
-            <View style={own.detailLine}>
-              <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
-              <Text style={styles.secondary}>{tr('grn.item.rackWithValue', { rack: item.rack })}</Text>
-            </View>
-          ) : null}
-          {item.packaging ? (
-            <View style={own.detailLine}>
-              <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
-              <Text style={styles.secondary}>{tr('grn.detailsTable.packaging', { packaging: item.packaging })}</Text>
-            </View>
-          ) : null}
-          {dispatched > 0 && onViewDispatches ? (
-            <Pressable
-              onPress={() => onViewDispatches(item)}
-              style={({ pressed }) => [own.action, pressed && own.actionPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={tr('grn.detailsTable.viewDispatches')}
-              accessibilityHint={tr('grn.detailsTable.viewDispatchesHint')}
-              testID={`grn-item-dispatches-${item.id}`}
-            >
-              <Text style={own.actionText}>{tr('grn.detailsTable.viewDispatches')}</Text>
-              <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
-      {expanded ? <OpenBar /> : null}
-    </View>
-  );
-});
+const helper = createAppColumnHelper<GRNItem>();
 
 // ============================================================================
 // COMPONENT
@@ -267,7 +180,6 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
   const screen = useTableLayout();
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const totals = useMemo(
     () => ({
       received: items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
@@ -282,17 +194,61 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     items.flatMap((item) => [formatNumber(item.qty), formatNumber(item.stock)]),
     [formatNumber(totals.received), formatNumber(totals.stock)]
   );
-  const table = useStackedWhen(screen, crowded(rowWidth(screen), [width, width], undefined, screen.scale));
+  const layout = useStackedWhen(screen, crowded(rowWidth(screen), [width, width], undefined, screen.scale));
+  const stacked = layout.stacked;
 
-  const toggle = useCallback((id: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  // Item, Received and In stock sort; Received stacked under the item is no column, so it does not.
+  const columns = useMemo(
+    () =>
+      helper.columns([
+        helper.accessor('item_name', {
+          id: 'item',
+          header: tr('grn.detailsTable.item'),
+          enableSorting: true,
+          sortFn: 'text',
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const item = info.row.original;
+            const details = lotLine(item);
+            const status = getGRNStockStatus(item.stock, item.qty);
+            // The In stock column already says "in stock" and "0"; only Low stock, which a number alone
+            // does not show, gets a tag (a long "Fully dispatched" tag was cut at font scale 1.3).
+            const tag = status && status.status === 'critical' ? status : null;
+            return (
+              <>
+                <Text style={styles.primary}>{item.item_name}</Text>
+                {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
+                {stacked ? <Text style={styles.secondary}>{nb(tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) }))}</Text> : null}
+                {tag ? <StatusTag status={tag.status} label={tag.label} icon={tag.icon} style={own.tag} /> : null}
+              </>
+            );
+          },
+        }),
+        ...(stacked
+          ? []
+          : [
+              helper.accessor((item) => Number(item.qty) || 0, {
+                id: 'received',
+                header: tr('grn.stock.received'),
+                enableSorting: true,
+                sortFn: 'basic',
+                meta: { width, numeric: true },
+                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.qty)}</Text>,
+              }),
+            ]),
+        helper.accessor((item) => Number(item.stock) || 0, {
+          id: 'stock',
+          header: tr('grn.stock.inStock'),
+          enableSorting: true,
+          sortFn: 'basic',
+          meta: { width, numeric: true },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.stock)}</Text>,
+        }),
+      ]),
+    [stacked, width, styles, own]
+  );
+
+  const grid = useAppTable({ data: items, columns, getRowId: (item) => item.id, getRowCanExpand: () => true });
 
   // Initial loading state
   if (loading && items.length === 0) {
@@ -318,19 +274,62 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
 
   const lineCount = tr('grn.detailsTable.lineCount', { count: items.length });
 
-  const header = (
-    <View style={styles.cardTop}>
-      <View style={styles.headerRow}>
-        <RowChevron expandable={false} expanded={false} />
-        <HeaderCell style={styles.grow}>{tr('grn.detailsTable.item')}</HeaderCell>
-        {!table.stacked ? <HeaderCell numeric style={{ width }}>{tr('grn.stock.received')}</HeaderCell> : null}
-        <HeaderCell numeric style={{ width }}>{tr('grn.stock.inStock')}</HeaderCell>
-      </View>
-    </View>
-  );
+  const rowLabel = (item: GRNItem) => {
+    const details = lotLine(item);
+    const status = getGRNStockStatus(item.stock, item.qty);
+    const tag = status && status.status === 'critical' ? status : null;
+    return [
+      tr('grn.detailsTable.itemRowLabel', {
+        item: item.item_name,
+        details: details ? `, ${details}` : '',
+        received: formatNumber(item.qty),
+        stock: formatNumber(item.stock),
+      }),
+      tag?.label,
+    ]
+      .filter(Boolean)
+      .join(', ');
+  };
+
+  const detail = (item: GRNItem) => {
+    const dispatched = dispatchedOf(item);
+    return (
+      <>
+        <View style={own.detailLine}>
+          <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
+          <Text style={styles.secondary}>{tr('grn.detailsTable.dispatchedBags', { bags: bags(dispatched) })}</Text>
+        </View>
+        {item.rack ? (
+          <View style={own.detailLine}>
+            <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
+            <Text style={styles.secondary}>{tr('grn.item.rackWithValue', { rack: item.rack })}</Text>
+          </View>
+        ) : null}
+        {item.packaging ? (
+          <View style={own.detailLine}>
+            <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
+            <Text style={styles.secondary}>{tr('grn.detailsTable.packaging', { packaging: item.packaging })}</Text>
+          </View>
+        ) : null}
+        {dispatched > 0 && onViewItemDispatches ? (
+          <Pressable
+            onPress={() => onViewItemDispatches(item)}
+            style={({ pressed }) => [own.action, pressed && own.actionPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={tr('grn.detailsTable.viewDispatches')}
+            accessibilityHint={tr('grn.detailsTable.viewDispatchesHint')}
+            testID={`grn-item-dispatches-${item.id}`}
+          >
+            <Text style={own.actionText}>{tr('grn.detailsTable.viewDispatches')}</Text>
+            <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
+        ) : null}
+      </>
+    );
+  };
 
   const footer = (
-    <View style={styles.cardBottom}>
+    <>
       <View
         style={styles.footerRow}
         accessible
@@ -345,10 +344,10 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
         <View style={styles.grow}>
           <Text style={styles.primaryStrong}>{tr('grn.detailsTable.total')}</Text>
           <Text style={styles.secondary}>
-            {nb(table.stacked ? `${lineCount} · ${tr('grn.stock.receivedCount', { quantity: formatNumber(totals.received) })}` : lineCount)}
+            {nb(stacked ? `${lineCount} · ${tr('grn.stock.receivedCount', { quantity: formatNumber(totals.received) })}` : lineCount)}
           </Text>
         </View>
-        {!table.stacked ? <Text style={[styles.numberStrong, { width }]} {...ONE_LINE}>{formatNumber(totals.received)}</Text> : null}
+        {!stacked ? <Text style={[styles.numberStrong, { width }]} {...ONE_LINE}>{formatNumber(totals.received)}</Text> : null}
         <Text style={[styles.numberStrong, { width }]} {...ONE_LINE}>{formatNumber(totals.stock)}</Text>
       </View>
       {loading ? (
@@ -357,25 +356,19 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
           <Text style={own.loadingText}>{tr('grn.itemsTab.loading')}</Text>
         </View>
       ) : null}
-    </View>
+    </>
   );
 
   return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.content}
-      data={items}
-      keyExtractor={(item) => item.id}
-      extraData={expanded}
-      renderItem={({ item }) => (
-        <ItemRow item={item} expanded={expanded.has(item.id)} onToggle={toggle} onViewDispatches={onViewItemDispatches} table={table} width={width} />
-      )}
-      ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      showsVerticalScrollIndicator={false}
-      maxToRenderPerBatch={10}
-      updateCellsBatchingPeriod={50}
-      windowSize={10}
+    <DataTable
+      table={grid}
+      list="flat"
+      renderDetail={(row) => detail(row.original)}
+      rowLabel={(row) => rowLabel(row.original)}
+      rowHint={() => tr('grn.detailsTable.showItemDetails')}
+      rowTestID={(row) => `grn-item-row-${row.original.id}`}
+      detailTestID={(row) => `grn-item-details-${row.original.id}`}
+      footer={footer}
       testID="grn-items-table"
     />
   );

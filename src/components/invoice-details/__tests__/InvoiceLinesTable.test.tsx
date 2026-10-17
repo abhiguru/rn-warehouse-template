@@ -67,6 +67,14 @@ const textOf = (node: ReactTestInstance): string =>
 const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type !== 'string')[0];
 const has = (id: string) => tree.root.findAll((n) => n.props.testID === id).length > 0;
 const press = (id: string) => act(() => byTestId(id).props.onPress());
+/** The width of the column a cell is in: the column's view (the cell itself, in a totals row). */
+const columnWidth = (node: ReactTestInstance): number | undefined => {
+  for (let n: ReactTestInstance | null = node; n; n = n.parent) {
+    const width = (StyleSheet.flatten(n.props.style) as { width?: unknown } | undefined)?.width;
+    if (typeof width === 'number') return width;
+  }
+  return undefined;
+};
 
 describe('invoice Items table', () => {
   it('heads Item, Bags, Amount and shows one row per lot with its mark, weight and rates', () => {
@@ -138,7 +146,8 @@ describe('invoice Items table', () => {
     render(<InvoiceLineItemsTab items={[cumin1, pepper, cumin2]} />);
 
     const widthOf = (id: string, text: string) =>
-      StyleSheet.flatten(byTestId(id).findAll((n) => (n.type as unknown) === 'Text' && n.props.children === text)[0].props.style).width;
+      columnWidth(byTestId(id).findAll((n) => (n.type as unknown) === 'Text' && n.props.children === text)[0]);
+    expect(widthOf('invoice-group-row-lot-pepper', '₹90.00')).toEqual(expect.any(Number));
     expect(widthOf('invoice-group-row-lot-cumin', '₹614.25')).toBe(widthOf('invoice-group-row-lot-pepper', '₹90.00'));
     expect(widthOf('invoice-lines-total', '₹704.25')).toBe(widthOf('invoice-group-row-lot-pepper', '₹90.00'));
     expect(widthOf('invoice-group-row-lot-cumin', '30')).toBe(widthOf('invoice-lines-total', '35'));

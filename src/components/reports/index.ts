@@ -30,9 +30,6 @@ export {
 // States
 export { ReportEmptyState } from './ReportEmptyState';
 
-// Data Display
-export { FioriDataTable, type DataTableColumn, type DataTableProps } from './FioriDataTable';
-
 // List Items
 export { ReportCustomerCard, type ReportCustomerCardProps } from './ReportCustomerCard';
 export { ReportLastCustomer, type ReportLastCustomerProps } from './ReportLastCustomer';

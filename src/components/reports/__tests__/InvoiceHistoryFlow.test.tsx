@@ -95,6 +95,36 @@ jest.mock('@/utils/logger', () => {
   return { createLogger: () => log };
 });
 
+// The window the monthly table is drawn for. Most tests draw it in its full layout (Month | Invoices | Amount | Paid |
+// Pending), which a tablet-wide row holds; the layout tests set a phone's width and text size. Only the table's layout
+// reads it: the rest of the screen keeps Jest's own window.
+let mockTableWindow = { width: 1000, scale: 1 };
+jest.mock('@/components/common/DetailTable', () => {
+  const actual = jest.requireActual('@/components/common/DetailTable');
+  let last: { key: string; layout: unknown } | undefined;
+  return {
+    ...actual,
+    // One object per window, as the real hook gives, so the table's columns are not made again on every draw.
+    useTableLayout: () => {
+      const { width, scale } = mockTableWindow;
+      const key = `${width}x${scale}`;
+      if (last?.key !== key) {
+        last = {
+          key,
+          layout: {
+            stacked: scale >= actual.TABLE_STACK_SCALE,
+            wide: width >= actual.TABLE_WIDE_WIDTH,
+            scale,
+            width,
+            numberWidth: (base: number) => Math.ceil(base * scale),
+          },
+        };
+      }
+      return last.layout;
+    },
+  };
+});
+
 const allHistory = jest.mocked(getAllInvoiceHistory);
 const customerHistory = jest.mocked(getCustomerInvoiceHistory);
 const makePdf = jest.mocked(generateReportPDF);
@@ -245,6 +275,7 @@ beforeEach(() => {
   forgetQueries();
   jest.clearAllMocks();
   mockParams = {};
+  mockTableWindow = { width: 1000, scale: 1 };
   allHistory.mockImplementation(async ({ fromDate }) => answerCustomers(fromDate < '2026-06-15' ? [...CUSTOMERS, OLD_MILL] : CUSTOMERS) as never);
   customerHistory.mockResolvedValue(answerInvoices as never);
   resetReportExportAvailability();
@@ -308,33 +339,32 @@ async function open(store: Store, params?: Record<string, string>) {
         .filter(text => text !== 'Invoice history' && text !== 'Sort by'),
     status: () => texts().find(text => text.includes('Last updated')),
     /**
-     * The monthly table as drawn: its headers, each row's cells (the pinned month, then the
-     * scrolling figures), each row's spoken summary, and the totals row. Empty while it is shut.
+     * The monthly table as drawn: its headings (with the sort state each announces), each row's cells, each row's
+     * spoken summary, and the Total row. Undefined while it is shut.
      */
     monthTable: () => {
-      const table = tree.root.findAll(
-        node => typeof node.type === 'string' && node.props.accessibilityLabel === 'Monthly breakdown' && node.props.accessibilityRole === undefined
-      )[0];
+      const host = (node: ReactTestInstance) => typeof node.type === 'string';
+      const table = tree.root.findAll(node => host(node) && node.props.testID === 'monthly-breakdown-table')[0];
       if (!table) return undefined;
-      const hostViews = table.findAll(node => (node.type as unknown) === 'View');
       const cellsOf = (view: ReactTestInstance) => view.findAll(node => (node.type as unknown) === 'Text').map(textOf);
-      // The totals row is spoken as one element, as a month's row is: it is told apart by its separator.
-      const isTotals = (node: ReactTestInstance) => {
-        const style = StyleSheet.flatten(node.props.style) as Record<string, unknown> | undefined;
-        return style?.borderTopWidth === 1 && style?.borderTopColor === LIGHT.table.separator;
-      };
-      // Pinned half: the month of each row, and the row's spoken summary. Scrolling half: the figures.
-      const pinnedRows = hostViews.filter(node => node.props.accessible === true && !isTotals(node));
-      const scrollRows = hostViews.filter(node => node.props.accessible === false && node.props.importantForAccessibility === 'no-hide-descendants' && !isTotals(node));
-      const totalRows = hostViews.filter(isTotals);
+      const rowViews = table.findAll(node => host(node) && String(node.props.testID).startsWith('monthly-breakdown-row-'));
+      const headings = table.findAll(node => (node.type as unknown) === 'Text' && (StyleSheet.flatten(node.props.style) as Record<string, unknown>)?.color === LIGHT.table.headerText && (StyleSheet.flatten(node.props.style) as Record<string, unknown>)?.fontWeight === fontWeight.semibold);
+      const total = table.findAll(node => host(node) && node.props.testID === 'monthly-breakdown-total')[0];
+      const sortHeadings = table.findAll(node => host(node) && String(node.props.testID).startsWith('monthly-breakdown-table-sort-'));
       return {
-        headers: hostViews.filter(node => node.props.accessibilityRole === 'header').map(node => node.props.accessibilityLabel as string),
-        rows: pinnedRows.map((pinned, index) => [...cellsOf(pinned), ...cellsOf(scrollRows[index])]),
-        summaries: pinnedRows.map(node => node.props.accessibilityLabel as string),
-        scrollRowCount: scrollRows.length,
-        totals: totalRows.flatMap(cellsOf),
+        headers: headings.map(textOf),
+        rows: rowViews.map(cellsOf),
+        rowIds: rowViews.map(node => String(node.props.testID).replace('monthly-breakdown-row-', '')),
+        summaries: rowViews.map(node => node.props.accessibilityLabel as string),
+        totals: cellsOf(total),
+        totalLabel: total.props.accessibilityLabel as string,
+        /** The columns whose heading sorts, in order, and what each announces. */
+        sortLabels: Object.fromEntries(sortHeadings.map(node => [String(node.props.testID).replace('monthly-breakdown-table-sort-', ''), node.props.accessibilityLabel as string])),
       };
     },
+    /** A tap on a heading of the monthly table that sorts. */
+    sortMonths: (column: string) =>
+      run(() => tree.root.findAll(node => node.props.testID === `monthly-breakdown-table-sort-${column}` && typeof node.props.onPress === 'function')[0].props.onPress()),
     search: async (text: string) => {
       const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
       await run(() => field.props.onChangeText(text));
@@ -697,6 +727,197 @@ describe('invoice history, one customer', () => {
     });
   });
 
+  describe('the month by month table, sorted by a heading', () => {
+    // answerMonthly: Oct 2026 (3 invoices, 39,500 / paid 18,000 / pending 21,500), Sep 2026 (9,150 / 0 / 9,150) and
+    // Aug 2026 (3,540 / 3,540 / 0), newest first, the order they come in. The orders below differ from it and from each
+    // other, so a sort that did nothing, or sorted the wrong way, or sorted the text ("₹3,540" before "₹39,500" before
+    // "₹9,150"), shows.
+    const OCT = '2026-10';
+    const SEP = '2026-09';
+    const AUG = '2026-08';
+    const TOTALS = ['Total', '6', '₹52,190', '₹21,540', '₹30,650'];
+    const open_ = async () => {
+      mockParams = GREEN;
+      customerHistory.mockResolvedValue(answerMonthly as never);
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      return screen;
+    };
+
+    it('starts not sorted, in the order the months come in, with a heading button on Month, Amount, Paid and Pending but not on Invoices', async () => {
+      const screen = await open_();
+      const table = screen.monthTable()!;
+      expect(table.rowIds).toEqual([OCT, SEP, AUG]);
+      expect(table.sortLabels).toEqual({
+        month: 'Sort by Month, not sorted',
+        amount: 'Sort by Amount, not sorted',
+        paid: 'Sort by Paid, not sorted',
+        pending: 'Sort by Pending, not sorted',
+      });
+      expect(table.headers).toEqual(['Month', 'Invoices', 'Amount', 'Paid', 'Pending']);
+    });
+
+    it('Amount sorts by the number, lowest first, then highest first, then back to the order it came in', async () => {
+      const screen = await open_();
+      await screen.sortMonths('amount');
+      // 3,540 < 9,150 < 39,500; the text "₹39,500" sorts before "₹9,150", which would give Aug, Oct, Sep.
+      expect(screen.monthTable()!.rowIds).toEqual([AUG, SEP, OCT]);
+      expect(screen.monthTable()!.sortLabels.amount).toBe('Sort by Amount, sorted ascending');
+      expect(screen.monthTable()!.rows.map(cells => cells[2])).toEqual(['₹3,540', '₹9,150', '₹39,500']);
+
+      await screen.sortMonths('amount');
+      expect(screen.monthTable()!.rowIds).toEqual([OCT, SEP, AUG]);
+      expect(screen.monthTable()!.sortLabels.amount).toBe('Sort by Amount, sorted descending');
+
+      await screen.sortMonths('amount');
+      expect(screen.monthTable()!.rowIds).toEqual([OCT, SEP, AUG]);
+      expect(screen.monthTable()!.sortLabels.amount).toBe('Sort by Amount, not sorted');
+    });
+
+    it('Paid and Pending sort by their own figures, the other direction reversing the order', async () => {
+      const screen = await open_();
+      await screen.sortMonths('paid');
+      expect(screen.monthTable()!.rowIds).toEqual([SEP, AUG, OCT]);
+      await screen.sortMonths('paid');
+      expect(screen.monthTable()!.rowIds).toEqual([OCT, AUG, SEP]);
+      expect(screen.monthTable()!.sortLabels.paid).toBe('Sort by Paid, sorted descending');
+      await screen.sortMonths('paid');
+      expect(screen.monthTable()!.sortLabels.paid).toBe('Sort by Paid, not sorted');
+
+      await screen.sortMonths('pending');
+      expect(screen.monthTable()!.rowIds).toEqual([AUG, SEP, OCT]);
+      await screen.sortMonths('pending');
+      expect(screen.monthTable()!.rowIds).toEqual([OCT, SEP, AUG]);
+      expect(screen.monthTable()!.sortLabels.pending).toBe('Sort by Pending, sorted descending');
+    });
+
+    it('Month sorts by the month, oldest first and then newest first, and an undated month stays last either way', async () => {
+      mockParams = GREEN;
+      // A fourth month with no date a person can read: it is "—", and the last row as it comes in.
+      const undated = invoice('inv-u1', '2026/0500', '', 700, 'paid', 'A0500', 'Garlic');
+      customerHistory.mockResolvedValue({ ...answerMonthly, data: { ...answerMonthly.data, invoices: [...MONTHLY_INVOICES, undated] } } as never);
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      expect(screen.monthTable()!.rowIds).toEqual([OCT, SEP, AUG, 'undated']);
+      expect(screen.monthTable()!.rows[3][0]).toBe('—');
+
+      await screen.sortMonths('month');
+      expect(screen.monthTable()!.rowIds).toEqual([AUG, SEP, OCT, 'undated']);
+      expect(screen.monthTable()!.sortLabels.month).toBe('Sort by Month, sorted ascending');
+      await screen.sortMonths('month');
+      expect(screen.monthTable()!.rowIds).toEqual([OCT, SEP, AUG, 'undated']);
+      expect(screen.monthTable()!.sortLabels.month).toBe('Sort by Month, sorted descending');
+    });
+
+    it('sorts one column at a time: a tap on another heading takes the sort from the first', async () => {
+      const screen = await open_();
+      await screen.sortMonths('amount');
+      await screen.sortMonths('paid');
+      const table = screen.monthTable()!;
+      expect(table.rowIds).toEqual([SEP, AUG, OCT]);
+      expect(table.sortLabels).toEqual({
+        month: 'Sort by Month, not sorted',
+        amount: 'Sort by Amount, not sorted',
+        paid: 'Sort by Paid, sorted ascending',
+        pending: 'Sort by Pending, not sorted',
+      });
+    });
+
+    it('leaves the Total row, and what a row says to a screen reader, as they were; the rows move with their figures', async () => {
+      const screen = await open_();
+      const before = screen.monthTable()!;
+      await screen.sortMonths('paid');
+      const after = screen.monthTable()!;
+      // The Total is of every month, not of an order.
+      expect(after.totals).toEqual(TOTALS);
+      expect(after.totalLabel).toBe(before.totalLabel);
+      expect(after.totalLabel).toBe('Month Total, Invoices 6, Amount ₹52,190, Paid ₹21,540, Pending ₹30,650');
+      // The same three rows, each whole, in the new order (Sep, Aug, Oct).
+      expect(after.rows).toEqual([before.rows[1], before.rows[2], before.rows[0]]);
+      expect(after.summaries).toEqual([before.summaries[1], before.summaries[2], before.summaries[0]]);
+      expect(after.summaries[0]).toBe('Month Sep 2026, Invoices 2, Amount ₹9,150, Paid ₹0, Pending ₹9,150');
+    });
+
+    it('keeps the sort when a search narrows the invoices, which do not narrow the table', async () => {
+      const screen = await open_();
+      await screen.sortMonths('amount');
+      await screen.search('chilli');
+      expect(screen.monthTable()!.rowIds).toEqual([AUG, SEP, OCT]);
+      expect(screen.monthTable()!.totals).toEqual(TOTALS);
+    });
+  });
+
+  describe('the month by month table, on a phone', () => {
+    // The table fits the window (the old one scrolled sideways with the month pinned). 411 dp holds Month, Amount, Paid
+    // and Pending with the count under the month; at 1.3 times text size only Amount stays a column, with the count, Paid
+    // and Pending under the month; 1000 dp holds all five columns. What is said to a screen reader is the same in all three.
+    const SPOKEN = [
+      'Month Oct 2026, Invoices 3, Amount ₹39,500, Paid ₹18,000, Pending ₹21,500',
+      'Month Sep 2026, Invoices 2, Amount ₹9,150, Paid ₹0, Pending ₹9,150',
+      'Month Aug 2026, Invoices 1, Amount ₹3,540, Paid ₹3,540, Pending ₹0',
+    ];
+    const SPOKEN_TOTAL = 'Month Total, Invoices 6, Amount ₹52,190, Paid ₹21,540, Pending ₹30,650';
+    const drawn = async (window: { width: number; scale: number }) => {
+      mockParams = GREEN;
+      mockTableWindow = window;
+      customerHistory.mockResolvedValue(answerMonthly as never);
+      const screen = await open(makeStore());
+      await screen.press('Monthly breakdown');
+      return screen;
+    };
+    const scrolls = (screen: Awaited<ReturnType<typeof open>>) =>
+      screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'monthly-breakdown-table')[0].findAll(node => node.props.horizontal === true).length;
+
+    it('411 dp: the count goes under the month, Amount, Paid and Pending stay columns, and nothing scrolls sideways', async () => {
+      const screen = await drawn({ width: 411, scale: 1 });
+      const table = screen.monthTable()!;
+      expect(table.headers).toEqual(['Month', 'Amount', 'Paid', 'Pending']);
+      expect(table.rows).toEqual([
+        ['Oct 2026', 'Invoices: 3', '₹39,500', '₹18,000', '₹21,500'],
+        ['Sep 2026', 'Invoices: 2', '₹9,150', '₹0', '₹9,150'],
+        ['Aug 2026', 'Invoices: 1', '₹3,540', '₹3,540', '₹0'],
+      ]);
+      expect(table.totals).toEqual(['Total', 'Invoices: 6', '₹52,190', '₹21,540', '₹30,650']);
+      expect(table.summaries).toEqual(SPOKEN);
+      expect(table.totalLabel).toBe(SPOKEN_TOTAL);
+      expect(Object.keys(table.sortLabels)).toEqual(['month', 'amount', 'paid', 'pending']);
+      expect(scrolls(screen)).toBe(0);
+    });
+
+    it('360 dp keeps the same columns, still sorting by Paid and Pending', async () => {
+      const screen = await drawn({ width: 360, scale: 1 });
+      expect(screen.monthTable()!.headers).toEqual(['Month', 'Amount', 'Paid', 'Pending']);
+      await screen.sortMonths('pending');
+      expect(screen.monthTable()!.rowIds).toEqual(['2026-08', '2026-09', '2026-10']);
+    });
+
+    it('411 dp at 1.3 times text size: only Amount is a column, the count, Paid and Pending are lines under the month', async () => {
+      const screen = await drawn({ width: 411, scale: 1.3 });
+      const table = screen.monthTable()!;
+      expect(table.headers).toEqual(['Month', 'Amount']);
+      expect(table.rows).toEqual([
+        ['Oct 2026', 'Invoices: 3', 'Paid: ₹18,000', 'Pending: ₹21,500', '₹39,500'],
+        ['Sep 2026', 'Invoices: 2', 'Paid: ₹0', 'Pending: ₹9,150', '₹9,150'],
+        ['Aug 2026', 'Invoices: 1', 'Paid: ₹3,540', 'Pending: ₹0', '₹3,540'],
+      ]);
+      expect(table.totals).toEqual(['Total', 'Invoices: 6', 'Paid: ₹21,540', 'Pending: ₹30,650', '₹52,190']);
+      expect(table.summaries).toEqual(SPOKEN);
+      expect(table.totalLabel).toBe(SPOKEN_TOTAL);
+      expect(Object.keys(table.sortLabels)).toEqual(['month', 'amount']);
+      expect(scrolls(screen)).toBe(0);
+      // Amount still sorts.
+      await screen.sortMonths('amount');
+      expect(screen.monthTable()!.rowIds).toEqual(['2026-08', '2026-09', '2026-10']);
+    });
+
+    it('1000 dp holds all five columns', async () => {
+      const screen = await drawn({ width: 1000, scale: 1 });
+      expect(screen.monthTable()!.headers).toEqual(['Month', 'Invoices', 'Amount', 'Paid', 'Pending']);
+      expect(screen.monthTable()!.rows[0]).toEqual(['Oct 2026', '3', '₹39,500', '₹18,000', '₹21,500']);
+      expect(screen.monthTable()!.summaries).toEqual(SPOKEN);
+    });
+  });
+
   describe('the month by month table, when an amount has paise', () => {
     // October: a paid invoice of 100.50 and two pending of 50.25 each (net 201.00, paid 100.50,
     // pending 100.50). In whole rupees each cell rounds on its own: Paid ₹101 + Pending ₹101 beside a
@@ -825,19 +1046,18 @@ describe('invoice history, one customer', () => {
       expect(screen.monthTable()!.totals).toEqual(['Total', '4', '₹301', '₹300', '₹1']);
     });
 
-    it('gives the amount columns room for "₹1,23,45,678.90", and leaves them as wide as before for whole rupees', async () => {
+    it('gives the amount columns room for "₹1,23,45,678.90", and leaves them as narrow as the headings allow for whole rupees', async () => {
       mockParams = GREEN;
       const flat = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style) as Record<string, unknown>;
+      // The width of a column is on its sort heading (the Pressable that holds the heading and its arrow).
       const amountWidths = (screen: Awaited<ReturnType<typeof open>>) =>
-        ['Amount', 'Paid', 'Pending'].map(label => {
-          const cells = screen.tree.root.findAll(
-            node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessibilityLabel === label && flat(node).width !== undefined
-          );
-          expect(cells).toHaveLength(1);
-          return flat(cells[0]).width;
+        ['amount', 'paid', 'pending'].map(column => {
+          const headings = screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.testID === `monthly-breakdown-table-sort-${column}`);
+          expect(headings).toHaveLength(1);
+          return flat(headings[0]).width as number;
         });
-      // At 15 pt a digit is about 8.2 wide, a point or comma about 3.5, the rupee sign 8.2; a cell has 24 of padding.
-      const textWidth = (text: string) => [...text].reduce((sum, ch) => sum + (/[\d₹]/.test(ch) ? 8.2 : 3.5), 0);
+      // At 15 pt a digit is about 8.5 wide, a point or comma about 4.2, the rupee sign 9.3 (the estimate numberColumnWidth uses).
+      const textWidth = (text: string) => [...text].reduce((sum, ch) => sum + (/\d/.test(ch) ? 8.55 : /[,.]/.test(ch) ? 4.2 : 9.3), 0);
 
       const big = [invoice('inv-b1', '2026/0400', '2026-10-12', 12345678.9, 'paid', 'A0400', 'Garlic')];
       customerHistory.mockResolvedValue(answerPaise(big as never) as never);
@@ -845,16 +1065,19 @@ describe('invoice history, one customer', () => {
       await wide.press('Monthly breakdown');
       const bigTable = wide.monthTable()!;
       expect(bigTable.rows).toEqual([['Oct 2026', '1', '₹1,23,45,678.90', '₹1,23,45,678.90', '₹0.00']]);
-      for (const width of amountWidths(wide)) {
-        expect(width).toBeGreaterThanOrEqual(textWidth('₹1,23,45,678.90') + 24);
-      }
+      const [amount, paid, pending] = amountWidths(wide);
+      // Amount and Paid hold ₹1,23,45,678.90; Pending holds ₹0.00 and keeps the least width, so a column is sized by its own figures.
+      expect(amount).toBeGreaterThanOrEqual(textWidth('₹1,23,45,678.90'));
+      expect(paid).toBeGreaterThanOrEqual(textWidth('₹1,23,45,678.90'));
+      expect(pending).toBe(68);
       act(() => mounted.splice(0).forEach(tree => tree.unmount()));
 
       forgetQueries();
       customerHistory.mockResolvedValue(answerMonthly as never);
       const whole = await open(makeStore());
       await whole.press('Monthly breakdown');
-      expect(amountWidths(whole)).toEqual([120, 120, 120]);
+      // The least width: the heading with its arrow ("Pending" is the widest); the figures are shorter.
+      expect(amountWidths(whole)).toEqual([68, 68, 68]);
     });
   });
 
@@ -1699,51 +1922,38 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(tag).color).toBe(t.status.critical.text);
   });
 
-  it('draws each header of the monthly table on one line that shrinks before it is cut, with room for "Invoices"', async () => {
+  it('draws the monthly table on theme tokens: headings with room for their words, figures at the right, and nothing that scrolls sideways', async () => {
     mockParams = GREEN;
     const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
     await screen.press('Monthly breakdown');
+    const table = screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'monthly-breakdown-table')[0];
 
-    // The five header cells of the table (not the KPI tile that is also called "Invoices").
-    const headers = Object.fromEntries(
-      ['Month', 'Invoices', 'Amount', 'Paid', 'Pending'].map(label => {
-        const cells = screen.tree.root.findAll(
-          node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessibilityLabel === label && flat(node).width !== undefined
-        );
-        expect(cells).toHaveLength(1);
-        return [label, cells[0]];
-      })
-    );
-    const word = (cell: ReactTestInstance) => cell.findAll(node => (node.type as unknown) === 'Text')[0];
-
-    for (const [label, cell] of Object.entries(headers)) {
-      const text = word(cell);
-      expect(textOf(text)).toBe(label);
-      // One line, and a smaller size before an ellipsis: a word is never broken ("Invoice" / "s").
-      expect(text.props.numberOfLines).toBe(1);
-      expect(text.props.adjustsFontSizeToFit).toBe(true);
-      expect(text.props.minimumFontScale).toBeGreaterThanOrEqual(0.8);
-      expect(text.props.minimumFontScale).toBeLessThanOrEqual(0.9);
-      expect(flat(text).color).toBe(t.table.headerText);
-    }
-
-    // The count column is wider than the table's default 80, which broke the word at 1.3 times text size.
-    expect(flat(headers.Invoices).width).toBeGreaterThanOrEqual(100);
-    expect(flat(headers.Amount).width).toBe(120);
-    expect(flat(headers.Paid).width).toBe(120);
-    expect(flat(headers.Pending).width).toBe(120);
-    // Figures stay at the right of their columns, the month at the left, and the month is not in the scrolling part.
-    for (const label of ['Invoices', 'Amount', 'Paid', 'Pending']) expect(flat(headers[label]).justifyContent).toBe('flex-end');
-    expect(flat(headers.Month).justifyContent).toBe('flex-start');
-    const scrolls = (cell: ReactTestInstance) => {
-      for (let node = cell.parent; node; node = node.parent) if (node.props.horizontal === true) return true;
-      return false;
+    // The five heading texts of the table (not the KPI tile that is also called "Invoices"), on the headerText colour.
+    const heading = (label: string) => {
+      const found = table.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === label && flat(node).color === t.table.headerText);
+      expect(found).toHaveLength(1);
+      return found[0];
     };
-    expect(scrolls(headers.Month)).toBe(false);
-    expect(scrolls(headers.Invoices)).toBe(true);
-    expect(scrolls(headers.Pending)).toBe(true);
-    // The count in the rows sits in a column as wide as its header.
-    const counts = screen.tree.root.findAll(node => typeof node.type === 'string' && flat(node).width === flat(headers.Invoices).width && node.props.accessibilityRole !== 'header');
-    expect(counts.length).toBeGreaterThan(0);
+    const headings = Object.fromEntries(['Month', 'Invoices', 'Amount', 'Paid', 'Pending'].map(label => [label, heading(label)]));
+    // Figures at the right of their columns, the month at the left.
+    for (const label of ['Invoices', 'Amount', 'Paid', 'Pending']) expect(flat(headings[label]).textAlign).toBe('right');
+    expect(flat(headings.Month).textAlign).not.toBe('right');
+
+    // The three figure columns that sort have a heading button of at least the touch target, in the column's width; Invoices has none.
+    const button = (column: string) => table.findAll(node => typeof node.type === 'string' && node.props.testID === `monthly-breakdown-table-sort-${column}`)[0];
+    expect(table.findAll(node => typeof node.type === 'string' && String(node.props.testID).startsWith('monthly-breakdown-table-sort-')).map(node => node.props.testID)).toEqual([
+      'monthly-breakdown-table-sort-month',
+      'monthly-breakdown-table-sort-amount',
+      'monthly-breakdown-table-sort-paid',
+      'monthly-breakdown-table-sort-pending',
+    ]);
+    for (const column of ['month', 'amount', 'paid', 'pending']) expect(flat(button(column)).minHeight).toBeGreaterThanOrEqual(44);
+    expect(flat(button('amount')).width).toBe(68);
+
+    // The count column is as wide as "Invoices" needs (56 at the default text size), in its heading and in every row.
+    const countCells = table.findAll(node => typeof node.type === 'string' && flat(node).width === 56);
+    expect(countCells.length).toBeGreaterThanOrEqual(1 + 2);
+    // Fits the window: no part of the table scrolls sideways.
+    expect(table.findAll(node => node.props.horizontal === true).length).toBe(0);
   });
 });

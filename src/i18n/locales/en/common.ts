@@ -97,4 +97,11 @@ export const common = {
   noInternet: 'No internet connection',
   discardChangesTitle: 'Discard changes?',
   discardChangesMessage: 'Your changes have not been saved.',
+  // Tables (components/table/DataTable): a column header that sorts.
+  table: {
+    sortBy: 'Sort by {{column}}, {{state}}',
+    sortedAsc: 'sorted ascending',
+    sortedDesc: 'sorted descending',
+    notSorted: 'not sorted',
+  },
 };

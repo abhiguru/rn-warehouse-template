@@ -7,9 +7,14 @@
  * a "No rate" tag. A one-time GRN has no Labour column; when the numbers would crowd the item column, labour and
  * tax move under the item. The loading and error states sit in the same table card. The rate sheet is opened
  * from here.
+ *
+ * Built on the app's TanStack Table setup (`components/table/appTable`, `useAppTable`). The rows are drawn here and not by
+ * `DataTable`: each row carries its actions under the cells, across the full width of the row, and DataTable has no
+ * place for content under a row of the nested variant.
  */
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { HeaderCell, ONE_LINE, crowded, makeTableStyles, nb, nestedRowWidth, numberColumnWidth, useStackedWhen, useTableLayout } from '@/components/common/DetailTable';
@@ -42,6 +47,8 @@ export interface GrnRatesSectionProps {
 }
 
 const TABULAR = ['tabular-nums' as const];
+
+const rateColumn = createAppColumnHelper<PricedRow>();
 
 const makeStyles = (th: ThemeTokens) => ({
   empty: { padding: space.md, gap: space.sm },
@@ -120,6 +127,80 @@ export function GrnRatesSection({ rows, status, offline, oneTime, day, invoiced 
   const taxWidth = numberColumnWidth(screen, TAX_WIDTH, rows.map(r => taxText(r.rate?.tax_percent ?? null)));
   const stacked = useStackedWhen(screen, crowded(nestedRowWidth(screen), oneTime ? [rentWidth, taxWidth] : [rentWidth, labourWidth, taxWidth], 0, screen.scale)).stacked;
 
+  // The row's saved rate for this GRN only was removed in this form and can be put back. Only while nothing else
+  // prices the row from the form: a new rate typed after Remove comes first.
+  const isRestorable = useCallback((row: PricedRow) => !invoiced && !row.rate?.entry && canRestore?.(row) === true, [invoiced, canRestore]);
+
+  const columns = useMemo(
+    () =>
+      rateColumn.columns([
+        rateColumn.display({
+          id: 'item',
+          header: t('grn.rates.colItem'),
+          meta: { width: 'grow' },
+          cell: ({ row: { original: row } }) => {
+            const rate = row.rate;
+            const under = [
+              formatWeightEach(row.weight) ?? t('grn.rates.noWeightTag'),
+              rate && stacked && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate) }) : null,
+              rate && stacked ? t('pricing.row.tax', { percent: localizeDigits(String(rate.tax_percent)) }) : null,
+              rate?.source === 'change' ? t('grn.rates.fromDate', { date: dateText(day) }) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
+            return (
+              <View style={table.grow}>
+                <Text style={styles.name}>{row.item_name}</Text>
+                <Text style={table.secondary}>{nb(under)}</Text>
+                <View style={styles.tags}>
+                  {rate ? null : <StatusTag wrap status="critical" label={t('grn.rates.noRate')} />}
+                  {tagsOf(rate).map(tag => <StatusTag wrap key={tag.label} status={tag.status} icon={tag.icon} label={tag.label} />)}
+                  {isRestorable(row) ? <StatusTag wrap status="informative" label={t('grn.rates.removedTag')} /> : null}
+                </View>
+              </View>
+            );
+          },
+        }),
+        rateColumn.display({
+          id: 'rent',
+          header: t('grn.rates.colRent'),
+          meta: { width: rentWidth, numeric: true },
+          cell: ({ row: { original: row, index } }) => {
+            const rate = row.rate;
+            const was = replacedRent(rate);
+            return (
+              <View style={{ width: rentWidth }}>
+                <Text style={table.number} {...ONE_LINE} testID={rate ? `grn-rate-rent-${index}` : undefined}>{amountText(rate?.unit_price ?? null)}</Text>
+                {was !== null ? <Text style={styles.was} {...ONE_LINE} testID={`grn-rate-was-${index}`}>{amountText(was)}</Text> : null}
+              </View>
+            );
+          },
+        }),
+        ...(!stacked && !oneTime
+          ? [
+              rateColumn.display({
+                id: 'labour',
+                header: t('grn.rates.colLabour'),
+                meta: { width: labourWidth, numeric: true },
+                cell: ({ row }) => <Text style={[table.number, { width: labourWidth }]} {...ONE_LINE}>{amountText(row.original.rate?.labour_rate ?? null)}</Text>,
+              }),
+            ]
+          : []),
+        ...(!stacked
+          ? [
+              rateColumn.display({
+                id: 'tax',
+                header: t('grn.rates.colTax'),
+                meta: { width: taxWidth, numeric: true },
+                cell: ({ row }) => <Text style={[table.number, { width: taxWidth }]} {...ONE_LINE}>{taxText(row.original.rate?.tax_percent ?? null)}</Text>,
+              }),
+            ]
+          : []),
+      ]),
+    [table, styles, stacked, oneTime, day, isRestorable, rentWidth, labourWidth, taxWidth],
+  );
+  const tanstack = useAppTable({ columns, data: rows, getRowId: row => row.key });
+
   if (status === 'loading') {
     return (
       <View style={table.nested}>
@@ -145,44 +226,28 @@ export function GrnRatesSection({ rows, status, offline, oneTime, day, invoiced 
     <View style={styles.wrap}>
       {invoiced ? <RateStrip variant="info" message={t('grn.rates.invoicedNote')} testID="grn-rates-invoiced" /> : null}
       <View style={table.nested} testID="grn-rates-table">
-        <View style={table.nestedHeader}>
-          <HeaderCell style={table.grow}>{t('grn.rates.colItem')}</HeaderCell>
-          <HeaderCell numeric style={{ width: rentWidth }}>{t('grn.rates.colRent')}</HeaderCell>
-          {!stacked && !oneTime ? <HeaderCell numeric style={{ width: labourWidth }}>{t('grn.rates.colLabour')}</HeaderCell> : null}
-          {!stacked ? <HeaderCell numeric style={{ width: taxWidth }}>{t('grn.rates.colTax')}</HeaderCell> : null}
-        </View>
-        {rows.map((row, index) => {
+        {tanstack.getHeaderGroups().map(group => (
+          <View key={group.id} style={table.nestedHeader}>
+            {group.headers.map(h => {
+              const meta = h.column.columnDef.meta;
+              return (
+                <HeaderCell key={h.id} numeric={meta?.numeric} style={meta?.width === 'grow' ? table.grow : { width: meta?.width }}>
+                  {h.column.columnDef.header as string}
+                </HeaderCell>
+              );
+            })}
+          </View>
+        ))}
+        {tanstack.getRowModel().rows.map(tableRow => {
+          const row = tableRow.original;
+          const index = tableRow.index;
           const rate = row.rate;
-          const was = replacedRent(rate);
           const a11yName = { item: row.item_name, weight: rowWeightText(row.weight) };
-          // Only while nothing else prices the row from the form: a new rate typed after Remove comes first.
-          const restorable = !invoiced && !rate?.entry && canRestore?.(row) === true;
-          const under = [
-            formatWeightEach(row.weight) ?? t('grn.rates.noWeightTag'),
-            rate && stacked && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate) }) : null,
-            rate && stacked ? t('pricing.row.tax', { percent: localizeDigits(String(rate.tax_percent)) }) : null,
-            rate?.source === 'change' ? t('grn.rates.fromDate', { date: dateText(day) }) : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
+          const restorable = isRestorable(row);
           return (
-            <View key={row.key} style={[styles.row, index > 0 && table.nestedDivider]} testID={`grn-rate-row-${index}`}>
+            <View key={tableRow.id} style={[styles.row, index > 0 && table.nestedDivider]} testID={`grn-rate-row-${index}`}>
               <View style={styles.top} accessible accessibilityLabel={restorable ? `${rowA11y(row, oneTime, day)}, ${t('grn.rates.removedTag')}` : rowA11y(row, oneTime, day)}>
-                <View style={table.grow}>
-                  <Text style={styles.name}>{row.item_name}</Text>
-                  <Text style={table.secondary}>{nb(under)}</Text>
-                  <View style={styles.tags}>
-                    {rate ? null : <StatusTag wrap status="critical" label={t('grn.rates.noRate')} />}
-                    {tagsOf(rate).map(tag => <StatusTag wrap key={tag.label} status={tag.status} icon={tag.icon} label={tag.label} />)}
-                    {restorable ? <StatusTag wrap status="informative" label={t('grn.rates.removedTag')} /> : null}
-                  </View>
-                </View>
-                <View style={{ width: rentWidth }}>
-                  <Text style={table.number} {...ONE_LINE} testID={rate ? `grn-rate-rent-${index}` : undefined}>{amountText(rate?.unit_price ?? null)}</Text>
-                  {was !== null ? <Text style={styles.was} {...ONE_LINE} testID={`grn-rate-was-${index}`}>{amountText(was)}</Text> : null}
-                </View>
-                {!stacked && !oneTime ? <Text style={[table.number, { width: labourWidth }]} {...ONE_LINE}>{amountText(rate?.labour_rate ?? null)}</Text> : null}
-                {!stacked ? <Text style={[table.number, { width: taxWidth }]} {...ONE_LINE}>{taxText(rate?.tax_percent ?? null)}</Text> : null}
+                {tableRow.getAllCells().map(cell => <tanstack.FlexRender key={cell.id} cell={cell} />)}
               </View>
               {invoiced ? null : (
                 <View style={styles.actions}>

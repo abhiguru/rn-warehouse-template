@@ -209,6 +209,25 @@ describe('stock trend, the month in progress', () => {
     expect(labels).not.toContain('Highest 4,444');
   });
 
+  it('draws the table view with the shared DataTable: a heading row of two columns, a row for each point in time order, nothing that sorts', () => {
+    onThe(new Date(2026, 9, 12, 10, 0));
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<StockTrendChart trends={TO_OCTOBER} currentStock={STOCK_NOW} />);
+    });
+    act(() => tree.root.find(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Stock level trend. ')).props.onPress());
+    act(() => tree.root.findAll(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Table of values' && typeof node.props.onPress === 'function')[0].props.onPress());
+    const host = (id: string | ((value: string) => boolean)) =>
+      tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.testID === 'string' && (typeof id === 'string' ? node.props.testID === id : id(node.props.testID)));
+    expect(host('stock-trend-table')).toHaveLength(1);
+    const rows = host(id => id.startsWith('stock-trend-row-'));
+    expect(rows.map(row => row.props.testID)).toEqual(['stock-trend-row-2026-08', 'stock-trend-row-2026-09', 'stock-trend-row-2026-10']);
+    expect(rows.map(row => row.props.accessibilityLabel)).toEqual(['Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct, 4,460']);
+    // The month and the stock columns, and no heading that sorts.
+    expect(host(id => id.startsWith('stock-trend-table-sort-'))).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
   it('keeps the months that are over as the server sent them: a stock now below them leaves Highest a month end', () => {
     onThe(new Date(2026, 9, 12, 10, 0));
     const { texts, labels, line } = draw(TO_OCTOBER, 4300);

@@ -6,6 +6,8 @@ import React from 'react';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { GRNItemsTab, type GRNItem } from '../GRNItemsTab';
 import { GRNDispatchesTab } from '../GRNDispatchesTab';
+import { GRNInvoicesTab } from '../GRNInvoicesTab';
+import type { InvoiceTable } from '@/components/common/invoiceTable';
 import type { DispatchRecord } from '@/services/grn-detail-service';
 
 jest.mock('@/store/hooks', () => ({
@@ -195,5 +197,139 @@ describe('GRN Dispatches table', () => {
     act(() => tree.unmount());
     render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={{ p: [] }} />);
     expect(textOf(tree.root)).toBe('No dispatches yet|Dispatches of items from this GRN appear here.');
+  });
+});
+
+/** The ids of the rows with this test id prefix, in the order they are drawn. */
+const rowIds = (prefix: string): string[] => [
+  ...new Set(
+    tree.root
+      .findAll((n) => typeof n.type !== 'string' && typeof n.props.testID === 'string' && n.props.testID.startsWith(prefix))
+      .map((n) => n.props.testID.slice(prefix.length) as string)
+  ),
+];
+const sortLabel = (id: string): string => byTestId(id).props.accessibilityLabel;
+
+describe('GRN Items table, sorting', () => {
+  // Drawn in this order: p (100 received, 80 in stock), o (60, 5), g (10, 0), p2 (40, 40). Potatoes twice, so a
+  // tie keeps the server's order. By Received: g, p2, o, p. By In stock: g, o, p2, p. By Item: Garlic, Onions, Potatoes, Potatoes.
+  const lots = [potatoes, onions, garlic, potatoesLot2];
+
+  it('sorts a column not sorted → ascending → descending → not sorted, one column at a time', () => {
+    render(<GRNItemsTab items={lots} />);
+    const table = 'grn-items-table';
+    expect(rowIds('grn-item-row-')).toEqual(['p', 'o', 'g', 'p2']);
+    expect(sortLabel(`${table}-sort-received`)).toBe('Sort by Received, not sorted');
+
+    press(`${table}-sort-received`);
+    expect(rowIds('grn-item-row-')).toEqual(['g', 'p2', 'o', 'p']);
+    expect(sortLabel(`${table}-sort-received`)).toBe('Sort by Received, sorted ascending');
+    press(`${table}-sort-received`);
+    expect(rowIds('grn-item-row-')).toEqual(['p', 'o', 'p2', 'g']);
+    expect(sortLabel(`${table}-sort-received`)).toBe('Sort by Received, sorted descending');
+    press(`${table}-sort-received`);
+    expect(rowIds('grn-item-row-')).toEqual(['p', 'o', 'g', 'p2']);
+    expect(sortLabel(`${table}-sort-received`)).toBe('Sort by Received, not sorted');
+
+    // Another column replaces the sort: In stock ascending, Received back to not sorted.
+    press(`${table}-sort-received`);
+    press(`${table}-sort-stock`);
+    expect(rowIds('grn-item-row-')).toEqual(['g', 'o', 'p2', 'p']);
+    expect(sortLabel(`${table}-sort-stock`)).toBe('Sort by In stock, sorted ascending');
+    expect(sortLabel(`${table}-sort-received`)).toBe('Sort by Received, not sorted');
+  });
+
+  it('sorts the Item column by name, equal names in the server order', () => {
+    render(<GRNItemsTab items={lots} />);
+    press('grn-items-table-sort-item');
+    expect(rowIds('grn-item-row-')).toEqual(['g', 'o', 'p', 'p2']);
+    expect(sortLabel('grn-items-table-sort-item')).toBe('Sort by Item, sorted ascending');
+    press('grn-items-table-sort-item');
+    expect(rowIds('grn-item-row-')).toEqual(['p', 'p2', 'o', 'g']);
+    expect(sortLabel('grn-items-table-sort-item')).toBe('Sort by Item, sorted descending');
+  });
+
+  it('keeps the totals the sums of every line, and an open row open, while sorted', () => {
+    render(<GRNItemsTab items={lots} />);
+    expect(textOf(byTestId('grn-items-total'))).toBe('Total|4 item lines|210|125');
+    press('grn-item-row-o');
+    press('grn-items-table-sort-received');
+    press('grn-items-table-sort-received');
+    expect(rowIds('grn-item-row-')).toEqual(['p', 'o', 'p2', 'g']);
+    expect(textOf(byTestId('grn-items-total'))).toBe('Total|4 item lines|210|125');
+    expect(has('grn-item-details-o')).toBe(true);
+    expect(byTestId('grn-item-row-o').props.accessibilityState).toEqual({ expanded: true });
+  });
+
+  it('does not sort Received when it is stacked under the item at large text', () => {
+    mockFontScale = 2;
+    render(<GRNItemsTab items={lots} />);
+    expect(has('grn-items-table-sort-received')).toBe(false);
+    expect(has('grn-items-table-sort-item')).toBe(true);
+    expect(has('grn-items-table-sort-stock')).toBe(true);
+    press('grn-items-table-sort-stock');
+    expect(rowIds('grn-item-row-')).toEqual(['g', 'o', 'p2', 'p']);
+  });
+
+  it('does not sort the Dispatches table', () => {
+    render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={{ p: [record('r1', 'd1', 'DD0041', '2026-10-09', 12)] }} />);
+    expect(tree.root.findAll((n) => typeof n.props.testID === 'string' && n.props.testID.includes('-sort-'))).toEqual([]);
+  });
+});
+
+describe('GRN Invoices table, sorting', () => {
+  // Drawn in this order: A (no. 9, 10 Oct, ₹900), B (no. 10, 5 Oct, ₹100), C (no. 2, 20 Oct, ₹500).
+  const invoices: InvoiceTable = {
+    detailed: true,
+    count: 3,
+    total: 1500,
+    rows: [
+      { key: 'a', invoice_id: 'a', invoice_no: 9, invoice_date: '2026-10-10', total: 900 },
+      { key: 'b', invoice_id: 'b', invoice_no: 10, invoice_date: '2026-10-05', total: 100 },
+      { key: 'c', invoice_id: 'c', invoice_no: 2, invoice_date: '2026-10-20', total: 500 },
+    ],
+  };
+
+  it('sorts Invoice, Date and Invoice total from their headings, and keeps the summary total', () => {
+    mockWidth = 800;
+    render(<GRNInvoicesTab invoices={invoices} />);
+    const table = 'grn-invoices-table';
+    expect(rowIds('grn-invoice-row-')).toEqual(['a', 'b', 'c']);
+    expect(sortLabel(`${table}-sort-invoice`)).toBe('Sort by Invoice, not sorted');
+    expect(sortLabel(`${table}-sort-date`)).toBe('Sort by Date, not sorted');
+    expect(sortLabel(`${table}-sort-total`)).toBe('Sort by Invoice total, not sorted');
+
+    // 2, 9, 10: by number, not by text.
+    press(`${table}-sort-invoice`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['c', 'a', 'b']);
+    expect(sortLabel(`${table}-sort-invoice`)).toBe('Sort by Invoice, sorted ascending');
+    press(`${table}-sort-invoice`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['b', 'a', 'c']);
+
+    press(`${table}-sort-date`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['b', 'a', 'c']);
+    expect(sortLabel(`${table}-sort-date`)).toBe('Sort by Date, sorted ascending');
+    expect(sortLabel(`${table}-sort-invoice`)).toBe('Sort by Invoice, not sorted');
+    press(`${table}-sort-date`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['c', 'a', 'b']);
+    expect(sortLabel(`${table}-sort-date`)).toBe('Sort by Date, sorted descending');
+
+    press(`${table}-sort-total`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['b', 'c', 'a']);
+    expect(sortLabel(`${table}-sort-total`)).toBe('Sort by Invoice total, sorted ascending');
+    press(`${table}-sort-total`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['a', 'c', 'b']);
+    press(`${table}-sort-total`);
+    expect(rowIds('grn-invoice-row-')).toEqual(['a', 'b', 'c']);
+
+    // The total row is the summary's, whatever the order.
+    expect(textOf(byTestId('grn-invoices-total'))).toBe('Total|3 invoices|₹1,500.00');
+  });
+
+  it('has no Date heading to sort on a phone, where the date is under the number', () => {
+    render(<GRNInvoicesTab invoices={invoices} />);
+    expect(has('grn-invoices-table-sort-date')).toBe(false);
+    press('grn-invoices-table-sort-invoice');
+    expect(rowIds('grn-invoice-row-')).toEqual(['c', 'a', 'b']);
   });
 });

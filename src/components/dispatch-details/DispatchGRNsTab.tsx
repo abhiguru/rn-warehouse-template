@@ -11,10 +11,12 @@
  *   under the item) and a separate "View GRN" action. A single GRN starts expanded.
  * - Item lines count dispatch lines, so two lots of one item count two. Every quantity
  *   is this dispatch's. Footer: totals. Virtualized (FlatList).
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable; the lines under a GRN are a
+ *   nested table of their own.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, Pressable, LayoutAnimation } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -24,8 +26,6 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { groupBySourceGrn, itemTotals, type DispatchItem, type GrnGroup } from './dispatchDetailsModel';
 import { grnDateText } from './DispatchItemsTab';
 import {
-  OpenBar,
-  HeaderCell,
   ONE_LINE,
   RowChevron,
   crowded,
@@ -36,8 +36,9 @@ import {
   rowWidth,
   useStackedWhen,
   useTableLayout,
-  type TableLayout,
 } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable, useDefaultOpen } from '@/components/table/DataTable';
 
 export type { GrnGroup } from './dispatchDetailsModel';
 
@@ -59,11 +60,7 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: 36,
     paddingVertical: space.sm,
   },
-  /** The mark: muted and set off from the item name, so the two columns do not run together. */
-  markCell: {
-    minWidth: 0,
-    marginLeft: space.xs,
-  },
+  /** The mark: muted (the column is set off from the item name by its meta.marginLeft). */
   markText: {
     ...typography.subhead,
     color: t.text.secondary,
@@ -127,107 +124,103 @@ interface Widths {
   nestedStacked: boolean;
 }
 
-interface GroupRowProps {
+const groupHelper = createAppColumnHelper<GrnGroup>();
+const lineHelper = createAppColumnHelper<DispatchItem>();
+
+interface GrnLinesProps {
   group: GrnGroup;
-  expanded: boolean;
-  onToggle: (key: string) => void;
-  onViewGRN?: (grn_id: string) => void;
-  table: TableLayout;
   widths: Widths;
+  onViewGRN?: (grn_id: string) => void;
 }
 
-const GroupRow = React.memo(function GroupRow({ group, expanded, onToggle, onViewGRN, table, widths }: GroupRowProps) {
+/** The lines under an open GRN (Item | Mark | Bags dispatched) and its View GRN action. */
+const GrnLines: React.FC<GrnLinesProps> = ({ group, widths, onViewGRN }) => {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
-  const lines = tr('dispatch.details.table.lineCount', { count: group.lines.length });
+  const { mark: markWidth, lineBags: lineBagsWidth, nestedStacked } = widths;
   const grnId = group.grn_id;
   const canOpen = !!(grnId && onViewGRN);
-  const { lines: linesWidth, bags: bagsWidth, mark: markWidth, lineBags: lineBagsWidth, nestedStacked } = widths;
+
+  const columns = useMemo(
+    () =>
+      lineHelper.columns([
+        lineHelper.accessor('item_name', {
+          id: 'item',
+          header: tr('dispatch.details.table.item'),
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const line = info.row.original;
+            const weight = formatWeightEach(line.weight);
+            const mark = line.package_mark || null;
+            // Stacked, the mark joins the weight under the item.
+            const under = nestedStacked ? [mark, weight].filter(Boolean).join(' · ') : weight;
+            return (
+              <>
+                <Text style={styles.primary}>{line.item_name}</Text>
+                {under ? <Text style={styles.secondary}>{nb(under)}</Text> : null}
+              </>
+            );
+          },
+        }),
+        ...(nestedStacked
+          ? []
+          : [
+              lineHelper.accessor('package_mark', {
+                id: 'mark',
+                header: tr('dispatch.details.table.mark'),
+                meta: { width: markWidth, marginLeft: space.xs },
+                cell: (info) => <Text style={own.markText}>{info.row.original.package_mark || '—'}</Text>,
+              }),
+            ]),
+        lineHelper.accessor('dispatch_quantity', {
+          id: 'bags',
+          header: tr('dispatch.details.table.bagsDispatched'),
+          meta: { width: lineBagsWidth, numeric: true },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatch_quantity)}</Text>,
+        }),
+      ]),
+    [nestedStacked, markWidth, lineBagsWidth, styles, own]
+  );
+  const grid = useAppTable({ data: group.lines, columns, getRowId: (line) => line.id });
 
   return (
-    <View style={[styles.cardSides, expanded && styles.group]}>
-      <Pressable
-        onPress={() => onToggle(group.key)}
-        style={({ pressed }) => [styles.row, expanded && styles.rowOpen, pressed && styles.rowPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={tr('dispatch.details.table.grnRowLabel', { source: grnSpoken(group), lines, bags: bags(group.bags) })}
-        accessibilityHint={tr('dispatch.details.table.showLines')}
-        accessibilityState={{ expanded }}
-        testID={`dispatch-grn-row-${group.key}`}
-      >
-        <RowChevron expandable expanded={expanded} />
-        <View style={styles.grow}>
-          <Text style={styles.primaryStrong}>{group.grn_no ?? '—'}</Text>
-          <Text style={styles.secondary}>{grnDateText(group.grn_date)}</Text>
-          {table.stacked ? <Text style={styles.secondary}>{nb(lines)}</Text> : null}
-        </View>
-        {!table.stacked ? (
-          <Text style={[styles.number, { width: linesWidth }]} {...ONE_LINE}>{formatNumber(group.lines.length)}</Text>
-        ) : null}
-        <Text style={[styles.number, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(group.bags)}</Text>
-      </Pressable>
-
-      {expanded ? (
-        <View style={styles.details} testID={`dispatch-grn-lines-${group.key}`}>
-          <View style={styles.nested}>
-            <View style={styles.nestedHeader}>
-              <HeaderCell style={styles.grow}>{tr('dispatch.details.table.item')}</HeaderCell>
-              {!nestedStacked ? (
-                <HeaderCell style={[own.markCell, { width: markWidth }]}>{tr('dispatch.details.table.mark')}</HeaderCell>
-              ) : null}
-              <HeaderCell numeric style={{ width: lineBagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
-            </View>
-            {group.lines.map((line, index) => {
-              const weight = formatWeightEach(line.weight);
-              const mark = line.package_mark || null;
-              // Stacked, the mark joins the weight under the item.
-              const under = nestedStacked ? [mark, weight].filter(Boolean).join(' · ') : weight;
-              return (
-                <View
-                  key={line.id}
-                  style={[styles.nestedRow, own.lineCompact, index > 0 && styles.nestedDivider]}
-                  accessible
-                  accessibilityLabel={tr('dispatch.details.table.lineRowLabel', {
-                    item: line.item_name,
-                    details: [mark, weight].filter(Boolean).map((part) => `, ${part}`).join(''),
-                    bags: bags(line.dispatch_quantity),
-                  })}
-                  testID={`dispatch-grn-line-${line.id}`}
-                >
-                  <View style={styles.grow}>
-                    <Text style={styles.primary}>{line.item_name}</Text>
-                    {under ? <Text style={styles.secondary}>{nb(under)}</Text> : null}
-                  </View>
-                  {!nestedStacked ? (
-                    <Text style={[own.markText, own.markCell, { width: markWidth }]}>{mark ?? '—'}</Text>
-                  ) : null}
-                  <Text style={[styles.number, { width: lineBagsWidth }]} {...ONE_LINE}>{formatNumber(line.dispatch_quantity)}</Text>
-                </View>
-              );
-            })}
-          </View>
-          {canOpen ? (
-            <Pressable
-              onPress={() => {
-                if (grnId) onViewGRN?.(grnId);
-              }}
-              style={({ pressed }) => [own.viewGrn, pressed && own.viewGrnPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(group.grn_no) })}
-              accessibilityHint={tr('dispatch.details.opensGrn')}
-              testID={`dispatch-grn-view-${group.key}`}
-            >
-              <Text style={own.viewGrnText}>{tr('dispatch.grnSheet.viewGrn')}</Text>
-              <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
-            </Pressable>
-          ) : null}
-        </View>
+    <>
+      <DataTable
+        table={grid}
+        variant="nested"
+        headerOneLine={false}
+        rowStyle={own.lineCompact}
+        rowLabel={(row) => {
+          const line = row.original;
+          const weight = formatWeightEach(line.weight);
+          const mark = line.package_mark || null;
+          return tr('dispatch.details.table.lineRowLabel', {
+            item: line.item_name,
+            details: [mark, weight].filter(Boolean).map((part) => `, ${part}`).join(''),
+            bags: bags(line.dispatch_quantity),
+          });
+        }}
+        rowTestID={(row) => `dispatch-grn-line-${row.original.id}`}
+      />
+      {canOpen ? (
+        <Pressable
+          onPress={() => {
+            if (grnId) onViewGRN?.(grnId);
+          }}
+          style={({ pressed }) => [own.viewGrn, pressed && own.viewGrnPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(group.grn_no) })}
+          accessibilityHint={tr('dispatch.details.opensGrn')}
+          testID={`dispatch-grn-view-${group.key}`}
+        >
+          <Text style={own.viewGrnText}>{tr('dispatch.grnSheet.viewGrn')}</Text>
+          <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
+        </Pressable>
       ) : null}
-      {expanded ? <OpenBar /> : null}
-    </View>
+    </>
   );
-});
+};
 
 export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
   items,
@@ -243,6 +236,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
   const linesWidth = numberColumnWidth(screen, LINES_WIDTH, groups.map((group) => formatNumber(group.lines.length)), [formatNumber(totals.lines)]);
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.bags)), [formatNumber(totals.bags)]);
   const table = useStackedWhen(screen, crowded(rowWidth(screen), [linesWidth, bagsWidth], undefined, screen.scale));
+  const stacked = table.stacked;
   const lineBagsWidth = numberColumnWidth(screen, BAGS_WIDTH, items.map((line) => formatNumber(line.dispatch_quantity)));
   // The mark column grows with its longest mark, up to a third of the lines' row; longer marks wrap.
   const nestedRow = nestedRowWidth(screen);
@@ -257,19 +251,46 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
     [linesWidth, bagsWidth, markWidth, lineBagsWidth, nestedStacked]
   );
   // One GRN starts open; several start closed. A key that is open stays open on refresh.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
-  const single = groups.length === 1;
-  const isOpen = useCallback((key: string) => (single ? !toggled.has(key) : toggled.has(key)), [single, toggled]);
+  const open = useDefaultOpen(groups.length === 1 ? [groups[0].key] : []);
 
-  const toggle = useCallback((key: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setToggled((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const columns = useMemo(
+    () =>
+      groupHelper.columns([
+        groupHelper.accessor((group) => group.grn_no ?? '—', {
+          id: 'grn',
+          header: tr('dispatch.details.table.sourceGrn'),
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const group = info.row.original;
+            return (
+              <>
+                <Text style={styles.primaryStrong}>{group.grn_no ?? '—'}</Text>
+                <Text style={styles.secondary}>{grnDateText(group.grn_date)}</Text>
+                {stacked ? <Text style={styles.secondary}>{nb(tr('dispatch.details.table.lineCount', { count: group.lines.length }))}</Text> : null}
+              </>
+            );
+          },
+        }),
+        ...(stacked
+          ? []
+          : [
+              groupHelper.accessor((group) => group.lines.length, {
+                id: 'lines',
+                header: tr('dispatch.details.table.itemLines'),
+                meta: { width: linesWidth, numeric: true },
+                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.lines.length)}</Text>,
+              }),
+            ]),
+        groupHelper.accessor('bags', {
+          id: 'bags',
+          header: tr('dispatch.details.table.bagsDispatched'),
+          meta: { width: bagsWidth, numeric: true },
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.bags)}</Text>,
+        }),
+      ]),
+    [stacked, linesWidth, bagsWidth, styles]
+  );
+  const grid = useAppTable({ data: groups, columns, getRowId: (group) => group.key, getRowCanExpand: () => true, ...open });
 
   if (groups.length === 0) {
     return (
@@ -284,20 +305,8 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
   const lineCount = tr('dispatch.details.table.lineCount', { count: totals.lines });
   const grnCount = tr('dispatch.details.table.grnCount', { count: totals.grns });
 
-  const header = (
-    <View style={styles.cardTop}>
-      <View style={styles.headerRow}>
-        <RowChevron expandable={false} expanded={false} />
-        <HeaderCell style={styles.grow}>{tr('dispatch.details.table.sourceGrn')}</HeaderCell>
-        {!table.stacked ? <HeaderCell numeric style={{ width: linesWidth }}>{tr('dispatch.details.table.itemLines')}</HeaderCell> : null}
-        <HeaderCell numeric style={{ width: bagsWidth }}>{tr('dispatch.details.table.bagsDispatched')}</HeaderCell>
-      </View>
-    </View>
-  );
-
   const footer = (
-    <View style={styles.cardBottom}>
-      <View
+    <View
         style={styles.footerRow}
         accessible
         accessibilityLabel={tr('dispatch.details.table.grnsTotalLabel', { grns: grnCount, lines: lineCount, bags: bags(totals.bags) })}
@@ -312,25 +321,25 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
           <Text style={[styles.numberStrong, { width: linesWidth }]} {...ONE_LINE}>{formatNumber(totals.lines)}</Text>
         ) : null}
         <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(totals.bags)}</Text>
-      </View>
     </View>
   );
 
   return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.content}
-      data={groups}
-      keyExtractor={(group) => group.key}
-      extraData={toggled}
-      renderItem={({ item }) => (
-        <GroupRow group={item} expanded={isOpen(item.key)} onToggle={toggle} onViewGRN={onViewGRN} table={table} widths={widths} />
-      )}
-      ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      showsVerticalScrollIndicator={false}
-      maxToRenderPerBatch={10}
-      windowSize={10}
+    <DataTable
+      table={grid}
+      list="flat"
+      renderDetail={(row) => <GrnLines group={row.original} widths={widths} onViewGRN={onViewGRN} />}
+      rowLabel={(row) =>
+        tr('dispatch.details.table.grnRowLabel', {
+          source: grnSpoken(row.original),
+          lines: tr('dispatch.details.table.lineCount', { count: row.original.lines.length }),
+          bags: bags(row.original.bags),
+        })
+      }
+      rowHint={() => tr('dispatch.details.table.showLines')}
+      rowTestID={(row) => `dispatch-grn-row-${row.original.key}`}
+      detailTestID={(row) => `dispatch-grn-lines-${row.original.key}`}
+      footer={footer}
       testID="dispatch-grns-table"
     />
   );

@@ -10,10 +10,13 @@
  * - Narrow screens put the date under the number; from 600 dp it has its own column.
  * - Amounts with two decimals; "—" where the fallback has none. The page passes its own note
  *   (what the amounts cover) and empty text; the fallback note is the same on both pages.
+ * - Invoice, Date and Invoice total sort from their headings (not sorted, ascending, descending); the total row is the
+ *   summary's, never the sum of the rows shown. A fallback table (numbers only) sorts by Invoice alone.
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable in one card (list="map").
  */
 
-import React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, space, typography, trackedText } from '@/theme/tokens';
@@ -21,7 +24,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatCurrency, formatDate, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import type { InvoiceRow, InvoiceTable } from './invoiceTable';
-import { HeaderCell, makeTableStyles, useTableLayout, ONE_LINE, numberColumnWidth } from './DetailTable';
+import { makeTableStyles, useTableLayout, ONE_LINE, numberColumnWidth } from './DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 
 export interface InvoicesTableProps {
   invoices: InvoiceTable;
@@ -94,54 +99,7 @@ export const invoiceAmount = (amount: number) =>
 
 const dateText = (date: string | null) => (toDate(date) ? formatDate(date, 'short') : '—');
 
-const InvoiceTableRow: React.FC<{
-  row: InvoiceRow;
-  wide: boolean;
-  dateWidth: number;
-  amountWidth: number;
-  onViewInvoice?: (invoice_id: string) => void;
-  testIDPrefix: string;
-}> = ({ row, wide, dateWidth, amountWidth, onViewInvoice, testIDPrefix }) => {
-  const styles = useThemedStyles(makeTableStyles);
-  const own = useThemedStyles(makeStyles);
-  const id = row.invoice_id;
-  const canOpen = !!(id && onViewInvoice);
-  const spokenDate = toDate(row.invoice_date) ? formatDate(row.invoice_date, 'short') : tr('components.invoiceTable.dateUnavailable');
-  const label =
-    row.total === null
-      ? tr('components.invoiceTable.numbered', { number: formatIdentifier(row.invoice_no) })
-      : tr('components.invoiceTable.rowLabel', { number: formatIdentifier(row.invoice_no), date: spokenDate, amount: invoiceAmount(row.total) });
-  // A fallback row has no date at all; a row with an unknown date says so.
-  const showDate = row.invoice_id !== null;
-
-  return (
-    <Pressable
-      onPress={() => {
-        if (id) onViewInvoice?.(id);
-      }}
-      disabled={!canOpen}
-      style={({ pressed }) => [styles.row, pressed && canOpen && styles.rowPressed]}
-      accessible
-      accessibilityRole={canOpen ? 'button' : undefined}
-      accessibilityLabel={label}
-      accessibilityHint={canOpen ? tr('components.invoiceTable.opensInvoice') : undefined}
-      testID={`${testIDPrefix}-invoice-row-${row.key}`}
-    >
-      <View style={styles.grow}>
-        <Text style={canOpen ? styles.link : styles.primary}>{formatIdentifier(row.invoice_no)}</Text>
-        {showDate && !wide ? <Text style={styles.secondary}>{dateText(row.invoice_date)}</Text> : null}
-      </View>
-      {wide ? (
-        <Text style={[styles.primary, { width: dateWidth }]} {...ONE_LINE}>
-          {showDate ? dateText(row.invoice_date) : '—'}
-        </Text>
-      ) : null}
-      <Text style={[styles.number, { width: amountWidth }]} {...ONE_LINE}>
-        {row.total === null ? '—' : invoiceAmount(row.total)}
-      </Text>
-    </Pressable>
-  );
-};
+const helper = createAppColumnHelper<InvoiceRow>();
 
 export const InvoicesTable: React.FC<InvoicesTableProps> = ({
   invoices,
@@ -156,6 +114,76 @@ export const InvoicesTable: React.FC<InvoicesTableProps> = ({
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
   const table = useTableLayout();
+
+  // A date column only on a wide screen at ordinary text sizes.
+  const wide = table.wide && !table.stacked;
+  const dateWidth = table.numberWidth(DATE_WIDTH);
+  // One amount width for the heading, every row and the total, so the Date column lines up.
+  const amountWidth = numberColumnWidth(
+    table,
+    AMOUNT_WIDTH,
+    invoices.rows.map((row) => (row.total === null ? '—' : invoiceAmount(row.total))),
+    [invoiceAmount(invoices.total)]
+  );
+  const detailed = invoices.detailed;
+
+  const columns = useMemo(
+    () =>
+      helper.columns([
+        helper.accessor('invoice_no', {
+          id: 'invoice',
+          header: tr('components.invoiceTable.invoice'),
+          enableSorting: true,
+          sortFn: 'alphanumeric',
+          meta: { width: 'grow' },
+          cell: (info) => {
+            const row = info.row.original;
+            const canOpen = !!(row.invoice_id && onViewInvoice);
+            // A fallback row has no date at all; a row with an unknown date says so.
+            const showDate = row.invoice_id !== null;
+            return (
+              <>
+                <Text style={canOpen ? styles.link : styles.primary}>{formatIdentifier(row.invoice_no)}</Text>
+                {showDate && !wide ? <Text style={styles.secondary}>{dateText(row.invoice_date)}</Text> : null}
+              </>
+            );
+          },
+        }),
+        ...(wide
+          ? [
+              helper.accessor((row) => toDate(row.invoice_date) ?? undefined, {
+                id: 'date',
+                header: tr('components.invoiceTable.date'),
+                // Nothing to order in a table of numbers only.
+                enableSorting: detailed,
+                sortFn: 'datetime',
+                sortUndefined: 'last',
+                meta: { width: dateWidth },
+                cell: (info) => (
+                  <Text style={styles.primary} {...ONE_LINE}>
+                    {info.row.original.invoice_id !== null ? dateText(info.row.original.invoice_date) : '—'}
+                  </Text>
+                ),
+              }),
+            ]
+          : []),
+        helper.accessor((row) => row.total ?? undefined, {
+          id: 'total',
+          header: tr('components.invoiceTable.invoiceTotal'),
+          enableSorting: detailed,
+          sortFn: 'basic',
+          sortUndefined: 'last',
+          meta: { width: amountWidth, numeric: true },
+          cell: (info) => (
+            <Text style={styles.number} {...ONE_LINE}>
+              {info.row.original.total === null ? '—' : invoiceAmount(info.row.original.total)}
+            </Text>
+          ),
+        }),
+      ]),
+    [wide, detailed, dateWidth, amountWidth, onViewInvoice, styles]
+  );
+  const grid = useAppTable({ data: invoices.rows, columns, getRowId: (row) => row.key });
 
   if (invoices.count === 0) {
     return (
@@ -175,59 +203,54 @@ export const InvoicesTable: React.FC<InvoicesTableProps> = ({
     );
   }
 
-  // A date column only on a wide screen at ordinary text sizes.
-  const wide = table.wide && !table.stacked;
-  const dateWidth = table.numberWidth(DATE_WIDTH);
-  // One amount width for the heading, every row and the total, so the Date column lines up.
-  const amountWidth = numberColumnWidth(
-    table,
-    AMOUNT_WIDTH,
-    invoices.rows.map((row) => (row.total === null ? '—' : invoiceAmount(row.total))),
-    [invoiceAmount(invoices.total)]
-  );
   const countText = tr('components.invoiceTable.invoiceCount', { count: invoices.count });
 
   return (
     <ScrollView style={own.container} contentContainerStyle={own.content} showsVerticalScrollIndicator={false}>
       <Text style={own.count} accessibilityRole="header" testID={`${testIDPrefix}-invoices-count`}>{countText}</Text>
-      <View style={[styles.card, own.card]} testID={`${testIDPrefix}-invoices-table`}>
-        <View style={styles.headerRow}>
-          <HeaderCell style={styles.grow}>{tr('components.invoiceTable.invoice')}</HeaderCell>
-          {wide ? <HeaderCell style={{ width: dateWidth }}>{tr('components.invoiceTable.date')}</HeaderCell> : null}
-          <HeaderCell numeric style={{ width: amountWidth }}>{tr('components.invoiceTable.invoiceTotal')}</HeaderCell>
-        </View>
-        {invoices.rows.map((row) => (
-          <InvoiceTableRow
-            key={row.key}
-            row={row}
-            wide={wide}
-            dateWidth={dateWidth}
-            amountWidth={amountWidth}
-            onViewInvoice={onViewInvoice}
-            testIDPrefix={testIDPrefix}
-          />
-        ))}
-        <View
-          style={[styles.footerRow, styles.footerAfterRows]}
-          accessible
-          accessibilityLabel={tr('components.invoiceTable.totalLabel', { invoices: countText, amount: invoiceAmount(invoices.total) })}
-          testID={`${testIDPrefix}-invoices-total`}
-        >
-          <View style={styles.grow}>
-            <Text style={styles.primaryStrong}>{tr('components.invoiceTable.total')}</Text>
-            <Text style={styles.secondary}>{countText}</Text>
-          </View>
-          {wide ? <View style={{ width: dateWidth }} /> : null}
-          <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>
-            {invoiceAmount(invoices.total)}
-          </Text>
-        </View>
-        <View style={own.noteInCard}>
-          <Text style={styles.secondary} testID={`${testIDPrefix}-invoices-note`}>
-            {invoices.detailed ? note : tr('components.invoiceTable.fallbackNote')}
-          </Text>
-        </View>
-      </View>
+      <DataTable
+        table={grid}
+        list="map"
+        style={own.card}
+        onRowPress={(row) => {
+          if (row.original.invoice_id) onViewInvoice?.(row.original.invoice_id);
+        }}
+        rowPressable={(row) => !!(row.original.invoice_id && onViewInvoice)}
+        rowLabel={(row) => {
+          const r = row.original;
+          const spokenDate = toDate(r.invoice_date) ? formatDate(r.invoice_date, 'short') : tr('components.invoiceTable.dateUnavailable');
+          return r.total === null
+            ? tr('components.invoiceTable.numbered', { number: formatIdentifier(r.invoice_no) })
+            : tr('components.invoiceTable.rowLabel', { number: formatIdentifier(r.invoice_no), date: spokenDate, amount: invoiceAmount(r.total) });
+        }}
+        rowHint={() => tr('components.invoiceTable.opensInvoice')}
+        rowTestID={(row) => `${testIDPrefix}-invoice-row-${row.original.key}`}
+        footer={
+          <>
+            <View
+              style={[styles.footerRow, styles.footerAfterRows]}
+              accessible
+              accessibilityLabel={tr('components.invoiceTable.totalLabel', { invoices: countText, amount: invoiceAmount(invoices.total) })}
+              testID={`${testIDPrefix}-invoices-total`}
+            >
+              <View style={styles.grow}>
+                <Text style={styles.primaryStrong}>{tr('components.invoiceTable.total')}</Text>
+                <Text style={styles.secondary}>{countText}</Text>
+              </View>
+              {wide ? <View style={{ width: dateWidth }} /> : null}
+              <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>
+                {invoiceAmount(invoices.total)}
+              </Text>
+            </View>
+            <View style={own.noteInCard}>
+              <Text style={styles.secondary} testID={`${testIDPrefix}-invoices-note`}>
+                {invoices.detailed ? note : tr('components.invoiceTable.fallbackNote')}
+              </Text>
+            </View>
+          </>
+        }
+        testID={`${testIDPrefix}-invoices-table`}
+      />
     </ScrollView>
   );
 };

@@ -172,14 +172,17 @@ describe('a customer with no own rate for the item', () => {
   const noOwn = () => data(F1.filter(r => r.item_id === 'onion' && r.customer_id === null));
   const params = { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' };
 
-  it('says invoices use the default rate and offers Add customer rate, which reveals a box seeded from the default rate', async () => {
+  it('says invoices use the default rate and offers Add customer rate, which opens the full-screen Add customer rate form', async () => {
     await open('admin', noOwn(), params);
     expect(shown()).toContain('Review Orchard B has no rate of their own for this item now. Invoices use the default rate.');
     expect(host('rate-box-add')).toHaveLength(0);
     press('add-customer-rate');
-    expect(cell('band-0-rent').props.value).toBe('3.50');
-    expect(cell('first-from').props.value).toBe('0');
-    expect(shown()).toContain('Save customer rate');
+    // The first rate of a customer is added on its own screen (owner, 2026-10-17); this page opens no box.
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/item-rates/[itemId]/customer-add/[customerId]',
+      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
+    });
+    expect(host('rate-box-add')).toHaveLength(0);
   });
 
   it('add=1 (the Pricing tab\'s "+ Add item") opens that box at once, and Save sends it with the customer', async () => {

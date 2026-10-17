@@ -66,6 +66,12 @@ export const customerRatePath = (itemId: string, customerId: string, on?: string
       ...(add ? { add: '1' } : {}),
     },
   }) as const;
+/** The full-screen form that adds a customer's own rate for one item (owner, 2026-10-17). */
+export const customerRateAddPath = (itemId: string, customerId: string, customerName?: string) =>
+  ({
+    pathname: '/item-rates/[itemId]/customer-add/[customerId]',
+    params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}) },
+  }) as const;
 /** What the edit screen is opened with: the price pencil of an invoice line, nothing else. */
 export type InvoiceEditorParams = EditorParams & { mode: 'invoice' };
 export const editorPath = (params: InvoiceEditorParams) => ({ pathname: '/item-rates/edit', params }) as const;

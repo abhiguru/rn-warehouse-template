@@ -17,8 +17,12 @@
  * Back returns to the GRN. Staff get the table only (no link to the price list). A customer's row opens
  * "Your rate" (app/grn-rate): only the rate their lots are invoiced at, never the item's default or
  * anyone else's, and their screen-reader label names no source either.
+ *
+ * Built on the app's TanStack Table setup (`components/table/appTable`, `useAppTable`). The rows are drawn here and not by
+ * `DataTable`: this table is the card itself (loading and error states, the note under the rows), a row is a link
+ * with its own press target, and the card sits in the Overview's padding with no margins of its own.
  */
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SectionHeader } from '@/components/common/overview-tab';
@@ -33,6 +37,7 @@ import {
   useStackedWhen,
   useTableLayout,
 } from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -62,6 +67,8 @@ const makeStyles = (th: ThemeTokens) => ({
   note: { paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.md },
   missing: { color: th.text.secondary },
 });
+
+const rateColumn = createAppColumnHelper<RateGroup>();
 
 export interface RateGroup {
   key: string;
@@ -137,6 +144,107 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
   const layout = useStackedWhen(screen, crowded(rowWidth(screen), oneTime ? [rentWidth, taxWidth] : [rentWidth, labourWidth, taxWidth], 0, screen.scale));
   const stacked = layout.stacked;
 
+  /** What a row shows and does: where a tap goes, the text under the item, and what a screen reader says. */
+  const describe = useCallback(
+    (group: RateGroup) => {
+      const { rate } = group;
+      const priced = rate.source !== null;
+      const opensYourRate = isCustomer && priced && !!grnId;
+      const managerTarget: 'item' | 'customer' | 'grn' | null = !manager
+        ? null
+        : rate.source === 'item'
+          ? 'item'
+          : rate.source === 'customer' && customerId
+            ? 'customer'
+            : rate.source === 'grn' && canEdit && grnId
+              ? 'grn'
+              : null;
+      const link = managerTarget !== null || opensYourRate;
+      const details = repeated.has(rate.item_id) ? formatWeightEach(group.weight) : null;
+      // Stacked, labour and tax go under the item.
+      const extra =
+        stacked && priced
+          ? [oneTime ? null : t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }), t('pricing.row.tax', { percent: taxText(rate.tax_percent) })]
+              .filter(Boolean)
+              .join(' · ')
+          : null;
+      const under = [details, extra].filter(Boolean).join(' · ');
+      const label = [
+        group.item_name,
+        details,
+        // A customer is never told where the rate comes from (default, customer or GRN rate).
+        priced ? (isCustomer ? null : t(SOURCE_LABEL[rate.source!])) : t('grn.rates.noRateSet'),
+        rate.varies ? t('grn.rates.tagVaries') : null,
+        priced ? t('grn.rates.rentAmount', { amount: money(rate.unit_price ?? 0) }) : null,
+        priced && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }) : null,
+        priced ? t('pricing.row.tax', { percent: taxText(rate.tax_percent) }) : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      return { priced, managerTarget, link, under, label };
+    },
+    [isCustomer, manager, grnId, customerId, canEdit, repeated, stacked, oneTime],
+  );
+
+  const columns = useMemo(
+    () =>
+      rateColumn.columns([
+        rateColumn.display({
+          id: 'item',
+          header: t('grn.rates.colItem'),
+          meta: { width: 'grow' },
+          cell: ({ row }) => {
+            const { priced, link, under } = describe(row.original);
+            return (
+              <View style={table.grow}>
+                <Text style={link ? table.link : table.primary}>{row.original.item_name}</Text>
+                {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
+                {!priced ? (
+                  <View style={own.tags}>
+                    <StatusTag status="critical" label={t('grn.rates.noRateSet')} />
+                  </View>
+                ) : null}
+              </View>
+            );
+          },
+        }),
+        rateColumn.display({
+          id: 'rent',
+          header: t('grn.rates.colRent'),
+          meta: { width: rentWidth, numeric: true },
+          cell: ({ row }) => (
+            <Text style={[table.number, { width: rentWidth }, row.original.rate.source === null && own.missing]} {...ONE_LINE}>{amountText(row.original.rate.unit_price)}</Text>
+          ),
+        }),
+        ...(!stacked && !oneTime
+          ? [
+              rateColumn.display({
+                id: 'labour',
+                header: t('grn.rates.colLabour'),
+                meta: { width: labourWidth, numeric: true },
+                cell: ({ row }) => (
+                  <Text style={[table.number, { width: labourWidth }, row.original.rate.source === null && own.missing]} {...ONE_LINE}>{amountText(row.original.rate.labour_rate)}</Text>
+                ),
+              }),
+            ]
+          : []),
+        ...(!stacked
+          ? [
+              rateColumn.display({
+                id: 'tax',
+                header: t('grn.rates.colTax'),
+                meta: { width: taxWidth, numeric: true },
+                cell: ({ row }) => (
+                  <Text style={[table.number, { width: taxWidth }, row.original.rate.source === null && own.missing]} {...ONE_LINE}>{taxText(row.original.rate.tax_percent)}</Text>
+                ),
+              }),
+            ]
+          : []),
+      ]),
+    [describe, table, own, stacked, oneTime, rentWidth, labourWidth, taxWidth],
+  );
+  const tanstack = useAppTable({ columns, data: groups, getRowId: group => group.key });
+
   if (status === 'unavailable') {
     return fallbackRates && fallbackRates.length > 0 ? <GrnOnlyRates rates={fallbackRates} /> : null;
   }
@@ -160,70 +268,26 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
         ) : null}
         {status === 'ready' ? (
           <>
-            <View style={table.headerRow} testID="grn-item-rates-header">
-              <HeaderCell style={table.grow}>{t('grn.rates.colItem')}</HeaderCell>
-              <HeaderCell numeric style={{ width: rentWidth }}>{t('grn.rates.colRent')}</HeaderCell>
-              {!stacked && !oneTime ? <HeaderCell numeric style={{ width: labourWidth }}>{t('grn.rates.colLabour')}</HeaderCell> : null}
-              {!stacked ? <HeaderCell numeric style={{ width: taxWidth }}>{t('grn.rates.colTax')}</HeaderCell> : null}
-            </View>
-            {groups.map(group => {
+            {tanstack.getHeaderGroups().map(group => (
+              <View key={group.id} style={table.headerRow} testID="grn-item-rates-header">
+                {group.headers.map(h => {
+                  const meta = h.column.columnDef.meta;
+                  return (
+                    <HeaderCell key={h.id} numeric={meta?.numeric} style={meta?.width === 'grow' ? table.grow : { width: meta?.width }}>
+                      {h.column.columnDef.header as string}
+                    </HeaderCell>
+                  );
+                })}
+              </View>
+            ))}
+            {tanstack.getRowModel().rows.map(row => {
+              const group = row.original;
               const { rate } = group;
-              const priced = rate.source !== null;
-              const opensYourRate = isCustomer && priced && !!grnId;
-              const managerTarget: 'item' | 'customer' | 'grn' | null = !manager
-                ? null
-                : rate.source === 'item'
-                  ? 'item'
-                  : rate.source === 'customer' && customerId
-                    ? 'customer'
-                    : rate.source === 'grn' && canEdit && grnId
-                      ? 'grn'
-                      : null;
-              const link = managerTarget !== null || opensYourRate;
-              const details = repeated.has(rate.item_id) ? formatWeightEach(group.weight) : null;
-              // Stacked, labour and tax go under the item.
-              const extra =
-                stacked && priced
-                  ? [oneTime ? null : t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }), t('pricing.row.tax', { percent: taxText(rate.tax_percent) })]
-                      .filter(Boolean)
-                      .join(' · ')
-                  : null;
-              const under = [details, extra].filter(Boolean).join(' · ');
-              const label = [
-                group.item_name,
-                details,
-                // A customer is never told where the rate comes from (default, customer or GRN rate).
-                priced ? (isCustomer ? null : t(SOURCE_LABEL[rate.source!])) : t('grn.rates.noRateSet'),
-                rate.varies ? t('grn.rates.tagVaries') : null,
-                priced ? t('grn.rates.rentAmount', { amount: money(rate.unit_price ?? 0) }) : null,
-                priced && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }) : null,
-                priced ? t('pricing.row.tax', { percent: taxText(rate.tax_percent) }) : null,
-              ]
-                .filter(Boolean)
-                .join(', ');
-              const cells = (
-                <>
-                  <View style={table.grow}>
-                    <Text style={link ? table.link : table.primary}>{group.item_name}</Text>
-                    {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
-                    {!priced ? (
-                      <View style={own.tags}>
-                        <StatusTag status="critical" label={t('grn.rates.noRateSet')} />
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text style={[table.number, { width: rentWidth }, !priced && own.missing]} {...ONE_LINE}>{amountText(rate.unit_price)}</Text>
-                  {!stacked && !oneTime ? (
-                    <Text style={[table.number, { width: labourWidth }, !priced && own.missing]} {...ONE_LINE}>{amountText(rate.labour_rate)}</Text>
-                  ) : null}
-                  {!stacked ? (
-                    <Text style={[table.number, { width: taxWidth }, !priced && own.missing]} {...ONE_LINE}>{taxText(rate.tax_percent)}</Text>
-                  ) : null}
-                </>
-              );
+              const { managerTarget, link, label } = describe(group);
+              const cells = row.getAllCells().map(cell => <tanstack.FlexRender key={cell.id} cell={cell} />);
               return link ? (
                 <Pressable
-                  key={group.key}
+                  key={row.id}
                   onPress={() =>
                     router.push(
                       managerTarget === 'item'
@@ -252,7 +316,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                   {cells}
                 </Pressable>
               ) : (
-                <View key={group.key} style={table.row} accessible accessibilityLabel={label} testID="grn-item-rate-row">
+                <View key={row.id} style={table.row} accessible accessibilityLabel={label} testID="grn-item-rate-row">
                   {cells}
                 </View>
               );

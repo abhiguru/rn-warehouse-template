@@ -15,7 +15,7 @@ import { SectionFooter, SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { space, type ThemeTokens } from '@/theme/tokens';
-import { customerRatePath } from '../contract';
+import { customerRateAddPath, customerRatePath } from '../contract';
 import { customerItemRows } from '../customerRates';
 import { todayDay } from '../rateText';
 import { useItemRates } from '../useItemRates';
@@ -61,7 +61,8 @@ export function CustomerPricingTab({ customerId, customerName, openItemId, onOpe
   const addForItem = useCallback(
     (item: PickableItem) => {
       setPicking(false);
-      router.push(customerRatePath(item.id, customerId, undefined, customerName, true));
+      // The full-screen Add customer rate form (owner, 2026-10-17).
+      router.push(customerRateAddPath(item.id, customerId, customerName));
     },
     [customerId, customerName],
   );

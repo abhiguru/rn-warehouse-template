@@ -53,6 +53,7 @@
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.52.0",
     "@tanstack/react-query": "^5.104.2",
+    "@tanstack/react-table": "9.2.4",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.30",
     "expo-application": "~57.0.3",
@@ -139,7 +140,7 @@
     "testPathIgnorePatterns": ["/node_modules/", "<rootDir>/\\.claude/"],
     "modulePathIgnorePatterns": ["<rootDir>/\\.claude/"],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/react-native|react-navigation|@react-navigation/.*|react-native-svg|standard-navigation|decode-uri-component))"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/react-native|react-navigation|@react-navigation/.*|react-native-svg|standard-navigation|decode-uri-component|@tanstack/(react-table|table-core|store|react-store)))"
     ]
   },
   "expo": {

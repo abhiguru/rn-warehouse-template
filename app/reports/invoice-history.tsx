@@ -15,18 +15,19 @@ import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   FactLines,
-  FioriDataTable,
   ReportCustomerCard,
   ReportCustomerPicker,
   ReportDateHeading,
   ReportLastCustomer,
   ReportNoCustomer,
   ReportScaffold,
-  type DataTableColumn,
   type KPIItem,
   type ReportHeaderAction,
 } from '@/components/reports';
+import { ONE_LINE, makeTableStyles, numberColumnWidth, rowWidth, useTableLayout, type TableLayout } from '@/components/common/DetailTable';
 import { invoicePaymentStatus } from '@/components/reports/invoicePaymentStatus';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
 import { StatusTag } from '@/components/ui';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { isLongestPeriod, type ReportPeriod } from '@/features/filters/configs/reports';
@@ -81,8 +82,12 @@ const makeStyles = (t: ThemeTokens) => ({
   cardPressed: { backgroundColor: t.surface.cardPressed },
 
   // Monthly breakdown, between the status line and the invoices
-  monthly: { marginHorizontal: layout.marginCompact, marginBottom: space.md },
+  monthly: { marginBottom: space.md },
+  // The table is a card of its own with the card margins (DataTable): its extra top and bottom space is taken back,
+  // so the header button and the invoices keep their distance.
+  monthlyTable: { marginTop: -space.md, marginBottom: -space.xxl },
   monthlyHeader: {
+    marginHorizontal: layout.marginCompact,
     flexDirection: 'row' as const,
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
@@ -405,45 +410,44 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 // Month by month
 // ============================================================================
 
-/** The table's cells, already in the language's words and digits. */
+/** A month of the table: the figures as numbers (they sort) and the key of the month ("YYYY-MM", "" when undated). */
 type MonthRow = {
   id: string;
+  monthKey: string;
   month: string;
-  invoices: string;
-  amount: string;
-  paid: string;
-  pending: string;
+  invoiceCount: number;
+  amount: number;
+  paid: number;
+  pending: number;
 };
 
-/** Wide enough for "₹12,34,567" on one line: a cell is one line, and an amount is never cut short (§4). */
-const AMOUNT_COLUMN_WIDTH = 120;
+/**
+ * The widths of the figure columns at font scale 1 (dp): the least that holds the header and its sort arrow
+ * ("Pending" with the arrow is about 66), and for the count the word "Invoices". A column grows with the text size
+ * and to its widest figure (`numberColumnWidth`), so an amount is never cut short or broken (§4).
+ */
+const COUNT_COLUMN_WIDTH = 56;
+const MONEY_COLUMN_WIDTH = 68;
 
 /**
- * With paise every amount has two more digits and a point: wide enough for
- * "₹1,23,45,678.90" (about 105 at the default text size, 24 of padding).
+ * How many columns the phone holds (§13.7: the old table scrolled sideways, with the month pinned; this one fits):
+ * - `full`: Month | Invoices | Amount | Paid | Pending.
+ * - `stacked`: the count moves under the month ("Invoices: 3"); Amount, Paid and Pending stay columns.
+ * - `compact`: only Amount stays a column; the count, Paid and Pending are lines under the month.
+ * A layout is taken when it leaves the month the room for its text (`MONTH_EM`). The shared `crowded` rule (a quarter of the
+ * row, 5 em) is for item names; a month is short ("Sep 2026" is about 4.3 em), and with it a 360 dp phone
+ * would lose the Paid and Pending columns.
  */
-const AMOUNT_COLUMN_WIDTH_WITH_PAISE = 144;
+type MonthlyLayout = 'full' | 'stacked' | 'compact';
 
-/**
- * Wide enough for the header "Invoices" on one line at 1.3 times text size (about
- * 65 for the word, 24 of padding; the default 80 broke it as "Invoice" / "s") and
- * for a little more: a header shrinks before it is cut, and never breaks a word.
- */
-const COUNT_COLUMN_WIDTH = 104;
+/** The room the month column keeps, in em of the table text: "Sep 2026" is about 4.3 em. */
+const MONTH_EM = 4.5;
 
-/** Five columns: the month is pinned while the figures scroll (§13.7). */
-const monthColumns = (withPaise: boolean): DataTableColumn[] => {
-  const width = withPaise ? AMOUNT_COLUMN_WIDTH_WITH_PAISE : AMOUNT_COLUMN_WIDTH;
-  return [
-    { key: 'month', label: tr('reports.customerActivity.trend.month') },
-    { key: 'invoices', label: tr('reports.invoiceHistory.invoices'), dataType: 'number', width: COUNT_COLUMN_WIDTH },
-    { key: 'amount', label: tr('common.amount'), dataType: 'number', width },
-    { key: 'paid', label: tr('reports.customerActivity.paid'), dataType: 'number', width },
-    { key: 'pending', label: tr('common.pending'), dataType: 'number', width },
-  ];
-};
+/** Whether columns of these widths, with the gaps before them, leave the month column its room. */
+const leavesMonth = (screen: TableLayout, columns: readonly number[]): boolean =>
+  rowWidth(screen) - columns.reduce((sum, width) => sum + width + space.sm, 0) >= MONTH_EM * (typography.subhead.fontSize ?? 15) * screen.scale;
 
-const monthKey = (row: Record<string, unknown>) => String(row.id);
+const monthHelper = createAppColumnHelper<MonthRow>();
 
 /**
  * The period month by month, with a totals row: shut until asked for, as it always was.
@@ -457,35 +461,163 @@ const monthKey = (row: Record<string, unknown>) => String(row.id);
  * has paise: then every amount cell, rows and totals, has two decimals (as the invoice
  * cards show them). Cells rounded one by one would not add up: Paid ₹101 and Pending
  * ₹101 beside an Amount of ₹201 for 100.50 and 2 times 50.25.
+ *
+ * Drawn by the shared `DataTable` (§13.7). Not sorted at first (newest month first); a tap on the Month, Amount, Paid
+ * or Pending heading sorts by it, ascending then descending then back. The Total row stays the total of every month.
  */
 function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: InvoiceMonthTotals }) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
+  const cell = useThemedStyles(makeTableStyles);
+  const screen = useTableLayout();
   const [open, setOpen] = useState(false);
   const withPaise = useMemo(() => invoiceMonthsHavePaise(months), [months]);
-  const rows = useMemo<MonthRow[]>(() => {
-    const money = withPaise ? formatAmount : formatSummaryAmount;
-    return months.map(month => ({
-      id: month.month || 'undated',
-      // An invoice with no readable date shows "—" for its month.
-      month: formatMonth(month.month ? `${month.month}-01` : null, 'short'),
-      invoices: formatNumber(month.invoiceCount),
-      amount: money(month.amount),
-      paid: money(month.paidAmount),
-      pending: money(month.pendingAmount),
-    }));
-  }, [months, withPaise]);
-  const totalsRow = useMemo(() => {
-    const money = withPaise ? formatAmount : formatSummaryAmount;
-    return {
+  const money = withPaise ? formatAmount : formatSummaryAmount;
+  const rows = useMemo<MonthRow[]>(
+    () =>
+      months.map(month => ({
+        id: month.month || 'undated',
+        monthKey: month.month,
+        // An invoice with no readable date shows "—" for its month.
+        month: formatMonth(month.month ? `${month.month}-01` : null, 'short'),
+        invoiceCount: month.invoiceCount,
+        amount: month.amount,
+        paid: month.paidAmount,
+        pending: month.pendingAmount,
+      })),
+    [months]
+  );
+  const title = tr('reports.invoiceHistory.monthlyBreakdown');
+  const labels = {
+    month: tr('reports.customerActivity.trend.month'),
+    invoices: tr('reports.invoiceHistory.invoices'),
+    amount: tr('common.amount'),
+    paid: tr('reports.customerActivity.paid'),
+    pending: tr('common.pending'),
+  };
+  const totalsText = useMemo(
+    () => ({
       month: tr('common.total'),
       invoices: formatNumber(totals.invoiceCount),
       amount: money(totals.amount),
       paid: money(totals.paidAmount),
       pending: money(totals.pendingAmount),
+    }),
+    [totals, money]
+  );
+
+  // Every figure column as wide as its widest figure, the Total row's (weight 600) too.
+  const widths = useMemo(() => {
+    const widest = (base: number, values: (row: MonthRow) => string, total: string) => numberColumnWidth(screen, base, rows.map(values), [total]);
+    return {
+      invoices: widest(COUNT_COLUMN_WIDTH, row => formatNumber(row.invoiceCount), totalsText.invoices),
+      amount: widest(MONEY_COLUMN_WIDTH, row => money(row.amount), totalsText.amount),
+      paid: widest(MONEY_COLUMN_WIDTH, row => money(row.paid), totalsText.paid),
+      pending: widest(MONEY_COLUMN_WIDTH, row => money(row.pending), totalsText.pending),
     };
-  }, [totals, withPaise]);
-  const title = tr('reports.invoiceHistory.monthlyBreakdown');
+  }, [screen, rows, money, totalsText]);
+  const layoutName: MonthlyLayout = leavesMonth(screen, [widths.invoices, widths.amount, widths.paid, widths.pending])
+    ? 'full'
+    : leavesMonth(screen, [widths.amount, widths.paid, widths.pending])
+      ? 'stacked'
+      : 'compact';
+
+  const columns = useMemo(() => {
+    const figure = (value: number) => <Text style={cell.number} {...ONE_LINE}>{money(value)}</Text>;
+    const moneyColumn = (id: 'amount' | 'paid' | 'pending', width: number) =>
+      monthHelper.accessor(id, {
+        header: labels[id],
+        meta: { width, numeric: true },
+        enableSorting: true,
+        sortFn: 'basic',
+        cell: info => figure(info.getValue()),
+      });
+    // The lines under the month where its figures moved into it.
+    const under = (row: MonthRow) => {
+      const lines = [tr('reports.shared.labelValue', { label: labels.invoices, value: formatNumber(row.invoiceCount) })];
+      if (layoutName === 'compact') {
+        lines.push(tr('reports.shared.labelValue', { label: labels.paid, value: money(row.paid) }));
+        lines.push(tr('reports.shared.labelValue', { label: labels.pending, value: money(row.pending) }));
+      }
+      return lines;
+    };
+    return monthHelper.columns([
+      monthHelper.accessor(row => row.monthKey || undefined, {
+        id: 'month',
+        header: labels.month,
+        meta: { width: 'grow' },
+        enableSorting: true,
+        sortFn: 'alphanumeric',
+        // An undated month ("") is last whichever way it is sorted.
+        sortUndefined: 'last',
+        cell: info =>
+          layoutName === 'full' ? (
+            <Text style={cell.primary}>{info.row.original.month}</Text>
+          ) : (
+            <View>
+              <Text style={cell.primary}>{info.row.original.month}</Text>
+              {under(info.row.original).map(line => (
+                <Text key={line} style={cell.secondary}>{line}</Text>
+              ))}
+            </View>
+          ),
+      }),
+      ...(layoutName === 'full'
+        ? [
+            monthHelper.accessor('invoiceCount', {
+              id: 'invoices',
+              header: labels.invoices,
+              meta: { width: widths.invoices, numeric: true },
+              enableSorting: false,
+              cell: info => <Text style={cell.number} {...ONE_LINE}>{formatNumber(info.getValue())}</Text>,
+            }),
+          ]
+        : []),
+      moneyColumn('amount', widths.amount),
+      ...(layoutName === 'compact' ? [] : [moneyColumn('paid', widths.paid), moneyColumn('pending', widths.pending)]),
+    ]);
+    // `labels` is rebuilt each render: its words are the dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutName, widths, money, cell, labels.month, labels.invoices, labels.amount, labels.paid, labels.pending]);
+
+  // Sorted by nothing at first: the order the months came in. Month, Amount, Paid and Pending turn sorting on for
+  // themselves (appTable's default column leaves it off); Invoices does not sort.
+  const table = useAppTable({ columns, data: rows, getRowId: row => row.id });
+
+  /** What TalkBack reads for a month: each column's name and figure, in any layout. */
+  const rowLabel = (row: MonthRow) =>
+    [
+      `${labels.month} ${row.month}`,
+      `${labels.invoices} ${formatNumber(row.invoiceCount)}`,
+      `${labels.amount} ${money(row.amount)}`,
+      `${labels.paid} ${money(row.paid)}`,
+      `${labels.pending} ${money(row.pending)}`,
+    ].join(', ');
+  const totalsLabel = `${labels.month} ${totalsText.month}, ${labels.invoices} ${totalsText.invoices}, ${labels.amount} ${totalsText.amount}, ${labels.paid} ${totalsText.paid}, ${labels.pending} ${totalsText.pending}`;
+
+  // The Total row: one element for TalkBack, in the columns of the rows above it.
+  const footer = (
+    <View style={cell.footerRow} accessible accessibilityLabel={totalsLabel} testID="monthly-breakdown-total">
+      <View style={cell.grow}>
+        <Text style={cell.primaryStrong}>{totalsText.month}</Text>
+        {layoutName === 'full' ? null : <Text style={cell.secondary}>{tr('reports.shared.labelValue', { label: labels.invoices, value: totalsText.invoices })}</Text>}
+        {layoutName === 'compact' ? (
+          <>
+            <Text style={cell.secondary}>{tr('reports.shared.labelValue', { label: labels.paid, value: totalsText.paid })}</Text>
+            <Text style={cell.secondary}>{tr('reports.shared.labelValue', { label: labels.pending, value: totalsText.pending })}</Text>
+          </>
+        ) : null}
+      </View>
+      {layoutName === 'full' ? <Text style={[cell.numberStrong, { width: widths.invoices }]} {...ONE_LINE}>{totalsText.invoices}</Text> : null}
+      <Text style={[cell.numberStrong, { width: widths.amount }]} {...ONE_LINE}>{totalsText.amount}</Text>
+      {layoutName === 'compact' ? null : (
+        <>
+          <Text style={[cell.numberStrong, { width: widths.paid }]} {...ONE_LINE}>{totalsText.paid}</Text>
+          <Text style={[cell.numberStrong, { width: widths.pending }]} {...ONE_LINE}>{totalsText.pending}</Text>
+        </>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.monthly}>
@@ -503,14 +635,17 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
       </Pressable>
       {open ? (
-        <FioriDataTable
-          columns={monthColumns(withPaise)}
-          data={rows}
-          keyExtractor={monthKey}
-          totals={totalsRow}
-          compact
-          accessibilityLabel={title}
-        />
+        <View style={styles.monthlyTable} accessibilityLabel={title}>
+          <DataTable
+            table={table}
+            variant="card"
+            list="map"
+            rowLabel={row => rowLabel(row.original)}
+            rowTestID={row => `monthly-breakdown-row-${row.id}`}
+            footer={footer}
+            testID="monthly-breakdown-table"
+          />
+        </View>
       ) : null}
     </View>
   );

@@ -1,5 +1,5 @@
 /**
- * Renders the shared dialogs, banners, tables, list states, skeletons, media
+ * Renders the shared dialogs, banners, list states, skeletons, media
  * and overview-tab blocks in all four themes (brand x mode), and checks that
  * the key surfaces take their colours from the semantic tokens.
  */
@@ -14,9 +14,6 @@ import { TokenExpiryBanner } from '../TokenExpiryBanner';
 import { CachedImage } from '../CachedImage';
 import { ImageOverlay } from '../ImageOverlay';
 import { CameraModal } from '../CameraModal';
-import { FioriDataTable as RootTable, formatCellValue } from '../FioriDataTable';
-import { FioriDataTable as FioriPathTable } from '../fiori/FioriDataTable';
-import { FioriDataTable as ReportsPathTable } from '../reports/FioriDataTable';
 import { ListEmptyState } from '../list/ListEmptyState';
 import { LoadingState } from '../list/LoadingState';
 import { ListSkeletonCard } from '../list/ListSkeletonCard';
@@ -108,7 +105,6 @@ jest.mock('@shopify/flash-list', () => {
         : ReactMock.createElement('FlashList', null),
   };
 });
-jest.mock('../GhostTextInput', () => ({ GhostTextInput: () => null }));
 
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
@@ -146,17 +142,6 @@ function texts(tree: ReactTestRenderer): string[] {
     .findAll(node => (node.type as unknown) === 'Text')
     .map(node => ([] as unknown[]).concat(node.props.children).join(''));
 }
-
-const tableColumns = [
-  { key: 'name', label: 'Item' },
-  { key: 'bags', label: 'Bags', dataType: 'number' as const, sortable: true },
-  { key: 'amount', label: 'Amount', dataType: 'currency' as const },
-  { key: 'rack', label: 'Rack' },
-];
-const tableData = [
-  { id: 'a', name: 'Potato', bags: 1200, amount: 123456.5, rack: 'B-14' },
-  { id: 'b', name: 'Onion', bags: 40, amount: 980, rack: 'C-2' },
-];
 
 describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
@@ -232,59 +217,6 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     act(() => camera.unmount());
   });
 
-  it('the three table paths render the one table spec', () => {
-    for (const Table of [RootTable, FioriPathTable, ReportsPathTable]) {
-      const tree = render(
-        <Table
-          columns={tableColumns}
-          data={tableData}
-          keyExtractor={(row: Record<string, unknown>) => row.id as string}
-          sortColumn="bags"
-          sortDirection="asc"
-          onSort={jest.fn()}
-          totals={{ name: 'Total', bags: 1240 }}
-        />
-      );
-      // Header on table.headerFill, rows on surface.card, no alternate shading
-      expect(hasBackground(tree, t.table.headerFill)).toBe(true);
-      expect(hasBackground(tree, t.surface.card)).toBe(true);
-      const all = texts(tree);
-      expect(all).toEqual(expect.arrayContaining(['Potato', '1,200', '₹1,23,456.50', 'Total', '1,240']));
-      expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Bags, sorted ascending').length).toBeGreaterThan(0);
-      act(() => tree.unmount());
-    }
-
-    const empty = render(<RootTable columns={tableColumns} data={[]} emptyMessage="No items in this GRN." />);
-    expect(texts(empty)).toContain('No items in this GRN.');
-    act(() => empty.unmount());
-  });
-
-  it('draws every header on one line that shrinks a little before it is cut, in all three table paths', () => {
-    const headers = [
-      { key: 'name', label: 'Invoices' },
-      { key: 'bags', label: 'Bags', dataType: 'number' as const, sortable: true },
-      { key: 'amount', label: 'Pending amount', dataType: 'currency' as const, width: 120 },
-    ];
-    for (const Table of [RootTable, FioriPathTable, ReportsPathTable]) {
-      const tree = render(<Table columns={headers} data={tableData} onSort={jest.fn()} />);
-      const cells = tree.root.findAll(
-        node => typeof node.type === 'string' && node.props.accessibilityRole !== undefined && ['Invoices', 'Pending amount'].includes(String(node.props.accessibilityLabel))
-      );
-      expect(cells).toHaveLength(2);
-      const headerTexts = tree.root.findAll(node => (node.type as unknown) === 'Text' && ['Invoices', 'Bags', 'Pending amount'].includes(([] as unknown[]).concat(node.props.children).join('')));
-      // The plain, the sortable (with its icon beside it) and the wide column: each is one line.
-      expect(headerTexts).toHaveLength(3);
-      for (const header of headerTexts) {
-        expect(header.props.numberOfLines).toBe(1);
-        expect(header.props.adjustsFontSizeToFit).toBe(true);
-        expect(header.props.minimumFontScale).toBeGreaterThanOrEqual(0.8);
-        expect(header.props.minimumFontScale).toBeLessThanOrEqual(0.9);
-        expect(flatStyle(header.props.style).color).toBe(t.table.headerText);
-      }
-      act(() => tree.unmount());
-    }
-  });
-
   it('list states and skeletons use tokens', () => {
     const emptyFiltered = render(<ListEmptyState activeFilterCount={2} onClearFilters={jest.fn()} />);
     expect(texts(emptyFiltered)).toContain('Clear filters');
@@ -354,9 +286,7 @@ describe('contact card without a number', () => {
 });
 
 describe('value formats', () => {
-  it('formats table and phone values per the style guide', () => {
-    expect(formatCellValue(null)).toBe('—');
-    expect(formatCellValue(12.5, 'percent')).toBe('12.5%');
+  it('formats phone values per the style guide', () => {
     expect(formatContactPhone('+91 98765-43210')).toBe('+91 98765 43210');
     expect(formatContactPhone('080 1234')).toBe('080 1234');
   });

@@ -46,9 +46,11 @@ function looseText(tree: ReactTestRenderer) {
 
 const texts = (tree: ReactTestRenderer) =>
   tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join('').replace(/\u00A0/g, ' '));
-/** What a screen reader says for the card or header. */
+/** What a screen reader says for the card or header (the sort headings above the rows say their own). */
 const spoken = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string')[0].props.accessibilityLabel as string;
+  tree.root.findAll(
+    node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string' && !/^Sort by /.test(node.props.accessibilityLabel)
+  )[0].props.accessibilityLabel as string;
 
 const mounted: ReactTestRenderer[] = [];
 afterEach(() => act(() => mounted.splice(0).forEach(tree => tree.unmount())));
