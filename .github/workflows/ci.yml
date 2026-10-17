@@ -44,7 +44,7 @@ jobs:
       # The ratchet: warnings may not grow. Lower the number when warnings are
       # fixed; keep it equal to release.yml (scripts/workflows.test.mjs checks).
       - name: Lint
-        run: npm run lint -- --max-warnings 700
+        run: npm run lint -- --max-warnings 636
 
       - name: Type check
         run: npm run typecheck

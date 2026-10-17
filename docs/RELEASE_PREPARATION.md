@@ -36,8 +36,10 @@ is archived (see [HISTORY.md](HISTORY.md)).
   Debug and Release, so generate the project for a release archive **without** those
   variables (`npx expo prebuild --platform ios --clean`); the EAS `preview` and
   `production` profiles refuse them. The plugin also adds a Run Script phase that fails a
-  Release build when the built `Info.plist` has `NSAllowsLocalNetworking` or
-  `NSAllowsArbitraryLoads = true`, so a development project cannot be archived. That phase
+  Release build when the built `Info.plist` has `NSAllowsLocalNetworking`,
+  `NSAllowsArbitraryLoads = true` or any `NSExceptionDomains`, and also when it cannot look:
+  PlistBuddy is missing, or the built `Info.plist` is missing, unreadable or unparseable. A
+  development project therefore cannot be archived. That phase
   is checked as generated project text only; it has not been built (no macOS or Xcode here). `scripts/ios-transport.test.mjs` checks the
   generated configuration on any machine. It does not replace the archive check listed
   below, which needs macOS.

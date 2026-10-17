@@ -75,8 +75,10 @@ Debug build can reach Metro over http). Never archive that project for release: 
 the flag first (see [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md)).
 
 `npm run ios` reuses an existing `ios/` folder, so a folder that was generated for release keeps
-the release policy in Debug (Metro over http is refused). Regenerate it with
-`npx expo prebuild --platform ios --clean` and run `npm run ios` again. The other way round, a
+the release policy in Debug (Metro over http is refused), because `expo run:ios` prebuilds only
+when `ios/` is missing. Regenerate it with
+`WAREHOUSE_IOS_LOCAL_NETWORKING=1 npx expo prebuild --platform ios --clean` (or delete `ios/`)
+and run `npm run ios` again. The other way round, a
 local Release build through `npm run ios` fails on purpose: the project it generates is a
 development one, and a Release Run Script phase refuses it (it also fails when it cannot read
 the built `Info.plist`).

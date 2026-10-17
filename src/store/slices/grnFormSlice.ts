@@ -1,8 +1,11 @@
+import { createLogger } from '@/utils/logger';
 import { createSlice, PayloadAction, createSelector, original } from '@reduxjs/toolkit';
 
 import { toLocalISODate } from '@/utils/formatters';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import type { GrnRate, RateChange } from '@/features/grn/rates/types';
+
+const grnFormLogger = createLogger('GRNFormSlice');
 // Image data structure
 export interface GRNImageData {
   id: string;
@@ -460,7 +463,7 @@ const grnFormSlice = createSlice({
         state.snapshot = null;
         state.isSaving = false;
         if (__DEV__) {
-          console.log('[GRNFormSlice] Rolled back to snapshot after failed submission');
+          grnFormLogger.info('Rolled back to snapshot after failed submission');
         }
       }
     },

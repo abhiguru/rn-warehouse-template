@@ -1,3 +1,4 @@
+import { createLogger } from '@/utils/logger';
 import { operatorResumeGate } from './operatorResume';
 import {
   createClient,
@@ -24,6 +25,8 @@ import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
+
+const authLogger = createLogger('Auth');
 
 // S2/S3 Fix: SecureStore keys for encrypted token storage
 const SECURE_KEYS = {
@@ -721,7 +724,7 @@ export const signInWithPhone = async (phone: string) => {
           ? t('errors.auth.otpDailyLimit')
           : t('errors.auth.otpWaitSeconds', { seconds: localizeDigits(String(retryAfterSec)) });
 
-      console.warn('[Auth] OTP rate limit exceeded:');
+      authLogger.warn('OTP rate limit exceeded:');
 
       // The wait is returned as a number so the sign-in screens can start their
       // countdown from it (handleRateLimitError(result)) instead of reading it
@@ -747,7 +750,7 @@ export const signInWithPhone = async (phone: string) => {
 
       return { success: true, data: responseData };
     } else {
-      console.error('[Auth] Send OTP failed:');
+      authLogger.error('Send OTP failed:');
       // A limit of the server: its wait (60 seconds, or 15 minutes for a number
       // that has used up its hourly codes) is returned as a number, so the
       // screens count down from it. "Try again later" has no wait to count.
@@ -765,7 +768,7 @@ export const signInWithPhone = async (phone: string) => {
       return { success: false, error: errorMsg };
     }
   } catch (error) {
-    console.error('[Auth] Send OTP exception:');
+    authLogger.error('Send OTP exception:');
     return { success: false, error: t('errors.auth.otpSendFailed') };
   }
 };
@@ -823,7 +826,7 @@ const validateJWTToken = (
   try {
     const parts = token.split('.');
     if (parts.length !== 3) {
-      console.warn('[Auth] Invalid JWT: Expected 3 parts, got');
+      authLogger.warn('Invalid JWT: Expected 3 parts, got');
       return { valid: false };
     }
 
@@ -834,7 +837,7 @@ const validateJWTToken = (
 
     // Check required claims
     if (!payload.exp) {
-      console.warn('[Auth] Invalid JWT: Missing exp claim');
+      authLogger.warn('Invalid JWT: Missing exp claim');
       return { valid: false };
     }
 
@@ -845,7 +848,7 @@ const validateJWTToken = (
       sub: payload.sub,
     };
   } catch (error) {
-    console.warn('[Auth] Invalid JWT: Failed to parse token');
+    authLogger.warn('Invalid JWT: Failed to parse token');
     return { valid: false };
   }
 };
@@ -945,7 +948,7 @@ async function completeOperatorSignIn(data: Record<string, unknown>, generation:
   const { session, user } = responseData;
 
   if (!session?.access_token || !session?.refresh_token) {
-    console.error('[Auth] No JWT tokens in session object');
+    authLogger.error('No JWT tokens in session object');
     return { success: false, error: t('errors.auth.noTokens') };
   }
 
@@ -955,7 +958,7 @@ async function completeOperatorSignIn(data: Record<string, unknown>, generation:
   // Validate JWT structure and expiration
   const validation = validateJWTToken(accessTokenStr);
   if (!validation.valid) {
-    console.error('[Auth] ❌ Invalid JWT token received from backend');
+    authLogger.error('❌ Invalid JWT token received from backend');
     return { success: false, error: t('errors.auth.invalidToken') };
   }
 
@@ -986,7 +989,7 @@ async function completeOperatorSignIn(data: Record<string, unknown>, generation:
         };
       }
     } catch (err) {
-      console.warn('[Auth] Failed to fetch customer assignments:');
+      authLogger.warn('Failed to fetch customer assignments:');
     }
     await cacheUserProfile(userProfileWithCustomers, generation);
   }
@@ -1047,7 +1050,7 @@ export const verifyOTP = async (
     const isSuccess = rpcResponse?.success === true;
 
     if (!isSuccess || !rpcResponse?.data) {
-      console.error('[Auth] OTP verification failed:');
+      authLogger.error('OTP verification failed:');
       if (rpcResponse?.errorCode) {
         return { success: false, error: rpcResponse.error ?? t('errors.auth.verificationFailed'), errorCode: rpcResponse.errorCode };
       }
@@ -1057,7 +1060,7 @@ export const verifyOTP = async (
 
     return await completeOperatorSignIn(rpcResponse.data, generation);
   } catch (error) {
-    console.error('[Auth] OTP verification exception:');
+    authLogger.error('OTP verification exception:');
     return { success: false, error: t('errors.auth.otpVerificationFailed') };
   }
 };
@@ -1194,8 +1197,8 @@ async function revokeSession(refreshToken: string) {
   try {
     await boundedAuthRPC('logout_session', { p_refresh_token: refreshToken });
   } catch {
-    console.warn(
-      '[Auth] Server logout unavailable; local credentials cleared.'
+    authLogger.warn(
+      'Server logout unavailable; local credentials cleared.'
     );
   }
 }
@@ -1229,7 +1232,7 @@ function dispatchForcedLogout(reason: string): void {
     const { forceLogoutOnInvalidToken } = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
     store.dispatch(forceLogoutOnInvalidToken(reason));
   } catch {
-    console.warn('[Auth] Forced logout could not be dispatched.');
+    authLogger.warn('Forced logout could not be dispatched.');
   }
 }
 
@@ -1380,7 +1383,7 @@ const refreshSession = async (
       }
       if (error && isGatewayKeyRejection(error)) {
         // A gateway key rejection is definitive: the keys were rotated.
-        console.error('[Auth] Token refresh RPC error:');
+        authLogger.error('Token refresh RPC error:');
         await rejectSession(generation, keysChangedMessage());
         return null;
       }
@@ -1409,12 +1412,12 @@ const refreshSession = async (
             continue;
           }
         }
-        console.error('[Auth] Token refresh failed:');
+        authLogger.error('Token refresh failed:');
         await rejectSession(generation, sessionRejectedMessage(), refreshToken);
         return null;
       }
       if (error) {
-        console.error('[Auth] Token refresh RPC error:');
+        authLogger.error('Token refresh RPC error:');
         if (isGateSignal(error)) return null;
         // No answer, or one that is not the server's decision: the token is
         // kept and sent again, like after a timeout.
@@ -1437,7 +1440,7 @@ const refreshSession = async (
           ? validateJWTToken(responseData.access_token)
           : { valid: false };
       if (!validation.valid) {
-        console.error('[Auth] Token refresh answer is incomplete');
+        authLogger.error('Token refresh answer is incomplete');
         return null;
       }
       const newAccessToken = String(responseData!.access_token);
@@ -1461,7 +1464,7 @@ const refreshSession = async (
       };
     }
   } catch (error) {
-    console.error('[Auth] Token refresh exception:');
+    authLogger.error('Token refresh exception:');
     return null;
   }
 };
@@ -1541,7 +1544,7 @@ export const acquireValidSession = async (): Promise<ValidSession | null> => {
 
     return null;
   } catch (error) {
-    console.error('[Auth] ensureValidTokens error:');
+    authLogger.error('ensureValidTokens error:');
     return null;
   }
 };
@@ -1626,7 +1629,7 @@ const readStoredToken = async (): Promise<{
 
     return { isValid: false };
   } catch {
-    console.error('[Auth] Unable to read a securely persisted session.');
+    authLogger.error('Unable to read a securely persisted session.');
     return { isValid: false };
   }
 };
@@ -1796,7 +1799,7 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
       'session_marker',
     ]);
   } catch (error) {
-    console.error('[Auth] Error clearing tokens:');
+    authLogger.error('Error clearing tokens:');
   }
   return all;
 };
@@ -1843,8 +1846,8 @@ export const getCachedUserProfile = async () => {
               await cacheUserProfile(profile, generation);
             }
           } catch (err) {
-            console.warn(
-              '[Auth] Failed to fetch customer assignments for cached profile:'
+            authLogger.warn(
+              'Failed to fetch customer assignments for cached profile:'
             );
           }
         }
@@ -1860,7 +1863,7 @@ export const getCachedUserProfile = async () => {
     // through RLS instead of discarding a still-refreshable login.
     return await loadUserProfile(generation, false);
   } catch (error) {
-    console.error('[Auth] Error getting cached profile:');
+    authLogger.error('Error getting cached profile:');
   }
   return null;
 };

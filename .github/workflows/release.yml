@@ -33,7 +33,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run typecheck:tests
       # The same command and warning limit as ci.yml (scripts/workflows.test.mjs checks).
-      - run: npm run lint -- --max-warnings 700
+      - run: npm run lint -- --max-warnings 636
       - run: npm run test:setup
       - name: Audit dependencies and verify every local security backport
         run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
