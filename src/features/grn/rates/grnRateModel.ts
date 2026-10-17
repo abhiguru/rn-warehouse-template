@@ -344,6 +344,25 @@ export interface ChangeFacts {
  * What a Change of a rate in force (This customer only / Everyone) does, or null when the band has no rate
  * on the GRN's day in that scope (nothing is replaced, so nothing to confirm).
  */
+/** A rate in force, shown beside the one being typed: its band and figures. */
+export interface ReferenceRate {
+  band: RateBand;
+  figures: RateFigures;
+}
+
+/**
+ * The rates in force on the GRN's day for this line's weight, to compare with what is typed (owner, 2026-10-17): the
+ * customer's own rate and the rate for everyone (the item's default). Null where there is none.
+ */
+export function referenceRates(row: RateRow, a: PreloadInput): { customer: ReferenceRate | null; everyone: ReferenceRate | null } {
+  const { ctx } = a;
+  const inForce = (customerId: string | null): ReferenceRate | null => {
+    const found = scopeRows(a.rates, row.item_id, customerId, ctx.priceType).find(r => rateState(r, ctx.day) === 'inForce' && holds(r, row.weight));
+    return found ? { band: bandOf(found), figures: figuresOf(found) } : null;
+  };
+  return { customer: ctx.customerId ? inForce(ctx.customerId) : null, everyone: inForce(null) };
+}
+
 export function changeFacts(entry: SheetEntry, row: RateRow, a: PreloadInput): ChangeFacts | null {
   if (entry.scope === 'grn') return null;
   const { ctx } = a;
@@ -422,6 +441,33 @@ export function withoutEntryFor(
 ): { grnRates: GrnRate[]; changes: RateChange[] } {
   const drop = (e: GrnRate) => !(e.item_id === row.item_id && holds(e, row.weight));
   return { grnRates: state.grnRates.filter(drop), changes: state.changes.filter(drop) };
+}
+
+/** The removed saved rates for this GRN only that would price this row again: Undo remove shows when there are any. */
+export function removedFor(removed: GrnRate[], row: RateRow): GrnRate[] {
+  return removed.filter(e => e.item_id === row.item_id && holds(e, row.weight));
+}
+
+/**
+ * Remove on a saved rate for this GRN only: the entries the row drops (as withoutEntryFor), with the saved ones
+ * kept aside in `removed` for Undo remove.
+ */
+export function removeSavedFor(
+  state: { grnRates: GrnRate[]; changes: RateChange[]; removed: GrnRate[] },
+  row: RateRow
+): { grnRates: GrnRate[]; changes: RateChange[]; removed: GrnRate[] } {
+  const next = withoutEntryFor(state, row);
+  const taken = state.grnRates.filter(e => e.saved === true && !next.grnRates.includes(e));
+  return { ...next, removed: [...state.removed, ...taken] };
+}
+
+/** Undo remove: the row's removed saved rates go back into the GRN's set. */
+export function restoreRemovedFor(
+  state: { grnRates: GrnRate[]; removed: GrnRate[] },
+  row: RateRow
+): { grnRates: GrnRate[]; removed: GrnRate[] } {
+  const back = removedFor(state.removed, row);
+  return { grnRates: [...state.grnRates, ...back], removed: state.removed.filter(e => !back.includes(e)) };
 }
 
 /**

@@ -83,6 +83,9 @@ interface GRNFormState {
   // seeded from the server), and the changes of the item's rate that wait for the save.
   grnRates: GrnRate[];
   rateChanges: RateChange[];
+  // Saved rates for this GRN only that Remove took out of grnRates, kept so Undo remove can put them back before
+  // the save (owner, 2026-10-17).
+  removedGrnRates: GrnRate[];
   // The GRN being edited is invoiced: its rates are shown and sent back unchanged, nothing can be set.
   grnInvoiced: boolean;
 
@@ -133,6 +136,7 @@ const createInitialState = (): GRNFormState => ({
   removedImages: [],
   grnRates: [],
   rateChanges: [],
+  removedGrnRates: [],
   grnInvoiced: false,
   currentStep: 0,
   isLoading: false,
@@ -245,6 +249,9 @@ const grnFormSlice = createSlice({
     },
     setRateChanges: (state, action: PayloadAction<RateChange[]>) => {
       state.rateChanges = action.payload;
+    },
+    setRemovedGrnRates: (state, action: PayloadAction<GrnRate[]>) => {
+      state.removedGrnRates = action.payload;
     },
 
     // Header image management
@@ -416,6 +423,7 @@ const grnFormSlice = createSlice({
       state.grnId = action.payload.grnId;
       state.grnRates = action.payload.grnRates ?? [];
       state.rateChanges = [];
+      state.removedGrnRates = [];
       state.grnInvoiced = action.payload.grnInvoiced === true;
       state.removedImages = [];
       state.saveUnconfirmed = false;
@@ -499,6 +507,7 @@ export const {
   adoptSavedLines,
   setGrnRates,
   setRateChanges,
+  setRemovedGrnRates,
   loadGRNData,
   resetForm,
   // #18 Fix: Snapshot actions for optimistic update rollback
@@ -517,6 +526,7 @@ export const selectGRNFormItems = (state: { grnForm: GRNFormState }) => state.gr
 export const selectGRNFormId = (state: { grnForm: GRNFormState }) => state.grnForm.grnId;
 export const selectGRNRates = (state: { grnForm: GRNFormState }) => state.grnForm.grnRates ?? EMPTY_RATES;
 export const selectGRNRateChanges = (state: { grnForm: GRNFormState }) => state.grnForm.rateChanges ?? EMPTY_CHANGES;
+export const selectGRNRemovedRates = (state: { grnForm: GRNFormState }) => state.grnForm.removedGrnRates ?? EMPTY_RATES;
 export const selectGRNInvoiced = (state: { grnForm: GRNFormState }) => state.grnForm.grnInvoiced === true;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];

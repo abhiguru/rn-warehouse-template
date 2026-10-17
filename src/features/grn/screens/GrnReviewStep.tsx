@@ -4,10 +4,12 @@ import {
   Text,
   ScrollView,
   Pressable,
+  LayoutAnimation,
+  StyleSheet,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
+import { fontWeight, iconSize, motion, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { useBackHandler } from '@/hooks/useBackHandler';
@@ -30,8 +32,10 @@ import {
   selectGRNRates,
   selectGRNRateChanges,
   selectGRNInvoiced,
+  selectGRNRemovedRates,
   setGrnRates,
   setRateChanges,
+  setRemovedGrnRates,
   setSaveUnconfirmed,
   adoptSavedLines,
 } from '@/store/slices/grnFormSlice';
@@ -58,6 +62,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { askAlert, showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
+import { HeaderCell, ONE_LINE, TABLE_OUTLINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { GrnRatesSection } from '@/features/grn/rates/GrnRatesSection';
 import { GrnRateSheet } from '@/features/grn/rates/GrnRateSheet';
 import { useGrnRates } from '@/features/grn/rates/useGrnRates';
@@ -69,6 +74,9 @@ import {
   missingCount,
   priceRows,
   priceTypeOf,
+  removeSavedFor,
+  removedFor,
+  restoreRemovedFor,
   withEntry,
   withoutEntryFor,
   type PricedRow,
@@ -99,8 +107,13 @@ type GrnReviewStepProps = {
   mode: 'create' | 'edit';
 };
 
+/** The folding sections of the step, top to bottom. */
+type ReviewSection = 'details' | 'photos' | 'items' | 'rates';
+
 export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const styles = useThemedStyles(makeStyles);
+  const table = useThemedStyles(makeTableStyles);
+  const screen = useTableLayout();
   const t = useTokens();
 
   // Extract ID from URL params for edit mode
@@ -128,6 +141,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // Rates saved with the GRN: the set for this GRN only, and changes of the item's rate (backend migration 86).
   const grnRates = useAppSelector(selectGRNRates);
   const rateChanges = useAppSelector(selectGRNRateChanges);
+  const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
   // Set once this form has created its GRN. A further press of Create never creates again:
@@ -159,8 +173,18 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const canSetRates = canOpenScreen(role, 'itemPricing');
   const scrollRef = useRef<ScrollView>(null);
   const ratesY = useRef(0);
-  // Scroll to Rates each time the block moves while the GRN loads, until the person scrolls.
+  // The sections are rows of one table card: RATES' place in the scroll is the card's plus its own in the card.
+  const cardY = useRef(0);
+  // Scroll to Rates each time the block moves while the GRN loads, until the person scrolls or opens a section.
   const ratesFocusPending = useRef(openedOnRates);
+  // The sections fold, one open at a time (owner, 2026-10-17): ITEMS when the step opens, RATES when it was
+  // opened from the GRN's Rates. A closed section shows a one-line summary under its heading.
+  const [openSection, setOpenSection] = useState<ReviewSection | null>(openedOnRates ? 'rates' : 'items');
+  const toggleSection = (section: ReviewSection) => {
+    ratesFocusPending.current = false;
+    LayoutAnimation.configureNext(LayoutAnimation.create(motion.standard, 'easeInEaseOut', 'opacity'));
+    setOpenSection((open) => (open === section ? null : section));
+  };
   const [sheetRow, setSheetRow] = useState<PricedRow | null>(null);
   const rateCtx = useMemo(
     () => ({ customerId: header.customer_id || null, day: toCalendarDay(header.date || new Date()), priceType: priceTypeOf(header.pricing_mode) }),
@@ -189,7 +213,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     setSnackbarMessage(tr('grn.review.ratesOtherTypeRemoved'));
     setSnackbarVisible(true);
   }, [rateCtx.priceType, grnRates, rateChanges, grnInvoiced, canSetRates, dispatch]);
-  const scrollToRates = () => scrollRef.current?.scrollTo({ y: Math.max(0, ratesY.current - space.lg), animated: true });
+  const scrollRatesIntoView = () => scrollRef.current?.scrollTo({ y: Math.max(0, cardY.current + ratesY.current - space.lg), animated: true });
+  /** Opens RATES and scrolls to it: at once when it is open, else once it has moved into place. */
+  const scrollToRates = () => {
+    if (openSection === 'rates') {
+      scrollRatesIntoView();
+      return;
+    }
+    ratesFocusPending.current = true;
+    LayoutAnimation.configureNext(LayoutAnimation.create(motion.standard, 'easeInEaseOut', 'opacity'));
+    setOpenSection('rates');
+  };
   const saveRateEntry = (entry: SheetEntry) => {
     if (!sheetRow) return;
     const next = withEntry({ grnRates, changes: rateChanges }, sheetRow.item_id, entry, rateCtx);
@@ -197,10 +231,41 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     dispatch(setRateChanges(next.changes));
     setSheetRow(null);
   };
-  const undoRateEntry = (row: PricedRow) => {
+  const dropRateEntry = (row: PricedRow) => {
     const next = withoutEntryFor({ grnRates, changes: rateChanges }, row);
     dispatch(setGrnRates(next.grnRates));
     dispatch(setRateChanges(next.changes));
+  };
+  /**
+   * Undo change takes back an edit made in this form at once; Remove drops a rate this GRN already has, so it asks
+   * first (owner, 2026-10-17: it acted with no question and nothing on screen said it waits for the save).
+   */
+  const undoRateEntry = (row: PricedRow) => {
+    if (!(row.rate?.source === 'grn' && row.rate.entry?.saved === true)) {
+      dropRateEntry(row);
+      return;
+    }
+    void askAlert(
+      tr('grn.rates.removeTitle'),
+      tr('grn.rates.removeMessage', { item: row.item_name }),
+      [
+        { text: tr('common.cancel'), style: 'cancel', value: false },
+        { text: tr('grn.rates.remove'), style: 'destructive', value: true },
+      ],
+      false
+    ).then(remove => {
+      if (!remove) return;
+      const next = removeSavedFor({ grnRates, changes: rateChanges, removed: removedRates }, row);
+      dispatch(setGrnRates(next.grnRates));
+      dispatch(setRateChanges(next.changes));
+      dispatch(setRemovedGrnRates(next.removed));
+    });
+  };
+  /** Undo remove: the rate this GRN had goes back, before the save (owner, 2026-10-17). */
+  const restoreRateEntry = (row: PricedRow) => {
+    const next = restoreRemovedFor({ grnRates, removed: removedRates }, row);
+    dispatch(setGrnRates(next.grnRates));
+    dispatch(setRemovedGrnRates(next.removed));
   };
   /** `p_rates` as the form holds them now. */
   const ratesToSave = () => (canSetRates ? buildRates({ grnRates, changes: rateChanges, ctx: rateCtx, lines: items, invoiced: grnInvoiced }) : undefined);
@@ -645,33 +710,70 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // FIORI BUILDING BLOCKS (plain render helpers, so rows are not remounted)
   // ============================================================================
 
+  /** A section heading that opens and closes its section; `closedLine` shows under it while it is closed. */
   const renderSectionHeader = (
+    section: ReviewSection,
     title: string,
-    options?: { count?: number; onEdit?: () => void; editLabel?: string; tag?: string }
-  ) => (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText} accessibilityRole="header">
-        {title.toUpperCase()}
-        {options?.count !== undefined ? ` (${formatNumber(options.count)})` : ''}
-      </Text>
-      {options?.tag ? <StatusTag status="critical" label={options.tag} /> : null}
-      {options?.onEdit ? (
+    options?: { count?: number; onEdit?: () => void; editLabel?: string; tag?: string; closedLine?: string | null }
+  ) => {
+    const open = openSection === section;
+    const heading = `${title.toUpperCase()}${options?.count !== undefined ? ` (${formatNumber(options.count)})` : ''}`;
+    const line = !open && options?.closedLine ? options.closedLine : null;
+    // The whole heading opens and closes the section; the Edit pencil (icon only, the chevron's size, beside it)
+    // sits on top of it as its own target (owner, 2026-10-17). The texts and the chevron let touches through to
+    // the toggle under them and are not read on their own (the toggle's label carries them).
+    return (
+      <View style={styles.sectionHeader}>
         <Pressable
-          onPress={options.onEdit}
-          style={({ pressed }) => [styles.editLink, pressed && styles.editLinkPressed]}
+          onPress={() => toggleSection(section)}
+          style={({ pressed }) => [StyleSheet.absoluteFill, styles.sectionToggle, pressed && styles.sectionTogglePressed]}
           accessibilityRole="button"
-          accessibilityLabel={options.editLabel ?? tr('common.edit')}
-          hitSlop={{ top: space.xs, bottom: space.xs }}
-        >
-          <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
-          <Text style={styles.editLinkText}>{tr('common.edit')}</Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={[title, options?.count !== undefined ? formatNumber(options.count) : null, options?.tag, line].filter(Boolean).join(', ')}
+          testID={`grn-review-section-${section}`}
+        />
+        <View style={styles.sectionTitleBlock} pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionHeaderText}>{heading}</Text>
+            {options?.tag ? <StatusTag wrap status="critical" label={options.tag} /> : null}
+          </View>
+          {line ? (
+            <Text style={styles.sectionClosedLine} numberOfLines={1} testID={`grn-review-section-${section}-line`}>
+              {line}
+            </Text>
+          ) : null}
+        </View>
+        {options?.onEdit ? (
+          <Pressable
+            onPress={options.onEdit}
+            style={({ pressed }) => [styles.editIcon, pressed && styles.editIconPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={options.editLabel ?? tr('common.edit')}
+            testID={`grn-review-section-${section}-edit`}
+          >
+            <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
+        ) : null}
+        <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <Icon name={open ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+        </View>
+      </View>
+    );
+  };
+  /** A section's body: kept mounted while closed (photo uploads and the rate rows keep their state), only hidden. */
+  const sectionBody = (section: ReviewSection) => [table.details, openSection === section ? undefined : styles.sectionHidden];
+  /**
+   * A section is a row of the step's table card (owner, 2026-10-17, as the rows of GRN → Items): closed on the card
+   * colour; open, the heading and its body share one panel on table.insetFill, with no accent bar (owner, 2026-10-17).
+   */
+  const sectionBlock = (section: ReviewSection, first = false) => [
+    styles.section,
+    !first && styles.sectionDivider,
+    openSection === section && styles.sectionOpen,
+  ];
 
-  const renderKeyValue = (label: string, value: React.ReactNode, emphasized = false) => (
-    <View style={styles.keyValueRow} key={label} accessible accessibilityLabel={typeof value === 'string' ? `${label}, ${value}` : undefined}>
+  const renderKeyValue = (label: string, value: React.ReactNode, emphasized = false, first = false) => (
+    <View style={[styles.keyValueRow, !first && table.nestedDivider]} key={label} accessible accessibilityLabel={typeof value === 'string' ? `${label}, ${value}` : undefined}>
       <Text style={styles.keyValueLabel}>{label}</Text>
       {typeof value === 'string' ? (
         <Text style={[styles.keyValueValue, emphasized && styles.keyValueValueEmphasized]}>{value}</Text>
@@ -681,6 +783,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     </View>
   );
 
+  // The Qty column is as wide as its widest number, the total included.
+  const qtyWidth = numberColumnWidth(screen, 40, items.map((item) => formatNumber(item.qty || 0)), [formatNumber(totalQty)]);
   // The item cells, built again only when the lines, the mode or the theme change:
   // a dialog or a photo upload on this step does not redraw every line.
   const itemCells = useMemo(
@@ -690,27 +794,28 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           key={item.grn_trl_id || `item-${index}`}
           item={item}
           index={index}
-          isLast={index === items.length - 1}
+          first={index === 0}
           isProtected={!isCreateMode && item.qty !== item.stock}
+          qtyWidth={qtyWidth}
           styles={styles}
+          table={table}
         />
       )),
-    [items, isCreateMode, styles]
-  );
-
-  const renderSummaryKPI = (icon: string, label: string, value: number) => (
-    <View style={styles.summaryKPI} accessible accessibilityLabel={`${label}, ${formatNumber(value)}`}>
-      <View style={styles.summaryKPIIcon}>
-        <Icon name={icon} size={iconSize.md} color={t.brand.tint} />
-      </View>
-      <View style={styles.summaryKPIContent}>
-        <Text style={styles.summaryKPILabel}>{label}</Text>
-        <Text style={styles.summaryKPIValue}>{formatNumber(value)}</Text>
-      </View>
-    </View>
+    [items, isCreateMode, styles, table, qtyWidth]
   );
 
   const grImages = header.gr_images ?? [];
+  const ratesMissing = !grnInvoiced && stored.status === 'ready' ? missingCount(pricedRows) : 0;
+  const ratesClosedLine =
+    stored.status === 'loading'
+      ? tr('grn.rates.loading')
+      : stored.status === 'error'
+        ? tr('grn.rates.loadErrorTitle')
+        : grnInvoiced
+          ? tr('grn.review.closedRatesInvoiced')
+          : ratesMissing > 0
+            ? null
+            : tr('grn.review.closedRatesAll');
 
   return (
     <View style={styles.container}>
@@ -733,11 +838,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          <View style={styles.table} onLayout={(e) => { cardY.current = e.nativeEvent.layout.y; }} testID="grn-review-table">
           {/* GRN details */}
-          {renderSectionHeader(tr('grn.steps.details'), { onEdit: handleNavigateToHeader, editLabel: tr('grn.review.editDetails') })}
-          <View style={styles.card}>
-            <View style={styles.cardBody}>
-              {renderKeyValue(tr('common.grnNumber'), header.gr_no || tr('common.notSet'), true)}
+          <View style={sectionBlock('details', true)}>
+          {renderSectionHeader('details', tr('grn.steps.details'), {
+            onEdit: handleNavigateToHeader,
+            editLabel: tr('grn.review.editDetails'),
+            closedLine: [header.gr_no, header.date ? formatReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · '),
+          })}
+          <View style={sectionBody('details')} testID="grn-review-body-details">
+            <View style={table.nested}>
+              {renderKeyValue(tr('common.grnNumber'), header.gr_no || tr('common.notSet'), true, true)}
               {header.registration ? renderKeyValue(tr('grn.header.vehicleRegistration'), header.registration) : null}
               {renderKeyValue(tr('common.date'), formatReviewDate(header.date))}
               {renderKeyValue(tr('common.customer'), header.customer_name || tr('grn.review.notSelected'))}
@@ -747,23 +858,35 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               {header.leon
                 ? renderKeyValue(
                     tr('grn.header.leon'),
-                    <StatusTag status="positive" label={tr('common.on')} />
+                    <StatusTag wrap status="positive" label={tr('common.on')} />
                   )
                 : null}
 
               {header.note ? (
-                <View style={styles.notesSection}>
+                <View style={[styles.notesSection, table.nestedDivider]}>
                   <Text style={styles.notesLabel}>{tr('common.notes')}</Text>
                   <Text style={styles.notesValue}>{header.note}</Text>
                 </View>
               ) : null}
+
+              {/* The totals, here since the Summary section went (owner, 2026-10-17) */}
+              <View style={styles.totalsSection}>
+                {renderKeyValue(tr('grn.review.totalItems'), formatNumber(totalItems), true, true)}
+                {renderKeyValue(tr('grn.review.totalQuantity'), formatNumber(totalQty), true)}
+              </View>
             </View>
           </View>
 
+          </View>
+
           {/* GRN photos */}
-          {renderSectionHeader(tr('grn.review.photosTitle'), { count: grImages.length > 0 ? grImages.length : undefined })}
-          <View style={styles.card}>
-            <View style={styles.cardBody}>
+          <View style={sectionBlock('photos')}>
+          {renderSectionHeader('photos', tr('grn.review.photosTitle'), {
+            count: grImages.length > 0 ? grImages.length : undefined,
+            closedLine: grImages.length > 0 ? formatCount(grImages.length, 'photo') : tr('grn.review.closedNoPhotos'),
+          })}
+          <View style={sectionBody('photos')} testID="grn-review-body-photos">
+            <View style={[table.nested, styles.photosBody]}>
               <Text style={styles.imagesSectionSubtitle}>
                 {tr('grn.review.photosHint')}
               </Text>
@@ -818,18 +941,37 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </View>
           </View>
 
+          </View>
+
           {/* Items */}
-          {renderSectionHeader(tr('common.items'), { count: items.length, onEdit: handlePrevious, editLabel: tr('grn.review.editItems') })}
-          <View style={styles.card}>
+          <View style={sectionBlock('items')}>
+          {renderSectionHeader('items', tr('common.items'), {
+            count: items.length,
+            onEdit: handlePrevious,
+            editLabel: tr('grn.review.editItems'),
+            closedLine: tr('grn.review.closedItems', { quantity: formatNumber(totalQty) }),
+          })}
+          <View style={sectionBody('items')} testID="grn-review-body-items">
             {items.length === 0 ? (
-              <View style={styles.emptyState}>
+              <View style={[table.nested, styles.emptyState]}>
                 <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
                 <Text style={styles.emptyStateTitle}>{tr('grn.review.emptyTitle')}</Text>
                 <Text style={styles.emptyStateSubtitle}>{tr('grn.review.emptySubtitle')}</Text>
               </View>
             ) : (
-              <View>{itemCells}</View>
+              <View style={table.nested} testID="grn-review-items-table">
+                <View style={table.nestedHeader}>
+                  <HeaderCell style={table.grow}>{tr('grn.rates.colItem')}</HeaderCell>
+                  <HeaderCell numeric style={{ width: qtyWidth }}>{tr('grn.item.qtyShort')}</HeaderCell>
+                </View>
+                {itemCells}
+                <View style={styles.itemsTotal} accessible accessibilityLabel={`${tr('grn.review.totalQuantity')}, ${formatNumber(totalQty)}`}>
+                  <Text style={[table.primaryStrong, table.grow]}>{tr('common.total')}</Text>
+                  <Text style={[table.numberStrong, { width: qtyWidth }]} {...ONE_LINE}>{formatNumber(totalQty)}</Text>
+                </View>
+              </View>
             )}
+          </View>
           </View>
 
           {/* Rates: administrators and supervisors only */}
@@ -837,14 +979,16 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             <View
               onLayout={(e) => {
                 ratesY.current = e.nativeEvent.layout.y;
-                if (ratesFocusPending.current && items.length > 0) scrollToRates();
+                if (ratesFocusPending.current && items.length > 0) scrollRatesIntoView();
               }}
+              style={sectionBlock('rates')}
               testID="grn-rates-section"
             >
-              {renderSectionHeader(tr('grn.rates.title'), {
-                tag: !grnInvoiced && stored.status === 'ready' && missingCount(pricedRows) > 0 ? tr('grn.rates.withoutRate', { count: missingCount(pricedRows) }) : undefined,
+              {renderSectionHeader('rates', tr('grn.rates.title'), {
+                tag: ratesMissing > 0 ? tr('grn.rates.withoutRate', { count: ratesMissing }) : undefined,
+                closedLine: ratesClosedLine,
               })}
-              <View style={styles.card}>
+              <View style={sectionBody('rates')} testID="grn-review-body-rates">
                 <GrnRatesSection
                   rows={pricedRows}
                   status={stored.status}
@@ -855,20 +999,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                   onChange={setSheetRow}
                   onAdd={setSheetRow}
                   onUndo={undoRateEntry}
+                  canRestore={row => removedFor(removedRates, row).length > 0}
+                  onRestore={restoreRateEntry}
                   onRetry={() => { void stored.refresh(); }}
                 />
               </View>
             </View>
           ) : null}
-
-          {/* Summary */}
-          {renderSectionHeader(tr('grn.review.summary'))}
-          <View style={styles.card}>
-            <View style={styles.summaryGrid}>
-              {renderSummaryKPI('format-list-numbered', tr('grn.review.totalItems'), totalItems)}
-              {renderSummaryKPI('counter', tr('grn.review.totalQuantity'), totalQty)}
-            </View>
           </View>
+
         </ScrollView>
 
         {/* Bottom action bar */}
@@ -895,6 +1034,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           input={preloadInput}
           customerName={header.customer_name || tr('common.unknown')}
           priceTypeText={rateCtx.priceType === 'one_time' ? tr('grn.header.oneTime') : tr('grn.header.monthly')}
+          grnNumber={header.gr_no || undefined}
           onSave={saveRateEntry}
         />
       ) : null}
@@ -1008,18 +1148,22 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 }
 
 type GrnReviewStyles = ReturnType<typeof makeStyles>;
+type TableStyles = ReturnType<typeof makeTableStyles>;
 
 interface GrnReviewItemCellProps {
   item: GRNItemData;
   index: number;
-  isLast: boolean;
+  first: boolean;
   /** A stored line with dispatches: its quantity cannot change. */
   isProtected: boolean;
+  /** The Qty column's width, the same in every row. */
+  qtyWidth: number;
   styles: GrnReviewStyles;
+  table: TableStyles;
 }
 
-/** One line of the review's item list; drawn again only when its own props change. */
-const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, isLast, isProtected, styles }: GrnReviewItemCellProps) {
+/** One line of the review's Items table (Item | Qty); drawn again only when its own props change. */
+const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, first, isProtected, qtyWidth, styles, table }: GrnReviewItemCellProps) {
   const qty = item.qty || 0;
   // The weight of one package ("50 kg each"); null when the line has none, and then nothing is shown or said.
   const weightText = formatWeightEach(item.weight);
@@ -1039,43 +1183,19 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, index, i
   ].filter(Boolean);
 
   return (
-    <View
-      style={[styles.objectCell, !isLast && styles.objectCellBorder]}
-      accessible
-      accessibilityLabel={a11yParts.join(', ')}
-    >
-      <View style={styles.objectCellAvatar}>
-        <Text style={styles.objectCellAvatarText}>{formatNumber(index + 1)}</Text>
-      </View>
-
-      <View style={styles.objectCellContent}>
-        <Text style={styles.objectCellHeadline} numberOfLines={2}>
-          {item.item_name}
-        </Text>
-
-        {item.packaging ? (
-          <Text style={styles.objectCellSubheadline} numberOfLines={1}>
-            {item.packaging}
-          </Text>
-        ) : null}
-
-        <View style={styles.objectCellFootnote}>
-          {weightText !== null && <StatusTag status="neutral" label={weightText} icon="weight-kilogram" />}
-          {rack ? <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
-          {packageMark ? <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
-          {imageCount > 0 && (
-            <StatusTag status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />
-          )}
+    <View style={[styles.itemRow, !first && table.nestedDivider]} accessible accessibilityLabel={a11yParts.join(', ')}>
+      <View style={table.grow}>
+        <Text style={table.primaryStrong}>{item.item_name}</Text>
+        {item.packaging ? <Text style={table.secondary} numberOfLines={1}>{item.packaging}</Text> : null}
+        <View style={styles.itemTags}>
+          {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
+          {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
+          {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
+          {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
+          {isProtected && <StatusTag wrap status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />}
         </View>
       </View>
-
-      <View style={styles.objectCellStatus}>
-        <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
-        <Text style={styles.qtyLabel}>{tr('grn.item.qtyShort')}</Text>
-        {isProtected && (
-          <StatusTag status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />
-        )}
-      </View>
+      <Text style={[table.number, { width: qtyWidth }]} {...ONE_LINE}>{formatNumber(qty)}</Text>
     </View>
   );
 });
@@ -1089,39 +1209,50 @@ const makeStyles = (t: ThemeTokens) => ({
   scrollView: { flex: 1 },
   scrollContent: { padding: space.lg, paddingBottom: space.xxl },
 
+  /** The step's one table card; each section is a row of it. */
+  table: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    borderWidth: TABLE_OUTLINE,
+    borderColor: t.table.outline,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  section: { backgroundColor: t.surface.card },
+  sectionDivider: { borderTopWidth: 1, borderTopColor: t.table.separator },
+  sectionOpen: { backgroundColor: t.table.insetFill },
   sectionHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    minHeight: touchTarget,
-    paddingHorizontal: space.xs,
+    gap: space.sm,
+    minHeight: touchTarget + space.sm,
+    paddingVertical: space.sm,
+    paddingLeft: space.md + space.xxs,
+    paddingRight: space.sm,
   },
+  sectionToggle: {},
+  sectionTogglePressed: { backgroundColor: t.brand.subtle },
+  sectionTitleBlock: { flex: 1, gap: space.xxs },
+  sectionTitleRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: space.sm },
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
-    flex: 1,
+    color: t.text.primary,
+    flexShrink: 1,
   },
-  editLink: {
-    flexDirection: 'row' as const,
+  sectionClosedLine: { ...typography.subhead, color: t.text.secondary },
+  sectionHidden: { display: 'none' as const },
+  editIcon: {
+    width: touchTarget,
+    height: touchTarget,
     alignItems: 'center' as const,
-    gap: space.xs,
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
   },
-  editLinkPressed: { backgroundColor: t.brand.subtle },
-  editLinkText: { ...typography.callout, color: t.brand.tint },
+  editIconPressed: { backgroundColor: t.brand.subtle },
 
-  card: {
-    backgroundColor: t.surface.card,
-    borderRadius: radius.card,
-    marginBottom: space.lg,
-    overflow: 'hidden' as const,
-    ...t.shadow[2],
-  },
-  cardBody: { padding: space.lg },
+  photosBody: { padding: space.sm },
 
   keyValueRow: {
     flexDirection: 'row' as const,
@@ -1130,66 +1261,38 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     columnGap: space.md,
     paddingVertical: space.sm,
-    minHeight: touchTarget - space.sm,
+    paddingHorizontal: space.sm,
+    minHeight: touchTarget - space.xs,
   },
   keyValueLabel: { ...typography.subhead, color: t.text.secondary },
   keyValueValue: { ...typography.body, color: t.text.primary, textAlign: 'right' as const, flexShrink: 1 },
   keyValueValueEmphasized: { fontWeight: fontWeight.semibold },
 
-  notesSection: {
-    marginTop: space.sm,
-    paddingTop: space.md,
-    borderTopWidth: 1,
-    borderTopColor: t.border.divider,
-  },
+  notesSection: { paddingVertical: space.sm, paddingHorizontal: space.sm },
   notesLabel: { ...typography.subhead, color: t.text.secondary, marginBottom: space.xs },
   notesValue: { ...typography.body, color: t.text.primary },
+  totalsSection: { borderTopWidth: 1, borderTopColor: t.table.separator },
 
   imagesSectionSubtitle: { ...typography.subhead, color: t.text.secondary, marginBottom: space.md },
 
-  objectCell: {
+  itemRow: {
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,
-    gap: space.md,
-    minHeight: 72,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-    backgroundColor: t.surface.card,
+    gap: space.sm,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.sm,
   },
-  objectCellBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: t.border.divider,
-  },
-  objectCellAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: t.brand.subtle,
-  },
-  objectCellAvatarText: {
-    ...typography.headline,
-    color: t.brand.tint,
-    fontVariant: ['tabular-nums' as const],
-  },
-  objectCellContent: { flex: 1, gap: space.xxs },
-  objectCellHeadline: { ...typography.headline, color: t.text.primary },
-  objectCellSubheadline: { ...typography.subhead, color: t.text.secondary },
-  objectCellFootnote: {
+  itemTags: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.s6, marginTop: space.xs },
+  itemsTotal: {
     flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: space.s6,
-    marginTop: space.xs,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: t.table.separator,
   },
-  objectCellStatus: { alignItems: 'flex-end' as const, gap: space.xxs },
-  qtyValue: {
-    ...typography.headline,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  qtyLabel: { ...typography.caption1, color: t.text.secondary },
-
   emptyState: {
     alignItems: 'center' as const,
     paddingVertical: space.xxxl,
@@ -1198,35 +1301,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   emptyStateTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
   emptyStateSubtitle: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
-
-  summaryGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    padding: space.lg,
-    gap: space.lg,
-  },
-  summaryKPI: {
-    flex: 1,
-    minWidth: 140,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.md,
-  },
-  summaryKPIIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: t.brand.subtle,
-  },
-  summaryKPIContent: { flex: 1 },
-  summaryKPILabel: { ...typography.footnote, color: t.text.secondary },
-  summaryKPIValue: {
-    ...typography.title3,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
 
   snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button, ...t.shadow[3] },
   snackbarText: { ...typography.subhead, color: t.text.inverse },

@@ -36,6 +36,8 @@ const CONTROL_HIT_SLOP: Insets = {
 export interface SegmentedControlOption {
   value: string;
   label: string;
+  /** What a screen reader says when the label alone does not (a document number). */
+  a11yLabel?: string;
   disabled?: boolean;
 }
 
@@ -56,6 +58,8 @@ export interface SegmentedControlProps {
   hapticFeedback?: boolean;
   /** Container style override */
   style?: StyleProp<ViewStyle>;
+  /** Less padding in each segment, and a label that shrinks a little rather than end in "…" (a document number). */
+  dense?: boolean;
 }
 
 export const SegmentedControl: React.FC<SegmentedControlProps> = ({
@@ -67,6 +71,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   disabled = false,
   hapticFeedback = true,
   style,
+  dense = false,
 }) => {
   const [pressedIndex, setPressedIndex] = useState<number | null>(null);
   const styles = useThemedStyles(makeStyles);
@@ -126,6 +131,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
                 isPressed && !isSelected && styles.segmentPressed,
                 isPressed && isSelected && styles.segmentSelectedPressed,
                 isOptionDisabled && styles.segmentDisabled,
+                dense && styles.segmentDense,
               ]}
               hitSlop={CONTROL_HIT_SLOP}
               onPress={() => handlePress(option.value, option.disabled)}
@@ -137,7 +143,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
                 selected: isSelected,
                 disabled: isOptionDisabled,
               }}
-              accessibilityLabel={option.label}
+              accessibilityLabel={option.a11yLabel ?? option.label}
             >
               <Text
                 style={[
@@ -145,6 +151,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
                   isSelected && styles.segmentTextSelected,
                 ]}
                 numberOfLines={1}
+                {...(dense ? { adjustsFontSizeToFit: true, minimumFontScale: 0.8 } : {})}
               >
                 {option.label}
               </Text>
@@ -473,6 +480,9 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
     borderRadius: radius.button - space.xxs,
     backgroundColor: 'transparent',
+  },
+  segmentDense: {
+    paddingHorizontal: space.xs,
   },
   segmentSelected: {
     backgroundColor: t.brand.fill,

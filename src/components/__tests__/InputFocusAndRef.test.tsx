@@ -63,3 +63,15 @@ it('CR-67: re-rendering does not detach and re-attach the caller\'s ref', async 
   expect(callerRef).toHaveBeenCalledTimes(1);
   expect(callerRef.mock.calls[0][0]).toBeTruthy();
 });
+
+it('invalid draws the error outline with no message under the field; the caller hint carries the reason', () => {
+  let tree!: ReturnType<typeof create>;
+  act(() => { tree = create(<Input label="Up to (kg)" value="10" onChangeText={() => undefined} invalid accessibilityHint="Must include 12 kg" />); });
+  const texts = tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).join(''));
+  expect(texts.some(x => x.includes('Must include'))).toBe(false);
+  expect(field(tree).props.accessibilityHint).toBe('Must include 12 kg');
+  const outlined = tree.root.findAll(n => typeof n.type === 'string' && JSON.stringify(n.props.style ?? null).includes('"borderWidth":2'));
+  expect(outlined.length).toBeGreaterThan(0);
+  act(() => tree.update(<Input label="Up to (kg)" value="10" onChangeText={() => undefined} />));
+  expect(tree.root.findAll(n => typeof n.type === 'string' && JSON.stringify(n.props.style ?? null).includes('"borderWidth":2'))).toHaveLength(0);
+});

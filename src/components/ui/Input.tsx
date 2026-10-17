@@ -42,6 +42,9 @@ export interface InputProps extends TextInputProps {
   helperText?: string;
   /** Error message (overrides helperText per Fiori spec) */
   error?: string;
+  /** Draws the error state (ring and label colour) without a message under the field: the message is given another
+   * way (the caller's accessibilityHint for a screen reader, a toast). */
+  invalid?: boolean;
   /** Custom container style */
   containerStyle?: ViewStyle;
   /** Custom input style */
@@ -87,6 +90,7 @@ export function Input({
   label,
   helperText,
   error,
+  invalid,
   containerStyle,
   inputStyle,
   leftIcon,
@@ -117,7 +121,7 @@ export function Input({
   const currentValue = value !== undefined ? String(value) : internalValue;
   const hasValue = currentValue.length > 0;
   const isOverLimit = maxLength ? currentValue.length > maxLength : false;
-  const isInvalid = hasError || isOverLimit;
+  const isInvalid = hasError || isOverLimit || invalid === true;
 
   // Both the caller and the clear button need the TextInput.
   // A stable callback: a new one on every render would detach and re-attach the caller's ref each time.

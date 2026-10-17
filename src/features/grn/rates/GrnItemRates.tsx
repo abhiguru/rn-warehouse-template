@@ -49,9 +49,9 @@ import { useGrnItemRates } from './useGrnItemRates';
 import { grnRatesStepPath, yourRatePath } from './paths';
 
 /** Column widths at font scale 1; each grows with its widest value. */
-const RENT_WIDTH = 56;
-const LABOUR_WIDTH = 56;
-const TAX_WIDTH = 40;
+export const RENT_WIDTH = 56;
+export const LABOUR_WIDTH = 56;
+export const TAX_WIDTH = 40;
 
 const makeStyles = (th: ThemeTokens) => ({
   /** The table card inside the Overview's padded content: no margins of its own. */
@@ -88,9 +88,9 @@ const SOURCE_LABEL = {
 } as const;
 
 /** A money cell: "88.00" (the ₹ is in the heading); "—" without a rate. */
-const amountText = (value: number | null): string => (value === null ? '—' : formatNumber(value, 2));
+export const amountText = (value: number | null): string => (value === null ? '—' : formatNumber(value, 2));
 /** A tax cell: "18" or "12.5" (the % is in the heading); "—" without a rate. */
-const taxText = (value: number | null): string => (value === null ? '—' : localizeDigits(String(value)));
+export const taxText = (value: number | null): string => (value === null ? '—' : localizeDigits(String(value)));
 
 /** The items that have more than one row: their rows show the weight of one bag to tell them apart. */
 export function repeatedItems(groups: RateGroup[]): Set<string> {

@@ -55,6 +55,18 @@ describe.each(THEMES)('status tag in %s %s', (brand, mode) => {
     }
   });
 
+  it('with wrap, the label is not held to one line (English and Gujarati) and still gives way to its box', () => {
+    for (const lang of ['en', 'gu'] as const) {
+      setLanguage(lang);
+      const tree = render(brand, mode, <StatusTag wrap status="neutral" label={LONG} />);
+      const label = hosts(tree.root, 'Text')[0];
+      expect(label.props.numberOfLines).toBeUndefined();
+      expect(label.props.adjustsFontSizeToFit).toBeUndefined();
+      expect(flat(label)).toMatchObject({ flexShrink: 1 });
+      act(() => tree.unmount());
+    }
+  });
+
   it('keeps the look of the tag where there is room: the box, the padding and the icon are as they were', () => {
     const tree = render(brand, mode, <StatusTag status="positive" label="In stock" />);
     const box = tree.root.findAll(node => (node.type as unknown) === 'View' && node.props.accessibilityLabel === 'In stock')[0];

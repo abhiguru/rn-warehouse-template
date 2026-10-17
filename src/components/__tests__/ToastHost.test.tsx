@@ -4,7 +4,7 @@
  * one, drawn in the inverse colours of every brand and mode.
  */
 import React from 'react';
-import { AccessibilityInfo, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Keyboard, StyleSheet } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastHost } from '../ToastHost';
@@ -117,6 +117,22 @@ describe('showToast with ToastHost', () => {
     // CR-30: a live region on top of the announcement would make TalkBack read it twice.
     expect(tree!.root.findAll(n => n.props.accessibilityLiveRegion !== undefined)).toHaveLength(0);
     expect(announce).toHaveBeenCalledTimes(1);
+  });
+
+  it('rises above the keyboard while it is up, and comes back down when it hides', () => {
+    const handlers: Record<string, (e?: unknown) => void> = {};
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, fn: (e?: unknown) => void) => {
+      handlers[name] = fn;
+      return { remove: jest.fn() };
+    }) as unknown as typeof Keyboard.addListener);
+    mount();
+    act(() => showToast('Must include 12 kg', { durationMs: 2000 }));
+    const bottom = () => StyleSheet.flatten(tree!.root.find(n => n.props.pointerEvents === 'box-none').props.style).bottom;
+    act(() => handlers.keyboardDidShow({ endCoordinates: { height: 300 } }));
+    expect(bottom()).toBe(300 + space.xl);
+    act(() => handlers.keyboardDidHide());
+    expect(bottom()).toBe(BOTTOM_INSET + space.xl);
+    listen.mockRestore();
   });
 
   it('does nothing when no host is mounted', () => {

@@ -74,6 +74,54 @@
   steps 1 and 2 under it (step 1 replaced in, step 2 pushed) and Edit details opens step 1, so the wizard
   still goes back one step at a time. A rate from an invoice and a row without a rate stay plain. New text:
   "Opens Edit GRN at its Rates, where this rate is changed." (screen-reader hint).
+- **GRN Review step: the sections fold, one open at a time (owner, 2026-10-17).** On new GRN and Edit GRN, step 3
+  (Review), the headings GRN DETAILS, GRN PHOTOS, ITEMS and RATES open and close their section; opening one closes
+  the one that was open, and tapping the open one closes it. ITEMS is open when the step opens; RATES when the
+  step was opened from GRN → Overview → Rates, and RATES opens by itself when a save is blocked by a missing or
+  refused rate. A closed heading carries one line: GRN DETAILS "number · date · customer", GRN PHOTOS "N photos"
+  or "No photos yet", ITEMS "Total quantity N", RATES "Every item has a rate" (or the red "N without a rate" tag,
+  "Loading rates", "Couldn't load the rates", "Invoiced; the rates cannot change here"). The Edit pencils stay
+  beside the headings as their own buttons. The SUMMARY section is gone: Total items and Total quantity are the
+  last lines of GRN DETAILS. A closed section stays mounted, only hidden, so photo uploads and rate rows keep
+  their state.
+  The step is one table card (§13.7, as GRN → a GRN → Items): each section is a row; the open one is a panel on
+  table.insetFill (no accent bar or accent chevron), its heading in the text colour; the
+  Edit pencil is an icon beside the chevron. Inside the panel: GRN DETAILS as a nested label/value table with the
+  totals under a separator; GRN PHOTOS in a nested card; ITEMS as a nested table Item | Qty with a Total row;
+  RATES as a nested table Item | Rent (₹) | Labour (₹) | Tax (%) (labour and tax under the item when crowded, as
+  the Overview's Rates), the weight of one bag under the item (no weight band, as on the Overview), the tags and the row's actions under it.
+- **Review → RATES: Change rate / Add rate is a full screen (2026-10-17).** Replaces the bottom sheet. Header: ✕
+  at the start, then "Change rate · 1 kg each · Monthly" over the item name, each on one line (the price type is the
+  GRN's, a fact here). Top to bottom:
+  - **For**: the line saying what the choice does ("Only WMWM8885 changes" / "Only this customer's rate changes" /
+    "The default rate changes", one line, main text colour, accent chevron) opens an outlined panel with what each
+    choice means above the choices; the choices are the GRN's own number first (read out "This GRN, WMWM8885"; "This
+    GRN" before it has one), then Customer | Everyone (chips at large text; `SegmentedControl` takes `dense` and
+    options take `a11yLabel`, as do `ChoiceChips` options).
+  - **Dates**: a full-width filled pill with a locked calendar, "From 10 Oct 2026 · No end date" (the start never
+    changes here); for Customer and Everyone the No end date / Until a date choice is always shown under it.
+  - **Weight band**: "From (kg)" / "Up to (kg)", editable when changing too, checked when a field is left or
+    stepped: only the wrong field turns red and its label names the limit ("From (kg) · at most 1 kg", "Up to (kg)
+    · at least 1 kg", "· whole kg"; `Input` takes `invalid`); a clash with another rate is said in words.
+  - **"View customer and everyone rates"**: a full-width outlined pill, closed by default, that opens into the same
+    box: "In force on 10 Oct 2026" and a table of this GRN's own (or waiting) rate, the customer's rate ("None" when
+    there is none) and the rate for everyone, for this weight.
+  - **Rent ₹/month, Labour ₹, Tax**: side by side (stacked from font scale 1.3), rent and labour with two decimals,
+    no asterisks (every field is required), + and − under each, 8 apart (₹0.25, ₹0.25, 1%; the weights 1 kg; never
+    below 0, tax not above 100); the keypad's Next moves through the fields, Done on the last.
+  - **Save rate** pinned above the keyboard; on Change it is disabled until something changed; a refused save scrolls
+    to the first wrong field. ✕ and Back ask "Discard changes?" when something changed.
+  The confirmation and what is saved are unchanged. Toasts now sit above the keyboard (`ToastHost`).
+- **Review step: tags wrap (2026-10-17).** `StatusTag` takes `wrap`: the label goes onto a second line instead of
+  ending in "…". The Review step's tags use it (RATES: "Customer rate", "No rate", "Removed when you save"…;
+  ITEMS: weight, rack, mark, photos, locked; the section heading's red tag). Tags elsewhere stay one line.
+- **Review → RATES: Remove asks first (2026-10-17).** "Remove" on a rate this GRN already has (tag "This GRN
+  only") now asks "Remove this GRN's own rate?" (the item is then charged at the customer's or default rate; the
+  rate goes when the GRN is saved) with Cancel / Remove; before, one tap dropped it with no question. "Undo
+  change" on an edit made in the form still acts at once. Remove's TalkBack label now says Remove, not Undo.
+  After Remove the row shows the tag "Removed when you save" and an "Undo remove" button that puts the GRN's own
+  rate back before the save (kept in the form as `removedGrnRates`; cleared when a GRN is loaded). A rate typed on
+  the row after Remove comes first: Undo remove shows again once that change is undone.
 - **Cleanup: the edit screen is the invoice pencil's alone (2026-10-16).** `item-rates/edit` opens only with
   `mode=invoice` and a customer (the price pencil of an invoice line); it resolves to Correct rate or Add
   customer rate itself, and any other link (another mode, or no customer) shows "This rate has changed or no

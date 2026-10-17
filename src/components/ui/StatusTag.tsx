@@ -27,6 +27,8 @@ export interface StatusTagProps {
   /** Override the standard icon; pass null for a category tag with no icon. */
   icon?: string | null;
   style?: StyleProp<ViewStyle>;
+  /** The label wraps onto more lines instead of ending in "…" (a tag in a narrow table column). */
+  wrap?: boolean;
   testID?: string;
 }
 
@@ -49,7 +51,7 @@ const makeStyles = (_t: ThemeTokens) => ({
   },
 });
 
-export function StatusTag({ status, label, icon, style, testID }: StatusTagProps) {
+export function StatusTag({ status, label, icon, style, wrap = false, testID }: StatusTagProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const tone = t.status[status];
@@ -62,7 +64,7 @@ export function StatusTag({ status, label, icon, style, testID }: StatusTagProps
       testID={testID}
     >
       {glyph ? <Icon name={glyph} size={iconSize.xs} color={tone.text} /> : null}
-      <Text style={[styles.text, { color: tone.text }]} maxFontSizeMultiplier={1.6} numberOfLines={1} {...singleLineText(0.9)}>
+      <Text style={[styles.text, { color: tone.text }]} maxFontSizeMultiplier={1.6} {...(wrap ? {} : { numberOfLines: 1, ...singleLineText(0.9) })}>
         {label}
       </Text>
     </View>

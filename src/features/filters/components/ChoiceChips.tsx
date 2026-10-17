@@ -14,7 +14,8 @@ import { fontWeight, iconSize, radius, singleLineText, space, touchTarget, typog
 const HEIGHT = 36;
 
 export interface ChoiceChipsProps<T extends string> {
-  options: { value: T; label: string }[];
+  /** `a11yLabel`: what a screen reader says when the label alone does not (a document number). */
+  options: { value: T; label: string; a11yLabel?: string }[];
   /** Selected value, or undefined when none is. */
   value: T | undefined;
   onChange: (value: T) => void;
@@ -59,7 +60,7 @@ export function ChoiceChips<T extends string>({ options, value, onChange, access
             style={styles.target}
             onPress={() => onChange(option.value)}
             accessibilityRole="radio"
-            accessibilityLabel={option.label}
+            accessibilityLabel={option.a11yLabel ?? option.label}
             accessibilityState={{ selected, checked: selected }}
           >
             {({ pressed }) => (

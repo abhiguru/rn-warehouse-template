@@ -11,7 +11,7 @@
  * Touches around the toast reach the screen under it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { layout, motion, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -88,8 +88,15 @@ function Toast({ toast, onGone }: { toast: ToastRequest; onGone: (id: number) =>
 export function ToastHost() {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastRequest | null>(null);
+  // Above the keyboard while it is up: a toast from a form sheet would otherwise be drawn under it.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => registerToastHost(request => setToast(request)), []);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', e => setKeyboardHeight(e.endCoordinates.height));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { shown.remove(); hidden.remove(); };
+  }, []);
 
   const onGone = useCallback((id: number) => {
     setToast(current => (current?.id === id ? null : current));
@@ -98,7 +105,7 @@ export function ToastHost() {
   if (!toast) return null;
 
   return (
-    <View pointerEvents="box-none" style={[hostStyles.wrapper, { bottom: insets.bottom + space.xl }]}>
+    <View pointerEvents="box-none" style={[hostStyles.wrapper, { bottom: Math.max(insets.bottom, keyboardHeight) + space.xl }]}>
       {/* A new key for each toast: a replacement is drawn afresh, read once and timed anew. */}
       <Toast key={toast.id} toast={toast} onGone={onGone} />
     </View>
