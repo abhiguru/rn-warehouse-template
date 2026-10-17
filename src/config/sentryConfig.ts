@@ -3,6 +3,13 @@
  *
  * GlitchTip is a Sentry-compatible error tracking service.
  * This module provides centralized crash reporting using the @sentry/react-native SDK.
+ *
+ * Consent model (review 2026-10-17, M09, decision D22): reporting is switched on
+ * by the organisation that builds the app (it sets EXPO_PUBLIC_SENTRY_DSN), not by
+ * the person using it; the app has no switch. What leaves the phone is kept small:
+ * the app version, the phone model, the role (never an account id or phone number)
+ * and the error text after redactErrorText. A request body is never sent. See
+ * docs/TELEMETRY_AND_PRIVACY.md section 1.
  */
 
 import * as Sentry from '@sentry/react-native';
@@ -171,6 +178,20 @@ export function sanitizeUrl(urlString: string): string {
 }
 
 /**
+ * A header is redacted when its name contains one of the SENSITIVE_HEADERS
+ * words or one of the secret words isSensitiveKey looks for, so
+ * `x-session-token`, `X-Auth-Cookie` and `x-api-key-v2` are caught, not only
+ * the exact names. The safe direction: a harmless header that contains a word
+ * is redacted too.
+ */
+function isSensitiveHeader(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    SENSITIVE_HEADERS.some(word => lower.includes(word)) || isSensitiveKey(name)
+  );
+}
+
+/**
  * Sanitize HTTP headers to remove authentication tokens and secrets
  */
 export function sanitizeHeaders(
@@ -180,8 +201,7 @@ export function sanitizeHeaders(
   const sanitized: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(headers)) {
-    const lowerKey = key.toLowerCase();
-    if (SENSITIVE_HEADERS.includes(lowerKey)) {
+    if (isSensitiveHeader(key)) {
       sanitized[key] = '[REDACTED]';
     } else if (typeof value === 'string') {
       sanitized[key] = redactSensitiveString(value);
@@ -325,8 +345,12 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
     };
   }
 
-  // Redact User details
+  // Redact User details. The account id is never sent (decision D22): the role
+  // is enough to tell a staff crash from a customer one, and an id would let a
+  // report be tied to one person. setSentryUser no longer sets it; this drops
+  // it should anything else put one on the scope.
   if (event.user) {
+    delete event.user.id;
     if (event.user.phone) {
       event.user.phone = '[REDACTED]';
     }
@@ -362,8 +386,22 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
         ) as Record<string, string>;
       }
     }
-    if (event.request.data) {
-      event.request.data = sanitizeData(event.request.data);
+    // The request body is never sent (decision D22). Pattern filtering cannot
+    // tell an ordinary business name from any other text, so the only safe
+    // content is none. Nothing in the app fills it today.
+    delete event.request.data;
+    // Cookie values are credentials; the names are kept, like header names.
+    const cookies: unknown = event.request.cookies;
+    if (cookies && typeof cookies === 'object') {
+      event.request.cookies = Object.fromEntries(
+        Object.keys(cookies).map(name => [name, '[REDACTED]'])
+      );
+    } else if (cookies) {
+      // A raw cookie string: nothing in it is worth keeping.
+      event.request.cookies = '[REDACTED]' as unknown as Record<string, string>;
+    }
+    if (event.request.env) {
+      event.request.env = sanitizeData(event.request.env) as Record<string, string>;
     }
   }
 
@@ -420,7 +458,8 @@ export function initializeSentry(): void {
     release: Constants.expoConfig?.version || '1.0.0',
     dist: Constants.expoConfig?.android?.versionCode?.toString() || '1',
 
-    // Only enabled when DSN is provided (opt-in)
+    // Switched on by the operator who builds the app with a DSN; there is no
+    // per-person switch (docs/TELEMETRY_AND_PRIVACY.md section 1)
     enabled: !__DEV__ && !!SENTRY_DSN,
 
     // Sample rate for performance monitoring (0 = disabled to reduce overhead)
@@ -444,14 +483,13 @@ export function initializeSentry(): void {
 }
 
 /**
- * Set user context for error reports
- * Call after successful login to associate errors with users
+ * Set the user context for error reports: the role only (decision D22). The
+ * account id is not sent, so a report cannot be tied to one person. Call after a
+ * successful sign-in; without a role there is nothing to send and the context
+ * is cleared.
  */
-export function setSentryUser(userId: string, role?: string): void {
-  Sentry.setUser({
-    id: userId,
-    role: role,
-  });
+export function setSentryUser(role?: string): void {
+  Sentry.setUser(role ? { role } : null);
 }
 
 /**

@@ -214,7 +214,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             });
 
             // Set user context for crash reporting
-            setSentryUser(cachedProfile.id, cachedProfile.role);
+            setSentryUser(cachedProfile.role);
 
             return { session, user: session.user, userProfile: cachedProfile };
           } else {
@@ -246,7 +246,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
               fetchConfigOnce(dispatch, supabaseClient);
 
               // Set user context for crash reporting
-              setSentryUser(profileResult.data.id, profileResult.data.role);
+              setSentryUser(profileResult.data.role);
 
               return {
                 session,
@@ -333,7 +333,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
               fetchConfigOnce(dispatch, supabaseClient);
 
               // Set user context for crash reporting
-              setSentryUser(cachedProfile.id, cachedProfile.role);
+              setSentryUser(cachedProfile.role);
 
               // The cached copy may be up to a day old: ask the server in the
               // background and show what it says now.
@@ -653,7 +653,7 @@ async function reconcileCachedProfile(
   const fresh = (await reloadUserProfile()) as UserProfile | null;
   if (!fresh || generation !== getSessionGeneration() || sameProfile(cached, fresh)) return;
   dispatch(authSlice.actions.setUserProfile(fresh));
-  setSentryUser(fresh.id, fresh.role);
+  setSentryUser(fresh.role);
 }
 
 /**
