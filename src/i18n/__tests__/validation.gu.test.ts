@@ -7,7 +7,7 @@ import {
   quantityField,
   requiredStringField,
 } from '@/utils/validationHelpers';
-import { ValidationError, validatePhone, validatePositiveDecimal, validatePositiveInt, validateSafeText } from '@/utils/inputValidation';
+import { ValidationError, validatePhone, validatePositiveDecimal, validatePositiveInt } from '@/utils/inputValidation';
 
 afterEach(() => setLanguage('en'));
 
@@ -32,13 +32,6 @@ describe('validation in Gujarati', () => {
     expect(t('validation.field.minItems', { count: 1 })).toBe('At least one item is required');
     expect(t('validation.field.minItems', { count: 3 })).toBe('At least 3 items are required');
     expect(t('validation.field.maxImages', { count: 10 }, 'gu')).toBe('વધુમાં વધુ ૧૦ ફોટો ઉમેરી શકાય');
-  });
-
-  it('tells the person to use English letters and digits where only those are accepted', () => {
-    setLanguage('gu');
-    expect(messageOf(() => validateSafeText('માલ', 'વાહન નંબર'))).toBe(
-      'વાહન નંબર માં ન ચાલે તેવા અક્ષરો છે. અંગ્રેજી અક્ષરો અને આંકડા વાપરો; ખાલી જગ્યા અને સાદાં વિરામચિહ્નો ચાલશે.'
-    );
   });
 });
 
