@@ -3,6 +3,7 @@
 // development build. No macOS is needed: `expo config --type introspect` evaluates the same
 // config plugins that `expo prebuild` runs and prints the Info.plist they would write.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -86,4 +87,12 @@ test('the policy decision for each combination of switches', () => {
   );
   assert.deepEqual(transportPolicy(false), { NSAllowsArbitraryLoads: false });
   assert.deepEqual(transportPolicy(true), { NSAllowsArbitraryLoads: false, NSAllowsLocalNetworking: true });
+});
+
+test('npm run ios, the local debug build, generates the development policy', () => {
+  const { scripts } = require('../package.json');
+  assert.match(scripts.ios, /^WAREHOUSE_IOS_LOCAL_NETWORKING=1 expo run:ios$/);
+  // The USB helper's prebuild sets WAREHOUSE_IOS_USB_HOST, which is a development switch too.
+  const usb = readFileSync(new URL('./ios-usb.mjs', import.meta.url), 'utf8');
+  assert.match(usb, /prebuild[^]*WAREHOUSE_IOS_USB_HOST/);
 });
