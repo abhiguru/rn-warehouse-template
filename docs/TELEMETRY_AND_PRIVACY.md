@@ -37,13 +37,24 @@ As user actions and network events occur, breadcrumbs are sanitized before being
 When an unhandled exception or captured error occurs:
 
 - **User Object**: `phone`, `email`, and `ip_address` are explicitly replaced with `[REDACTED]`. Only opaque user UUIDs (`id`) and coarse application roles (`role`) are retained.
-- **Request Payloads**: Request URL, query strings, headers, and request body objects undergo deep recursive sanitization.
+- **Request Payloads**: Request URL, query strings, headers, and request body objects undergo deep recursive sanitization (see the depth cap below).
 - **Extra Context**: Context dictionaries passed to `captureException` are scanned; keys matching sensitive credential names and values matching regex patterns are sanitized.
 - **Tags & Metadata**: Custom tags matching sensitive identifiers are redacted.
 - **Message and Exception Text**: `event.message`, the log entry and the message of every exception in the chain are redacted with the pattern registry, plus the row values PostgreSQL quotes in a constraint error (`Key (mobile)=(...)`, `Failing row contains (...)`) and 64-character session tokens. `captureMessage` applies the same redaction before the SDK is called.
 - **Contexts**: Context objects undergo the same deep recursive sanitization; the trace context (generated ids only) is passed through.
 
-### C. Redaction Pattern Registry
+### C. Recursive Sanitization: Depth Cap and Key Names
+
+`sanitizeData` walks request bodies, `extra`, contexts, breadcrumb data and log-entry parameters:
+
+- **Depth cap (`MAX_DEPTH`, 8 levels)**: it fails closed. An object or array nested deeper than the cap is not returned as it came in. It is replaced by the marker `[TRUNCATED]`, so nothing below the cap leaves the phone. A string below the cap is still scrubbed with the patterns of the next section (a number or boolean is kept, since it carries no secret). Seeing `[TRUNCATED]` in a stored event means the payload was too deep to inspect; send shallower data if you need it in the report.
+- **Strings**: every string leaf is scrubbed with the error-text patterns (the registry below plus 64-character session tokens and quoted row values), at any depth.
+- **Key names**: a key is redacted (`[REDACTED]`, its value is not inspected) when it contains `token`, `secret`, `passw`, `otp`, `authorization`, `cookie`, `credential` or `phone` in any letter case (`identity_token`, `newPassword`, `client_secret`, `Set-Cookie`, `userPhone`), or when the whole name is one of the short names `jwt`, `apikey`, `api_key`, `code` or `auth`. The words are matched anywhere in the name on purpose; a harmless key that happens to contain one (`footprint` contains `otp`) is redacted as well. Keys the app and the Sentry SDK put into events (`isFatal`, `source`, `componentStack`, `statusCode`, `model`, `memory_size`, `boot_time` and the like) do not contain these words, so no allow-list is kept; the tests in `src/config/__tests__/sentryConfig.test.ts` pin a sample of both groups.
+- **Circular references** are replaced by `[CIRCULAR]`.
+
+The Sentry SDK itself normalizes breadcrumb data, contexts and `extra` to its own `normalizeDepth` before `beforeSend`, but not `request.data` or log-entry parameters, and an operator can raise that setting. The cap here does not depend on it.
+
+### D. Redaction Pattern Registry
 
 | Pattern Category | Target Examples                                | Replacement               |
 | ---------------- | ---------------------------------------------- | ------------------------- |

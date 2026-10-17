@@ -51,8 +51,23 @@ export const SENSITIVE_STRING_PATTERNS = [
   },
 ];
 
+// Whole-name matches: short names that are only a secret when they are the
+// entire key (`code`, `auth`, `jwt`), so they are not matched as a substring
+// (`statusCode`, `errorCode` and `author` must survive).
 const SENSITIVE_KEY_REGEX =
   /^(token|access_token|accessToken|refresh_token|refreshToken|auth_token|authToken|password|secret|jwt|apikey|api_key|apiKey|otp|phoneNumber|phone_number|phone|code|credential|cookie|authorization|auth)$/i;
+
+// Substring matches: a key that contains one of these words holds a secret,
+// whatever the rest of the name is (`identity_token`, `newPassword`,
+// `client_secret`, `Set-Cookie`, `userPhone`). The words are deliberately
+// broad; a harmless key that contains one (`footprint` contains `otp`) is
+// redacted too, which is the safe direction. Review 2026-10-17, M01.
+const SENSITIVE_KEY_SUBSTRING_REGEX =
+  /token|secret|passw|otp|authorization|cookie|credential|phone/i;
+
+function isSensitiveKey(key: string): boolean {
+  return SENSITIVE_KEY_REGEX.test(key) || SENSITIVE_KEY_SUBSTRING_REGEX.test(key);
+}
 
 const SENSITIVE_PARAM_NAMES = [
   'token',
@@ -179,6 +194,17 @@ export function sanitizeHeaders(
 }
 
 /**
+ * How deep sanitizeData looks into a value. Anything nested deeper than this is
+ * not inspected key by key: it is replaced by TRUNCATED_MARKER (strings are still
+ * scrubbed, numbers and booleans are kept). The cap fails closed, so a secret
+ * cannot ride out below it.
+ */
+export const MAX_DEPTH = 8;
+
+/** What sanitizeData puts in place of an object or array below MAX_DEPTH. */
+const TRUNCATED_MARKER = '[TRUNCATED]';
+
+/**
  * Recursively redact sensitive keys and values from objects and arrays
  */
 export function sanitizeData(
@@ -186,10 +212,19 @@ export function sanitizeData(
   depth = 0,
   seen = new WeakSet<object>()
 ): unknown {
-  if (depth > 8 || data === null || data === undefined) return data;
+  if (data === null || data === undefined) return data;
+
+  // Past the depth limit nothing is returned as it came in. A string leaf is
+  // still scrubbed, a plain number or boolean carries no secret, and a
+  // container is dropped because its keys are no longer looked at.
+  if (depth > MAX_DEPTH) {
+    if (typeof data === 'string') return redactErrorText(data);
+    if (typeof data === 'number' || typeof data === 'boolean') return data;
+    return TRUNCATED_MARKER;
+  }
 
   if (typeof data === 'string') {
-    return redactSensitiveString(data);
+    return redactErrorText(data);
   }
 
   if (typeof data === 'number' || typeof data === 'boolean') {
@@ -206,10 +241,7 @@ export function sanitizeData(
 
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      if (
-        SENSITIVE_KEY_REGEX.test(k) ||
-        /password|secret|credential/i.test(k)
-      ) {
+      if (isSensitiveKey(k)) {
         result[k] = '[REDACTED]';
       } else {
         result[k] = sanitizeData(v, depth + 1, seen);
@@ -349,7 +381,7 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
   if (event.tags && typeof event.tags === 'object') {
     const sanitizedTags: Record<string, string | number | boolean> = {};
     for (const [tagKey, tagVal] of Object.entries(event.tags)) {
-      if (SENSITIVE_KEY_REGEX.test(tagKey)) {
+      if (isSensitiveKey(tagKey)) {
         sanitizedTags[tagKey] = '[REDACTED]';
       } else if (typeof tagVal === 'string') {
         sanitizedTags[tagKey] = redactSensitiveString(tagVal);
