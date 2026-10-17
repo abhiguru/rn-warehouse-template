@@ -519,6 +519,36 @@ describe('sentryConfig - Telemetry and Redaction', () => {
     });
   });
 
+  // Review 2026-10-17 (Opus), finding 7: the other string surfaces use the error-text patterns too.
+  describe('error-text patterns on every string surface', () => {
+    const token = 'c0ffee12'.repeat(8);
+    const row = 'Failing row contains (7, Ramesh Fictional, Rajkot, null).';
+
+    it('scrubs a breadcrumb message', () => {
+      const out = beforeBreadcrumb({ category: 'console', message: `insert failed: ${row} token ${token}` })!;
+      expect(out.message).toBe('insert failed: Failing row contains ([REDACTED]). token [REDACTED_TOKEN]');
+    });
+
+    it('scrubs tag values and the user name', () => {
+      const event = {
+        tags: { screen: `grn ${token}`, note: row },
+        user: { username: `Key (mobile)=(919888880001) ${token}` },
+      } as unknown as Sentry.ErrorEvent;
+      const out = beforeSend(event)!;
+      expect(out.tags?.['screen']).toBe('grn [REDACTED_TOKEN]');
+      expect(out.tags?.['note']).toBe('Failing row contains ([REDACTED]).');
+      expect(out.user?.username).toBe('Key (mobile)=([REDACTED]) [REDACTED_TOKEN]');
+    });
+
+    it('scrubs request header values', () => {
+      const out = beforeSend({
+        request: { headers: { 'x-note': `seen ${token}`, Accept: 'application/json' } },
+      } as unknown as Sentry.ErrorEvent)!;
+      expect(out.request?.headers?.['x-note']).toBe('seen [REDACTED_TOKEN]');
+      expect(out.request?.headers?.['Accept']).toBe('application/json');
+    });
+  });
+
   describe('helper functions', () => {
     it('sets and clears user context correctly', () => {
       setSentryUser('user-1', 'operator');
