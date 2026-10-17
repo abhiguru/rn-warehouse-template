@@ -60,6 +60,10 @@ export interface SectionHeaderProps {
   title: string;
   /** Optional count to display in badge */
   count?: number;
+  /** What the badge shows instead of the plain count (e.g. "20+" while more rows are to load). */
+  countText?: string;
+  /** What a screen reader says for the count (e.g. "18 orders"); the plain count when absent. */
+  countLabel?: string;
   /** Optional action button */
   action?: SectionHeaderAction;
   /** Custom container style */
@@ -77,6 +81,8 @@ export interface SectionHeaderProps {
 export const SectionHeader: React.FC<SectionHeaderProps> = ({
   title,
   count,
+  countText,
+  countLabel,
   action,
   style,
   grouped = false,
@@ -101,13 +107,13 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         style={styles.titleContainer}
         accessible
         accessibilityRole="header"
-        accessibilityLabel={count !== undefined ? `${title}, ${count}` : title}
+        accessibilityLabel={count !== undefined ? `${title}, ${countLabel ?? count}` : title}
       >
         <Text style={styles.title}>{title.toUpperCase()}</Text>
         {count !== undefined && (
           <View style={styles.countBadge}>
             <Text style={styles.countText} maxFontSizeMultiplier={1.6}>
-              {localizeDigits(String(count))}
+              {countText ?? localizeDigits(String(count))}
             </Text>
           </View>
         )}

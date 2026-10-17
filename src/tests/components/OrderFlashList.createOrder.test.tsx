@@ -15,6 +15,8 @@ import type { OwnBusiness } from '@/features/customer/ownBusinesses';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
 import { resetScreenFocus } from './focusHarness';
 
+// The lists say when their rows were loaded while offline (useIsOffline); online here.
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false, useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,
@@ -94,6 +96,7 @@ const pressable = (label: string) => tree!.root.findAll(node => node.props.acces
 const tapCreateOrder = () => act(async () => pressable('Create order').props.onPress());
 const texts = () => tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
 const businessRows = () => tree!.root.findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('order-business-business-') && typeof node.props.onPress === 'function');
+// The list draws no snackbar at all now: load errors are inline (§13.9).
 const snackbar = () => tree!.root.findAll(node => (node.type as unknown) === 'Snackbar')[0];
 const chooserIsOpen = () => texts().includes('Choose a business');
 
@@ -112,14 +115,14 @@ describe('a customer account with two businesses', () => {
       .toEqual([['Amber Field Traders', 'Northgate'], ['Birchwood Produce', 'Southmere']]);
     expect(push).not.toHaveBeenCalled();
     // The dead end this replaces was a snackbar.
-    expect(snackbar().props.visible).toBe(false);
+    expect(snackbar()).toBeUndefined();
     expect(texts().join(' ')).not.toMatch(/Select an existing|No assigned customer/);
 
     await act(async () => businessRows()[1].props.onPress());
     expect(push).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith('/orders/business-birch');
     expect(chooserIsOpen()).toBe(false);
-    expect(snackbar().props.visible).toBe(false);
+    expect(snackbar()).toBeUndefined();
     expect(mockSearchSheet.open).not.toHaveBeenCalled();
   });
 
@@ -133,7 +136,7 @@ describe('a customer account with two businesses', () => {
     expect(businessRows()).toHaveLength(2);
     await act(async () => businessRows()[0].props.onPress());
     expect(push).toHaveBeenCalledWith('/orders/business-amber');
-    expect(snackbar().props.visible).toBe(false);
+    expect(snackbar()).toBeUndefined();
   });
 
   it('stays on the list when the sheet is cancelled', async () => {
@@ -151,7 +154,7 @@ describe('a customer account with two businesses', () => {
     await tapCreateOrder();
     expect(texts()).toEqual(expect.arrayContaining(['Choose a business', "Couldn't load your businesses", 'Check your connection and try again.']));
     expect(businessRows()).toHaveLength(0);
-    expect(snackbar().props.visible).toBe(false);
+    expect(snackbar()).toBeUndefined();
 
     await act(async () => pressable('Try again').props.onPress());
     expect(mockReadOwnBusinesses).toHaveBeenCalledTimes(2);
@@ -183,7 +186,7 @@ describe('a customer account with no business on the phone', () => {
     expect(texts()).toEqual(expect.arrayContaining(['No business linked', 'No business is linked to your account. Ask your facility to link one.']));
     expect(businessRows()).toHaveLength(0);
     expect(push).not.toHaveBeenCalled();
-    expect(snackbar().props.visible).toBe(false);
+    expect(snackbar()).toBeUndefined();
     expect(mockSearchSheet.open).not.toHaveBeenCalled();
   });
 

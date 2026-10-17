@@ -11,6 +11,8 @@ import { OrderService } from '@/services/order-service';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
 import { resetScreenFocus, setScreenFocused } from './focusHarness';
 
+// The lists say when their rows were loaded while offline (useIsOffline); online here.
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false, useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,

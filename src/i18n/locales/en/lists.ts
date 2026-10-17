@@ -4,6 +4,8 @@ export const lists = {
   // A date or status section of a list: "Today, 3 dispatches"
   section: {
     label: '{{title}}, {{countText}}',
+    countMore: '{{count}}+',
+    moreThan: 'more than {{count}} orders',
   },
   // Texts every card shares
   card: {
@@ -28,6 +30,7 @@ export const lists = {
     invoices: { message: "Couldn't show the invoices. Try again.", retry: 'Try loading the invoices again' },
     dispatches: { message: "Couldn't show the dispatches. Try again.", retry: 'Try loading the dispatches again' },
     grnItems: { message: "Couldn't show the GRN items. Try again.", retry: 'Try loading the GRN items again' },
+    orders: { message: "Couldn't show the orders. Try again.", retry: 'Try loading the orders again' },
   },
   grn: {
     title: 'GRNs',
@@ -126,10 +129,12 @@ export const lists = {
     businessesRemoved: 'Your cold storage has removed your businesses. Ask them to add one.',
     loadingMore: 'Loading more orders…',
     loadFailedTitle: "Couldn't load orders",
-    loadFailed: "Couldn't load orders. Check your connection and try again.",
-    loadMoreFailed: "Couldn't load more orders. Scroll down to try again.",
+    loadMoreFailed: "Couldn't load more orders.",
+    retryMore: 'Try loading more orders again',
     staleTitle: "Couldn't refresh orders.",
-    staleText: 'Showing previously loaded orders. Refresh to get current data.',
+    staleText: 'Showing the orders loaded at {{time}}.',
+    lastUpdated: 'Last updated {{time}}',
+    retryRefresh: 'Try loading the orders again',
     emptyTitle: 'No orders yet',
     emptySubtitle: 'Orders appear here when customers add items.',
   },
@@ -138,7 +143,8 @@ export const lists = {
     refresh: 'Refresh order queue',
     countLabel: '{{orders}} in the queue',
     loadFailedTitle: "Couldn't load the order queue",
-    loadFailed: "Couldn't load the order queue. Check your connection and try again.",
+    staleTitle: "Couldn't refresh the order queue.",
+    retryRefresh: 'Try loading the order queue again',
     emptyTitle: 'No orders in the queue',
     emptySubtitle: 'Customer orders with items appear here.',
   },
@@ -168,7 +174,7 @@ export const lists = {
   },
   // Recently dispatched orders, under the order list
   recent: {
-    title: 'Recently dispatched orders',
+    title: 'Recently dispatched',
     show: 'Show',
     hide: 'Hide',
     showLabel: 'Show recently dispatched orders, {{dispatches}}',

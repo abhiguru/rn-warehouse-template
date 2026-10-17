@@ -854,7 +854,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 | Object cell (list rows in `list-items/*`, `OrderItemCard`, `DispatchGroupCard`, `DispatchHistoryCard`, `CustomerOrderGroupCard`, `RecentDispatchedOrderCard`, `ReportCustomerCard`, `ItemRateRow`, `grn/components/SavedItemCard`, `invoice/components/InvoiceItemCard`, `*-details/*ItemCard`) | Min height 72. Optional avatar or icon (44). Title `headline` `text.primary`, two lines max. Subtitle `subhead` `text.secondary`. Footnote `footnote` `text.secondary`. Right side: main value (`headline`, tabular), status tag under it. Chevron `icon.secondary` when it drills down. Pressed `surface.cardPressed`. |
 | `ui/Card.tsx` | `surface.card`, `radius.card`, `shadow[2]`, padding from `CardPadding` (`compact` 12, `default` 16, `comfortable` 20, `spacious` 24). Header: title `headline`, subtitle `subhead`. `selected` adds a 2 px `brand.tint` border and a check. `error` shows a negative message strip. `loading` shows a skeleton. Shadow sizes map `sm` to 1, `md` to 2, `lg` to 3, `xl` to 4. |
 | `fiori/KeyValueCell.tsx` | Key `subhead` `text.secondary`, value `body` `text.primary` (`emphasized` uses 600). `inline` layout: key left, value right; `stacked`: key above value. Actionable values use `brand.tint` and a chevron. Switch to stacked at large text sizes. |
-| `ui/SectionHeader.tsx` | `footnote`, capitals, `text.secondary`, 16 side padding, 24 above and 8 below; optional count and a tertiary action on the right. `SectionFooter` uses `footnote` `text.secondary`. |
+| `ui/SectionHeader.tsx` | `footnote`, capitals, `text.secondary`, 16 side padding, 24 above and 8 below; optional count and a tertiary action on the right. The badge may show other text than the count (`countText`, e.g. "20+" while more pages remain to load) with its spoken form in `countLabel` ("more than 20 orders"). `SectionFooter` uses `footnote` `text.secondary`. |
 | `common/overview-tab/SectionHeader.tsx`, `ContactCard`, `NotesSection`, `ActionsSection` | Same rules as above; contact actions (call, message) are icon buttons with `brand.tint`; notes show `text.primary` body text. |
 | Lists (`lists/*FlashList`, `app/customers.tsx`, `GRNListFiori.tsx`, `lists/SupervisorOrderQueueList.tsx`) | `background.base` behind; rows on `surface.card`; dividers `border.divider` inset 16 from the left (or past the avatar). Pull to refresh with `RefreshControl` tinted `brand.tint`. Infinite scroll loads 25 to 50 at a time with a footer spinner. Sticky section headers where grouped. |
 | `list/ListSkeletonCard.tsx`, `skeletons/*` | Blocks in `surface.cardActive` at the size of real content, `radius.field` for text lines; shimmer off with Reduce Motion. |
@@ -1069,7 +1069,8 @@ The app has one central sign-in that only proves who the user is, then facility 
 ### 14.9 Offline
 
 - The offline banner shows within two seconds of losing the connection.
-- Lists show cached data with "Last updated 10:42 am".
+- Lists show cached data with "Last updated 10:42 am". On Orders and the order queue the line sits under the first heading (the queue: at the top of the list) while the phone is offline (`lists/ListLoadErrors` `LastUpdatedLine`).
+- A failed refresh of a list that still shows rows is a critical message strip that says when the rows were loaded and offers "Try again" (`StaleListStrip`); it stays until a refresh works. A failed next page is the list's last row with "Try again" (`LoadMoreErrorFooter`). A list with no rows shows `ErrorStateView`. None of these is a snackbar (§13.9).
 - Actions that need the server are hidden or explain that they need a connection. Drafts save on the phone.
 
 ### 14.10 Reports

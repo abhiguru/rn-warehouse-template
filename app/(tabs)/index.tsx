@@ -16,6 +16,7 @@ import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { layout, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { OrderFlashList, SupervisorOrderQueueList } from '@/components/lists';
+import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { SegmentedControl } from '@/components/ui/RadioButton';
 import { t } from '@/i18n';
 
@@ -65,11 +66,14 @@ export default function OrdersTab() {
 
   return (
     <View style={styles.container}>
-      {canManageOrders && view === 'queue' ? (
-        <SupervisorOrderQueueList subHeader={viewSwitch} />
-      ) : (
-        <OrderFlashList subHeader={viewSwitch} />
-      )}
+      {/* A list that fails to draw shows "Try again" under the view switch; switching view clears it (keyed). */}
+      <ListErrorBoundary key={view} listName="orders" header={viewSwitch}>
+        {canManageOrders && view === 'queue' ? (
+          <SupervisorOrderQueueList subHeader={viewSwitch} />
+        ) : (
+          <OrderFlashList subHeader={viewSwitch} />
+        )}
+      </ListErrorBoundary>
     </View>
   );
 }

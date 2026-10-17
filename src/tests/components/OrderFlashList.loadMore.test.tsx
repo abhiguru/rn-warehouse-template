@@ -5,6 +5,8 @@ import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { OrderService } from '@/services/order-service';
 import type { Order } from '@/types/order.types';
 
+// The lists say when their rows were loaded while offline (useIsOffline); online here.
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false, useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
 jest.mock('react-native-paper', () => Object.fromEntries(
   ['ActivityIndicator', 'Badge', 'IconButton', 'Portal', 'Snackbar', 'Surface'].map(name => [name, name])

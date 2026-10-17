@@ -15,7 +15,7 @@ import { createLogger } from '@/utils/logger';
 const logger = createLogger('ListErrorBoundary');
 
 /** The lists that have texts of their own, by the English name the callers pass. A key, not a text. */
-const LIST_NAMES = { items: 'items', invoices: 'invoices', dispatches: 'dispatches', 'GRN items': 'grnItems' } as const;
+const LIST_NAMES = { items: 'items', invoices: 'invoices', dispatches: 'dispatches', 'GRN items': 'grnItems', orders: 'orders' } as const;
 const isListName = (name: string): name is keyof typeof LIST_NAMES => Object.prototype.hasOwnProperty.call(LIST_NAMES, name);
 
 interface ListErrorFallbackProps {
@@ -47,6 +47,8 @@ interface Props {
   onRetry?: () => void;
   listName?: string;
   fallback?: ReactNode;
+  /** Shown above the default fallback, e.g. a view switch the list drew itself, so it keeps working. */
+  header?: ReactNode;
 }
 
 interface State {
@@ -105,11 +107,14 @@ export class ListErrorBoundary extends Component<Props, State> {
 
       // Default list error fallback
       return (
-        <ListErrorFallback
-          error={this.state.error}
-          onRetry={this.handleRetry}
-          listName={this.props.listName}
-        />
+        <>
+          {this.props.header}
+          <ListErrorFallback
+            error={this.state.error}
+            onRetry={this.handleRetry}
+            listName={this.props.listName}
+          />
+        </>
       );
     }
 

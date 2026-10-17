@@ -110,7 +110,9 @@ describe('Queue card of a deactivated business', () => {
 
   it('shows the Deactivated tag and says so in the header label', async () => {
     const tree = await draw(withActive(false));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Deactivated', 'Open']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Deactivated']));
+    // A queue card shows no fixed "Open" tag: every order in the queue is open (owner, 2026-10-17).
+    expect(texts(tree)).not.toContain('Open');
     expect(label(tree).endsWith(', deactivated')).toBe(true);
   });
 

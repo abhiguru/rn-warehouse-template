@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — Orders screen polish (2026-10-17)
+
+- **Order card.** The units total is the main value on the right ("25" over "units"), with the status tag under
+  it only when it says something (Dispatched, Empty); an open order with items has no tag. The card has the
+  Dispatch card's frame (border and shadow). The Queue card loses its fixed "Open" tag; both keep "Deactivated".
+- **TalkBack reads what the card shows**, in card order: "Order for Riverbank Produce, 1 item · 25 units,
+  16 Oct", the status only when its tag shows, and "Matched Garlic" when a search found the order by an item,
+  package mark or GRN number (as on the Dispatch card).
+- **Section heading.** "ACTIVE ORDERS" uses the shared section header (badge after the title, 24 above and 8
+  below) and counts "20+" while more pages remain to load ("more than 20 orders" for TalkBack). The queue's
+  heading is "Recently dispatched" (one line).
+- **Load errors are inline, never a snackbar (§13.9).** A failed refresh with orders on screen shows the red
+  strip "Couldn't refresh orders." / "Showing the orders loaded at 10:42 pm." with "Try again"; it stays until a
+  refresh works (the order queue gets the same strip). A failed next page says "Couldn't load more orders." in
+  the list's last row with "Try again". With nothing loaded, only the full-screen error shows.
+- **Offline (§14.9).** While the phone is offline, "Last updated 10:42 pm" shows under the first heading on
+  Orders and at the top of the order queue.
+- **Crash guard.** The Orders tab's lists sit in `ListErrorBoundary` like GRN and Dispatch: "Couldn't show the
+  orders. Try again." under the Orders | Queue switch, which keeps working; switching view clears the error.
+- Unused props removed (`OrderFlashList.hasItemsOnly`, `MemoizedOrderItem.onViewDetails` / `onConvertToDispatch`).
+
 ## Unreleased — Item rates reorganised (2026-10-16)
 
 - **Staff have no Item pricing (owner, 2026-10-16).** Settings no longer offers Item pricing to staff, its

@@ -47,7 +47,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
   getSupabaseClient: jest.fn(),
 }));
-jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }), useIsOffline: () => false }));
 jest.mock('@/services/order-service', () => ({
   OrderService: { getOrCreateOrder: jest.fn(), getOrderWithItems: jest.fn(), getOrdersList: jest.fn() },
 }));

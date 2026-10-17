@@ -24,14 +24,13 @@ import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, Snackbar } from 'react-native-paper';
+import { ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { formatCount, formatNumber } from '@/utils/formatters';
+import { formatCount, formatNumber, formatTime } from '@/utils/formatters';
 import { t as translate } from '@/i18n';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { OrderBusinessSheet } from '@/components/OrderBusinessSheet';
@@ -65,10 +64,13 @@ import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
+import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 
 const logger = createLogger('OrderList');
 // ============================================================================
@@ -80,8 +82,6 @@ export interface OrderFlashListProps {
   customerId?: string;
   /** Custom press handler (overrides default navigation) */
   onItemPress?: (order: Order) => void;
-  /** Show only orders with items */
-  hasItemsOnly?: boolean;
   /** Rendered directly under the header in every state, e.g. a view switch. */
   subHeader?: React.ReactNode;
 }
@@ -93,27 +93,27 @@ export interface OrderFlashListProps {
 interface SectionHeaderProps {
   title: string;
   count: number;
+  /** More pages still to load: the count is a lower bound ("20+"), not the section's size (owner, 2026-10-17). */
+  more?: boolean;
+  /** Offline: when the rows were loaded, shown under the heading (§14.9; owner, 2026-10-17). */
+  updatedAt?: number;
 }
 
-// Section header: footnote, capitals, text.secondary (style guide §13.6)
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View
-      style={styles.sectionHeader}
-      accessible
-      accessibilityRole="header"
-      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'order') })}
-    >
-      <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
-      <View style={styles.sectionBadge}>
-        <Text style={styles.sectionBadgeText} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
-      </View>
-    </View>
-  );
-});
+// Section header: the shared ui/SectionHeader (style guide §13.6; owner, 2026-10-17), with "20+" while more pages
+// remain to load, so the count is never read as the section's size.
+const OrderSectionHeader = React.memo<SectionHeaderProps>(({ title, count, more = false, updatedAt }) => (
+  <>
+    <SectionHeader
+      title={title}
+      count={count}
+      countText={more ? translate('lists.section.countMore', { count: formatNumber(count) }) : formatNumber(count)}
+      countLabel={more ? translate('lists.section.moreThan', { count: formatNumber(count) }) : formatCount(count, 'order')}
+    />
+    {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="orders-last-updated" /> : null}
+  </>
+));
 
-SectionHeader.displayName = 'SectionHeader';
+OrderSectionHeader.displayName = 'OrderSectionHeader';
 
 // ============================================================================
 // MAIN COMPONENT
@@ -164,8 +164,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const words = useMemo(() => searchWords(searchText), [searchText]);
   // The first answer has arrived: later loads keep the rows on screen.
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  // The next page failed: the list's last row offers "Try again".
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
 
   // ============================================================================
   // DATA FETCHING
@@ -236,11 +236,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         setOrders(filteredOrders);
         setError(null);
         setRefreshTimestamp(Date.now());
+        setLoadMoreFailed(false);
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage(translate('lists.order.loadFailed'));
-        setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       // E3 Fix: Skip state updates if component unmounted
@@ -251,8 +250,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       logger.warn('List did not load', err instanceof Error ? err.message : err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage(translate('lists.order.loadFailed'));
-      setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
@@ -281,6 +278,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     const currentRequestId = ++requestIdRef.current;
     const offset = loadedCountRef.current;
     setIsLoadingMore(true);
+    setLoadMoreFailed(false);
     try {
       const result = await OrderService.getOrdersList({
         ...buildFilters(),
@@ -302,15 +300,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage(translate('lists.order.loadMoreFailed'));
-        setSnackbarVisible(true);
+        setLoadMoreFailed(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
       logger.warn('Next page did not load', err instanceof Error ? err.message : err);
-      setSnackbarMessage(translate('lists.order.loadMoreFailed'));
-      setSnackbarVisible(true);
+      setLoadMoreFailed(true);
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) setIsLoadingMore(false);
@@ -394,10 +390,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     }
   }, [onItemPress]);
 
-  const dismissSnackbar = useCallback(() => {
-    setSnackbarVisible(false);
-  }, []);
-
   // Create order: the staff search, the account's one business, or its chooser
   // (createOrderAction). It never depends on the orders already in the list.
   const handleAddOrder = useCallback(() => {
@@ -478,9 +470,21 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // FLASHLIST RENDER ITEM (memoized, no inline functions)
   // ============================================================================
 
-  const renderItem = useCallback(({ item }: { item: FlattenedItem<Order> }) => {
+  // Offline with no failed refresh: the first heading says when the cards were loaded. A failed refresh says it in
+  // its strip instead.
+  const isOffline = useIsOffline();
+  const offlineUpdatedAt = isOffline && !error ? refreshTimestamp : undefined;
+
+  const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Order>; index: number }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} />;
+      return (
+        <OrderSectionHeader
+          title={item.title}
+          count={item.count}
+          more={hasMore}
+          updatedAt={index === 0 ? offlineUpdatedAt : undefined}
+        />
+      );
     }
 
     return (
@@ -490,7 +494,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         words={words}
       />
     );
-  }, [handleOrderPress, words]);
+  }, [handleOrderPress, words, hasMore, offlineUpdatedAt]);
 
   // ============================================================================
   // LIST FOOTER
@@ -500,6 +504,16 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // ============================================================================
 
   const ListFooter = useMemo(() => {
+    if (loadMoreFailed && !isLoadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={translate('lists.order.loadMoreFailed')}
+          retryLabel={translate('lists.order.retryMore')}
+          onRetry={handleLoadMore}
+          testID="orders-load-more-error"
+        />
+      );
+    }
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
@@ -507,7 +521,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         <Text style={styles.footerLoaderText}>{translate('lists.order.loadingMore')}</Text>
       </View>
     );
-  }, [isLoadingMore, styles, t]);
+  }, [isLoadingMore, loadMoreFailed, handleLoadMore, styles, t]);
 
   // ============================================================================
   // RENDER
@@ -534,17 +548,16 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   } else if (orders.length > 0) {
     content = (
       <>
-        {/* Stale data warning: critical message strip */}
+        {/* A refresh failed: the orders loaded before stay, with Try again (§13.9) */}
         {error && (
-          <View accessibilityRole="alert" style={styles.messageStrip}>
-            <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
-            <View style={styles.messageStripBody}>
-              <Text style={styles.messageStripTitle}>{translate('lists.order.staleTitle')}</Text>
-              <Text style={styles.messageStripText}>
-                {translate('lists.order.staleText')}
-              </Text>
-            </View>
-          </View>
+          <StaleListStrip
+            title={translate('lists.order.staleTitle')}
+            text={translate('lists.order.staleText', { time: formatTime(new Date(refreshTimestamp)) })}
+            retryLabel={translate('lists.order.retryRefresh')}
+            onRetry={handleRefresh}
+            retrying={isRefreshing}
+            testID="orders-stale-strip"
+          />
         )}
 
         {/* FlashList - The key to performance */}
@@ -554,7 +567,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
             renderItem={renderItem}
             keyExtractor={keyExtractor}
             getItemType={getItemType}
-            extraData={{ handleOrderPress, words }}
+            extraData={{ handleOrderPress, words, hasMore, offlineUpdatedAt }}
             contentContainerStyle={styles.listContent}
             contentInsetAdjustmentBehavior="never"
             automaticallyAdjustContentInsets={false}
@@ -602,16 +615,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
       <Fab label={translate('lists.order.create')} onPress={handleAddOrder} />
 
-      {/* Snackbar */}
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={dismissSnackbar}
-        duration={4000}
-        style={styles.snackbar}
-      >
-        {snackbarMessage}
-      </Snackbar>
-
       {/* Customer Search Bottom Sheet */}
       <CustomerSearchBottomSheet
         ref={customerSearchRef}
@@ -635,72 +638,12 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.background.base,
   },
   // Critical message strip (§13.9)
-  messageStrip: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    marginHorizontal: layout.marginCompact,
-    marginTop: space.sm,
-    padding: space.md,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.status.critical.border,
-    backgroundColor: t.status.critical.background,
-  },
-  messageStripIcon: {
-    marginRight: space.sm,
-  },
-  messageStripBody: {
-    flex: 1,
-  },
-  messageStripTitle: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    color: t.status.critical.text,
-  },
-  messageStripText: {
-    ...typography.footnote,
-    color: t.status.critical.text,
-  },
   listWrapper: {
     flex: 1,
   },
   listContent: {
     // Room for the floating create button
     paddingBottom: FAB_CLEARANCE,
-  },
-  // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
-  sectionHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: layout.marginCompact,
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-    minHeight: space.xxxl,
-    backgroundColor: t.background.base,
-  },
-  sectionTitle: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    color: t.text.secondary,
-  },
-  // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
-  // destructive.fill with destructive.onFill instead (§13.5).
-  sectionBadge: {
-    minWidth: 20,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  sectionBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    fontVariant: ['tabular-nums' as const],
-    color: t.brand.onFill,
   },
   footerLoader: {
     flexDirection: 'row' as const,
@@ -712,13 +655,6 @@ const makeStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-  // Snackbar: inverse surface (§13.9)
-  snackbar: {
-    marginBottom: 80,
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-    ...t.shadow[3],
   },
 });
 

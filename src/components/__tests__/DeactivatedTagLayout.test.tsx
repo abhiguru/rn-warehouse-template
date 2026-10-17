@@ -57,12 +57,13 @@ function expectTagsInTextColumn(tree: ReactTestRenderer, id: string, name: strin
 
 it('Orders list card: the tags are under the name in the text column and wrap', async () => {
   const tree = await mount(<MemoizedOrderItem order={order} onPress={jest.fn()} />);
-  expectTagsInTextColumn(tree, 'order-card-tags', 'Fictional Traders', ['Deactivated', 'Open']);
+  // An open order's status is no longer a tag (owner, 2026-10-17): the tag row holds Deactivated only.
+  expectTagsInTextColumn(tree, 'order-card-tags', 'Fictional Traders', ['Deactivated']);
 });
 
 it('Queue card: the tags are under the counts in the text column and wrap', async () => {
   const tree = await mount(<CustomerOrderGroupCard order={order} isExpanded={false} onToggleExpand={jest.fn()} />);
-  expectTagsInTextColumn(tree, 'queue-card-tags', 'Fictional Traders', ['Deactivated', 'Open']);
+  expectTagsInTextColumn(tree, 'queue-card-tags', 'Fictional Traders', ['Deactivated']);
 });
 
 it('Business chooser row: the tag is under the name in the text column and wraps', async () => {

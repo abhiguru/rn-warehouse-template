@@ -13,7 +13,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
@@ -37,10 +37,6 @@ export interface MemoizedOrderItemProps {
   order: Order;
   /** Callback when item is pressed */
   onPress: (order: Order) => void;
-  /** Callback for view details action */
-  onViewDetails?: (order: Order) => void;
-  /** Callback for convert to dispatch action */
-  onConvertToDispatch?: (order: Order) => void;
   /** Lower-cased search words to show in bold (see `searchWords`). */
   words?: string[];
 }
@@ -90,10 +86,15 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
       ? { kind: 'neutral', label: translate('lists.order.statusOpen') }
       : { kind: 'neutral', label: translate('lists.order.statusEmpty') };
 
-  // Build subtitle: "3 items · 45 units" (the unit differs per item, so "units") or "No items yet"
-  const subtitle = hasItems
+  // The units total is the card's main value, on the right (style guide §13.6; owner, 2026-10-17); the subtitle keeps
+  // the item count. TalkBack still hears both together: "3 items · 45 units".
+  const summary = hasItems
     ? translate('lists.order.summary', { items: formatCount(itemCount, 'item'), units: formatCount(totalQty, 'unit') })
     : translate('lists.order.noItemsYet');
+  const subtitle = hasItems ? formatCount(itemCount, 'item') : translate('lists.order.noItemsYet');
+  // The unit noun as counts word it ("units", Gujarati too), without the number in front.
+  const unitsText = formatCount(totalQty, 'unit');
+  const unitWord = unitsText.slice(unitsText.indexOf(' ') + 1);
 
   // Build footnote: "Mumbai · 2h ago" or just "2h ago"
   const timeText = order.updated_at ? formatRelativeTime(order.updated_at) : translate('lists.order.recently');
@@ -105,12 +106,19 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   // Backend migration 82 adds customer.active to each row; an older backend has no field, so no tag.
   const deactivated = order.customer?.active === false;
 
+  // An open order with items has no tag: the section says it is active (owner, 2026-10-17).
+  const showTag = !hasItems || isDispatched;
+
+  // TalkBack reads what the card shows, in card order (owner, 2026-10-17): the status only when its tag shows,
+  // the time, and why a search matched (worded as on the Dispatch card).
   const accessibilityDescription = [
     translate('lists.order.orderFor', { customer: customerName }),
-    statusConfig.label,
-    subtitle,
+    summary,
+    showTag ? statusConfig.label : null,
     order.customer?.city ? translate('lists.order.location', { city: order.customer.city }) : null,
+    timeText,
     deactivated ? translate('lists.order.accessibilityDeactivated') : null,
+    matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -141,11 +149,12 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
             {footnote}
           </Text>
 
-          {/* Status tags in the text column, wrapping: at large text sizes they must not squeeze the name */}
-          <View style={styles.tagRow} testID="order-card-tags">
-            {deactivated ? <StatusTag status="neutral" label={translate('lists.order.statusDeactivated')} /> : null}
-            <StatusTag status={statusConfig.kind} label={statusConfig.label} />
-          </View>
+          {/* A deactivated customer is said in the text column (it is about the customer, not the order) */}
+          {deactivated ? (
+            <View style={styles.tagRow} testID="order-card-tags">
+              <StatusTag status="neutral" label={translate('lists.order.statusDeactivated')} />
+            </View>
+          ) : null}
 
           {/* Why this order matched, when the match is not in the customer's name */}
           {matched.length > 0 ? (
@@ -153,7 +162,17 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
           ) : null}
         </View>
 
-        {/* Attribute: Chevron */}
+        {/* Right side: the units total, the status tag under it, then the chevron (style guide §13.6) */}
+        <View style={styles.valueArea} testID="order-card-value">
+          {hasItems ? (
+            <>
+              <Text style={styles.value} numberOfLines={1}>{formatNumber(totalQty)}</Text>
+              <Text style={styles.valueLabel} numberOfLines={1}>{unitWord}</Text>
+            </>
+          ) : null}
+          {/* Empty and Dispatched show their tag; an open order with items has none (showTag) */}
+          {showTag ? <StatusTag status={statusConfig.kind} label={statusConfig.label} style={styles.valueTag} /> : null}
+        </View>
         <View style={styles.attributeArea}>
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
@@ -219,11 +238,15 @@ MemoizedOrderItem.displayName = 'MemoizedOrderItem';
 // ============================================================================
 
 const makeStyles = (t: ThemeTokens) => ({
-  // Object Cell Container - Fiori card style
+  // Object Cell Container - the same frame as the GRN and Dispatch cards (owner, 2026-10-17): the outline keeps each
+  // card distinct in dark mode, where the shadow does not show.
   card: {
     marginHorizontal: layout.marginCompact,
-    marginVertical: space.xs,
+    marginVertical: space.sm,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: t.border.separator,
+    ...t.shadow[2],
     overflow: 'hidden' as const,
     backgroundColor: t.surface.card,
   },
@@ -277,7 +300,27 @@ const makeStyles = (t: ThemeTokens) => ({
     marginTop: space.xxs,
   },
 
-  // Attribute Area (Right) - status + navigation
+  // The main value on the right: the units total, its label, the status tag under it
+  valueArea: {
+    alignItems: 'flex-end' as const,
+    marginRight: space.xs,
+    maxWidth: '40%' as const,
+  },
+  value: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  valueLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  valueTag: {
+    alignSelf: 'flex-end' as const,
+    marginTop: space.xxs,
+  },
+
+  // Attribute Area (Right) - navigation
   attributeArea: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

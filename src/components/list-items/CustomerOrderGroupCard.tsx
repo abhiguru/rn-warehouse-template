@@ -235,10 +235,12 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
           </View>
           {/* Status tags under the counts, in the text column: at large text sizes they wrap
               here instead of crushing the name beside them. */}
-          <View style={styles.tagRow} testID="queue-card-tags">
-            {deactivated ? <StatusTag status="neutral" label={translate('lists.order.statusDeactivated')} /> : null}
-            <StatusTag status="neutral" label={translate('lists.order.statusOpen')} />
-          </View>
+          {/* Every queue card is an open order: no "Open" tag, only what sets a card apart (owner, 2026-10-17). */}
+          {deactivated ? (
+            <View style={styles.tagRow} testID="queue-card-tags">
+              <StatusTag status="neutral" label={translate('lists.order.statusDeactivated')} />
+            </View>
+          ) : null}
         </View>
 
         {/* Chevron */}

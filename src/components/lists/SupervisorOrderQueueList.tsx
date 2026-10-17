@@ -18,12 +18,14 @@ import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, Portal, Snackbar } from 'react-native-paper';
+import { ActivityIndicator } from 'react-native-paper';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { formatCount, formatNumber } from '@/utils/formatters';
+import { formatCount, formatNumber, formatTime } from '@/utils/formatters';
 import { t as translate } from '@/i18n';
 
 // Services
@@ -94,9 +96,10 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // The first answer has arrived: later loads keep the rows on screen.
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  // Snackbar state
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  // The next page failed: the list's last row offers "Try again".
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  // When the orders shown were loaded: offline and after a failed refresh the list says so (§14.9).
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
   // Refresh trigger for child sections (increment to refresh)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -129,7 +132,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       } else if (!isRefresh) {
         setIsLoading(true);
       }
-      setError(null);
+      // A retry does not make retained data current: the error clears only
+      // after a successful response replaces the displayed orders.
 
       // Fetch only orders with items. A refresh reloads every row already shown.
       const filters: OrderFilters = {
@@ -165,11 +169,12 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         if (__DEV__) console.log('[SupervisorOrderQueueList] Loaded orders:', ordersWithItems.length);
         loadedCountRef.current = result.data.length;
         setOrders(ordersWithItems);
+        setError(null);
+        setLoadMoreFailed(false);
+        setLoadedAt(Date.now());
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage(translate('lists.queue.loadFailed'));
-        setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) {
@@ -179,8 +184,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       logger.warn('List did not load', err instanceof Error ? err.message : err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage(translate('lists.queue.loadFailed'));
-      setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
@@ -206,6 +209,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     const currentRequestId = ++requestIdRef.current;
     const offset = loadedCountRef.current;
     setIsLoadingMore(true);
+    setLoadMoreFailed(false);
     try {
       const result = await OrderService.getOrdersList({
         has_items: true,
@@ -227,15 +231,13 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage(translate('lists.order.loadMoreFailed'));
-        setSnackbarVisible(true);
+        setLoadMoreFailed(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
       logger.warn('Next page did not load', err instanceof Error ? err.message : err);
-      setSnackbarMessage(translate('lists.order.loadMoreFailed'));
-      setSnackbarVisible(true);
+      setLoadMoreFailed(true);
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) setIsLoadingMore(false);
@@ -247,6 +249,16 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   }, [hasMore, isLoading, isLoadingMore, searchText]);
 
   const ListFooter = useMemo(() => {
+    if (loadMoreFailed && !isLoadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={translate('lists.order.loadMoreFailed')}
+          retryLabel={translate('lists.order.retryMore')}
+          onRetry={handleLoadMore}
+          testID="queue-load-more-error"
+        />
+      );
+    }
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
@@ -254,7 +266,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         <Text style={styles.footerLoaderText}>{translate('lists.order.loadingMore')}</Text>
       </View>
     );
-  }, [isLoadingMore, styles, t]);
+  }, [isLoadingMore, loadMoreFailed, handleLoadMore, styles, t]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -341,10 +353,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     });
   }, []);
 
-  const dismissSnackbar = useCallback(() => {
-    setSnackbarVisible(false);
-  }, []);
-
   // ============================================================================
   // FLASHLIST KEY EXTRACTOR
   // ============================================================================
@@ -352,9 +360,18 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   const keyExtractor = useCallback((item: Order) => item.id, []);
 
   // Header component with recent dispatched orders section
-  const ListHeaderComponent = useCallback(() => (
-    <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} limit={10} />
-  ), [refreshTrigger]);
+  // Offline with no failed refresh: the top of the list says when the queue was loaded. A failed refresh says it in
+  // its strip instead.
+  const isOffline = useIsOffline();
+  const offlineUpdatedAt = isOffline && !error ? loadedAt : undefined;
+  // An element, not a component: the line comes and goes without remounting the recent section (a remount reloads
+  // it, and offline that load fails).
+  const ListHeaderComponent = useMemo(() => (
+    <>
+      {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="queue-last-updated" /> : null}
+      <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} limit={10} />
+    </>
+  ), [refreshTrigger, offlineUpdatedAt]);
 
   // ============================================================================
   // FLASHLIST RENDER ITEM
@@ -409,29 +426,44 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     content = <ListSkeleton count={5} />;
   } else if (orders.length > 0) {
     content = (
-      <FlashList
-        data={filteredOrders}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        extraData={expandedOrders}
-        ListHeaderComponent={ListHeaderComponent}
-        ListFooterComponent={ListFooter}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[t.brand.tint]}
-            tintColor={t.brand.tint}
-            progressBackgroundColor={t.surface.card}
+      <>
+        {/* A refresh failed: the orders loaded before stay, with Try again (§13.9) */}
+        {error && (
+          <StaleListStrip
+            title={translate('lists.queue.staleTitle')}
+            text={translate('lists.order.staleText', { time: formatTime(new Date(loadedAt)) })}
+            retryLabel={translate('lists.queue.retryRefresh')}
+            onRetry={handleRefresh}
+            retrying={isRefreshing}
+            testID="queue-stale-strip"
           />
-        }
-        contentContainerStyle={styles.listContent}
-        contentInsetAdjustmentBehavior="never"
-        automaticallyAdjustContentInsets={false}
-        showsVerticalScrollIndicator={false}
-      />
+        )}
+        <View style={styles.listWrapper}>
+          <FlashList
+            data={filteredOrders}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            extraData={expandedOrders}
+            ListHeaderComponent={ListHeaderComponent}
+            ListFooterComponent={ListFooter}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                colors={[t.brand.tint]}
+                tintColor={t.brand.tint}
+                progressBackgroundColor={t.surface.card}
+              />
+            }
+            contentContainerStyle={styles.listContent}
+            contentInsetAdjustmentBehavior="never"
+            automaticallyAdjustContentInsets={false}
+            showsVerticalScrollIndicator={false}
+          />
+        </View>
+      </>
     );
   } else if (error) {
     content = (
@@ -463,18 +495,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       {header}
       {content}
 
-      {/* Snackbar for errors */}
-      <Portal>
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={dismissSnackbar}
-          duration={4000}
-          style={styles.snackbar}
-          action={{ label: translate('common.dismiss'), onPress: dismissSnackbar, textColor: t.text.inverse }}
-        >
-          {snackbarMessage}
-        </Snackbar>
-      </Portal>
     </View>
   );
 };
@@ -504,6 +524,9 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
     color: t.brand.onFill,
   },
+  listWrapper: {
+    flex: 1,
+  },
   listContent: {
     paddingBottom: space.xxl,
   },
@@ -517,12 +540,6 @@ const makeStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-  // Snackbar: inverse surface (§13.9)
-  snackbar: {
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-    ...t.shadow[3],
   },
 });
 
