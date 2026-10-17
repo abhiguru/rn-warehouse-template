@@ -107,13 +107,15 @@ export const getItemStoragePrices = async (
 
     const startTime = Date.now();
 
-    // Set a timeout for RPC calls (30 seconds)
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000)
-    );
+    // Set a timeout for RPC calls (30 seconds). It is cleared when the answer comes, so no
+    // timer is left counting down (it also kept the Jest process open after the suite).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000);
+    });
 
     const rpcPromise = authenticatedClient.rpc('get_item_storage_prices', rpcParams);
-    const { data, error } = await Promise.race([rpcPromise, timeoutPromise]);
+    const { data, error } = await Promise.race([rpcPromise, timeoutPromise]).finally(() => clearTimeout(timer));
 
     const duration = Date.now() - startTime;
     itemPricingLogger.debug(`RPC call completed in ${duration}ms`);
