@@ -11,15 +11,22 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import RootLayout from '../../../app/_layout';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
 import { restoreCentralSession } from '@/config/centralSession';
-import { leaveFacility } from '@/store/operatorSwitch';
+import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { useRootRouteGuard } from '@/navigation/RouteGuard';
 import { store } from '@/store';
 import { initializeAuth } from '@/store/slices/authSlice';
+import { fakeAppState } from '../helpers/fakeRoute';
 
 let mockCentralOn = false;
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
-jest.mock('@/config/centralSession', () => ({ restoreCentralSession: jest.fn(async () => {}) }));
-jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
+jest.mock('@/config/centralSession', () => ({
+  restoreCentralSession: jest.fn(async () => {}),
+  retryCentralRestoreIfNeeded: jest.fn(async () => {}),
+}));
+jest.mock('@/store/operatorSwitch', () => ({
+  leaveFacility: jest.fn(async () => 'left'),
+  retryStaleFacilityCleanup: jest.fn(async () => true),
+}));
 
 const mockDispatch = jest.fn(() => ({ unwrap: async () => ({}) }));
 jest.mock('@/store/hooks', () => ({
@@ -208,5 +215,44 @@ describe('the facility session restore with no facility server chosen', () => {
     // The person is not left on the spinner: the guard is told the restore has settled.
     expect(useRootRouteGuard).toHaveBeenLastCalledWith(true);
     expect(shows('AppStack')).toBe(true);
+  });
+});
+
+// Ops review 2026-10-17, M08: a facility session that an exchange left on the phone for an
+// earlier central sign-in (src/config/staleFacilitySession.ts) is ended at start and tried
+// again on every return to the foreground, whether or not that facility can be reached.
+describe("the cleanup of an earlier sign-in's facility session", () => {
+  let appState: ReturnType<typeof fakeAppState>;
+  beforeEach(() => {
+    appState = fakeAppState();
+    jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'selection' });
+  });
+  afterEach(() => appState.restore());
+
+  it('central login on: it runs once at start, again on each return to the foreground, and not when the app goes to the background', async () => {
+    mockCentralOn = true;
+    await start();
+    expect(retryStaleFacilityCleanup).toHaveBeenCalledTimes(1);
+    expect(retryStaleFacilityCleanup).toHaveBeenCalledWith(store.dispatch);
+    await act(async () => { appState.setAppState('background'); });
+    expect(retryStaleFacilityCleanup).toHaveBeenCalledTimes(1);
+    await act(async () => { appState.setAppState('active'); });
+    expect(retryStaleFacilityCleanup).toHaveBeenCalledTimes(2);
+    await act(async () => { appState.setAppState('background'); appState.setAppState('active'); });
+    expect(retryStaleFacilityCleanup).toHaveBeenCalledTimes(3);
+  });
+
+  it('central login on: the start-up cleanup runs even when the selected facility cannot be reached', async () => {
+    mockCentralOn = true;
+    jest.mocked(verifySelectedOperator).mockRejectedValue(new Error('Server discovery timed out'));
+    await start();
+    expect(shows('ConfigError')).toBe(true);
+    expect(retryStaleFacilityCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('central login off: it never runs', async () => {
+    await start();
+    await act(async () => { appState.setAppState('background'); appState.setAppState('active'); });
+    expect(retryStaleFacilityCleanup).not.toHaveBeenCalled();
   });
 });
