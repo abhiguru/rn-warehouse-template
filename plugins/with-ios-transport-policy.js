@@ -23,7 +23,7 @@
  *
  * `ios/` is generated and never committed.
  */
-const { withInfoPlist } = require('@expo/config-plugins');
+const { withInfoPlist, withXcodeProject } = require('@expo/config-plugins');
 
 const LOCAL_NETWORKING_VARIABLE = 'WAREHOUSE_IOS_LOCAL_NETWORKING';
 const RELEASE_PROFILES = ['preview', 'production'];
@@ -52,13 +52,47 @@ function transportPolicy(development) {
     : { NSAllowsArbitraryLoads: false };
 }
 
+const GUARD_PHASE_NAME = 'Refuse development transport policy in Release';
+// One line on purpose (the project file stores it as one quoted string). In a Release build it
+// fails when the built Info.plist allows local networking or arbitrary loads, so an archive of a
+// project that was generated for development cannot be produced.
+const GUARD_SCRIPT = [
+  'if [ "$CONFIGURATION" = "Release" ]; then',
+  'PLIST="$TARGET_BUILD_DIR/$INFOPLIST_PATH";',
+  'if /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" "$PLIST" >/dev/null 2>&1; then echo "error: NSAllowsLocalNetworking is set in a Release Info.plist; regenerate the native project without WAREHOUSE_IOS_LOCAL_NETWORKING and WAREHOUSE_IOS_USB_HOST (ops review M12)." >&2; exit 1; fi;',
+  'if [ "$(/usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoads" "$PLIST" 2>/dev/null)" = "true" ]; then echo "error: NSAllowsArbitraryLoads is true in a Release Info.plist (ops review M12)." >&2; exit 1; fi;',
+  'fi',
+].join(' ');
+
+/** Adds the Release-only guard as a Run Script phase of the app target; safe to call twice. */
+function addReleaseGuardPhase(project) {
+  const phases = project.hash.project.objects.PBXShellScriptBuildPhase || {};
+  const present = Object.values(phases).some(
+    phase => typeof phase === 'object' && phase.name === `"${GUARD_PHASE_NAME}"`
+  );
+  if (!present) {
+    project.addBuildPhase([], 'PBXShellScriptBuildPhase', GUARD_PHASE_NAME, project.getFirstTarget().uuid, {
+      shellPath: '/bin/sh',
+      shellScript: GUARD_SCRIPT,
+      inputPaths: ['"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"'],
+    });
+  }
+  return project;
+}
+
 module.exports = function withIosTransportPolicy(config) {
   const development = isDevelopmentBuild();
-  return withInfoPlist(config, modConfig => {
+  config = withInfoPlist(config, modConfig => {
     // Replaced as a whole: Expo's template exception domains must not survive.
     modConfig.modResults.NSAppTransportSecurity = transportPolicy(development);
     return modConfig;
   });
+  return withXcodeProject(config, modConfig => {
+    modConfig.modResults = addReleaseGuardPhase(modConfig.modResults);
+    return modConfig;
+  });
 };
+module.exports.addReleaseGuardPhase = addReleaseGuardPhase;
+module.exports.GUARD_PHASE_NAME = GUARD_PHASE_NAME;
 module.exports.isDevelopmentBuild = isDevelopmentBuild;
 module.exports.transportPolicy = transportPolicy;

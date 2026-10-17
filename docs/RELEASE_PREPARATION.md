@@ -31,7 +31,10 @@ is archived (see [HISTORY.md](HISTORY.md)).
   `WAREHOUSE_IOS_USB_HOST`, or the EAS `development` profile). `Info.plist` is shared by
   Debug and Release, so generate the project for a release archive **without** those
   variables (`npx expo prebuild --platform ios --clean`); the EAS `preview` and
-  `production` profiles refuse them. `scripts/ios-transport.test.mjs` checks the
+  `production` profiles refuse them. The plugin also adds a Run Script phase that fails a
+  Release build when the built `Info.plist` has `NSAllowsLocalNetworking` or
+  `NSAllowsArbitraryLoads = true`, so a development project cannot be archived. That phase
+  is checked as generated project text only; it has not been built (no macOS or Xcode here). `scripts/ios-transport.test.mjs` checks the
   generated configuration on any machine. It does not replace the archive check listed
   below, which needs macOS.
 - `.env.example` leaves the optional Sentry/GlitchTip DSN commented out.
