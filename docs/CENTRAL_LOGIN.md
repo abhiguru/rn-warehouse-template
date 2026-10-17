@@ -393,11 +393,25 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
 
 ## Still open
 
-- **The catalogue's signature is not verified in the app.** The catalogue is a signed token
-  (ES256) and the central contract says the app verifies it; Hermes has no ES256. The app
-  checks the token's type, algorithm name, issuer and expiry, and relies on TLS to the
-  configured origin. A facility, not the app, decides access and verifies its own tokens, so
-  a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+- **The catalogue's signature is not verified in the app (accepted: TLS-only trust).** The
+  catalogue is a signed token (ES256); Hermes has no ES256 and the app has no crypto library
+  for it. The identity service's contract expects exactly this: an app that cannot verify the
+  signature "trusts TLS to the configured issuer origin", checks only the header `typ`, the
+  claim `iss` and that `exp` has not passed, fetches the catalogue only from the issuer over
+  HTTPS and never accepts one handed to it by another party (identity repository,
+  `docs/API.md` lines 612-619). The app does this: `readCatalogueToken` checks type,
+  algorithm name, issuer and expiry, and the request goes to the configured central origin
+  only. A facility, not the app, decides access and verifies its own tokens, and identity
+  refuses a facility token for an origin that is not in its catalogue (`docs/API.md` line 48),
+  so a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+  What this does not defend against is interception of TLS to the issuer on the phone itself
+  (a trusted extra certificate authority, a managed-device proxy): such a party could serve a
+  catalogue that lists an address the association never published, and a person who opens it
+  would be asking that address to sign them in. The release owner is told to use a publicly
+  trusted certificate for the issuer (see `docs/RELEASE_PREPARATION.md`). Signature
+  verification (a pure-JavaScript P-256 verifier with the issuer's key set, or keys pinned in
+  the build) was considered and not chosen on 2026-10-17: pinned keys would tie every key
+  rotation to an app release.
 - **Passcode and biometrics** after the first sign-in.
 - **SMS auto-read** on Android (SMS Retriever); the code fields already use one-time-code
   autofill.
