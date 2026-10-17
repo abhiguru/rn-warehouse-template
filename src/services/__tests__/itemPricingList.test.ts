@@ -32,6 +32,42 @@ describe('getItemStoragePrices pagination (P-02)', () => {
   });
 });
 
+describe('getItemStoragePrices 30 second deadline', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  // A timer left counting down behind a finished call kept the Jest process open for 30 seconds
+  // after the suite ("Jest did not exit one second after the test run has completed").
+  it('leaves no timer behind once the server has answered', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: [price('a')], pagination: { total: 1, limit: 20, offset: 0, has_more: false } }, error: null });
+    const result = await getItemStoragePrices();
+    expect(result.success).toBe(true);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no timer behind when the call fails', async () => {
+    rpc.mockRejectedValue(new Error('network down'));
+    const result = await getItemStoragePrices();
+    expect(result.success).toBe(false);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('still gives up after 30 seconds when the server never answers', async () => {
+    rpc.mockReturnValue(new Promise(() => {}));
+    const pending = getItemStoragePrices();
+    await jest.advanceTimersByTimeAsync(29999);
+    expect(jest.getTimerCount()).toBe(1);
+    await jest.advanceTimersByTimeAsync(1);
+    const result = await pending;
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/timed out/i);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
 describe('listAllRates and listItemRates', () => {
   beforeEach(() => jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never));
 

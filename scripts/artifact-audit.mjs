@@ -25,6 +25,32 @@ export function validateText(text) {
 }
 
 /**
+ * The largest file the directory audit reads, whole, to scan. The exported Hermes
+ * bundle is about 12 MB, which an earlier 10 MiB cap silently skipped, so the main
+ * payload was never scanned. A file above this limit fails the audit instead of
+ * being skipped: an audit that skips a file reports a clean result it did not earn.
+ */
+export const MAX_AUDIT_FILE_BYTES = 256 * 1024 * 1024;
+
+/**
+ * Scans every file of an exported directory for the forbidden text patterns.
+ * Binary files are read as latin1, which keeps every byte and is enough for the
+ * ASCII patterns. Returns how many files were scanned and how many were skipped
+ * (none: a file that cannot be scanned throws).
+ */
+export function scanDirectoryText(directory, names, { maxFileBytes = MAX_AUDIT_FILE_BYTES } = {}) {
+  let scanned = 0;
+  let skipped = 0;
+  for (const name of names) {
+    const path = join(directory, name);
+    if (statSync(path).size > maxFileBytes) throw new Error(`Artifact file too large to audit: ${path}`);
+    validateText(readFileSync(path).toString('latin1'));
+    scanned += 1;
+  }
+  return { scanned, skipped };
+}
+
+/**
  * Every permission the built app is expected to request. Anything else in the
  * merged manifest fails the audit: a dependency or SDK upgrade can add a
  * permission (location, contacts, phone state, notifications, advertising id)
@@ -119,12 +145,14 @@ function run(command, args, options = {}) {
 }
 
 function scanArchiveText(artifact, entries) {
-  const textEntries = entries.filter(name =>
-    name.startsWith('assets/') || /\.(?:js|json|xml|txt|properties|pem|crt|html|css|map|version)$/i.test(name));
-  for (const name of textEntries) {
-    if (/\.(?:png|jpe?g|webp|gif|ttf|otf)$/i.test(name)) continue;
+  let scanned = 0;
+  for (const name of entries) {
+    const isText = name.startsWith('assets/') || /\.(?:js|json|xml|txt|properties|pem|crt|html|css|map|version)$/i.test(name);
+    if (!isText || /\.(?:png|jpe?g|webp|gif|ttf|otf)$/i.test(name)) continue;
     validateText(run('unzip', ['-p', artifact, name], { encoding: 'latin1' }));
+    scanned += 1;
   }
+  return { scanned, skipped: entries.length - scanned };
 }
 
 function findAapt() {
@@ -142,7 +170,7 @@ function findAapt() {
   return null;
 }
 
-export function auditArtifact(input, root = resolve(new URL('..', import.meta.url).pathname)) {
+export function auditArtifact(input, root = resolve(new URL('..', import.meta.url).pathname), { maxFileBytes } = {}) {
   const artifact = resolve(input);
   if (!existsSync(artifact)) throw new Error(`Artifact does not exist: ${artifact}`);
   const app = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8')).expo;
@@ -150,15 +178,13 @@ export function auditArtifact(input, root = resolve(new URL('..', import.meta.ur
   let entries;
   let permissions = [];
   let digest = null;
+  let counts;
   if (statSync(artifact).isDirectory()) {
     entries = validateEntries(filesUnder(artifact));
-    for (const name of entries) {
-      const path = join(artifact, name);
-      if (statSync(path).size <= 10 * 1024 * 1024) validateText(readFileSync(path).toString('latin1'));
-    }
+    counts = scanDirectoryText(artifact, entries, { maxFileBytes });
   } else if (artifact.endsWith('.apk')) {
     entries = validateEntries(run('unzip', ['-Z1', artifact]).trim().split('\n').filter(Boolean));
-    scanArchiveText(artifact, entries);
+    counts = scanArchiveText(artifact, entries);
     const aapt = findAapt();
     if (!aapt) throw new Error('Android build-tools aapt/aapt2 is required to verify manifest permissions.');
     const args = basename(aapt) === 'aapt2' ? ['dump', 'permissions', artifact] : ['dump', 'permissions', artifact];
@@ -177,7 +203,7 @@ export function auditArtifact(input, root = resolve(new URL('..', import.meta.ur
     if (!notices.includes('@expo/vector-icons') || !notices.includes('react-native-vector-icons')) throw new Error('Bundled icon fonts are missing attribution notices.');
   }
   const publicCertificates = entries.filter(name => allowedPublicCertificates.has(name));
-  return { artifact, sha256: digest, entries: entries.length, fonts, publicCertificates, permissions };
+  return { artifact, sha256: digest, entries: entries.length, scanned: counts.scanned, skipped: counts.skipped, fonts, publicCertificates, permissions };
 }
 
 if (isMain(import.meta.url)) {

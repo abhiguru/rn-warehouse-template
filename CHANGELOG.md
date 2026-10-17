@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Ops review wave 4: tooling (2026-10-18)
+
+Fixes from the 2026-10-17 operational review (findings M03, M04, M10, M11, M13, and a Low left from wave 2). No
+runtime change apart from logging.
+
+- **CI type-checks the tests (M03).** `npm run typecheck:tests` runs in `ci.yml` and `release.yml`; the nine test
+  type errors are fixed (the review had counted six).
+- **expo-doctor is pinned (M04).** `expo-doctor@1.21.4` is an exact dev dependency and CI runs
+  `npx --no-install expo-doctor`, so a run can no longer fetch an unreviewed tool. It is bumped by hand with Expo SDK
+  upgrades.
+- **The artifact audit reads every file (M10).** No silent skip above 10 MiB (the Hermes bundle is 12 MB); a file
+  over 256 MiB stops the audit; the report shows scanned and skipped counts; CI and release audit the exported
+  `dist` too.
+- **Unused ASCII-only validator removed (M11, owner decision D23).**
+- **Lint and logging (M13, owner decision D25).** The unused lint directives are gone; CI and release run the same
+  lint with `--max-warnings 636`; every `console.*` call in `src/config/` and `src/store/` goes through the redacting
+  logger (in a release build the logger writes errors only, so former `console.warn` lines no longer appear there);
+  the logger writes an `Error` as its name and message. A 30 s timer left by `getItemStoragePrices` is cleared, so
+  Jest exits cleanly.
+- **iOS release guard (wave 2 follow-up).** The Release build phase also fails when the built `Info.plist` is missing
+  or unreadable, PlistBuddy is missing, or `NSExceptionDomains` is present. The README says how to regenerate an
+  `ios/` folder made for release (`WAREHOUSE_IOS_LOCAL_NETWORKING=1 npx expo prebuild --platform ios --clean`).
+
 ## Unreleased — Ops review wave 3: correctness (2026-10-18)
 
 Fixes from the 2026-10-17 operational review (findings M02, M05, M06, M09, M14, M15). No backend change;

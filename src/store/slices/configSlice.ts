@@ -3,6 +3,7 @@
  * Handles state management of public and full configurations
  */
 
+import { createLogger } from '@/utils/logger';
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { t } from '@/i18n';
@@ -10,6 +11,8 @@ import ConfigService, {
   PublicConfig,
   FullConfig,
 } from '@/services/configService';
+
+const configSliceLogger = createLogger('ConfigSlice');
 
 export interface ConfigState {
   publicConfig: PublicConfig | null;
@@ -69,10 +72,10 @@ export const fetchFullConfig = createAsyncThunk(
       }
       // If config service returns null, it's not a fatal error
       // The app can continue without full config
-      console.warn('[ConfigSlice] Full config not available, using defaults');
+      configSliceLogger.warn('Full config not available, using defaults');
       return rejectWithValue(t('errors.server.fullConfigOptional'));
     } catch (error: unknown) {
-      console.error('[ConfigSlice] Full config fetch error:', error);
+      configSliceLogger.error('Full config fetch error:', error);
       const message =
         error instanceof Error ? error.message : t('errors.server.fullConfigFetchFailed');
       return rejectWithValue(message);

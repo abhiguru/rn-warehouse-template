@@ -4,6 +4,7 @@
  * Similar to grnFormSlice but adapted for dispatch-specific requirements
  */
 
+import { createLogger } from '@/utils/logger';
 import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
 import type {
   DispatchFormState,
@@ -13,6 +14,8 @@ import type {
   ItemFormData,
 } from '@/types/dispatch.types';
 import { createEmptyDispatchHeader } from '@/types/dispatch.types';
+
+const dispatchFormLogger = createLogger('DispatchFormSlice');
 
 // ============================================================================
 // SNAPSHOT TYPE FOR ROLLBACK
@@ -420,7 +423,7 @@ const dispatchFormSlice = createSlice({
         state.snapshot = null;
         state.is_saving = false;
         if (__DEV__) {
-          console.log('[DispatchFormSlice] Rolled back to snapshot after failed submission');
+          dispatchFormLogger.info('Rolled back to snapshot after failed submission');
         }
       }
     },

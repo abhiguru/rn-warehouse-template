@@ -53,3 +53,13 @@ describe('what the logger keeps', () => {
     expect(text).not.toContain('REDACTED');
   });
 });
+
+describe('an error object', () => {
+  it('is written as its name and message, not as "{}", and is still redacted', () => {
+    const text = written('Refresh failed', new TypeError('network down for 919888880001'));
+
+    expect(text).toContain('TypeError: network down for [REDACTED_PHONE]');
+    expect(text).not.toContain('{}');
+    expect(text).not.toContain('919888880001');
+  });
+});

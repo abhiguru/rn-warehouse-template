@@ -3,7 +3,9 @@
 // development build. No macOS is needed: `expo config --type introspect` evaluates the same
 // config plugins that `expo prebuild` runs and prints the Info.plist they would write.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -127,4 +129,70 @@ test('the generated Xcode project gets a Release-only guard phase, once', () => 
   assert.ok(listed.includes(GUARD_PHASE_NAME));
   // The written project file still parses.
   assert.ok(xcode.project(fixture).parseSync() && project.writeSync().includes('PlistBuddy'));
+});
+
+// Ops review 2026-10-18, N1: the Release guard let a build pass when it could not read the built
+// Info.plist. It runs here against a stand-in for PlistBuddy (a shell script that looks a key up
+// in a "key=value" text file), because there is no macOS here.
+function runGuard({ plist, configuration = 'Release', standIn = true }) {
+  const xcode = require('xcode');
+  const { addReleaseGuardPhase, GUARD_PHASE_NAME } = require('../plugins/with-ios-transport-policy.js');
+  const project = xcode.project(
+    fileURLToPath(new URL('../node_modules/react-native-safe-area-context/ios/RNSafeAreaContext.xcodeproj/project.pbxproj', import.meta.url))
+  ).parseSync();
+  addReleaseGuardPhase(project);
+  const phase = Object.values(project.hash.project.objects.PBXShellScriptBuildPhase).find(
+    entry => typeof entry === 'object' && entry.name === `"${GUARD_PHASE_NAME}"`
+  );
+  const directory = mkdtempSync(join(tmpdir(), 'ios-guard-'));
+  try {
+    const buddy = join(directory, standIn ? 'PlistBuddy' : 'no-such-PlistBuddy');
+    if (standIn) {
+      writeFileSync(buddy, '#!/bin/sh\nkey="${2#Print :}"\ngrep -m1 "^$key=" "$3" | cut -d= -f2-\ngrep -q "^$key=" "$3"\n');
+      chmodSync(buddy, 0o755);
+    }
+    if (plist !== undefined) writeFileSync(join(directory, 'Info.plist'), plist);
+    const script = phase.shellScript.slice(1, -1).replace(/\\"/g, '"').replace('/usr/libexec/PlistBuddy', buddy);
+    return spawnSync('sh', ['-c', script], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, CONFIGURATION: configuration, TARGET_BUILD_DIR: directory, INFOPLIST_PATH: 'Info.plist' },
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+const CLEAN = 'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=false\n';
+
+test('the Release guard passes a clean Info.plist and ignores other configurations', () => {
+  assert.equal(runGuard({ plist: CLEAN }).status, 0);
+  assert.equal(runGuard({ configuration: 'Debug' }).status, 0);
+});
+
+test('the Release guard fails when the built Info.plist is missing or cannot be parsed', () => {
+  const missing = runGuard({});
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /missing or unreadable/);
+  const garbled = runGuard({ plist: 'not a plist\n' });
+  assert.equal(garbled.status, 1);
+  assert.match(garbled.stderr, /cannot be parsed/);
+});
+
+test('the Release guard fails when PlistBuddy itself is missing', () => {
+  const result = runGuard({ plist: CLEAN, standIn: false });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PlistBuddy is missing/);
+});
+
+test('the Release guard fails on local networking, arbitrary loads and exception domains', () => {
+  for (const [extra, message] of [
+    ['NSAppTransportSecurity:NSAllowsLocalNetworking=true', /NSAllowsLocalNetworking/],
+    ['NSAppTransportSecurity:NSExceptionDomains=Dict', /NSExceptionDomains/],
+  ]) {
+    const result = runGuard({ plist: `${CLEAN}${extra}\n` });
+    assert.equal(result.status, 1, extra);
+    assert.match(result.stderr, message);
+  }
+  const arbitrary = runGuard({ plist: 'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=true\n' });
+  assert.equal(arbitrary.status, 1);
+  assert.match(arbitrary.stderr, /NSAllowsArbitraryLoads/);
 });

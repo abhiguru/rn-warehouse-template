@@ -59,8 +59,11 @@ facility access requests, and forced sign-out (`forceLogoutOnInvalidToken`).
 
 ## Working rules
 
-- Checks before a pull request: `npm test`, `npm run typecheck`, `npm run lint`
-  (no new warnings in changed files). CI runs the same plus an Android build audit.
+- Checks before a pull request: `npm test`, `npm run typecheck`, `npm run typecheck:tests`
+  (the test files are outside `typecheck`), `npm run lint` (no new warnings in changed files;
+  CI fails above a fixed warning count, `--max-warnings` in `ci.yml` and `release.yml`, which is
+  lowered as warnings are fixed) and `npm run test:setup`. CI runs the same plus expo-doctor
+  and an audit of the Android export and the debug build.
 - Add or update tests with every behavior change (Jest; see `src/**/__tests__`).
 - Never commit secrets, signing keys, `.env` or generated `android/`/`ios/` folders.
 - Use fictional names and phone numbers in tests, fixtures and screenshots.
