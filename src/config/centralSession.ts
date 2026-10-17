@@ -65,6 +65,8 @@ export type CentralErrorCode =
   | 'invalid_request'
   | 'session_ended'
   | 'catalogue_invalid'
+  /** The association's service has no such call (an older central service; a 404). */
+  | 'not_supported'
   | 'failed';
 
 export type CentralFailure = {
@@ -141,6 +143,8 @@ export function centralErrorMessage(code: CentralErrorCode, retryAfterSeconds?: 
       return t('central.errors.sessionEnded');
     case 'catalogue_invalid':
       return t('central.errors.catalogueInvalid');
+    case 'not_supported':
+      return t('central.errors.notSupported');
     case 'network':
     case 'timeout':
       return t('central.errors.network');
@@ -725,11 +729,13 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
     if (getCentralState().status === 'signedIn') await endLocally(null);
     return { kind: 'refused' };
   }
-  // The refresh token is sent exactly once. The service revokes the whole
-  // family when a token is presented a second time, whatever the reason, so a
-  // lost answer is never repeated: the session is kept and the next need
-  // refreshes again, which the service then treats as reuse and the person
-  // signs in again. That is the price of never sending a token twice.
+  // The refresh token is sent once per attempt and never retried within it. The service revokes
+  // the whole family when a token is presented a second time, whatever the reason, and cannot
+  // tell a lost answer from a copied token. After a lost answer the session is kept and the next
+  // refresh presents the same token, which the service treats as reuse if the first request
+  // arrived: the family is revoked and the person signs in again; if it never arrived, that
+  // refresh simply succeeds. That costs availability, not security (docs/CENTRAL_LOGIN.md,
+  // "Session contract").
   const answer = await centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', {
     body: { refresh_token: stored.refreshToken },
   });
@@ -846,12 +852,15 @@ async function accessToken(onlyFor?: string | null, refused?: string): Promise<{
  * A call that needs sign-in: refreshes ahead of expiry, and once when the service answers 401.
  * `onlyFor` (see `accessToken`) is for a call that acts on one person's behalf and must never
  * carry another person's token: every token it sends is chosen together with that check.
+ * `missing` is what a 404 means for a call that an older service does not have (default: a
+ * failure the person is told is unavailable).
  */
 async function signedCall(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: Record<string, unknown>,
-  onlyFor?: string | null
+  onlyFor?: string | null,
+  missing?: CentralErrorCode
 ): Promise<{ kind: 'ok'; body: Record<string, unknown> } | CentralFailure> {
   const config = getCentralLoginConfig();
   const first = await accessToken(onlyFor);
@@ -881,6 +890,7 @@ async function signedCall(
       return failure('session_ended');
     }
   }
+  if (answer.kind === 'error' && answer.status === 404 && missing) return failure(missing);
   if (answer.kind !== 'ok') return failureOf(answer);
   return answer;
 }
@@ -1002,6 +1012,39 @@ export async function signOutCentral(): Promise<boolean> {
   if (lastRefresh?.sent === stored.refreshToken) lastRefresh = null;
   if (token) await centralFetch(config, 'POST', '/v1/session/signout', { accessToken: token });
   return cleared;
+}
+
+/**
+ * "Sign out on all phones": `POST /v1/session/signout-all` (central service 0.4.0 and later)
+ * ends every session of the person at the service, this phone's included, and then this phone
+ * forgets its own.
+ *
+ * It needs the service. The session is forgotten here only after the service has said so:
+ * without a connection, on a limit (429) or a service error (5xx) the session is kept and the
+ * failure returned, so the person can try again. Nothing is sent for anybody but the person the
+ * app shows as signed in (`onlyFor`, as `deleteCentralAccount` does). A 404 is a service without
+ * the call (`not_supported`).
+ *
+ * After `ok`, `/v1/session/signout` is NOT called: signout-all has just ended this session's
+ * family too. When the service says the session had already ended (a 401 that a refresh did not
+ * mend), the person is signed out on every phone as far as this phone can tell, and the answer is
+ * the same success; a session that call has already removed is not removed twice, and one that
+ * another sign-in has replaced meanwhile is left alone.
+ *
+ * `cleared`: whether the phone removed the stored session (the four keys), as `signOutCentral`
+ * reports it. False: memory is signed out, but the secure store kept (some of) the keys and the
+ * sign-out marker makes the next start remove them.
+ */
+export async function signOutAllCentralSessions(): Promise<CentralResult<{ cleared: boolean }>> {
+  const userId = getCentralState().user?.id ?? null;
+  const answer = await signedCall('POST', '/v1/session/signout-all', undefined, userId, 'not_supported');
+  if ('ok' in answer) {
+    if (answer.code !== 'session_ended') return answer;
+    const now = getCentralState();
+    if (now.status === 'signedIn' && now.user?.id === userId) return { ok: true, cleared: await endLocally(null) };
+    return { ok: true, cleared: true };
+  }
+  return { ok: true, cleared: await endLocally(null) };
 }
 
 // ---------------------------------------------------------------------------

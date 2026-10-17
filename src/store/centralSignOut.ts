@@ -1,12 +1,12 @@
 /**
  * Ending the central sign-in from "My facilities" (docs/CENTRAL_LOGIN.md).
  *
- * Both actions also leave the facility the app has selected, with the same
- * cleanup as a server change, so nothing of a facility session outlives the
- * identity that opened it.
+ * All three actions (sign out, sign out on all phones, delete) also leave the
+ * facility the app has selected, with the same cleanup as a server change, so
+ * nothing of a facility session outlives the identity that opened it.
  */
 import { getActiveOperatorServer, type OperatorServer } from '@/config/operatorServer';
-import { deleteCentralAccount, signOutCentral, type CentralFailure } from '@/config/centralSession';
+import { deleteCentralAccount, signOutAllCentralSessions, signOutCentral, type CentralFailure } from '@/config/centralSession';
 import { deleteMyFacilities, loadMyFacilities, removeMyFacility, updateMyFacility } from '@/config/centralFacilities';
 import { getCentralState, nextOutcomeId, setCentralState } from '@/config/centralState';
 import { deleteAccount, isDeleteAccountRejection } from '@/store/slices/authSlice';
@@ -87,6 +87,28 @@ export function signOutEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome
     if (left === 'busy') return { ok: false, reason: 'busy' };
     if (!(await signOutCentral())) return { ok: false, reason: 'local_clear_failed' };
     // Signed out, but the facility's cleanup did not all run: said, not hidden.
+    return left === 'failed' ? { ok: true, facilityCleanup: 'failed' } : { ok: true };
+  });
+}
+
+/**
+ * "Sign out on all phones" on the account screen: like `signOutEverywhere`, the current facility
+ * is left first (a write in flight refuses the whole action), but the association's sign-in is
+ * ended on every phone (`POST /v1/session/signout-all`) and this phone forgets its own. It needs
+ * the service: when that call fails the central sign-in is kept and the failure is returned, so
+ * the person can try again (the facility has been left by then, as with a failed deletion).
+ * Facility sessions already open on other phones are not ended by this: they stay open until
+ * that phone signs out there.
+ * The answers are those of `signOutEverywhere`, and `local_clear_failed` when the service ended
+ * the sessions but this phone's secure storage kept its copy.
+ */
+export function signOutAllDevices(dispatch: Dispatch): Promise<CentralEndOutcome> {
+  return whileLeaving(async () => {
+    const left = await leaveSelectedFacility(dispatch);
+    if (left === 'busy') return { ok: false, reason: 'busy' };
+    const ended = await signOutAllCentralSessions();
+    if (!ended.ok) return { ok: false, reason: 'central', failure: ended };
+    if (!ended.cleared) return { ok: false, reason: 'local_clear_failed' };
     return left === 'failed' ? { ok: true, facilityCleanup: 'failed' } : { ok: true };
   });
 }

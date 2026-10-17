@@ -159,11 +159,12 @@ tick was given.
 (`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
 the facility request gate. The access token is replaced a minute before it expires and once
 when the service answers 401; one refresh runs at a time, and the refresh path sends a refresh
-token exactly once. A refresh whose answer was lost is not repeated: the session is kept and
-the next need refreshes again with the same token. If the lost request had reached the
-service, that next refresh is reuse: the service revokes the session family and the person
-signs in again; if it had not (the connection failed before it arrived), the next refresh
-simply succeeds. When the service refuses the refresh token the person is signed out
+token once per attempt and never retries it within that attempt. After a lost answer the
+session is kept, and the next refresh presents the same token. If the lost request had reached
+the service, the service treats that as reuse: it revokes the session family and the person
+signs in again (accepted: this costs a sign-in by SMS, not security); if it had not (the
+connection failed before it arrived), the next refresh simply succeeds. When the service
+refuses the refresh token the person is signed out
 centrally, told why, and returned to central sign-in. Sign-out with an expired access token
 needs a new one for the revocation and keeps the same rule (backlog A20): it reads the pair in
 the same queued step that removes it, so no newer pair can be stored after the one it reads;
@@ -401,8 +402,70 @@ facilities when Settings is already gone; not known leaves the entry Unavailable
 facility and shows the message, or the cleanup's own message when that cleanup did not
 finish. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility (if the phone could not remove the session from its
-secure storage it says so, see the central session above); the account entry holds the name and "Delete my
-account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
+secure storage it says so, see the central session above); the account entry holds the name,
+"Sign out on all phones" and "Delete my account" (`DELETE /v1/me`), whose confirmation says that
+each facility keeps its own records.
+
+**Sign out on all phones** (My facilities, the account row at the top, then Account; a secondary
+button above "Delete my account"; `signOutAllDevices` in `src/store/centralSignOut.ts`,
+`signOutAllCentralSessions` in `src/config/centralSession.ts`). The confirmation says that the
+person is signed out of the association account on every phone, this one included, and that a
+cold storage already open on another phone stays open there until the person signs out on that
+phone: a facility's own session belongs to the facility, and the association's call does not end
+it. After the confirmation the app leaves the selected facility (a write in flight refuses the
+action), sends one `POST /v1/session/signout-all` with the access token of the person shown as
+signed in (identity `docs/API.md`, central service 0.4.0 and later; nothing is sent for anybody
+else's stored session), and only when the service says `ok` forgets the central session on this
+phone. It does not call `/v1/session/signout` afterwards: the call has ended this session's
+family too. The action needs a connection. Without one, on a limit (429) or on a service error
+(5xx) the session is kept and the person is told, so they can try again (the facility has been
+left by then, as with a failed deletion). A 404 is a service without the call and is told as
+"not supported by this association service". A refusal that one refresh does not mend (the
+session had already ended) counts as success. As for "Sign out", the phone says so when it could
+not remove its stored copy. The button is on the account screen only: it is not offered after
+an unexpected sign-out (the person finds it there after signing in again). Older installed apps
+do not have it.
+
+### Session contract
+
+What the app does when the association's service answers 401, and what it expects of the
+service. The identity half is in the identity repository (`docs/API.md`, sections
+`POST /v1/session/refresh` and "The access token"; `docs/SECURITY.md`, sections "A refresh token
+works once, and what that trades away" and "What a stolen signing key allows, and how to
+rotate"). Identity states the 401 rule in one sentence, in its `docs/API.md` section
+`POST /v1/session/refresh` ("What a client does on a 401") and again under "The access token",
+and the app implements exactly that sentence:
+
+> On a 401 `invalid_token` from a call with an access token, the client refreshes once (one
+> refresh at a time, with the newest refresh token) and repeats the call once; if that refresh
+> answers 400 or 401, or the repeated call answers 401 again, it drops all stored tokens and the
+> person signs in again with a code.
+
+Both repositories carry the same four rules (operational review of 2026-10-17, X-2, decision
+D16):
+
+1. A protected-API 401 `invalid_token` is answered with at most one single-flight refresh with
+   the newest refresh token (or a newer token that another call has already stored), and the
+   call is then repeated once.
+2. A refresh answered 400 or 401, or a second 401 on the repeated call, ends the session: both
+   tokens are dropped and the person signs in again. A refused refresh token is never sent again.
+3. A refresh that got no answer is not retried within that attempt. The next refresh may present
+   the same token, which the service treats as reuse if the first request arrived (accepted: it
+   costs one sign-in by SMS, not security, because presenting the token again also kills any
+   copy of it).
+4. The words never claim that the sign-in "was used twice" or "from two places": the service
+   answers the same 401 for an expired token, a retired key and an ended session. The app says
+   "Your association sign-in has ended. Sign in again."
+
+Why one refresh and not "drop every token on any 401": a forced key rotation, and an upgrade
+from before central service 0.3.0, make every access token fail once with 401 `invalid_token`;
+one refresh gives the person a token signed with the new key and nobody is signed out. If the
+family has been revoked the refresh itself answers 401 and the session ends as it should, so the
+rule is safe under both readings. "Drop every token on any 401" would sign every person out at
+each key rotation and cost one SMS each. Installed apps already behave this way, so the
+contract needs no app release. Tests: the "session contract" block in
+`src/config/__tests__/centralSession.test.ts`. The identity text speaks of "Sign out
+everywhere"; the app's button is "Sign out on all phones".
 
 ## Still open
 
@@ -463,7 +526,12 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   (phone report 2026-10-12). `src/tests/navigation/CentralOpenRemount.test.tsx` runs that
   hand-over through the real router, route guard and screens, and the ways back from the
   waiting screen and the code step; none of it has been re-run on a device since the fixes.
-- The Gujarati text is a draft for the owner's wording review.
+- The Gujarati text is a draft for the owner's wording review (the "Sign out on all phones"
+  texts of 2026-10-18 included).
+- "Sign out on all phones" rests on the Jest tests (the service mocked from its documented
+  answers). Not run on a phone or against a central service 0.4.0 or later with two phones: sign
+  in on both, use the action on one, and the other lands on central sign-in at its next central
+  call, while a facility already open there stays usable until its own sign-out.
 - The catalogue's availability (2026-10-14) rests on the Jest tests (`src/config/__tests__/catalogueView.test.ts`,
   the catalogue part of `centralSession.test.ts` and of `src/tests/components/CentralLoginScreens.test.tsx`).
   Not run on a phone yet: a facility going Offline and back Online through the service's check
