@@ -8,7 +8,7 @@
 import { getActiveOperatorServer } from '@/config/operatorServer';
 
 /** The date the legal pages were last changed, written 'D Month YYYY'. */
-export const LEGAL_UPDATED = '14 October 2026';
+export const LEGAL_UPDATED = '18 October 2026';
 
 export const ASSOCIATION_NAME = 'Gujarat Cold Storage Association';
 

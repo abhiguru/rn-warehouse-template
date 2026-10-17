@@ -225,8 +225,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       const sanitized = beforeSend(event);
       expect(sanitized).not.toBeNull();
 
-      // User
-      expect(sanitized?.user?.id).toBe('user-uuid-123');
+      // User: the account id is dropped (M09, D22)
+      expect(sanitized?.user?.id).toBeUndefined();
       expect(sanitized?.user?.phone).toBe('[REDACTED]');
       expect(sanitized?.user?.email).toBe('[REDACTED]');
       expect(sanitized?.user?.ip_address).toBe('[REDACTED]');
@@ -237,9 +237,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       expect(sanitized?.request?.query_string).toContain(
         'token=%5BREDACTED%5D'
       );
-      expect(
-        (sanitized?.request?.data as Record<string, unknown>)?.['otp']
-      ).toBe('[REDACTED]');
+      // The request body is dropped (M09, D22)
+      expect(sanitized?.request?.data).toBeUndefined();
 
       // Extra
       expect(
@@ -368,7 +367,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
     };
 
     const places: Array<[string, (value: unknown) => Record<string, unknown>]> = [
-      ['request.data', value => ({ request: { data: value } })],
+      // request.data is not a place any more: it is dropped whole (M09, D22; see
+      // "request.data is never sent" below).
       ['extra', value => ({ extra: { detail: value } })],
       ['contexts', value => ({ contexts: { state: value } })],
       [
@@ -549,13 +549,159 @@ describe('sentryConfig - Telemetry and Redaction', () => {
     });
   });
 
-  describe('helper functions', () => {
-    it('sets and clears user context correctly', () => {
-      setSentryUser('user-1', 'operator');
-      expect(Sentry.setUser).toHaveBeenCalledWith({
-        id: 'user-1',
-        role: 'operator',
+  // Review 2026-10-17, M09 (owner decision D22): operator consent plus content
+  // minimisation. What leaves the phone is the app version, the phone model, the
+  // role and the error text; never a request body or an account id.
+  describe('content minimisation (M09, D22)', () => {
+    // Fictional business names and a fictional person: ordinary words that no
+    // pattern filter can recognise.
+    const BUSINESS = 'Zephyr Example Traders';
+    const PERSON = 'Anaya Example';
+    const send = (fields: Record<string, unknown>) =>
+      beforeSend(fields as unknown as Sentry.ErrorEvent)!;
+
+    describe('request.data is never sent', () => {
+      const nest = (levels: number, inner: unknown): unknown => {
+        let value = inner;
+        for (let i = 0; i < levels; i++) value = { child: value };
+        return value;
+      };
+      const bodies: Array<[string, unknown]> = [
+        ['a business name under an ordinary key', { customer: BUSINESS, note: `for ${PERSON}` }],
+        ['a plain string', `{"customer":"${BUSINESS}"}`],
+        ['an array of records', [{ name: BUSINESS }, { name: PERSON }]],
+        ['a body 3 levels deep', nest(3, { customer: BUSINESS })],
+        ['a body 9 levels deep', nest(9, { customer: BUSINESS })],
+        ['a body 20 levels deep', nest(20, { customer: BUSINESS })],
+      ];
+
+      it.each(bodies)('drops %s', (_label, data) => {
+        const out = send({ request: { url: 'https://api.example.test/rest/v1/customers', method: 'POST', data } });
+        const json = JSON.stringify(out);
+        expect(out.request).not.toHaveProperty('data');
+        expect(json).not.toContain(BUSINESS);
+        expect(json).not.toContain(PERSON);
+        // The rest of the request stays.
+        expect(out.request?.url).toBe('https://api.example.test/rest/v1/customers');
+        expect(out.request?.method).toBe('POST');
       });
+
+      it('keeps nothing of a body that holds only a number or a flag either', () => {
+        expect(send({ request: { data: 7 } }).request).not.toHaveProperty('data');
+        expect(send({ request: { data: false } }).request).not.toHaveProperty('data');
+      });
+    });
+
+    describe('the account id is never sent', () => {
+      it('setSentryUser passes the role and no id', () => {
+        setSentryUser('staff');
+        expect(Sentry.setUser).toHaveBeenCalledTimes(1);
+        const user = (Sentry.setUser as jest.Mock).mock.calls[0][0];
+        expect(user).toEqual({ role: 'staff' });
+        expect(user).not.toHaveProperty('id');
+      });
+
+      it('setSentryUser without a role clears the user instead of setting an empty one', () => {
+        setSentryUser(undefined);
+        setSentryUser('');
+        expect(Sentry.setUser).toHaveBeenNthCalledWith(1, null);
+        expect(Sentry.setUser).toHaveBeenNthCalledWith(2, null);
+      });
+
+      it('beforeSend drops an id that anything else put on the scope and keeps the role', () => {
+        const out = send({ user: { id: 'f3b0c8a2-0000-4000-8000-000000000001', role: 'customer' } });
+        expect(out.user).toEqual({ role: 'customer' });
+        expect(JSON.stringify(out)).not.toContain('f3b0c8a2-0000-4000-8000-000000000001');
+      });
+
+      it('beforeSend still redacts the phone, email and address of the user', () => {
+        const out = send({ user: { id: 'u-1', phone: '+919888880001', email: 'a@x.example.test', ip_address: '10.0.0.7', role: 'admin' } });
+        expect(out.user).toEqual({ phone: '[REDACTED]', email: '[REDACTED]', ip_address: '[REDACTED]', role: 'admin' });
+      });
+    });
+
+    describe('exception text', () => {
+      it('is scrubbed by redactErrorText: the number and row values go, the words around them stay', () => {
+        const out = send({
+          exception: {
+            values: [
+              { type: 'Error', value: `Order for ${BUSINESS} failed: Key (mobile)=(9888880001) already exists. Contact 9888880001` },
+            ],
+          },
+        });
+        const text = out.exception!.values![0].value!;
+        expect(text).toBe(`Order for ${BUSINESS} failed: Key (mobile)=([REDACTED]) already exists. Contact [REDACTED_PHONE]`);
+        // What the privacy screen says: names in an error text are not recognised
+        // and may be sent ("error text may contain names from your records").
+        expect(text).toContain(BUSINESS);
+      });
+    });
+
+    describe('request cookies', () => {
+      it('keeps the cookie names and redacts every value', () => {
+        const out = send({ request: { cookies: { session: 'abc123', csrftoken: 'zzz999' } } });
+        expect(out.request?.cookies).toEqual({ session: '[REDACTED]', csrftoken: '[REDACTED]' });
+        expect(JSON.stringify(out)).not.toMatch(/abc123|zzz999/);
+      });
+
+      it('redacts a raw cookie string', () => {
+        const out = send({ request: { cookies: 'session=abc123; csrftoken=zzz999' } });
+        expect(out.request?.cookies).toBe('[REDACTED]');
+        expect(JSON.stringify(out)).not.toMatch(/abc123|zzz999/);
+      });
+
+      it('leaves an event without cookies without a cookies key', () => {
+        expect(send({ request: { url: 'https://api.example.test/x' } }).request).not.toHaveProperty('cookies');
+      });
+    });
+
+    describe('request env', () => {
+      it('is scrubbed like any other data', () => {
+        const out = send({ request: { env: { REMOTE_ADDR: '10.0.0.7', auth_token: 'tok-1', owner_mobile: '9888880001' } } });
+        expect(out.request?.env).toEqual({ REMOTE_ADDR: '10.0.0.7', auth_token: '[REDACTED]', owner_mobile: '[REDACTED_PHONE]' });
+      });
+    });
+
+    describe('header names are matched by substring', () => {
+      const mustRedact = [
+        'x-session-token',
+        'X-Custom-Authorization-Info',
+        'x-api-key-v2',
+        'sb-cookie-extra',
+        'x-supabase-auth-extra',
+        'Authorization',
+        'Set-Cookie',
+        'x-refresh-token',
+        'X-OTP',
+        'x-caller-phone',
+        'Proxy-Authorization',
+        'x-client-secret',
+      ];
+      const mustKeep = ['Content-Type', 'Accept', 'x-request-id', 'User-Agent', 'Content-Length', 'X-Client-Info'];
+
+      it.each(mustRedact)('redacts the value of %s', name => {
+        expect(sanitizeHeaders({ [name]: 'synthetic-value-0001' })[name]).toBe('[REDACTED]');
+      });
+
+      it.each(mustKeep)('keeps the value of %s', name => {
+        expect(sanitizeHeaders({ [name]: 'plain-value' })[name]).toBe('plain-value');
+      });
+
+      it('applies to request headers and breadcrumb headers of an event', () => {
+        const out = send({
+          request: { headers: { 'x-session-token': 'synthetic-value-0002', accept: 'application/json' } },
+          breadcrumbs: [{ category: 'http', data: { headers: { 'x-session-token': 'synthetic-value-0003' } } }],
+        });
+        expect(out.request?.headers).toEqual({ 'x-session-token': '[REDACTED]', accept: 'application/json' });
+        expect(JSON.stringify(out)).not.toMatch(/synthetic-value-000[23]/);
+      });
+    });
+  });
+
+  describe('helper functions', () => {
+    it('sets the role without an account id and clears the user context', () => {
+      setSentryUser('operator');
+      expect(Sentry.setUser).toHaveBeenCalledWith({ role: 'operator' });
 
       clearSentryUser();
       expect(Sentry.setUser).toHaveBeenCalledWith(null);
