@@ -25,6 +25,7 @@ import { queryClient } from '@/lib/queryClient';
 import { store } from '@/store';
 import { logout } from '@/store/slices/authSlice';
 import { LEAVE_RETRY_WAIT_MS, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
+import { advanceSessionGeneration, getSessionGeneration } from '../sessionLifecycle';
 import { setLanguage } from '@/i18n';
 
 const ISSUER = 'https://identity.example.test';
@@ -42,6 +43,8 @@ jest.mock('../operatorServer', () => ({
   stageOperatorServer: jest.fn(async () => { mockEvents.push('stage'); }),
   commitStagedOperatorServer: jest.fn(async (server: unknown) => { mockActive = server; mockEvents.push('commit'); }),
   clearOperatorServer: jest.fn(async () => { mockActive = null; mockEvents.push('clear server'); }),
+  // At a cold start the saved selection is read into memory; here memory is the saved one.
+  loadOperatorServer: jest.fn(async () => mockActive),
 }));
 jest.mock('../supabaseConfig', () => ({
   beginOperatorSwitch: jest.fn(() => { mockEvents.push('begin switch'); return true; }),
@@ -630,15 +633,18 @@ describe('the facility session of an earlier sign-in, when leaving it is refused
     staleExchange();
     const opening = openFacility(ORIGIN, NAME);
     await jest.advanceTimersByTimeAsync(1000);
-    // Still waiting for the write: nothing has been left or forced yet.
+    // Still waiting for the write: nothing has been left or forced yet...
     expect(after('exchange')).toEqual([]);
     expect(getActiveOperatorServer()).toBe(server);
+    // ...but North is already listed, so an app closed now does not restore that session at
+    // the next start (review 2026-10-18, finding 1a).
+    expect(await listed()).toEqual([NORTH]);
     writing = false;
     await jest.advanceTimersByTimeAsync(200);
     expect(await opening).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
     expect(after('exchange')).toEqual(LEAVE);
     expect(getActiveOperatorServer()).toBeNull();
-    // Left the normal way: nothing listed, nothing told to Bhavin.
+    // Left the normal way: the entry is removed again, and nothing is told to Bhavin.
     expect(await listed()).toEqual([]);
     expect(getCentralState().outcome).toBeNull();
   });
@@ -758,6 +764,24 @@ describe('the facility session of an earlier sign-in, when leaving it is refused
     expect(getActiveOperatorServer()).toBe(server);
   });
 
+  it('(review 3) a session that begins during the wait is not ended by the delayed retry', async () => {
+    staleExchange();
+    const opening = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(1000);
+    // Bhavin's own sign-in at North replaces the stored session (startNewSession moves the
+    // generation), and it is his exchange that kept the leave busy.
+    advanceSessionGeneration();
+    writing = false;
+    await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS);
+    expect(await opening).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
+    // Nothing of his is touched: the gate is taken to look, and nothing is signed out or cleared.
+    expect(after('exchange')).toEqual(['begin switch', 'end switch']);
+    expect(getActiveOperatorServer()).toBe(server);
+    // The earlier session is gone with the replacement, so the entry is removed and nobody is told.
+    expect(await listed()).toEqual([]);
+    expect(getCentralState().outcome).toBeNull();
+  });
+
   it('(c) another facility opens as usual while one is listed', async () => {
     const EAST = { origin: 'https://east-cold.example.test', instanceId: 'instance-east' };
     await markStaleFacility(EAST);
@@ -815,6 +839,38 @@ describe('retryStaleFacilityCleanup (M08)', () => {
     expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
     expect(mockEvents).toEqual([]);
     expect(await listed()).toEqual([]);
+  });
+
+  it('(review 3) in the same run, a session that replaced the earlier one is not left: only the entry goes', async () => {
+    mockActive = server;
+    await markStaleFacility(NORTH, getSessionGeneration());
+    // Someone signs in at North after the earlier session was listed.
+    advanceSessionGeneration();
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
+    expect(mockEvents).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(server);
+    expect(await listed()).toEqual([]);
+  });
+
+  it('(review 1b) the selection is not known in memory yet (a cold start): it is read before deciding, and the facility is left', async () => {
+    mockActive = null;
+    jest.mocked(require('../operatorServer').loadOperatorServer).mockImplementationOnce(async () => {
+      mockActive = server;
+      return server;
+    });
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
+    expect(mockEvents).toEqual(['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch']);
+    expect(await listed()).toEqual([]);
+  });
+
+  it('(review 1b) the saved selection cannot be read: nothing is left and the entry stays', async () => {
+    mockActive = null;
+    jest.mocked(require('../operatorServer').loadOperatorServer).mockRejectedValueOnce(new Error('storage unavailable'));
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(false);
+    expect(mockEvents).toEqual([]);
+    expect(await listed()).toEqual([NORTH]);
   });
 
   it('the cleanup fails part-way: the entry stays', async () => {

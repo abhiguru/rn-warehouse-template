@@ -41,7 +41,8 @@ import { requestFacilityToken, type CentralFailure } from './centralSession';
 import { updateMyFacility } from './centralFacilities';
 import { discoverOperator, getActiveOperatorServer, type OperatorServer } from './operatorServer';
 import { setFacilityCapabilities } from './facilityCapabilities';
-import { isStaleFacility, markStaleFacility } from './staleFacilitySession';
+import { clearStaleFacility, forgetStaleGeneration, isStaleFacility, markStaleFacility } from './staleFacilitySession';
+import { getSessionGeneration } from './sessionLifecycle';
 import {
   exchangeCentralIdentity,
   initializeSupabase,
@@ -89,22 +90,33 @@ const ended = (): OpenOutcome => failed('not_signed_in', t('central.errors.sessi
  * waiting request) that belongs to the previous person. It must not stay on the phone for
  * whoever uses it next.
  *
- *   1. It is left like any other, and a write still in flight is first given time to
- *      settle (`leaveWithRetry`), so that write's outcome is not lost.
- *   2. If it could not be left, the facility is listed as stale on disk, which keeps a
- *      restart from restoring the session and an open from reaching it until the cleanup
- *      has run; then the session is ended locally without waiting for the switch gate
- *      (`forceLeaveFacility`: late answers are dropped, and offline the local clear is enough).
+ *   1. The facility is listed as stale on disk at once, so that a restart at any point of
+ *      what follows does not restore the session (initializeAuth) and an open does not reach
+ *      it until the cleanup has run.
+ *   2. It is left like any other, and a write still in flight is first given time to settle
+ *      (`leaveWithRetry`), so that write's outcome is not lost. When that works the entry is
+ *      removed again.
+ *   3. If it could not be left, the session is ended locally without waiting for the switch
+ *      gate (`forceLeaveFacility`: late answers are dropped, and offline the local clear is enough).
  *
- * Only step 2 is told to the person on the phone now, and without the facility's name,
+ * All of it acts only on that session: its generation is taken now, and once a later sign-in
+ * has replaced it (the generation moved without this cleanup), nothing more is done, so the
+ * session of the person on the phone now is never ended in its place.
+ *
+ * Only step 3 is told to the person on the phone now, and without the facility's name,
  * which belongs to the earlier sign-in.
  */
 async function leaveStaleSession(server: OperatorServer): Promise<OpenOutcome> {
   const facility = { origin: server.origin, instanceId: server.instanceId };
-  if ((await leaveWithRetry(store.dispatch, { facility })) === 'left') return ended();
-  // Written before the forced sign-out, so that an app closed part-way still knows.
-  await markStaleFacility(facility).catch(() => {});
-  const cleared = await forceLeaveFacility(store.dispatch, facility);
+  const session = { generation: getSessionGeneration() };
+  await markStaleFacility(facility, session.generation).catch(() => {});
+  if ((await leaveWithRetry(store.dispatch, { facility, session })) === 'left') {
+    await clearStaleFacility(facility);
+    return ended();
+  }
+  const cleared = await forceLeaveFacility(store.dispatch, facility, session);
+  // Not all of it ran: the next cleanup goes by the selection, not by the generation.
+  if (!cleared) forgetStaleGeneration(facility);
   return cleared
     ? failed('previous_session_closed', t('central.open.previousClosed'))
     : failed('previous_session_not_cleared', t('central.open.previousNotCleared'));

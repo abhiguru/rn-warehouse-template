@@ -13,7 +13,9 @@ import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
 import authReducer from '@/store/slices/authSlice';
 import { forceLeaveFacility, leaveFacility } from '@/store/operatorSwitch';
-import { getSessionGeneration } from '../sessionLifecycle';
+import { advanceSessionGeneration, getSessionGeneration } from '../sessionLifecycle';
+import ConfigService from '@/services/configService';
+import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { getActiveOperatorServer, saveOperatorServer } from '../operatorServer';
 import {
   createAuthenticatedFetch,
@@ -115,4 +117,52 @@ it('offline: the revocation fails, the phone still forgets the session', async (
   expect(await forceLeaveFacility(store.dispatch, NORTH)).toBe(true);
   expect(await getStoredToken()).toEqual({ isValid: false });
   expect(getActiveOperatorServer()).toBeNull();
+});
+
+// Review 2026-10-18, finding 3: the forced logout waits up to 15 s for the revocation without
+// holding the gate. Whatever begins meanwhile is the new person's and must be left alone.
+describe('a session begun during the forced logout (review 3)', () => {
+  let releaseRevocation!: () => void;
+  beforeEach(() => {
+    rpc.mockImplementation((name: string) =>
+      name === 'logout_session'
+        ? new Promise(resolve => { releaseRevocation = () => resolve({ data: { success: true }, error: null }); })
+        : Promise.resolve({ data: [], error: null })
+    );
+  });
+
+  it('a session stored at the same facility survives, with that facility still selected and its drafts and caches kept', async () => {
+    const clearCache = jest.spyOn(ConfigService, 'clearCache');
+    const store = configureStore({ reducer: { auth: authReducer } });
+    const leaving = forceLeaveFacility(store.dispatch, NORTH);
+    await flush();
+    await flush();
+    expect(rpc).toHaveBeenCalledWith('logout_session', { p_refresh_token: 'a'.repeat(64) });
+    // Bhavin opens North again and his own session is stored while the revocation waits.
+    await storeTokens(jwt(), 'b'.repeat(64), Date.now() + 3600000);
+    const scopedClears = jest.mocked(clearSessionScopedState).mock.calls.length;
+    releaseRevocation();
+    expect(await leaving).toBe(true);
+    expect((await getStoredToken()).refreshToken).toBe('b'.repeat(64));
+    expect(getActiveOperatorServer()).toEqual(NORTH);
+    expect(jest.mocked(clearSessionScopedState).mock.calls.length).toBe(scopedClears);
+    expect(clearCache).not.toHaveBeenCalled();
+  });
+
+  it('a waiting request begun at another facility is not withdrawn', async () => {
+    const SOUTH = { ...NORTH, origin: 'https://south-cold.example.test', instanceId: 'instance-south' };
+    const store = configureStore({ reducer: { auth: authReducer } });
+    const leaving = forceLeaveFacility(store.dispatch, NORTH);
+    await flush();
+    await flush();
+    // Bhavin asks South for access meanwhile: a new sign-in (the generation moves) that waits.
+    await saveOperatorServer(SOUTH, false);
+    advanceSessionGeneration();
+    secure.set('secure_enrollment_token', 'south-enrollment');
+    releaseRevocation();
+    expect(await leaving).toBe(true);
+    expect(secure.get('secure_enrollment_token')).toBe('south-enrollment');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(getActiveOperatorServer()).toEqual(SOUTH);
+  });
 });
