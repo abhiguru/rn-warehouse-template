@@ -23,6 +23,7 @@ import {
 import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { DISCARD_BODY, discardBody } from './discardBody';
 
 // S2/S3 Fix: SecureStore keys for encrypted token storage
 const SECURE_KEYS = {
@@ -249,9 +250,15 @@ async function gatedFetch(
   // Session lifecycle traffic (honorSwitch false) gets the same tracking and limit, but no
   // check after the body: its caller reconciles a late answer (refreshSession revokes it).
   // Application traffic checks again before callers can use a late document, print result,
-  // or warehouse response. A body that is never read stays tracked until the limit.
+  // or warehouse response. A body that is never read stays tracked until the limit, unless
+  // the caller ends the request with discardBody (./discardBody.ts).
+  const discard = () => {
+    controller.abort();
+    release();
+  };
   return new Proxy(response, {
     get(target, property) {
+      if (property === DISCARD_BODY) return discard;
       const value = Reflect.get(target, property);
       if (typeof value !== 'function') return value;
       if (BODY_METHODS.has(String(property))) {
@@ -360,8 +367,8 @@ async function sessionFetch(
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
   if (!renewed || mutation) return response;
-  // The refused answer is set aside: reading its body ends its tracked life now, not at its limit.
-  void Promise.resolve().then(() => response.text()).catch(() => {});
+  // The refused answer is set aside: its request ends now, not at its limit.
+  discardBody(response);
   return gatedFetch(input, withBearer(init, renewed), { generation, mutation, honorSwitch: true });
 }
 

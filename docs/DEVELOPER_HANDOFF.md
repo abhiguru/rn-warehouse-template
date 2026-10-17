@@ -36,7 +36,9 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   Storage upload and the document and print functions (`REQUEST_TIME_LIMIT_MS`). The limit covers the body
   as well as the headers, and a request stays in flight until its body has been read (a write holds a
   server switch back that long; a switch aborts a read's body read). A HEAD request and a 204, 205 or 304
-  answer end with their headers; a body that is never read stays in flight until the limit. The error is a
+  answer end with their headers; a body that is never read stays in flight until the limit, so code that
+  returns without reading one (a gateway's error page) calls `discardBody` (`src/config/discardBody.ts`),
+  which ends the request at once without reading it. The error is a
   timeout to the error tables; a write that timed out may still have been applied. A refused refresh re-reads the
   secure store before the session ends, and a session that ends is also reported to `logout_session`.
 - Expiry is judged on the device clock but set from the server's: the stored expiry is `exp` moved by

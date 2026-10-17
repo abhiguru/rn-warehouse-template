@@ -1,4 +1,5 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
+import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { getLanguage, t, type AppLanguage } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -102,6 +103,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
       return {
         success: false,
         error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
@@ -169,6 +171,7 @@ export async function generateDispatchPDF(
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
       return {
         success: false,
         error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
@@ -238,6 +241,7 @@ export async function generateInvoicePDF(
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
       return {
         success: false,
         error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
@@ -305,6 +309,7 @@ export async function generateCustomerStockPDF(
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
       return {
         success: false,
         error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
@@ -547,7 +552,10 @@ async function postReportPdf(authToken: string, body: Record<string, unknown>): 
 /** The answer's JSON; null when it is not JSON (a router's or gateway's page is not read). */
 async function readReportPdfAnswer(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) return null;
+  if (!contentType || !contentType.includes('application/json')) {
+    discardBody(response);
+    return null;
+  }
   try {
     return await response.json();
   } catch {

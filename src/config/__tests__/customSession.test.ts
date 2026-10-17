@@ -1075,7 +1075,7 @@ describe('a device clock that differs from the server clock', () => {
 // M1-2: the server says the access token has expired
 // ---------------------------------------------------------------------------
 const refusedAs = (status: number, body: unknown) => {
-  const response = { ok: false, status, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response;
+  const response = { ok: false, status, json: async () => body } as unknown as Response;
   (response as { clone: () => Response }).clone = () => refusedAs(status, body);
   return response;
 };
