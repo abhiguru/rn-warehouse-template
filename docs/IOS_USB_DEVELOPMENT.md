@@ -70,6 +70,15 @@ changed, repeat `prepare`, reapply local signing if necessary, and rebuild/insta
 in Xcode. The compiled Debug bundle URL cannot silently follow a new address.
 Release builds continue to use the bundled JavaScript, not this development URL.
 
+`prepare` runs `expo prebuild` with `WAREHOUSE_IOS_USB_HOST` set, and that variable
+switches on the development App Transport Security policy of
+`plugins/with-ios-transport-policy.js` (`NSAllowsArbitraryLoads = false` plus
+`NSAllowsLocalNetworking = true`), which lets the Debug build reach Metro and the API
+relay over http on the USB address. A project generated this way is for development
+only: never archive it for release. For a release, regenerate the native project without
+`WAREHOUSE_IOS_USB_HOST` and `WAREHOUSE_IOS_LOCAL_NETWORKING` (see
+[RELEASE_PREPARATION.md](RELEASE_PREPARATION.md)).
+
 ## Stop and recover
 
 Ctrl-C in the helper terminal stops only that helper's relays and Metro child.
