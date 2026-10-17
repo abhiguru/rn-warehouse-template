@@ -32,8 +32,11 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   shorter grace shortens what these attempts can save. A connectivity failure never clears the session.
 - An access token is renewed a tenth of its lifetime ahead of its expiry, five minutes at most
   (`renewAheadMs` in `src/config/sessionLifecycle.ts`), and not again within a minute of being issued.
-- `gatedFetch` aborts a request that gets no answer: 30 s for a read, 60 s for a write, 120 s for a
-  Storage upload and the document and print functions (`REQUEST_TIME_LIMIT_MS`). The error is a
+- `gatedFetch` aborts a request whose answer is not complete in time: 30 s for a read, 60 s for a write, 120 s for a
+  Storage upload and the document and print functions (`REQUEST_TIME_LIMIT_MS`). The limit covers the body
+  as well as the headers, and a request stays in flight until its body has been read (a write holds a
+  server switch back that long; a switch aborts a read's body read). A HEAD request and a 204, 205 or 304
+  answer end with their headers; a body that is never read stays in flight until the limit. The error is a
   timeout to the error tables; a write that timed out may still have been applied. A refused refresh re-reads the
   secure store before the session ends, and a session that ends is also reported to `logout_session`.
 - Expiry is judged on the device clock but set from the server's: the stored expiry is `exp` moved by
