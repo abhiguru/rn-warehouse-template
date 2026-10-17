@@ -420,8 +420,12 @@ phone. It does not call `/v1/session/signout` afterwards: the call has ended thi
 family too. The action needs a connection. Without one, on a limit (429) or on a service error
 (5xx) the session is kept and the person is told, so they can try again (the facility has been
 left by then, as with a failed deletion). A 404 is a service without the call and is told as
-"not supported by this association service". A refusal that one refresh does not mend (the
-session had already ended) counts as success. As for "Sign out", the phone says so when it could
+"not supported by this association service". If this phone's session had already ended (a
+refresh the service refused, a second 401, or nobody signed in) signout-all was not accepted and
+other phones may still be signed in: this phone is cleared, but the answer is a failure ("This
+phone's association sign-in had already ended, so your other phones may still be signed in. Sign
+in again and use Sign out on all phones."), and nothing is sent when no valid token can be had.
+A person who signed in meanwhile is not signed out by a late answer. As for "Sign out", the phone says so when it could
 not remove its stored copy. The button is on the account screen only: it is not offered after
 an unexpected sign-out (the person finds it there after signing in again). Older installed apps
 do not have it.
@@ -455,7 +459,9 @@ D16):
    copy of it).
 4. The words never claim that the sign-in "was used twice" or "from two places": the service
    answers the same 401 for an expired token, a retired key and an ended session. The app says
-   "Your association sign-in has ended. Sign in again."
+   "Your association sign-in has ended. Sign in again. If you did not expect this, open your
+   account after signing in and choose Sign out on all phones." (it points to the action, and
+   never says "used")
 
 Why one refresh and not "drop every token on any 401": a forced key rotation, and an upgrade
 from before central service 0.3.0, make every access token fail once with 401 `invalid_token`;

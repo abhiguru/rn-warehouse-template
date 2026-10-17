@@ -429,7 +429,7 @@ describe('when the association gives no token', () => {
   it.each([
     ['network', 'central', "Couldn't reach the association's sign-in service. Check your connection and try again."],
     ['rate_limited', 'central', 'Too many attempts. Try again later.'],
-    ['session_ended', 'central', 'Your association sign-in has ended. Sign in again.'],
+    ['session_ended', 'central', 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.'],
     ['unknown_facility', 'unknown_facility', "This cold storage is not on the association's list, so association sign-in can't be used there."],
   ])('%s: the message is the association\'s and the facility is not asked', async (code, reason, message) => {
     tokenMock.mockResolvedValue({ ok: false, code, message } as never);
@@ -448,7 +448,7 @@ describe('an answer for a central session that has ended meanwhile', () => {
     tokenMock.mockImplementation(async () => {
       // The service refuses the token and the app signs out while the open is in flight.
       change();
-      return { ok: false, code: 'session_ended', message: 'Your association sign-in has ended. Sign in again.' };
+      return { ok: false, code: 'session_ended', message: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.' };
     });
     const result = await openFacility(ORIGIN, NAME);
     expect(result).toMatchObject({ kind: 'failed', reason: 'central' });

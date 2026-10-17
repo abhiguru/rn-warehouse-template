@@ -356,6 +356,7 @@ describe('signed-in calls', () => {
 });
 
 describe('sign out on all phones (M06)', () => {
+  const INCOMPLETE = "This phone's association sign-in had already ended, so your other phones may still be signed in. Sign in again and use Sign out on all phones.";
   const ENDPOINT = 'POST /v1/session/signout-all';
 
   it('sends one POST /v1/session/signout-all with the current person\'s Bearer token and no body', async () => {
@@ -378,19 +379,29 @@ describe('sign out on all phones (M06)', () => {
     expect(calls('POST /v1/session/signout')).toHaveLength(0);
   });
 
-  it('a 401, a refresh and another 401 also clears: the session has ended, so the person is signed out', async () => {
+  it('a 401, a refresh and another 401 clears this phone but is a failure: the other phones may still be signed in', async () => {
     await signedIn();
     serve({
       [ENDPOINT]: { status: 401, body: { error: { code: 'invalid_token', message: 'x' } } },
       'POST /v1/session/refresh': { body: { session: session('second', '2') } },
     });
-    expect(await signOutAllCentralSessions()).toMatchObject({ ok: true });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: false, code: 'sign_out_all_incomplete', message: INCOMPLETE });
     expect(secure.size).toBe(0);
     expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
     expect(calls(ENDPOINT)).toHaveLength(2);
     expect(headersOf(calls(ENDPOINT)[1]).Authorization).toBe(`Bearer ${accessToken('second')}`);
     expect(calls('POST /v1/session/refresh')).toHaveLength(1);
     expect(calls('POST /v1/session/signout')).toHaveLength(0);
+  });
+
+  it('a token due for renewal and a refused refresh: nothing is sent to signout-all, the phone is cleared, the result is a failure', async () => {
+    await signedIn(-5);
+    serve({ 'POST /v1/session/refresh': { status: 401, body: { error: { code: 'invalid_refresh_token', message: 'x' } } } });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: false, code: 'sign_out_all_incomplete', message: INCOMPLETE });
+    expect(calls(ENDPOINT)).toHaveLength(0);
+    expect(calls('POST /v1/session/refresh')).toHaveLength(1);
+    expect(secure.size).toBe(0);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
   });
 
   it('a 401 that a refresh mends is retried once with the new token, and then clears', async () => {
@@ -489,12 +500,26 @@ describe('sign out on all phones (M06)', () => {
     expect(secure.has(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(true);
   });
 
-  it('with nobody signed in nothing is sent, and the answer is the same success', async () => {
+  it('with nobody signed in nothing is sent, and it is a failure: nothing was signed out anywhere', async () => {
     setCentralState({ status: 'signedOut' });
     serve({ [ENDPOINT]: { body: { ok: true } } });
-    expect(await signOutAllCentralSessions()).toEqual({ ok: true, cleared: true });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: false, code: 'sign_out_all_incomplete', message: INCOMPLETE });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getCentralState().status).toBe('signedOut');
+  });
+
+  it('after a 200, a person who signed in meanwhile is left signed in', async () => {
+    await signedIn();
+    serve({
+      [ENDPOINT]: async () => {
+        // Another person completes a sign-in while the call is in flight.
+        setCentralState({ status: 'signedIn', user: { id: 'user-2', phoneNumber: '919000000002', name: null, createdAt: '' } });
+        return reply({ body: { ok: true } });
+      },
+    });
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: true });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn' });
+    expect(getCentralState().user?.id).toBe('user-2');
   });
 
   it('says when this phone could not remove its copy: signed out in memory, the marker makes the next start remove it', async () => {
@@ -550,8 +575,8 @@ describe('session contract (identity docs/API.md, X-2 and M15)', () => {
     expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
     // The words never say the sign-in was used twice or from two places (identity API.md:307-310).
     const message = getCentralState().endedMessage ?? '';
-    expect(message).toBe('Your association sign-in has ended. Sign in again.');
-    expect(message).not.toMatch(/twice|two places|used|reuse|stolen|copied/i);
+    expect(message).toBe('Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.');
+    expect(message).not.toMatch(/twice|two places|\bused\b|reuse|stolen|copied/i);
   });
 
   it('an API 401 invalid_token after a key rotation is mended by one refresh, and the repeated call succeeds', async () => {
@@ -580,7 +605,7 @@ describe('session contract (identity docs/API.md, X-2 and M15)', () => {
     serve({ 'POST /v1/session/refresh': { status: 401, body: { error: { code: 'invalid_refresh_token', message: 'x' } } } });
     expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'session_ended' });
     expect(bodyOf(calls('POST /v1/session/refresh')[0])).toEqual({ refresh_token: refreshToken('1') });
-    expect(getCentralState()).toMatchObject({ status: 'signedOut', endedMessage: 'Your association sign-in has ended. Sign in again.' });
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', endedMessage: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.' });
     expect(secure.size).toBe(0);
   });
 });
@@ -648,7 +673,7 @@ describe('refresh', () => {
     expect(getCentralState()).toMatchObject({
       status: 'signedOut',
       user: null,
-      endedMessage: 'Your association sign-in has ended. Sign in again.',
+      endedMessage: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.',
     });
     // The refused token is not sent again.
     expect(calls('POST /v1/session/refresh')).toHaveLength(1);
@@ -709,7 +734,7 @@ describe('refresh', () => {
     await fetchCentralProfile();
     serve({ 'POST /v1/session/refresh': { status: 401, body: { error: { code: 'invalid_refresh_token', message: 'x' } } } });
     expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'session_ended' });
-    expect(getCentralState()).toMatchObject({ status: 'signedOut', endedMessage: 'Your association sign-in has ended. Sign in again.' });
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', endedMessage: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.' });
     expect(secure.size).toBe(0);
   });
 
