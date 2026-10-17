@@ -285,6 +285,42 @@ has, the open stops with "sign in again" and shows nothing; a facility session t
 had already started is left at once. The linking code goes to the number the open began with,
 and a code step begun for another number is not completed.
 
+Such a session is handled in this order (ops review 2026-10-17, M08, and its review of 2026-10-18):
+
+- At once, the facility (origin and instance, no secret) is written to a stale list on the phone
+  (`src/config/staleFacilitySession.ts`), so that a restart at any later point does not restore
+  the session.
+- It is left like any other. Leaving is refused while a write is in flight (its outcome must not
+  be lost), so it is tried once more after the write has had time to settle (`leaveWithRetry`,
+  5 s). When that works, the entry is removed again and nothing is shown.
+- If it still cannot be left, the session is ended without waiting for the switch gate
+  (`forceLeaveFacility` in `src/store/operatorSwitch.ts`): the same logout as a switch, which moves
+  the session generation at once so the write's late answer is dropped; revocation is tried, and
+  offline the local clear is what protects the phone (a waiting request that the facility could not
+  be told about is forgotten on the phone, and that counts as cleared); then the facility is no
+  longer selected.
+- My facilities tells whoever is on the phone now "Earlier sign-in closed", or "Couldn't close
+  the earlier sign-in" with the advice to restart before anyone else uses the phone. Neither
+  names the facility, which belongs to the earlier sign-in. When an answer for that person is
+  still waiting on the list, it is shown in a dialog of its own instead. The late answer leaves an
+  open that the person now on the phone has begun as it is ("Opening…", and a second open is refused).
+
+All of this acts only on that session. Its session generation is taken when the exchange's answer
+arrives, and the cleanup updates it with its own sign-out. Once it has moved otherwise (a later
+sign-in replaced the stored session) the session is gone, and a session, waiting request, drafts or
+selected facility that someone began since are left alone; so is a server that another switch
+selected meanwhile.
+
+While a facility is on the stale list its session is not restored at start (`initializeAuth`)
+and it is not opened ("This phone is still closing an earlier sign-in. Try again in a minute.",
+which does not name it either; also for its own SMS sign-in). The cleanup runs again at start, on
+every return to the foreground (`app/_layout.tsx`) and before an open of that facility
+(`retryStaleFacilityCleanup`). It decides from the saved selection, which at a cold start it reads
+itself, because it runs before the bootstrap has loaded it. A listed facility that is still selected
+is left with the full cleanup, and once it is not selected the entry is removed. In the same run of
+the app, an entry whose session has been replaced since is removed without leaving anything; after a
+restart that is not known, so a session stored at a listed facility is ended (the safe side).
+
 | Facility answers | The person sees | Status |
 |---|---|---|
 | `login` | The facility | approved |
@@ -370,11 +406,26 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
 
 ## Still open
 
-- **The catalogue's signature is not verified in the app.** The catalogue is a signed token
-  (ES256) and the central contract says the app verifies it; Hermes has no ES256. The app
-  checks the token's type, algorithm name, issuer and expiry, and relies on TLS to the
-  configured origin. A facility, not the app, decides access and verifies its own tokens, so
-  a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+- **The catalogue's signature is not verified in the app (accepted: TLS-only trust).** The
+  catalogue is a signed token (ES256); Hermes has no ES256 and the app has no crypto library
+  for it. The identity service's contract expects exactly this: an app that cannot verify the
+  signature "trusts TLS to the configured issuer origin", checks only the header `typ`, the
+  claim `iss` and that `exp` has not passed, fetches the catalogue only from the issuer over
+  HTTPS and never accepts one handed to it by another party (identity repository,
+  `docs/API.md`, section "The catalogue token", which begins "The mobile app does **not** verify the
+  signature of the catalogue token"). The app does this: `readCatalogueToken` checks type,
+  algorithm name, issuer and expiry, and the request goes to the configured central origin
+  only. A facility, not the app, decides access and verifies its own tokens, and identity
+  refuses a facility token for an origin that is not in its catalogue (`docs/API.md`, the `unknown_facility` error),
+  so a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+  What this does not defend against is interception of TLS to the issuer on the phone itself
+  (a trusted extra certificate authority, a managed-device proxy): such a party could serve a
+  catalogue that lists an address the association never published, and a person who opens it
+  would be asking that address to sign them in. The release owner is told to use a publicly
+  trusted certificate for the issuer (see `docs/RELEASE_PREPARATION.md`). Signature
+  verification (a pure-JavaScript P-256 verifier with the issuer's key set, or keys pinned in
+  the build) was considered and not chosen on 2026-10-17: pinned keys would tie every key
+  rotation to an app release.
 - **Passcode and biometrics** after the first sign-in.
 - **SMS auto-read** on Android (SMS Retriever); the code fields already use one-time-code
   autofill.
@@ -397,14 +448,11 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   real SMS delivery. These rest on the Jest tests (the service and the facility mocked from
   their documented answers) and on the fuzz test of the session store, which also injects
   secure-store faults.
-- Accepted risks of the sign-out marker and the open's identity check (review of 2026-10-12):
+- Accepted risks of the sign-out marker (review of 2026-10-12):
   - if the deletions fail AND the marker cannot be written, the next start signs the person
     back in (sign-out still says it could not remove the sign-in);
   - a deletion that the secure store reports as done without deleting makes sign-out report
-    success, and the next start signs the person in;
-  - after an exchange that finished for a person who has since changed, the facility session
-    is left with `leaveFacility`; if that answers `busy` or `failed` the answer is ignored and
-    the previous person's facility session stays until the next switch or sign-out.
+    success, and the next start signs the person in.
 - Opening a facility changes the selected server, which rebuilds the app's navigation tree
   (as a server change always has). The result of the open is therefore kept outside the
   screens and handled by whichever screen is mounted afterwards, and entering the facility is

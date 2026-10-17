@@ -9,33 +9,14 @@ import { getActiveOperatorServer, type OperatorServer } from '@/config/operatorS
 import { deleteCentralAccount, signOutCentral, type CentralFailure } from '@/config/centralSession';
 import { deleteMyFacilities, loadMyFacilities, removeMyFacility, updateMyFacility } from '@/config/centralFacilities';
 import { getCentralState, nextOutcomeId, setCentralState } from '@/config/centralState';
-import { isOperatorSwitchFree } from '@/config/supabaseConfig';
 import { deleteAccount, isDeleteAccountRejection } from '@/store/slices/authSlice';
 import { store } from '@/store';
-import { queryClient } from '@/lib/queryClient';
 import { t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
-import { leaveFacility, type LeaveFacilityOutcome } from './operatorSwitch';
+import { leaveFacility, leaveWithRetry, type LeaveFacilityOutcome } from './operatorSwitch';
 
-/** How long a write in flight is given to settle before the final cleanup is tried again. */
-export const LEAVE_RETRY_WAIT_MS = 5000;
-const LEAVE_RETRY_POLL_MS = 100;
-
-/** Resolves when no mutation is in flight and the switch gate is free, or after `limitMs`. */
-async function waitForWritesToSettle(limitMs: number): Promise<void> {
-  const until = Date.now() + limitMs;
-  while ((queryClient.isMutating() > 0 || !isOperatorSwitchFree()) && Date.now() < until) {
-    await new Promise(resolve => setTimeout(resolve, LEAVE_RETRY_POLL_MS));
-  }
-}
-
-/** The final cleanup, with one more try after a write in flight has had time to settle. */
-async function leaveWithRetry(dispatch: Dispatch, options: { localOnly?: boolean }): Promise<LeaveFacilityOutcome> {
-  const first = await leaveFacility(dispatch, options);
-  if (first === 'left') return first;
-  if (first === 'busy') await waitForWritesToSettle(LEAVE_RETRY_WAIT_MS);
-  return leaveFacility(dispatch, options);
-}
+// The retry moved to operatorSwitch.ts (openFacility.ts uses it too); its wait is still read from here.
+export { LEAVE_RETRY_WAIT_MS } from './operatorSwitch';
 
 /**
  * Holds the "leaving" count (src/config/centralState.ts) for the whole of a

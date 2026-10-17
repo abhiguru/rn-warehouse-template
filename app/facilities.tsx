@@ -17,7 +17,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { signOutPhoneWithMessages } from '@/features/account/useAccountActions';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { setCentralState, type FacilityStatus } from '@/config/centralState';
+import { setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
 import { fetchCentralProfile } from '@/config/centralSession';
 import {
   loadMyFacilities,
@@ -25,7 +25,7 @@ import {
   soleApprovedFacility,
   type MyFacility,
 } from '@/config/centralFacilities';
-import { beginFacilitySmsSignIn, consumeOpenOutcome, openFacility } from '@/config/openFacility';
+import { beginFacilitySmsSignIn, consumeOpenOutcome, EARLIER_SESSION_TITLES, openFacility } from '@/config/openFacility';
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -38,6 +38,15 @@ export const FACILITY_STATUS_VIEW: Record<FacilityStatus, { kind: StatusKind; la
   revoked: { kind: 'negative', label: 'auth.enrollment.status.disabled' },
   link_needed: { kind: 'neutral', label: 'central.facilities.status.linkNeeded' },
   unavailable: { kind: 'neutral', label: 'central.facilities.status.unavailable' },
+};
+
+/**
+ * Titles of a failed answer that are not "Couldn't open <facility>". An answer about an
+ * earlier sign-in's facility session names no facility: it was not this person's.
+ */
+const FAILED_TITLES: Partial<Record<OpenFailureReason, TranslationKey>> = {
+  account_deletion: 'central.account.deleteFailedTitle',
+  ...EARLIER_SESSION_TITLES,
 };
 
 export default function FacilitiesScreen() {
@@ -99,8 +108,8 @@ export default function FacilitiesScreen() {
         },
       ]);
     } else if (result.kind === 'failed') {
-      const title = result.reason === 'account_deletion' ? tr('central.account.deleteFailedTitle') : tr('central.open.failedTitle', { facility: name });
-      showAlert(title, result.message);
+      const title = FAILED_TITLES[result.reason];
+      showAlert(title ? tr(title) : tr('central.open.failedTitle', { facility: name }), result.message);
     }
   }, [outcome]);
 

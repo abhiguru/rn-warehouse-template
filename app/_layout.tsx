@@ -90,7 +90,7 @@ import { sweepLocalPhotoFiles } from '@/utils/localPhotoFiles';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
-import { leaveFacility } from '@/store/operatorSwitch';
+import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
@@ -527,6 +527,9 @@ function BootstrapApp() {
     // Photo files the app wrote (camera shots, prepared copies) that no form
     // can still use: no form survives a restart, so those older than a week go.
     void sweepLocalPhotoFiles();
+    // A facility session left on this phone for an earlier central sign-in
+    // (src/config/staleFacilitySession.ts) is ended now, and on every return below.
+    if (isCentralLoginConfigured()) void retryStaleFacilityCleanup(store.dispatch).catch(() => undefined);
     void bootstrapApp();
     const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
     const removeVerifier = operatorResumeGate.installVerifier(async current => {
@@ -547,8 +550,12 @@ function BootstrapApp() {
     });
     const lifecycle = AppState.addEventListener('change', state => {
       resume(state);
-      // A central session whose store did not answer at start is read again now.
-      if (state === 'active' && isCentralLoginConfigured()) void retryCentralRestoreIfNeeded();
+      // A central session whose store did not answer at start is read again now, and
+      // the cleanup of an earlier sign-in's facility session is tried again.
+      if (state === 'active' && isCentralLoginConfigured()) {
+        void retryCentralRestoreIfNeeded();
+        void retryStaleFacilityCleanup(store.dispatch).catch(() => undefined);
+      }
     });
     return () => {
       bootstrapRun.current += 1;

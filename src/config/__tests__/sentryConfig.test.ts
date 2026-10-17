@@ -4,6 +4,7 @@ import {
   sanitizeUrl,
   sanitizeHeaders,
   sanitizeData,
+  MAX_DEPTH,
   beforeSend,
   beforeBreadcrumb,
   redactErrorText,
@@ -323,6 +324,228 @@ describe('sentryConfig - Telemetry and Redaction', () => {
     it('leaves ordinary error text as it is', () => {
       const text = "Cannot read properties of undefined (reading 'items') at GRN A0010, 12 rows";
       expect(redactErrorText(text)).toBe(text);
+    });
+  });
+
+  // Review 2026-10-17, M01: a value nested past the depth cap used to be
+  // returned untouched, keys and strings included.
+  describe('depth cap and key matching (M01)', () => {
+    // Synthetic values only. Each one is found in the output by exact text.
+    const refreshToken = 'c0ffee12'.repeat(8); // 64 hex characters, as the app's session tokens
+    const password = 'Synthetic-Password-Qx7';
+    const identityToken = 'synthetic-identity-token-0001';
+    const hexInPlainKey = 'ab12'.repeat(16);
+    const phoneInPlainKey = '919888880001';
+    const syntheticValues = [
+      refreshToken,
+      password,
+      identityToken,
+      hexInPlainKey,
+      phoneInPlainKey,
+      syntheticJwt,
+    ];
+    const payload = () => ({
+      refresh_token: refreshToken,
+      password,
+      identity_token: identityToken,
+      detail: hexInPlainKey,
+      contact: phoneInPlainKey,
+      note: `session ${syntheticJwt}`,
+      count: 7,
+      ok: true,
+    });
+
+    type Wrap = 'object' | 'array' | 'mixed';
+    // Puts `inner` under `levels` containers; the value ends up `levels` deep
+    // from where the caller placed the outer container.
+    const nest = (levels: number, inner: unknown, wrap: Wrap): unknown => {
+      let value = inner;
+      for (let i = 0; i < levels; i++) {
+        const asArray = wrap === 'array' || (wrap === 'mixed' && i % 2 === 0);
+        value = asArray ? [value] : { child: value };
+      }
+      return value;
+    };
+
+    const places: Array<[string, (value: unknown) => Record<string, unknown>]> = [
+      ['request.data', value => ({ request: { data: value } })],
+      ['extra', value => ({ extra: { detail: value } })],
+      ['contexts', value => ({ contexts: { state: value } })],
+      [
+        'breadcrumbs[].data',
+        value => ({ breadcrumbs: [{ category: 'app', data: { detail: value } }] }),
+      ],
+      ['logentry.params', value => ({ logentry: { message: 'event %s', params: [value] } })],
+    ];
+
+    const send = (fields: Record<string, unknown>) =>
+      JSON.stringify(beforeSend(fields as unknown as Sentry.ErrorEvent));
+
+    it('exports the depth cap', () => {
+      expect(MAX_DEPTH).toBe(8);
+    });
+
+    describe.each([9, 10, 20])('a payload %i levels deep', levels => {
+      describe.each(['object', 'array', 'mixed'] as Wrap[])('in %s containers', wrap => {
+        it.each(places)('is not sent as it came in: %s', (_place, build) => {
+          const out = send(build(nest(levels, payload(), wrap)));
+          for (const value of syntheticValues) {
+            expect(out).not.toContain(value);
+          }
+          expect(out).toContain('[TRUNCATED]');
+        });
+      });
+    });
+
+    describe.each([0, 3])('a payload %i levels deep (shallow control)', levels => {
+      it.each(places)('is redacted key by key: %s', (_place, build) => {
+        const out = send(build(nest(levels, payload(), 'object')));
+        for (const value of syntheticValues) {
+          expect(out).not.toContain(value);
+        }
+        expect(out).toContain('[REDACTED]');
+        expect(out).toContain('[REDACTED_TOKEN]');
+        expect(out).toContain('[REDACTED_PHONE]');
+        expect(out).not.toContain('[TRUNCATED]');
+        expect(out).toContain('"count":7');
+      });
+    });
+
+    it('still inspects an object that sits exactly at the cap', () => {
+      const out = sanitizeData(nest(MAX_DEPTH, payload(), 'object')) as Record<string, unknown>;
+      let level: any = out;
+      for (let i = 0; i < MAX_DEPTH; i++) level = level.child;
+      // Its keys are redacted; its string values sit one level past the cap and
+      // are scrubbed, not dropped; numbers and booleans are kept.
+      expect(level).toEqual({
+        refresh_token: '[REDACTED]',
+        password: '[REDACTED]',
+        identity_token: '[REDACTED]',
+        detail: '[REDACTED_TOKEN]',
+        contact: '[REDACTED_PHONE]',
+        note: 'session [REDACTED_JWT]',
+        count: 7,
+        ok: true,
+      });
+    });
+
+    it('replaces a container one level past the cap with the marker', () => {
+      const out = sanitizeData(nest(MAX_DEPTH + 1, payload(), 'object')) as Record<string, unknown>;
+      let level: any = out;
+      for (let i = 0; i < MAX_DEPTH; i++) level = level.child;
+      expect(level.child).toBe('[TRUNCATED]');
+    });
+
+    it('scrubs a string leaf past the cap and keeps a number or boolean', () => {
+      // A leaf wrapped in containers past the cap is dropped with them.
+      const wrapped = JSON.stringify(sanitizeData(nest(MAX_DEPTH + 3, refreshToken, 'object')));
+      expect(wrapped).not.toContain(refreshToken);
+      expect(wrapped).toContain('[TRUNCATED]');
+      // A bare leaf handed to the function at a depth past the cap is scrubbed.
+      expect(sanitizeData(refreshToken, MAX_DEPTH + 5)).toBe('[REDACTED_TOKEN]');
+      expect(sanitizeData(`call ${phoneInPlainKey}`, MAX_DEPTH + 5)).toBe('call [REDACTED_PHONE]');
+      expect(sanitizeData(42, MAX_DEPTH + 5)).toBe(42);
+      expect(sanitizeData(false, MAX_DEPTH + 5)).toBe(false);
+      expect(sanitizeData(null, MAX_DEPTH + 5)).toBeNull();
+      expect(sanitizeData({ a: 1 }, MAX_DEPTH + 5)).toBe('[TRUNCATED]');
+      expect(sanitizeData([{ a: 1 }], MAX_DEPTH + 5)).toBe('[TRUNCATED]');
+    });
+
+    it('keeps the circular guard', () => {
+      const loop: Record<string, unknown> = { name: 'loop' };
+      loop.self = loop;
+      const out = sanitizeData({ outer: { inner: loop } }) as any;
+      expect(out.outer.inner.self).toBe('[CIRCULAR]');
+    });
+
+    it('scrubs a 64-hex session token under an ordinary key', () => {
+      expect(sanitizeData({ detail: hexInPlainKey })).toEqual({ detail: '[REDACTED_TOKEN]' });
+    });
+
+    it.each([
+      'identity_token',
+      'id_token',
+      'idToken',
+      'x-session-token',
+      'newPassword',
+      'passwd',
+      'user_password',
+      'client_secret',
+      'one_time_otp',
+      'Set-Cookie',
+      'cookies',
+      'credentials',
+      'authorizationHeader',
+      'userPhone',
+      'phone_masked',
+      // The whole-name list from before still applies.
+      'jwt',
+      'apikey',
+      'api_key',
+      'code',
+      'auth',
+    ])('redacts the key %s', key => {
+      expect(sanitizeData({ [key]: 'synthetic-value-0001' })).toEqual({ [key]: '[REDACTED]' });
+    });
+
+    // Keys the app and the Sentry SDK put into events. None may be redacted.
+    // (No allow-list was needed: none of them contains one of the words.)
+    it.each([
+      'isFatal',
+      'source',
+      'type',
+      'componentStack',
+      'statusCode',
+      'errorCode',
+      'status_code',
+      'orderId',
+      'author',
+      'model',
+      'memory_size',
+      'boot_time',
+      'simulator',
+      'app_start_time',
+      'view_names',
+      'timezone',
+    ])('keeps the key %s', key => {
+      expect(sanitizeData({ [key]: 'value-0001' })).toEqual({ [key]: 'value-0001' });
+    });
+
+    it('redacts a tag whose name contains a sensitive word', () => {
+      const event = { tags: { identity_token: 'synthetic-0001', component: 'auth' } } as unknown as Sentry.ErrorEvent;
+      const sanitized = beforeSend(event)!;
+      expect(sanitized.tags?.['identity_token']).toBe('[REDACTED]');
+      expect(sanitized.tags?.['component']).toBe('auth');
+    });
+  });
+
+  // Review 2026-10-17 (Opus), finding 7: the other string surfaces use the error-text patterns too.
+  describe('error-text patterns on every string surface', () => {
+    const token = 'c0ffee12'.repeat(8);
+    const row = 'Failing row contains (7, Ramesh Fictional, Rajkot, null).';
+
+    it('scrubs a breadcrumb message', () => {
+      const out = beforeBreadcrumb({ category: 'console', message: `insert failed: ${row} token ${token}` })!;
+      expect(out.message).toBe('insert failed: Failing row contains ([REDACTED]). token [REDACTED_TOKEN]');
+    });
+
+    it('scrubs tag values and the user name', () => {
+      const event = {
+        tags: { screen: `grn ${token}`, note: row },
+        user: { username: `Key (mobile)=(919888880001) ${token}` },
+      } as unknown as Sentry.ErrorEvent;
+      const out = beforeSend(event)!;
+      expect(out.tags?.['screen']).toBe('grn [REDACTED_TOKEN]');
+      expect(out.tags?.['note']).toBe('Failing row contains ([REDACTED]).');
+      expect(out.user?.username).toBe('Key (mobile)=([REDACTED]) [REDACTED_TOKEN]');
+    });
+
+    it('scrubs request header values', () => {
+      const out = beforeSend({
+        request: { headers: { 'x-note': `seen ${token}`, Accept: 'application/json' } },
+      } as unknown as Sentry.ErrorEvent)!;
+      expect(out.request?.headers?.['x-note']).toBe('seen [REDACTED_TOKEN]');
+      expect(out.request?.headers?.['Accept']).toBe('application/json');
     });
   });
 
