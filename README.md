@@ -25,7 +25,7 @@ git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci                       # runs the three postinstall patches
 node scripts/create-env.mjs  # creates .env only if it is absent
-npm run typecheck && npm run lint && npm test && npm run test:setup
+npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 npm run doctor               # read-only check against an installed backend
 npm run android              # native debug build on a device or emulator
 ```
@@ -107,10 +107,12 @@ unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
 
 ## Checks and releases
 
-GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs lint, typecheck, Jest,
-the setup tests and an Android bundle export, a pinned JDK 17 / SDK 36 debug
-build with an APK audit, the dependency gate and a secrets scan on pushes and
-pull requests to `main`. There are no git hooks; CI enforces lint and typecheck.
+GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs expo-doctor (a locked
+devDependency), lint (it fails above a fixed warning count), typecheck, the
+test-file typecheck, Jest, the setup tests and an Android bundle export with an
+audit of the exported directory, a pinned JDK 17 / SDK 36 debug build with an
+APK audit, the dependency gate and a secrets scan on pushes and pull requests to
+`main`. There are no git hooks; CI enforces lint and typecheck.
 [release.yml](.github/workflows/release.yml) validates any semantic `v*` tag
 with the same gates; publishing a GitHub release stays a manual step after the
 validation run passes.

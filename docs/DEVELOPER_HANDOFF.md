@@ -103,7 +103,7 @@ keyed by session identity (origin, instance, subject) and are served only for of
 npm ci                      # runs the three postinstall patches (not with --ignore-scripts)
 node scripts/check-install.mjs   # all three patches are in place; also runs before start, android, ios, web, test
 npm run verify:backports    # re-checks scripts/security-backports.json against node_modules
-npm run typecheck && npm run lint && npm test && npm run test:setup
+npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 npm run audit:dependencies -- --report-dir /tmp/dependency-security-report
 npm run doctor              # read-only check against an installed backend
 ```
@@ -114,11 +114,19 @@ in one SDK upgrade with `npx expo install --fix`.
 
 ## CI and releases
 
-`.github/workflows/ci.yml` runs `Lint & Type Check` (expo doctor, lint, typecheck, jest, setup tests,
-Android bundle), `Android debug artifact audit` (pinned JDK 17 / SDK 36 build and APK audit),
+`.github/workflows/ci.yml` runs `Lint & Type Check` (expo doctor from the lockfile with `--no-install`, lint with a
+`--max-warnings` limit, typecheck, test-file typecheck, jest, setup tests, Android bundle and its `audit:artifact -- dist`),
+`Android debug artifact audit` (pinned JDK 17 / SDK 36 build and APK audit),
 `dependencies` (backport verification and the dependency audit report) and `secrets` (history scan).
 `release.yml` validates any semantic `v*` tag (`scripts/check-release.sh`) with the same gates plus
 `expo export`; publishing a GitHub release stays a manual step after the validation run passes.
+
+Three CI details to keep in step. (1) `expo-doctor` is a devDependency at an exact version and both workflows run
+`npx --no-install expo-doctor`, so a run never fetches an unreviewed copy; bump it with each Expo SDK upgrade and let
+`npm run audit:dependencies` cover its tree. (2) Lint is `npm run lint -- --max-warnings N` in `ci.yml` and
+`release.yml` (the same N; `scripts/workflows.test.mjs` checks). N is the warning count today, almost all
+`no-console` in `app/` and `src/`; lower it whenever warnings are fixed, never raise it. (3) `npm run audit:artifact -- dist`
+scans every file of the Android export (the Hermes bundle too) and fails on a file it cannot scan.
 
 `Android debug artifact audit` is the only job that can run outside GitHub's hosted runners. Its
 `runs-on` is the repository variable `ANDROID_ARTIFACT_RUNNER` (Settings, Secrets and variables,

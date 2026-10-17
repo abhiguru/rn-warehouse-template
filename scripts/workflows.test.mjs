@@ -5,6 +5,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 const directory = new URL('../.github/workflows/', import.meta.url);
 const workflows = readdirSync(directory).map(file => [file, readFileSync(new URL(file, directory), 'utf8').split('\n')]);
 const dependabot = readFileSync(new URL('../.github/dependabot.yml', import.meta.url), 'utf8');
+const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const lockfile = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'));
+const workflowText = file => workflows.find(([name]) => name === file)[1].join('\n');
 
 // Review 2026-10-10, M9-5.
 test('workflow actions are referenced by commit, with the release in a comment', () => {
@@ -72,4 +75,65 @@ test('no workflow names a self-hosted runner; the Android artifact job takes its
   const ci = workflows.find(([file]) => file === 'ci.yml')[1].join('\n');
   const job = ci.slice(ci.indexOf('\n  android-artifact:\n') + 1).split(/\n {2}[a-z-]+:\n/)[0];
   assert.match(job, /\n {4}runs-on: \$\{\{ fromJSON\(vars\.ANDROID_ARTIFACT_RUNNER \|\| '"ubuntu-latest"'\) \}\}\n/);
+});
+
+// Review 2026-10-17, M03: the test files are excluded from `tsc --noEmit`, so a
+// type error in a test went unseen until `typecheck:tests` was run by hand.
+test('CI and the release both type-check the test files', () => {
+  for (const file of ['ci.yml', 'release.yml']) {
+    assert.match(workflowText(file), /^\s*(?:- )?run: npm run typecheck:tests$/m, file);
+  }
+  assert.equal(manifest.scripts['typecheck:tests'], 'tsc -p tsconfig.test.json');
+});
+
+// Review 2026-10-17, M04: `npx <name>` fetches a package that is not installed
+// from the registry at run time, so each run could execute a different tool.
+test('every npx in a workflow runs a locked package: --no-install, or a name package.json lists', () => {
+  const declared = new Set([...Object.keys(manifest.dependencies), ...Object.keys(manifest.devDependencies)]);
+  let count = 0;
+  for (const [file, lines] of workflows) {
+    for (const line of lines) {
+      const match = /\bnpx\s+(.*?)\s*(?:#.*)?$/.exec(line);
+      if (!match) continue;
+      const words = match[1].split(/\s+/);
+      const flags = words.filter((word, index) => word.startsWith('-') && words.slice(0, index).every(before => before.startsWith('-')));
+      const name = words.find(word => !word.startsWith('-'));
+      assert.ok(!flags.includes('--yes') && !flags.includes('-y'), `${file}: ${line.trim()} installs without asking`);
+      assert.ok(flags.includes('--no-install') || declared.has(name), `${file}: npx ${name} is neither --no-install nor listed in package.json`);
+      count += 1;
+    }
+  }
+  assert.ok(count >= 6, 'the npx steps were read');
+});
+
+test('expo-doctor is locked at one exact version, and CI and the release run it with --no-install', () => {
+  const version = manifest.devDependencies['expo-doctor'];
+  assert.match(version, /^\d+\.\d+\.\d+$/, 'expo-doctor is pinned exactly in devDependencies');
+  assert.equal(lockfile.packages['node_modules/expo-doctor'].version, version);
+  assert.equal(lockfile.packages[''].devDependencies['expo-doctor'], version);
+  for (const file of ['ci.yml', 'release.yml']) {
+    assert.match(workflowText(file), /^\s*(?:- )?run: npx --no-install expo-doctor$/m, file);
+  }
+});
+
+// Review 2026-10-17, M10: a bundle that is only exported, never audited, is not checked.
+test('CI and the release audit the exported bundle directory after the export', () => {
+  for (const file of ['ci.yml', 'release.yml']) {
+    const text = workflowText(file);
+    const exported = text.search(/npx expo export --platform android/);
+    const audited = text.search(/^\s*(?:- )?run: npm run audit:artifact -- dist$/m);
+    assert.ok(exported >= 0 && audited > exported, `${file}: audit:artifact -- dist after expo export`);
+  }
+});
+
+// Review 2026-10-17, M13: warnings never failed CI, and the release hid them with --quiet.
+test('CI and the release run the same lint command with the same warning limit, and neither hides warnings', () => {
+  const limits = ['ci.yml', 'release.yml'].map(file => {
+    const text = workflowText(file);
+    assert.doesNotMatch(text, /--quiet/, `${file}: --quiet hides warnings`);
+    const match = /^\s*(?:- )?run: npm run lint -- --max-warnings (\d+)$/m.exec(text);
+    assert.ok(match, `${file}: npm run lint -- --max-warnings N`);
+    return Number(match[1]);
+  });
+  assert.equal(limits[0], limits[1], 'ci.yml and release.yml name one limit');
 });

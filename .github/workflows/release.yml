@@ -26,9 +26,14 @@ jobs:
         run: bash scripts/check-release.sh
       - run: npm ci
       - run: npx expo install --check
+      - run: npx --no-install expo-doctor
+        env:
+          EXPO_NO_TELEMETRY: '1'
       - run: npm test -- --silent
       - run: npm run typecheck
-      - run: npx eslint . --quiet
+      - run: npm run typecheck:tests
+      # The same command and warning limit as ci.yml (scripts/workflows.test.mjs checks).
+      - run: npm run lint -- --max-warnings 700
       - run: npm run test:setup
       - name: Audit dependencies and verify every local security backport
         run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
@@ -43,5 +48,6 @@ jobs:
         env:
           EXPO_NO_DOTENV: '1'
           EXPO_NO_TELEMETRY: '1'
+      - run: npm run audit:artifact -- dist
       # Validation only. A maintainer publishes the GitHub release manually
       # after this run passes. No credentials or native binaries are uploaded.

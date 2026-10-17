@@ -12,7 +12,7 @@
    [operator install guide](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/OPERATOR_INSTALL.md),
    then select its canonical HTTPS origin in the app. `npm run doctor` checks
    the backend read-only.
-5. Run `npm run typecheck && npm run lint && npm test && npm run test:setup`
+5. Run `npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup`
    before opening a pull request. Stop Metro with Ctrl+C.
 
 ## Code style
@@ -25,6 +25,7 @@
 
 ## Pull request process
 
-1. `npm run typecheck` and `npm run lint` pass locally; CI runs them again.
+1. `npm run typecheck`, `npm run typecheck:tests` and `npm run lint` pass locally; CI runs them
+   again, and fails if the lint warning count goes above the limit in `ci.yml`.
 2. Update the README or docs if you change configuration or add features.
 3. Request review from a maintainer. Commits are squashed on merge.
