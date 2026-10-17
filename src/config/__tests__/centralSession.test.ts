@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import {
   CENTRAL_REQUEST_TIMEOUT_MS,
   CENTRAL_SECURE_KEYS,
+  CENTRAL_SIGNED_OUT_KEY,
   RESTORE_RETRY_MS,
   retryCentralRestoreIfNeeded,
   deleteCentralAccount,
@@ -20,6 +21,7 @@ import {
   requestFacilityToken,
   resetCentralSessionForTests,
   restoreCentralSession,
+  signOutAllCentralSessions,
   signOutCentral,
   updateCentralName,
   verifyCentralCode,
@@ -306,6 +308,236 @@ describe('signed-in calls', () => {
     await signOutCentral();
     expect(secure.size).toBe(0);
     expect(getCentralState().status).toBe('signedOut');
+  });
+});
+
+describe('sign out on all phones (M06)', () => {
+  const ENDPOINT = 'POST /v1/session/signout-all';
+
+  it('sends one POST /v1/session/signout-all with the current person\'s Bearer token and no body', async () => {
+    await signedIn();
+    serve({ [ENDPOINT]: { body: { ok: true } } });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: true, cleared: true });
+    const sent = calls(ENDPOINT);
+    expect(sent).toHaveLength(1);
+    expect(headersOf(sent[0]).Authorization).toBe(`Bearer ${accessToken('first')}`);
+    expect((sent[0][1] as RequestInit).body).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 200 leaves the store empty and the state signed out, and does not call /v1/session/signout afterwards', async () => {
+    await signedIn();
+    serve({ [ENDPOINT]: { body: { ok: true } }, 'POST /v1/session/signout': { body: { ok: true } } });
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: true, cleared: true });
+    expect(secure.size).toBe(0);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null, endedMessage: null });
+    expect(calls('POST /v1/session/signout')).toHaveLength(0);
+  });
+
+  it('a 401, a refresh and another 401 also clears: the session has ended, so the person is signed out', async () => {
+    await signedIn();
+    serve({
+      [ENDPOINT]: { status: 401, body: { error: { code: 'invalid_token', message: 'x' } } },
+      'POST /v1/session/refresh': { body: { session: session('second', '2') } },
+    });
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: true });
+    expect(secure.size).toBe(0);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect(calls(ENDPOINT)).toHaveLength(2);
+    expect(headersOf(calls(ENDPOINT)[1]).Authorization).toBe(`Bearer ${accessToken('second')}`);
+    expect(calls('POST /v1/session/refresh')).toHaveLength(1);
+    expect(calls('POST /v1/session/signout')).toHaveLength(0);
+  });
+
+  it('a 401 that a refresh mends is retried once with the new token, and then clears', async () => {
+    await signedIn();
+    serve({
+      [ENDPOINT]: [{ status: 401, body: { error: { code: 'invalid_token', message: 'x' } } }, { body: { ok: true } }],
+      'POST /v1/session/refresh': { body: { session: session('second', '2') } },
+    });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: true, cleared: true });
+    expect(calls(ENDPOINT)).toHaveLength(2);
+    expect(secure.size).toBe(0);
+    expect(getCentralState().status).toBe('signedOut');
+  });
+
+  it('an access token about to expire is replaced first, and the call carries the new one', async () => {
+    await signedIn(-5);
+    serve({
+      'POST /v1/session/refresh': { body: { session: session('second', '2') } },
+      [ENDPOINT]: { body: { ok: true } },
+    });
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: true });
+    expect(headersOf(calls(ENDPOINT)[0]).Authorization).toBe(`Bearer ${accessToken('second')}`);
+    expect(secure.size).toBe(0);
+  });
+
+  it('a network error keeps the session and returns the failure so the person can try again', async () => {
+    await signedIn();
+    fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: false, code: 'network' });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn' });
+    expect(getCentralState().user?.id).toBe('user-1');
+    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+    expect(secure.get(CENTRAL_SECURE_KEYS.ACCESS_TOKEN)).toBe(accessToken('first'));
+    expect(secure.has(CENTRAL_SIGNED_OUT_KEY)).toBe(false);
+  });
+
+  it('a timeout keeps the session too', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    try {
+      await signedIn();
+      fetchMock.mockImplementation(() => new Promise(() => undefined));
+      const result = signOutAllCentralSessions();
+      await jest.advanceTimersByTimeAsync(CENTRAL_REQUEST_TIMEOUT_MS + 1);
+      expect(await result).toMatchObject({ ok: false, code: 'timeout' });
+      expect(getCentralState().status).toBe('signedIn');
+      expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['a limit was reached (429)', { status: 429, body: { error: { code: 'rate_limited', message: 'x' } } }, 'rate_limited'],
+    ['the service is down (503)', { status: 503, body: { error: { code: 'unavailable', message: 'x' } } }, 'unavailable'],
+    ['the service fails (500)', { status: 500, body: { error: { code: 'internal_error', message: 'x' } } }, 'unavailable'],
+  ])('keeps the session when %s', async (_name, answer, code) => {
+    await signedIn();
+    serve({ [ENDPOINT]: answer });
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: false, code });
+    expect(getCentralState().status).toBe('signedIn');
+    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+    expect(calls(ENDPOINT)).toHaveLength(1);
+  });
+
+  it('a 404 is a service without the call: it says so, and the session is kept', async () => {
+    await signedIn();
+    serve({ [ENDPOINT]: { status: 404, body: { error: { code: 'not_found', message: 'No such path.' } } } });
+    expect(await signOutAllCentralSessions()).toEqual({
+      ok: false,
+      code: 'not_supported',
+      message: "This association service doesn't support signing out on all phones yet.",
+    });
+    expect(getCentralState().status).toBe('signedIn');
+    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+  });
+
+  it('a 404 of another call is not taken for a missing sign-out-all', async () => {
+    await signedIn();
+    serve({ 'GET /v1/me': { status: 404, body: { error: { code: 'not_found', message: 'x' } } } });
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'failed' });
+  });
+
+  it.each([
+    ['memory names another person than the stored session', 'memory'],
+    ['the stored user is another person than the one in memory', 'store'],
+  ])('is refused when %s: nothing is sent, and the session is kept', async (_name, side) => {
+    await signedIn();
+    const other = { id: 'user-2', phoneNumber: '919000000002', name: null, createdAt: '' };
+    if (side === 'memory') setCentralState({ user: other });
+    else secure.set(CENTRAL_SECURE_KEYS.USER, JSON.stringify(other));
+    serve({ [ENDPOINT]: { body: { ok: true } } });
+    expect(await signOutAllCentralSessions()).toMatchObject({ ok: false, code: 'failed' });
+    expect(calls(ENDPOINT)).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getCentralState().status).toBe('signedIn');
+    expect(secure.has(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(true);
+  });
+
+  it('with nobody signed in nothing is sent, and the answer is the same success', async () => {
+    setCentralState({ status: 'signedOut' });
+    serve({ [ENDPOINT]: { body: { ok: true } } });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: true, cleared: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getCentralState().status).toBe('signedOut');
+  });
+
+  it('says when this phone could not remove its copy: signed out in memory, the marker makes the next start remove it', async () => {
+    await signedIn();
+    serve({ [ENDPOINT]: { body: { ok: true } } });
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => {
+      if (key !== CENTRAL_SIGNED_OUT_KEY) throw new Error('secure store refused');
+      secure.delete(key);
+    });
+    expect(await signOutAllCentralSessions()).toEqual({ ok: true, cleared: false });
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    expect(secure.has(CENTRAL_SIGNED_OUT_KEY)).toBe(true);
+    // The next start finds the marker next to the session and removes it instead of signing in.
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => { secure.delete(key); });
+    resetCentralStateForTests();
+    await restoreCentralSession();
+    expect(getCentralState().status).toBe('signedOut');
+    expect(secure.has(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(false);
+  });
+
+  it('logs nothing', async () => {
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map(method => jest.spyOn(console, method).mockImplementation(() => undefined));
+    try {
+      await signedIn();
+      serve({ [ENDPOINT]: { body: { ok: true } } });
+      await signOutAllCentralSessions();
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+});
+
+describe('session contract (identity docs/API.md, X-2 and M15)', () => {
+  // The contract the app implements, and the identity service's text must agree with:
+  //   1. A protected-API 401 is answered with at most one single-flight refresh, then one repeat.
+  //   2. A refresh answered 400 or 401, or a second 401 on the repeat, drops both tokens. A refused
+  //      refresh token is never sent again.
+  //   3. A refresh that got no answer is not retried within that attempt (see 'refresh' above).
+  //   4. The text never claims the sign-in "was used twice".
+  it('an API 401 and then a refresh refused with 401 signs the person out: one refresh, one API call, no loop', async () => {
+    await signedIn();
+    serve({
+      'GET /v1/me': { status: 401, body: { error: { code: 'invalid_token', message: 'x' } } },
+      'POST /v1/session/refresh': { status: 401, body: { error: { code: 'invalid_refresh_token', message: 'x' } } },
+    });
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'session_ended' });
+    expect(calls('POST /v1/session/refresh')).toHaveLength(1);
+    expect(calls('GET /v1/me')).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Both tokens are dropped, and the refused refresh token is not kept to be sent again.
+    expect(secure.size).toBe(0);
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', user: null });
+    // The words never say the sign-in was used twice or from two places (identity API.md:307-310).
+    const message = getCentralState().endedMessage ?? '';
+    expect(message).toBe('Your association sign-in has ended. Sign in again.');
+    expect(message).not.toMatch(/twice|two places|used|reuse|stolen|copied/i);
+  });
+
+  it('an API 401 invalid_token after a key rotation is mended by one refresh, and the repeated call succeeds', async () => {
+    await signedIn();
+    serve({
+      'GET /v1/me': [{ status: 401, body: { error: { code: 'invalid_token', message: 'x' } } }, { body: { user } }],
+      'POST /v1/session/refresh': { body: { session: session('rotated', '2') } },
+    });
+    expect(await fetchCentralProfile()).toMatchObject({ ok: true, user: { id: 'user-1' } });
+    expect(calls('POST /v1/session/refresh')).toHaveLength(1);
+    expect(bodyOf(calls('POST /v1/session/refresh')[0])).toEqual({ refresh_token: refreshToken('1') });
+    const me = calls('GET /v1/me');
+    expect(me).toHaveLength(2);
+    expect(headersOf(me[0]).Authorization).toBe(`Bearer ${accessToken('first')}`);
+    expect(headersOf(me[1]).Authorization).toBe(`Bearer ${accessToken('rotated')}`);
+    // Still signed in, with the new pair; nobody was asked to sign in again.
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', endedMessage: null });
+    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('2'));
+  });
+
+  it('after a lost refresh answer the same token is presented again, and a refusal ends the session with the neutral words', async () => {
+    await signedIn(-5);
+    fetchMock.mockRejectedValueOnce(new TypeError('Network request failed'));
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'network' });
+    expect(secure.get(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(refreshToken('1'));
+    serve({ 'POST /v1/session/refresh': { status: 401, body: { error: { code: 'invalid_refresh_token', message: 'x' } } } });
+    expect(await fetchCentralProfile()).toMatchObject({ ok: false, code: 'session_ended' });
+    expect(bodyOf(calls('POST /v1/session/refresh')[0])).toEqual({ refresh_token: refreshToken('1') });
+    expect(getCentralState()).toMatchObject({ status: 'signedOut', endedMessage: 'Your association sign-in has ended. Sign in again.' });
+    expect(secure.size).toBe(0);
   });
 });
 

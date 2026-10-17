@@ -88,6 +88,16 @@ describe('central login in Gujarati', () => {
     expect(t('central.account.deleteMessage')).toContain('Records at a cold storage are kept by that cold storage.');
   });
 
+  it('words "Sign out on all phones" with the glossary words, in two paragraphs (a draft for the owner)', () => {
+    expect(t('central.account.signOutAll')).toBe('Sign out on all phones');
+    expect(t('central.account.signOutAll', undefined, 'gu')).toBe('બધા ફોનમાંથી લૉગઆઉટ કરો');
+    const message = t('central.account.signOutAllMessage', undefined, 'gu');
+    expect(message.split('\n\n')).toHaveLength(2);
+    expect(message).toContain('ત્યાં ખુલ્લું રહેશે');
+    expect(t('central.account.signOutAllMessage')).toContain('stays open there until you sign out on that phone.');
+    expect(t('central.errors.notSupported', undefined, 'gu')).toContain('હજુ');
+  });
+
   it('gives the new screens their titles in both languages', () => {
     expect(t('nav.screens.myFacilities')).toBe('My facilities');
     expect(t('nav.screens.myFacilities', undefined, 'gu')).toBe('મારાં કોલ્ડ સ્ટોરેજ');
