@@ -18,10 +18,13 @@ import {
 import { addMyFacility, loadMyFacilities, updateMyFacility } from '../centralFacilities';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '../centralState';
 import { requestFacilityToken } from '../centralSession';
-import { discoverOperator, getActiveOperatorServer } from '../operatorServer';
+import { clearOperatorServer, discoverOperator, getActiveOperatorServer } from '../operatorServer';
 import { beginOperatorSwitch, exchangeCentralIdentity, signInWithPhone } from '../supabaseConfig';
+import { markStaleFacility, STALE_FACILITY_KEY } from '../staleFacilitySession';
 import { queryClient } from '@/lib/queryClient';
 import { store } from '@/store';
+import { logout } from '@/store/slices/authSlice';
+import { LEAVE_RETRY_WAIT_MS, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { setLanguage } from '@/i18n';
 
 const ISSUER = 'https://identity.example.test';
@@ -44,6 +47,7 @@ jest.mock('../supabaseConfig', () => ({
   beginOperatorSwitch: jest.fn(() => { mockEvents.push('begin switch'); return true; }),
   endOperatorSwitch: jest.fn(() => { mockEvents.push('end switch'); }),
   getPendingEnrollmentToken: jest.fn(async () => null),
+  isOperatorSwitchFree: jest.fn(() => true),
   clearPendingEnrollment: jest.fn(),
   signOutPendingEnrollment: jest.fn(),
   initializeSupabase: jest.fn(() => { mockEvents.push('initialize'); }),
@@ -51,11 +55,13 @@ jest.mock('../supabaseConfig', () => ({
   signInWithPhone: jest.fn(),
 }));
 let mockAuth: Record<string, unknown> = {};
+/** What the logout thunk answers: `{ localCleared: false }` when the phone kept the stored session. */
+let mockLogoutResult: unknown;
 jest.mock('@/store', () => ({
   store: {
     getState: () => ({ auth: mockAuth }),
     dispatch: jest.fn((action: { type: string }) => {
-      if (action.type === 'test/logout') return { unwrap: async () => { mockEvents.push('logout'); } };
+      if (action.type === 'test/logout') return { unwrap: async () => { mockEvents.push('logout'); return mockLogoutResult; } };
       mockEvents.push(action.type);
       return action;
     }),
@@ -111,6 +117,7 @@ beforeEach(async () => {
   jest.mocked(beginOperatorSwitch).mockImplementation(() => { mockEvents.push('begin switch'); return true; });
   jest.mocked(queryClient.isMutating).mockReturnValue(0);
   mockAuth = {};
+  mockLogoutResult = undefined;
 });
 afterEach(() => setLanguage('en'));
 
@@ -587,5 +594,234 @@ describe('the person changes while an open is in flight (external review R5)', (
     expect(mockEvents).toEqual(['discover']);
     expect(getActiveOperatorServer()).toBe(previous);
     expect(getCentralState().facilitySmsOrigin).toBeNull();
+  });
+});
+
+// Ops review 2026-10-17, M08. The exchange finished for a person who has changed meanwhile, and
+// leaving that facility session is refused while a write is in flight. The answer of the leave
+// used to be ignored, so the previous person's facility session could stay on a shared phone.
+describe('the facility session of an earlier sign-in, when leaving it is refused (M08)', () => {
+  const BHAVIN = { id: 'bhavin', phoneNumber: '919000000002', name: 'Bhavin Fictional', createdAt: '' };
+  const LEAVE = ['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch'];
+  // The forced path: the same steps, but no switch gate is taken (the write keeps it busy).
+  const FORCED = ['logout', 'clear session state', 'clear config', 'clear server'];
+  const NORTH = { origin: ORIGIN, instanceId: 'instance-north' };
+  const after = (event: string) => mockEvents.slice(mockEvents.indexOf(event) + 1);
+  const listed = async () => JSON.parse((await AsyncStorage.getItem(STALE_FACILITY_KEY)) ?? '[]');
+  let writing = false;
+
+  /** The exchange answers with a session after Bhavin has replaced Asha, and a write is then in flight. */
+  const staleExchange = () =>
+    exchangeMock.mockImplementationOnce(async () => {
+      mockEvents.push('exchange');
+      setCentralState({ status: 'signedIn', user: BHAVIN });
+      writing = true;
+      return LOGIN as never;
+    });
+
+  beforeEach(() => {
+    writing = false;
+    jest.mocked(queryClient.isMutating).mockImplementation(() => (writing ? 1 : 0));
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('(a) the first leave is refused; once the write settles within the wait, the second leave runs and the facility is no longer selected', async () => {
+    staleExchange();
+    const opening = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(1000);
+    // Still waiting for the write: nothing has been left or forced yet.
+    expect(after('exchange')).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(server);
+    writing = false;
+    await jest.advanceTimersByTimeAsync(200);
+    expect(await opening).toMatchObject({ kind: 'failed', reason: 'not_signed_in' });
+    expect(after('exchange')).toEqual(LEAVE);
+    expect(getActiveOperatorServer()).toBeNull();
+    // Left the normal way: nothing listed, nothing told to Bhavin.
+    expect(await listed()).toEqual([]);
+    expect(getCentralState().outcome).toBeNull();
+  });
+
+  it('(b) the write is still in flight after the wait: the session is ended without the gate, the facility is cleared and listed, and the person on the phone is told without its name', async () => {
+    const statusBefore = await status();
+    staleExchange();
+    const opening = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 500);
+    const outcome = await opening;
+    expect(outcome).toEqual({
+      kind: 'failed',
+      reason: 'previous_session_closed',
+      message: 'A facility was still opening for the earlier sign-in on this phone. It has been closed, and nothing from it stays on this phone.',
+    });
+    expect(after('exchange')).toEqual(FORCED);
+    // The full logout (revocation tried), not a local-only one; its signOut moves the session generation.
+    expect(jest.mocked(logout).mock.calls.at(-1)).toEqual([]);
+    expect(beginOperatorSwitch).toHaveBeenCalledTimes(1); // the open's own switch only
+    expect(getActiveOperatorServer()).toBeNull();
+    expect(await listed()).toEqual([NORTH]);
+    // Published although the ticket is Asha's: for whoever is on the phone now, naming no facility.
+    expect(getCentralState().outcome).toEqual({ id: expect.any(Number), origin: '', name: '', outcome });
+    expect(getCentralState().opening).toBeNull();
+    expect(store.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'auth/setUserProfile' }));
+    expect(await status()).toBe(statusBefore);
+  });
+
+  it('(b) a forced sign-out whose stored session the phone kept says so, with the advice to restart', async () => {
+    mockLogoutResult = { localCleared: false };
+    staleExchange();
+    const opening = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 500);
+    expect(await opening).toEqual({
+      kind: 'failed',
+      reason: 'previous_session_not_cleared',
+      message:
+        "A facility was still opening for the earlier sign-in on this phone, and it couldn't be closed completely. Restart the app before anyone else uses this phone.",
+    });
+    expect(await listed()).toEqual([NORTH]);
+  });
+
+  it('(b) a waiting request instead of a session is ended the same way', async () => {
+    exchangeMock.mockImplementationOnce(async () => {
+      mockEvents.push('exchange');
+      setCentralState({ status: 'signedIn', user: BHAVIN });
+      writing = true;
+      return PENDING as never;
+    });
+    const opening = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 500);
+    expect(await opening).toMatchObject({ reason: 'previous_session_closed' });
+    expect(after('exchange')).toEqual(FORCED);
+  });
+
+  it('(b) a server changed meanwhile is not touched: its own session is not ended in place of the stale one', async () => {
+    const SOUTH = previous;
+    exchangeMock.mockImplementationOnce(async () => {
+      mockEvents.push('exchange');
+      setCentralState({ status: 'signedIn', user: BHAVIN });
+      writing = true;
+      return LOGIN as never;
+    });
+    const opening = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(1000);
+    // Another switch (it ended North's session) has selected South by the time the wait is over.
+    mockActive = SOUTH;
+    await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS);
+    expect(await opening).toMatchObject({ reason: 'previous_session_closed' });
+    expect(after('exchange')).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(SOUTH);
+  });
+
+  it('(c) the listed facility is not opened while it cannot be left, and opens once the cleanup has run', async () => {
+    // The forced cleanup could not clear the selected server: North stays selected and listed.
+    jest.mocked(clearOperatorServer).mockImplementationOnce(async () => { mockEvents.push('clear server failed'); throw new Error('disk full'); });
+    staleExchange();
+    const stale = openFacility(ORIGIN, NAME);
+    await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 500);
+    expect(await stale).toMatchObject({ reason: 'previous_session_not_cleared' });
+    expect(getActiveOperatorServer()).toBe(server);
+    expect(await listed()).toEqual([NORTH]);
+
+    // Bhavin opens North while the write is still in flight: refused, and North is not asked anything.
+    await addMyFacility('bhavin', { origin: ORIGIN, name: NAME, city: 'Rajkot' });
+    jest.mocked(discoverOperator).mockClear();
+    tokenMock.mockClear();
+    exchangeMock.mockClear();
+    mockEvents.length = 0;
+    const busy = {
+      kind: 'failed',
+      reason: 'busy',
+      message: 'This phone is still closing an earlier sign-in at North Cold Store. Try again in a minute.',
+    };
+    expect(await openFacility(ORIGIN, NAME)).toEqual(busy);
+    expect(discoverOperator).not.toHaveBeenCalled();
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(mockEvents).toEqual([]);
+    expect(getCentralState().outcome).toMatchObject({ origin: ORIGIN, name: NAME, outcome: busy });
+    expect(await listed()).toEqual([NORTH]);
+
+    // The write settles: the next open first runs the cleanup, then opens North for Bhavin.
+    writing = false;
+    expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'login' });
+    expect(mockEvents.slice(0, LEAVE.length)).toEqual(LEAVE);
+    expect(await listed()).toEqual([]);
+    expect(tokenMock).toHaveBeenLastCalledWith(ORIGIN, 'bhavin');
+  });
+
+  it("(c) the facility's own SMS sign-in is refused for a listed facility too", async () => {
+    mockActive = server;
+    writing = true;
+    await markStaleFacility(NORTH);
+    expect(await beginFacilitySmsSignIn(ORIGIN, NAME)).toMatchObject({ kind: 'failed', reason: 'busy' });
+    expect(discoverOperator).not.toHaveBeenCalled();
+    expect(getActiveOperatorServer()).toBe(server);
+  });
+
+  it('(c) another facility opens as usual while one is listed', async () => {
+    const EAST = { origin: 'https://east-cold.example.test', instanceId: 'instance-east' };
+    await markStaleFacility(EAST);
+    expect(await openFacility(ORIGIN, NAME)).toEqual({ kind: 'login' });
+    // East's entry is for the start and foreground cleanup, not for this open.
+    expect(await listed()).toEqual([EAST]);
+  });
+});
+
+// The retry that the root runs at start and on every return to the foreground (app/_layout.tsx,
+// src/tests/navigation/BootstrapCentral.test.tsx), and an open runs first.
+describe('retryStaleFacilityCleanup (M08)', () => {
+  const NORTH = { origin: ORIGIN, instanceId: 'instance-north' };
+  const listed = async () => JSON.parse((await AsyncStorage.getItem(STALE_FACILITY_KEY)) ?? '[]');
+
+  it('nothing listed: nothing is done', async () => {
+    mockActive = server;
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
+    expect(mockEvents).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(server);
+  });
+
+  it('the listed facility is still selected and nothing is in flight: it is left with the full cleanup and the entry goes', async () => {
+    mockActive = server;
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
+    expect(mockEvents).toEqual(['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch']);
+    expect(jest.mocked(logout).mock.calls.at(-1)).toEqual([undefined]);
+    expect(getActiveOperatorServer()).toBeNull();
+    expect(await listed()).toEqual([]);
+  });
+
+  it('a write is still in flight: nothing is touched and the entry stays for the next try', async () => {
+    mockActive = server;
+    jest.mocked(queryClient.isMutating).mockReturnValue(1);
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(false);
+    expect(mockEvents).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(server);
+    expect(await listed()).toEqual([NORTH]);
+  });
+
+  it('another facility is selected now: its session is left alone and the entry goes', async () => {
+    mockActive = previous;
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
+    expect(mockEvents).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(previous);
+    expect(await listed()).toEqual([]);
+  });
+
+  it('another instance now answers at the same address: the entry for the old instance goes and the new one is not left', async () => {
+    mockActive = { ...server, instanceId: 'instance-north-new' };
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(true);
+    expect(mockEvents).toEqual([]);
+    expect(await listed()).toEqual([]);
+  });
+
+  it('the cleanup fails part-way: the entry stays', async () => {
+    mockActive = server;
+    jest.mocked(clearOperatorServer).mockImplementationOnce(async () => { throw new Error('disk full'); });
+    await markStaleFacility(NORTH);
+    expect(await retryStaleFacilityCleanup(store.dispatch)).toBe(false);
+    expect(await listed()).toEqual([NORTH]);
   });
 });
