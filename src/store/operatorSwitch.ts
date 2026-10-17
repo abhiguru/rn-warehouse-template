@@ -234,7 +234,9 @@ export async function forceLeaveFacility(
   });
   if (!nothingNewSince()) return complete;
   await step(async () => {
-    if (await getPendingEnrollmentToken()) await signOutPendingEnrollment();
+    // Offline the sign-out forgets the token and then throws: what counts is that it is gone.
+    if (await getPendingEnrollmentToken()) await signOutPendingEnrollment().catch(() => {});
+    if (await getPendingEnrollmentToken()) complete = false;
   });
   if (nothingNewSince()) await step(() => clearSessionScopedState(dispatch as (action: UnknownAction) => unknown));
   if (nothingNewSince()) await step(() => ConfigService.clearCache());

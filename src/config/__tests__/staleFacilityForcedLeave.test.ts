@@ -166,3 +166,17 @@ describe('a session begun during the forced logout (review 3)', () => {
     expect(getActiveOperatorServer()).toEqual(SOUTH);
   });
 });
+
+// Review 2026-10-18, finding 4: offline, the enrollment sign-out forgets the token locally and
+// then throws the network error. The phone is clear, so that is what the answer says.
+it('offline with a waiting request (no session stored): the request is forgotten and the answer is "closed"', async () => {
+  secure.clear();
+  secure.set('secure_enrollment_token', 'stale-enrollment');
+  rpc.mockRejectedValue(new TypeError('Network request failed'));
+  jest.mocked(global.fetch).mockRejectedValue(new TypeError('Network request failed'));
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const store = configureStore({ reducer: { auth: authReducer } });
+  expect(await forceLeaveFacility(store.dispatch, NORTH)).toBe(true);
+  expect(secure.has('secure_enrollment_token')).toBe(false);
+  expect(getActiveOperatorServer()).toBeNull();
+});
