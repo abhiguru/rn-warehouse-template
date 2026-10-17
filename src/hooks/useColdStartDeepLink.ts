@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Linking, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { useRouter, usePathname, useGlobalSearchParams, Href } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 
@@ -25,32 +26,55 @@ interface ColdStartDeepLinkResult {
   pendingAuth: boolean;
 }
 
+/** The scheme a build registers when its configuration names none (app.json). */
+const DEFAULT_APP_SCHEME = 'warehousemanager';
+
+/**
+ * The URI schemes this build registered natively, lower-cased. They come from the build's own
+ * configuration (`scheme` in app.json, which app.config.js overrides from WAREHOUSE_APP_SCHEME),
+ * a string or a list, so the native registration and this parser name the same scheme. The
+ * old `EXPO_PUBLIC_APP_SCHEME` is not read.
+ */
+function appSchemes(): string[] {
+  const configured: unknown = Constants.expoConfig?.scheme;
+  const names = (Array.isArray(configured) ? configured : [configured])
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    .map((name) => name.toLowerCase());
+  return names.length > 0 ? names : [DEFAULT_APP_SCHEME];
+}
+
+/** Same characters the old `(.+)` pattern refused: a line break cannot be part of a route. */
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
 /**
  * Parses a deep link URL into a route path
+ *
+ * The scheme is the part before `://`, compared as text and case-insensitively (RFC 3986), never
+ * built into a pattern: a scheme may hold `+`, `.` and `-`. The route after it keeps its case.
  *
  * @param url - Full URL (e.g., "warehousemanager://grn-details/123")
  * @returns Route path (e.g., "/grn-details/123") or null if invalid
  */
 export function parseDeepLinkUrl(url: string): string | null {
   try {
-    const scheme = process.env.EXPO_PUBLIC_APP_SCHEME || 'warehousemanager';
+    const separator = url.indexOf('://');
+    if (separator > 0 && appSchemes().includes(url.slice(0, separator).toLowerCase())) {
+      const rest = url.slice(separator + 3);
 
-    // Expo uses this URL only to boot the development client. It is not an
-    // application route and must not be replayed after auth restoration.
-    const developmentClientPrefix = `${scheme}://expo-development-client`;
-    if (
-      url === developmentClientPrefix ||
-      url.startsWith(`${developmentClientPrefix}/`) ||
-      url.startsWith(`${developmentClientPrefix}?`) ||
-      url.startsWith(`${developmentClientPrefix}#`)
-    ) {
-      return null;
-    }
+      // Expo uses this URL only to boot the development client. It is not an
+      // application route and must not be replayed after auth restoration.
+      const developmentClient = 'expo-development-client';
+      if (
+        rest === developmentClient ||
+        (rest.startsWith(developmentClient) && '/?#'.includes(rest.charAt(developmentClient.length)))
+      ) {
+        return null;
+      }
 
-    // Handle custom scheme (warehousemanager://path)
-    const schemeMatch = url.match(new RegExp(`^${scheme}:\\/\\/(.+)$`));
-    if (schemeMatch) {
-      return '/' + schemeMatch[1];
+      // Handle the custom scheme (warehousemanager://path)
+      if (rest.length > 0 && !LINE_BREAK.test(rest)) {
+        return '/' + rest;
+      }
     }
 
     // A web address is not an app link. The app registers its own scheme only (no
