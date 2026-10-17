@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Ops review wave 2: security (2026-10-18)
+
+Fixes from the 2026-10-17 operational review (findings M01, M07, M08, M12). No backend change.
+
+- **A facility session left for the previous person is ended (M08).** With central login, when the person on
+  the phone changed while a facility was opening and that facility answered with a session, the app left it
+  once and ignored a refusal (a write in flight), so the previous person's facility session could stay on a
+  shared phone. Now the facility goes on a stale list on the phone as soon as the late answer arrives, so a
+  restart at any point keeps that session from being restored; the leave is tried again after the write has
+  had 5 s to settle, and if it still cannot run the session is ended without waiting (late answers are
+  dropped; offline the local clear is enough). The cleanup acts only on that session: a sign-in someone began
+  meanwhile, with its waiting request, drafts and selected facility, is left alone. My facilities says
+  "Earlier sign-in closed" (or "Couldn't close the earlier sign-in" with the advice to restart); while the
+  cleanup is pending the facility is not restored at start or opened ("This phone is still closing an earlier
+  sign-in. Try again in a minute."), and it is retried at start, on every return to the foreground and before
+  an open. None of these messages names the facility.
+- **Crash reports: nothing nested deeper than 8 levels is sent (M01).** Such an object or array is replaced by
+  `[TRUNCATED]`; strings are still scrubbed, now also for 64-character session tokens and database row values,
+  in breadcrumb messages, tag values, `user.username` and header values too; a key is redacted when its name
+  contains token, secret, passw, otp, authorization, cookie, credential or phone. Only a build with an
+  operator-set DSN was affected; it ships with the next store release (OTA updates are off).
+- **iOS release builds allow no arbitrary loads (M12, owner decision D24).** A config plugin sets
+  `NSAllowsArbitraryLoads = false` with no exception for release builds; local networking only for a
+  development project (`WAREHOUSE_IOS_LOCAL_NETWORKING=1`, set by `npm run ios`, the USB helper, or the EAS
+  `development` profile; EAS `preview`/`production` refuse those switches), and a Release build phase fails
+  an archive whose `Info.plist` still allows local networking or arbitrary loads. Not yet built on a Mac:
+  check the generated plist before an iOS release.
+- **Docs: catalogue trust is TLS-only (M07, owner decision D21).** `docs/CENTRAL_LOGIN.md` says the app does not
+  verify the catalogue signature and cites the identity contract; `docs/RELEASE_PREPARATION.md` asks for a
+  publicly trusted certificate on the association service.
+
 ## Unreleased — Orders screen polish (2026-10-17)
 
 - **Order card.** The units total is the main value on the right ("25" over "units"), with the status tag under

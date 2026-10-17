@@ -70,6 +70,7 @@
       "expo-router",
       "./plugins/with-ios-linking-manager",
       "./plugins/with-ios-usb",
+      "./plugins/with-ios-transport-policy",
       "expo-secure-store",
       [
         "expo-local-authentication",
