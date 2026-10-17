@@ -5,6 +5,8 @@
  * server.
  */
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { Text } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 
@@ -123,5 +125,78 @@ describe('CR-70: wording of the legal pages', () => {
     expect(text).not.toContain('the own server');
     expect(text).toContain('the server of the cold storage you connected to');
     for (const line of text.split('\n').filter(l => l.startsWith('Crash reports'))) expect(line.endsWith('.')).toBe(false);
+  });
+});
+
+// Review 2026-10-17, M09 (owner decision D22): crash reporting is switched on by the
+// organisation that distributes the copy, not by the person; the page must say so, say
+// what a report holds, and send a person who wants it off to that organisation.
+describe('M09: crash reporting and Association sign-in wording', () => {
+  const SECTION_1_BULLET =
+    'Crash reports, if the organisation that distributes your copy of the App has switched them on: the App version, the phone model, your role, the text of the error and a short trail of what the App did just before it (such as requests made); phone numbers, codes and tokens are filtered out, but names and other words from your records may remain';
+  const PROVIDER_BULLET =
+    'Crash reports (Sentry/GlitchTip), only if the organisation that distributes your copy of the App switches them on: the app version, the phone model, your role, the error text and a short trail of recent activity, which may contain names from your records';
+  const ASSOCIATION_SENTENCE =
+    "Where your copy of the App uses the Association's sign-in, the Association's sign-in keeps your mobile number and, if you enter it, your name. A cold storage sees that name when you ask it for access.";
+  const WITHDRAWAL_BULLET =
+    'Withdraw consent: Ask the organisation that distributes your copy of the App to switch crash reports off; the App has no switch of its own';
+
+  async function privacyLines(): Promise<string[]> {
+    mockServer = null;
+    return (await pageText(PAGES[1][1])).split('\n');
+  }
+
+  it('says who switches crash reporting on and what a report holds (section 1)', async () => {
+    const lines = await privacyLines();
+    expect(lines).toContain(SECTION_1_BULLET);
+  });
+
+  it('states the same in the service-provider list (section 3) and the third-party list (section 9)', async () => {
+    const lines = await privacyLines();
+    expect(lines.filter(line => line === PROVIDER_BULLET)).toHaveLength(2);
+  });
+
+  it('no longer promises that a report never holds your records', async () => {
+    const text = (await privacyLines()).join('\n');
+    expect(text).not.toContain('never your records');
+    expect(text).not.toContain('If crash reporting is switched on in your copy');
+  });
+
+  it('says the Association keeps the mobile number and, if entered, the name, and that a cold storage sees the name', async () => {
+    const lines = await privacyLines();
+    expect(lines).toContain(ASSOCIATION_SENTENCE);
+    expect(lines.join('\n')).not.toContain('keeps only your mobile number');
+  });
+
+  it('sends a person who wants crash reports off to the organisation, not to an in-app switch', async () => {
+    const lines = await privacyLines();
+    expect(lines).toContain(WITHDRAWAL_BULLET);
+    expect(lines.join('\n')).not.toContain('Withdraw consent for optional data processing');
+  });
+
+  it('keeps no crash-report line ending in a full stop', async () => {
+    const lines = await privacyLines();
+    const crash = lines.filter(line => line.startsWith('Crash reports'));
+    expect(crash).toHaveLength(3);
+    for (const line of crash) expect(line.endsWith('.')).toBe(false);
+  });
+});
+
+describe('M09: docs/TELEMETRY_AND_PRIVACY.md section 1 matches the screen', () => {
+  const doc = fs.readFileSync(
+    path.join(__dirname, '../../../docs/TELEMETRY_AND_PRIVACY.md'),
+    'utf8'
+  );
+
+  it('describes operator consent and no longer calls reporting strictly opt-in', () => {
+    expect(doc).toContain('## 1. Consent Model: Operator-Controlled Reporting');
+    expect(doc).not.toMatch(/strictly opt-in/i);
+    expect(doc).not.toContain('## 1. Opt-In Configuration and Activation');
+  });
+
+  it('says what leaves the phone and what never does', () => {
+    expect(doc).toMatch(/role/);
+    expect(doc).toMatch(/never sent/i);
+    expect(doc).toContain('request body');
   });
 });

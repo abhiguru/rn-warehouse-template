@@ -149,7 +149,7 @@ export default function PrivacyPolicyScreen() {
               items={[
                 'Your choices (language, light or dark, colours) and the address of your cold storage, kept on your phone only',
                 'Your signed-in session, kept in the phone\'s secure storage',
-                'If crash reporting is switched on in your copy of the App: the App version, the phone model and the error, never your records',
+                'Crash reports, if the organisation that distributes your copy of the App has switched them on: the App version, the phone model, your role, the text of the error and a short trail of what the App did just before it (such as requests made); phone numbers, codes and tokens are filtered out, but names and other words from your records may remain',
               ]}
             />
           </Section>
@@ -192,12 +192,14 @@ export default function PrivacyPolicyScreen() {
               items={[
                 'The server software your cold storage runs (Supabase, open source)',
                 'An SMS provider that delivers your one-time code (your mobile number and the code)',
-                'Crash reports (Sentry/GlitchTip): the app version and the error, never your records',
+                'Crash reports (Sentry/GlitchTip), only if the organisation that distributes your copy of the App switches them on: the app version, the phone model, your role, the error text and a short trail of recent activity, which may contain names from your records',
               ]}
             />
             <Paragraph>
               Where your copy of the App uses the Association's sign-in, the
-              Association's sign-in keeps only your mobile number.
+              Association's sign-in keeps your mobile number and, if you enter
+              it, your name. A cold storage sees that name when you ask it for
+              access.
             </Paragraph>
 
             <Subheading>Business transfers</Subheading>
@@ -275,7 +277,7 @@ export default function PrivacyPolicyScreen() {
                 'Correction: Request correction of inaccurate or incomplete information',
                 'Deletion: Request deletion of your personal information, subject to legal requirements',
                 'Portability: Request a copy of your data in a portable format',
-                'Withdraw Consent: Withdraw consent for optional data processing',
+                'Withdraw consent: Ask the organisation that distributes your copy of the App to switch crash reports off; the App has no switch of its own',
               ]}
             />
             <Paragraph>
@@ -325,7 +327,7 @@ export default function PrivacyPolicyScreen() {
               items={[
                 'The server software your cold storage runs (Supabase, open source)',
                 'Expo (app development platform)',
-                'Crash reports (Sentry/GlitchTip): the app version and the error, never your records',
+                'Crash reports (Sentry/GlitchTip), only if the organisation that distributes your copy of the App switches them on: the app version, the phone model, your role, the error text and a short trail of recent activity, which may contain names from your records',
               ]}
             />
           </Section>
