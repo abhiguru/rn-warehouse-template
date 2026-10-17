@@ -389,9 +389,9 @@ describe('central sign-in', () => {
   });
 
   it('explains once why the person was signed out', async () => {
-    setCentralState({ endedMessage: 'Your association sign-in has ended. Sign in again.' });
+    setCentralState({ endedMessage: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.' });
     await render(<CentralLoginScreen />);
-    expect(alerts()).toEqual([['Signed out', 'Your association sign-in has ended. Sign in again.']]);
+    expect(alerts()).toEqual([['Signed out', 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.']]);
     expect(getCentralState().endedMessage).toBeNull();
   });
 });

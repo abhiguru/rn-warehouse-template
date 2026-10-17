@@ -67,6 +67,8 @@ export type CentralErrorCode =
   | 'catalogue_invalid'
   /** The association's service has no such call (an older central service; a 404). */
   | 'not_supported'
+  /** "Sign out on all phones" could not be carried out: this phone's session had already ended. */
+  | 'sign_out_all_incomplete'
   | 'failed';
 
 export type CentralFailure = {
@@ -145,6 +147,8 @@ export function centralErrorMessage(code: CentralErrorCode, retryAfterSeconds?: 
       return t('central.errors.catalogueInvalid');
     case 'not_supported':
       return t('central.errors.notSupported');
+    case 'sign_out_all_incomplete':
+      return t('central.errors.signOutAllIncomplete');
     case 'network':
     case 'timeout':
       return t('central.errors.network');
@@ -1023,10 +1027,10 @@ export async function signOutCentral(): Promise<boolean> {
  * the call (`not_supported`).
  *
  * After `ok`, `/v1/session/signout` is NOT called: signout-all has just ended this session's
- * family too. When the service says the session had already ended (a 401 that a refresh did not
- * mend), the person is signed out on every phone as far as this phone can tell, and the answer is
- * the same success; a session that call has already removed is not removed twice, and one that
- * another sign-in has replaced meanwhile is left alone.
+ * family too. When the session had already ended (a refresh that was refused, a 401 that a refresh
+ * did not mend, or nobody signed in) signout-all was not accepted, so other phones may still be
+ * signed in: this phone is cleared and the answer is the failure `sign_out_all_incomplete`, which
+ * tells the person to sign in again and repeat. A person who signed in meanwhile is left alone.
  *
  * `cleared`: whether the phone removed the stored session (the four keys), as `signOutCentral`
  * reports it. False: memory is signed out, but the secure store kept (some of) the keys and the
@@ -1035,13 +1039,19 @@ export async function signOutCentral(): Promise<boolean> {
 export async function signOutAllCentralSessions(): Promise<CentralResult<{ cleared: boolean }>> {
   const userId = getCentralState().user?.id ?? null;
   const answer = await signedCall('POST', '/v1/session/signout-all', undefined, userId, 'not_supported');
+  const now = getCentralState();
+  // Memory still names this person (or nobody): a person who signed in meanwhile is left alone.
+  const stillThisPerson = now.user === null || now.user.id === userId;
   if ('ok' in answer) {
     if (answer.code !== 'session_ended') return answer;
-    const now = getCentralState();
-    if (now.status === 'signedIn' && now.user?.id === userId) return { ok: true, cleared: await endLocally(null) };
-    return { ok: true, cleared: true };
+    // The session had ended before signout-all could be accepted (a refused refresh, or a second
+    // 401), or nobody was signed in: nothing was sent, or it was refused. Only this phone's own
+    // family has ended, so other phones may still be signed in. This phone is cleared (it is
+    // dead anyway) but the person is told, and can sign in again and repeat.
+    if (now.status === 'signedIn' && now.user?.id === userId) await endLocally(null);
+    return failure('sign_out_all_incomplete');
   }
-  return { ok: true, cleared: await endLocally(null) };
+  return { ok: true, cleared: stillThisPerson ? await endLocally(null) : true };
 }
 
 // ---------------------------------------------------------------------------

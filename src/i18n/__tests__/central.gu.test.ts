@@ -43,7 +43,7 @@ describe('central login in Gujarati', () => {
     expect(t('central.facilities.title', undefined, 'gu')).toBe('મારાં કોલ્ડ સ્ટોરેજ');
     expect(t('central.facilities.add', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજ ઉમેરો');
     expect(t('central.switch.action', undefined, 'gu')).toBe('કોલ્ડ સ્ટોરેજ બદલો');
-    expect(t('central.errors.sessionEnded', undefined, 'gu')).toBe('ઍસોસિએશનમાં તમારું લૉગિન પૂરું થઈ ગયું છે. ફરી લૉગિન કરો.');
+    expect(t('central.errors.sessionEnded', undefined, 'gu')).toContain('ઍસોસિએશનમાં તમારું લૉગિન પૂરું થઈ ગયું છે. ફરી લૉગિન કરો.');
     expect(t('central.signIn.endedTitle', undefined, 'gu')).toBe('લૉગઆઉટ થયું');
     expect(t('central.errors.tooManyAttempts', undefined, 'gu')).toBe('ઘણી વાર ખોટો OTP નખાયો છે. નવો OTP મગાવો.');
     const all = leaves(gujarati).map(([, text]) => text).join(' ');
