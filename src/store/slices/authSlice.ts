@@ -25,6 +25,7 @@ import { fetchFullConfig, clearFullConfig } from './configSlice';
 import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { isStaleFacility } from '@/config/staleFacilitySession';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -171,6 +172,13 @@ export const initializeAuth = createAsyncThunk.withTypes<{
         // first", log it as an error and leave it in `auth.error`.
         if (isCentralLoginConfigured() && getActiveOperatorServer() === null)
           return { session: null, user: null, userProfile: null };
+        // A facility whose session may belong to an earlier central sign-in (an exchange that
+        // finished after the person changed, src/config/staleFacilitySession.ts) is never
+        // restored: whoever starts the app now goes to My facilities, and the cleanup that
+        // the root runs at start ends that session.
+        const selected = getActiveOperatorServer();
+        if (isCentralLoginConfigured() && selected && (await isStaleFacility(selected.origin, selected.instanceId)))
+          return { session: null, user: null, userProfile: null };
 
         // STEP 1: Ensure we have Supabase client (fallback to initialized one)
         const supabaseClient = getSupabaseClient();
@@ -205,7 +213,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             });
 
             // Set user context for crash reporting
-            setSentryUser(cachedProfile.id, cachedProfile.role);
+            setSentryUser(cachedProfile.role);
 
             return { session, user: session.user, userProfile: cachedProfile };
           } else {
@@ -237,7 +245,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
               fetchConfigOnce(dispatch, supabaseClient);
 
               // Set user context for crash reporting
-              setSentryUser(profileResult.data.id, profileResult.data.role);
+              setSentryUser(profileResult.data.role);
 
               return {
                 session,
@@ -324,7 +332,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
               fetchConfigOnce(dispatch, supabaseClient);
 
               // Set user context for crash reporting
-              setSentryUser(cachedProfile.id, cachedProfile.role);
+              setSentryUser(cachedProfile.role);
 
               // The cached copy may be up to a day old: ask the server in the
               // background and show what it says now.
@@ -644,7 +652,7 @@ async function reconcileCachedProfile(
   const fresh = (await reloadUserProfile()) as UserProfile | null;
   if (!fresh || generation !== getSessionGeneration() || sameProfile(cached, fresh)) return;
   dispatch(authSlice.actions.setUserProfile(fresh));
-  setSentryUser(fresh.id, fresh.role);
+  setSentryUser(fresh.role);
 }
 
 /**

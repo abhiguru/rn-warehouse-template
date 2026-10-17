@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased — Ops review wave 3: correctness (2026-10-18)
+
+Fixes from the 2026-10-17 operational review (findings M02, M05, M06, M09, M14, M15). No backend change;
+"Sign out on all phones" needs an association service of 0.4.0 or later.
+
+- **Request deadlines cover the response body (M02).** On Expo 57 the global `fetch` is `expo/fetch`, which
+  answers as soon as the headers arrive, so a body still downloading was neither timed nor tracked: a save
+  whose answer was still arriving no longer held back a facility switch, and a body that never finished never
+  timed out. Now one deadline covers headers and body (reads 30 s, writes 60 s), a request stays tracked until
+  its body is read, a switch still ends a read at once, and an error page that a service returns on without
+  reading is closed at once (print, PDF, settings). The association sign-in calls read their answer inside
+  their time limit too.
+- **"Sign out on all phones" (M06, owner decision D20).** My facilities → your name → Account: a new button
+  above "Delete my account" ends the association sign-in on every phone (open facility sessions on other
+  phones stay until they sign out there; the confirm dialog says so). If this phone's sign-in had already
+  ended, the phone is cleared and the app says other phones may still be signed in. Gujarati texts are drafts.
+- **The ended sign-in message points to it (M14, M15).** "Your association sign-in has ended. Sign in again.
+  If you did not expect this, open your account after signing in and choose Sign out on all phones." The
+  association service's documents quote the same sentence; `docs/CENTRAL_LOGIN.md` gains a "Session
+  contract" section quoting the service's 401 rule word for word (refresh once, repeat once, otherwise sign
+  in again), with contract tests.
+- **Crash reports carry less (M09, owner decision D22).** No request body, no account id (only the role), no
+  query string or fragment in any address (list searches put typed text there), cookie values redacted,
+  header names matched by substring. The privacy screen and `docs/TELEMETRY_AND_PRIVACY.md` now say crash
+  reporting is switched on or off for a whole build by the organisation that distributes it;
+  `docs/RELEASE_PREPARATION.md` gains the store declarations for a build with a DSN.
+- **Deep links with a custom scheme (M05).** The scheme now comes from the build's own configuration and is
+  compared as plain text (case-insensitive), so `warehouse+review://…` replays and `warehouse.review` no
+  longer matches other schemes. `EXPO_PUBLIC_APP_SCHEME` is ignored.
+
+## Unreleased — Ops review wave 2: security (2026-10-18)
+
+Fixes from the 2026-10-17 operational review (findings M01, M07, M08, M12). No backend change.
+
+- **A facility session left for the previous person is ended (M08).** With central login, when the person on
+  the phone changed while a facility was opening and that facility answered with a session, the app left it
+  once and ignored a refusal (a write in flight), so the previous person's facility session could stay on a
+  shared phone. Now the facility goes on a stale list on the phone as soon as the late answer arrives, so a
+  restart at any point keeps that session from being restored; the leave is tried again after the write has
+  had 5 s to settle, and if it still cannot run the session is ended without waiting (late answers are
+  dropped; offline the local clear is enough). The cleanup acts only on that session: a sign-in someone began
+  meanwhile, with its waiting request, drafts and selected facility, is left alone. My facilities says
+  "Earlier sign-in closed" (or "Couldn't close the earlier sign-in" with the advice to restart); while the
+  cleanup is pending the facility is not restored at start or opened ("This phone is still closing an earlier
+  sign-in. Try again in a minute."), and it is retried at start, on every return to the foreground and before
+  an open. None of these messages names the facility.
+- **Crash reports: nothing nested deeper than 8 levels is sent (M01).** Such an object or array is replaced by
+  `[TRUNCATED]`; strings are still scrubbed, now also for 64-character session tokens and database row values,
+  in breadcrumb messages, tag values, `user.username` and header values too; a key is redacted when its name
+  contains token, secret, passw, otp, authorization, cookie, credential or phone. Only a build with an
+  operator-set DSN was affected; it ships with the next store release (OTA updates are off).
+- **iOS release builds allow no arbitrary loads (M12, owner decision D24).** A config plugin sets
+  `NSAllowsArbitraryLoads = false` with no exception for release builds; local networking only for a
+  development project (`WAREHOUSE_IOS_LOCAL_NETWORKING=1`, set by `npm run ios`, the USB helper, or the EAS
+  `development` profile; EAS `preview`/`production` refuse those switches), and a Release build phase fails
+  an archive whose `Info.plist` still allows local networking or arbitrary loads. Not yet built on a Mac:
+  check the generated plist before an iOS release.
+- **Docs: catalogue trust is TLS-only (M07, owner decision D21).** `docs/CENTRAL_LOGIN.md` says the app does not
+  verify the catalogue signature and cites the identity contract; `docs/RELEASE_PREPARATION.md` asks for a
+  publicly trusted certificate on the association service.
+
 ## Unreleased — Orders screen polish (2026-10-17)
 
 - **Order card.** The units total is the main value on the right ("25" over "units"), with the status tag under

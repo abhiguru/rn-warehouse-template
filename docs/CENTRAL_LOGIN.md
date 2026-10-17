@@ -159,11 +159,12 @@ tick was given.
 (`secure_central_*`), never the facility session's; plain `fetch` with a 15 second limit, not
 the facility request gate. The access token is replaced a minute before it expires and once
 when the service answers 401; one refresh runs at a time, and the refresh path sends a refresh
-token exactly once. A refresh whose answer was lost is not repeated: the session is kept and
-the next need refreshes again with the same token. If the lost request had reached the
-service, that next refresh is reuse: the service revokes the session family and the person
-signs in again; if it had not (the connection failed before it arrived), the next refresh
-simply succeeds. When the service refuses the refresh token the person is signed out
+token once per attempt and never retries it within that attempt. After a lost answer the
+session is kept, and the next refresh presents the same token. If the lost request had reached
+the service, the service treats that as reuse: it revokes the session family and the person
+signs in again (accepted: this costs a sign-in by SMS, not security); if it had not (the
+connection failed before it arrived), the next refresh simply succeeds. When the service
+refuses the refresh token the person is signed out
 centrally, told why, and returned to central sign-in. Sign-out with an expired access token
 needs a new one for the revocation and keeps the same rule (backlog A20): it reads the pair in
 the same queued step that removes it, so no newer pair can be stored after the one it reads;
@@ -285,6 +286,42 @@ has, the open stops with "sign in again" and shows nothing; a facility session t
 had already started is left at once. The linking code goes to the number the open began with,
 and a code step begun for another number is not completed.
 
+Such a session is handled in this order (ops review 2026-10-17, M08, and its review of 2026-10-18):
+
+- At once, the facility (origin and instance, no secret) is written to a stale list on the phone
+  (`src/config/staleFacilitySession.ts`), so that a restart at any later point does not restore
+  the session.
+- It is left like any other. Leaving is refused while a write is in flight (its outcome must not
+  be lost), so it is tried once more after the write has had time to settle (`leaveWithRetry`,
+  5 s). When that works, the entry is removed again and nothing is shown.
+- If it still cannot be left, the session is ended without waiting for the switch gate
+  (`forceLeaveFacility` in `src/store/operatorSwitch.ts`): the same logout as a switch, which moves
+  the session generation at once so the write's late answer is dropped; revocation is tried, and
+  offline the local clear is what protects the phone (a waiting request that the facility could not
+  be told about is forgotten on the phone, and that counts as cleared); then the facility is no
+  longer selected.
+- My facilities tells whoever is on the phone now "Earlier sign-in closed", or "Couldn't close
+  the earlier sign-in" with the advice to restart before anyone else uses the phone. Neither
+  names the facility, which belongs to the earlier sign-in. When an answer for that person is
+  still waiting on the list, it is shown in a dialog of its own instead. The late answer leaves an
+  open that the person now on the phone has begun as it is ("Opening…", and a second open is refused).
+
+All of this acts only on that session. Its session generation is taken when the exchange's answer
+arrives, and the cleanup updates it with its own sign-out. Once it has moved otherwise (a later
+sign-in replaced the stored session) the session is gone, and a session, waiting request, drafts or
+selected facility that someone began since are left alone; so is a server that another switch
+selected meanwhile.
+
+While a facility is on the stale list its session is not restored at start (`initializeAuth`)
+and it is not opened ("This phone is still closing an earlier sign-in. Try again in a minute.",
+which does not name it either; also for its own SMS sign-in). The cleanup runs again at start, on
+every return to the foreground (`app/_layout.tsx`) and before an open of that facility
+(`retryStaleFacilityCleanup`). It decides from the saved selection, which at a cold start it reads
+itself, because it runs before the bootstrap has loaded it. A listed facility that is still selected
+is left with the full cleanup, and once it is not selected the entry is removed. In the same run of
+the app, an entry whose session has been replaced since is removed without leaving anything; after a
+restart that is not known, so a session stored at a listed facility is ended (the safe side).
+
 | Facility answers | The person sees | Status |
 |---|---|---|
 | `login` | The facility | approved |
@@ -365,16 +402,99 @@ facilities when Settings is already gone; not known leaves the entry Unavailable
 facility and shows the message, or the cleanup's own message when that cleanup did not
 finish. On My facilities, "Sign out" revokes the central session, forgets it on the
 phone and also leaves the current facility (if the phone could not remove the session from its
-secure storage it says so, see the central session above); the account entry holds the name and "Delete my
-account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its own records.
+secure storage it says so, see the central session above); the account entry holds the name,
+"Sign out on all phones" and "Delete my account" (`DELETE /v1/me`), whose confirmation says that
+each facility keeps its own records.
+
+**Sign out on all phones** (My facilities, the account row at the top, then Account; a secondary
+button above "Delete my account"; `signOutAllDevices` in `src/store/centralSignOut.ts`,
+`signOutAllCentralSessions` in `src/config/centralSession.ts`). The confirmation says that the
+person is signed out of the association account on every phone, this one included, and that a
+cold storage already open on another phone stays open there until the person signs out on that
+phone: a facility's own session belongs to the facility, and the association's call does not end
+it. After the confirmation the app leaves the selected facility (a write in flight refuses the
+action), sends one `POST /v1/session/signout-all` with the access token of the person shown as
+signed in (identity `docs/API.md`, central service 0.4.0 and later; nothing is sent for anybody
+else's stored session), and only when the service says `ok` forgets the central session on this
+phone. It does not call `/v1/session/signout` afterwards: the call has ended this session's
+family too. The action needs a connection. Without one, on a limit (429) or on a service error
+(5xx) the session is kept and the person is told, so they can try again (the facility has been
+left by then, as with a failed deletion). A 404 is a service without the call and is told as
+"not supported by this association service". If this phone's session had already ended (a
+refresh the service refused, a second 401, or nobody signed in) signout-all was not accepted and
+other phones may still be signed in: this phone is cleared, but the answer is a failure ("This
+phone's association sign-in had already ended, so your other phones may still be signed in. Sign
+in again and use Sign out on all phones."), and nothing is sent when no valid token can be had.
+A person who signed in meanwhile is not signed out by a late answer. As for "Sign out", the phone says so when it could
+not remove its stored copy. The button is on the account screen only: it is not offered after
+an unexpected sign-out (the person finds it there after signing in again). Older installed apps
+do not have it.
+
+### Session contract
+
+What the app does when the association's service answers 401, and what it expects of the
+service. The identity half is in the identity repository (`docs/API.md`, sections
+`POST /v1/session/refresh` and "The access token"; `docs/SECURITY.md`, sections "A refresh token
+works once, and what that trades away" and "What a stolen signing key allows, and how to
+rotate"). Identity states the 401 rule in one sentence, in its `docs/API.md` section
+`POST /v1/session/refresh` ("What a client does on a 401") and again under "The access token",
+and the app implements exactly that sentence:
+
+> On a 401 `invalid_token` from a call with an access token, the client refreshes once (one
+> refresh at a time, with the newest refresh token) and repeats the call once; if that refresh
+> answers 400 or 401, or the repeated call answers 401 again, it drops all stored tokens and the
+> person signs in again with a code.
+
+Both repositories carry the same four rules (operational review of 2026-10-17, X-2, decision
+D16):
+
+1. A protected-API 401 `invalid_token` is answered with at most one single-flight refresh with
+   the newest refresh token (or a newer token that another call has already stored), and the
+   call is then repeated once.
+2. A refresh answered 400 or 401, or a second 401 on the repeated call, ends the session: both
+   tokens are dropped and the person signs in again. A refused refresh token is never sent again.
+3. A refresh that got no answer is not retried within that attempt. The next refresh may present
+   the same token, which the service treats as reuse if the first request arrived (accepted: it
+   costs one sign-in by SMS, not security, because presenting the token again also kills any
+   copy of it).
+4. The words never claim that the sign-in "was used twice" or "from two places": the service
+   answers the same 401 for an expired token, a retired key and an ended session. The app says
+   "Your association sign-in has ended. Sign in again. If you did not expect this, open your
+   account after signing in and choose Sign out on all phones." (it points to the action, and
+   never says "used")
+
+Why one refresh and not "drop every token on any 401": a forced key rotation, and an upgrade
+from before central service 0.3.0, make every access token fail once with 401 `invalid_token`;
+one refresh gives the person a token signed with the new key and nobody is signed out. If the
+family has been revoked the refresh itself answers 401 and the session ends as it should, so the
+rule is safe under both readings. "Drop every token on any 401" would sign every person out at
+each key rotation and cost one SMS each. Installed apps already behave this way, so the
+contract needs no app release. Tests: the "session contract" block in
+`src/config/__tests__/centralSession.test.ts`. The identity text speaks of "Sign out
+everywhere"; the app's button is "Sign out on all phones".
 
 ## Still open
 
-- **The catalogue's signature is not verified in the app.** The catalogue is a signed token
-  (ES256) and the central contract says the app verifies it; Hermes has no ES256. The app
-  checks the token's type, algorithm name, issuer and expiry, and relies on TLS to the
-  configured origin. A facility, not the app, decides access and verifies its own tokens, so
-  a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+- **The catalogue's signature is not verified in the app (accepted: TLS-only trust).** The
+  catalogue is a signed token (ES256); Hermes has no ES256 and the app has no crypto library
+  for it. The identity service's contract expects exactly this: an app that cannot verify the
+  signature "trusts TLS to the configured issuer origin", checks only the header `typ`, the
+  claim `iss` and that `exp` has not passed, fetches the catalogue only from the issuer over
+  HTTPS and never accepts one handed to it by another party (identity repository,
+  `docs/API.md`, section "The catalogue token", which begins "The mobile app does **not** verify the
+  signature of the catalogue token"). The app does this: `readCatalogueToken` checks type,
+  algorithm name, issuer and expiry, and the request goes to the configured central origin
+  only. A facility, not the app, decides access and verifies its own tokens, and identity
+  refuses a facility token for an origin that is not in its catalogue (`docs/API.md`, the `unknown_facility` error),
+  so a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
+  What this does not defend against is interception of TLS to the issuer on the phone itself
+  (a trusted extra certificate authority, a managed-device proxy): such a party could serve a
+  catalogue that lists an address the association never published, and a person who opens it
+  would be asking that address to sign them in. The release owner is told to use a publicly
+  trusted certificate for the issuer (see `docs/RELEASE_PREPARATION.md`). Signature
+  verification (a pure-JavaScript P-256 verifier with the issuer's key set, or keys pinned in
+  the build) was considered and not chosen on 2026-10-17: pinned keys would tie every key
+  rotation to an app release.
 - **Passcode and biometrics** after the first sign-in.
 - **SMS auto-read** on Android (SMS Retriever); the code fields already use one-time-code
   autofill.
@@ -397,14 +517,11 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   real SMS delivery. These rest on the Jest tests (the service and the facility mocked from
   their documented answers) and on the fuzz test of the session store, which also injects
   secure-store faults.
-- Accepted risks of the sign-out marker and the open's identity check (review of 2026-10-12):
+- Accepted risks of the sign-out marker (review of 2026-10-12):
   - if the deletions fail AND the marker cannot be written, the next start signs the person
     back in (sign-out still says it could not remove the sign-in);
   - a deletion that the secure store reports as done without deleting makes sign-out report
-    success, and the next start signs the person in;
-  - after an exchange that finished for a person who has since changed, the facility session
-    is left with `leaveFacility`; if that answers `busy` or `failed` the answer is ignored and
-    the previous person's facility session stays until the next switch or sign-out.
+    success, and the next start signs the person in.
 - Opening a facility changes the selected server, which rebuilds the app's navigation tree
   (as a server change always has). The result of the open is therefore kept outside the
   screens and handled by whichever screen is mounted afterwards, and entering the facility is
@@ -415,7 +532,12 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   (phone report 2026-10-12). `src/tests/navigation/CentralOpenRemount.test.tsx` runs that
   hand-over through the real router, route guard and screens, and the ways back from the
   waiting screen and the code step; none of it has been re-run on a device since the fixes.
-- The Gujarati text is a draft for the owner's wording review.
+- The Gujarati text is a draft for the owner's wording review (the "Sign out on all phones"
+  texts of 2026-10-18 included).
+- "Sign out on all phones" rests on the Jest tests (the service mocked from its documented
+  answers). Not run on a phone or against a central service 0.4.0 or later with two phones: sign
+  in on both, use the action on one, and the other lands on central sign-in at its next central
+  call, while a facility already open there stays usable until its own sign-out.
 - The catalogue's availability (2026-10-14) rests on the Jest tests (`src/config/__tests__/catalogueView.test.ts`,
   the catalogue part of `centralSession.test.ts` and of `src/tests/components/CentralLoginScreens.test.tsx`).
   Not run on a phone yet: a facility going Offline and back Online through the service's check

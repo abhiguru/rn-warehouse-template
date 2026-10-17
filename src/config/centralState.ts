@@ -45,6 +45,14 @@ export type OpenFailureReason =
   | 'network'
   /** Deleting the account at the facility failed, or its result is not known. */
   | 'account_deletion'
+  /**
+   * The central person changed while a facility was being opened, and the session that the
+   * facility gave the earlier sign-in could not be left the normal way: it was ended on this
+   * phone (`closed`), or not completely (`not_cleared`). Shown to whoever is on the phone now,
+   * without the facility's name (src/config/openFacility.ts).
+   */
+  | 'previous_session_closed'
+  | 'previous_session_not_cleared'
   | 'failed';
 
 export type OpenOutcome =

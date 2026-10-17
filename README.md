@@ -70,6 +70,10 @@ npm run android
 npm run ios
 ```
 
+`npm run ios` generates a development project (it sets `WAREHOUSE_IOS_LOCAL_NETWORKING=1`, so the
+Debug build can reach Metro over http). Never archive that project for release: regenerate it without
+the flag first (see [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md)).
+
 Expo generates the ignored native directories as needed; use `npm start` for
 later Metro sessions. Native builds are the baseline: Expo Go may not support
 this SDK and does not validate native plugins, permissions or build settings.

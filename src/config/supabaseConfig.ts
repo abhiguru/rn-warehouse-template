@@ -23,6 +23,7 @@ import {
 import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { DISCARD_BODY, discardBody } from './discardBody';
 
 // S2/S3 Fix: SecureStore keys for encrypted token storage
 const SECURE_KEYS = {
@@ -165,6 +166,31 @@ export class RequestTimeoutError extends Error {
   }
 }
 
+const BODY_METHODS = new Set(['json', 'text', 'arrayBuffer', 'blob', 'formData']);
+/** Statuses whose answer never has a body. */
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
+/**
+ * True when nothing follows the headers: a HEAD request, a status without a body, or a null body.
+ * (expo/fetch never hands a null body, so there it is the method and the status.)
+ */
+function answerHasNoBody(input: RequestInfo | URL, init: RequestInit | undefined, response: Response): boolean {
+  const request = typeof input === 'object' && input !== null && 'url' in input ? input : undefined;
+  const method = String(init?.method ?? request?.method ?? 'GET').toUpperCase();
+  return method === 'HEAD' || NULL_BODY_STATUSES.has(response.status) || response.body === null;
+}
+
+/**
+ * What a body read aborted by a server switch or the caller's signal rejects with. Named
+ * AbortError, as both platform fetches name theirs (expo/fetch says "The operation was
+ * aborted.", whatwg-fetch "Aborted"); nothing matches on the text.
+ */
+function abortedRead(): Error {
+  const error = new Error('Aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -181,45 +207,84 @@ async function gatedFetch(
   if (init?.signal?.aborted) controller.abort();
   else init?.signal?.addEventListener('abort', abort, { once: true });
   activeRequests.add(request);
+  // The request is in flight, holds a server switch back (a write) or is aborted by one (a
+  // read), and runs against its time limit until its answer is complete: the body as well as
+  // the headers. The global fetch since Expo SDK 57 is expo/fetch (expo/src/winter, unless the
+  // build sets EXPO_PUBLIC_USE_RN_FETCH), and it resolves at the headers while the body is still
+  // arriving. `release` ends all of that.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    // The race ends the wait even when the platform's fetch does not settle on abort.
-    const response = await Promise.race([
-      fetch(input, { ...init, signal: controller.signal }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          // Rejected first, so the caller hears "timeout" and not the abort it causes.
-          reject(new RequestTimeoutError());
-          controller.abort();
-        }, requestTimeLimit(input, mutation));
-        // Under Node (tests) a waiting request must not keep the process alive.
-        (timer as { unref?: () => void }).unref?.();
-      }),
-    ]);
-    noteUnauthorized(response, generation);
-    if (!honorSwitch) return response;
-    if (invalidated()) throw new Error('Session changed');
-    // Body parsing can finish after fetch resolves. Check again before callers
-    // can use a late document, print result, or warehouse response.
-    return new Proxy(response, {
-      get(target, property) {
-        const value = Reflect.get(target, property);
-        if (typeof value !== 'function') return value;
-        if (['json', 'text', 'arrayBuffer', 'blob', 'formData'].includes(String(property))) {
-          return async (...args: unknown[]) => {
-            const body = await value.apply(target, args);
-            if (invalidated()) throw new Error('Session changed');
-            return body;
-          };
-        }
-        return value.bind(target);
-      },
-    });
-  } finally {
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
     clearTimeout(timer);
     activeRequests.delete(request);
     init?.signal?.removeEventListener('abort', abort);
+  };
+  // One limit for the whole answer, headers and body.
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // Rejected first, so the caller hears "timeout" and not the abort it causes.
+      reject(new RequestTimeoutError());
+      controller.abort();
+      release();
+    }, requestTimeLimit(input, mutation));
+    // Under Node (tests) a waiting request must not keep the process alive.
+    (timer as { unref?: () => void }).unref?.();
+  });
+  // A body read stops at an abort (a switch ends a read, or the caller's signal), even when
+  // the platform's read does not.
+  const aborted = new Promise<never>((_, reject) => {
+    if (controller.signal.aborted) reject(abortedRead());
+    else controller.signal.addEventListener('abort', () => reject(abortedRead()), { once: true });
+  });
+  // Nobody may be waiting on either any more (a body that is never read); that is not an error.
+  deadline.catch(() => {});
+  aborted.catch(() => {});
+  let response: Response;
+  try {
+    // The race ends the wait even when the platform's fetch does not settle on abort.
+    response = await Promise.race([fetch(input, { ...init, signal: controller.signal }), deadline]);
+  } catch (error) {
+    release();
+    throw error;
   }
+  // A copy, read outside the request's tracked life: it must not hold a switch back.
+  noteUnauthorized(response, generation);
+  if (honorSwitch && invalidated()) {
+    release();
+    throw new Error('Session changed');
+  }
+  if (answerHasNoBody(input, init, response)) release();
+  // Session lifecycle traffic (honorSwitch false) gets the same tracking and limit, but no
+  // check after the body: its caller reconciles a late answer (refreshSession revokes it).
+  // Application traffic checks again before callers can use a late document, print result,
+  // or warehouse response. A body that is never read stays tracked until the limit, unless
+  // the caller ends the request with discardBody (./discardBody.ts).
+  const discard = () => {
+    controller.abort();
+    release();
+  };
+  return new Proxy(response, {
+    get(target, property) {
+      if (property === DISCARD_BODY) return discard;
+      const value = Reflect.get(target, property);
+      if (typeof value !== 'function') return value;
+      if (BODY_METHODS.has(String(property))) {
+        return async (...args: unknown[]) => {
+          const read = Promise.race([
+            new Promise<unknown>(resolve => resolve(value.apply(target, args))),
+            deadline,
+            aborted,
+          ]);
+          const body = await read.finally(release);
+          if (honorSwitch && invalidated()) throw new Error('Session changed');
+          return body;
+        };
+      }
+      return value.bind(target);
+    },
+  });
 }
 
 // RPCs that only read. PostgREST sends every RPC as POST, so the method cannot
@@ -311,26 +376,39 @@ async function sessionFetch(
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
   if (!renewed || mutation) return response;
+  // The refused answer is set aside: its request ends now, not at its limit.
+  discardBody(response);
   return gatedFetch(input, withBearer(init, renewed), { generation, mutation, honorSwitch: true });
 }
 
 // The document, print and download services call these directly and show the
-// error's message, so a timeout reaches them in the app's own words.
+// error's message, so a timeout reaches them in the app's own words: while
+// the headers are awaited and while the body is read.
 const inOwnWords = (error: unknown): never => {
   if (error instanceof RequestTimeoutError) throw new AppError('TIMEOUT', t('errors.network.requestTimedOut'));
   throw error;
 };
 
+const bodyInOwnWords = (response: Response): Response =>
+  new Proxy(response, {
+    get(target, property) {
+      const value = Reflect.get(target, property);
+      if (typeof value !== 'function') return value;
+      if (!BODY_METHODS.has(String(property))) return value.bind(target);
+      return (...args: unknown[]) => (value.apply(target, args) as Promise<unknown>).catch(inOwnWords);
+    },
+  });
+
 export function createAuthenticatedFetch() {
   const generation = getSessionGeneration();
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    sessionFetch(input, init, generation, true).catch(inOwnWords);
+    sessionFetch(input, init, generation, true).then(bodyInOwnWords, inOwnWords);
 }
 
 export function createSessionReadFetch() {
   const generation = getSessionGeneration();
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    sessionFetch(input, init, generation, false).catch(inOwnWords);
+    sessionFetch(input, init, generation, false).then(bodyInOwnWords, inOwnWords);
 }
 
 /**

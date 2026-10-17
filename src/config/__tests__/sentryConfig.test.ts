@@ -4,6 +4,7 @@ import {
   sanitizeUrl,
   sanitizeHeaders,
   sanitizeData,
+  MAX_DEPTH,
   beforeSend,
   beforeBreadcrumb,
   redactErrorText,
@@ -182,7 +183,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       const sanitized = beforeBreadcrumb(breadcrumb);
       expect(sanitized).not.toBeNull();
       expect(sanitized?.message).toContain('[REDACTED_PHONE]');
-      expect(sanitized?.data?.url).toContain('token=%5BREDACTED%5D');
+      // The query is dropped whole (review 2026-10-17 Opus finding 2)
+      expect(sanitized?.data?.url).toBe('https://example.com/api');
       expect(sanitized?.data?.headers?.['Authorization']).toBe('[REDACTED]');
       expect(sanitized?.data?.status_code).toBe(200);
     });
@@ -224,8 +226,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       const sanitized = beforeSend(event);
       expect(sanitized).not.toBeNull();
 
-      // User
-      expect(sanitized?.user?.id).toBe('user-uuid-123');
+      // User: the account id is dropped (M09, D22)
+      expect(sanitized?.user?.id).toBeUndefined();
       expect(sanitized?.user?.phone).toBe('[REDACTED]');
       expect(sanitized?.user?.email).toBe('[REDACTED]');
       expect(sanitized?.user?.ip_address).toBe('[REDACTED]');
@@ -233,12 +235,10 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       // Request
       expect(sanitized?.request?.headers?.['Authorization']).toBe('[REDACTED]');
       expect(sanitized?.request?.headers?.['apikey']).toBe('[REDACTED]');
-      expect(sanitized?.request?.query_string).toContain(
-        'token=%5BREDACTED%5D'
-      );
-      expect(
-        (sanitized?.request?.data as Record<string, unknown>)?.['otp']
-      ).toBe('[REDACTED]');
+      expect(sanitized?.request?.url).toBe('https://api.example.com/dispatch');
+      expect(sanitized?.request).not.toHaveProperty('query_string');
+      // The request body is dropped (M09, D22)
+      expect(sanitized?.request?.data).toBeUndefined();
 
       // Extra
       expect(
@@ -326,13 +326,422 @@ describe('sentryConfig - Telemetry and Redaction', () => {
     });
   });
 
-  describe('helper functions', () => {
-    it('sets and clears user context correctly', () => {
-      setSentryUser('user-1', 'operator');
-      expect(Sentry.setUser).toHaveBeenCalledWith({
-        id: 'user-1',
-        role: 'operator',
+  // Review 2026-10-17, M01: a value nested past the depth cap used to be
+  // returned untouched, keys and strings included.
+  describe('depth cap and key matching (M01)', () => {
+    // Synthetic values only. Each one is found in the output by exact text.
+    const refreshToken = 'c0ffee12'.repeat(8); // 64 hex characters, as the app's session tokens
+    const password = 'Synthetic-Password-Qx7';
+    const identityToken = 'synthetic-identity-token-0001';
+    const hexInPlainKey = 'ab12'.repeat(16);
+    const phoneInPlainKey = '919888880001';
+    const syntheticValues = [
+      refreshToken,
+      password,
+      identityToken,
+      hexInPlainKey,
+      phoneInPlainKey,
+      syntheticJwt,
+    ];
+    const payload = () => ({
+      refresh_token: refreshToken,
+      password,
+      identity_token: identityToken,
+      detail: hexInPlainKey,
+      contact: phoneInPlainKey,
+      note: `session ${syntheticJwt}`,
+      count: 7,
+      ok: true,
+    });
+
+    type Wrap = 'object' | 'array' | 'mixed';
+    // Puts `inner` under `levels` containers; the value ends up `levels` deep
+    // from where the caller placed the outer container.
+    const nest = (levels: number, inner: unknown, wrap: Wrap): unknown => {
+      let value = inner;
+      for (let i = 0; i < levels; i++) {
+        const asArray = wrap === 'array' || (wrap === 'mixed' && i % 2 === 0);
+        value = asArray ? [value] : { child: value };
+      }
+      return value;
+    };
+
+    const places: Array<[string, (value: unknown) => Record<string, unknown>]> = [
+      // request.data is not a place any more: it is dropped whole (M09, D22; see
+      // "request.data is never sent" below).
+      ['extra', value => ({ extra: { detail: value } })],
+      ['contexts', value => ({ contexts: { state: value } })],
+      [
+        'breadcrumbs[].data',
+        value => ({ breadcrumbs: [{ category: 'app', data: { detail: value } }] }),
+      ],
+      ['logentry.params', value => ({ logentry: { message: 'event %s', params: [value] } })],
+    ];
+
+    const send = (fields: Record<string, unknown>) =>
+      JSON.stringify(beforeSend(fields as unknown as Sentry.ErrorEvent));
+
+    it('exports the depth cap', () => {
+      expect(MAX_DEPTH).toBe(8);
+    });
+
+    describe.each([9, 10, 20])('a payload %i levels deep', levels => {
+      describe.each(['object', 'array', 'mixed'] as Wrap[])('in %s containers', wrap => {
+        it.each(places)('is not sent as it came in: %s', (_place, build) => {
+          const out = send(build(nest(levels, payload(), wrap)));
+          for (const value of syntheticValues) {
+            expect(out).not.toContain(value);
+          }
+          expect(out).toContain('[TRUNCATED]');
+        });
       });
+    });
+
+    describe.each([0, 3])('a payload %i levels deep (shallow control)', levels => {
+      it.each(places)('is redacted key by key: %s', (_place, build) => {
+        const out = send(build(nest(levels, payload(), 'object')));
+        for (const value of syntheticValues) {
+          expect(out).not.toContain(value);
+        }
+        expect(out).toContain('[REDACTED]');
+        expect(out).toContain('[REDACTED_TOKEN]');
+        expect(out).toContain('[REDACTED_PHONE]');
+        expect(out).not.toContain('[TRUNCATED]');
+        expect(out).toContain('"count":7');
+      });
+    });
+
+    it('still inspects an object that sits exactly at the cap', () => {
+      const out = sanitizeData(nest(MAX_DEPTH, payload(), 'object')) as Record<string, unknown>;
+      let level: any = out;
+      for (let i = 0; i < MAX_DEPTH; i++) level = level.child;
+      // Its keys are redacted; its string values sit one level past the cap and
+      // are scrubbed, not dropped; numbers and booleans are kept.
+      expect(level).toEqual({
+        refresh_token: '[REDACTED]',
+        password: '[REDACTED]',
+        identity_token: '[REDACTED]',
+        detail: '[REDACTED_TOKEN]',
+        contact: '[REDACTED_PHONE]',
+        note: 'session [REDACTED_JWT]',
+        count: 7,
+        ok: true,
+      });
+    });
+
+    it('replaces a container one level past the cap with the marker', () => {
+      const out = sanitizeData(nest(MAX_DEPTH + 1, payload(), 'object')) as Record<string, unknown>;
+      let level: any = out;
+      for (let i = 0; i < MAX_DEPTH; i++) level = level.child;
+      expect(level.child).toBe('[TRUNCATED]');
+    });
+
+    it('scrubs a string leaf past the cap and keeps a number or boolean', () => {
+      // A leaf wrapped in containers past the cap is dropped with them.
+      const wrapped = JSON.stringify(sanitizeData(nest(MAX_DEPTH + 3, refreshToken, 'object')));
+      expect(wrapped).not.toContain(refreshToken);
+      expect(wrapped).toContain('[TRUNCATED]');
+      // A bare leaf handed to the function at a depth past the cap is scrubbed.
+      expect(sanitizeData(refreshToken, MAX_DEPTH + 5)).toBe('[REDACTED_TOKEN]');
+      expect(sanitizeData(`call ${phoneInPlainKey}`, MAX_DEPTH + 5)).toBe('call [REDACTED_PHONE]');
+      expect(sanitizeData(42, MAX_DEPTH + 5)).toBe(42);
+      expect(sanitizeData(false, MAX_DEPTH + 5)).toBe(false);
+      expect(sanitizeData(null, MAX_DEPTH + 5)).toBeNull();
+      expect(sanitizeData({ a: 1 }, MAX_DEPTH + 5)).toBe('[TRUNCATED]');
+      expect(sanitizeData([{ a: 1 }], MAX_DEPTH + 5)).toBe('[TRUNCATED]');
+    });
+
+    it('keeps the circular guard', () => {
+      const loop: Record<string, unknown> = { name: 'loop' };
+      loop.self = loop;
+      const out = sanitizeData({ outer: { inner: loop } }) as any;
+      expect(out.outer.inner.self).toBe('[CIRCULAR]');
+    });
+
+    it('scrubs a 64-hex session token under an ordinary key', () => {
+      expect(sanitizeData({ detail: hexInPlainKey })).toEqual({ detail: '[REDACTED_TOKEN]' });
+    });
+
+    it.each([
+      'identity_token',
+      'id_token',
+      'idToken',
+      'x-session-token',
+      'newPassword',
+      'passwd',
+      'user_password',
+      'client_secret',
+      'one_time_otp',
+      'Set-Cookie',
+      'cookies',
+      'credentials',
+      'authorizationHeader',
+      'userPhone',
+      'phone_masked',
+      // The whole-name list from before still applies.
+      'jwt',
+      'apikey',
+      'api_key',
+      'code',
+      'auth',
+    ])('redacts the key %s', key => {
+      expect(sanitizeData({ [key]: 'synthetic-value-0001' })).toEqual({ [key]: '[REDACTED]' });
+    });
+
+    // Keys the app and the Sentry SDK put into events. None may be redacted.
+    // (No allow-list was needed: none of them contains one of the words.)
+    it.each([
+      'isFatal',
+      'source',
+      'type',
+      'componentStack',
+      'statusCode',
+      'errorCode',
+      'status_code',
+      'orderId',
+      'author',
+      'model',
+      'memory_size',
+      'boot_time',
+      'simulator',
+      'app_start_time',
+      'view_names',
+      'timezone',
+    ])('keeps the key %s', key => {
+      expect(sanitizeData({ [key]: 'value-0001' })).toEqual({ [key]: 'value-0001' });
+    });
+
+    it('redacts a tag whose name contains a sensitive word', () => {
+      const event = { tags: { identity_token: 'synthetic-0001', component: 'auth' } } as unknown as Sentry.ErrorEvent;
+      const sanitized = beforeSend(event)!;
+      expect(sanitized.tags?.['identity_token']).toBe('[REDACTED]');
+      expect(sanitized.tags?.['component']).toBe('auth');
+    });
+  });
+
+  // Review 2026-10-17 (Opus), finding 7: the other string surfaces use the error-text patterns too.
+  describe('error-text patterns on every string surface', () => {
+    const token = 'c0ffee12'.repeat(8);
+    const row = 'Failing row contains (7, Ramesh Fictional, Rajkot, null).';
+
+    it('scrubs a breadcrumb message', () => {
+      const out = beforeBreadcrumb({ category: 'console', message: `insert failed: ${row} token ${token}` })!;
+      expect(out.message).toBe('insert failed: Failing row contains ([REDACTED]). token [REDACTED_TOKEN]');
+    });
+
+    it('scrubs tag values and the user name', () => {
+      const event = {
+        tags: { screen: `grn ${token}`, note: row },
+        user: { username: `Key (mobile)=(919888880001) ${token}` },
+      } as unknown as Sentry.ErrorEvent;
+      const out = beforeSend(event)!;
+      expect(out.tags?.['screen']).toBe('grn [REDACTED_TOKEN]');
+      expect(out.tags?.['note']).toBe('Failing row contains ([REDACTED]).');
+      expect(out.user?.username).toBe('Key (mobile)=([REDACTED]) [REDACTED_TOKEN]');
+    });
+
+    it('scrubs request header values', () => {
+      const out = beforeSend({
+        request: { headers: { 'x-note': `seen ${token}`, Accept: 'application/json' } },
+      } as unknown as Sentry.ErrorEvent)!;
+      expect(out.request?.headers?.['x-note']).toBe('seen [REDACTED_TOKEN]');
+      expect(out.request?.headers?.['Accept']).toBe('application/json');
+    });
+  });
+
+  // Review 2026-10-17, M09 (owner decision D22): operator consent plus content
+  // minimisation. What leaves the phone is the app version, the phone model, the
+  // role and the error text; never a request body or an account id.
+  describe('content minimisation (M09, D22)', () => {
+    // Fictional business names and a fictional person: ordinary words that no
+    // pattern filter can recognise.
+    const BUSINESS = 'Zephyr Example Traders';
+    const PERSON = 'Anaya Example';
+    const send = (fields: Record<string, unknown>) =>
+      beforeSend(fields as unknown as Sentry.ErrorEvent)!;
+
+    describe('request.data is never sent', () => {
+      const nest = (levels: number, inner: unknown): unknown => {
+        let value = inner;
+        for (let i = 0; i < levels; i++) value = { child: value };
+        return value;
+      };
+      const bodies: Array<[string, unknown]> = [
+        ['a business name under an ordinary key', { customer: BUSINESS, note: `for ${PERSON}` }],
+        ['a plain string', `{"customer":"${BUSINESS}"}`],
+        ['an array of records', [{ name: BUSINESS }, { name: PERSON }]],
+        ['a body 3 levels deep', nest(3, { customer: BUSINESS })],
+        ['a body 9 levels deep', nest(9, { customer: BUSINESS })],
+        ['a body 20 levels deep', nest(20, { customer: BUSINESS })],
+      ];
+
+      it.each(bodies)('drops %s', (_label, data) => {
+        const out = send({ request: { url: 'https://api.example.test/rest/v1/customers', method: 'POST', data } });
+        const json = JSON.stringify(out);
+        expect(out.request).not.toHaveProperty('data');
+        expect(json).not.toContain(BUSINESS);
+        expect(json).not.toContain(PERSON);
+        // The rest of the request stays.
+        expect(out.request?.url).toBe('https://api.example.test/rest/v1/customers');
+        expect(out.request?.method).toBe('POST');
+      });
+
+      it('keeps nothing of a body that holds only a number or a flag either', () => {
+        expect(send({ request: { data: 7 } }).request).not.toHaveProperty('data');
+        expect(send({ request: { data: false } }).request).not.toHaveProperty('data');
+      });
+    });
+
+    describe('the account id is never sent', () => {
+      it('setSentryUser passes the role and no id', () => {
+        setSentryUser('staff');
+        expect(Sentry.setUser).toHaveBeenCalledTimes(1);
+        const user = (Sentry.setUser as jest.Mock).mock.calls[0][0];
+        expect(user).toEqual({ role: 'staff' });
+        expect(user).not.toHaveProperty('id');
+      });
+
+      it('setSentryUser without a role clears the user instead of setting an empty one', () => {
+        setSentryUser(undefined);
+        setSentryUser('');
+        expect(Sentry.setUser).toHaveBeenNthCalledWith(1, null);
+        expect(Sentry.setUser).toHaveBeenNthCalledWith(2, null);
+      });
+
+      it('beforeSend drops an id that anything else put on the scope and keeps the role', () => {
+        const out = send({ user: { id: 'f3b0c8a2-0000-4000-8000-000000000001', role: 'customer' } });
+        expect(out.user).toEqual({ role: 'customer' });
+        expect(JSON.stringify(out)).not.toContain('f3b0c8a2-0000-4000-8000-000000000001');
+      });
+
+      it('beforeSend still redacts the phone, email and address of the user', () => {
+        const out = send({ user: { id: 'u-1', phone: '+919888880001', email: 'a@x.example.test', ip_address: '10.0.0.7', role: 'admin' } });
+        expect(out.user).toEqual({ phone: '[REDACTED]', email: '[REDACTED]', ip_address: '[REDACTED]', role: 'admin' });
+      });
+    });
+
+    describe('exception text', () => {
+      it('is scrubbed by redactErrorText: the number and row values go, the words around them stay', () => {
+        const out = send({
+          exception: {
+            values: [
+              { type: 'Error', value: `Order for ${BUSINESS} failed: Key (mobile)=(9888880001) already exists. Contact 9888880001` },
+            ],
+          },
+        });
+        const text = out.exception!.values![0].value!;
+        expect(text).toBe(`Order for ${BUSINESS} failed: Key (mobile)=([REDACTED]) already exists. Contact [REDACTED_PHONE]`);
+        // What the privacy screen says: names in an error text are not recognised
+        // and may be sent ("error text may contain names from your records").
+        expect(text).toContain(BUSINESS);
+      });
+    });
+
+    // Review 2026-10-17 (Opus), finding 2: list searches put typed text and record
+    // ids into the query string of a request address.
+    describe('request addresses are sent without their query', () => {
+      const uuid = '5b3c6c1e-0000-4000-8000-000000000001';
+      const url = `https://north.example.test/rest/v1/customers?select=*&or=(name.ilike.%22%25${encodeURIComponent(BUSINESS)}%25%22,city.ilike.%22%25Zephyr%25%22)&id=eq.${uuid}#frag-${PERSON.replace(' ', '')}`;
+      const gone = (text: string) => {
+        expect(text).not.toContain('Zephyr');
+        expect(text).not.toContain(uuid);
+        expect(text).not.toContain('ilike');
+        expect(text).not.toContain('frag-');
+      };
+
+      it.each(['fetch', 'xhr'])('strips the query and fragment of a %s breadcrumb', category => {
+        const crumb = beforeBreadcrumb({ category, type: 'http', data: { method: 'GET', url, status_code: 200 } })!;
+        const out = (crumb.data as { url: string }).url;
+        gone(out);
+        expect(out).toBe('https://north.example.test/rest/v1/customers');
+        expect((crumb.data as { status_code: number }).status_code).toBe(200);
+      });
+
+      it('strips breadcrumbs of an event and the event request, and drops query_string', () => {
+        const out = send({
+          breadcrumbs: [{ category: 'fetch', data: { url } }],
+          request: { url, query_string: `id=eq.${uuid}&q=Zephyr` },
+        });
+        gone(JSON.stringify(out));
+        expect(out.breadcrumbs![0].data!.url).toBe('https://north.example.test/rest/v1/customers');
+        expect(out.request?.url).toBe('https://north.example.test/rest/v1/customers');
+        expect(out.request).not.toHaveProperty('query_string');
+      });
+
+      it('strips data.to and data.from of a navigation breadcrumb', () => {
+        const crumb = beforeBreadcrumb({
+          category: 'navigation',
+          data: { from: `/customers?q=Zephyr`, to: `/customers/${uuid}?tab=1#x` },
+        })!;
+        expect(crumb.data).toEqual({ from: '/customers', to: `/customers/${uuid}` });
+      });
+    });
+
+    describe('request cookies', () => {
+      it('keeps the cookie names and redacts every value', () => {
+        const out = send({ request: { cookies: { session: 'abc123', csrftoken: 'zzz999' } } });
+        expect(out.request?.cookies).toEqual({ session: '[REDACTED]', csrftoken: '[REDACTED]' });
+        expect(JSON.stringify(out)).not.toMatch(/abc123|zzz999/);
+      });
+
+      it('redacts a raw cookie string', () => {
+        const out = send({ request: { cookies: 'session=abc123; csrftoken=zzz999' } });
+        expect(out.request?.cookies).toBe('[REDACTED]');
+        expect(JSON.stringify(out)).not.toMatch(/abc123|zzz999/);
+      });
+
+      it('leaves an event without cookies without a cookies key', () => {
+        expect(send({ request: { url: 'https://api.example.test/x' } }).request).not.toHaveProperty('cookies');
+      });
+    });
+
+    describe('request env', () => {
+      it('is scrubbed like any other data', () => {
+        const out = send({ request: { env: { REMOTE_ADDR: '10.0.0.7', auth_token: 'tok-1', owner_mobile: '9888880001' } } });
+        expect(out.request?.env).toEqual({ REMOTE_ADDR: '10.0.0.7', auth_token: '[REDACTED]', owner_mobile: '[REDACTED_PHONE]' });
+      });
+    });
+
+    describe('header names are matched by substring', () => {
+      const mustRedact = [
+        'x-session-token',
+        'X-Custom-Authorization-Info',
+        'x-api-key-v2',
+        'sb-cookie-extra',
+        'x-supabase-auth-extra',
+        'Authorization',
+        'Set-Cookie',
+        'x-refresh-token',
+        'X-OTP',
+        'x-caller-phone',
+        'Proxy-Authorization',
+        'x-client-secret',
+      ];
+      const mustKeep = ['Content-Type', 'Accept', 'x-request-id', 'User-Agent', 'Content-Length', 'X-Client-Info'];
+
+      it.each(mustRedact)('redacts the value of %s', name => {
+        expect(sanitizeHeaders({ [name]: 'synthetic-value-0001' })[name]).toBe('[REDACTED]');
+      });
+
+      it.each(mustKeep)('keeps the value of %s', name => {
+        expect(sanitizeHeaders({ [name]: 'plain-value' })[name]).toBe('plain-value');
+      });
+
+      it('applies to request headers and breadcrumb headers of an event', () => {
+        const out = send({
+          request: { headers: { 'x-session-token': 'synthetic-value-0002', accept: 'application/json' } },
+          breadcrumbs: [{ category: 'http', data: { headers: { 'x-session-token': 'synthetic-value-0003' } } }],
+        });
+        expect(out.request?.headers).toEqual({ 'x-session-token': '[REDACTED]', accept: 'application/json' });
+        expect(JSON.stringify(out)).not.toMatch(/synthetic-value-000[23]/);
+      });
+    });
+  });
+
+  describe('helper functions', () => {
+    it('sets the role without an account id and clears the user context', () => {
+      setSentryUser('operator');
+      expect(Sentry.setUser).toHaveBeenCalledWith({ role: 'operator' });
 
       clearSentryUser();
       expect(Sentry.setUser).toHaveBeenCalledWith(null);

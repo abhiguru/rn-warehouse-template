@@ -5,10 +5,10 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { leaveFacility } from '../operatorSwitch';
-import { deleteAccountEverywhere, deleteFacilityAccount, LEAVE_RETRY_WAIT_MS, signOutEverywhere } from '../centralSignOut';
+import { deleteAccountEverywhere, deleteFacilityAccount, LEAVE_RETRY_WAIT_MS, signOutAllDevices, signOutEverywhere } from '../centralSignOut';
 import { addMyFacility, loadMyFacilities, soleApprovedFacility } from '@/config/centralFacilities';
 import { getCentralState, resetCentralStateForTests, setCentralState } from '@/config/centralState';
-import { deleteCentralAccount, signOutCentral } from '@/config/centralSession';
+import { deleteCentralAccount, signOutAllCentralSessions, signOutCentral } from '@/config/centralSession';
 import { beginOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment, clearPendingEnrollment } from '@/config/supabaseConfig';
 import { deleteAccount, logout } from '@/store/slices/authSlice';
 import { queryClient } from '@/lib/queryClient';
@@ -33,6 +33,7 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/config/centralSession', () => ({
   signOutCentral: jest.fn(async () => { mockEvents.push('central sign-out'); return true; }),
+  signOutAllCentralSessions: jest.fn(async () => { mockEvents.push('central sign-out all'); return { ok: true, cleared: true }; }),
   deleteCentralAccount: jest.fn(),
 }));
 jest.mock('@/store/slices/authSlice', () => ({
@@ -218,6 +219,73 @@ describe('Sign out on My facilities', () => {
     jest.mocked(queryClient.isMutating).mockReturnValue(1);
     expect(await signOutEverywhere(dispatch)).toEqual({ ok: false, reason: 'busy' });
     expect(signOutCentral).not.toHaveBeenCalled();
+  });
+});
+
+describe('Sign out on all phones', () => {
+  const leaveEvents = ['begin switch', 'logout', 'clear session state', 'clear config', 'clear server', 'end switch'];
+
+  it('signs out of the current facility, then of the association on every phone, and keeps the list', async () => {
+    await addMyFacility('asha', { origin: facility.origin, name: 'North Cold Store' });
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: true });
+    expect(mockEvents).toEqual([...leaveEvents, 'central sign-out all']);
+    // The one call that ends every session is the only central call: no separate sign-out.
+    expect(signOutAllCentralSessions).toHaveBeenCalledTimes(1);
+    expect(signOutCentral).not.toHaveBeenCalled();
+    expect(await loadMyFacilities('asha')).toHaveLength(1);
+  });
+
+  it('needs no facility cleanup when none is selected', async () => {
+    mockActive = null;
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: true });
+    expect(mockEvents).toEqual(['central sign-out all']);
+  });
+
+  it('waits for a write in flight: a busy write returns busy and makes no call', async () => {
+    jest.mocked(queryClient.isMutating).mockReturnValue(1);
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: false, reason: 'busy' });
+    expect(signOutAllCentralSessions).not.toHaveBeenCalled();
+    expect(signOutCentral).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(mockActive).toBe(facility);
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', leaving: 0 });
+  });
+
+  it('returns the service\'s failure and keeps the association sign-in, so the person can try again', async () => {
+    const failure = { ok: false as const, code: 'network' as const, message: "Couldn't reach the association's sign-in service. Check your connection and try again." };
+    jest.mocked(signOutAllCentralSessions).mockResolvedValueOnce(failure);
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: false, reason: 'central', failure });
+    expect(getCentralState()).toMatchObject({ status: 'signedIn', leaving: 0 });
+    expect(signOutCentral).not.toHaveBeenCalled();
+  });
+
+  it('says when the service does not have the call (an older association service)', async () => {
+    const failure = { ok: false as const, code: 'not_supported' as const, message: "This association service doesn't support signing out on all phones yet." };
+    jest.mocked(signOutAllCentralSessions).mockResolvedValueOnce(failure);
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: false, reason: 'central', failure });
+  });
+
+  it('says so when the facility cleanup failed but the association sign-in ended', async () => {
+    dispatch.mockImplementationOnce(() => ({ unwrap: async () => { throw new Error('logout failed'); } }));
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: true, facilityCleanup: 'failed' });
+    expect(signOutAllCentralSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it('says so when this phone could not remove the association sign-in from its secure storage', async () => {
+    jest.mocked(signOutAllCentralSessions).mockResolvedValueOnce({ ok: true, cleared: false });
+    expect(await signOutAllDevices(dispatch)).toEqual({ ok: false, reason: 'local_clear_failed' });
+    expect(getCentralState().leaving).toBe(0);
+  });
+
+  it('holds the leaving count for the whole action, so no facility can be opened meanwhile', async () => {
+    let leavingDuring: number | undefined;
+    jest.mocked(signOutAllCentralSessions).mockImplementationOnce(async () => {
+      leavingDuring = getCentralState().leaving;
+      return { ok: true, cleared: true };
+    });
+    await signOutAllDevices(dispatch);
+    expect(leavingDuring).toBe(1);
+    expect(getCentralState().leaving).toBe(0);
   });
 });
 

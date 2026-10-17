@@ -65,6 +65,10 @@ export type CentralErrorCode =
   | 'invalid_request'
   | 'session_ended'
   | 'catalogue_invalid'
+  /** The association's service has no such call (an older central service; a 404). */
+  | 'not_supported'
+  /** "Sign out on all phones" could not be carried out: this phone's session had already ended. */
+  | 'sign_out_all_incomplete'
   | 'failed';
 
 export type CentralFailure = {
@@ -141,6 +145,10 @@ export function centralErrorMessage(code: CentralErrorCode, retryAfterSeconds?: 
       return t('central.errors.sessionEnded');
     case 'catalogue_invalid':
       return t('central.errors.catalogueInvalid');
+    case 'not_supported':
+      return t('central.errors.notSupported');
+    case 'sign_out_all_incomplete':
+      return t('central.errors.signOutAllIncomplete');
     case 'network':
     case 'timeout':
       return t('central.errors.network');
@@ -218,15 +226,34 @@ async function centralFetch(
     const headers: Record<string, string> = { ...options.headers, Accept: 'application/json' };
     if (options.body) headers['Content-Type'] = 'application/json';
     if (options.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
-    // The race ends the wait even when the platform's fetch does not settle on abort.
-    const response = await Promise.race([
-      fetch(`${config.origin}${path}`, {
-        method,
-        headers,
-        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-        signal: controller.signal,
-        redirect: 'error',
-      }),
+    // The race ends the wait even when the platform's fetch, or its body read, does not
+    // settle on abort: the limit covers the whole answer, headers and body.
+    return await Promise.race([
+      (async (): Promise<Answer> => {
+        const response = await fetch(`${config.origin}${path}`, {
+          method,
+          headers,
+          ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+          signal: controller.signal,
+          redirect: 'error',
+        });
+        // React Native follows redirects whatever `redirect` says. Where the final
+        // address is known, an answer from another origin is not the service's.
+        if (response.url && !response.url.startsWith(`${config.origin}/`)) return { kind: 'transport', code: 'network' };
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+        if (!response.ok) {
+          const serviceCode = (body as { error?: { code?: unknown } } | null)?.error?.code;
+          return { kind: 'error', status: response.status, serviceCode, retryAfterSeconds: retryAfterOf(response) };
+        }
+        if (!body || typeof body !== 'object' || Array.isArray(body))
+          return { kind: 'error', status: response.status, serviceCode: undefined };
+        return { kind: 'ok', body: body as Record<string, unknown> };
+      })(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           timedOut = true;
@@ -237,22 +264,6 @@ async function centralFetch(
         (timer as { unref?: () => void }).unref?.();
       }),
     ]);
-    // React Native follows redirects whatever `redirect` says. Where the final
-    // address is known, an answer from another origin is not the service's.
-    if (response.url && !response.url.startsWith(`${config.origin}/`)) return { kind: 'transport', code: 'network' };
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    if (!response.ok) {
-      const serviceCode = (body as { error?: { code?: unknown } } | null)?.error?.code;
-      return { kind: 'error', status: response.status, serviceCode, retryAfterSeconds: retryAfterOf(response) };
-    }
-    if (!body || typeof body !== 'object' || Array.isArray(body))
-      return { kind: 'error', status: response.status, serviceCode: undefined };
-    return { kind: 'ok', body: body as Record<string, unknown> };
   } catch {
     return { kind: 'transport', code: timedOut ? 'timeout' : 'network' };
   } finally {
@@ -722,11 +733,13 @@ async function runRefresh(started: number): Promise<RefreshOutcome> {
     if (getCentralState().status === 'signedIn') await endLocally(null);
     return { kind: 'refused' };
   }
-  // The refresh token is sent exactly once. The service revokes the whole
-  // family when a token is presented a second time, whatever the reason, so a
-  // lost answer is never repeated: the session is kept and the next need
-  // refreshes again, which the service then treats as reuse and the person
-  // signs in again. That is the price of never sending a token twice.
+  // The refresh token is sent once per attempt and never retried within it. The service revokes
+  // the whole family when a token is presented a second time, whatever the reason, and cannot
+  // tell a lost answer from a copied token. After a lost answer the session is kept and the next
+  // refresh presents the same token, which the service treats as reuse if the first request
+  // arrived: the family is revoked and the person signs in again; if it never arrived, that
+  // refresh simply succeeds. That costs availability, not security (docs/CENTRAL_LOGIN.md,
+  // "Session contract").
   const answer = await centralFetch(getCentralLoginConfig(), 'POST', '/v1/session/refresh', {
     body: { refresh_token: stored.refreshToken },
   });
@@ -843,12 +856,15 @@ async function accessToken(onlyFor?: string | null, refused?: string): Promise<{
  * A call that needs sign-in: refreshes ahead of expiry, and once when the service answers 401.
  * `onlyFor` (see `accessToken`) is for a call that acts on one person's behalf and must never
  * carry another person's token: every token it sends is chosen together with that check.
+ * `missing` is what a 404 means for a call that an older service does not have (default: a
+ * failure the person is told is unavailable).
  */
 async function signedCall(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: Record<string, unknown>,
-  onlyFor?: string | null
+  onlyFor?: string | null,
+  missing?: CentralErrorCode
 ): Promise<{ kind: 'ok'; body: Record<string, unknown> } | CentralFailure> {
   const config = getCentralLoginConfig();
   const first = await accessToken(onlyFor);
@@ -878,6 +894,7 @@ async function signedCall(
       return failure('session_ended');
     }
   }
+  if (answer.kind === 'error' && answer.status === 404 && missing) return failure(missing);
   if (answer.kind !== 'ok') return failureOf(answer);
   return answer;
 }
@@ -999,6 +1016,45 @@ export async function signOutCentral(): Promise<boolean> {
   if (lastRefresh?.sent === stored.refreshToken) lastRefresh = null;
   if (token) await centralFetch(config, 'POST', '/v1/session/signout', { accessToken: token });
   return cleared;
+}
+
+/**
+ * "Sign out on all phones": `POST /v1/session/signout-all` (central service 0.4.0 and later)
+ * ends every session of the person at the service, this phone's included, and then this phone
+ * forgets its own.
+ *
+ * It needs the service. The session is forgotten here only after the service has said so:
+ * without a connection, on a limit (429) or a service error (5xx) the session is kept and the
+ * failure returned, so the person can try again. Nothing is sent for anybody but the person the
+ * app shows as signed in (`onlyFor`, as `deleteCentralAccount` does). A 404 is a service without
+ * the call (`not_supported`).
+ *
+ * After `ok`, `/v1/session/signout` is NOT called: signout-all has just ended this session's
+ * family too. When the session had already ended (a refresh that was refused, a 401 that a refresh
+ * did not mend, or nobody signed in) signout-all was not accepted, so other phones may still be
+ * signed in: this phone is cleared and the answer is the failure `sign_out_all_incomplete`, which
+ * tells the person to sign in again and repeat. A person who signed in meanwhile is left alone.
+ *
+ * `cleared`: whether the phone removed the stored session (the four keys), as `signOutCentral`
+ * reports it. False: memory is signed out, but the secure store kept (some of) the keys and the
+ * sign-out marker makes the next start remove them.
+ */
+export async function signOutAllCentralSessions(): Promise<CentralResult<{ cleared: boolean }>> {
+  const userId = getCentralState().user?.id ?? null;
+  const answer = await signedCall('POST', '/v1/session/signout-all', undefined, userId, 'not_supported');
+  const now = getCentralState();
+  // Memory still names this person (or nobody): a person who signed in meanwhile is left alone.
+  const stillThisPerson = now.user === null || now.user.id === userId;
+  if ('ok' in answer) {
+    if (answer.code !== 'session_ended') return answer;
+    // The session had ended before signout-all could be accepted (a refused refresh, or a second
+    // 401), or nobody was signed in: nothing was sent, or it was refused. Only this phone's own
+    // family has ended, so other phones may still be signed in. This phone is cleared (it is
+    // dead anyway) but the person is told, and can sign in again and repeat.
+    if (now.status === 'signedIn' && now.user?.id === userId) await endLocally(null);
+    return failure('sign_out_all_incomplete');
+  }
+  return { ok: true, cleared: stillThisPerson ? await endLocally(null) : true };
 }
 
 // ---------------------------------------------------------------------------

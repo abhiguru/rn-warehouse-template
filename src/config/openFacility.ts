@@ -21,7 +21,10 @@
  * switch, the token request, the exchange, every list write, the profile, the
  * facility's code) it checks that the central person has not changed since; if it
  * has, it stops with "sign in again", and a facility session it got for the
- * previous person is left at once.
+ * previous person is left at once (`leaveStaleSession`): with one more try after a
+ * write in flight has settled, and if that still fails, ended locally without the
+ * switch gate and the facility listed as stale (src/config/staleFacilitySession.ts)
+ * until its cleanup has run. Such a stale facility is not opened (`blockedByEarlierSession`).
  */
 import { getCentralLoginConfig } from './envConfig';
 import {
@@ -38,6 +41,8 @@ import { requestFacilityToken, type CentralFailure } from './centralSession';
 import { updateMyFacility } from './centralFacilities';
 import { discoverOperator, getActiveOperatorServer, type OperatorServer } from './operatorServer';
 import { setFacilityCapabilities } from './facilityCapabilities';
+import { clearStaleFacility, forgetStaleGeneration, isStaleFacility, markStaleFacility } from './staleFacilitySession';
+import { getSessionGeneration } from './sessionLifecycle';
 import {
   exchangeCentralIdentity,
   initializeSupabase,
@@ -45,10 +50,11 @@ import {
   type CentralExchangeCode,
   type CentralExchangeResult,
 } from './supabaseConfig';
-import { leaveFacility, switchOperatorServer } from '@/store/operatorSwitch';
+import { forceLeaveFacility, leaveWithRetry, retryStaleFacilityCleanup, switchOperatorServer } from '@/store/operatorSwitch';
 import { store } from '@/store';
 import { setUserProfile } from '@/store/slices/authSlice';
 import { localizeDigits, t, type TranslationKey } from '@/i18n';
+import { showAlert } from '@/utils/alert';
 
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
 
@@ -79,6 +85,67 @@ function isCurrent(ticket: Ticket): boolean {
 
 /** The answer of an open whose person has changed or signed out meanwhile. */
 const ended = (): OpenOutcome => failed('not_signed_in', t('central.errors.sessionEnded'));
+
+/**
+ * The person changed during the exchange, and the facility answered with a session (or a
+ * waiting request) that belongs to the previous person. It must not stay on the phone for
+ * whoever uses it next.
+ *
+ *   1. The facility is listed as stale on disk at once, so that a restart at any point of
+ *      what follows does not restore the session (initializeAuth) and an open does not reach
+ *      it until the cleanup has run.
+ *   2. It is left like any other, and a write still in flight is first given time to settle
+ *      (`leaveWithRetry`), so that write's outcome is not lost. When that works the entry is
+ *      removed again.
+ *   3. If it could not be left, the session is ended locally without waiting for the switch
+ *      gate (`forceLeaveFacility`: late answers are dropped, and offline the local clear is enough).
+ *
+ * All of it acts only on that session: its generation is taken now, and once a later sign-in
+ * has replaced it (the generation moved without this cleanup), nothing more is done, so the
+ * session of the person on the phone now is never ended in its place.
+ *
+ * Only step 3 is told to the person on the phone now, and without the facility's name,
+ * which belongs to the earlier sign-in.
+ */
+async function leaveStaleSession(server: OperatorServer): Promise<OpenOutcome> {
+  const facility = { origin: server.origin, instanceId: server.instanceId };
+  const session = { generation: getSessionGeneration() };
+  await markStaleFacility(facility, session.generation).catch(() => {});
+  if ((await leaveWithRetry(store.dispatch, { facility, session })) === 'left') {
+    await clearStaleFacility(facility);
+    return ended();
+  }
+  const cleared = await forceLeaveFacility(store.dispatch, facility, session);
+  // Not all of it ran: the next cleanup goes by the selection, not by the generation.
+  if (!cleared) forgetStaleGeneration(facility);
+  return cleared
+    ? failed('previous_session_closed', t('central.open.previousClosed'))
+    : failed('previous_session_not_cleared', t('central.open.previousNotCleared'));
+}
+
+/** The titles of the answers about an earlier sign-in's session; neither names a facility. */
+export const EARLIER_SESSION_TITLES: Partial<Record<OpenFailureReason, TranslationKey>> = {
+  previous_session_closed: 'central.open.previousClosedTitle',
+  previous_session_not_cleared: 'central.open.previousNotClearedTitle',
+};
+
+/** The answers about an earlier sign-in's session: for whoever is on the phone now (see `publish`). */
+const isAboutEarlierSession = (outcome: OpenOutcome): outcome is Extract<OpenOutcome, { kind: 'failed' }> =>
+  outcome.kind === 'failed' && EARLIER_SESSION_TITLES[outcome.reason] !== undefined;
+
+/**
+ * True while the phone may still hold a session at `origin` for an earlier sign-in (see
+ * `leaveStaleSession`). The cleanup is tried first, so only a facility that still cannot be
+ * left (a write in flight) stays closed; the open is then refused and nothing is asked.
+ */
+async function blockedByEarlierSession(origin: string): Promise<boolean> {
+  if (!(await isStaleFacility(origin))) return false;
+  await retryStaleFacilityCleanup(store.dispatch);
+  return isStaleFacility(origin);
+}
+
+// The facility is not named: that it is still being closed tells where the earlier sign-in was.
+const earlierSessionBusy = (): OpenOutcome => failed('busy', t('central.open.previousPending'));
 
 /** Writes to the ticket's person's list, only while that person is still the one signed in. */
 async function record(ticket: Ticket, origin: string, change: Parameters<typeof updateMyFacility>[2]): Promise<void> {
@@ -170,8 +237,7 @@ async function settle(
   if (!isCurrent(ticket)) {
     // The person changed during the exchange. A facility session it started is this
     // exchange's and belongs to the previous person: it is left at once.
-    if (answer.success) await leaveFacility(store.dispatch);
-    return ended();
+    return answer.success ? leaveStaleSession(server) : ended();
   }
   if (answer.success) {
     setCentralState({ pendingLink: null, facilitySmsOrigin: null });
@@ -249,6 +315,7 @@ async function switchAndExchange(ticket: Ticket, discovery: Discovery): Promise<
 async function open(ticket: Ticket | null, origin: string, fallbackName: string): Promise<OpenOutcome> {
   const central = getCentralLoginConfig();
   if (!central || !ticket || !isCurrent(ticket)) return ended();
+  if (await blockedByEarlierSession(origin)) return earlierSessionBusy();
   const discovery = await discover(ticket, origin, fallbackName);
   if ('kind' in discovery) return discovery;
   // A facility that does not name this build's issuer does not accept
@@ -258,15 +325,36 @@ async function open(ticket: Ticket | null, origin: string, fallbackName: string)
   return switchAndExchange(ticket, discovery);
 }
 
+/** Counts the opens begun; an open is the latest while no other has begun since it. */
+let openSeq = 0;
+
 /**
  * Hands the answer to whichever screen is mounted. An answer for a central
  * session that has ended meanwhile (signed out, refused, deleted, another
  * person signed in) is dropped: the next person to sign in must not be told
  * about the previous one's facility.
+ *
+ * Such a late answer also leaves alone what belongs to the person on the phone
+ * now: the "opening" state (and with it the guard against a second open) when an
+ * open of theirs has begun since, and an answer of theirs still waiting to be
+ * shown. The one late answer that is told says only that this phone ended an
+ * earlier sign-in's facility session, without a facility name: on the list when
+ * nothing is waiting there, or else in a dialog of its own.
  */
-function publish(ticket: Ticket | null, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
-  const current = ticket !== null && isCurrent(ticket);
-  setCentralState({ opening: null, outcome: current ? { id: nextOutcomeId(), origin, name, outcome } : null });
+function publish(ticket: Ticket | null, seq: number, origin: string, name: string, outcome: OpenOutcome): OpenOutcome {
+  const latest = seq === openSeq;
+  if (ticket !== null && isCurrent(ticket)) {
+    setCentralState({
+      ...(latest ? { opening: null } : {}),
+      outcome: { id: nextOutcomeId(), origin, name, outcome },
+    });
+    return outcome;
+  }
+  if (latest) setCentralState({ opening: null });
+  if (isAboutEarlierSession(outcome)) {
+    if (getCentralState().outcome === null) setCentralState({ outcome: { id: nextOutcomeId(), origin: '', name: '', outcome } });
+    else showAlert(t(EARLIER_SESSION_TITLES[outcome.reason]!), outcome.message);
+  }
   return outcome;
 }
 
@@ -300,11 +388,12 @@ export async function openFacility(origin: string, name: string): Promise<OpenOu
     return outcome;
   }
   const ticket = takeTicket();
+  const seq = ++openSeq;
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {
-    return publish(ticket, origin, name, await open(ticket, origin, name));
+    return publish(ticket, seq, origin, name, await open(ticket, origin, name));
   } catch {
-    return publish(ticket, origin, name, failed('failed', t('central.open.failed', { facility: name })));
+    return publish(ticket, seq, origin, name, failed('failed', t('central.open.failed', { facility: name })));
   }
 }
 
@@ -347,6 +436,7 @@ export function cancelFacilityLink(): void {
 export async function beginFacilitySmsSignIn(origin: string, name: string): Promise<OpenOutcome> {
   const ticket = takeTicket();
   if (!ticket) return ended();
+  if (await blockedByEarlierSession(origin)) return earlierSessionBusy();
   const discovery = await discover(ticket, origin, name);
   if ('kind' in discovery) return discovery;
   if (!isCurrent(ticket)) return ended();

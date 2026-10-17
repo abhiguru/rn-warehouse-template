@@ -3,6 +3,13 @@
  *
  * GlitchTip is a Sentry-compatible error tracking service.
  * This module provides centralized crash reporting using the @sentry/react-native SDK.
+ *
+ * Consent model (review 2026-10-17, M09, decision D22): reporting is switched on
+ * by the organisation that builds the app (it sets EXPO_PUBLIC_SENTRY_DSN), not by
+ * the person using it; the app has no switch. What leaves the phone is kept small:
+ * the app version, the phone model, the role (never an account id or phone number)
+ * and the error text after redactErrorText. A request body is never sent. See
+ * docs/TELEMETRY_AND_PRIVACY.md section 1.
  */
 
 import * as Sentry from '@sentry/react-native';
@@ -51,8 +58,23 @@ export const SENSITIVE_STRING_PATTERNS = [
   },
 ];
 
+// Whole-name matches: short names that are only a secret when they are the
+// entire key (`code`, `auth`, `jwt`), so they are not matched as a substring
+// (`statusCode`, `errorCode` and `author` must survive).
 const SENSITIVE_KEY_REGEX =
   /^(token|access_token|accessToken|refresh_token|refreshToken|auth_token|authToken|password|secret|jwt|apikey|api_key|apiKey|otp|phoneNumber|phone_number|phone|code|credential|cookie|authorization|auth)$/i;
+
+// Substring matches: a key that contains one of these words holds a secret,
+// whatever the rest of the name is (`identity_token`, `newPassword`,
+// `client_secret`, `Set-Cookie`, `userPhone`). The words are deliberately
+// broad; a harmless key that contains one (`footprint` contains `otp`) is
+// redacted too, which is the safe direction. Review 2026-10-17, M01.
+const SENSITIVE_KEY_SUBSTRING_REGEX =
+  /token|secret|passw|otp|authorization|cookie|credential|phone/i;
+
+function isSensitiveKey(key: string): boolean {
+  return SENSITIVE_KEY_REGEX.test(key) || SENSITIVE_KEY_SUBSTRING_REGEX.test(key);
+}
 
 const SENSITIVE_PARAM_NAMES = [
   'token',
@@ -156,6 +178,33 @@ export function sanitizeUrl(urlString: string): string {
 }
 
 /**
+ * A request address without its query and fragment. A list search puts typed
+ * text and record ids there (`or=(name.ilike."%…%")`, `id=eq.<uuid>`), which no
+ * pattern filter can tell from other text. Scheme, host and path stay: the path
+ * names the table or function, which is enough to debug (review 2026-10-17,
+ * Opus finding 2, M09).
+ */
+export function stripUrlQuery(urlString: string): string {
+  if (!urlString || typeof urlString !== 'string') return urlString;
+  const cut = urlString.search(/[?#]/);
+  return cut === -1 ? urlString : urlString.slice(0, cut);
+}
+
+/**
+ * A header is redacted when its name contains one of the SENSITIVE_HEADERS
+ * words or one of the secret words isSensitiveKey looks for, so
+ * `x-session-token`, `X-Auth-Cookie` and `x-api-key-v2` are caught, not only
+ * the exact names. The safe direction: a harmless header that contains a word
+ * is redacted too.
+ */
+function isSensitiveHeader(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    SENSITIVE_HEADERS.some(word => lower.includes(word)) || isSensitiveKey(name)
+  );
+}
+
+/**
  * Sanitize HTTP headers to remove authentication tokens and secrets
  */
 export function sanitizeHeaders(
@@ -165,11 +214,10 @@ export function sanitizeHeaders(
   const sanitized: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(headers)) {
-    const lowerKey = key.toLowerCase();
-    if (SENSITIVE_HEADERS.includes(lowerKey)) {
+    if (isSensitiveHeader(key)) {
       sanitized[key] = '[REDACTED]';
     } else if (typeof value === 'string') {
-      sanitized[key] = redactSensitiveString(value);
+      sanitized[key] = redactErrorText(value);
     } else {
       sanitized[key] = sanitizeData(value);
     }
@@ -179,6 +227,17 @@ export function sanitizeHeaders(
 }
 
 /**
+ * How deep sanitizeData looks into a value. Anything nested deeper than this is
+ * not inspected key by key: it is replaced by TRUNCATED_MARKER (strings are still
+ * scrubbed, numbers and booleans are kept). The cap fails closed, so a secret
+ * cannot ride out below it.
+ */
+export const MAX_DEPTH = 8;
+
+/** What sanitizeData puts in place of an object or array below MAX_DEPTH. */
+const TRUNCATED_MARKER = '[TRUNCATED]';
+
+/**
  * Recursively redact sensitive keys and values from objects and arrays
  */
 export function sanitizeData(
@@ -186,10 +245,19 @@ export function sanitizeData(
   depth = 0,
   seen = new WeakSet<object>()
 ): unknown {
-  if (depth > 8 || data === null || data === undefined) return data;
+  if (data === null || data === undefined) return data;
+
+  // Past the depth limit nothing is returned as it came in. A string leaf is
+  // still scrubbed, a plain number or boolean carries no secret, and a
+  // container is dropped because its keys are no longer looked at.
+  if (depth > MAX_DEPTH) {
+    if (typeof data === 'string') return redactErrorText(data);
+    if (typeof data === 'number' || typeof data === 'boolean') return data;
+    return TRUNCATED_MARKER;
+  }
 
   if (typeof data === 'string') {
-    return redactSensitiveString(data);
+    return redactErrorText(data);
   }
 
   if (typeof data === 'number' || typeof data === 'boolean') {
@@ -206,10 +274,7 @@ export function sanitizeData(
 
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      if (
-        SENSITIVE_KEY_REGEX.test(k) ||
-        /password|secret|credential/i.test(k)
-      ) {
+      if (isSensitiveKey(k)) {
         result[k] = '[REDACTED]';
       } else {
         result[k] = sanitizeData(v, depth + 1, seen);
@@ -230,14 +295,17 @@ export function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
   const sanitized: Breadcrumb = { ...breadcrumb };
 
   if (sanitized.message) {
-    sanitized.message = redactSensitiveString(sanitized.message);
+    sanitized.message = redactErrorText(sanitized.message);
   }
 
   if (sanitized.data && typeof sanitized.data === 'object') {
     const dataCopy = { ...sanitized.data };
 
-    if (dataCopy.url && typeof dataCopy.url === 'string') {
-      dataCopy.url = sanitizeUrl(dataCopy.url);
+    // fetch and xhr breadcrumbs carry `url`; navigation breadcrumbs `from` and `to`
+    for (const key of ['url', 'from', 'to']) {
+      if (typeof dataCopy[key] === 'string') {
+        dataCopy[key] = stripUrlQuery(dataCopy[key] as string);
+      }
     }
     if (dataCopy.headers && typeof dataCopy.headers === 'object') {
       dataCopy.headers = sanitizeHeaders(
@@ -293,8 +361,12 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
     };
   }
 
-  // Redact User details
+  // Redact User details. The account id is never sent (decision D22): the role
+  // is enough to tell a staff crash from a customer one, and an id would let a
+  // report be tied to one person. setSentryUser no longer sets it; this drops
+  // it should anything else put one on the scope.
   if (event.user) {
+    delete event.user.id;
     if (event.user.phone) {
       event.user.phone = '[REDACTED]';
     }
@@ -305,33 +377,38 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
       event.user.ip_address = '[REDACTED]';
     }
     if (event.user.username) {
-      event.user.username = redactSensitiveString(event.user.username);
+      event.user.username = redactErrorText(event.user.username);
     }
   }
 
-  // Redact Request details (URL, headers, query string, payload)
+  // Redact Request details (URL without query, headers; no query string, no payload)
   if (event.request) {
     if (event.request.url) {
-      event.request.url = sanitizeUrl(event.request.url);
+      event.request.url = stripUrlQuery(event.request.url);
     }
     if (event.request.headers) {
       event.request.headers = sanitizeHeaders(
         event.request.headers as Record<string, unknown>
       ) as Record<string, string>;
     }
-    if (event.request.query_string) {
-      if (typeof event.request.query_string === 'string') {
-        event.request.query_string = sanitizeUrl(
-          `?${event.request.query_string}`
-        ).replace(/^\?/, '');
-      } else if (typeof event.request.query_string === 'object') {
-        event.request.query_string = sanitizeData(
-          event.request.query_string
-        ) as Record<string, string>;
-      }
+    // The query string is never sent: it holds typed search text and record ids.
+    delete event.request.query_string;
+    // The request body is never sent (decision D22). Pattern filtering cannot
+    // tell an ordinary business name from any other text, so the only safe
+    // content is none. Nothing in the app fills it today.
+    delete event.request.data;
+    // Cookie values are credentials; the names are kept, like header names.
+    const cookies: unknown = event.request.cookies;
+    if (cookies && typeof cookies === 'object') {
+      event.request.cookies = Object.fromEntries(
+        Object.keys(cookies).map(name => [name, '[REDACTED]'])
+      );
+    } else if (cookies) {
+      // A raw cookie string: nothing in it is worth keeping.
+      event.request.cookies = '[REDACTED]' as unknown as Record<string, string>;
     }
-    if (event.request.data) {
-      event.request.data = sanitizeData(event.request.data);
+    if (event.request.env) {
+      event.request.env = sanitizeData(event.request.env) as Record<string, string>;
     }
   }
 
@@ -349,10 +426,10 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
   if (event.tags && typeof event.tags === 'object') {
     const sanitizedTags: Record<string, string | number | boolean> = {};
     for (const [tagKey, tagVal] of Object.entries(event.tags)) {
-      if (SENSITIVE_KEY_REGEX.test(tagKey)) {
+      if (isSensitiveKey(tagKey)) {
         sanitizedTags[tagKey] = '[REDACTED]';
       } else if (typeof tagVal === 'string') {
-        sanitizedTags[tagKey] = redactSensitiveString(tagVal);
+        sanitizedTags[tagKey] = redactErrorText(tagVal);
       } else {
         sanitizedTags[tagKey] = tagVal as string | number | boolean;
       }
@@ -388,7 +465,8 @@ export function initializeSentry(): void {
     release: Constants.expoConfig?.version || '1.0.0',
     dist: Constants.expoConfig?.android?.versionCode?.toString() || '1',
 
-    // Only enabled when DSN is provided (opt-in)
+    // Switched on by the operator who builds the app with a DSN; there is no
+    // per-person switch (docs/TELEMETRY_AND_PRIVACY.md section 1)
     enabled: !__DEV__ && !!SENTRY_DSN,
 
     // Sample rate for performance monitoring (0 = disabled to reduce overhead)
@@ -412,14 +490,13 @@ export function initializeSentry(): void {
 }
 
 /**
- * Set user context for error reports
- * Call after successful login to associate errors with users
+ * Set the user context for error reports: the role only (decision D22). The
+ * account id is not sent, so a report cannot be tied to one person. Call after a
+ * successful sign-in; without a role there is nothing to send and the context
+ * is cleared.
  */
-export function setSentryUser(userId: string, role?: string): void {
-  Sentry.setUser({
-    id: userId,
-    role: role,
-  });
+export function setSentryUser(role?: string): void {
+  Sentry.setUser(role ? { role } : null);
 }
 
 /**
