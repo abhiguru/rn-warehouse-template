@@ -994,7 +994,7 @@ describe('the account', () => {
 
     it('is disabled while the name is being saved', async () => {
       let finish!: (value: unknown) => void;
-      jest.mocked(updateCentralName).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      jest.mocked(updateCentralName).mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (value: unknown) => void; }));
       await render(<CentralAccountScreen />);
       await act(async () => { void button('Save name').props.onPress?.(); });
       expect(button('Sign out on all phones').props.disabled).toBe(true);

@@ -419,8 +419,17 @@ What the app does when the association's service answers 401, and what it expect
 service. The identity half is in the identity repository (`docs/API.md`, sections
 `POST /v1/session/refresh` and "The access token"; `docs/SECURITY.md`, sections "A refresh token
 works once, and what that trades away" and "What a stolen signing key allows, and how to
-rotate"). Both repositories carry the same four rules (operational review of 2026-10-17, X-2,
-decision D16):
+rotate"). Identity states the 401 rule in one sentence, in its `docs/API.md` section
+`POST /v1/session/refresh` ("What a client does on a 401") and again under "The access token",
+and the app implements exactly that sentence:
+
+> On a 401 `invalid_token` from a call with an access token, the client refreshes once (one
+> refresh at a time, with the newest refresh token) and repeats the call once; if that refresh
+> answers 400 or 401, or the repeated call answers 401 again, it drops all stored tokens and the
+> person signs in again with a code.
+
+Both repositories carry the same four rules (operational review of 2026-10-17, X-2, decision
+D16):
 
 1. A protected-API 401 `invalid_token` is answered with at most one single-flight refresh with
    the newest refresh token (or a newer token that another call has already stored), and the
