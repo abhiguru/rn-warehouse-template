@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { EXPECTED_ANDROID_PERMISSIONS, validateBackup, validateEntries, validatePermissions, validateText } from './artifact-audit.mjs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { EXPECTED_ANDROID_PERMISSIONS, auditArtifact, validateBackup, validateEntries, validatePermissions, validateText } from './artifact-audit.mjs';
 
 test('artifact paths reject credentials, databases, traversal and absolute paths', () => {
   assert.deepEqual(validateEntries(['assets/index.bundle', 'assets/expo-root.pem', 'res/font/MaterialIcons.ttf']), ['assets/index.bundle', 'assets/expo-root.pem', 'res/font/MaterialIcons.ttf']);
@@ -125,4 +128,78 @@ test('a build with Android backup on fails', () => {
 
 test('a build that does not say fails: Android then backs the app up', () => {
   assert.throws(() => validateBackup(manifestDump(undefined)), /allowBackup/);
+});
+
+// Review 2026-10-17, M10: the directory audit skipped every file over 10 MiB without
+// a word, and the exported Hermes bundle (about 12 MB) is above that.
+const MIB = 1024 * 1024;
+const OLD_CAP = 10 * MIB;
+const marker = '/home/alice/workspace/project'; // fictional workstation path
+const script = new URL('./artifact-audit.mjs', import.meta.url).pathname;
+
+/** A temporary export directory holding the given files ({ path: Buffer | string }), removed afterwards. */
+function withExport(files, check) {
+  const directory = mkdtempSync(join(tmpdir(), 'artifact-audit-test-'));
+  try {
+    for (const [name, content] of Object.entries(files)) {
+      const path = join(directory, name);
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, content);
+    }
+    return check(directory);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+/** `size` bytes of harmless filler with `text` written at `offset`. */
+const filler = (size, text = '', offset = 0) => {
+  const buffer = Buffer.alloc(size, 'a');
+  buffer.write(text, offset, 'latin1');
+  return buffer;
+};
+
+test('a forbidden marker at the end of a file over 10 MiB fails the directory audit', () => {
+  const size = 11 * MIB;
+  withExport({ 'bundle.hbc': filler(size, marker, size - marker.length) }, directory => {
+    assert.throws(() => auditArtifact(directory), /forbidden secret or workstation-path pattern/);
+  });
+});
+
+test('a marker that straddles the former 10 MiB limit fails the directory audit', () => {
+  withExport({ 'bundle.hbc': filler(11 * MIB, marker, OLD_CAP - 10) }, directory => {
+    assert.throws(() => auditArtifact(directory), /forbidden secret or workstation-path pattern/);
+  });
+});
+
+test('a clean file over 10 MiB passes and the report counts it as scanned, with nothing skipped', () => {
+  withExport({ 'bundle.hbc': filler(11 * MIB), 'metadata.json': '{}' }, directory => {
+    const report = auditArtifact(directory);
+    assert.equal(report.entries, 2);
+    assert.equal(report.scanned, 2);
+    assert.equal(report.skipped, 0);
+  });
+  withExport({ 'bundle.hbc': filler(11 * MIB) }, directory => {
+    assert.equal(auditArtifact(directory).scanned, 1);
+  });
+});
+
+test('a file above the audit size limit fails instead of being skipped', () => {
+  withExport({ 'small.json': '{}', 'big.hbc': filler(2048) }, directory => {
+    assert.throws(() => auditArtifact(directory, undefined, { maxFileBytes: 1024 }), /Artifact file too large to audit: .*big\.hbc/);
+    assert.equal(auditArtifact(directory, undefined, { maxFileBytes: 2048 }).scanned, 2);
+  });
+});
+
+test('the command prints the counts as JSON, exits 0 when clean and non-zero on a marker', () => {
+  withExport({ 'a/one.js': 'ordinary', 'two.hbc': filler(11 * MIB) }, directory => {
+    const clean = spawnSync(process.execPath, [script, directory], { encoding: 'utf8' });
+    assert.equal(clean.status, 0, clean.stderr);
+    const report = JSON.parse(clean.stdout);
+    assert.deepEqual([report.entries, report.scanned, report.skipped], [2, 2, 0]);
+  });
+  withExport({ 'one.js': 'ordinary', 'two.hbc': filler(11 * MIB, marker, 11 * MIB - marker.length) }, directory => {
+    const dirty = spawnSync(process.execPath, [script, directory], { encoding: 'utf8' });
+    assert.notEqual(dirty.status, 0);
+    assert.match(dirty.stderr, /forbidden secret or workstation-path pattern/);
+  });
 });
