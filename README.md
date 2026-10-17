@@ -74,6 +74,13 @@ npm run ios
 Debug build can reach Metro over http). Never archive that project for release: regenerate it without
 the flag first (see [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md)).
 
+`npm run ios` reuses an existing `ios/` folder, so a folder that was generated for release keeps
+the release policy in Debug (Metro over http is refused). Regenerate it with
+`npx expo prebuild --platform ios --clean` and run `npm run ios` again. The other way round, a
+local Release build through `npm run ios` fails on purpose: the project it generates is a
+development one, and a Release Run Script phase refuses it (it also fails when it cannot read
+the built `Info.plist`).
+
 Expo generates the ignored native directories as needed; use `npm start` for
 later Metro sessions. Native builds are the baseline: Expo Go may not support
 this SDK and does not validate native plugins, permissions or build settings.
