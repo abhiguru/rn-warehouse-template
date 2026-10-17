@@ -212,6 +212,50 @@ describe('error answers in the app\'s words', () => {
   });
 });
 
+// M02: the time limit covers the whole answer. A body read that ignores the abort must not
+// keep a central request waiting past CENTRAL_REQUEST_TIMEOUT_MS.
+describe('an answer whose body does not arrive in time (M02)', () => {
+  beforeEach(() => jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] }));
+  afterEach(() => jest.useRealTimers());
+
+  /** The headers arrive at once; `json` is what the body read does. */
+  const answerWithBody = (json: (signal: AbortSignal) => Promise<unknown>, status = 200) => {
+    const signals: AbortSignal[] = [];
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      signals.push(init.signal!);
+      return { ...reply({ status }), json: () => json(init.signal!) };
+    });
+    return signals;
+  };
+  const settledOf = (result: Promise<unknown>) => {
+    const state = { settled: false };
+    void result.then(() => { state.settled = true; });
+    return state;
+  };
+
+  it('a code request whose body read ignores the abort ends as a timeout at the limit', async () => {
+    const signals = answerWithBody(() => new Promise(() => undefined));
+    const result = requestCentralCode('+919000000001');
+    const state = settledOf(result);
+    await jest.advanceTimersByTimeAsync(CENTRAL_REQUEST_TIMEOUT_MS - 1);
+    expect(state.settled).toBe(false);
+    expect(signals[0].aborted).toBe(false);
+    await jest.advanceTimersByTimeAsync(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(await result).toMatchObject({ ok: false, code: 'timeout' });
+  });
+
+  it('a body read that the abort ends is a timeout too, not a refusal of the service', async () => {
+    answerWithBody(
+      signal => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('Aborted')))),
+      503
+    );
+    const result = requestCentralCode('+919000000001');
+    await jest.advanceTimersByTimeAsync(CENTRAL_REQUEST_TIMEOUT_MS + 1);
+    expect(await result).toMatchObject({ ok: false, code: 'timeout' });
+  });
+});
+
 describe('signed-in calls', () => {
   it('GET /v1/me sends the access token and keeps the answer', async () => {
     await signedIn();
