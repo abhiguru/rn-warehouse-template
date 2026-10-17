@@ -739,7 +739,8 @@ describe('the facility session of an earlier sign-in, when leaving it is refused
     const busy = {
       kind: 'failed',
       reason: 'busy',
-      message: 'This phone is still closing an earlier sign-in at North Cold Store. Try again in a minute.',
+      // The earlier sign-in's facility is not named (review 2026-10-18, finding 9).
+      message: 'This phone is still closing an earlier sign-in. Try again in a minute.',
     };
     expect(await openFacility(ORIGIN, NAME)).toEqual(busy);
     expect(discoverOperator).not.toHaveBeenCalled();
@@ -755,6 +756,18 @@ describe('the facility session of an earlier sign-in, when leaving it is refused
     expect(mockEvents.slice(0, LEAVE.length)).toEqual(LEAVE);
     expect(await listed()).toEqual([]);
     expect(tokenMock).toHaveBeenLastCalledWith(ORIGIN, 'bhavin');
+  });
+
+  it('(c) the refusal names no facility in Gujarati either', async () => {
+    mockActive = server;
+    writing = true;
+    await markStaleFacility(NORTH);
+    setLanguage('gu');
+    expect(await openFacility(ORIGIN, NAME)).toEqual({
+      kind: 'failed',
+      reason: 'busy',
+      message: 'આ ફોન હજુ અગાઉનું લૉગિન બંધ કરી રહ્યો છે. એક મિનિટ પછી ફરી પ્રયાસ કરો.',
+    });
   });
 
   it("(c) the facility's own SMS sign-in is refused for a listed facility too", async () => {

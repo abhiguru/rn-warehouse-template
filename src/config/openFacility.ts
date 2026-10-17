@@ -144,7 +144,8 @@ async function blockedByEarlierSession(origin: string): Promise<boolean> {
   return isStaleFacility(origin);
 }
 
-const earlierSessionBusy = (name: string): OpenOutcome => failed('busy', t('central.open.previousPending', { facility: name }));
+// The facility is not named: that it is still being closed tells where the earlier sign-in was.
+const earlierSessionBusy = (): OpenOutcome => failed('busy', t('central.open.previousPending'));
 
 /** Writes to the ticket's person's list, only while that person is still the one signed in. */
 async function record(ticket: Ticket, origin: string, change: Parameters<typeof updateMyFacility>[2]): Promise<void> {
@@ -314,7 +315,7 @@ async function switchAndExchange(ticket: Ticket, discovery: Discovery): Promise<
 async function open(ticket: Ticket | null, origin: string, fallbackName: string): Promise<OpenOutcome> {
   const central = getCentralLoginConfig();
   if (!central || !ticket || !isCurrent(ticket)) return ended();
-  if (await blockedByEarlierSession(origin)) return earlierSessionBusy(fallbackName);
+  if (await blockedByEarlierSession(origin)) return earlierSessionBusy();
   const discovery = await discover(ticket, origin, fallbackName);
   if ('kind' in discovery) return discovery;
   // A facility that does not name this build's issuer does not accept
@@ -435,7 +436,7 @@ export function cancelFacilityLink(): void {
 export async function beginFacilitySmsSignIn(origin: string, name: string): Promise<OpenOutcome> {
   const ticket = takeTicket();
   if (!ticket) return ended();
-  if (await blockedByEarlierSession(origin)) return earlierSessionBusy(name);
+  if (await blockedByEarlierSession(origin)) return earlierSessionBusy();
   const discovery = await discover(ticket, origin, name);
   if ('kind' in discovery) return discovery;
   if (!isCurrent(ticket)) return ended();
