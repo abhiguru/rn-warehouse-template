@@ -285,6 +285,29 @@ has, the open stops with "sign in again" and shows nothing; a facility session t
 had already started is left at once. The linking code goes to the number the open began with,
 and a code step begun for another number is not completed.
 
+Leaving that session is refused while a write is in flight (its outcome must not be lost), so it
+is tried once more after the write has had time to settle (`leaveWithRetry`, 5 s). If it still
+cannot be left (ops review 2026-10-17, M08):
+
+- the facility (origin and instance, no secret) is written to a stale list on the phone
+  (`src/config/staleFacilitySession.ts`) before anything else, so a restart part-way through
+  still knows;
+- the session is ended without waiting for the switch gate (`forceLeaveFacility` in
+  `src/store/operatorSwitch.ts`): the same logout as a switch, which moves the session
+  generation at once so the write's late answer is dropped; revocation is tried, and offline the
+  local clear is what protects the phone; then the facility is no longer selected. A server
+  that another switch selected meanwhile is not touched;
+- My facilities tells whoever is on the phone now "Earlier sign-in closed", or "Couldn't close
+  the earlier sign-in" with the advice to restart before anyone else uses the phone. Neither
+  names the facility, which belongs to the earlier sign-in.
+
+While a facility is on the stale list its session is not restored at start (`initializeAuth`)
+and it is not opened ("This phone is still closing an earlier sign-in at <facility>. Try again
+in a minute.", also for its own SMS sign-in). The cleanup runs again at start, on every return to
+the foreground (`app/_layout.tsx`) and before an open of that facility
+(`retryStaleFacilityCleanup`): a listed facility that is still selected is left with the full
+cleanup, and once it is not selected the entry is removed.
+
 | Facility answers | The person sees | Status |
 |---|---|---|
 | `login` | The facility | approved |
@@ -397,14 +420,11 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   real SMS delivery. These rest on the Jest tests (the service and the facility mocked from
   their documented answers) and on the fuzz test of the session store, which also injects
   secure-store faults.
-- Accepted risks of the sign-out marker and the open's identity check (review of 2026-10-12):
+- Accepted risks of the sign-out marker (review of 2026-10-12):
   - if the deletions fail AND the marker cannot be written, the next start signs the person
     back in (sign-out still says it could not remove the sign-in);
   - a deletion that the secure store reports as done without deleting makes sign-out report
-    success, and the next start signs the person in;
-  - after an exchange that finished for a person who has since changed, the facility session
-    is left with `leaveFacility`; if that answers `busy` or `failed` the answer is ignored and
-    the previous person's facility session stays until the next switch or sign-out.
+    success, and the next start signs the person in.
 - Opening a facility changes the selected server, which rebuilds the app's navigation tree
   (as a server change always has). The result of the open is therefore kept outside the
   screens and handled by whichever screen is mounted afterwards, and entering the facility is

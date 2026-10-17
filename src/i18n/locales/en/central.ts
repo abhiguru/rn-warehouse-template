@@ -140,6 +140,16 @@ export const central = {
     failed: "{{facility}} couldn't sign you in. Try again later.",
     smsOfferTitle: 'Sign in with a facility code?',
     smsOfferMessage: '{{facility}} does not use association sign-in. You can sign in there with a code that the facility sends to your mobile number.',
+    // The person on the phone changed while a facility was opening, and the sign-in that facility
+    // gave the earlier person had to be ended on this phone. Shown to whoever is on the phone now,
+    // so the facility is not named.
+    previousClosedTitle: 'Earlier sign-in closed',
+    previousClosed: 'A facility was still opening for the earlier sign-in on this phone. It has been closed, and nothing from it stays on this phone.',
+    previousNotClearedTitle: "Couldn't close the earlier sign-in",
+    previousNotCleared:
+      "A facility was still opening for the earlier sign-in on this phone, and it couldn't be closed completely. Restart the app before anyone else uses this phone.",
+    // Opening a facility while this phone is still ending an earlier sign-in there.
+    previousPending: 'This phone is still closing an earlier sign-in at {{facility}}. Try again in a minute.',
   },
   // Answers of the association's sign-in service
   errors: {

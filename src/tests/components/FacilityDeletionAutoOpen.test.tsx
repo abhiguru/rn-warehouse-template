@@ -40,7 +40,10 @@ jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: jest.fn(() => mockActive),
   clearOperatorServer: jest.fn(async () => { mockActive = null; }),
 }));
-jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 'left') }));
+jest.mock('@/store/operatorSwitch', () => {
+  const leaveFacility = jest.fn(async () => 'left');
+  return { leaveFacility, leaveWithRetry: jest.fn((...args: unknown[]) => leaveFacility(...(args as []))) };
+});
 jest.mock('@/store', () => ({ store: { getState: () => ({ auth: { userProfile: null } }) } }));
 jest.mock('@/config/supabaseConfig', () => ({ isOperatorSwitchFree: () => true }));
 jest.mock('@/lib/queryClient', () => ({ queryClient: { isMutating: () => 0 } }));
