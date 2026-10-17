@@ -1147,9 +1147,7 @@ export const isDefinitiveRefreshRejection = (payload: unknown): boolean =>
 // error handler does, so a rejected refresh can end the Redux session too.
 function dispatchForcedLogout(reason: string): void {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { store } = require('@/store') as typeof import('@/store');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { forceLogoutOnInvalidToken } = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
     store.dispatch(forceLogoutOnInvalidToken(reason));
   } catch {
@@ -1751,7 +1749,6 @@ export const getCachedUserProfile = async () => {
         Date.now() >= parsed.cachedAt &&
         Date.now() - parsed.cachedAt < PROFILE_CACHE_TTL_MS
       ) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let profile = parsed.profile as any;
 
         // If cached profile is missing assignedCustomerIds, fetch them

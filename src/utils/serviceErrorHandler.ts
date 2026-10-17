@@ -22,7 +22,6 @@ let _forceLogoutOnInvalidToken: typeof import('@/store/slices/authSlice').forceL
 
 const getStore = () => {
   if (!_store) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     _store = require('@/store').store;
   }
   return _store;
@@ -30,7 +29,6 @@ const getStore = () => {
 
 const getForceLogoutAction = () => {
   if (!_forceLogoutOnInvalidToken) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     _forceLogoutOnInvalidToken = require('@/store/slices/authSlice').forceLogoutOnInvalidToken;
   }
   return _forceLogoutOnInvalidToken;

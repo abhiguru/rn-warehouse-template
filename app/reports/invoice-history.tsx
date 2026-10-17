@@ -577,7 +577,6 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
       ...(layoutName === 'compact' ? [] : [moneyColumn('paid', widths.paid), moneyColumn('pending', widths.pending)]),
     ]);
     // `labels` is rebuilt each render: its words are the dependencies.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutName, widths, money, cell, labels.month, labels.invoices, labels.amount, labels.paid, labels.pending]);
 
   // Sorted by nothing at first: the order the months came in. Month, Amount, Paid and Pending turn sorting on for

@@ -125,7 +125,6 @@ const clearProtectedDetailCaches = async (): Promise<void> => {
 // This prevents race conditions when initializeAuth hits multiple code paths
 let configFetchPromise: Promise<void> | null = null;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fetchConfigOnce = (
   dispatch: any, // Redux dispatch from thunk API
   supabaseClient: ReturnType<typeof getSupabaseClient>
