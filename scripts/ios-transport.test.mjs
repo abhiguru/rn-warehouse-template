@@ -3,6 +3,7 @@
 // development build. No macOS is needed: `expo config --type introspect` evaluates the same
 // config plugins that `expo prebuild` runs and prints the Info.plist they would write.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -86,4 +87,44 @@ test('the policy decision for each combination of switches', () => {
   );
   assert.deepEqual(transportPolicy(false), { NSAllowsArbitraryLoads: false });
   assert.deepEqual(transportPolicy(true), { NSAllowsArbitraryLoads: false, NSAllowsLocalNetworking: true });
+});
+
+test('npm run ios, the local debug build, generates the development policy', () => {
+  const { scripts } = require('../package.json');
+  assert.match(scripts.ios, /^WAREHOUSE_IOS_LOCAL_NETWORKING=1 expo run:ios$/);
+  // The USB helper's prebuild sets WAREHOUSE_IOS_USB_HOST, which is a development switch too.
+  const usb = readFileSync(new URL('./ios-usb.mjs', import.meta.url), 'utf8');
+  assert.match(usb, /prebuild[^]*WAREHOUSE_IOS_USB_HOST/);
+});
+
+test('the generated Xcode project gets a Release-only guard phase, once', () => {
+  // Not built: there is no Xcode here. This checks the project file the plugin would write.
+  const xcode = require('xcode');
+  const { addReleaseGuardPhase, GUARD_PHASE_NAME } = require('../plugins/with-ios-transport-policy.js');
+  const fixture = fileURLToPath(
+    new URL('../node_modules/react-native-safe-area-context/ios/RNSafeAreaContext.xcodeproj/project.pbxproj', import.meta.url)
+  );
+  const project = xcode.project(fixture).parseSync();
+  const guards = () =>
+    Object.values(project.hash.project.objects.PBXShellScriptBuildPhase || {}).filter(
+      phase => typeof phase === 'object' && phase.name === `"${GUARD_PHASE_NAME}"`
+    );
+  assert.equal(guards().length, 0);
+  addReleaseGuardPhase(project);
+  addReleaseGuardPhase(project);
+  assert.equal(guards().length, 1);
+  // The project file stores the script as one quoted string with escaped quotes.
+  const script = guards()[0].shellScript.slice(1, -1).replace(/\\"/g, '"');
+  // It is valid shell (the Xcode build cannot be run here, but the syntax can be).
+  assert.equal(spawnSync('sh', ['-n', '-c', script]).status, 0);
+  assert.match(script, /\$CONFIGURATION" = "Release"/);
+  assert.match(script, /NSAppTransportSecurity:NSAllowsLocalNetworking/);
+  assert.match(script, /NSAppTransportSecurity:NSAllowsArbitraryLoads/);
+  assert.match(script, /exit 1/);
+  // The phase belongs to the app target's build phases.
+  const target = project.getFirstTarget();
+  const listed = project.pbxNativeTargetSection()[target.uuid].buildPhases.map(phase => phase.comment);
+  assert.ok(listed.includes(GUARD_PHASE_NAME));
+  // The written project file still parses.
+  assert.ok(xcode.project(fixture).parseSync() && project.writeSync().includes('PlistBuddy'));
 });

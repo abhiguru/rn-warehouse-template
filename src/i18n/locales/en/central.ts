@@ -148,8 +148,9 @@ export const central = {
     previousNotClearedTitle: "Couldn't close the earlier sign-in",
     previousNotCleared:
       "A facility was still opening for the earlier sign-in on this phone, and it couldn't be closed completely. Restart the app before anyone else uses this phone.",
-    // Opening a facility while this phone is still ending an earlier sign-in there.
-    previousPending: 'This phone is still closing an earlier sign-in at {{facility}}. Try again in a minute.',
+    // Opening a facility while this phone is still ending an earlier sign-in there. The facility
+    // is not named: that it is still being closed would tell where the earlier sign-in was.
+    previousPending: 'This phone is still closing an earlier sign-in. Try again in a minute.',
   },
   // Answers of the association's sign-in service
   errors: {

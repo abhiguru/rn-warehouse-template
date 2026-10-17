@@ -204,7 +204,7 @@ export function sanitizeHeaders(
     if (isSensitiveHeader(key)) {
       sanitized[key] = '[REDACTED]';
     } else if (typeof value === 'string') {
-      sanitized[key] = redactSensitiveString(value);
+      sanitized[key] = redactErrorText(value);
     } else {
       sanitized[key] = sanitizeData(value);
     }
@@ -282,7 +282,7 @@ export function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
   const sanitized: Breadcrumb = { ...breadcrumb };
 
   if (sanitized.message) {
-    sanitized.message = redactSensitiveString(sanitized.message);
+    sanitized.message = redactErrorText(sanitized.message);
   }
 
   if (sanitized.data && typeof sanitized.data === 'object') {
@@ -361,7 +361,7 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
       event.user.ip_address = '[REDACTED]';
     }
     if (event.user.username) {
-      event.user.username = redactSensitiveString(event.user.username);
+      event.user.username = redactErrorText(event.user.username);
     }
   }
 
@@ -422,7 +422,7 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
       if (isSensitiveKey(tagKey)) {
         sanitizedTags[tagKey] = '[REDACTED]';
       } else if (typeof tagVal === 'string') {
-        sanitizedTags[tagKey] = redactSensitiveString(tagVal);
+        sanitizedTags[tagKey] = redactErrorText(tagVal);
       } else {
         sanitizedTags[tagKey] = tagVal as string | number | boolean;
       }
