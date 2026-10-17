@@ -183,7 +183,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       const sanitized = beforeBreadcrumb(breadcrumb);
       expect(sanitized).not.toBeNull();
       expect(sanitized?.message).toContain('[REDACTED_PHONE]');
-      expect(sanitized?.data?.url).toContain('token=%5BREDACTED%5D');
+      // The query is dropped whole (review 2026-10-17 Opus finding 2)
+      expect(sanitized?.data?.url).toBe('https://example.com/api');
       expect(sanitized?.data?.headers?.['Authorization']).toBe('[REDACTED]');
       expect(sanitized?.data?.status_code).toBe(200);
     });
@@ -234,9 +235,8 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       // Request
       expect(sanitized?.request?.headers?.['Authorization']).toBe('[REDACTED]');
       expect(sanitized?.request?.headers?.['apikey']).toBe('[REDACTED]');
-      expect(sanitized?.request?.query_string).toContain(
-        'token=%5BREDACTED%5D'
-      );
+      expect(sanitized?.request?.url).toBe('https://api.example.com/dispatch');
+      expect(sanitized?.request).not.toHaveProperty('query_string');
       // The request body is dropped (M09, D22)
       expect(sanitized?.request?.data).toBeUndefined();
 
@@ -634,6 +634,46 @@ describe('sentryConfig - Telemetry and Redaction', () => {
         // What the privacy screen says: names in an error text are not recognised
         // and may be sent ("error text may contain names from your records").
         expect(text).toContain(BUSINESS);
+      });
+    });
+
+    // Review 2026-10-17 (Opus), finding 2: list searches put typed text and record
+    // ids into the query string of a request address.
+    describe('request addresses are sent without their query', () => {
+      const uuid = '5b3c6c1e-0000-4000-8000-000000000001';
+      const url = `https://north.example.test/rest/v1/customers?select=*&or=(name.ilike.%22%25${encodeURIComponent(BUSINESS)}%25%22,city.ilike.%22%25Zephyr%25%22)&id=eq.${uuid}#frag-${PERSON.replace(' ', '')}`;
+      const gone = (text: string) => {
+        expect(text).not.toContain('Zephyr');
+        expect(text).not.toContain(uuid);
+        expect(text).not.toContain('ilike');
+        expect(text).not.toContain('frag-');
+      };
+
+      it.each(['fetch', 'xhr'])('strips the query and fragment of a %s breadcrumb', category => {
+        const crumb = beforeBreadcrumb({ category, type: 'http', data: { method: 'GET', url, status_code: 200 } })!;
+        const out = (crumb.data as { url: string }).url;
+        gone(out);
+        expect(out).toBe('https://north.example.test/rest/v1/customers');
+        expect((crumb.data as { status_code: number }).status_code).toBe(200);
+      });
+
+      it('strips breadcrumbs of an event and the event request, and drops query_string', () => {
+        const out = send({
+          breadcrumbs: [{ category: 'fetch', data: { url } }],
+          request: { url, query_string: `id=eq.${uuid}&q=Zephyr` },
+        });
+        gone(JSON.stringify(out));
+        expect(out.breadcrumbs![0].data!.url).toBe('https://north.example.test/rest/v1/customers');
+        expect(out.request?.url).toBe('https://north.example.test/rest/v1/customers');
+        expect(out.request).not.toHaveProperty('query_string');
+      });
+
+      it('strips data.to and data.from of a navigation breadcrumb', () => {
+        const crumb = beforeBreadcrumb({
+          category: 'navigation',
+          data: { from: `/customers?q=Zephyr`, to: `/customers/${uuid}?tab=1#x` },
+        })!;
+        expect(crumb.data).toEqual({ from: '/customers', to: `/customers/${uuid}` });
       });
     });
 

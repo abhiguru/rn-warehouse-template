@@ -178,6 +178,19 @@ export function sanitizeUrl(urlString: string): string {
 }
 
 /**
+ * A request address without its query and fragment. A list search puts typed
+ * text and record ids there (`or=(name.ilike."%…%")`, `id=eq.<uuid>`), which no
+ * pattern filter can tell from other text. Scheme, host and path stay: the path
+ * names the table or function, which is enough to debug (review 2026-10-17,
+ * Opus finding 2, M09).
+ */
+export function stripUrlQuery(urlString: string): string {
+  if (!urlString || typeof urlString !== 'string') return urlString;
+  const cut = urlString.search(/[?#]/);
+  return cut === -1 ? urlString : urlString.slice(0, cut);
+}
+
+/**
  * A header is redacted when its name contains one of the SENSITIVE_HEADERS
  * words or one of the secret words isSensitiveKey looks for, so
  * `x-session-token`, `X-Auth-Cookie` and `x-api-key-v2` are caught, not only
@@ -288,8 +301,11 @@ export function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
   if (sanitized.data && typeof sanitized.data === 'object') {
     const dataCopy = { ...sanitized.data };
 
-    if (dataCopy.url && typeof dataCopy.url === 'string') {
-      dataCopy.url = sanitizeUrl(dataCopy.url);
+    // fetch and xhr breadcrumbs carry `url`; navigation breadcrumbs `from` and `to`
+    for (const key of ['url', 'from', 'to']) {
+      if (typeof dataCopy[key] === 'string') {
+        dataCopy[key] = stripUrlQuery(dataCopy[key] as string);
+      }
     }
     if (dataCopy.headers && typeof dataCopy.headers === 'object') {
       dataCopy.headers = sanitizeHeaders(
@@ -365,27 +381,18 @@ export function sanitizeEvent(event: ErrorEvent): ErrorEvent {
     }
   }
 
-  // Redact Request details (URL, headers, query string, payload)
+  // Redact Request details (URL without query, headers; no query string, no payload)
   if (event.request) {
     if (event.request.url) {
-      event.request.url = sanitizeUrl(event.request.url);
+      event.request.url = stripUrlQuery(event.request.url);
     }
     if (event.request.headers) {
       event.request.headers = sanitizeHeaders(
         event.request.headers as Record<string, unknown>
       ) as Record<string, string>;
     }
-    if (event.request.query_string) {
-      if (typeof event.request.query_string === 'string') {
-        event.request.query_string = sanitizeUrl(
-          `?${event.request.query_string}`
-        ).replace(/^\?/, '');
-      } else if (typeof event.request.query_string === 'object') {
-        event.request.query_string = sanitizeData(
-          event.request.query_string
-        ) as Record<string, string>;
-      }
-    }
+    // The query string is never sent: it holds typed search text and record ids.
+    delete event.request.query_string;
     // The request body is never sent (decision D22). Pattern filtering cannot
     // tell an ordinary business name from any other text, so the only safe
     // content is none. Nothing in the app fills it today.
