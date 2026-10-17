@@ -25,7 +25,7 @@ git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci                       # runs the three postinstall patches
 node scripts/create-env.mjs  # creates .env only if it is absent
-npm run typecheck && npm run lint && npm test && npm run test:setup
+npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 npm run doctor               # read-only check against an installed backend
 npm run android              # native debug build on a device or emulator
 ```
@@ -74,6 +74,15 @@ npm run ios
 Debug build can reach Metro over http). Never archive that project for release: regenerate it without
 the flag first (see [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md)).
 
+`npm run ios` reuses an existing `ios/` folder, so a folder that was generated for release keeps
+the release policy in Debug (Metro over http is refused), because `expo run:ios` prebuilds only
+when `ios/` is missing. Regenerate it with
+`WAREHOUSE_IOS_LOCAL_NETWORKING=1 npx expo prebuild --platform ios --clean` (or delete `ios/`)
+and run `npm run ios` again. The other way round, a
+local Release build through `npm run ios` fails on purpose: the project it generates is a
+development one, and a Release Run Script phase refuses it (it also fails when it cannot read
+the built `Info.plist`).
+
 Expo generates the ignored native directories as needed; use `npm start` for
 later Metro sessions. Native builds are the baseline: Expo Go may not support
 this SDK and does not validate native plugins, permissions or build settings.
@@ -111,10 +120,12 @@ unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
 
 ## Checks and releases
 
-GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs lint, typecheck, Jest,
-the setup tests and an Android bundle export, a pinned JDK 17 / SDK 36 debug
-build with an APK audit, the dependency gate and a secrets scan on pushes and
-pull requests to `main`. There are no git hooks; CI enforces lint and typecheck.
+GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs expo-doctor (a locked
+devDependency), lint (it fails above a fixed warning count), typecheck, the
+test-file typecheck, Jest, the setup tests and an Android bundle export with an
+audit of the exported directory, a pinned JDK 17 / SDK 36 debug build with an
+APK audit, the dependency gate and a secrets scan on pushes and pull requests to
+`main`. There are no git hooks; CI enforces lint and typecheck.
 [release.yml](.github/workflows/release.yml) validates any semantic `v*` tag
 with the same gates; publishing a GitHub release stays a manual step after the
 validation run passes.

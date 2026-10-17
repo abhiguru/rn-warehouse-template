@@ -16,6 +16,7 @@
  * ```
  */
 
+import { createLogger } from '@/utils/logger';
 import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import type { AnyAction } from '@reduxjs/toolkit';
@@ -40,6 +41,8 @@ import {
 
 import * as yup from 'yup';
 import { t } from '@/i18n';
+
+const formValidationLogger = createLogger('useFormValidation');
 
 // ============================================================================
 // TYPES
@@ -158,7 +161,7 @@ export function useFormValidation() {
         dispatch(action);
         return true;
       } catch (error) {
-        console.error('[useFormValidation] Validation error:', error);
+        formValidationLogger.error('Validation error:', error);
         setValidationErrors({ _error: t('errors.general.validationFailedUnexpectedly') });
         return false;
       } finally {

@@ -37,9 +37,6 @@ const PATTERNS = {
   // Email
   EMAIL: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
 
-  // Alphanumeric with common special chars (for names, descriptions)
-  SAFE_TEXT: /^[a-zA-Z0-9\s\-_.,()&]+$/,
-
   // Positive integers
   POSITIVE_INT: /^\d+$/,
 
@@ -203,53 +200,6 @@ export const validateDate = (date: unknown, fieldName: string = t('validation.fi
   const dateObj = new Date(sanitized);
   if (isNaN(dateObj.getTime())) {
     throw new ValidationError(t('validation.input.validDate', { field: fieldName }), fieldName);
-  }
-
-  return sanitized;
-};
-
-/**
- * Validate safe text (names, descriptions, etc.)
- */
-export const validateSafeText = (
-  text: unknown,
-  fieldName: string = t('validation.fieldName.text'),
-  options: { minLength?: number; maxLength?: number; required?: boolean } = {}
-): string => {
-  if (typeof text !== 'string') {
-    if (options.required) {
-      throw new ValidationError(t('validation.field.required', { field: fieldName }), fieldName);
-    }
-    return '';
-  }
-
-  const sanitized = sanitizeString(text);
-
-  if (options.required && sanitized.length === 0) {
-    throw new ValidationError(t('validation.field.required', { field: fieldName }), fieldName);
-  }
-
-  if (options.minLength !== undefined && sanitized.length < options.minLength) {
-    throw new ValidationError(
-      t('validation.field.minChars', { field: fieldName, min: asLimit(options.minLength) }),
-      fieldName
-    );
-  }
-
-  if (options.maxLength !== undefined && sanitized.length > options.maxLength) {
-    throw new ValidationError(
-      t('validation.field.maxChars', { field: fieldName, max: asLimit(options.maxLength) }),
-      fieldName
-    );
-  }
-
-  // Check for potentially dangerous patterns
-  if (sanitized && !PATTERNS.SAFE_TEXT.test(sanitized)) {
-    validationLogger.warn(`Unsafe characters detected in ${fieldName}`);
-    throw new ValidationError(
-      t('validation.input.unsafeCharacters', { field: fieldName }),
-      fieldName
-    );
   }
 
   return sanitized;

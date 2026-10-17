@@ -108,7 +108,8 @@ describe('central login on', () => {
     const action = await store.dispatch(initializeAuth());
 
     expect(action.type).toBe('auth/initialize/rejected');
-    expect(errorLog).toHaveBeenCalledWith('[AuthSlice] Initialize auth error:', expect.any(Error));
+    // Written through the redacting logger (src/utils/logger.ts): its line, then the error as text.
+    expect(errorLog).toHaveBeenCalledWith(expect.stringMatching(/ERROR \[AuthSlice\] Initialize auth error:$/), expect.stringContaining('Error: '));
     expect(store.getState().auth.error).toBe('Configuration must be loaded first.');
   });
 });
@@ -122,7 +123,8 @@ describe('central login off', () => {
     expect(action.type).toBe('auth/initialize/rejected');
     expect(action.payload).toBe('Configuration must be loaded first.');
     expect(mockGetSupabaseClient).toHaveBeenCalledTimes(1);
-    expect(errorLog).toHaveBeenCalledWith('[AuthSlice] Initialize auth error:', expect.any(Error));
+    // Written through the redacting logger (src/utils/logger.ts): its line, then the error as text.
+    expect(errorLog).toHaveBeenCalledWith(expect.stringMatching(/ERROR \[AuthSlice\] Initialize auth error:$/), expect.stringContaining('Error: '));
     const auth = store.getState().auth;
     expect(auth.error).toBe('Configuration must be loaded first.');
     expect(auth.isLoading).toBe(false);

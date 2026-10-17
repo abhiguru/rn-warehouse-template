@@ -54,13 +54,21 @@ function transportPolicy(development) {
 
 const GUARD_PHASE_NAME = 'Refuse development transport policy in Release';
 // One line on purpose (the project file stores it as one quoted string). In a Release build it
-// fails when the built Info.plist allows local networking or arbitrary loads, so an archive of a
-// project that was generated for development cannot be produced.
+// fails when the built Info.plist allows local networking, arbitrary loads or any exception
+// domain, so an archive of a project that was generated for development cannot be produced. It
+// also fails when it cannot look (PlistBuddy missing, the plist missing or unreadable): a check
+// that cannot run must not let the build pass (ops review N1).
+const PLISTBUDDY = '/usr/libexec/PlistBuddy';
 const GUARD_SCRIPT = [
   'if [ "$CONFIGURATION" = "Release" ]; then',
+  `PB="${PLISTBUDDY}";`,
   'PLIST="$TARGET_BUILD_DIR/$INFOPLIST_PATH";',
-  'if /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" "$PLIST" >/dev/null 2>&1; then echo "error: NSAllowsLocalNetworking is set in a Release Info.plist; regenerate the native project without WAREHOUSE_IOS_LOCAL_NETWORKING and WAREHOUSE_IOS_USB_HOST (ops review M12)." >&2; exit 1; fi;',
-  'if [ "$(/usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoads" "$PLIST" 2>/dev/null)" = "true" ]; then echo "error: NSAllowsArbitraryLoads is true in a Release Info.plist (ops review M12)." >&2; exit 1; fi;',
+  'if [ ! -x "$PB" ]; then echo "error: PlistBuddy is missing, so the Release transport policy cannot be checked (ops review N1)." >&2; exit 1; fi;',
+  'if [ ! -r "$PLIST" ]; then echo "error: the built Info.plist at $PLIST is missing or unreadable, so the Release transport policy cannot be checked (ops review N1)." >&2; exit 1; fi;',
+  'if ! "$PB" -c "Print :CFBundleIdentifier" "$PLIST" >/dev/null 2>&1; then echo "error: the built Info.plist cannot be parsed, so the Release transport policy cannot be checked (ops review N1)." >&2; exit 1; fi;',
+  'if "$PB" -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" "$PLIST" >/dev/null 2>&1; then echo "error: NSAllowsLocalNetworking is set in a Release Info.plist; regenerate the native project without WAREHOUSE_IOS_LOCAL_NETWORKING and WAREHOUSE_IOS_USB_HOST (ops review M12)." >&2; exit 1; fi;',
+  'if "$PB" -c "Print :NSAppTransportSecurity:NSExceptionDomains" "$PLIST" >/dev/null 2>&1; then echo "error: NSExceptionDomains is set in a Release Info.plist (ops review N1)." >&2; exit 1; fi;',
+  'if [ "$("$PB" -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoads" "$PLIST" 2>/dev/null)" = "true" ]; then echo "error: NSAllowsArbitraryLoads is true in a Release Info.plist (ops review M12)." >&2; exit 1; fi;',
   'fi',
 ].join(' ');
 
@@ -94,5 +102,7 @@ module.exports = function withIosTransportPolicy(config) {
 };
 module.exports.addReleaseGuardPhase = addReleaseGuardPhase;
 module.exports.GUARD_PHASE_NAME = GUARD_PHASE_NAME;
+module.exports.GUARD_SCRIPT = GUARD_SCRIPT;
+module.exports.PLISTBUDDY = PLISTBUDDY;
 module.exports.isDevelopmentBuild = isDevelopmentBuild;
 module.exports.transportPolicy = transportPolicy;

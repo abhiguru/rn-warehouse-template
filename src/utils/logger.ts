@@ -63,7 +63,9 @@ const formatMessage = (level: LogLevel, category: string, message: string): stri
  */
 const stringifyObject = (obj: unknown, redact: boolean = true): string => {
   try {
-    const str = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+    // JSON.stringify(new Error('x')) is "{}": write an error as its name and message, which is
+    // what the console.error calls it replaces showed first.
+    const str = typeof obj === 'string' ? obj : obj instanceof Error ? `${obj.name}: ${obj.message}` : JSON.stringify(obj, null, 2);
     return redact ? redactSensitiveData(str) : str;
   } catch (err) {
     return String(obj);

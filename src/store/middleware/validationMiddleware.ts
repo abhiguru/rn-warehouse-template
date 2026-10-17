@@ -11,8 +11,11 @@
  * 4. Logs validation warnings in development
  */
 
+import { createLogger } from '@/utils/logger';
 import { Middleware, isAction } from '@reduxjs/toolkit';
 import type { RootState } from '../index';
+
+const validationLogger = createLogger('ValidationMiddleware');
 
 // ============================================================================
 // TYPES
@@ -310,8 +313,8 @@ export const validationMiddleware: Middleware<object, RootState> =
 
     // Log warnings in development
     if (__DEV__ && result.errors.length > 0) {
-      console.warn(
-        `[ValidationMiddleware] ${action.type}:`,
+      validationLogger.warn(
+        `${action.type}:`,
         result.errors.join(', ')
       );
     }

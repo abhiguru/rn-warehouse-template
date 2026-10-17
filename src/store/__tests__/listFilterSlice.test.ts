@@ -56,7 +56,7 @@ describe('list filter slice', () => {
       const before = withTwoLists();
       expect(before.lists['grn-list'].values).toEqual({ stock: 'in_stock' });
       expect(before.lists['dispatch-list'].values).toEqual({ search: 'garlic' });
-      expect(reducer(before, logout.fulfilled(undefined, 'request-1', undefined))).toEqual({ lists: {} });
+      expect(reducer(before, logout.fulfilled({ localCleared: true }, 'request-1', undefined))).toEqual({ lists: {} });
     });
 
     it('keeps list filters while logout is pending or after it is rejected', () => {
@@ -139,7 +139,7 @@ describe('list filter slice', () => {
     });
 
     it('forgets every scope on sign-out', () => {
-      expect(reducer(scoped(), logout.fulfilled(undefined, 'request-1', undefined))).toEqual({ lists: {} });
+      expect(reducer(scoped(), logout.fulfilled({ localCleared: true }, 'request-1', undefined))).toEqual({ lists: {} });
     });
   });
 });

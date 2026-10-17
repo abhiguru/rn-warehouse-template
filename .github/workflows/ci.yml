@@ -34,16 +34,23 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: '1'
 
+      # expo-doctor is a locked devDependency (exact version); --no-install makes
+      # the step fail rather than fetch an unreviewed copy from the registry.
       - name: Expo project diagnostics
-        run: npx expo-doctor
+        run: npx --no-install expo-doctor
         env:
           EXPO_NO_TELEMETRY: '1'
 
+      # The ratchet: warnings may not grow. Lower the number when warnings are
+      # fixed; keep it equal to release.yml (scripts/workflows.test.mjs checks).
       - name: Lint
-        run: npm run lint
+        run: npm run lint -- --max-warnings 636
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Test type check
+        run: npm run typecheck:tests
 
       - name: Test
         run: npm test
@@ -53,6 +60,9 @@ jobs:
 
       - name: Android JavaScript bundle
         run: npx expo export --platform android
+
+      - name: Audit the exported bundle
+        run: npm run audit:artifact -- dist
 
   android-artifact:
     name: Android debug artifact audit

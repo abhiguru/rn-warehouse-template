@@ -380,7 +380,7 @@ describe('the refusals that name a field', () => {
 
   it('typing again clears the strip', async () => {
     await ready();
-    replace.mockResolvedValueOnce({ success: false, errorCode: 'SERVER', message: 'The server is busy.' });
+    replace.mockResolvedValueOnce({ success: false, errorCode: 'UNKNOWN', message: 'The server is busy.' });
     await act(async () => { await latest.submit(); });
     expect(latest.strip).toBe('The server is busy.');
     act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '7')));
