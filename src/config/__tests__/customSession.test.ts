@@ -1115,6 +1115,24 @@ describe('an access token the server refuses as expired', () => {
     expect(secure.get('secure_auth_token')).toBe(renewed);
   });
 
+  test('the refused answer of a read that is sent again is ended at once, not left in flight until its limit', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    const signals: AbortSignal[] = [];
+    jest.mocked(global.fetch).mockImplementation(async (_, init) => {
+      signals.push(init!.signal!);
+      return signals.length === 1
+        ? refusedAs(401, { code: 'PGRST301', message: 'JWT expired' })
+        : (operatorResponse({ success: true, data: [] }) as Response);
+    });
+    const response = await clientFetch('http://localhost:18000/rest/v1/customers', { headers: { Authorization: `Bearer ${old}` } });
+    expect(response.status).toBe(200);
+    expect(signals).toHaveLength(2);
+    // discardBody: the refused request is over; the one sent again is not touched.
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+    await response.json();
+  });
+
   test('a write is not sent again: the session is renewed and the refusal is returned', async () => {
     const clientFetch = await authenticatedClientFetch();
     jest.mocked(global.fetch).mockResolvedValue(refusedAs(401, { code: 'PGRST301', message: 'JWT expired' }));
@@ -1315,7 +1333,7 @@ describe('a request the server never answers', () => {
 });
 
 // M02: the time limit and the request's tracked life run until the answer is complete, body
-// included. A streaming fetch resolves at the headers; a body that never completes must still
+// included. expo/fetch, the global fetch since Expo SDK 57, resolves at the headers; a body that never completes must still
 // time out, and a save whose body is still arriving must still hold a server switch back.
 describe('an answer whose body never completes (M02)', () => {
   /** The headers arrive at once; the body only when `finish` is called. Its read ignores the abort. */
@@ -1406,6 +1424,28 @@ describe('an answer whose body never completes (M02)', () => {
     expect(beginOperatorSwitch()).toBe(true);
     endOperatorSwitch();
     clearAuthenticatedClientCache();
+  });
+
+  test('a 401 whose copy for the key check never finishes stops holding a switch once its own body is read', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    let copies = 0;
+    jest.mocked(global.fetch).mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ code: 'PGRST301', message: 'JWT invalid' }),
+      clone: () => {
+        copies += 1;
+        return { json: () => new Promise(() => undefined) };
+      },
+    } as unknown as Response);
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/save_grn', { method: 'POST' });
+    // noteUnauthorized reads a copy, outside the request's tracked life.
+    expect(copies).toBe(1);
+    expect(beginOperatorSwitch()).toBe(false);
+    await response.json();
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
   });
 
   test.each([
