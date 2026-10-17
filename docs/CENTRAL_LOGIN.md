@@ -376,10 +376,11 @@ account" (`DELETE /v1/me`), whose confirmation says that each facility keeps its
   signature "trusts TLS to the configured issuer origin", checks only the header `typ`, the
   claim `iss` and that `exp` has not passed, fetches the catalogue only from the issuer over
   HTTPS and never accepts one handed to it by another party (identity repository,
-  `docs/API.md` lines 612-619). The app does this: `readCatalogueToken` checks type,
+  `docs/API.md`, section "The catalogue token", which begins "The mobile app does **not** verify the
+  signature of the catalogue token"). The app does this: `readCatalogueToken` checks type,
   algorithm name, issuer and expiry, and the request goes to the configured central origin
   only. A facility, not the app, decides access and verifies its own tokens, and identity
-  refuses a facility token for an origin that is not in its catalogue (`docs/API.md` line 48),
+  refuses a facility token for an origin that is not in its catalogue (`docs/API.md`, the `unknown_facility` error),
   so a forged catalogue can show a wrong address but cannot open a facility's data to anyone.
   What this does not defend against is interception of TLS to the issuer on the phone itself
   (a trusted extra certificate authority, a managed-device proxy): such a party could serve a
