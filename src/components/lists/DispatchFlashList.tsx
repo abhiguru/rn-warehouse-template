@@ -226,6 +226,12 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         throw new Error(response.message || 'Failed to load dispatches');
       }
 
+      // The service answers a network failure with the list kept on the phone. A refresh of the rows on screen
+      // that got only that did not refresh: it is a failure (strip, loadedAt kept), not a new load (§14.9).
+      if (response.fromCache && !append && shownRequest.current === requestKey) {
+        throw new Error('Refresh answered from the saved list');
+      }
+
       const { dispatches: newDispatches, pagination } = response.data;
       if (append) {
         setDispatches(prev => {
@@ -237,7 +243,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         setLoadError(false);
         setRefreshError(false);
         setLoadMoreFailed(false);
-        setLoadedAt(Date.now());
+        // A list answered from the phone's saved copy was loaded when that copy was stored, not now.
+        setLoadedAt(response.fromCache && response.cachedAt ? response.cachedAt : Date.now());
         setHistoryLimited(Boolean(pagination.history_limit_reached));
         shownRequest.current = requestKey;
         // A new search, filter or sort starts from its first row.

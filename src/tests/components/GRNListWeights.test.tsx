@@ -8,7 +8,9 @@
 import React from 'react';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import GRNListFiori from '@/components/GRNListFiori';
-import { nb } from '@/components/common/DetailTable';
+import { StyleSheet } from 'react-native';
+import { FIRST_COLUMN_EM, crowded, lastColumnAlone, nb, nestedRowWidth, numberColumnWidth } from '@/components/common/DetailTable';
+import { space, typography } from '@/theme/tokens';
 import { getAllGRNItems } from '@/services/grn-service';
 import { setLanguage } from '@/i18n';
 
@@ -66,9 +68,10 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 let mockFontScale = 1;
+let mockWidth = 392;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
-  default: () => ({ width: 392, height: 780, scale: 3, fontScale: mockFontScale }),
+  default: () => ({ width: mockWidth, height: 780, scale: 3, fontScale: mockFontScale }),
 }));
 
 const GRN = 'grn-fictional-1';
@@ -112,6 +115,7 @@ afterEach(async () => {
   });
   setLanguage('en');
   mockFontScale = 1;
+  mockWidth = 392;
 });
 
 const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
@@ -144,11 +148,11 @@ describe('GRN list card', () => {
     const all = texts(tree);
     expect(all).toContain('GRN RV15001');
     // What is left of what was received, then the status tag; "5,000 kg" used to be under them.
-    expect(attributeStack(tree)).toEqual(['80 of 100 bags', 'In stock']);
+    expect(attributeStack(tree)).toEqual([`80 of ${nb('100 bags')}`, 'In stock']);
     expect(all).not.toContain('5,000 kg');
     expect(all.filter((text) => /kg|kilo/i.test(text))).toEqual([]);
     expect(host(tree, `grn-card-${GRN}`).props.accessibilityLabel).toBe(
-      'GRN RV15001, Fictional Orchard, 1 Oct, 1 item, 80 of 100 bags, In stock'
+      `GRN RV15001, Fictional Orchard, 1 Oct, 1 item, 80 of ${nb('100 bags')}, In stock`
     );
   });
 
@@ -163,7 +167,7 @@ describe('GRN list card', () => {
     expect(rows).toEqual([['Potato', '100', '50', '100']]);
     expect(spoken).toEqual(['Potato, 100 bags, 50 kg each, 100 in stock, In stock']);
     // Still no total with the table open: the heading is the only text that names kilograms.
-    expect(attributeStack(tree)).toEqual(['100 of 100 bags', 'In stock']);
+    expect(attributeStack(tree)).toEqual([`100 of ${nb('100 bags')}`, 'In stock']);
     expect(texts(tree).filter((text) => /kg|kilo/i.test(text))).toEqual(['Kg each']);
   });
 
@@ -203,15 +207,17 @@ describe('GRN list card', () => {
 });
 
 describe('GRN list table at large text', () => {
-  it('moves "Kg each" under the item at font scale 2, as the other tables do', async () => {
+  // At 2.0 on 392 dp, Bags (96) and Stock (104) would leave the item 100 dp, under the 150 dp (5 em) it keeps:
+  // Bags moves under the item as well (style guide 13.7), leaving Item | Stock.
+  it('moves "Kg each" and the bags under the item at font scale 2, leaving Item and Stock', async () => {
     mockFontScale = 2;
     const tree = await renderList([row('line-1', 'Potato', 100, 50)]);
 
     await expand(tree);
 
     const { header, rows } = table(tree);
-    expect(header).toEqual(['Item', 'Bags', 'Stock']);
-    expect(rows).toEqual([['Potato', nb('50 kg each'), '100', '100']]);
+    expect(header).toEqual(['Item', 'Stock']);
+    expect(rows).toEqual([['Potato', nb('50 kg each'), nb('100 bags'), '100']]);
   });
 
   it('keeps 9,999 bags whole on one line at font scale 1.3, and names a line that is not in stock', async () => {
@@ -228,5 +234,122 @@ describe('GRN list table at large text', () => {
     // The status is a word under the item, never a figure cut with "…".
     expect(table(tree).header).toEqual(['Item', 'Bags', 'Stock']);
     expect(table(tree).rows[0]).toEqual(['Potato', nb('50 kg each'), 'Fully dispatched', '9,999', '0']);
+  });
+});
+
+/** The widths of the figure columns drawn in the first row, and the width left for the item. */
+const drawn = (tree: ReactTestRenderer, width: number) => {
+  const line = host(tree, `grn-lines-${GRN}`).find((node) => typeof node.type === 'string' && String(node.props.testID ?? '').startsWith('grn-line-'));
+  const widths = line
+    .findAll((node) => typeof node.type === 'string' && typeof StyleSheet.flatten(node.props.style)?.width === 'number')
+    .map((node) => StyleSheet.flatten(node.props.style).width as number);
+  return { widths, item: nestedRowWidth({ width }) - widths.reduce((sum, w) => sum + w, 0) - widths.length * space.sm };
+};
+
+describe('GRN list table: the item column keeps its room', () => {
+  for (const width of [360, 392]) {
+    for (const scale of [1, 1.3, 1.5, 2]) {
+      for (const qty of [100, 9999]) {
+        it(`${width} dp, font scale ${scale}, ${qty} bags: at least 5 em for the item, or no column beside it`, async () => {
+          mockWidth = width;
+          mockFontScale = scale;
+          const tree = await renderList([row('line-1', 'Potato', qty, 50)]);
+          await expand(tree);
+          const { header } = table(tree);
+          const { widths, item } = drawn(tree, width);
+          if (widths.length > 0) expect(item).toBeGreaterThanOrEqual(FIRST_COLUMN_EM * (typography.subhead.fontSize ?? 15) * scale);
+
+          // The same layout, worked out here from the sizing functions.
+          const screen = { scale, numberWidth: (b: number) => Math.ceil(b * scale) };
+          const figure = qty === 9999 ? '9,999' : String(qty);
+          const bagsW = numberColumnWidth(screen, 48, [figure]) + space.xs;
+          const kgW = numberColumnWidth(screen, 72, ['50']) + space.xs;
+          const stockW = numberColumnWidth(screen, 52, [figure]) + space.xs;
+          const nested = nestedRowWidth({ width });
+          const kgUnder = scale >= 1.5 || crowded(nested, [bagsW, kgW, stockW], 0, scale);
+          const bagsUnder = kgUnder && crowded(nested, [bagsW, stockW], 0, scale);
+          const stockUnder = bagsUnder && lastColumnAlone(nested, stockW, scale);
+          expect(header).toEqual(['Item', ...(bagsUnder ? [] : ['Bags']), ...(kgUnder ? [] : ['Kg each']), 'Stock']);
+          // Drawn `space.xs` wider than the estimate (included in bagsW etc.), so a figure is never cut.
+          expect(widths).toEqual([...(bagsUnder ? [] : [bagsW]), ...(kgUnder ? [] : [kgW]), ...(stockUnder ? [] : [stockW])]);
+        });
+      }
+    }
+  }
+
+  it('keeps all four columns for ordinary data at font scale 1 on 392 dp', async () => {
+    const tree = await renderList([row('line-1', 'Potato', 100, 50)]);
+    await expand(tree);
+    expect(table(tree).header).toEqual(['Item', 'Bags', 'Kg each', 'Stock']);
+  });
+
+  it('puts the stock on its own line under the item when it would still crowd it (99,99,999 bags at 2.0 on 360 dp)', async () => {
+    mockWidth = 360;
+    mockFontScale = 2;
+    const tree = await renderList([row('line-1', 'Potato', 9999999, 50)]);
+    await expand(tree);
+    const { header, rows } = table(tree);
+    expect(header).toEqual(['Item', 'Stock']);
+    expect(drawn(tree, 360).widths).toEqual([]);
+    expect(rows).toEqual([['Potato', nb('50 kg each'), nb('99,99,999 bags'), '99,99,999']]);
+  });
+
+  it('gives "Kg each" 72 dp at font scale 1, room for the Gujarati heading on one line (e8d3fe9)', async () => {
+    setLanguage('gu');
+    const tree = await renderList([row('line-1', 'Potato', 100, 50)]);
+    await expand(tree);
+    expect(table(tree).header[2]).toBe('દરેકના kg');
+    expect(drawn(tree, 392).widths[1]).toBeGreaterThanOrEqual(72);
+  });
+});
+
+describe('GRN card figures, marks and stock text (phone run GL, 2026-10-18)', () => {
+  const MARK = 'BL/STRETCH-LOT-0004/LONG-PACKAGE-MARK-FOR-WRAP-TEST/ABCDEFG1234';
+  const withMark = () => ({ ...row('line-1', 'Saffron', 21, 1, 21), package_mark: MARK }) as unknown as ReturnType<typeof row>;
+
+  it('draws the figures without adjustsFontSizeToFit (Android auto-size drew them tiny)', async () => {
+    const tree = await renderList([withMark(), row('line-2', 'Potato', 9999, 50, 9999)]);
+    await expand(tree);
+    const grid = host(tree, `grn-lines-${GRN}`);
+    const figures = grid.findAll((node) => isText(node) && ['21', '1', '9,999', '50'].includes(textOf(node)));
+    expect(figures.length).toBeGreaterThanOrEqual(6);
+    for (const figure of figures) {
+      expect(figure.props.numberOfLines).toBe(1);
+      expect(figure.props.adjustsFontSizeToFit).toBeUndefined();
+    }
+  });
+
+  it('draws every figure Text of the stacked line, under the item as well, without adjustsFontSizeToFit (R6-8)', async () => {
+    mockWidth = 360;
+    mockFontScale = 2;
+    const tree = await renderList([row('line-1', 'Potato', 9999999, 50, 9999999)]);
+    await expand(tree);
+    const grid = host(tree, `grn-lines-${GRN}`);
+    const figures = grid.findAll((node) => isText(node) && textOf(node).startsWith('99,99,999'));
+    // The bags under the item ("99,99,999 bags") and the stock ("99,99,999").
+    expect(figures.map(textOf)).toEqual([nb('99,99,999 bags'), '99,99,999']);
+    for (const figure of figures) {
+      expect(figure.props.numberOfLines).toBe(1);
+      expect(figure.props.adjustsFontSizeToFit).toBeUndefined();
+    }
+  });
+
+  it('cuts a 60-character mark on one line with the tail cut, and says it in full aloud', async () => {
+    expect(MARK.length).toBeGreaterThanOrEqual(60);
+    const tree = await renderList([withMark()]);
+    await expand(tree);
+    const grid = host(tree, `grn-lines-${GRN}`);
+    const mark = grid.findAll((node) => isText(node) && textOf(node) === nb(MARK));
+    expect(mark).toHaveLength(1);
+    expect(mark[0].props.numberOfLines).toBe(1);
+    expect(mark[0].props.ellipsizeMode).toBe('tail');
+    expect(table(tree).spoken[0]).toContain(MARK);
+  });
+
+  it('keeps "9,999 bags" together in the card stock text: a wrap falls after "of"', async () => {
+    const tree = await renderList([row('line-1', 'Potato', 9999, 50, 2621)]);
+    const stock = attributeStack(tree)[0];
+    expect(stock).toBe(`2,621 of 9,999\u00a0bags`);
+    expect(stock).toContain('9,999\u00a0bags');
   });
 });

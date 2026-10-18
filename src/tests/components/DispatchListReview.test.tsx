@@ -132,6 +132,23 @@ describe('load errors (style guide 14.9)', () => {
     expect(card(tree, 1)).toBeDefined();
   });
 
+  it('a refresh answered only from the list saved on the phone is a failed refresh: strip, and the time of the real load', async () => {
+    const now = jest.spyOn(Date, 'now');
+    now.mockReturnValue(new Date('2026-10-18T18:26:00').getTime());
+    jest.mocked(getDispatchListWithItems)
+      .mockResolvedValueOnce(answer([dispatchOf(1)]) as never)
+      .mockResolvedValueOnce({ ...answer([dispatchOf(1)]), fromCache: true } as never);
+    const tree = await renderList();
+    now.mockReturnValue(new Date('2026-10-18T18:31:00').getTime());
+    await act(async () => { await list(tree).props.refreshControl.props.onRefresh(); });
+
+    expect(host(tree, 'dispatch-stale-strip')).toBeDefined();
+    expect(texts(tree)).toContain("Couldn't refresh dispatches.");
+    expect(texts(tree).some((text) => /6:26/.test(text) && /loaded at/.test(text))).toBe(true);
+    expect(texts(tree).some((text) => /6:31/.test(text))).toBe(false);
+    expect(card(tree, 1)).toBeDefined();
+  });
+
   it('a failed first page is the error state with Try again', async () => {
     jest.mocked(getDispatchListWithItems).mockResolvedValueOnce(failure as never);
     const tree = await renderList();
@@ -199,6 +216,53 @@ describe('load errors (style guide 14.9)', () => {
     const tree = await renderList();
 
     expect(host(tree, 'dispatch-last-updated')).toBeUndefined();
+  });
+});
+
+describe('answers from the list saved on the phone (R6-6, R6-7)', () => {
+  const saved = (dispatches: ReturnType<typeof dispatchOf>[], at = new Date('2026-10-18T18:26:00').getTime(), more = false) =>
+    ({ ...answer(dispatches, more), fromCache: true, cachedAt: at }) as never;
+
+  it('a new sort answered from the saved list shows its rows: no error state, no strip', async () => {
+    jest.mocked(getDispatchListWithItems).mockResolvedValueOnce(answer([dispatchOf(1)]) as never).mockResolvedValueOnce(saved([dispatchOf(2)]));
+    const tree = await renderList();
+    mockOffline = true;
+    mockFilters = { ...mockFilters, request: { p_sort_field: 'disp_date', p_sort_direction: 'asc' }, sort: { field: 'disp_date', order: 'asc' } };
+    await act(async () => { tree.update(<DispatchFlashList />); });
+
+    expect(card(tree, 2)).toBeDefined();
+    expect(card(tree, 1)).toBeUndefined();
+    expect(texts(tree)).not.toContain("Couldn't load dispatches");
+    expect(host(tree, 'dispatch-stale-strip')).toBeUndefined();
+  });
+
+  it('a next page answered from the saved list is added to the rows: no Try again row', async () => {
+    jest.mocked(getDispatchListWithItems).mockResolvedValueOnce(answer([dispatchOf(1)], true) as never).mockResolvedValueOnce(saved([dispatchOf(2)]));
+    const tree = await renderList();
+    await act(async () => { await list(tree).props.onEndReached(); });
+
+    expect(card(tree, 1)).toBeDefined();
+    expect(card(tree, 2)).toBeDefined();
+    expect(host(tree, 'dispatch-load-more-error')).toBeUndefined();
+  });
+
+  it('a first load and a new sort answered from the saved list say when it was saved, not now', async () => {
+    const now = jest.spyOn(Date, 'now');
+    now.mockReturnValue(new Date('2026-10-18T18:30:00').getTime());
+    mockOffline = true;
+    jest.mocked(getDispatchListWithItems)
+      .mockResolvedValueOnce(saved([dispatchOf(1)], new Date('2026-10-18T18:26:00').getTime()))
+      .mockResolvedValueOnce(saved([dispatchOf(2)], new Date('2026-10-18T18:27:00').getTime()));
+    const tree = await renderList();
+    const updated = () => texts(tree).filter((text) => /Last updated/.test(text)).join('|');
+
+    expect(updated()).toMatch(/6:26/);
+    expect(updated()).not.toMatch(/6:30/);
+    mockFilters = { ...mockFilters, request: { p_sort_field: 'disp_date', p_sort_direction: 'asc' }, sort: { field: 'disp_date', order: 'asc' } };
+    await act(async () => { tree.update(<DispatchFlashList />); });
+    expect(card(tree, 2)).toBeDefined();
+    expect(updated()).toMatch(/6:27/);
+    expect(updated()).not.toMatch(/6:30/);
   });
 });
 

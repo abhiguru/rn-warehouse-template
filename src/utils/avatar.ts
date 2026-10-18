@@ -53,6 +53,16 @@ export function avatarColors(
   key: string | number | null | undefined,
   t: ThemeTokens
 ): { background: string; text: string } {
-  const background = t.avatar[avatarIndex(key, t.avatar.length)];
-  return { background, text: t.mode === 'light' ? t.text.primary : t.overlay.onImage };
+  return avatarColorsAt(avatarIndex(key, t.avatar.length), t);
+}
+
+/**
+ * The same colours for a fixed palette index (a role's own colour, not one keyed by an id).
+ * The text colour is chosen here, so a component never reads the mode to pick it (§3.8).
+ */
+export function avatarColorsAt(index: number, t: ThemeTokens): { background: string; text: string } {
+  return {
+    background: t.avatar[index % t.avatar.length],
+    text: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
+  };
 }

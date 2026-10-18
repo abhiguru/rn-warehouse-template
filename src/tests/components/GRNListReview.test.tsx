@@ -15,6 +15,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import GRNListFiori from '@/components/GRNListFiori';
+import { nb } from '@/components/common/DetailTable';
 import { getAllGRNItems, getAssignedCustomerGRNItems } from '@/services/grn-service';
 import { resetFlashListWindow, setFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import { StyleSheet } from 'react-native';
@@ -260,7 +261,7 @@ describe('repeated lines on a next page (code review 2026-10-18, R1-01)', () => 
     await act(async () => { await list(tree).props.onEndReached(); });
 
     const stockOf = (n: number) => [host(tree, `grn-card-stock-g${n}`).findAllByType('Text' as never)[0].props.children].flat().join('');
-    expect(stockOf(3)).toBe('20 of 20 bags');
+    expect(stockOf(3)).toBe(`20 of ${nb('20 bags')}`);
     expect(texts(tree).filter((text) => text === '2 items')).toHaveLength(1);
 
     await act(async () => { await list(tree).props.onEndReached(); });

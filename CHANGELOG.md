@@ -25,6 +25,38 @@ pages by line; a stored Low stock is not sent and shows no chip).
   - Number columns are sized to their figures, so 9,999 bags never break at font scale 1.3.
   - "Kg each" moves under the item when crowded.
   - A line that is not In stock has its status under the item.
+- **Phone run GL fixes.**
+  - The open cards' figures (GRN and Dispatch line tables) are no longer auto-shrunk: one row drew its figures tiny on Android. Columns are drawn 4 dp wider than the estimate.
+  - A long package mark in those tables is cut with "…" on one line at the normal size; the weight is on its own line under it; the full mark stays in the row's spoken label.
+  - The GRN card's stock text keeps "9,999 bags" together; a wrap falls after "of".
+  - Dispatch: a pull to refresh answered from the list saved on the phone (the network was down) is a failed refresh: the strip shows, with the time of the real load (the service marks such an answer `fromCache`).
+- **Dispatch cards' open lines are a nested `DataTable`** (Item | Kg each | GRN | Qty), as on the GRN list: figures are
+  sized to their values and stay on one line, 9,999 bags never split at font scale 1.3, and "Kg each" moves under the
+  item when crowded or at font scale 1.5 and over. Every spoken label is unchanged.
+- **Review R4 fixes: both lines tables keep the item column at least 5 em.**
+  - Dispatch card: when crowded or from font scale 1.5, "Kg each" and the GRN text both move under the item, leaving
+    Item | Qty. A Qty that would still crowd the item, or take over 45 % of the row, goes on its own line under it
+    (new `lastColumnAlone` in `common/DetailTable`). At 392 dp, font scale 2.0 and 9,999 bags the item used to get
+    0 dp.
+  - GRN card: the same rule. "Kg each" moves first, then Bags (at font scale 2.0 on 392 dp Bags now sits under the
+    item too, leaving Item | Stock), then Stock if it would still crowd the item.
+  - The GRN text of the Dispatch card is left-aligned text, as on Dispatch → Items.
+  - Stacked, the search highlight bolds only the searched package mark, not "50 kg each".
+  - "Kg each" has 72 dp at font scale 1 on both tables, room for the Gujarati heading on one line (as in e8d3fe9).
+    On a 360 dp phone ordinary Dispatch card lines therefore stack at font scale 1.
+  - The Dispatch card's figures now sit at the top of their row, as in the other tables (they were centred).
+  - Tests: column sets and the item column's width at font scale 1, 1.3, 1.5 and 2.0 on 360, 392 and 411 dp; the role
+    picker test fails when roles share one background.
+- **Review R6 fixes (Dispatch and GRN card tables).**
+  - Identifier text is never cut: the width estimate counts capital letters at 0.76 em and W and M at 0.92 em (digits, separators, ₹ and Gujarati unchanged), so "WMWM8884/21" fits its GRN column; under the item the Dispatch GRN text may wrap instead of ending in "…".
+  - The Dispatch layout counts the 4 dp margin the columns are drawn with, as the GRN table does. Result: on 392 dp at font scale 1 the lines now stack to Item | Qty (English and Gujarati); 411 dp keeps four columns for ordinary data. The item column keeps 5 em and 25 % of the row; the matrix test runs in English and Gujarati and checks both.
+  - "Kg each" stays 72 dp (owner decision).
+  - The Dispatch row's spoken label now includes the full package mark (as the GRN card's does); this corrects the earlier note that said it did.
+  - A searched GR number is bold in the Dispatch card table, in its column and under the item (the quantity after "/" stays plain).
+  - A Dispatch list answered only from the list saved on the phone (first load, new search, filter or sort) says "Last updated" with the time that list was saved, not now (`getEntry` on the bounded cache, `cachedAt` on the service answer).
+  - Tests: an offline sort change and a next page answered from the saved list keep their rows; the no-auto-shrink tests cover every figure and identifier Text in both card tables.
+- **Role picker icons** take their colour from `avatarColors` (`avatarColorsAt` for a role's fixed palette index),
+  not from a check of the mode (§3.8).
 - **Open cards are kept by the list.** A card no longer shows another GRN's open state after scrolling. Expand all
   also opens cards loaded later and is not animated; one card opening skips its animation under Reduce Motion.
 - **The card.**

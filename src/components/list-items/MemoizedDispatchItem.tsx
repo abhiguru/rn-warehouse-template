@@ -10,7 +10,7 @@
  * @module list-items/MemoizedDispatchItem
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -22,7 +22,6 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
   iconSize,
-  byLanguage,
   layout,
   motion,
   radius,
@@ -33,6 +32,19 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { animateExpand } from '@/utils/layoutMotion';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
+import {
+  CUT_LINE,
+  crowded,
+  lastColumnAlone,
+  makeTableStyles,
+  nb,
+  nestedRowWidth,
+  numberColumnWidth,
+  useTableLayout,
+  type TableLayout,
+} from '@/components/common/DetailTable';
 
 // ============================================================================
 // TYPES
@@ -173,101 +185,18 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
   },
-  // Data table (guide §13.7)
+  // The nested table's panel: the padding `nestedRowWidth` allows for (as on the GRN list).
   expandedSection: {
+    paddingHorizontal: space.md,
+    paddingTop: space.xs,
+    paddingBottom: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: t.border.divider,
   },
-  tableHeader: {
-    flexDirection: 'row' as const,
+  // The compact read-only row of the lines table (§13.7).
+  lineCompact: {
+    minHeight: 36,
     paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-    minHeight: layout.rowMinHeight,
-    alignItems: 'center' as const,
-    backgroundColor: t.background.base,
-  },
-  tableHeaderCell: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
-  },
-  // A row grows with its item cell (a two-line name, the rack, the mark); the
-  // cells beside it are centred on it, as on the GRN list.
-  tableRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
-    minHeight: layout.rowMinHeight,
-    backgroundColor: t.surface.card,
-  },
-  tableRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-  },
-  tableCell: {
-    justifyContent: 'center' as const,
-  },
-  colItem: {
-    flex: 1,
-    paddingRight: space.sm,
-  },
-  // Wide enough for its heading on one line at font scales 1.0 and 1.3, "Kg each" and
-  // the Gujarati "દરેકના kg" (72 dp to write in, as on the GRN list: padding inside the
-  // column left 64 dp, and the Gujarati heading wrapped); the number under it is the
-  // weight of one bag. The weight is right-aligned to the column edge with no padding, so
-  // the gap to the GRN text is made on the GRN side (colGrn paddingLeft).
-  colWeight: {
-    width: 72,
-    textAlign: 'right' as const,
-  },
-  // Gujarati digits are wider than Latin ones: "E0006/૧૦૦" needs more than "E0006/100".
-  // The cell has 92 dp to write in (108 in Gujarati): "RV15001/100" fits on one line
-  // at font scale 1.0; at larger text it goes onto two lines after the slash. The extra
-  // space.sm on the left is a gap to the weight number beside it ("50RV15001/100" otherwise,
-  // as the centred text has about 1 dp spare); the weight column is not narrowed for it.
-  colGrn: {
-    width: byLanguage(104, 120),
-    textAlign: 'center' as const,
-    paddingLeft: space.sm,
-    paddingRight: space.xs,
-  },
-  colQty: {
-    width: 48,
-    textAlign: 'right' as const,
-  },
-  tableCellValue: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  tableCellQty: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  // The item cell is a column: the name, then the rack on its own line, then the
-  // mark. Beside the weight and GRN columns the name has about 70 dp on a 360 dp
-  // phone (about 54 dp in Gujarati); it may take two lines, as on the GRN list.
-  // The rack never shares the name's line: beside it, the name was drawn as one
-  // letter at large text sizes. A long rack wraps rather than being cut.
-  tableCellItemName: {
-    ...typography.subhead,
-    fontWeight: fontWeight.medium,
-    color: t.text.primary,
-  },
-  tableCellRack: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    marginTop: space.xxs,
-  },
-  tableCellItemMark: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    marginTop: space.xxs,
   },
   // The card's own footer: tinted, with the text at the start, so it reads as
   // part of this card and not as a control for the whole list.
@@ -282,6 +211,9 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.sm,
     minHeight: touchTarget,
     backgroundColor: t.background.base,
+  },
+  stackedGrn: {
+    marginTop: space.xxs,
   },
   matchedText: {
     ...typography.footnote,
@@ -300,17 +232,6 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const NO_WORDS: string[] = [];
 
-/** A short table value (the weight, the quantity) stays on one line and shrinks to its column. */
-const TABLE_VALUE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
-
-/**
- * Where the GRN cell "E0006/100" may break: after the slash, and nowhere else.
- * Line breaking keeps "0006/100" together as one number, so a cell too narrow
- * for it broke the number itself ("E0006/10" over "0"), and shrinking it to one
- * line left it clipped on the phone. An invisible zero-width space marks the place.
- */
-const BREAK_AFTER_SLASH = '\u200B';
-
 /** Where a search matched inside a collapsed card: item, package, rack or GRN number of a line. */
 function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
   if (words.length === 0) return [];
@@ -322,6 +243,157 @@ function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
   }
   return [...found].slice(0, 3);
 }
+
+// ============================================================================
+// THE LINES OF AN OPEN CARD (nested table, style guide 13.7)
+// ============================================================================
+
+type DispatchLine = NonNullable<Dispatch['items']>[number];
+const lineHelper = createAppColumnHelper<DispatchLine>();
+/** Number columns at font scale 1, grown with the text and the widest value (`numberColumnWidth`). */
+/** 72: room for the Gujarati heading "દરેકના kg" on one line (2026-10-14, e8d3fe9). */
+export const KG_WIDTH = 72;
+const GRN_WIDTH = 72;
+const QTY_WIDTH = 48;
+
+/** Whole kilograms of one bag, as the column shows them. */
+const kgEachOf = (item: DispatchLine) => Math.round(Number(item.weight) || 0);
+const grnText = (item: DispatchLine) => `${item.gr_no ?? ''}/${formatNumber(item.grn_qty)}`;
+
+/**
+ * The GRN text: on one line in its own column (sized for it), and under the item allowed to wrap, because that
+ * column is not sized for it and "WMWM8881/9,999" would otherwise be cut with "…" (R6-1). Only the GR number is searched, so the searched words are bold there and the quantity stays plain (§14.6). */
+const GrnLineText: React.FC<{ item: DispatchLine; words: string[]; style: React.ComponentProps<typeof Text>['style']; wrap?: boolean }> = ({ item, words, style, wrap }) => (
+  <Text style={style} numberOfLines={wrap ? undefined : 1}>
+    {matchesAnyWord(item.gr_no, words) ? (
+      <>
+        <HighlightedText text={item.gr_no ?? ''} words={words} />
+        {`/${formatNumber(item.grn_qty)}`}
+      </>
+    ) : (
+      grnText(item)
+    )}
+  </Text>
+);
+
+/** What a screen reader says for one line, with the package mark in full (the card cuts it); a lot without a weight is read without one. */
+function lineLabel(item: DispatchLine): string {
+  const itemWithMark = [item.item_name, item.package_mark].filter(Boolean).join(', ');
+  const weightEach = formatWeightEach(kgEachOf(item));
+  return weightEach === null
+    ? translate(item.rack ? 'dispatch.listRow.noWeightRack' : 'dispatch.listRow.noWeight', {
+      item: itemWithMark,
+      rack: item.rack,
+      grn: formatIdentifier(item.gr_no),
+      quantity: item.disp_qty,
+    })
+    : translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
+      item: itemWithMark,
+      rack: item.rack,
+      weight: weightEach,
+      grn: formatIdentifier(item.gr_no),
+      quantity: item.disp_qty,
+    });
+}
+
+/**
+ * The columns of an open card's lines table (§13.7): Item | Kg each | GRN | Qty; when they would crowd the
+ * item (or from font scale 1.5) "Kg each" and the GRN text move under it, leaving Item | Qty; and a Qty that
+ * would still crowd it, or take too much of the row, goes under the item as well, right-aligned.
+ */
+export function dispatchLinesLayout(
+  screen: Pick<TableLayout, 'stacked' | 'scale' | 'width'>,
+  kgWidth: number,
+  grnWidth: number,
+  qtyWidth: number
+): { stacked: boolean; qtyUnder: boolean } {
+  const row = nestedRowWidth(screen);
+  const stacked = screen.stacked || crowded(row, [kgWidth, grnWidth, qtyWidth], 0, screen.scale);
+  return { stacked, qtyUnder: stacked && lastColumnAlone(row, qtyWidth, screen.scale) };
+}
+
+const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; rowKey: string; testID?: string }>(
+  ({ items, words, rowKey, testID }) => {
+    const table = useThemedStyles(makeTableStyles);
+    const styles = useThemedStyles(makeStyles);
+    const screen = useTableLayout();
+    const kgText = (item: DispatchLine) => (kgEachOf(item) > 0 ? formatNumber(kgEachOf(item)) : '—');
+    // The columns are drawn `space.xs` wider than the estimate, so an estimate a little short never cuts a figure
+    // (it is never shrunk either), and the layout counts that margin, as the GRN table does.
+    const kgWidth = numberColumnWidth(screen, KG_WIDTH, items.map(kgText));
+    const grnWidth = numberColumnWidth(screen, GRN_WIDTH, items.map(grnText));
+    const qtyWidth = numberColumnWidth(screen, QTY_WIDTH, items.map(item => formatNumber(item.disp_qty)));
+    const { stacked, qtyUnder } = dispatchLinesLayout(screen, kgWidth + space.xs, grnWidth + space.xs, qtyWidth + space.xs);
+
+    const columns = useMemo(
+      () =>
+        lineHelper.columns([
+          lineHelper.display({
+            id: 'item',
+            header: translate('common.item'),
+            meta: { width: 'grow' },
+            cell: ({ row }) => {
+              const item = row.original;
+              const weight = stacked ? formatWeightEach(kgEachOf(item)) : null;
+              const mark = item.package_mark || null;
+              return (
+                <>
+                  <HighlightedText style={table.primary} numberOfLines={2} ellipsizeMode="tail" text={item.item_name ?? ''} words={words} />
+                  {item.rack ? <Text style={table.secondary}>({item.rack})</Text> : null}
+                  {/* Only the mark was searched: the weight under it stays plain (§14.6). A long mark is cut at the normal size (§13.7). */}
+                  {mark ? <HighlightedText style={table.secondary} {...CUT_LINE} text={nb(mark)} words={words} /> : null}
+                  {weight ? <Text style={table.secondary}>{nb(weight)}</Text> : null}
+                  {stacked ? <GrnLineText style={[table.secondary, styles.stackedGrn]} item={item} words={words} wrap /> : null}
+                  {qtyUnder ? <Text style={table.numberStrong} numberOfLines={1}>{formatNumber(item.disp_qty)}</Text> : null}
+                </>
+              );
+            },
+          }),
+          ...(stacked
+            ? []
+            : [
+                lineHelper.display({
+                  id: 'kgEach',
+                  header: translate('lists.card.colKgEach'),
+                  meta: { width: kgWidth + space.xs, numeric: true },
+                  cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{kgText(row.original)}</Text>,
+                }),
+                // Text, so left-aligned like the same figure on Dispatch -> Items (§13.7).
+                lineHelper.display({
+                  id: 'grn',
+                  header: translate('lists.card.colGrn'),
+                  meta: { width: grnWidth + space.xs },
+                  cell: ({ row }) => <GrnLineText style={table.primary} item={row.original} words={words} />,
+                }),
+              ]),
+          lineHelper.display({
+            id: 'qty',
+            header: translate('lists.card.colQty'),
+            // Under the item the quantity has no column of its own, only its heading over the end of the row.
+            meta: { width: qtyUnder ? 'auto' : qtyWidth + space.xs, numeric: true, headerOnly: qtyUnder },
+            cell: ({ row }) => <Text style={table.numberStrong} numberOfLines={1}>{formatNumber(row.original.disp_qty)}</Text>,
+          }),
+        ]),
+      // kgText reads only its argument.
+      [stacked, qtyUnder, kgWidth, grnWidth, qtyWidth, table, styles, words]
+    );
+    const grid = useAppTable({ data: items, columns, getRowId: (item, index) => `${rowKey}-item-${item.grn_item_id}-${index}` });
+
+    return (
+      <DataTable
+        table={grid}
+        variant="nested"
+        headerOneLine={false}
+        rowStyle={styles.lineCompact}
+        rowLabel={(row) => lineLabel(row.original)}
+        rowTestID={(row) => row.id}
+        testID={testID}
+      />
+    );
+  }
+);
+
+DispatchLinesTable.displayName = 'DispatchLinesTable';
 
 // ============================================================================
 // COMPONENT
@@ -430,59 +502,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       {/* Expanded Items Table - SAP Fiori Data Table */}
       {isExpanded && hasItems && (
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
-          </View>
-
-          {dispatch.items!.map((item, idx) => {
-            // Whole kilograms of one bag, as the column shows them. A lot without a
-            // weight shows a dash and is read without one.
-            const kg = Math.round(Number(item.weight) || 0);
-            const weightEach = formatWeightEach(kg);
-            return (
-              <View
-                key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
-                style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
-                accessible
-                accessibilityLabel={
-                  weightEach === null
-                    ? translate(item.rack ? 'dispatch.listRow.noWeightRack' : 'dispatch.listRow.noWeight', {
-                      item: item.item_name,
-                      rack: item.rack,
-                      grn: formatIdentifier(item.gr_no),
-                      quantity: item.disp_qty,
-                    })
-                    : translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
-                      item: item.item_name,
-                      rack: item.rack,
-                      weight: weightEach,
-                      grn: formatIdentifier(item.gr_no),
-                      quantity: item.disp_qty,
-                    })
-                }
-              >
-                <View style={[styles.tableCell, styles.colItem]}>
-                  <HighlightedText style={styles.tableCellItemName} numberOfLines={2} ellipsizeMode="tail" text={item.item_name ?? ''} words={words} />
-                  {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
-                  {item.package_mark ? (
-                    <HighlightedText style={styles.tableCellItemMark} text={item.package_mark} words={words} />
-                  ) : null}
-                </View>
-                <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
-                  {weightEach === null ? '—' : formatNumber(kg)}
-                </Text>
-                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
-                  {`${item.gr_no ?? ''}/${BREAK_AFTER_SLASH}${formatNumber(item.grn_qty)}`}
-                </Text>
-                <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
-                  {formatNumber(item.disp_qty)}
-                </Text>
-              </View>
-            );
-          })}
+          <DispatchLinesTable items={dispatch.items!} words={words} rowKey={String(dispatchId)} testID={`dispatch-lines-${dispatchId}`} />
         </Animated.View>
       )}
 

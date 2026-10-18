@@ -47,20 +47,22 @@ import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/componen
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
 import {
-  ONE_LINE,
+  CUT_LINE,
   crowded,
+  lastColumnAlone,
   makeTableStyles,
   nb,
   nestedRowWidth,
   numberColumnWidth,
   useTableLayout,
+  type TableLayout,
 } from '@/components/common/DetailTable';
 import { createLogger } from '@/utils/logger';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { animateExpand } from '@/utils/layoutMotion';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, singleLineText } from '@/theme/tokens';
+import { iconSize, singleLineText, space } from '@/theme/tokens';
 
 // Filters, search and sort (docs/STYLE_GUIDE.md §14.5)
 import { GRN_FILTERS } from '@/features/filters/configs';
@@ -97,8 +99,9 @@ const stockStatusFor = (stock: number, qty: number): GRNStockStatus =>
 /** "120 of 200 bags": what is left of what was received (style guide 13.5, StockIndicator). */
 const stockText = (stock: number, qty: number) =>
   qty > 0
-    ? translate('components.stock.currentOfTotal', { current: formatNumber(stock), total: formatCount(qty, 'bag') })
-    : formatCount(stock, 'bag');
+    // "9,999 bags" keeps its unit at a line break: a wrap falls after "of" (phone run GL, 2026-10-18).
+    ? translate('components.stock.currentOfTotal', { current: formatNumber(stock), total: nb(formatCount(qty, 'bag')) })
+    : nb(formatCount(stock, 'bag'));
 
 /** Whole kilograms, as the column always showed. A line without a weight has none to show or say. */
 const kgEachOf = (item: GRNItem) => Math.round(item.weight || 0);
@@ -141,18 +144,39 @@ function hiddenMatches(group: GRNGroupData, words: string[]): string[] {
 const lineHelper = createAppColumnHelper<GRNItem>();
 /** Number columns at font scale 1, grown with the text and the widest value (`numberColumnWidth`). */
 const BAGS_WIDTH = 48;
-const KG_WIDTH = 56;
+/** 72: room for the Gujarati heading "દરેકના kg" on one line (2026-10-14, e8d3fe9). */
+const KG_WIDTH = 72;
 const STOCK_WIDTH = 52;
+
+/**
+ * The columns of an open card's lines table (§13.7): Item | Bags | Kg each | Stock. When they would crowd the
+ * item (or from font scale 1.5) "Kg each" moves under it; if Bags and Stock still crowd it, Bags moves too; and a
+ * Stock that would still crowd the item, or take too much of the row, goes under the item as well (right-aligned).
+ */
+export function grnLinesLayout(
+  screen: Pick<TableLayout, 'stacked' | 'scale' | 'width'>,
+  bagsWidth: number,
+  kgWidth: number,
+  stockWidth: number
+): { kgUnder: boolean; bagsUnder: boolean; stockUnder: boolean } {
+  const row = nestedRowWidth(screen);
+  const kgUnder = screen.stacked || crowded(row, [bagsWidth, kgWidth, stockWidth], 0, screen.scale);
+  const bagsUnder = kgUnder && crowded(row, [bagsWidth, stockWidth], 0, screen.scale);
+  const stockUnder = bagsUnder && lastColumnAlone(row, stockWidth, screen.scale);
+  return { kgUnder, bagsUnder, stockUnder };
+}
 
 const GRNLinesTable = memo<{ items: GRNItem[]; styles: GRNListStyles; testID?: string }>(({ items, styles, testID }) => {
   const table = useThemedStyles(makeTableStyles);
   const screen = useTableLayout();
   const kgText = (item: GRNItem) => (kgEachOf(item) > 0 ? formatNumber(kgEachOf(item)) : '—');
+  // The columns are drawn `space.xs` wider than the estimate, and the layout counts that margin, so an
+  // estimate a little short never cuts a figure (it is never shrunk either).
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, items.map(item => formatNumber(item.qty || 0)));
   const kgWidth = numberColumnWidth(screen, KG_WIDTH, items.map(kgText));
   const stockWidth = numberColumnWidth(screen, STOCK_WIDTH, items.map(item => formatNumber(item.stock || 0)));
   // At large text, or when the figures would crowd the item, "Kg each" moves under the item.
-  const stacked = screen.stacked || crowded(nestedRowWidth(screen), [bagsWidth, kgWidth, stockWidth], 0, screen.scale);
+  const { kgUnder, bagsUnder, stockUnder } = grnLinesLayout(screen, bagsWidth + space.xs, kgWidth + space.xs, stockWidth + space.xs);
 
   const columns = useMemo(
     () =>
@@ -164,45 +188,54 @@ const GRNLinesTable = memo<{ items: GRNItem[]; styles: GRNListStyles; testID?: s
           cell: ({ row }) => {
             const item = row.original;
             const status = stockStatusFor(item.stock, item.qty);
-            const weight = stacked ? formatWeightEach(kgEachOf(item)) : null;
-            const under = [item.package_mark || null, weight].filter(Boolean).join(' · ');
+            const weight = kgUnder ? formatWeightEach(kgEachOf(item)) : null;
+            const mark = item.package_mark || null;
             return (
               <>
                 <Text style={table.primary}>{item.item_name}</Text>
-                {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
+                {/* A long mark is cut at the normal size, never wrapped by letters (§13.7); the full mark is in the row's label. */}
+                {mark ? <Text style={table.secondary} {...CUT_LINE}>{nb(mark)}</Text> : null}
+                {weight ? <Text style={table.secondary}>{nb(weight)}</Text> : null}
+                {bagsUnder ? <Text style={table.secondary} numberOfLines={1}>{nb(formatCount(item.qty || 0, 'bag'))}</Text> : null}
                 {/* The line's status only when it is not In stock: a word under the item, never a cut figure. */}
                 {status.status !== 'positive' ? (
                   <StatusTag status={status.status} label={status.label} icon={status.icon} wrap style={styles.lineTag} />
                 ) : null}
+                {stockUnder ? <Text style={table.number} numberOfLines={1}>{formatNumber(item.stock || 0)}</Text> : null}
               </>
             );
           },
         }),
-        lineHelper.display({
-          id: 'bags',
-          header: translate('common.bags'),
-          meta: { width: bagsWidth, numeric: true },
-          cell: ({ row }) => <Text style={table.number} {...ONE_LINE}>{formatNumber(row.original.qty || 0)}</Text>,
-        }),
-        ...(stacked
+        ...(bagsUnder
+          ? []
+          : [
+              lineHelper.display({
+                id: 'bags',
+                header: translate('common.bags'),
+                meta: { width: bagsWidth + space.xs, numeric: true },
+                cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{formatNumber(row.original.qty || 0)}</Text>,
+              }),
+            ]),
+        ...(kgUnder
           ? []
           : [
               lineHelper.display({
                 id: 'kgEach',
                 header: translate('lists.card.colKgEach'),
-                meta: { width: kgWidth, numeric: true },
-                cell: ({ row }) => <Text style={table.number} {...ONE_LINE}>{kgText(row.original)}</Text>,
+                meta: { width: kgWidth + space.xs, numeric: true },
+                cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{kgText(row.original)}</Text>,
               }),
             ]),
         lineHelper.display({
           id: 'stock',
           header: translate('common.stock'),
-          meta: { width: stockWidth, numeric: true },
-          cell: ({ row }) => <Text style={table.number} {...ONE_LINE}>{formatNumber(row.original.stock || 0)}</Text>,
+          // Under the item the stock has no column of its own, only its heading over the end of the row.
+          meta: { width: stockUnder ? 'auto' : stockWidth + space.xs, numeric: true, headerOnly: stockUnder },
+          cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{formatNumber(row.original.stock || 0)}</Text>,
         }),
       ]),
     // kgText reads only its argument.
-    [stacked, bagsWidth, kgWidth, stockWidth, table, styles]
+    [kgUnder, bagsUnder, stockUnder, bagsWidth, kgWidth, stockWidth, table, styles]
   );
   const grid = useAppTable({ data: items, columns, getRowId: (item, index) => item.grn_item_id || `${item.id}-${index}` });
 
