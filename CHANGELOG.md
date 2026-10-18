@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased — GRN tab and filters: design review fixes (2026-10-18)
+
+Fixes from the 2026-10-18 design review of the GRN tab and its filters, judged against `docs/STYLE_GUIDE.md`.
+Needs backend migration 98 (`grn_list_receipt_pages`: receipt pages and the low-stock filter): merge and deploy
+the backend first. On a facility without it the list pages lines as before, the apply button reads "Show
+results", and Low stock is ignored for staff (all lines show) and matches nothing for a customer account.
+
+- **Whole GRNs on every page.** The list asks for pages of receipts (`p_filters.page_by = 'receipt'`, 20 a page),
+  so a GRN's lines are never split across two pages and its stock, item count and tag are always its own. A
+  customer account with several customers merges receipts, not lines. "Show 9 GRNs" counts GRNs.
+- **Actions by role.** Customers get a plain card: no swipe and no Edit (it used to bounce them back to the list).
+  For the other roles, Print and Edit are also screen-reader actions of the card, and its hint says so.
+- **Load errors as the guide says (§14.9).**
+  - A failed refresh keeps the rows under a strip that says when they were loaded, with Try again.
+  - A failed next page is the last row with Try again.
+  - A failed new filter is the error state, not old rows.
+  - Offline, the top of the list says when it was loaded.
+  - A print job sent is a toast; a failed or unconfirmed one is a dialog.
+- **Shared parts.** The header, the empty, filtered-empty and error states, the skeleton and the date headings
+  ("20+" while more pages remain) are the shared ones.
+- **The open card's lines are a nested `DataTable`.**
+  - Number columns are sized to their figures, so 9,999 bags never break at font scale 1.3.
+  - "Kg each" moves under the item when crowded.
+  - A line that is not In stock has its status under the item.
+- **Open cards are kept by the list.** A card no longer shows another GRN's open state after scrolling. Expand all
+  also opens cards loaded later and is not animated; one card opening skips its animation under Reduce Motion.
+- **The card.**
+  - The package icon that was the same on every row is gone.
+  - The right side reads "120 of 200 bags" over the status tag, instead of "120 / in stock / In stock".
+- **Busy line.** While new results load over the rows on screen, a moving line shows over the filter bar's bottom
+  edge (`FilteredListHeader` `busy`).
+- **Stock filter:** All, In stock, Low stock, Fully dispatched, the words of the cards' tags.
+- **Search hint:** "GRN no., customer, item or date".
+- **Filters on every list.**
+  - The × of an active chip is a whole touch target.
+  - Reset and Done in sheet and page headers are whole targets.
+  - Customer and Item rows on Sort and filter press like rows.
+  - A range the wrong way round no longer disables Apply: a press says what to fix.
+- **Gujarati:** the new and changed texts are drafts for the owner's wording review.
+
 ## Unreleased — Ops review wave 4: tooling (2026-10-18)
 
 Fixes from the 2026-10-17 operational review (findings M03, M04, M10, M11, M13, and a Low left from wave 2). No

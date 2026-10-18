@@ -109,7 +109,8 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
         <ApplyFiltersButton
           result={result}
           noun={config.noun}
-          disabled={invalid || incomplete}
+          disabled={incomplete}
+          blockedMessage={invalid ? t('filters.range.minAboveMax') : undefined}
           onPress={() => {
             filters.setField(field.key, draft);
             onClose();

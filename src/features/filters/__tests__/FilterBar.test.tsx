@@ -216,6 +216,10 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
       expect(pressable.props.hitSlop).toBeUndefined();
       expect(StyleSheet.flatten(pressable.props.style).minHeight).toBe(touchTarget);
     }
+    // The close target of an active chip is a whole square, not a 36 wide strip (GRN list review 2026-10-18).
+    const removes = pressables.filter(node => String(node.props.accessibilityLabel).startsWith('Remove filter'));
+    expect(removes.length).toBeGreaterThanOrEqual(1);
+    for (const remove of removes) expect(StyleSheet.flatten(remove.props.style).width).toBe(touchTarget);
     // The pills: 36 high inside the target, centred, outlined or filled from the theme.
     const pills = renderer.root.findAll(node => (node.type as unknown) === 'View' && StyleSheet.flatten(node.props.style)?.position === 'absolute' && StyleSheet.flatten(node.props.style)?.borderWidth === 1);
     expect(pills.length).toBeGreaterThanOrEqual(4);

@@ -59,17 +59,17 @@ describe('a language switch at run time', () => {
     const numbers = field(GRN_FILTERS, 'numberRange');
     const year = field(INVOICE_FILTERS, 'year');
     const labels = (candidate: FilterFieldDef) => (candidate.kind === 'choice' ? candidate.options.map(option => option.label) : []);
-    expect(labels(stock)).toEqual(['All', 'In stock', 'Out of stock']);
+    expect(labels(stock)).toEqual(['All', 'In stock', 'Low stock', 'Fully dispatched']);
     expect(labels(year)[0]).toBe('All years');
     setLanguage('gu');
-    expect(labels(stock)).toEqual(['બધા', 'સ્ટોકમાં છે', 'સ્ટોક નથી']);
+    expect(labels(stock)).toEqual(['બધા', 'સ્ટોકમાં છે', 'ઓછો સ્ટોક', 'પૂરી જાવક થઈ']);
     expect(labels(year)[0]).toBe('બધાં વર્ષ');
     expect(labels(year)[1]).toBe(financialYearLabel(Number(year.kind === 'choice' ? year.options[1].value : 0)));
     expect(labels(year)[1]).toMatch(/^[૦-૯]{4}-[૦-૯]{2}$/);
     expect(weight.kind === 'numberRange' && weight.unit).toBe('કિલો');
     expect(numbers.kind === 'textRange' && numbers.placeholder).toEqual(['શરૂઆતનો નંબર', 'છેલ્લો નંબર']);
     expect(GRN_FILTERS.title).toBe('આવક પાવતી ફિલ્ટર કરો');
-    expect(GRN_FILTERS.search?.placeholder).toBe('આવક પાવતી શોધો');
+    expect(GRN_FILTERS.search?.placeholder).toBe('આવક નં., વેપારી, આઇટમ કે તારીખ');
     expect(ORDER_FILTERS.search?.placeholder).toBe('ઑર્ડર શોધો');
   });
 
@@ -82,7 +82,7 @@ describe('a language switch at run time', () => {
     ]);
     setLanguage('gu');
     expect(config.title).toBe('આવક પાવતી ફિલ્ટર કરો');
-    expect(config.search?.placeholder).toBe('આવક પાવતી શોધો');
+    expect(config.search?.placeholder).toBe('આવક નં., વેપારી, આઇટમ કે તારીખ');
     expect(visibleFields(config, staff).map(candidate => candidate.label)).toEqual([
       'સ્ટોક', 'તારીખ', 'વેપારી', 'આઇટમ', 'આવક પાવતી નંબર', 'દરેકનું વજન', 'માર્કો',
     ]);
@@ -166,7 +166,7 @@ describe('a language switch at run time', () => {
     expect(describeValue(numbers, { from: 'A0010', to: 'A0020' })).toBe('A0010થી A0020 સુધી');
     expect(describeValue(numbers, { from: 'A0010' })).toBe('A0010થી');
     expect(describeValue(numbers, { to: 'A0020' })).toBe('A0020 સુધી');
-    expect(describeValue(field(GRN_FILTERS, 'stock'), 'out_of_stock')).toBe('સ્ટોક નથી');
+    expect(describeValue(field(GRN_FILTERS, 'stock'), 'out_of_stock')).toBe('પૂરી જાવક થઈ');
     expect(describeValue(field(GRN_FILTERS, 'package'), ' red ')).toBe('માર્કો: red');
     expect(describeValue(field(GRN_FILTERS, 'customers'), [{ id: '1', label: 'Lakeview Spices' }, { id: '2', label: 'B' }, { id: '3', label: 'C' }])).toBe('Lakeview Spices +૨');
   });

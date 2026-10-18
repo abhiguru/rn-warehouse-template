@@ -66,6 +66,11 @@ export interface RpcPagination {
   limit: number;
   offset: number;
   has_more: boolean;
+  /**
+   * What `limit`, `offset` and `total_count` count. GRN lists asked for `page_by: 'receipt'` count receipts
+   * when the facility has backend migration 98; every other list, and older facilities, count rows ('line').
+   */
+  unit?: 'line' | 'receipt';
   /** Customer-account lists: the history collected in the app stopped at its upper bound. */
   history_limit_reached?: boolean;
 }

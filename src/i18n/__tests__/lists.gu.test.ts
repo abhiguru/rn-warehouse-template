@@ -28,14 +28,16 @@ describe('lists in Gujarati', () => {
     );
     // The column over the bare number says "each" too; "kg" stays in Latin letters there (glossary).
     expect(t('lists.card.colKgEach')).toBe('દરેકના kg');
-    expect(t('lists.grn.stockCount', { stock: formatNumber(4500) })).toBe('સ્ટોકમાં ૪,૫૦૦');
+    expect(t('lists.grn.itemStock', { stock: formatNumber(4500), status: 'ઓછો સ્ટોક' })).toBe('સ્ટોકમાં ૪,૫૦૦, ઓછો સ્ટોક');
     expect(t('lists.orderGroup.itemRowLow', { item: 'લસણ', stock: 5, quantity: 40 })).toBe('લસણ, સ્ટોક ૫, નંગ ૪૦, ઓછો સ્ટોક');
   });
 
   it('builds whole sentences around a count that is already worded', () => {
     setLanguage('gu');
     expect(t('lists.section.label', { title: 'આજે', countText: formatCount(3, 'dispatch', 'dispatches') })).toBe('આજે, ૩ જાવક');
-    expect(t('lists.grn.showDetailsOf', { items: formatCount(2, 'item') })).toBe('આ આવક પાવતીમાં ૨ આઇટમ. આઇટમની વિગતો બતાવો');
+    expect(t('lists.grn.showDetailsOf', { title: t('lists.grn.cardTitle', { number: 'A0010' }), items: formatCount(2, 'item') })).toBe(
+      'આવક પાવતી A0010ની આઇટમની વિગતો બતાવો, ૨ આઇટમ'
+    );
     expect(t('lists.queue.countLabel', { orders: formatCount(14, 'order') })).toBe('કતારમાં ૧૪ ઑર્ડર');
     expect(t('lists.orderGroup.skippedMessage', { items: '• લસણ: સ્ટોક નથી', itemCount: formatCount(2, 'item') })).toBe(
       'આ આઇટમની જાવક થઈ શકશે નહીં:\n\n• લસણ: સ્ટોક નથી\n\n૨ આઇટમ સાથે જાવક બનાવવી છે?'

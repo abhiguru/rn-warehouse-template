@@ -4,11 +4,13 @@
  * from a picker returns to the form.
  */
 import React from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, StyleSheet } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { ApplyFiltersButton } from '@/features/filters/components/ApplyFiltersButton';
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import { touchTarget } from '@/theme/tokens';
 import ListFiltersScreen from '../list-filters';
 
 // The mocked react-native components are plain strings in the tree, so the tag names are cast
@@ -126,6 +128,15 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 describe('Sort and filter page', () => {
+  it('makes Reset in the header a whole touch target, with no hitSlop (§11.2)', () => {
+    const page = open();
+    page.press('In stock');
+    const reset = page.renderer.root.findAll(node => node.props.accessibilityLabel === t('filters.page.resetLabel') && typeof node.props.onPress === 'function')[0];
+    const style = StyleSheet.flatten(typeof reset.props.style === 'function' ? reset.props.style({ pressed: false }) : reset.props.style);
+    expect(reset.props.hitSlop).toBeUndefined();
+    expect(style.minHeight).toBe(touchTarget);
+  });
+
   it('closes at once when nothing was changed', () => {
     const page = open();
     page.press('Close without applying');

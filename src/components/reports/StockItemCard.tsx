@@ -29,12 +29,10 @@
 import React, { memo } from 'react';
 import {
   ActivityIndicator,
-  LayoutAnimation,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type LayoutAnimationConfig,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -45,13 +43,13 @@ import {
   fontWeight,
   iconSize,
   layout,
-  motion,
   radius,
   space,
   touchTarget,
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { EXPAND_ANIMATION, animateExpand } from '@/utils/layoutMotion';
 import { StatusTag } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
 import { formatCount, formatIndiaDate, formatNumber, formatWeightEach } from '@/utils/formatters';
@@ -177,18 +175,8 @@ export const isLowStock = (stock: number, total: number): boolean => {
   return percent < LOW_STOCK_PERCENT;
 };
 
-/** Opening or closing a section (§9): 200 ms, ease-out in, ease-in out. */
-export const EXPAND_ANIMATION: LayoutAnimationConfig = {
-  duration: motion.standard,
-  create: { type: LayoutAnimation.Types.easeOut, property: LayoutAnimation.Properties.opacity },
-  update: { type: LayoutAnimation.Types.easeInEaseOut },
-  delete: { type: LayoutAnimation.Types.easeIn, property: LayoutAnimation.Properties.opacity },
-};
-
-/** Animates the next layout change as an expanding section, unless Reduce Motion is on. */
-export const animateExpand = (reduceMotion: boolean): void => {
-  if (!reduceMotion) LayoutAnimation.configureNext(EXPAND_ANIMATION);
-};
+// The expand animation is shared with the GRN list (src/utils/layoutMotion.ts).
+export { EXPAND_ANIMATION, animateExpand };
 
 // ============================================================================
 // STYLES

@@ -24,7 +24,8 @@ export const filters = {
   },
   // Page titles and search placeholders, per list
   list: {
-    grn: { title: 'Filter GRNs', search: 'Search GRNs' },
+    // Says what it finds; it must fit the field on one line (docs/I18N.md).
+    grn: { title: 'Filter GRNs', search: 'GRN no., customer, item or date' },
     dispatch: { title: 'Filter dispatches', search: 'Search dispatches' },
     invoice: { title: 'Filter invoices', search: 'Search invoices' },
     order: { title: 'Filter orders', search: 'Search orders' },
@@ -61,6 +62,7 @@ export const filters = {
   results: {
     showResults: 'Show results',
     item: { show: { one: 'Show {{count}} item', other: 'Show {{count}} items' }, none: 'No items match' },
+    grn: { show: { one: 'Show {{count}} GRN', other: 'Show {{count}} GRNs' }, none: 'No GRNs match' },
     dispatch: { show: { one: 'Show {{count}} dispatch', other: 'Show {{count}} dispatches' }, none: 'No dispatches match' },
     invoice: { show: { one: 'Show {{count}} invoice', other: 'Show {{count}} invoices' }, none: 'No invoices match' },
     order: { show: { one: 'Show {{count}} order', other: 'Show {{count}} orders' }, none: 'No orders match' },
@@ -106,6 +108,8 @@ export const filters = {
     clearAllLabel: 'Clear all filters and the search',
   },
   header: {
+    // The moving line under the filter bar while new results load.
+    busy: 'Loading new results',
     expandAll: {
       grn: 'Expand all GRNs',
       dispatch: 'Expand all dispatches',

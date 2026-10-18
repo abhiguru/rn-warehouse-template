@@ -46,12 +46,19 @@ describe('every header with a Settings entry', () => {
   const root = path.resolve(__dirname, '../../..');
   it.each([
     'src/features/filters/components/FilteredListHeader.tsx',
-    'src/components/GRNListFiori.tsx',
     'app/(tabs)/reports.tsx',
   ])('%s draws the gear and no avatar', file => {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     const entry = source.slice(source.indexOf("router.push('/settings')"));
     expect(entry.slice(0, 600)).toContain('name="cog-outline"');
+    expect(source).not.toMatch(/<Avatar\b/);
+  });
+
+  // Since 2026-10-18 the GRN tab draws the shared list header, so its gear is the one tested above.
+  it('the GRN tab uses the shared list header and draws no header of its own', () => {
+    const source = fs.readFileSync(path.join(root, 'src/components/GRNListFiori.tsx'), 'utf8');
+    expect(source).toContain('<FilteredListHeader');
+    expect(source).not.toContain("router.push('/settings')");
     expect(source).not.toMatch(/<Avatar\b/);
   });
 });

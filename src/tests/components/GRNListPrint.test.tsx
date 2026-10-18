@@ -1,13 +1,16 @@
 /**
  * GRN list, printing: when the printer did not confirm the job (print result `unconfirmed`),
- * the snackbar says to check the printer before printing again, as the invoice screens do,
- * and not the plain failure that invites a reprint.
+ * the dialog says to check the printer before printing again, as the invoice screens do,
+ * and not the plain failure that invites a reprint. A failure needs the person to act, so it
+ * is a dialog with the GRN Review step's titles; a job sent is a short toast (§13.9).
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import GRNListFiori from '@/components/GRNListFiori';
 import { getAllGRNItems } from '@/services/grn-service';
 import { printGRNRange } from '@/services/print-service';
+import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 // Every row is drawn, as the list draws the rows on screen.
@@ -22,21 +25,27 @@ jest.mock('@shopify/flash-list', () => {
       ),
   };
 });
-jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 // Reduced motion: the loading skeleton's spring would otherwise go on running after the test is over.
 jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
-jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getAssignedCustomerGRNItems: jest.fn() }));
-jest.mock('@/features/filters/configs', () => ({
-  FILTER_CONFIGS: { 'grn-list': {} },
-  GRN_FILTERS: { listKey: 'grn-list', search: { placeholder: 'Search GRNs' } },
+jest.mock('@/services/grn-service', () => ({
+  getAllGRNItems: jest.fn(),
+  getAssignedCustomerGRNItems: jest.fn(),
+  withReceiptPages: (request: object) => request,
+  countReceipts: (items: unknown[]) => items.length,
 }));
+jest.mock('@/features/filters/configs', () => ({ GRN_FILTERS: { listKey: 'grn-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
-jest.mock('@/features/filters/components/FilterBar', () => ({ FilterBar: () => null }));
-jest.mock('@/features/filters/components/ListSearchField', () => ({ ListSearchField: () => null }));
+jest.mock('@/features/filters/components/FilteredListHeader', () => ({
+  FilteredListHeader: () => null,
+  filteredEmptyProps: () => ({ activeFilterCount: 0 }),
+}));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 const mockFilters = {
   request: { p_sort_by: 'gr_no', p_sort_order: 'desc' },
   sort: { field: 'gr_no', order: 'desc' },
@@ -92,7 +101,10 @@ async function renderList(rows: ReturnType<typeof row>[]) {
   return tree;
 }
 
-beforeEach(() => { jest.spyOn(console, 'warn').mockImplementation(() => {}); });
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
 afterEach(async () => {
   jest.restoreAllMocks();
   await act(async () => {
@@ -100,17 +112,38 @@ afterEach(async () => {
   });
 });
 
-const snackbarText = (tree: ReactTestRenderer) =>
-  tree.root.findByType('Snackbar' as never).findAll((node) => (node.type as unknown) === 'Text').map((node) => ([] as unknown[]).concat(node.props.children).join(''));
+const confirmPrint = (tree: ReactTestRenderer) =>
+  act(async () => { await tree.root.findByType('PrintRangeDialog' as never).props.onConfirm('RV15001', 'RV15001'); });
 
 it.each([
-  [{ success: false, error: 'x', unconfirmed: true }, 'The printer did not confirm the job. Check the printer before printing again.'],
-  [{ success: false, error: 'x' }, "Couldn't send the print job. Check the printer and try again."],
-])('print answer %j shows "%s"', async (answer, text) => {
+  [{ success: false, error: 'x', unconfirmed: true }, 'Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'],
+  [{ success: false, error: 'x' }, "Couldn't print", "Couldn't send the print job. Check the printer and try again."],
+])('print answer %j asks "%s"', async (answer, title, text) => {
   jest.mocked(printGRNRange).mockResolvedValue(answer as never);
   const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
 
-  await act(async () => { await tree.root.findByType('PrintRangeDialog' as never).props.onConfirm('RV15001', 'RV15001'); });
+  await confirmPrint(tree);
 
-  expect(snackbarText(tree)).toEqual([text]);
+  expect(showAlert).toHaveBeenCalledWith(title, text);
+  expect(showToast).not.toHaveBeenCalled();
+});
+
+it('says a print job was sent in a toast, with its number', async () => {
+  jest.mocked(printGRNRange).mockResolvedValue({ success: true, print_job: { cups_job_id: 42 } } as never);
+  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
+
+  await confirmPrint(tree);
+
+  expect(showToast).toHaveBeenCalledWith('Print job 42 sent.');
+  expect(showAlert).not.toHaveBeenCalled();
+});
+
+it('a dropped connection is a dialog that says to check the connection', async () => {
+  jest.mocked(printGRNRange).mockRejectedValue(new Error('Network unavailable'));
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
+
+  await confirmPrint(tree);
+
+  expect(showAlert).toHaveBeenCalledWith("Couldn't print", "Couldn't send the print job. Check your connection and try again.");
 });

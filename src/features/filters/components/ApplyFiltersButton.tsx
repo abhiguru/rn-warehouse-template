@@ -13,10 +13,16 @@ export interface ApplyFiltersButtonProps {
   result: FilterResultCount;
   noun: [string, string];
   onPress: () => void;
+  /** Only for something the person has not entered yet (both days of a required period, §14.5). */
   disabled?: boolean;
+  /**
+   * A value that is wrong (a range the wrong way round): the button stays pressable, and a press says what to fix
+   * instead of applying (§10). The field shows the same message.
+   */
+  blockedMessage?: string;
 }
 
-export function ApplyFiltersButton({ result, noun, onPress, disabled }: ApplyFiltersButtonProps) {
+export function ApplyFiltersButton({ result, noun, onPress, disabled, blockedMessage }: ApplyFiltersButtonProps) {
   const label = resultsLabel(result, noun);
   // Android reads the live region below; iOS needs an explicit announcement.
   useEffect(() => {
@@ -27,7 +33,14 @@ export function ApplyFiltersButton({ result, noun, onPress, disabled }: ApplyFil
 
   return (
     <View accessibilityLiveRegion="polite">
-      <Button type="primary" size="fullWidth" onPress={onPress} disabled={disabled} loading={result.loading && result.count === null} loadingText={t('filters.results.showResults')}>
+      <Button
+        type="primary"
+        size="fullWidth"
+        onPress={blockedMessage ? () => AccessibilityInfo.announceForAccessibility(blockedMessage) : onPress}
+        disabled={disabled}
+        loading={result.loading && result.count === null}
+        loadingText={t('filters.results.showResults')}
+      >
         {label}
       </Button>
     </View>

@@ -121,7 +121,7 @@ describe('search read for a list', () => {
 
 describe('chip text', () => {
   it('describes each kind of value briefly', () => {
-    expect(describeValue(field('stock'), 'out_of_stock')).toBe('Out of stock');
+    expect(describeValue(field('stock'), 'out_of_stock')).toBe('Fully dispatched');
     expect(describeValue(field('stock'), 'all')).toBe('Stock');
     expect(describeValue(field('customers'), [{ id: '1', label: 'Lakeview Spices' }])).toBe('Lakeview Spices');
     expect(describeValue(field('customers'), [{ id: '1', label: 'Lakeview Spices' }, { id: '2', label: 'B' }, { id: '3', label: 'C' }])).toBe('Lakeview Spices +2');

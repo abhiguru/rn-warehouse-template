@@ -129,6 +129,10 @@ describe('GRN request', () => {
     });
   });
 
+  it('sends Low stock as its own status (backend migration 98)', () => {
+    expect(GRN_FILTERS.toRequest({ stock: 'low_stock' }, undefined, staff, today).p_filters).toEqual({ stock_status: 'low_stock' });
+  });
+
   it('sends no filters object and the default sort when nothing is set', () => {
     expect(GRN_FILTERS.toRequest({ stock: 'all' }, undefined, staff, today)).toEqual({ p_sort_by: 'gr_no', p_sort_order: 'desc' });
   });

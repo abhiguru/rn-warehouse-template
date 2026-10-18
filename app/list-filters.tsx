@@ -50,6 +50,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.card,
     backgroundColor: t.surface.card,
   },
+  // A row pressed shows the pressed surface, not a fade (§10).
+  sectionPressed: { backgroundColor: t.surface.cardPressed },
   sectionTitle: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.secondary },
   pickerRow: {
     flexDirection: 'row' as const,
@@ -156,31 +158,28 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
       <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.6}>
         {picker ? picker.label : translate('filters.page.title')}
       </Text>
-      <View style={[styles.headerSide, styles.headerEnd]}>
-        {picker ? (
-          <Pressable
-            style={({ pressed }) => pressed && styles.pressed}
-            onPress={() => setPicker(null)}
-            hitSlop={space.md}
-            accessibilityRole="button"
-            accessibilityLabel={pickerText(picker.noun, 'done')}
-          >
-            <Text style={styles.headerAction} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.done')}</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={({ pressed }) => pressed && styles.pressed}
-            onPress={reset}
-            disabled={!hasDraftFilters}
-            hitSlop={space.md}
-            accessibilityRole="button"
-            accessibilityLabel={translate('filters.page.resetLabel')}
-            accessibilityState={{ disabled: !hasDraftFilters }}
-          >
-            <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.reset')}</Text>
-          </Pressable>
-        )}
-      </View>
+      {/* The whole side is the target, as for close: at least touchTarget square (§11.2). */}
+      {picker ? (
+        <Pressable
+          style={({ pressed }) => [styles.headerSide, styles.headerEnd, pressed && styles.pressed]}
+          onPress={() => setPicker(null)}
+          accessibilityRole="button"
+          accessibilityLabel={pickerText(picker.noun, 'done')}
+        >
+          <Text style={styles.headerAction} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.done')}</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [styles.headerSide, styles.headerEnd, pressed && styles.pressed]}
+          onPress={reset}
+          disabled={!hasDraftFilters}
+          accessibilityRole="button"
+          accessibilityLabel={translate('filters.page.resetLabel')}
+          accessibilityState={{ disabled: !hasDraftFilters }}
+        >
+          <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.reset')}</Text>
+        </Pressable>
+      )}
     </View>
   );
 
@@ -212,7 +211,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             field.kind === 'picker' ? (
               <Pressable
                 key={field.key}
-                style={({ pressed }) => [styles.section, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.section, pressed && styles.sectionPressed]}
                 onPress={() => setPicker(field)}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -256,7 +255,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
           )}
         </ScrollView>
         <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>
-          <ApplyFiltersButton result={result} noun={config.noun} onPress={apply} disabled={anyInvalid} />
+          <ApplyFiltersButton result={result} noun={config.noun} onPress={apply} blockedMessage={anyInvalid ? translate('filters.range.minAboveMax') : undefined} />
         </View>
       </KeyboardAvoidingView>
     </View>

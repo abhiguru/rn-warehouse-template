@@ -44,12 +44,29 @@ export interface GRNFilters {
   grn_ids?: string[];
   gr_no_from?: string;
   gr_no_to?: string;
-  stock_status?: 'all' | 'in_stock' | 'out_of_stock';
+  /** Per line: in stock, under 20% of the bags received left (backend migration 98), none left. */
+  stock_status?: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
   weight_min?: number;
   weight_max?: number;
   /** Quick search: every word must match the number, customer, item, package, rack or vehicle. */
   search?: string;
+  /**
+   * Page by receipt (backend migration 98): `p_limit`, `p_offset` and the total count receipts, and a page
+   * holds every matching line of its receipts. A facility without 98 ignores it and pages lines; the
+   * response's `pagination.unit` says which it did.
+   */
+  page_by?: 'receipt';
 }
+
+/** The filters of a GRN list request, asking for receipt pages. */
+export const withReceiptPages = <T extends { p_filters?: GRNFilters }>(request: T): T => ({
+  ...request,
+  p_filters: { ...request.p_filters, page_by: 'receipt' },
+});
+
+/** Distinct receipts among a page's lines, for the next offset of a receipt-paged list. */
+export const countReceipts = (items: readonly GRNItem[]): number =>
+  new Set(items.map(item => item.grn_id || item.id)).size;
 
 /**
  * GRN List Request Parameters - uses snake_case matching backend RPC
@@ -85,6 +102,7 @@ interface CustomerGRNRpcResponse {
       total?: number;
       total_count?: number;
       has_more?: boolean;
+      unit?: string;
     };
     aggregations?: Partial<GRNAggregations> & { total_count?: number };
   };
@@ -187,6 +205,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
       if (filters.weight_min !== undefined) cleanFilters.weight_min = filters.weight_min;
       if (filters.weight_max !== undefined) cleanFilters.weight_max = filters.weight_max;
       if (filters.search?.trim()) cleanFilters.search = filters.search.trim();
+      if (filters.page_by === 'receipt') cleanFilters.page_by = 'receipt';
 
       if (Object.keys(cleanFilters).length > 0) {
         rpcParams.p_filters = cleanFilters;
@@ -251,14 +270,15 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
     const offset = backendPagination.offset || 0;
     const total_count = backendPagination.total_count || backendPagination.totalCount || 0;
     const has_more = hasMoreItems(offset, limit, total_count);
+    const unit = backendPagination.unit === 'receipt' ? 'receipt' : 'line';
 
-    console.log('[GRN Service] Computed has_more:', { offset, itemsLength: itemsArray.length, total_count, has_more });
+    console.log('[GRN Service] Computed has_more:', { offset, itemsLength: itemsArray.length, total_count, has_more, unit });
 
     return {
       success: responseData.success !== false, // Default to true if not explicitly false
       data: {
         items: itemsArray,
-        pagination: { total_count, limit, offset, has_more },
+        pagination: { total_count, limit, offset, has_more, unit },
         aggregations: responseData.aggregates || { total_qty: 0, total_stock: 0 },
         filters: {
           date_from: null,
@@ -375,6 +395,7 @@ export const getCustomerGRNItems = async (
           offset,
           has_more:
             response.data.pagination?.has_more ?? hasMoreItems(offset, limit, totalCount),
+          unit: response.data.pagination?.unit === 'receipt' ? 'receipt' : 'line',
         },
         aggregations: {
           total_qty: Number(response.data.aggregations?.total_qty) || 0,
@@ -434,6 +455,11 @@ export const compareGRNItems = (
  * merged order, the app needs, for every customer, enough of that customer's first rows. The
  * cursor below keeps what was downloaded for one request (customers, sort, dates, filters) so the
  * next page fetches only the missing rows instead of every customer's prefix again.
+ *
+ * Asked for receipt pages (`page_by: 'receipt'`, backend migration 98), each customer's pages hold whole
+ * receipts, and the cursor counts, merges and slices receipts: a receipt belongs to one customer and never
+ * spans two of its pages, so its lines stay together. A facility without 98 answers in lines, and the cursor
+ * then works in lines as before.
  */
 
 /** One customer's rows downloaded so far, for one cursor. */
@@ -458,9 +484,23 @@ interface CursorEntry {
    * not downloaded known to sort after that customer's last downloaded row.
    */
   orderTrusted: boolean;
+  /** What the facility pages by, from its first answer; lines until then. */
+  unit: 'line' | 'receipt';
   /** Calls on one cursor run one after another. */
   tail: Promise<unknown>;
 }
+
+/** A customer's rows as the cursor's units: whole receipts (consecutive lines of one GRN), or single lines. */
+const unitsOf = (entry: CursorEntry, rows: GRNItem[]): GRNItem[][] => {
+  if (entry.unit === 'line') return rows.map(row => [row]);
+  const units: GRNItem[][] = [];
+  for (const row of rows) {
+    const current = units[units.length - 1];
+    if (current && current[0].grn_id === row.grn_id) current.push(row);
+    else units.push([row]);
+  }
+  return units;
+};
 
 const MAX_CURSORS = 4;
 /** Insertion order is the least recently used order. */
@@ -503,6 +543,7 @@ const takeEntry = (targetIds: string[], params: GRNListParams, offset: number): 
     // compare differently.
     orderTrusted:
       params.p_sort_by !== 'item_name' && !((params.p_sort_by || 'date') === 'date' && params.p_sort_order === 'asc'),
+    unit: 'line',
     tail: Promise.resolve(),
   };
   cursors.delete(key);
@@ -515,24 +556,27 @@ const takeEntry = (targetIds: string[], params: GRNListParams, offset: number): 
 };
 
 /**
- * Merges each customer's first `end` retained rows (what the app showed before the cursor, applied
+ * Merges each customer's first `end` retained units (what the app showed before the cursor, applied
  * to the rows it holds) and lists the customers that must be fetched further before positions
- * 0..end-1 are final.
+ * 0..end-1 are final. A unit is a receipt in receipt mode and a row otherwise; units compare by
+ * their first row.
  */
 const planCursor = (entry: CursorEntry, end: number, params: GRNListParams) => {
+  const unitsByCustomer = new Map(entry.customers.map(customer => [customer, unitsOf(entry, customer.rows)]));
   const merged = entry.customers
-    .flatMap(customer => customer.rows.slice(0, end))
-    .sort((left, right) => compareGRNItems(left, right, params.p_sort_by, params.p_sort_order));
+    .flatMap(customer => unitsByCustomer.get(customer)!.slice(0, end))
+    .sort((left, right) => compareGRNItems(left[0], right[0], params.p_sort_by, params.p_sort_order));
   const open = entry.customers.filter(customer => !customer.exhausted);
   if (!entry.orderTrusted || merged.length < end) {
-    return { merged, needy: open.filter(customer => customer.rows.length < end) };
+    return { merged, needy: open.filter(customer => unitsByCustomer.get(customer)!.length < end) };
   }
-  // Every row of a customer not yet downloaded sorts after its last downloaded row, so a
-  // customer whose last row is at end-1 or later cannot change positions 0..end-1.
-  const positions = new Map<GRNItem, number>();
-  merged.forEach((row, position) => positions.set(row, position));
+  // Every unit of a customer not yet downloaded sorts after its last downloaded unit, so a
+  // customer whose last unit is at end-1 or later cannot change positions 0..end-1.
+  const positions = new Map<GRNItem[], number>();
+  merged.forEach((unit, position) => positions.set(unit, position));
   const needy = open.filter(customer => {
-    const last = customer.rows[Math.min(customer.rows.length, end) - 1];
+    const units = unitsByCustomer.get(customer)!;
+    const last = units[Math.min(units.length, end) - 1];
     return !last || (positions.get(last) ?? -1) < end - 1;
   });
   return { merged, needy };
@@ -541,7 +585,9 @@ const planCursor = (entry: CursorEntry, end: number, params: GRNListParams) => {
 const appendRows = (entry: CursorEntry, customer: CustomerCursor, items: GRNItem[], params: GRNListParams) => {
   let previous = customer.rows[customer.rows.length - 1];
   for (const item of items) {
-    if (previous && compareGRNItems(previous, item, params.p_sort_by, params.p_sort_order) > 0) {
+    // In receipt mode only receipts are ordered by the sort; the lines of one receipt are in line order.
+    const sameReceipt = entry.unit === 'receipt' && previous?.grn_id === item.grn_id;
+    if (previous && !sameReceipt && compareGRNItems(previous, item, params.p_sort_by, params.p_sort_order) > 0) {
       entry.orderTrusted = false;
     }
     customer.rows.push(item);
@@ -554,18 +600,19 @@ const extendCursor = async (
   entry: CursorEntry,
   end: number,
   params: GRNListParams
-): Promise<{ merged: GRNItem[]; failed?: GRNListResponse }> => {
+): Promise<{ merged: GRNItem[][]; failed?: GRNListResponse }> => {
   for (;;) {
     const { merged, needy } = planCursor(entry, end, params);
     if (needy.length === 0) return { merged };
     const responses = await Promise.all(
-      needy.map(customer =>
-        getCustomerGRNItems(customer.customerId, {
+      needy.map(customer => {
+        const held = unitsOf(entry, customer.rows).length;
+        return getCustomerGRNItems(customer.customerId, {
           ...params,
-          p_offset: customer.rows.length,
-          p_limit: Math.min(CUSTOMER_GRN_RPC_MAX_LIMIT, end - customer.rows.length),
-        })
-      )
+          p_offset: held,
+          p_limit: Math.min(CUSTOMER_GRN_RPC_MAX_LIMIT, end - held),
+        });
+      })
     );
     let failed: GRNListResponse | undefined;
     responses.forEach((response, index) => {
@@ -573,6 +620,10 @@ const extendCursor = async (
       if (!response.success) {
         failed = failed || response;
         return;
+      }
+      // The facility's first answer says what it pages by; it does not change within a cursor.
+      if (customer.rows.length === 0 && entry.customers.every(other => other.rows.length === 0)) {
+        entry.unit = response.data.pagination.unit === 'receipt' ? 'receipt' : 'line';
       }
       appendRows(entry, customer, response.data.items, params);
       customer.totalCount = response.data.pagination.total_count;
@@ -628,12 +679,13 @@ export const getAssignedCustomerGRNItems = async (
       success: true,
       message: t('errors.grn.assignedItemsRetrieved'),
       data: {
-        items: merged.slice(offset, end),
+        items: merged.slice(offset, end).flat(),
         pagination: {
           total_count: totalCount,
           limit,
           offset,
           has_more: end < totalCount,
+          unit: entry.unit,
         },
         aggregations: {
           total_qty: customers.reduce((total, customer) => total + customer.aggregations.total_qty, 0),
