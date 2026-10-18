@@ -38,6 +38,14 @@ The source of truth is code, not this document:
 
 If this guide and the code disagree, the code wins and this guide is the bug.
 
+**This is the app's only style guide.** Use this file as it stands on `main`. Older material does not apply to this app:
+
+- Earlier versions of this file in other checkouts, archives or audit copies.
+- The removed `FioriDataTable` rules.
+- Material Design 3 or Guru Cold Storage brand guidelines, including skills built on them.
+
+A design question this guide does not answer is a gap to fill here ([17.5](#175-changing-this-guide)), not a reason to use another guide.
+
 ### Contents
 
 1. [Principles](#1-principles)

@@ -67,10 +67,11 @@ facility access requests, and forced sign-out (`forceLogoutOnInvalidToken`).
 - Add or update tests with every behavior change (Jest; see `src/**/__tests__`).
 - Never commit secrets, signing keys, `.env` or generated `android/`/`ios/` folders.
 - Use fictional names and phone numbers in tests, fixtures and screenshots.
-- UI follows the existing SAP Fiori-style components and theme (`src/components/fiori`,
-  `src/theme`) and [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md); support both theme axes: the
-  Orange and GCSA brands, each in light and dark mode. Tables are TanStack tables drawn by
-  `src/components/table/DataTable.tsx` (guide §13.7).
+- UI follows [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md), the app's **only** style guide, as it
+  stands on `main`, with its SAP Fiori-style components and theme (`src/components/fiori`, `src/theme`).
+  Do not use older copies of it, Material Design 3 or Guru Cold Storage brand guidelines, or design
+  skills built on them. Support both theme axes: the Orange and GCSA brands, each in light and dark
+  mode. Tables are TanStack tables drawn by `src/components/table/DataTable.tsx` (guide §13.7).
 - App changes that need a backend change list the matching backend migration in
   `CHANGELOG.md`; merge and deploy the backend first.
 - Security-relevant findings go to a private GitHub security advisory, not a public issue.
