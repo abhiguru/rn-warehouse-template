@@ -18,6 +18,8 @@
 ## Code style
 
 - TypeScript strict mode.
+- UI follows [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md), the app's only style guide; its review
+  checklist (§18) applies to every UI change.
 - ESLint and Prettier (`npm run lint:fix`, `npm run format`).
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
   `type(scope): description` with types `feat`, `fix`, `docs`, `style`,
