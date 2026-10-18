@@ -1,6 +1,17 @@
 # Style guide
 
-This guide defines how every screen of the app looks and behaves. It follows SAP Fiori for iOS and Android with the Horizon theme, adapted to React Native. It covers two brands, each in light and dark mode:
+This guide defines how every screen of the app looks and behaves. It follows SAP Fiori for iOS and Android with the Horizon theme, adapted to React Native. Tables are built with TanStack Table and drawn by the app's own renderer in the same style ([13.7](#137-tables)).
+
+### Themes at a glance
+
+The app has **two theme axes**, and every screen supports every combination of them:
+
+| Axis | Values | Chosen under | What it changes | Rules |
+|---|---|---|---|---|
+| **Brand** | Orange, GCSA navy | Settings → Preferences → App colours. A build sets the default with `EXPO_PUBLIC_DEFAULT_BRAND=orange\|gcsa`. | The brand colour group only: primary fills, tints, selected states, the brand mark | [3.7](#37-the-brand-axis) |
+| **Mode** | Light, dark | Settings → Preferences → Appearance (System, Light, Dark) | Neutrals, status colours, shadows, table edges, charts and avatars | [3.8](#38-the-mode-axis) |
+
+Together they make four themes:
 
 | Theme | Brand fill | Use |
 |---|---|---|
@@ -9,7 +20,9 @@ This guide defines how every screen of the app looks and behaves. It follows SAP
 | GCSA light | navy `#2E3192` with white text | Gujarat Cold Storage Association members |
 | GCSA dark | navy `#9DA0F0` with dark text | Same brand in dark mode |
 
-The user picks the brand under **Settings → Brand** and the mode under **Settings → Appearance** (System, Light, Dark). A build sets the default brand with `EXPO_PUBLIC_DEFAULT_BRAND=orange|gcsa`.
+Status colours, type, spacing, shape and touch sizes are the same in all four ([3.9](#39-what-the-axes-never-change)). A component is designed once, in tokens, and checked in all four.
+
+### Source of truth
 
 The source of truth is code, not this document:
 
@@ -20,15 +33,16 @@ The source of truth is code, not this document:
 | Type, spacing, shape, sizes, motion | `src/theme/tokens/metrics.ts` |
 | Contrast maths | `src/theme/tokens/contrast.ts` |
 | Contrast test for all four themes | `src/theme/tokens/__tests__/contrast.test.ts` |
+| Table setup and renderer | `src/components/table/appTable.ts`, `src/components/table/DataTable.tsx`, styles and sizing in `src/components/common/DetailTable.tsx` |
 | Live gallery (development builds) | Settings → Development → Style guide (`app/style-guide.tsx`) |
 
 If this guide and the code disagree, the code wins and this guide is the bug.
 
-**Contents**
+### Contents
 
 1. [Principles](#1-principles)
 2. [Using tokens in code](#2-using-tokens-in-code)
-3. [Colour](#3-colour)
+3. [Colour and themes](#3-colour-and-themes)
 4. [Typography](#4-typography)
 5. [Spacing and layout](#5-spacing-and-layout)
 6. [Shape](#6-shape)
@@ -53,14 +67,14 @@ If this guide and the code disagree, the code wins and this guide is the bug.
 These are Fiori's five design principles, applied to a warehouse app used by cold-storage owners, their staff and their customers.
 
 - **Role-based.** Each person sees what their role needs. Customers see their own orders and stock. Staff see the queue they work. Admins see everything. Never show an action a role cannot perform; hide it rather than disabling it.
-- **Adaptive.** Every screen works on a small Android phone, a large phone and a tablet, in portrait, in light and dark mode, in both brands, with the largest system font size, and offline where the feature allows.
+- **Adaptive.** Every screen works on a small Android phone, a large phone and a tablet, in portrait, in both brands and both modes, with the largest system font size, and offline where the feature allows.
 - **Simple.** One primary action per screen. Show the few fields people need first and put the rest one tap away. Prefer a list with good defaults over a form full of options.
 - **Coherent.** The same thing looks and behaves the same everywhere. An order status chip on the order list, the customer page and the report is the same component with the same colours.
 - **Delightful.** Fast feedback (pressed state within 100 ms), no dead ends (every error says what to do next), and nothing that looks like developer output.
 
 Three rules follow from these and override local taste:
 
-1. **Colour comes from tokens.** No hex, `rgb()` or named colours outside `src/theme`. See [Migration and enforcement](#16-migration-and-enforcement).
+1. **Colour comes from tokens.** No hex, `rgb()` or named colours outside `src/theme`. See [Enforcement](#16-enforcement).
 2. **Status meaning is the same in both brands.** Negative, critical, positive, informative and neutral colours are SAP Horizon values and never change with the brand.
 3. **Colour is never the only signal.** Every status colour sits beside an icon, a word or both.
 
@@ -103,11 +117,11 @@ Rules:
 - **Don't** import `reference` palettes in components. If a role is missing, add a semantic token, add it to the contrast test, and document it here.
 - **Don't** copy a local `FIORI` or `FIORI_STATIC` object of colours or sizes into a file. Use `metrics.ts`.
 
-There are no other colour APIs: the old palettes and their adapters were removed once every screen used tokens.
+There are no other colour APIs.
 
 ---
 
-## 3. Colour
+## 3. Colour and themes
 
 ### 3.1 How the palette is built
 
@@ -438,6 +452,66 @@ A new status value gets a row here before it ships.
 - **Don't** use pure black or pure white backgrounds. Use `background.base` and `surface.card`.
 - **Don't** change status colours per brand or per screen.
 
+### 3.7 The brand axis
+
+The brand changes one token group and the brand mark. Everything else is the same in Orange and GCSA.
+
+| | Orange | GCSA navy |
+|---|---|---|
+| `brand.fill`, light / dark | `#F69000` / `#FFA733` | `#2E3192` / `#9DA0F0` |
+| `brand.onFill` (text and icons on the fill) | ink `#131E29` in both modes | white in light mode, ink in dark mode |
+| `brand.tint` (links, selected tab, active filter, `table.accent`) | `#A85000` / `#FFA733` | `#2E3192` / `#9DA0F0` |
+| `brand.secondary` | yellow `#F6C624`, decoration only | grey `#A7A9AC`, decoration only |
+| Brand mark (`BrandMark.tsx`) | The template logo image | The GCSA wordmark; on a white panel in dark mode ([13.12](#1312-branding)) |
+
+Rules:
+
+- **Use the brand tokens and nothing else.** A component never checks the brand to pick a colour. The brand is read in one place only: `BrandMark.tsx` reads it to choose which mark to draw. The colours themselves are switched in `brandGroup()` and `brandMark` in `semantic.ts`.
+- **Never assume the ink on a fill.** `brand.onFill` is white in GCSA light and dark ink in the other three themes. Draw text and icons on `brand.fill` with `brand.onFill`, and choose a brand-filled header's status bar style from it ([5.2](#52-layout)).
+- **Brand never carries status** ([3.5](#35-status-colours)). Orange's fill and critical status are close, so a critical item always carries its icon and word.
+- **Build-time colours do not follow the brand.** The splash screen and the launcher icon are fixed per build ([15](#15-platform-notes)).
+- Settings shows each brand choice with two swatches drawn from that brand's own tokens ([14.12](#1412-settings)). A new brand follows [17.4](#174-a-new-brand).
+
+### 3.8 The mode axis
+
+The mode changes the neutrals and everything that depends on how a surface reads against the page.
+
+| What | Light | Dark |
+|---|---|---|
+| Page and cards | `background.base` `#F5F6F7`, cards white | `background.base` `#12171C`, cards `#1D232A`, lighter than the page |
+| Depth | Shadows (`shadow[n]`) | Shadows at twice the opacity (capped at 0.6), plus the surface step. A table card adds a 1 dp `table.outline`; a list card may add a 1 dp `border.separator` so neighbouring cards stay apart ([7](#7-elevation)). |
+| Table heading row | `table.headerFill` darker than the rows | Lighter than the rows, so it never reads as a gap in the card ([13.7](#137-tables)) |
+| Status colours | SAP Morning Horizon | SAP Evening Horizon: brighter text on darker backgrounds |
+| Filled destructive button | White on `#AA0808` | Dark ink on `#FA6161` |
+| Charts and avatars | `tokens.chart` and `tokens.avatar` light series; avatar initials `text.primary` | Dark series; avatar initials white (`overlay.onImage`) |
+| Overlays | Scrim 40 % black; pressed overlay 8 % ink | Scrim 60 % black; pressed overlay 12 % near-white |
+| Status bar icons | `dark-content` (`tokens.statusBarStyle`) | `light-content` |
+
+Rules:
+
+- **Appearance has three choices.** System follows the phone, and a phone that reports no preference counts as light. Light and Dark override it. Components read the result through `useTheme()` and never call `useColorScheme()` or `Appearance` ([2](#2-using-tokens-in-code)).
+- **A component never checks the mode to pick a colour.** The exceptions are avatar initials (`avatarColors` in `src/utils/avatar.ts`), the Paper and navigation themes, and the Android navigation bar (`app/_layout.tsx`).
+- **Never carry a light value into dark mode.** A tint made with opacity, a fixed white or a hand-picked grey is right in one mode and wrong in the other ([3.6](#36-dos-and-donts)).
+- **Some things do not follow the app's mode:**
+  - The Android picker dropdown and the date picker dialog follow the phone's theme.
+  - The splash screen follows the build.
+  - The photo viewer is always black (`overlay.imageBackdrop`).
+  - Camera views always use `light-content` status bar icons.
+  - The GCSA mark sits on a white panel in dark mode, so the logo keeps its navy.
+
+### 3.9 What the axes never change
+
+- **The same in all four themes:**
+  - Status meaning, and status colours across brands (they change with the mode only).
+  - Typography, spacing, shape and the elevation levels (shadows only get stronger in dark mode).
+  - Icons, touch targets, motion and wording.
+- **Every component is written once, in semantic tokens.** A component spec in [13](#13-components) adds a **Brand and mode** line only when something changes beyond its tokens resolving for the theme.
+- **Both axes are checked by the same tests:**
+  - The contrast test checks every token pair in all four themes.
+  - Render tests draw each area of the app in `BRANDS × ['light', 'dark']`.
+  - The live gallery switches brand and mode in place.
+  - A UI change is checked on a device in all four themes before merge ([18](#18-review-checklist)).
+
 ---
 
 ## 4. Typography
@@ -523,7 +597,7 @@ Borders are hairlines (`StyleSheet.hairlineWidth`) for dividers, 1 for fields an
 
 ## 7. Elevation
 
-Fiori uses five levels. Spread `t.shadow[n]`, which carries the iOS shadow and the Android `elevation`. Dark mode uses stronger shadows automatically.
+Fiori uses five levels. Spread `t.shadow[n]`, which carries the iOS shadow and the Android `elevation`. In dark mode the same levels use twice the opacity, capped at 0.6 ([3.8](#38-the-mode-axis)).
 
 | Level | Offset / blur / opacity (light) | Use |
 |---|---|---|
@@ -536,7 +610,7 @@ Fiori uses five levels. Spread `t.shadow[n]`, which carries the iOS shadow and t
 Rules:
 
 - A card on a card has no shadow. Separate with a divider instead.
-- In dark mode, depth also comes from surface colour: `surface.card` is lighter than `background.base`. A table card also gets a 1 dp `table.outline`, because the dark page shows neither the shadow nor the small step in colour clearly. An object-page table on a FlatList is drawn in parts (see §13.7), so it has the outline and no shadow.
+- In dark mode, depth also comes from surface colour: `surface.card` is lighter than `background.base`. A table card also gets a 1 dp `table.outline` in both modes, because the dark page shows neither the shadow nor the small step in colour clearly. A table on a FlatList has the outline and no shadow ([13.7](#137-tables)).
 - Never draw a shadow under text or icons.
 
 ---
@@ -759,7 +833,7 @@ Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/ava
 
 ## 13. Components
 
-Every component below must use semantic tokens and metrics only, follow the states in [Interaction states](#10-interaction-states), and render correctly in all four themes. Paths are under `src/components` unless stated.
+Every component below must use semantic tokens and metrics only, follow the states in [Interaction states](#10-interaction-states), and render correctly in both brands and both modes. A **Brand and mode** line says what changes beyond the tokens; a component without one looks the same in every theme apart from its token values ([3.9](#39-what-the-axes-never-change)). Paths are under `src/components` unless stated.
 
 ### 13.1 Buttons — `ui/Button.tsx`
 
@@ -785,6 +859,8 @@ Anatomy: container, optional left icon, label, optional right icon, optional spi
 Rules: one primary button per view. Label in `callout`, radius `radius.button`. Loading replaces the left icon with a spinner and shows `loadingText`, and the button ignores presses. In a dialog the primary button is on the right on iOS and on the far right on Android; on a full-screen form it is the bottom, full width. The filled negative button uses the `destructive` tokens, not `status.negative.element`: white on Horizon's `#F53232` is only 3.9:1.
 
 React Native Paper buttons and checked controls use Paper's `primary`, which is `brand.fill`. That is a fill colour only: a Paper text-mode button must set `textColor={tokens.brand.tint}`, or orange text fails contrast in Orange light. Prefer `ui/Button`.
+
+**Brand and mode:** the primary label is ink in three themes and white in GCSA light (`brand.onFill`). The filled destructive button is white on dark red in light mode and dark ink on light red in dark mode.
 
 ### 13.2 Text fields — `ui/Input.tsx`, `GhostTextInput.tsx`, `RemoteAutocompleteInput.tsx`, `form/*`, `FormFieldWrapper.tsx`
 
@@ -822,6 +898,8 @@ Rules: label above the field, never only a placeholder. A tap places the cursor;
 
 Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search field directly above the keypad rather than at the top of the sheet.
 
+**Brand and mode:** native pickers (the date picker dialog, the rack and chamber dropdowns on Android) follow the phone's theme, not the app's ([3.8](#38-the-mode-axis)).
+
 ### 13.4 Selection controls
 
 | Component | Spec |
@@ -847,11 +925,13 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 | `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill and tag follow the single stock rule in [3.5](#35-status-colours) (in stock, low stock below 20%, out of stock); text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
 | `FioriLinearProgress.tsx` | Height 4 (default) or 8 (prominent), pill radius; track `brand.subtleStrong` or the status background with `coloredTrack`; fill `brand.fill` (`default`) or `status.*.element` (`success`, `warning`, `error`, `info`); percentage in `caption1`. Segmented progress uses chart colours in order. |
 
+**Brand and mode:** a plain count badge is `brand.onFill` on `brand.fill`, so its number is white in GCSA light and ink elsewhere. Avatar initials are ink in light mode and white in dark mode (`avatarColors`).
+
 ### 13.6 Cells, cards and lists
 
 | Component | Spec |
 |---|---|
-| Object cell (list rows in `list-items/*`, `OrderItemCard`, `DispatchGroupCard`, `DispatchHistoryCard`, `CustomerOrderGroupCard`, `RecentDispatchedOrderCard`, `ReportCustomerCard`, `ItemRateRow`, `grn/components/SavedItemCard`, `invoice/components/InvoiceItemCard`, `*-details/*ItemCard`) | Min height 72. Optional avatar or icon (44). Title `headline` `text.primary`, two lines max. Subtitle `subhead` `text.secondary`. Footnote `footnote` `text.secondary`. Right side: main value (`headline`, tabular), status tag under it. Chevron `icon.secondary` when it drills down. Pressed `surface.cardPressed`. |
+| Object cell (list rows in `list-items/*`, `OrderItemCard`, `CustomerOrderGroupCard`, `RecentDispatchedOrderCard`, `ReportCustomerCard`, `ItemRateRow`, `grn/components/SavedItemCard`, `invoice/components/InvoiceItemCard`, `reports/StockItemCard`) | Min height 72. Optional avatar or icon (44). Title `headline` `text.primary`, two lines max. Subtitle `subhead` `text.secondary`. Footnote `footnote` `text.secondary`. Right side: main value (`headline`, tabular), status tag under it. Chevron `icon.secondary` when it drills down. Pressed `surface.cardPressed`. |
 | `ui/Card.tsx` | `surface.card`, `radius.card`, `shadow[2]`, padding from `CardPadding` (`compact` 12, `default` 16, `comfortable` 20, `spacious` 24). Header: title `headline`, subtitle `subhead`. `selected` adds a 2 px `brand.tint` border and a check. `error` shows a negative message strip. `loading` shows a skeleton. Shadow sizes map `sm` to 1, `md` to 2, `lg` to 3, `xl` to 4. |
 | `fiori/KeyValueCell.tsx` | Key `subhead` `text.secondary`, value `body` `text.primary` (`emphasized` uses 600). `inline` layout: key left, value right; `stacked`: key above value. Actionable values use `brand.tint` and a chevron. Switch to stacked at large text sizes. |
 | `ui/SectionHeader.tsx` | `footnote`, capitals, `text.secondary`, 16 side padding, 24 above and 8 below; optional count and a tertiary action on the right. The badge may show other text than the count (`countText`, e.g. "20+" while more pages remain to load) with its spoken form in `countLabel` ("more than 20 orders"). `SectionFooter` uses `footnote` `text.secondary`. |
@@ -868,29 +948,104 @@ A surcharge (a negative discount) shows with a plus sign in `text.primary`; a di
 
 A pin is the exception to the one-tap rule: it changes nothing but the person's own view and is undone by the same tap, so a star may sit at the end of a row as a one-tap control. It is a separate target beside the row's own (not inside it), at least `touchTarget` square with 8 between the two, a button with `accessibilityState={{ selected }}` and a whole-sentence label ("Pin GRN activity to the top" / "Unpin GRN activity"). Pinned shows the filled `star` in `brand.tint`; not pinned shows `star-outline` in `icon.primary`, so the glyph, not colour alone, carries the state. Used by `reports/ReportHubRow.tsx` on the Reports tab.
 
-### 13.7 Tables — `table/DataTable.tsx` with `table/appTable.ts`, `common/DetailTable.tsx` (with `common/InvoicesTable.tsx`), `invoice/components/InvoiceItemsTable.tsx`
+### 13.7 Tables
 
-Tables are built with TanStack Table v9 through the app's one setup, `useAppTable` and `createAppColumnHelper` in `components/table/appTable.ts` (expanding rows; sorting only on columns that set `enableSorting: true`; column meta `width`, `numeric`, `label`), and drawn by `components/table/DataTable.tsx` in the shared styles of `common/DetailTable.tsx`. The generic `FioriDataTable` (three import paths) was removed on 2026-10-17; a new table does not bring its own renderer. Report tables use the `card` variant (`list="map"` inside a scrolling screen, `list="flat"` for a long list) with a `footer` for the totals row; the Monthly breakdown of Invoice history (`app/reports/invoice-history.tsx`) is the model for a sortable report table with totals.
+Every table is a TanStack Table v9 built with the app's one setup and drawn by the app's one renderer. A new table does not bring its own renderer.
 
-- Card: `surface.card`, `radius.card`, `shadow[2]` and a 1 dp `table.outline`. A table on a FlatList is drawn in parts (`cardTop` round the header row, `cardSides` on every row, `cardBottom` round the totals) with no shadow, and the space round it is padding on the list content (`content`), never margins: Android leaves a content container's margins out of the scroll range, which cut off the card's end.
-- Header row: `footnote` weight 600 in `table.headerText` on `table.headerFill`, bottom border 1 dp `table.separator`. In dark mode the fill is lighter than the rows, so the heading row never reads as a gap in the card. Sortable columns show a sort icon and announce the order.
-- Body rows: `body` or `subhead`, `text.primary`, min height 44 (36 for read-only compact tables), a one-line row centred in that height, dividers 1 dp `table.divider` (a hairline drew faint, and at some text sizes not at all). Alternate shading is not used.
-- Numbers are right-aligned with tabular figures. Text is left-aligned. Status uses a status tag.
-- Totals row: weight 600, top border 1 dp `table.separator`.
-- An open row and its details are one panel: `table.insetFill`, a 3 dp `table.accent` bar at the start (its own view, `OpenBar`, laid over the panel: as a border beside the 1 dp card edges it drew as two thin lines on a 420 dpi phone), a `table.separator` line under it, and the chevron in `table.accent`. The details use the full width of the panel, starting in line with the chevron. A table inside the details is a small card of its own: rows on `surface.card`, `radius.field`, a 1 dp `table.outline`, its heading row on `table.headerFill`. The invoice form's open group (its header card and its table card) carries the same bar and fill.
-- Rate columns may carry the unit in the header ("Charge (₹)") and show plain grouped numbers in the cells.
-- On phones a table fits the screen: its columns are sized by the width rules below and the figures move under the first column when they would crowd it, so it does not scroll sideways. (The old `FioriDataTable` scrolled sideways with the first column pinned; the Monthly breakdown now stacks instead: Month | Invoices | Amount | Paid | Pending when it fits, else the count under the month, else only Amount as a column.)
-- A sortable heading (`enableSorting: true`) is a button of at least `touchTarget` height with an arrow; its TalkBack label names the column and whether it is sorted. The cycle is not sorted, ascending, descending, back to not sorted; one column at a time. A totals row stays the total of every row.
-- Editable cells follow the editable-cell rule in section 13.2.
-- An editable table (the rate box of Item pricing, `item-pricing/components/BandsTable.tsx`) is one card in the object-page style: the header row of units ("Up to (kg) | Rent (₹) | Labour (₹) | Tax (%)"), a one-line hint "Tap a figure to change it." under it, and a row per record whose figures are borderless `TextInput`s (`subhead`, right-aligned tabular numbers, `selectTextOnFocus`, a number or decimal pad, at least `touchTarget` tall, `maxFontSizeMultiplier` 1.3 so a column sized to its text never splits a figure). The cell being typed in has the 2 px `border.fieldFocus` ring, a wrong one the 2 px `status.negative.border` ring; nothing else marks a cell as a field. Each cell has its own `accessibilityLabel` ("Rent, 0 to 100 kg, rupees per bag, per month": field, record, unit) and its row's error in the `accessibilityHint`, and the same error is a line under the row. The Next key walks the cells row by row. Add and remove controls sit in or under the card; the figures that are shared by every row (labour and tax when the bands do not differ) are rows under the records, not columns. From font scale 1.3, or when the columns would leave the first column less than it needs, the table is not drawn: the same fields are cards, one per record (`BandsEditor`), so large text and narrow screens share one fallback.
-- Empty cells show "—".
-- Object-page tables (`common/DetailTable.tsx`: the Dispatch and GRN pages' Items, GRNs, Dispatches and Invoices tabs, the invoice page's Items tab, and the Rates table on the GRN page's Overview tab) sit in one card, one row per record. Details of a row (received quantity, rack, the lines of a group) open under it on a tap, with a chevron at the start of the row; a link inside a row is a separate target of at least `touchTarget` and is also offered to screen readers as an action on the row. A date goes under its number on phones and gets its own column from 600 dp. The GRN page's Dispatches column also shows only from 600 dp (its heading is wider than its counts); on a phone the count goes under the item.
-- Design and test tables for the edge cases: quantities and their totals up to 9,999 bags, amounts and their totals up to ₹99,999.00 (owner, 2026-10-16). Column widths at font scale 1 fit these (the invoice amount column, 84 dp, fits "₹99,999.00" in weight 600), so at the edge a table keeps its columns at font scale 1.3 on a 411 dp phone. Larger numbers may fall out of place; the stacking rules below are a fallback for them and for large text.
-- Column widths in object-page tables: every number column has one width for the whole table, the width it has at font scale 1 grown with the text or, if wider, its widest value or total (`numberColumnWidth`), so numbers line up from row to row and never split. Numbers stay on one line. From font scale 1.5, or when the number columns would leave the first column less than 25 % of the row or less than 5 em of its text (`crowded`; huge amounts or six-digit quantities), the middle columns move under the first; ordinary data keeps its columns. If even the last column alone would crowd the first, or would take over 45 % of a stacked row (a large amount at large text), that value goes on its own line under the first column, right-aligned. A table inside an open row follows the same rules on its own row.
-- A cell sized to its text may shrink a little to stay on one line (`ONE_LINE`). Text the column is not sized for, such as a package mark under GRN/Received, is cut with "…" at the normal size (`CUT_LINE`) and shown in full elsewhere (the GRNs tab, the screen-reader label): Android ignores `minimumFontScale`, so shrinking it made it unreadable.
-- A number keeps its unit and a label keeps its amount at a line break ("50 kg each", "21 months", "Tax 18%"): `nb()` puts no-break spaces there and leaves the breaks around "·".
-- A note about a table's figures sits inside its card, under the totals.
-- A new table with more than three columns fits the phone by the width rules above (stacking the middle columns when crowded); it does not scroll sideways.
+| Part | Where | What it does |
+|---|---|---|
+| Setup | `table/appTable.ts`: `useAppTable`, `createAppColumnHelper<Row>()` | Row expanding, sorting on the columns that set `enableSorting: true` (one at a time), and the column meta below |
+| Renderer | `table/DataTable.tsx`: `DataTable`, `useDefaultOpen` | Draws the header group, rows, open-row panels and footer as Views in the shared table styles |
+| Styles and sizing | `common/DetailTable.tsx`: `makeTableStyles`, `HeaderCell`, `RowChevron`, `OpenBar`, `useTableLayout`, `numberColumnWidth`, `crowded`, `ONE_LINE`, `CUT_LINE`, `nb()` | The look of every table and the width and stacking rules below |
+
+#### Building a table
+
+1. Describe the columns with `createAppColumnHelper<Row>()` and make the table with `useAppTable`.
+2. Set each column's `meta`:
+
+   | Meta | Meaning |
+   |---|---|
+   | `width` | `'grow'` takes the rest of the row (the item column); a number is a fixed width in dp; `'auto'` is the width of its text |
+   | `numeric` | A right-aligned number column; its heading is right-aligned too |
+   | `marginLeft` | Space before the column, for a muted column set off from the one before it |
+   | `headerOnly` | A heading with no cell: its figure is drawn inside another cell (an amount moved under the item at large text) |
+   | `headerOneLine` | The heading stays on one line and shrinks rather than wraps (the default in a nested table) |
+   | `label` | The column's name for TalkBack when its heading is not plain text |
+
+3. Draw it with `DataTable`, choosing the variant:
+
+   | Use | Props |
+   |---|---|
+   | A tab of an object page with a long list | `variant="card"` `list="flat"`: the table is the tab's FlatList |
+   | A table inside a scrolling screen (reports, the Review step, rate screens) | `variant="card"` `list="map"` |
+   | A table inside an open row's details, or inside a form | `variant="nested"` |
+
+4. Add the parts the table needs: `footer` for the totals row, `renderDetail` for rows that open, `onRowPress` for rows that open another screen, `rowLabel` and `rowHint` so each row reads as one element, `rowActions` for links inside a row, and `useDefaultOpen` when rows start open because of their data (the first line with dispatches, a lone group).
+
+The Monthly breakdown of Invoice history (`app/reports/invoice-history.tsx`) is the model for a sortable report table with totals.
+
+#### Anatomy
+
+| Part | Spec |
+|---|---|
+| Card | `surface.card`, `radius.card`, `shadow[2]` and a 1 dp `table.outline`. A table on a FlatList is drawn in parts (`cardTop` round the header row, `cardSides` on every row, `cardBottom` round the totals) with no shadow. The space round it is padding on the list content (`content`), never margins, because Android leaves a content container's margins out of the scroll range. |
+| Header row | `footnote` weight 600 in `table.headerText` on `table.headerFill`, a 1 dp `table.separator` under it. |
+| Body rows | `subhead` (or `body`) in `text.primary`, at least `touchTarget` tall, a one-line row centred in that height, a 1 dp `table.divider` between rows. A read-only table may pass a compact row of 36 (`rowStyle`, [5.2](#52-layout)). No alternate shading. |
+| Cells | Numbers right-aligned with tabular figures; text left-aligned; status as a `StatusTag`; an empty cell shows "—". A rate column may carry its unit in the heading ("Charge (₹)") and plain grouped numbers in the cells. |
+| Totals row | Weight 600, a 1 dp `table.separator` above it. It is always the total of every row, whatever the sort. |
+| Note | A note about a table's figures sits inside its card, under the totals. |
+| Open row | The row and its details are one panel on `table.insetFill`, closed by a `table.separator`, with a 3 dp `table.accent` bar at the start (`OpenBar`, its own view laid over the panel) and the chevron in `table.accent`. The details use the full width of the panel, starting in line with the chevron. |
+| Nested table | Rows on `surface.card`, `radius.field`, a 1 dp `table.outline`, heading row on `table.headerFill`. It follows the same width rules on its own row. The invoice form's open group (its header card and its table card) carries the same bar and fill. |
+
+**Brand and mode:** `table.accent` is the brand tint, so the open-row bar and chevron are orange or navy. In dark mode the outline is lighter (`#4A5868`), so the card keeps a visible edge on the dark page, and the heading row is lighter than the rows, never darker, so it does not read as a gap ([3.8](#38-the-mode-axis)).
+
+#### Rows that open, and links
+
+- A row with details opens under itself on a tap, with a chevron at the start of the row (`chevron-right` closed, `chevron-down` open). Opening and closing animates the layout once (`easeInEaseOut`).
+- A row that opens another screen uses `onRowPress`. In a table whose rows open something, a row that cannot (no dispatches yet, an invoice without an id) is drawn as a disabled button (`rowPressable`).
+- A link inside a row is a separate target of at least `touchTarget`, and is also offered to screen readers as an action on the row (`rowActions`).
+- Each row reads as one element (`rowLabel`), and an open row says it is expanded.
+
+#### Sorting
+
+- Only a column that sets `enableSorting: true` sorts. Its heading is a button of at least `touchTarget` height with an arrow at `iconSize.xs`: `swap-vertical` in `icon.secondary` while not sorted, `arrow-up` or `arrow-down` in `brand.tint` while sorted.
+- A tap moves through not sorted → ascending → descending → not sorted, one column at a time. TalkBack names the column and whether it is sorted.
+- Sorted today: GRN → Items, Dispatch → Items, the Invoices tab of a GRN or dispatch, and Reports → Invoice history → Monthly breakdown.
+
+#### Fitting a phone
+
+A table fits the screen and never scrolls sideways, whatever its number of columns.
+
+- **Design edge.** Design and test for quantities and their totals up to 9,999 bags and amounts and their totals up to ₹99,999.00. Column widths at font scale 1 fit these (the invoice amount column, 84 dp, fits "₹99,999.00" in weight 600), so at the edge a table keeps its columns at font scale 1.3 on a 411 dp phone. Larger numbers may fall out of place; the stacking rules below are their fallback.
+- **One width per number column.** Each number column has one width for the whole table: its width at font scale 1 grown with the text, or its widest value or total if that is wider (`numberColumnWidth`). Numbers line up from row to row and never split.
+- **Stacking.** From font scale 1.5 (`TABLE_STACK_SCALE`), or when the number columns would leave the first column less than 25 % of the row or less than 5 em of its text (`crowded`), the middle columns move under the first. Ordinary data keeps its columns.
+- **The last column alone.** If even the last column would crowd the first, or would take more than 45 % of a stacked row (a large amount at large text), its value goes on its own line under the first column, right-aligned.
+- **Wide screens.** On phones a date goes under its number. From 600 dp (`TABLE_WIDE_WIDTH`) it gets its own column, and so does the GRN page's Dispatches column, whose heading is wider than its counts. On a phone that count goes under the item.
+- **One line.** A cell sized to its text may shrink a little to stay on one line (`ONE_LINE`). Text the column is not sized for, such as a package mark under GRN/Received, is cut with "…" at the normal size (`CUT_LINE`), because Android ignores `minimumFontScale` and would shrink it until it cannot be read. The full text is shown elsewhere (the GRNs tab, the row's screen-reader label).
+- **No-break units.** A number keeps its unit and a label keeps its amount at a line break ("50 kg each", "21 months", "Tax 18%"): `nb()` puts no-break spaces there and leaves the breaks around "·".
+- The Monthly breakdown shows Month | Invoices | Amount | Paid | Pending when it fits, else the count under the month, else only Amount as a column.
+
+#### Editable tables
+
+Editable cells follow the editable-cell rule in [13.2](#132-text-fields--uiinputtsx-ghosttextinputtsx-remoteautocompleteinputtsx-form-formfieldwrappertsx). Two editable tables draw their own rows with the shared styles and sizing, because their cells are text inputs: the invoice form's items (`invoice/components/InvoiceItemsTable.tsx`, a keyboard-aware FlashList) and the rate box of Item pricing (`item-pricing/components/BandsTable.tsx`). The rate box is the model:
+
+- One card in the object-page style: the heading row of units ("Up to (kg) | Rent (₹) | Labour (₹) | Tax (%)"), the hint "Tap a figure to change it." under it, and a row per record.
+- Each figure is a borderless `TextInput`: `subhead`, right-aligned tabular numbers, `selectTextOnFocus`, a number or decimal pad, at least `touchTarget` tall, `maxFontSizeMultiplier` 1.3 so a column sized to its text never splits a figure.
+- The cell being typed in has the 2 px `border.fieldFocus` ring, and a wrong one the 2 px `status.negative.border` ring. Nothing else marks a cell as a field.
+- Each cell has its own `accessibilityLabel` ("Rent, 0 to 100 kg, rupees per bag, per month": field, record, unit), with its row's error in the `accessibilityHint`. The same error is a line under the row. The Next key walks the cells row by row.
+- Add and remove controls sit in or under the card. Figures shared by every row (labour and tax when the bands do not differ) are rows under the records, not columns.
+- From font scale 1.3, or when the columns would leave the first column less than it needs, the table is not drawn: the same fields are cards, one per record (`BandsEditor`), so large text and narrow screens share one fallback.
+
+#### Where tables are used
+
+- **On `DataTable`:**
+  - GRN → Items, Dispatches, Invoices; Dispatch → Items, GRNs, Invoices; Invoice → Line items; GRN → Overview → Rates.
+  - The GRN form's Review step (Items and Rates).
+  - The rate screens' reference tables and the Old/New figures of "Change the rate?".
+  - Item pricing's default rates, its changes table and the read-only band list.
+  - Reports → Invoice history → Monthly breakdown.
+  - The table views of the stock trend and the sensor history charts.
+- **Not on `DataTable` yet:** the small item tables inside list cards. These are the GRN list (`GRNListFiori.tsx`), the Dispatch list (`list-items/MemoizedDispatchItem.tsx`), the order queue (`list-items/CustomerOrderGroupCard.tsx`) and recent dispatched orders (`list-items/RecentDispatchedOrderCard.tsx`). They still draw their own header and rows, without the `table.*` tokens or the width rules. A change to one of them moves it onto `DataTable` with `variant="nested"`.
 
 ### 13.8 Headers and navigation
 
@@ -918,7 +1073,7 @@ More header rules:
 |---|---|
 | `ConfirmDialog.tsx`, `PrintRangeDialog.tsx`, `DocumentSuccessDialog.tsx`, `invoice/components/InvoiceSuccessDialog.tsx`, `ForceUpdateModal.tsx`, `UpdatePrompt.tsx` | `surface.sheet`, `radius.card`, `shadow[4]`, over `overlay.scrim`. Optional icon (`warning` uses `status.critical.text`, `danger` uses `status.negative.text`, success uses `status.positive.text`). Title `title3`, message `body` `text.secondary`. Buttons: Cancel secondary, the action primary (negative style when destructive). Max width 420. Back button and tapping the scrim cancel, except for a forced update. While the action runs (`busy`) the action shows a spinner, both buttons are disabled, and Back and the scrim do nothing. |
 | `ConfirmInputDialog.tsx` (a confirmation with a field, or with a long message) | Looks like `ConfirmDialog`. The body (icon, title, message, field, error) scrolls with `keyboardShouldPersistTaps="handled"`; Cancel and the action sit below it, outside the scroll, and stay visible above the keyboard (keyboard rule in [5.2](#52-layout)). The dialog is at most the height left above the keyboard. An error under the field is a live region. The field's return key is Done and never confirms. |
-| Bottom sheets (`ChangeLogBottomSheet`, `common/ItemsSummaryBottomSheet`, `common/SearchableBottomSheet`, `CustomerSearchBottomSheet`, `PrintJobsBottomSheet`, `RolePickerBottomSheet`, `DispatchHistoryFilterSheet`, `filters/AutocompleteBottomSheet`, `dispatch/components/*BottomSheet`, `grn/components/*BottomSheet`) | `surface.sheet`, top corners `radius.sheet`, grab handle 36 × 4 in `border.separator`, `shadow[4]`, scrim behind. Title `headline` with a close or Done action. Content scrolls; actions stay pinned at the bottom with the safe-area inset. Searchable sheets put the search field at the top and keep it visible. |
+| Bottom sheets (`ChangeLogBottomSheet`, `common/ItemsSummaryBottomSheet`, `common/SearchableBottomSheet`, `CustomerSearchBottomSheet`, `PrintJobsBottomSheet`, `RolePickerBottomSheet`, `OrderBusinessSheet`, `dispatch/components/*BottomSheet`, `grn/components/*BottomSheet`) | `surface.sheet`, top corners `radius.sheet`, grab handle 36 × 4 in `border.separator`, `shadow[4]`, scrim behind. Title `headline` with a close or Done action. Content scrolls; actions stay pinned at the bottom with the safe-area inset. Searchable sheets put the search field at the top and keep it visible. |
 | Full-screen form over a step (`grn/rates/GrnRateSheet.tsx`) | A `Modal` with `presentationStyle="fullScreen"`, padded by the insets, `KeyboardAvoidingView` as in [5.2](#52-layout). Header: close at the start, a `footnote` line of facts over the object in `headline`, each one line. Fields in the order they are filled; short numbers side by side as `Input`s (stacked from font scale 1.3) with + and − under each (36 drawn, `touchTarget` with hitSlop, 8 apart, disabled at their limits); a short choice is a `SegmentedControl` (chips at large text) under a full-width line, in the main text colour with an accent chevron, that says what the choice does and opens the explanation in an outlined panel. A fixed fact is a full-width filled pill; a section that opens is a full-width outlined pill that opens into the same box. A wrong field turns red with its limit in its label (`invalid`). The primary action is pinned at the bottom above the keyboard, disabled until something changed when editing; leaving with changes asks "Discard changes?". |
 | Filter screens (`app/list-filters.tsx`, `features/filters/components/SingleFilterSheet.tsx`) | The page "Sort and filter": one card per filter under a section heading, close at the start of the header, "Reset" at its end, and one primary button at the bottom that names the result ("Show 34 items", "No items match"). Long choices (customers, items) open inside the page with Back. A chip opens a short sheet for that one filter with the same button. The button stays above the keyboard. Closing the page with changes asks first. |
 | Message strip (inline, `fiori/InlineValidation.tsx`) | `status.*.background`, 1 px `status.*.border`, `radius.button`, icon plus text in `status.*.text`. Variants `helper` (no container, `text.secondary`), `success`, `warning`, `error`. |
@@ -957,6 +1112,8 @@ More rules:
 - KPI trends: whether up is good is set per KPI with `upIsGood`; without it the trend shows in `text.secondary`.
 - A second series in another unit (humidity next to temperature) gets a secondary axis or its own chart, never the first series' scale.
 - Temperature charts take their y range from the readings (cold rooms run below zero) and leave gaps for missing readings rather than drawing zero.
+
+**Brand and mode:** `tokens.chart` and `tokens.avatar` are separate series for light and dark mode, and are the same in both brands. Use the series of the current mode, in order.
 
 ### 13.12 Branding
 
@@ -1127,7 +1284,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 
 ## 16. Enforcement
 
-All screens use the tokens; the six older colour systems and their adapters are gone. `eslint.config.mjs` keeps it that way. In `app/` and `src/` (except `src/theme/` and tests) these are lint errors:
+`eslint.config.mjs` keeps every screen on the tokens. In `app/` and `src/` (except `src/theme/` and tests) these are lint errors:
 
 | Rule | Use instead |
 |---|---|
@@ -1149,7 +1306,7 @@ The contrast test (`src/theme/tokens/__tests__/contrast.test.ts`) checks every t
 
 1. Write styles as a module-level `const makeStyles = (t: ThemeTokens) => ({ ... })` and call `useThemedStyles(makeStyles)` in the component. Colours passed as props come from `useTokens()`.
 2. Spread `typography.*` for text; use `space`, `radius`, `iconSize`, `touchTarget` and `layout` from `@/theme/tokens`; spread `t.shadow[n]` for elevation.
-3. Build from the shared parts before writing new ones: `ui/Button`, `ui/Input`, `ui/Card`, `ui/StatusTag`, `ui/Avatar`, `ui/Fab`, `ui/HeaderBackButton`, `ui/SectionHeader`, `fiori/KeyValueCell`, `list/ListEmptyState`, `list/SortBar`, `WizardBottomBar`, `ConfirmDialog`, `showAlert`, the bottom sheets in `common/`, `table/DataTable` with `useAppTable`.
+3. Build from the shared parts before writing new ones: `ui/Button`, `ui/Input`, `ui/Card`, `ui/StatusTag`, `ui/Avatar`, `ui/Fab`, `ui/HeaderBackButton`, `ui/SectionHeader`, `fiori/KeyValueCell`, `list/ListEmptyState`, the filter parts in `features/filters` ([14.5](#145-filter-and-sort)), `WizardBottomBar`, `ConfirmDialog`, `showAlert`, the bottom sheets in `common/`, `table/DataTable` with `useAppTable`.
 4. Format every date, time, number, weight, phone number and count with `src/utils/formatters.ts`; ask with `showAlert`.
 5. Pick the pattern in section 14 and follow it, including loading, empty, error and offline states.
 6. Add a render test that draws it in all four themes (`BRANDS × ['light','dark']`, mocking `@/store/hooks` as in `src/components/__tests__/StyleGuideScreen.test.tsx`).
@@ -1184,14 +1341,15 @@ Before merging any UI change:
 
 - [ ] `npm run lint` shows no style-guard errors; no module-scope colours.
 - [ ] Text uses `typography` styles; spacing uses `space`; radii use `radius`.
-- [ ] Checked in Orange light, Orange dark, GCSA light and GCSA dark.
+- [ ] Checked on both theme axes: Orange light, Orange dark, GCSA light and GCSA dark. Nothing checks the brand or the mode to pick a colour ([3.7](#37-the-brand-axis), [3.8](#38-the-mode-axis)).
 - [ ] Checked at the largest font size and with a screen reader.
 - [ ] Every pressable element is at least 44 or 48 and has a role and label.
 - [ ] Status has a word or icon as well as colour.
+- [ ] Tables are drawn by `DataTable` with `useAppTable`, fit a phone at the design edge without scrolling sideways, and keep their totals over every row ([13.7](#137-tables)).
 - [ ] Loading, empty, error and offline states exist.
 - [ ] Wording follows [Content and wording](#12-content-and-wording); no developer text; dates and numbers use the shared formatters; alerts use `showAlert`.
 - [ ] Contrast test passes if tokens changed.
-- [ ] `npm test`, `npm run typecheck` and `npm run lint` pass.
+- [ ] `npm test`, `npm run typecheck`, `npm run typecheck:tests` and `npm run lint` pass.
 
 ---
 

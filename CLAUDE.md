@@ -68,7 +68,9 @@ facility access requests, and forced sign-out (`forceLogoutOnInvalidToken`).
 - Never commit secrets, signing keys, `.env` or generated `android/`/`ios/` folders.
 - Use fictional names and phone numbers in tests, fixtures and screenshots.
 - UI follows the existing SAP Fiori-style components and theme (`src/components/fiori`,
-  `src/theme`); support light and dark mode.
+  `src/theme`) and [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md); support both theme axes: the
+  Orange and GCSA brands, each in light and dark mode. Tables are TanStack tables drawn by
+  `src/components/table/DataTable.tsx` (guide §13.7).
 - App changes that need a backend change list the matching backend migration in
   `CHANGELOG.md`; merge and deploy the backend first.
 - Security-relevant findings go to a private GitHub security advisory, not a public issue.
