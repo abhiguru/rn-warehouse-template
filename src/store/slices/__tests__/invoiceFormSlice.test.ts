@@ -178,7 +178,7 @@ describe('editing a saved invoice', () => {
     expect(state.header.discount_reason).toBe('');
   });
 
-  it('keeps the stored discount and its reason when another GRN is chosen', () => {
+  it('clears the stored discount and its reasons when another GRN is chosen (owner decision, 2026-10-18)', () => {
     const state = reducer(
       saved(),
       slice.loadInvoiceFormData({
@@ -190,10 +190,51 @@ describe('editing a saved invoice', () => {
 
     expect(state.invoice_id).toBe('inv-42');
     expect(state.header.gr_id).toBe('gr2');
+    expect(state.header.discount).toBe(0);
+    expect(state.header.saved_discount).toBeUndefined();
+    expect(state.header.discount_reason ?? '').toBe('');
+    expect(state.header.saved_discount_reason).toBeUndefined();
+    expect(discountNeedsReason(state.header, 'staff')).toBe(false);
+  });
+
+  it('keeps the stored discount and its reason when the same GRN is loaded again', () => {
+    const state = reducer(
+      saved(),
+      slice.loadInvoiceFormData({
+        grId: 'gr1',
+        header: { customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'gr1', gr_no: 'A0010' },
+        items: [line({ temp_id: 'temp_1_0' })],
+      })
+    );
+
     expect(state.header.discount).toBe(100);
     expect(state.header.saved_discount).toBe(100);
     expect(state.header.discount_reason).toBe('Damaged bags');
     expect(discountNeedsReason(state.header, 'staff')).toBe(false);
+  });
+
+  it('goes back to the saved GRN with its lines, discount and reason, and keeps the number and date typed meanwhile', () => {
+    const moved = reducer(
+      saved(),
+      slice.loadInvoiceFormData({
+        grId: 'gr2',
+        header: { customer_id: 'c2', customer_name: 'Other Traders', gr_id: 'gr2', gr_no: 'A0011' },
+        items: [line({ temp_id: 'temp_1_0', grn_id: 'gr2', grn_no: 'A0011' })],
+      })
+    );
+    const typed = reducer(moved, slice.updateHeader({ inv_no: 77, inv_no_typed: true }));
+
+    const state = reducer(typed, slice.restoreSavedGrn());
+
+    expect(state.header.gr_id).toBe('gr1');
+    expect(state.header.customer_name).toBe('Example Traders');
+    expect(state.selected_gr_id).toBe('gr1');
+    expect(state.header.discount).toBe(100);
+    expect(state.header.discount_reason).toBe('Damaged bags');
+    expect(state.items.map((item) => item.temp_id)).toEqual(saved().items.map((item) => item.temp_id));
+    expect(state.header.inv_no).toBe(77);
+    expect(state.header.inv_no_typed).toBe(true);
+    expect(state.editedItems).toEqual({});
   });
 
   it('does not keep a reason from an earlier form for a new invoice', () => {
@@ -401,12 +442,13 @@ describe('the reason for a zero charge', () => {
       expect(needed(state)).toBe(false);
     });
 
-    it('the discount and its reason still stay with the form, as before', () => {
+    it('the discount and its reason are reset with the lines (phone run P1: the old discount carried over)', () => {
       let state = reducer(withReasonForGrnA(), slice.updateDiscount(25));
       state = reducer(state, slice.updateHeader({ discount_reason: 'Old customer' }));
       state = reducer(state, grn('gr2', 'A0011', 'cccccccc'));
 
-      expect(state.header).toMatchObject({ discount: 25, discount_reason: 'Old customer' });
+      expect(state.header.discount).toBe(0);
+      expect(state.header.discount_reason ?? '').toBe('');
       expect(reason(state)).toBe('');
     });
   });

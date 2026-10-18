@@ -303,7 +303,7 @@ export const makeInvoiceWizardStyles = (t: ThemeTokens) => ({
   },
   button: {
     flex: 1,
-    minHeight: 48,
+    minHeight: touchTarget,
     borderRadius: radius.button,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

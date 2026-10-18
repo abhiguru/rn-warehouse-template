@@ -84,6 +84,10 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
+// A reset invoice form is empty again, one session further: screens that are open see that a new form began.
+const afterReset = (state: ReturnType<ReturnType<typeof makeStore>['getState']>) =>
+  ({ ...state, invoiceForm: { ...state.invoiceForm, formSession: state.invoiceForm.formSession + 1 } });
+
 it('clears queries, autocomplete, every form draft, every list cache and shared documents', async () => {
   const store = makeStore();
   const empty = store.getState();
@@ -104,7 +108,7 @@ it('clears queries, autocomplete, every form draft, every list cache and shared 
 
   await clearSessionScopedState(store.dispatch);
 
-  expect(store.getState()).toEqual(empty);
+  expect(store.getState()).toEqual(afterReset(empty));
   const remaining = await AsyncStorage.getAllKeys();
   expect([...remaining].sort()).toEqual(['operator_server_v1', 'persist:root']);
   expect(queryClient.cancelQueries).toHaveBeenCalledTimes(1);
@@ -123,7 +127,7 @@ it('completes the teardown even when the shared document sweep fails', async () 
   jest.mocked(sweepSharedDocuments).mockRejectedValueOnce(new Error('fictional filesystem failure'));
   await expect(clearSessionScopedState(store.dispatch)).resolves.toBeUndefined();
   expect(sweepSharedDocuments).toHaveBeenCalledTimes(1);
-  expect(store.getState()).toEqual(empty);
+  expect(store.getState()).toEqual(afterReset(empty));
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
 });
 

@@ -26,7 +26,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WizardBottomBar from '@/components/WizardBottomBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
     fontWeight,
@@ -50,7 +50,7 @@ import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailServ
 import { validateSingleItem, checkDuplicateLots } from '@/features/dispatch/schemas/dispatchValidation';
 import type { GRNDetailItem, DispatchItemData, ItemFormData } from '@/types/dispatch.types';
 import { EMPTY_DISPATCH_ITEM } from '@/types/dispatch.types';
-import { DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 import { isOtherCustomersStock } from '@/features/dispatch/utils/lotOwnership';
@@ -72,7 +72,6 @@ type DispatchItemsStepProps = {
 export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
-    const insets = useSafeAreaInsets();
 
     const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -1218,27 +1217,15 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                 </KeyboardAwareScrollView>
             </SwipeableFormStep>
 
-            {/* Bottom bar (guide §13.8 form chrome): Back secondary, Next primary */}
-            <View style={[styles.bottomBar, { paddingBottom: space.md + insets.bottom }]}>
-                <Pressable
-                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                    onPress={handleBack}
-                    accessibilityRole="button"
-                    accessibilityLabel={tr('dispatch.items.backToDetails')}
-                >
-                    <Icon name="chevron-left" size={iconSize.md} color={t.text.primary} />
-                    <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
-                </Pressable>
-                <Pressable
-                    style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
-                    onPress={handleNext}
-                    accessibilityRole="button"
-                    accessibilityLabel={tr('dispatch.items.nextReview')}
-                >
-                    <Text style={styles.primaryButtonText}>{tr('common.next')}</Text>
-                    <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
-                </Pressable>
-            </View>
+            {/* Bottom bar (guide §13.8): Back secondary, Next primary */}
+            <WizardBottomBar
+                currentStep={DISPATCH_STEP_NUMBERS.ITEMS}
+                totalSteps={DISPATCH_STEP_COUNT}
+                onPrevious={handleBack}
+                previousAccessibilityLabel={tr('dispatch.items.backToDetails')}
+                onNext={handleNext}
+                nextAccessibilityLabel={tr('dispatch.items.nextReview')}
+            />
 
             {/* Bottom Sheets */}
             <GRNAutocompleteBottomSheet
@@ -1657,52 +1644,6 @@ const makeStyles = (t: ThemeTokens) => ({
     stockDisplayValue: {
         fontWeight: fontWeight.semibold,
         fontVariant: ['tabular-nums' as const],
-    },
-    bottomBar: {
-        flexDirection: 'row' as const,
-        gap: space.sm,
-        paddingHorizontal: layout.marginCompact,
-        paddingTop: space.md,
-        backgroundColor: t.surface.card,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: t.border.separator,
-        ...t.shadow[3],
-    },
-    secondaryButton: {
-        flex: 1,
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-        gap: space.xs,
-        minHeight: touchTarget,
-        borderRadius: radius.button,
-        borderWidth: 1,
-        borderColor: t.border.button,
-    },
-    secondaryButtonPressed: {
-        backgroundColor: t.brand.subtle,
-    },
-    secondaryButtonText: {
-        ...typography.callout,
-        color: t.text.primary,
-    },
-    primaryButton: {
-        flex: 1,
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-        gap: space.xs,
-        minHeight: touchTarget,
-        borderRadius: radius.button,
-        backgroundColor: t.brand.fill,
-    },
-    primaryButtonPressed: {
-        backgroundColor: t.brand.fillPressed,
-    },
-    primaryButtonText: {
-        ...typography.callout,
-        fontWeight: fontWeight.semibold,
-        color: t.brand.onFill,
     },
 });
 

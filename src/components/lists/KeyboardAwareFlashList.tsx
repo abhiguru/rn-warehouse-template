@@ -16,7 +16,7 @@
  */
 import type React from 'react';
 import * as KeyboardAware from 'react-native-keyboard-aware-scroll-view';
-import { FlashList, type FlashListProps } from '@shopify/flash-list';
+import { FlashList, type FlashListProps, type FlashListRef } from '@shopify/flash-list';
 
 /** The keyboard props of react-native-keyboard-aware-scroll-view that this list takes. */
 export interface KeyboardAwareListProps {
@@ -26,6 +26,8 @@ export interface KeyboardAwareListProps {
   extraScrollHeight?: number;
   keyboardOpeningTime?: number;
   enableResetScrollToCoords?: boolean;
+  /** Receives the list's own ref (scrollToIndex and the rest); a ref on this component would reach the wrapper. */
+  innerRef?: (list: FlashListRef<never> | null) => void;
 }
 
 type ListenToKeyboardEvents = (options: { enableOnAndroid?: boolean }) => (component: unknown) => unknown;

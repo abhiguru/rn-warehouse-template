@@ -196,7 +196,7 @@ function InvoiceDetailScreen() {
   const handleEditInvoice = () => {
     if (!id) return;
     const invoiceId = Array.isArray(id) ? id[0] : id;
-    router.push(`/invoice-edit/${invoiceId}`);
+    router.push(`/invoice-edit/${invoiceId}/step1`);
   };
 
   // Handle Delete Invoice

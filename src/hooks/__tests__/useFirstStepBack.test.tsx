@@ -49,6 +49,16 @@ describe('Back on the first step of a create form', () => {
     return null;
   }
 
+  it('leaves with dismissTo, not replace, when asked to (one entry of the tab stays in the stack)', async () => {
+    const tree = await mount(<FirstStep exitRoute="/(tabs)/invoices" exitWith="dismissTo" />);
+
+    expect(back.press()).toBe(true);
+
+    expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
+    expect(router.replace).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
   it('asks before discarding when something was entered, and goes nowhere', async () => {
     const tree = await mount(<FirstStep hasData />);
 

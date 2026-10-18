@@ -52,8 +52,7 @@ jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/features/invoice/components/InvoiceItemsTable', () => ({ InvoiceItemsTable: 'InvoiceItemsTable' }));
-jest.mock('@/features/invoice/components/InvoiceItemCard', () => ({ InvoiceItemCard: 'InvoiceItemCard' }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: 'InvoiceItemsEditor' }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({
   ...jest.requireActual('@/services/item-pricing-service'),
@@ -75,7 +74,7 @@ async function render() {
   await act(async () => { tree = create(<InvoiceFormStep2 />); });
   return tree;
 }
-const table = (tree: ReactTestRenderer) => tree.root.findByType('InvoiceItemsTable' as unknown as React.ElementType);
+const table = (tree: ReactTestRenderer) => tree.root.findByType('InvoiceItemsEditor' as unknown as React.ElementType);
 
 beforeEach(() => {
   jest.clearAllMocks();

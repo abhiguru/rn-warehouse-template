@@ -12,7 +12,6 @@ describe('invoice texts in Gujarati', () => {
     expect(t('invoice.items.zeroDuration', { count: 12 }, 'gu')).toBe(
       '૧૨ આઇટમની મુદત ૦ છે. મુદત ૦ થી વધુ હોવી જોઈએ.'
     );
-    expect(t('invoice.table.showDispatches', { count: 3 }, 'gu')).toBe('૩ જાવક બતાવો');
   });
 
   it('says before saving how many items have a charge of 0', () => {

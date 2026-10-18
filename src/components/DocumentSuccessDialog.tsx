@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import {
   fontWeight,
   iconSize,
@@ -56,6 +57,8 @@ interface DocumentSuccessDialogProps {
   onPrint?: () => void;
   onSharePDF: () => void;
   isShareLoading?: boolean;
+  /** Why the last share failed; shown in the dialog above the buttons until the next try. GRN does not pass it. */
+  shareError?: string | null;
   isEditMode?: boolean;
 }
 
@@ -161,6 +164,10 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
+  // The share error (InlineValidation, a message strip, guide 13.9): the dialog's gap under it
+  errorStrip: {
+    marginBottom: space.md,
+  },
   buttonContainer: {
     gap: space.sm,
   },
@@ -210,6 +217,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
   onPrint,
   onSharePDF,
   isShareLoading = false,
+  shareError = null,
   isEditMode = false,
 }) => {
   // Hooks must be called before any early returns
@@ -293,6 +301,13 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                 </View>
               )}
             </View>
+
+            {/* A share that failed (message strip, style guide 13.9): a toast would sit under this dialog */}
+            {shareError ? (
+              <View style={styles.errorStrip} testID="document-success-share-error">
+                <InlineValidation variant="error" message={shareError} />
+              </View>
+            ) : null}
 
             {/* Actions: one primary, the rest secondary */}
             <View style={styles.buttonContainer}>

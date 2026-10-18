@@ -36,7 +36,11 @@ interface InvoiceSuccessDialogProps {
   onPrint?: () => void;
   onSharePDF?: () => void;
   isShareLoading?: boolean;
+  /** The sharing failed: drawn inside the dialog, because a message on the screen under it is hidden by it. */
+  shareError?: string | null;
   isEditMode?: boolean;
+  /** The dialog has finished closing (iOS `onDismiss`): the next Modal may open from here. */
+  onDismissed?: () => void;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -86,6 +90,22 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     marginBottom: space.lg,
+  },
+  errorStrip: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    padding: space.md,
+    marginBottom: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.negative.border,
+    backgroundColor: t.status.negative.background,
+  },
+  errorStripText: {
+    ...typography.subhead,
+    flex: 1,
+    color: t.status.negative.text,
   },
   totalNote: {
     ...typography.footnote,
@@ -188,7 +208,9 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   onPrint,
   onSharePDF,
   isShareLoading = false,
+  shareError = null,
   isEditMode = false,
+  onDismissed,
 }) => {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -213,6 +235,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
       transparent
       animationType="fade"
       onRequestClose={onViewList}
+      onDismiss={onDismissed}
       statusBarTranslucent
     >
       <View
@@ -274,13 +297,20 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
               </Text>
             )}
 
+            {!!shareError && (
+              <View style={styles.errorStrip} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="invoice-share-error">
+                <MaterialCommunityIcons name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
+                <Text style={styles.errorStripText}>{shareError}</Text>
+              </View>
+            )}
+
             <View style={styles.buttonContainer}>
               <Pressable
                 style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
                 onPress={onViewList}
                 accessibilityRole="button"
               >
-                <Text style={styles.primaryButtonText}>{tr('invoice.success.viewInvoices')}</Text>
+                <Text style={styles.primaryButtonText}>{tr(isEditMode ? 'invoice.success.viewInvoice' : 'invoice.success.viewInvoices')}</Text>
               </Pressable>
 
               {onSharePDF && (

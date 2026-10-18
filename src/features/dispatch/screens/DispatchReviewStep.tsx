@@ -1,53 +1,39 @@
 /**
  * Dispatch Review Step - Unified Create/Edit Component
- * Displays header summary, all saved items, and submission functionality
+ * One folding card (style guide 14.3, the same card as the GRN Review step): DETAILS, PHOTOS (create only) and ITEMS,
+ * one open at a time, ITEMS when the step opens. The items are a nested table with a total row.
  * Uses mode prop to differentiate between create and edit flows
  *
  * Refactored to use useDispatchForm hook for form state management.
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    Pressable,
-    ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { uploadDeferredDispatchImages, unpreparedDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
-import { Snackbar } from 'react-native-paper';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import {
-    fontWeight,
-    iconSize,
-    layout,
-    radius,
-    space,
-    touchTarget,
-    typography,
-    trackedText,
-} from '@/theme/tokens';
+import { radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate, formatWeightEach, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatWeightEach, formatNumber, formatMobile } from '@/utils/formatters';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { serverText } from '@/utils/serverText';
-import SwipeableFormStep from '@/components/SwipeableFormStep';
+import WizardBottomBar from '@/components/WizardBottomBar';
+import { ReviewCard, ReviewKeyBlock, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printDispatchRange } from '@/services/print-service';
 import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSuccessDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StatusTag } from '@/components/ui';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { generateDispatchPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
-import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
+import { useDispatchLotStock } from '@/features/dispatch/hooks/useDispatchLotStock';
 import type { DispatchItemData, DispatchImageData } from '@/types/dispatch.types';
 import { ImageUploadButton, type CustomUploadFunction } from '@/features/grn/components/ImageUploadButton';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
@@ -58,24 +44,40 @@ import {
     generateTempDispatchId,
     type ImageUploadProgress,
 } from '@/features/dispatch/services/dispatchImageService';
-import { DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import {
+    crowded,
+    lastColumnAlone,
+    makeTableStyles,
+    nb,
+    nestedRowWidth,
+    numberColumnWidth,
+    useTableLayout,
+} from '@/components/common/DetailTable';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
+import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/DispatchItemsTab';
+import { getLanguage } from '@/i18n/language';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
 };
 
-/** Guide 12.3: mobile number as "+91 98765 43210". */
-const formatMobile = (mobile: string) => {
-    const digits = mobile.replace(/\D/g, '');
-    if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-    return `+91 ${mobile}`;
-};
+/** The folding sections of the step, top to bottom. */
+type ReviewSectionId = 'details' | 'photos' | 'items';
+
+/** A long mark wraps to this many lines and is then cut; the whole mark is in the line's spoken label. */
+const MARK_LINES = 2;
+
+/** Bags column width at font scale 1: room for "12,500". */
+const QTY_WIDTH = 48;
 
 export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const styles = useThemedStyles(makeStyles);
+    const table = useThemedStyles(makeTableStyles);
+    const screen = useTableLayout();
     const t = useTokens();
 
-    const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams<{ id: string }>();
 
     // Use the consolidated dispatch form hook
@@ -101,23 +103,34 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Generate temp dispatch ID for image uploads (create mode only)
     const [tempDispatchId] = useState(() => generateTempDispatchId());
 
-    // Track expanded items
-    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+    // The sections fold, one open at a time; ITEMS when the step opens.
+    const { open: openSection, toggle } = useReviewSections<ReviewSectionId>('items');
+    const toggleSection = (section: string) => toggle(section as ReviewSectionId);
 
-    // Fresh stock values for edit mode
-    const [freshStockValues, setFreshStockValues] = useState<Record<string, number>>({});
-    const [loadingStock, setLoadingStock] = useState(false);
+    // Fresh stock of every lot, one read per GRN (edit mode only)
+    const stock = useDispatchLotStock(items, !isCreateMode);
 
     // Print dialog state (create mode)
     const [showPrintDialog, setShowPrintDialog] = useState(false);
     const [createdDispatchNumber, setCreatedDispatchNumber] = useState('');
-    const [snackbarVisible, setSnackbarVisible] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState('');
+    // Toasts wait until the success or print dialog is gone: a dialog is a modal and would hide them.
+    const pendingToasts = useRef<string[]>([]);
+    // Set while the print error alert is on screen
+    const printAlertOpen = useRef(false);
+    const queueToast = (message: string) => {
+        pendingToasts.current.push(message);
+    };
+    const flushToasts = () => {
+        const messages = pendingToasts.current;
+        pendingToasts.current = [];
+        if (messages.length > 0) showToast(messages.join(' '));
+    };
 
     // Success dialog state (create mode)
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
     const [isShareLoading, setIsShareLoading] = useState(false);
+    const [shareError, setShareError] = useState<string | null>(null);
 
     // Local submitting state - prevents duplicate submissions
     // This is set immediately when user confirms dialog, before any async work
@@ -134,47 +147,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [showEditSuccessDialog, setShowEditSuccessDialog] = useState(false);
 
-    // Debug logging
-    useEffect(() => {
-        console.log('[DispatchReviewStep] Items count:', items.length);
-        if (isCreateMode) {
-            console.log('[DispatchReviewStep] Images count:', images.length);
-        }
-    }, []);
-
-    // Load fresh stock values (edit mode only)
-    useEffect(() => {
-        if (!isCreateMode && items.length > 0) {
-            loadFreshStockValues();
-        }
-    }, [isCreateMode, items.length]);
-
-    const loadFreshStockValues = async () => {
-        setLoadingStock(true);
-        const stockMap: Record<string, number> = {};
-
-        try {
-            for (const item of items) {
-                try {
-                    const result = await getGRNDetailByNumber(item.grns_gr_no);
-                    if (result.success && result.data?.items) {
-                        const lot = result.data.items.find(
-                            (l: { id: string; stock: number }) => l.id === item.grnItems_id
-                        );
-                        if (lot) {
-                            stockMap[item.unique_id] = lot.stock;
-                        }
-                    }
-                } catch (error) {
-                    console.error('[DispatchReviewStep] Error fetching stock:', error);
-                }
-            }
-            setFreshStockValues(stockMap);
-        } finally {
-            setLoadingStock(false);
-        }
-    };
-
     // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {
         resetFormState();
@@ -187,7 +159,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     // Handle back navigation
     const handleBack = async () => {
-        await navigateToStep(2);
+        await navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS);
     };
 
     // ========================================================================
@@ -215,8 +187,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         updateImageStatus(imageData.id, 'completed', imageData.imageUrl, imageData.storage_path || imageData.storagePath);
     };
 
-    const handleImageUploadError = (imageId: string, error: string) => {
-        console.error('[DispatchReviewStep] Image upload error:', imageId, error);
+    const handleImageUploadError = (imageId: string, _error: string) => {
         updateImageStatus(imageId, 'failed');
     };
 
@@ -250,43 +221,34 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         return uploadDispatchImage(asset, entityId, onProgress);
     };
 
-    // Toggle item expansion (stable, so the memoized rows keep their props)
-    const toggleItemExpansion = useCallback((unique_id: string) => {
-        setExpandedItems((prev) => {
-            const newSet = new Set(prev);
-            if (newSet.has(unique_id)) {
-                newSet.delete(unique_id);
-            } else {
-                newSet.add(unique_id);
-            }
-            return newSet;
-        });
-    }, []);
-
-    // The totals: bags per item and in all, and the number of GRNs. No weight: a lot
-    // stores the weight of one bag, and total weights are not shown (style guide 12.3).
+    // The totals: bags in all and the number of GRNs. No weight: a lot stores the weight of one bag, and
+    // total weights are not shown (style guide 12.3).
     const totals = useMemo(() => {
-        const itemWiseTotals: Record<string, { quantity: number }> = {};
-        let grandTotalQuantity = 0;
-        const uniqueGRNs = new Set(items.map((item) => item.grns_gr_no)).size;
-
+        let totalQuantity = 0;
         items.forEach((item: DispatchItemData) => {
-            const itemKey = item.grnItems_item_name;
-            if (!itemWiseTotals[itemKey]) {
-                itemWiseTotals[itemKey] = { quantity: 0 };
-            }
-            const qty = item.disp_quantity;
-            itemWiseTotals[itemKey].quantity += qty;
-            grandTotalQuantity += qty;
+            totalQuantity += item.disp_quantity;
         });
-
-        return { itemWiseTotals, grandTotalQuantity, uniqueGRNs };
+        return { totalQuantity, uniqueGRNs: new Set(items.map((item) => item.grns_gr_no)).size };
     }, [items]);
 
     // Format date (guide 12.3: "9 Oct 2026")
     const formatDisplayDate = (isoDate: string) => {
         return toDate(isoDate) ? formatDate(isoDate) : '';
     };
+
+    // What waits for the dialog that is closing: the success dialog, "Photos not uploaded", "Dispatch saved" or the alert
+    // for a refused save. A Modal cannot be presented over another that is still closing on iOS (nothing would appear,
+    // and Print, Share and Create another would be out of reach), so it runs from that dialog's `onDismissed` (iOS) or
+    // once both are hidden (Android).
+    const afterDialog = useRef<(() => void) | null>(null);
+    const runAfterDialog = () => {
+        const next = afterDialog.current;
+        afterDialog.current = null;
+        next?.();
+    };
+    useEffect(() => {
+        if (!showConfirmDialog && photosNotUploaded === null && Platform.OS !== 'ios') runAfterDialog();
+    }, [showConfirmDialog, photosNotUploaded]);
 
     // Handle form submission
     const handleSubmit = async () => {
@@ -307,21 +269,26 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowConfirmDialog(true);
     };
 
+    // The confirm dialog stays open and busy until the save has answered.
     const handleConfirmSubmit = () => {
-        setShowConfirmDialog(false);
+        if (isSubmitting) return;
         // Set submitting immediately to prevent duplicate taps
         setIsSubmitting(true);
-        performSubmit();
+        void performSubmit();
     };
 
     const performSubmit = async () => {
-        const result = await submitForm();
+        const result = await submitForm(false, (title, message) => {
+            afterDialog.current = () => showAlert(title, message);
+        });
+        // The next dialog is queued in `afterDialog` below; it is drawn once the confirm has finished closing.
+        setShowConfirmDialog(false);
 
         if (!result.success) {
             triggerError();
             // Re-enable button on error so user can retry
             setIsSubmitting(false);
-            // Error already shown by submitForm via Alert
+            // The error is shown by `afterDialog`, once the confirm is gone
             return;
         }
 
@@ -335,22 +302,22 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 itemCount: items.length,
             });
 
-            // Show snackbar if order was cleared
+            // Said once the success dialog is gone, if the order was cleared
             if (result.sourceOrderCleared) {
-                setSnackbarMessage(tr('dispatch.review.orderFulfilled'));
-                setSnackbarVisible(true);
+                queueToast(tr('dispatch.review.orderFulfilled'));
             }
 
             // The dispatch is saved. Photos that did not upload are named with a
             // retry before the success dialog, never passed over.
             if (result.dispatchId && result.failedPhotos && result.failedPhotos.length > 0) {
                 triggerWarning();
-                setPhotosNotUploaded({ dispatchId: result.dispatchId, failed: result.failedPhotos });
+                const failure = { dispatchId: result.dispatchId, failed: result.failedPhotos };
+                afterDialog.current = () => setPhotosNotUploaded(failure);
                 return;
             }
-            setShowSuccessDialog(true);
+            afterDialog.current = () => setShowSuccessDialog(true);
         } else {
-            setShowEditSuccessDialog(true);
+            afterDialog.current = () => setShowEditSuccessDialog(true);
         }
     };
 
@@ -359,7 +326,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         tr('dispatch.review.photosNotUploadedMessage', {
             number: formatIdentifier(header.disp_no),
             photos: failed
-                .map((photo) => `\u2022 ${tr('dispatch.review.failedPhoto', { position: images.findIndex((img) => img.id === photo.id) + 1 || failed.indexOf(photo) + 1 })}`)
+                .map((photo) => `• ${tr('dispatch.review.failedPhoto', { position: images.findIndex((img) => img.id === photo.id) + 1 || failed.indexOf(photo) + 1 })}`)
                 .join('\n'),
         });
 
@@ -376,8 +343,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 return;
             }
             triggerSuccess();
-            setSnackbarMessage(tr('dispatch.review.photosUploaded'));
-            setSnackbarVisible(true);
+            queueToast(tr('dispatch.review.photosUploaded'));
             setShowSuccessDialog(true);
         } finally {
             setIsRetryingPhotos(false);
@@ -392,8 +358,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             files.forEach((file) => abandonLocalPhotoUpload(file));
             void releaseLocalPhotos(files);
         }
+        // Success dialog after "Photos not uploaded" has finished closing
+        afterDialog.current = () => setShowSuccessDialog(true);
         setPhotosNotUploaded(null);
-        setShowSuccessDialog(true);
     };
 
     const handleEditSuccessConfirm = () => {
@@ -402,16 +369,16 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         router.replace(`/dispatch-details/${dispatchId}`);
     };
 
-    // Handle Share PDF (create mode)
+    // Handle Share PDF (create mode); a failure is said inside the dialog, which is open
     const handleSharePDF = async () => {
         if (!createdDispatchNumber) return;
 
+        setShareError(null);
         setIsShareLoading(true);
         try {
             const pdfResult = await generateDispatchPDF(createdDispatchNumber);
             if (!pdfResult.success || !pdfResult.pdfUrl) {
-                setSnackbarMessage(tr('dispatch.review.pdfFailed'));
-                setSnackbarVisible(true);
+                setShareError(tr('dispatch.review.pdfFailed'));
                 return;
             }
 
@@ -420,12 +387,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 `Dispatch_${createdDispatchNumber}.pdf`
             );
             if (!shareResult.success) {
-                setSnackbarMessage(tr('dispatch.review.shareFailed'));
-                setSnackbarVisible(true);
+                setShareError(tr('dispatch.review.shareFailed'));
             }
-        } catch (error) {
-            setSnackbarMessage(tr('dispatch.review.shareFailed'));
-            setSnackbarVisible(true);
+        } catch {
+            setShareError(tr('dispatch.review.shareFailed'));
         } finally {
             setIsShareLoading(false);
         }
@@ -436,12 +401,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowSuccessDialog(false);
         resetFormState();
         router.replace('/dispatch-form/step1');
+        flushToasts();
     };
 
     const handleViewList = () => {
         setShowSuccessDialog(false);
         resetFormState();
         router.replace('/dispatch');
+        flushToasts();
     };
 
     const handlePrint = () => {
@@ -451,253 +418,87 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     const isBusy = isSaving || isSubmitting || isRetryingPhotos;
 
-    // Render hero metrics (key totals at top for quick scanning)
-    const renderHeroMetrics = () => (
-        <View style={styles.heroSection}>
-            {/* Customer card (surface.card; brand fills are not used for content headers) */}
-            <View
-                style={styles.customerCard}
-                accessible
-                accessibilityLabel={tr('dispatch.form.customerLabel', { name: header.customer_name || tr('dispatch.review.noneChosen') })}
-            >
-                <View style={styles.customerIconContainer}>
-                    <Icon name="account-outline" size={iconSize.md} color={t.brand.tint} />
-                </View>
-                <View style={styles.customerTextContainer}>
-                    <Text style={styles.customerLabel}>{tr('common.customer')}</Text>
-                    <Text style={styles.customerName} numberOfLines={2}>
-                        {header.customer_name || tr('dispatch.review.noCustomer')}
-                    </Text>
-                    {(header.customer_address || header.customer_city) && (
-                        <Text style={styles.customerMeta} numberOfLines={1}>
-                            {header.customer_address || header.customer_city}
-                            {header.customer_address && header.customer_city && header.customer_address !== header.customer_city && `, ${header.customer_city}`}
-                        </Text>
-                    )}
-                    {header.customer_mobile && (
-                        <View style={styles.customerMobileRow}>
-                            <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.customerMeta} numberOfLines={1}>
-                                {formatMobile(header.customer_mobile)}
-                            </Text>
-                        </View>
-                    )}
-                </View>
-            </View>
+    // ========================================================================
+    // THE ITEMS TABLE (Item | GRN/Received | Qty)
+    // ========================================================================
 
-            {/* Key metrics grid (KPI tiles, guide 13.11) */}
-            <View style={styles.metricsGrid}>
-                <View style={styles.metricCard} accessible accessibilityLabel={formatCount(items.length, 'item')}>
-                    <View style={styles.metricIconContainer}>
-                        <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
-                    </View>
-                    <View style={styles.metricContent}>
-                        <Text style={styles.metricValue}>{formatNumber(items.length)}</Text>
-                        <Text style={styles.metricLabel}>{tr('dispatch.count.itemsLabel', { count: items.length })}</Text>
-                    </View>
-                </View>
-
-                <View style={styles.metricCard} accessible accessibilityLabel={tr('dispatch.review.totalQuantityLabel', { bags: formatCount(totals.grandTotalQuantity, 'bag') })}>
-                    <View style={styles.metricIconContainer}>
-                        <Icon name="counter" size={iconSize.md} color={t.brand.tint} />
-                    </View>
-                    <View style={styles.metricContent}>
-                        <Text style={styles.metricValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
-                        <Text style={styles.metricLabel}>{tr('dispatch.review.totalQuantity')}</Text>
-                    </View>
-                </View>
-            </View>
-        </View>
+    const language = getLanguage();
+    const lineFacts = useMemo(() => lineFactsCache(), [language]);
+    const stockStatus = isCreateMode ? 'ready' : stock.status;
+    const stockOf = stock.stockOf;
+    /** The stock tag of a line: bags left in a new dispatch, the stock read again in an edit; none after a failed read. */
+    const stockTextOf = useMemo(
+        () => (item: DispatchItemData): string | null => {
+            if (isCreateMode) return tr('dispatch.review.stockLeft', { stock: formatNumber(item.grnItems_stock - item.disp_quantity) });
+            if (stockStatus === 'loading') return tr('dispatch.review.stockChecking');
+            if (stockStatus === 'error') return null;
+            return tr('dispatch.review.stockInStock', { stock: formatNumber(stockOf(item.grnItems_id) ?? item.grnItems_stock) });
+        },
+        [isCreateMode, stockStatus, stockOf]
     );
 
-    // Section header with optional edit link (guide 14.3: Review has an edit link per section)
-    const renderSectionHeader = (title: string, editStep?: number, editLabel?: string) => (
-        <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
-            {editStep !== undefined && (
-                <Pressable
-                    onPress={() => navigateToStep(editStep)}
-                    style={({ pressed }) => [styles.editLink, pressed && styles.editLinkPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={editLabel}
-                    hitSlop={space.sm}
-                >
-                    <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
-                    <Text style={styles.editLinkText}>{tr('common.edit')}</Text>
-                </Pressable>
-            )}
-        </View>
-    );
+    const sources = useMemo(() => items.map((item) => ({ grn_no: item.grns_gr_no, original_quantity: item.grnItems_quantity })), [items]);
+    const grnHeading = tr('dispatch.details.table.sourceGrnReceived');
+    const grnCount = tr('dispatch.details.table.grnCount', { count: totals.uniqueGRNs });
+    const lineCount = tr('dispatch.details.table.lineCount', { count: items.length });
+    // The Qty column is as wide as its widest number, the total included; both columns are drawn `space.xs` wider.
+    const qtyWidth = numberColumnWidth(screen, QTY_WIDTH, items.map((item) => formatNumber(item.disp_quantity)), [formatNumber(totals.totalQuantity)]) + space.xs;
+    const grnWidth = sourceColumnWidth(sources, screen, [grnCount], grnHeading);
+    // A long GRN/received or a big quantity would squeeze the item names: the GRN text goes under the item, and a
+    // Qty that would still crowd it goes there too, right-aligned.
+    const row = nestedRowWidth(screen);
+    const stacked = screen.stacked || crowded(row, [grnWidth, qtyWidth], 0, screen.scale);
+    const qtyUnder = stacked && lastColumnAlone(row, qtyWidth, screen.scale);
 
-    // Render header summary (compact version - customer shown in hero)
-    const renderHeaderSummary = () => (
-        <View style={styles.section}>
-            {renderSectionHeader(tr('dispatch.steps.details'), DISPATCH_STEP_NUMBERS.INFO, tr('dispatch.review.editDetails'))}
-
-            <View style={styles.card}>
-                {/* Row 1: Dispatch No + Date */}
-                <View style={styles.compactRow}>
-                    <View style={styles.compactItem}>
-                        <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>{tr('common.dispatchNumber')}</Text>
-                            <Text style={styles.compactValue}>{header.disp_no}</Text>
-                        </View>
-                    </View>
-                    <View style={styles.compactItem}>
-                        <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>{tr('common.date')}</Text>
-                            <Text style={styles.compactValue}>{formatDisplayDate(header.disp_date)}</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* Row 2: Vehicle + Supervisor */}
-                <View style={styles.compactRow}>
-                    <View style={styles.compactItem}>
-                        <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>{tr('dispatch.review.vehicle')}</Text>
-                            <Text style={styles.compactValue} numberOfLines={1}>{header.registration || '-'}</Text>
-                        </View>
-                    </View>
-                    <View style={styles.compactItem}>
-                        <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>{tr('dispatch.form.supervisor')}</Text>
-                            <Text style={styles.compactValue} numberOfLines={2}>{header.supervisor_name || '-'}</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* Notes (if any) */}
-                {header.note && (
-                    <View style={styles.notesRow}>
-                        <Icon name="note-text-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.notesText} numberOfLines={2}>{header.note}</Text>
-                    </View>
-                )}
-            </View>
-        </View>
-    );
-
-    // Render items section
-    const renderItemsSection = () => (
-        <View style={styles.section}>
-            {renderSectionHeader(tr('dispatch.review.itemsTitle', { count: items.length }), DISPATCH_STEP_NUMBERS.ITEMS, tr('dispatch.review.editItems'))}
-
-            <View style={styles.itemsContainer}>
-                {items.map((item: DispatchItemData, index: number) => (
-                    <DispatchReviewItemRow
-                        key={item.unique_id}
-                        item={item}
-                        index={index}
-                        isExpanded={expandedItems.has(item.unique_id)}
-                        stockValue={isCreateMode ? item.grnItems_stock : freshStockValues[item.unique_id] ?? item.grnItems_stock}
-                        isCreateMode={isCreateMode}
-                        loadingStock={loadingStock}
-                        onToggle={toggleItemExpansion}
-                        styles={styles}
-                        t={t}
-                    />
-                ))}
-            </View>
-        </View>
-    );
-
-    // Render images section (create mode only)
-    const renderImagesSection = () => {
-        if (!isCreateMode) return null;
-
-        const imageDataForGrid = images.map((img) => ({
-            id: img.id,
-            imageUrl: img.image_url,
-            fileName: img.file_name,
-            fileSize: img.file_size || 0,
-            mimeType: img.mime_type || 'image/jpeg',
-            uploadTimestamp: new Date().toISOString(),
-            uploadStatus: img.upload_status,
-            progress: img.upload_progress,
-        }));
-
-        return (
-            <View style={styles.section}>
-                {renderSectionHeader(tr('dispatch.review.photosTitle'))}
-
-                <View style={[styles.card, styles.imagesCard]}>
-                    {images.length > 0 && (
-                        <ImagePreviewGrid
-                            imageData={imageDataForGrid}
-                            onRemoveImage={handleRemoveImage}
-                            // handleRemoveImage removes a dispatch photo on the server; the
-                            // grid's own removal is the GRN one.
-                            removeFromServer={false}
-                            onImagePress={(imageData) => {
-                                const index = images.findIndex(img => img.id === imageData.id);
-                                setSelectedImageIndex(index >= 0 ? index : 0);
-                                setShowImageOverlay(true);
-                            }}
-                            editable={true}
-                            maxImages={10}
-                            columns={3}
+    const itemColumns = useMemo(
+        () =>
+            lineColumnHelper.columns([
+                lineColumnHelper.display({
+                    id: 'item',
+                    header: tr('common.item'),
+                    meta: { width: 'grow' },
+                    cell: ({ row: line }) => (
+                        <DispatchReviewItemCell
+                            item={line.original}
+                            stockText={stockTextOf(line.original)}
+                            source={stacked ? sourceText({ grn_no: line.original.grns_gr_no, original_quantity: line.original.grnItems_quantity }) : null}
+                            qtyText={qtyUnder ? formatNumber(line.original.disp_quantity) : null}
+                            styles={styles}
+                            table={table}
                         />
-                    )}
-
-                    <ImageUploadButton
-                        onImageUploadStart={handleImageUploadStart}
-                        onImageUploadProgress={handleImageUploadProgress}
-                        onImageUploadComplete={handleImageUploadComplete}
-                        onImageUploadError={handleImageUploadError}
-                        grnId={tempDispatchId}
-                        imageType="header"
-                        currentImages={images.map((img) => img.image_url)}
-                        maxImages={10}
-                        buttonText={images.length > 0 ? tr('dispatch.review.addMorePhotos') : tr('dispatch.review.addPhotos')}
-                        customUploadFunction={dispatchUploadFunction}
-                    />
-
-                    {images.length === 0 && (
-                        <Text style={styles.imagesHint}>
-                            {tr('dispatch.review.photosHint')}
-                        </Text>
-                    )}
-                </View>
-            </View>
-        );
-    };
-
-    // Render totals section
-    const renderTotalsSection = () => (
-        <View style={styles.section}>
-            {renderSectionHeader(tr('dispatch.review.summary'))}
-
-            <View style={styles.card}>
-                {isCreateMode &&
-                    Object.entries(totals.itemWiseTotals).map(([itemName, itemTotals]) => (
-                        <View key={itemName} style={styles.subtotalRow}>
-                            <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.subtotalLabel}>{itemName}</Text>
-                            <Text style={styles.subtotalValue}>{formatNumber(itemTotals.quantity)}</Text>
-                        </View>
-                    ))}
-
-                {isCreateMode && <View style={styles.totalsDivider} />}
-
-                <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>{tr('dispatch.review.totalQuantity')}</Text>
-                    <Text style={styles.totalValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
-                </View>
-
-                {!isCreateMode && (
-                    <View style={styles.totalRow}>
-                        <Text style={styles.totalLabel}>{tr('dispatch.summarySheet.grns')}</Text>
-                        <Text style={styles.totalValue}>{formatNumber(totals.uniqueGRNs)}</Text>
-                    </View>
-                )}
-            </View>
-        </View>
+                    ),
+                }),
+                ...(stacked
+                    ? []
+                    : [
+                          lineColumnHelper.display({
+                              id: 'grn',
+                              header: grnHeading,
+                              meta: { width: grnWidth, headerOneLine: true },
+                              cell: ({ row: line }) => (
+                                  <Text style={table.primary} numberOfLines={1}>
+                                      {sourceText({ grn_no: line.original.grns_gr_no, original_quantity: line.original.grnItems_quantity })}
+                                  </Text>
+                              ),
+                          }),
+                      ]),
+                lineColumnHelper.display({
+                    id: 'qty',
+                    header: tr('lists.card.colQty'),
+                    // Under the item the quantity has no column of its own, only its heading over the end of the row.
+                    meta: { width: qtyUnder ? 'auto' : qtyWidth, numeric: true, headerOnly: qtyUnder },
+                    cell: ({ row: line }) => (
+                        <Text style={table.numberStrong} numberOfLines={1}>{formatNumber(line.original.disp_quantity)}</Text>
+                    ),
+                }),
+            ]),
+        [stacked, qtyUnder, grnWidth, qtyWidth, grnHeading, stockTextOf, styles, table]
     );
+    const itemsTable = useAppTable({
+        columns: itemColumns,
+        data: items,
+        getRowId: (item) => item.unique_id,
+    });
 
     // Handle step indicator press for navigation
     const handleStepIndicatorPress = async (stepNumber: number) => {
@@ -707,6 +508,20 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     const submitLabel = isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
     const submitBusyLabel = isCreateMode ? tr('dispatch.review.creating') : tr('dispatch.review.savingChanges');
+
+    const imageDataForGrid = images.map((img) => ({
+        id: img.id,
+        imageUrl: img.image_url,
+        fileName: img.file_name,
+        fileSize: img.file_size || 0,
+        mimeType: img.mime_type || 'image/jpeg',
+        uploadTimestamp: new Date().toISOString(),
+        uploadStatus: img.upload_status,
+        progress: img.upload_progress,
+    }));
+    const address = [header.customer_address, header.customer_city].filter(
+        (part, index, parts) => !!part && parts.indexOf(part) === index
+    ).join(', ');
 
     return (
         <View style={styles.container}>
@@ -727,68 +542,171 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 isEditMode={!isCreateMode}
             />
 
-            <SwipeableFormStep
-                onSwipeRight={() => navigateToStep(2)}
-                canSwipeLeft={false}
-                canSwipeRight={true}
-            >
-                <View style={styles.contentWrapper}>
-                    <ScrollView
-                        style={styles.scrollView}
-                        contentContainerStyle={styles.scrollContent}
-                    >
-                        {renderHeroMetrics()}
-                        {renderHeaderSummary()}
-                        {renderItemsSection()}
-                        {renderImagesSection()}
-
-                        {/* Message strip for edit mode (informative) */}
-                        {!isCreateMode && (
-                            <View style={styles.hintContainer}>
-                                <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
-                                <Text style={styles.hintText}>
-                                    {tr('dispatch.review.editHint')}
-                                </Text>
-                            </View>
-                        )}
-                    </ScrollView>
-
-                    {/* Bottom bar (guide 13.8): Back secondary, primary action, bottom inset */}
-                    <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
-                        <Pressable
-                            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                            onPress={handleBack}
-                            disabled={isBusy}
-                            accessibilityRole="button"
-                            accessibilityLabel={tr('dispatch.review.backToItems')}
-                            accessibilityState={{ disabled: isBusy }}
+            <View style={styles.contentWrapper}>
+                <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    <ReviewCard testID="dispatch-review-table">
+                        {/* Dispatch details */}
+                        <ReviewSection
+                            id="details"
+                            testIDPrefix="dispatch-review"
+                            title={tr('dispatch.steps.details')}
+                            onEdit={() => navigateToStep(DISPATCH_STEP_NUMBERS.INFO)}
+                            editLabel={tr('dispatch.review.editDetails')}
+                            closedLine={[header.disp_no, formatDisplayDate(header.disp_date), header.customer_name].filter(Boolean).join(' · ')}
+                            open={openSection === 'details'}
+                            onToggle={toggleSection}
+                            first
                         >
-                            <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
-                        </Pressable>
-                        <Pressable
-                            style={({ pressed }) => [
-                                styles.submitButton,
-                                pressed && styles.submitButtonPressed,
-                                isBusy && styles.submitButtonDisabled,
-                            ]}
-                            onPress={handleSubmit}
-                            disabled={isBusy}
-                            accessibilityRole="button"
-                            accessibilityLabel={isBusy ? submitBusyLabel : submitLabel}
-                            accessibilityState={{ disabled: isBusy, busy: isBusy }}
-                        >
-                            {isBusy ? (
-                                <ActivityIndicator size="small" color={t.brand.onFill} />
-                            ) : (
-                                <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
-                            )}
-                            <Text style={styles.submitButtonText}>{isBusy ? submitBusyLabel : submitLabel}</Text>
-                        </Pressable>
-                    </View>
-                </View>
-            </SwipeableFormStep>
+                            <ReviewKeyValues>
+                                <ReviewKeyValue label={tr('common.dispatchNumber')} value={header.disp_no || EMPTY} emphasized first />
+                                <ReviewKeyValue label={tr('common.date')} value={formatDisplayDate(header.disp_date) || EMPTY} />
+                                <ReviewKeyValue label={tr('common.customer')} value={header.customer_name || EMPTY} />
+                                <ReviewKeyBlock label={tr('dispatch.review.address')} value={address || EMPTY} />
+                                <ReviewKeyValue label={tr('common.mobileNumber')} value={header.customer_mobile ? formatMobile(header.customer_mobile) : EMPTY} />
+                                <ReviewKeyValue label={tr('dispatch.review.vehicle')} value={header.registration || EMPTY} />
+                                <ReviewKeyValue label={tr('dispatch.form.supervisor')} value={header.supervisor_name || EMPTY} />
+                                <ReviewKeyBlock label={tr('common.notes')} value={header.note || EMPTY} />
 
-            {/* Confirm Submit Dialog */}
+                                <View style={styles.totalsSection}>
+                                    <ReviewKeyValue label={tr('dispatch.review.totalItems')} value={formatNumber(items.length)} emphasized first />
+                                    <ReviewKeyValue label={tr('dispatch.summarySheet.grns')} value={formatNumber(totals.uniqueGRNs)} emphasized />
+                                    <ReviewKeyValue label={tr('dispatch.review.totalQuantity')} value={formatNumber(totals.totalQuantity)} emphasized />
+                                </View>
+                            </ReviewKeyValues>
+                        </ReviewSection>
+
+                        {/* Photos (create only) */}
+                        {isCreateMode ? (
+                            <ReviewSection
+                                id="photos"
+                                testIDPrefix="dispatch-review"
+                                title={tr('dispatch.review.photosHeading')}
+                                count={images.length > 0 ? images.length : undefined}
+                                closedLine={images.length > 0 ? formatCount(images.length, 'photo') : tr('dispatch.review.closedNoPhotos')}
+                                open={openSection === 'photos'}
+                                onToggle={toggleSection}
+                            >
+                                <View style={[table.nested, styles.photosBody]}>
+                                    <Text style={styles.photosHint}>{tr('dispatch.review.photosHint')}</Text>
+
+                                    {images.length > 0 && (
+                                        <ImagePreviewGrid
+                                            imageData={imageDataForGrid}
+                                            onRemoveImage={handleRemoveImage}
+                                            // handleRemoveImage removes a dispatch photo on the server; the
+                                            // grid's own removal is the GRN one.
+                                            removeFromServer={false}
+                                            onImagePress={(imageData) => {
+                                                const index = images.findIndex((img) => img.id === imageData.id);
+                                                setSelectedImageIndex(index >= 0 ? index : 0);
+                                                setShowImageOverlay(true);
+                                            }}
+                                            editable={true}
+                                            maxImages={10}
+                                            columns={3}
+                                        />
+                                    )}
+
+                                    <ImageUploadButton
+                                        onImageUploadStart={handleImageUploadStart}
+                                        onImageUploadProgress={handleImageUploadProgress}
+                                        onImageUploadComplete={handleImageUploadComplete}
+                                        onImageUploadError={handleImageUploadError}
+                                        grnId={tempDispatchId}
+                                        imageType="header"
+                                        currentImages={images.map((img) => img.image_url)}
+                                        maxImages={10}
+                                        buttonText={images.length > 0 ? tr('dispatch.review.addMorePhotos') : tr('dispatch.review.addPhotos')}
+                                        customUploadFunction={dispatchUploadFunction}
+                                    />
+                                </View>
+                            </ReviewSection>
+                        ) : null}
+
+                        {/* Items */}
+                        <ReviewSection
+                            id="items"
+                            testIDPrefix="dispatch-review"
+                            title={tr('common.items')}
+                            count={items.length}
+                            tag={!isCreateMode && stock.status === 'error' ? tr('dispatch.review.stockNotChecked') : undefined}
+                            onEdit={() => navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS)}
+                            editLabel={tr('dispatch.review.editItems')}
+                            closedLine={tr('dispatch.review.closedItems', { quantity: formatNumber(totals.totalQuantity) })}
+                            open={openSection === 'items'}
+                            onToggle={toggleSection}
+                        >
+                            {!isCreateMode && stock.status === 'error' ? (
+                                <View style={styles.errorStrip} testID="dispatch-review-stock-error">
+                                    <InlineValidation variant="error" message={tr('dispatch.review.stockErrorMessage')} />
+                                    <Pressable
+                                        onPress={stock.retry}
+                                        style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={tr('common.retry')}
+                                        testID="dispatch-review-stock-retry"
+                                    >
+                                        <Text style={styles.retryText}>{tr('common.retry')}</Text>
+                                    </Pressable>
+                                </View>
+                            ) : null}
+                            <DataTable
+                                table={itemsTable}
+                                variant="nested"
+                                headerOneLine={false}
+                                testID="dispatch-review-items-table"
+                                rowTestID={(line) => `dispatch-review-row-${line.original.unique_id}`}
+                                rowLabel={(line) => lineFacts.label(line.original, line.index, stockTextOf(line.original))}
+                                footer={
+                                    <>
+                                        <View
+                                            style={[table.footerRow, styles.totalRow]}
+                                            accessible
+                                            accessibilityLabel={tr('dispatch.details.table.itemsTotalLabel', {
+                                                lines: lineCount,
+                                                grns: grnCount,
+                                                bags: formatCount(totals.totalQuantity, 'bag'),
+                                            })}
+                                            testID="dispatch-review-items-total"
+                                        >
+                                            <View style={table.grow}>
+                                                <Text style={table.primaryStrong}>{tr('common.total')}</Text>
+                                                <Text style={table.secondary}>{nb(stacked ? `${lineCount} · ${grnCount}` : lineCount)}</Text>
+                                            </View>
+                                            {!stacked ? (
+                                                <View style={{ width: grnWidth }}>
+                                                    <Text style={table.primaryStrong} numberOfLines={1}>{grnCount}</Text>
+                                                </View>
+                                            ) : null}
+                                            <Text style={[table.numberStrong, { width: qtyWidth }]} numberOfLines={1}>{formatNumber(totals.totalQuantity)}</Text>
+                                        </View>
+                                        {/* Message for edit mode (informative), as the table's note */}
+                                        {!isCreateMode ? (
+                                            <Text style={styles.tableNote} testID="dispatch-review-edit-hint">{tr('dispatch.review.editHint')}</Text>
+                                        ) : null}
+                                    </>
+                                }
+                            />
+                        </ReviewSection>
+                    </ReviewCard>
+                </ScrollView>
+
+                {/* Bottom bar (guide 13.8): Back secondary, primary action */}
+                <WizardBottomBar
+                    currentStep={DISPATCH_STEP_NUMBERS.REVIEW}
+                    totalSteps={DISPATCH_STEP_COUNT}
+                    onPrevious={handleBack}
+                    previousAccessibilityLabel={tr('dispatch.review.backToItems')}
+                    previousTestID="dispatch-review-back"
+                    onNext={handleSubmit}
+                    nextTestID="dispatch-review-submit"
+                    nextLabel={submitLabel}
+                    loadingLabel={submitBusyLabel}
+                    isLoading={isBusy}
+                />
+            </View>
+
+            {/* Confirm Submit Dialog; busy until the save has answered */}
             <ConfirmDialog
                 visible={showConfirmDialog}
                 title={tr(isCreateMode ? 'dispatch.review.confirmCreateTitle' : 'dispatch.review.confirmSaveTitle', {
@@ -803,6 +721,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onCancel={() => setShowConfirmDialog(false)}
                 variant="default"
                 icon={isCreateMode ? 'check-circle' : 'pencil-outline'}
+                busy={isSubmitting || isSaving}
+                onDismissed={runAfterDialog}
             />
 
             {/* Photos of the created dispatch that did not upload */}
@@ -817,6 +737,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 variant="warning"
                 icon="image-off-outline"
                 dismissible={false}
+                onDismissed={runAfterDialog}
             />
 
             {/* Success Dialog (create mode) */}
@@ -830,6 +751,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     onPrint={handlePrint}
                     onSharePDF={handleSharePDF}
                     isShareLoading={isShareLoading}
+                    shareError={shareError}
                 />
             )}
 
@@ -841,22 +763,27 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         setShowPrintDialog(false);
                         resetFormState();
                         router.replace('/dispatch');
+                        // After a failed print the toasts wait for the alert's button: a toast under the alert is lost
+                        if (!printAlertOpen.current) flushToasts();
                     }}
                     onConfirm={async (start, end) => {
                         const result = await printDispatchRange(start, end);
                         if (result.success) {
-                            setSnackbarMessage(
+                            queueToast(
                                 result.print_job?.cups_job_id
                                     ? tr('dispatch.review.printSentWithJob', { job: String(result.print_job.cups_job_id) })
                                     : tr('dispatch.review.printSent')
                             );
-                            setSnackbarVisible(true);
                         } else {
-                            // A dialog, not the snackbar: the step is left at once, and a failure is
+                            // A dialog, not a toast: the step is left at once, and a failure is
                             // something the person must act on. The unconfirmed one must not invite a reprint.
+                            // The queued toasts ("Order fulfilled...") are said when the person closes it.
+                            printAlertOpen.current = true;
                             showAlert(
                                 tr(result.unconfirmed ? 'dispatch.review.printUnconfirmedTitle' : 'dispatch.review.printFailedTitle'),
-                                tr(result.unconfirmed ? 'dispatch.review.printUnconfirmed' : 'dispatch.review.printFailed')
+                                tr(result.unconfirmed ? 'dispatch.review.printUnconfirmed' : 'dispatch.review.printFailed'),
+                                [{ text: tr('common.ok'), onPress: () => { printAlertOpen.current = false; flushToasts(); } }],
+                                { onDismiss: () => { printAlertOpen.current = false; flushToasts(); } }
                             );
                         }
                         // Leaving the step is the dialog's onDismiss above, which the dialog calls after this.
@@ -868,15 +795,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     placeholder={tr('dispatch.review.printPlaceholder', { example: 'D001' })}
                 />
             )}
-
-            <Snackbar
-                visible={snackbarVisible}
-                onDismiss={() => setSnackbarVisible(false)}
-                duration={4000}
-                style={styles.snackbar}
-            >
-                <Text style={styles.snackbarText}>{snackbarMessage}</Text>
-            </Snackbar>
 
             {/* Full-screen image preview */}
             {images.length > 0 && (
@@ -912,160 +830,82 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     );
 }
 
+/** An empty value of the details (style guide 12.3). */
+const EMPTY = '—';
+
 type DispatchReviewStyles = ReturnType<typeof makeStyles>;
+type TableStyles = ReturnType<typeof makeTableStyles>;
 
-/** A date as the review shows it (guide 12.3: "9 Oct 2026"), or nothing. */
-const formatReviewDate = (isoDate: string) => (toDate(isoDate) ? formatDate(isoDate) : '');
+const lineColumnHelper = createAppColumnHelper<DispatchItemData>();
 
-interface DispatchReviewItemRowProps {
-    item: DispatchItemData;
-    index: number;
-    isExpanded: boolean;
-    /** The stock shown for the line: as loaded in a new dispatch, as read again in an edit. */
-    stockValue: number;
-    isCreateMode: boolean;
-    loadingStock: boolean;
-    onToggle: (uniqueId: string) => void;
-    styles: DispatchReviewStyles;
-    t: ThemeTokens;
-}
-
-/** One item of the review; drawn again only when its own props change. */
-const DispatchReviewItemRow = React.memo(function DispatchReviewItemRow({
-    item,
-    index,
-    isExpanded,
-    stockValue,
-    isCreateMode,
-    loadingStock,
-    onToggle,
-    styles,
-    t,
-}: DispatchReviewItemRowProps) {
-    // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
-    const weightEach = formatWeightEach(item.grnItems_weight);
-
-    return (
-        <View style={styles.itemCard}>
-            <Pressable
-                style={({ pressed }) => [styles.itemHeader, pressed && styles.itemHeaderPressed]}
-                onPress={() => onToggle(item.unique_id)}
-                accessibilityRole="button"
-                accessibilityLabel={tr(
-                    item.grnItems_package_mark ? 'dispatch.review.itemRowLabelWithMark' : 'dispatch.review.itemRowLabel',
-                    {
+/**
+ * What the review's lines say about themselves, kept per line object and stock text: the screen-reader label naming the
+ * item, mark, GRN, quantity, weight, rack, received quantity and stock (the rack and the received quantity are drawn on the line). A line that did not change is not worked out again, so opening a section
+ * or a dialog does not format the other lines.
+ */
+function lineFactsCache() {
+    const cache = new WeakMap<DispatchItemData, Map<string, string>>();
+    return {
+        label: (item: DispatchItemData, index: number, stockText: string | null): string => {
+            let labels = cache.get(item);
+            if (!labels) {
+                labels = new Map();
+                cache.set(item, labels);
+            }
+            const key = `${index}|${stockText ?? ''}`;
+            let label = labels.get(key);
+            if (label === undefined) {
+                label = [
+                    tr(item.grnItems_package_mark ? 'dispatch.review.itemRowLabelWithMark' : 'dispatch.review.itemRowLabel', {
                         index: index + 1,
                         item: item.grnItems_item_name,
                         mark: item.grnItems_package_mark,
                         grn: formatIdentifier(item.grns_gr_no),
-                        quantity: item.disp_quantity,
-                    }
-                )}
-                accessibilityHint={isExpanded ? tr('dispatch.review.hidesDetails') : tr('dispatch.review.showsDetails')}
-                accessibilityState={{ expanded: isExpanded }}
-            >
-                <View style={styles.itemNumberBadge}>
-                    <Text style={styles.itemNumber}>{formatNumber(index + 1)}</Text>
-                </View>
+                        quantity: formatCount(item.disp_quantity, 'bag'),
+                    }),
+                    formatWeightEach(item.grnItems_weight),
+                    tr('grn.item.rackWithValue', { rack: item.grnItems_rack?.trim() || EMPTY }),
+                    tr('dispatch.details.received', { bags: formatCount(item.grnItems_quantity, 'bag') }),
+                    stockText,
+                ]
+                    .filter(Boolean)
+                    .join(', ');
+                labels.set(key, label);
+            }
+            return label;
+        },
+    };
+}
 
-                <View style={styles.itemMainInfo}>
-                    <View style={styles.itemTitleRow}>
-                        <View style={styles.itemNameSection}>
-                            <Text style={styles.itemName} numberOfLines={2}>
-                                {item.grnItems_item_name}
-                            </Text>
-                            {item.grnItems_package_mark && (
-                                <View style={styles.packageMarkBadge}>
-                                    <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                    <Text style={styles.packageMarkText}>{item.grnItems_package_mark}</Text>
-                                </View>
-                            )}
-                        </View>
-                        <Icon
-                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                            size={iconSize.lg}
-                            color={t.icon.secondary}
-                        />
-                    </View>
-                    <View style={styles.itemMetaRow}>
-                        <View style={styles.metaBadge}>
-                            <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
-                                {tr('dispatch.review.grnBadge', { number: formatIdentifier(item.grns_gr_no), quantity: item.grnItems_quantity })}
-                            </Text>
-                        </View>
-                        <View style={styles.metaBadge}>
-                            <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{tr('dispatch.review.qty', { quantity: item.disp_quantity })}</Text>
-                        </View>
-                    </View>
-                </View>
-            </Pressable>
+interface DispatchReviewItemCellProps {
+    item: DispatchItemData;
+    /** "115 left", "120 in stock" or "Checking stock"; null when the stock could not be read. */
+    stockText: string | null;
+    /** "WMWM8884/1,677", under the item when the GRN column is gone; null while it is a column. */
+    source: string | null;
+    /** The dispatched quantity under the item, right-aligned, when it has no column of its own. */
+    qtyText: string | null;
+    styles: DispatchReviewStyles;
+    table: TableStyles;
+}
 
-            {isExpanded && (
-                <View style={styles.itemDetails}>
-                    <View style={styles.detailRow}>
-                        <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.detailLabel}>{tr('dispatch.review.grnDate')}</Text>
-                        <Text style={styles.detailValue}>{formatReviewDate(item.grns_date)}</Text>
-                    </View>
-
-                    <View style={styles.detailRow}>
-                        <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.detailLabel}>{tr('common.customer')}</Text>
-                        <Text style={styles.detailValue}>{item.grns_customer_name}</Text>
-                    </View>
-
-                    {item.grnItems_package_mark && (
-                        <View style={styles.detailRow}>
-                            <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
-                            <Text style={styles.detailValue}>{item.grnItems_package_mark}</Text>
-                        </View>
-                    )}
-
-                    {item.grnItems_rack && (
-                        <View style={styles.detailRow}>
-                            <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
-                            <Text style={styles.detailValue}>{item.grnItems_rack}</Text>
-                        </View>
-                    )}
-
-                    {weightEach !== null && (
-                        <View style={styles.detailRow}>
-                            <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
-                            <Text style={styles.detailValue}>{weightEach}</Text>
-                        </View>
-                    )}
-
-                    <View style={styles.detailRow}>
-                        <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.detailLabel}>{tr('dispatch.review.originalQuantity')}</Text>
-                        <Text style={styles.detailValue}>{formatNumber(item.grnItems_quantity)}</Text>
-                    </View>
-
-                    <View style={styles.detailRow}>
-                        <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
-                        <Text style={[styles.detailValue, !isCreateMode && loadingStock && styles.detailValueLoading]}>
-                            {!isCreateMode && loadingStock ? '-' : formatNumber(stockValue)}
-                        </Text>
-                    </View>
-
-                    {isCreateMode && (
-                        <View style={styles.detailRow}>
-                            <Icon name="database-check-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>{tr('dispatch.review.stockAfter')}</Text>
-                            <Text style={[styles.detailValue, styles.detailValueEmphasized]}>
-                                {formatNumber(item.grnItems_stock - item.disp_quantity)}
-                            </Text>
-                        </View>
-                    )}
-                </View>
-            )}
-        </View>
+/** The Item cell of one line: name, mark, the tags (weight, rack, stock) and, when stacked, the GRN text and Qty. */
+const DispatchReviewItemCell = React.memo(function DispatchReviewItemCell({ item, stockText, source, qtyText, styles, table }: DispatchReviewItemCellProps) {
+    const weightText = formatWeightEach(item.grnItems_weight);
+    const mark = item.grnItems_package_mark?.trim();
+    const rack = item.grnItems_rack?.trim();
+    return (
+        <>
+            <Text style={table.primaryStrong}>{item.grnItems_item_name}</Text>
+            {mark ? <Text style={table.secondary} numberOfLines={MARK_LINES} ellipsizeMode="tail">{mark}</Text> : null}
+            <View style={styles.itemTags}>
+                {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
+                <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack: rack || EMPTY })} icon="view-grid-outline" />
+                {stockText !== null && <StatusTag wrap status="neutral" label={stockText} icon="warehouse" />}
+            </View>
+            {source !== null ? <Text style={[table.secondary, styles.stackedGrn]}>{source}</Text> : null}
+            {qtyText !== null ? <Text style={table.numberStrong} numberOfLines={1}>{qtyText}</Text> : null}
+        </>
     );
 });
 
@@ -1081,348 +921,50 @@ const makeStyles = (t: ThemeTokens) => ({
         flex: 1,
     },
     scrollContent: {
-        paddingHorizontal: layout.marginCompact,
-        paddingTop: space.lg,
-        paddingBottom: space.lg,
-    },
-    card: {
-        backgroundColor: t.surface.card,
-        borderRadius: radius.card,
         padding: space.lg,
+        paddingBottom: space.xxl,
+    },
+    totalsSection: {
+        borderTopWidth: 1,
+        borderTopColor: t.table.separator,
+    },
+    photosBody: {
+        padding: space.sm,
         gap: space.md,
-        ...t.shadow[2],
     },
-    // Hero section
-    heroSection: {
-        marginBottom: space.xxl,
-        gap: space.md,
-    },
-    customerCard: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.md,
-        backgroundColor: t.surface.card,
-        borderRadius: radius.card,
-        padding: space.lg,
-        ...t.shadow[2],
-    },
-    customerIconContainer: {
-        width: layout.avatar.md,
-        height: layout.avatar.md,
-        borderRadius: radius.pill,
-        backgroundColor: t.brand.subtle,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-    },
-    customerTextContainer: {
-        flex: 1,
-    },
-    customerLabel: {
-        ...typography.footnote,
-        color: t.text.secondary,
-    },
-    customerName: {
-        ...typography.headline,
-        color: t.text.primary,
-    },
-    customerMeta: {
+    photosHint: {
         ...typography.subhead,
         color: t.text.secondary,
-        marginTop: space.xxs,
     },
-    customerMobileRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.xs,
-    },
-    metricsGrid: {
-        flexDirection: 'row' as const,
-        gap: space.sm,
-    },
-    metricCard: {
-        flex: 1,
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        backgroundColor: t.surface.card,
-        borderRadius: radius.card,
-        padding: space.md,
-        gap: space.md,
-        ...t.shadow[2],
-    },
-    metricIconContainer: {
-        width: layout.avatar.md,
-        height: layout.avatar.md,
-        borderRadius: radius.pill,
-        backgroundColor: t.brand.subtle,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-    },
-    metricContent: {
-        flex: 1,
-    },
-    metricValue: {
-        ...typography.title3,
-        color: t.text.primary,
-        fontVariant: ['tabular-nums' as const],
-    },
-    metricLabel: {
-        ...typography.footnote,
-        color: t.text.secondary,
-    },
-    section: {
-        marginBottom: space.xxl,
-    },
-    sectionHeader: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'space-between' as const,
-        marginBottom: space.sm,
-        minHeight: touchTarget,
-    },
-    sectionTitle: {
-        ...typography.footnote,
-        fontWeight: fontWeight.semibold,
-        textTransform: 'uppercase' as const,
-        letterSpacing: trackedText(0.5),
-        color: t.text.secondary,
-    },
-    editLink: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.xs,
-        minHeight: touchTarget,
-        paddingHorizontal: space.sm,
-        borderRadius: radius.button,
-    },
-    editLinkPressed: {
-        backgroundColor: t.brand.subtle,
-    },
-    editLinkText: {
-        ...typography.callout,
-        color: t.brand.tint,
-    },
-    // Compact summary card
-    compactRow: {
-        flexDirection: 'row' as const,
-        gap: space.md,
-    },
-    compactItem: {
-        flex: 1,
-        flexDirection: 'row' as const,
-        alignItems: 'flex-start' as const,
-        gap: space.sm,
-    },
-    compactItemContent: {
-        flex: 1,
-    },
-    compactLabel: {
-        ...typography.footnote,
-        color: t.text.secondary,
-        marginBottom: space.xxs,
-    },
-    compactValue: {
-        ...typography.body,
-        fontWeight: fontWeight.semibold,
-        color: t.text.primary,
-    },
-    notesRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'flex-start' as const,
-        gap: space.sm,
-        paddingTop: space.md,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: t.border.divider,
-    },
-    notesText: {
-        ...typography.subhead,
-        flex: 1,
-        color: t.text.primary,
-    },
-    itemsContainer: {
-        gap: space.sm,
-    },
-    itemCard: {
-        backgroundColor: t.surface.card,
-        borderRadius: radius.card,
-        overflow: 'hidden' as const,
-        ...t.shadow[2],
-    },
-    itemHeader: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        padding: space.lg,
-        gap: space.md,
-        minHeight: layout.objectCellMinHeight,
-        backgroundColor: t.surface.card,
-    },
-    itemHeaderPressed: {
-        backgroundColor: t.surface.cardPressed,
-    },
-    itemNumberBadge: {
-        width: layout.avatar.sm,
-        height: layout.avatar.sm,
-        borderRadius: radius.pill,
-        backgroundColor: t.brand.subtle,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-    },
-    itemNumber: {
-        ...typography.subhead,
-        fontWeight: fontWeight.semibold,
-        color: t.brand.tint,
-        fontVariant: ['tabular-nums' as const],
-    },
-    itemMainInfo: {
-        flex: 1,
-        gap: space.xs,
-    },
-    itemTitleRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'space-between' as const,
-    },
-    itemNameSection: {
-        flex: 1,
-        gap: space.xs,
-    },
-    itemName: {
-        ...typography.headline,
-        color: t.text.primary,
-    },
-    packageMarkBadge: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.xs,
-        alignSelf: 'flex-start' as const,
-    },
-    packageMarkText: {
-        ...typography.footnote,
-        color: t.text.secondary,
-    },
-    itemMetaRow: {
+    itemTags: {
         flexDirection: 'row' as const,
         flexWrap: 'wrap' as const,
-        alignItems: 'center' as const,
-        gap: space.sm,
+        gap: space.s6,
+        marginTop: space.xs,
     },
-    metaBadge: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.xs,
-        paddingHorizontal: space.sm,
-        paddingVertical: space.xxs,
-        backgroundColor: t.status.neutral.background,
-        borderRadius: radius.field,
+    stackedGrn: {
+        marginTop: space.xs,
     },
-    metaText: {
-        ...typography.caption1,
-        fontWeight: fontWeight.semibold,
-        color: t.status.neutral.text,
-        fontVariant: ['tabular-nums' as const],
-    },
-    itemDetails: {
-        paddingHorizontal: space.lg,
-        paddingBottom: space.lg,
-        paddingTop: space.md,
-        gap: space.md,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: t.border.divider,
-        backgroundColor: t.background.base,
-    },
-    detailRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.sm,
-    },
-    detailLabel: {
-        ...typography.subhead,
-        color: t.text.secondary,
-        minWidth: 120,
-    },
-    detailValue: {
-        ...typography.subhead,
-        fontWeight: fontWeight.semibold,
-        color: t.text.primary,
-        flex: 1,
-        fontVariant: ['tabular-nums' as const],
-    },
-    detailValueEmphasized: {
-        fontWeight: fontWeight.bold,
-    },
-    detailValueLoading: {
-        color: t.text.secondary,
-    },
-    imagesCard: {
-        gap: space.md,
-    },
-    imagesHint: {
-        ...typography.footnote,
-        color: t.text.secondary,
-        textAlign: 'center' as const,
-    },
-    subtotalRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.sm,
-    },
-    subtotalLabel: {
-        ...typography.subhead,
-        color: t.text.secondary,
-        flex: 1,
-    },
-    subtotalValue: {
-        ...typography.subhead,
-        fontWeight: fontWeight.semibold,
-        color: t.text.primary,
-        fontVariant: ['tabular-nums' as const],
-    },
-    totalsDivider: {
-        height: 1,
-        backgroundColor: t.border.separator,
-    },
+    // The total pads like the lines of the nested table, so its figure lines up with theirs
     totalRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        gap: space.md,
+        paddingHorizontal: space.sm,
     },
-    totalLabel: {
-        ...typography.body,
-        color: t.text.secondary,
-        flex: 1,
-    },
-    totalValue: {
-        ...typography.headline,
-        color: t.text.primary,
-        fontVariant: ['tabular-nums' as const],
-    },
-    // Message strip (guide 13.9), informative
-    hintContainer: {
-        flexDirection: 'row' as const,
-        alignItems: 'flex-start' as const,
-        gap: space.sm,
-        padding: space.md,
-        backgroundColor: t.status.informative.background,
-        borderRadius: radius.button,
-        borderWidth: 1,
-        borderColor: t.status.informative.border,
-    },
-    hintText: {
+    tableNote: {
         ...typography.subhead,
-        flex: 1,
-        color: t.status.informative.text,
+        color: t.text.secondary,
+        paddingHorizontal: space.sm,
+        paddingVertical: space.sm,
+        borderTopWidth: 1,
+        borderTopColor: t.table.separator,
     },
-    // Bottom bar (guide 13.8)
-    bottomBar: {
-        flexDirection: 'row' as const,
+    // The stock message strip (InlineValidation, guide 13.9) with the Try again button under it
+    errorStrip: {
+        margin: space.sm,
         gap: space.sm,
-        paddingHorizontal: layout.marginCompact,
-        paddingTop: space.md,
-        backgroundColor: t.surface.card,
-        ...t.shadow[3],
     },
-    secondaryButton: {
-        minHeight: 48,
-        minWidth: 96,
+    retryButton: {
+        alignSelf: 'flex-start' as const,
+        minHeight: touchTarget,
         paddingHorizontal: space.lg,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
@@ -1430,42 +972,12 @@ const makeStyles = (t: ThemeTokens) => ({
         borderWidth: 1,
         borderColor: t.border.button,
     },
-    secondaryButtonPressed: {
+    retryButtonPressed: {
         backgroundColor: t.brand.subtle,
     },
-    secondaryButtonText: {
+    retryText: {
         ...typography.callout,
         color: t.brand.tint,
-    },
-    submitButton: {
-        flex: 1,
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-        backgroundColor: t.brand.fill,
-        minHeight: 48,
-        paddingHorizontal: space.lg,
-        borderRadius: radius.button,
-        gap: space.sm,
-    },
-    submitButtonPressed: {
-        backgroundColor: t.brand.fillPressed,
-    },
-    submitButtonDisabled: {
-        opacity: t.interaction.disabledOpacity,
-    },
-    submitButtonText: {
-        ...typography.callout,
-        color: t.brand.onFill,
-    },
-    snackbar: {
-        backgroundColor: t.surface.inverse,
-        borderRadius: radius.button,
-        ...t.shadow[3],
-    },
-    snackbarText: {
-        ...typography.subhead,
-        color: t.text.inverse,
     },
 });
 

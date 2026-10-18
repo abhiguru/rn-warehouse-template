@@ -123,7 +123,8 @@ beforeEach(() => {
   jest.mocked(ConfigService.clearCache).mockImplementation(async () => { events.push('clear config'); });
   jest.mocked(commitStagedOperatorServer).mockImplementation(async () => {
     // All real form reducers must have cleared old data before the new origin commits.
-    expect(store.getState()).toEqual(emptyState);
+    // The invoice form is empty again, one session further (screens that are open see a new form begin).
+    expect(store.getState()).toEqual({ ...emptyState, invoice: { ...emptyState.invoice, formSession: emptyState.invoice.formSession + 1 } });
     events.push('commit');
   });
 });
@@ -187,7 +188,7 @@ it.each(['different origin', 'replacement at the same origin'])('clears old form
   expect(router.replace).toHaveBeenCalledWith('/login');
   expect(endOperatorSwitch).toHaveBeenCalledTimes(1);
   store.dispatch(rollbackToSnapshot());
-  expect(store.getState()).toEqual(emptyState);
+  expect(store.getState()).toEqual({ ...emptyState, invoice: { ...emptyState.invoice, formSession: emptyState.invoice.formSession + 1 } });
 });
 
 it('keeps the same instance and its drafts without a confirmation or logout', async () => {

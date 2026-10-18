@@ -399,20 +399,6 @@ export const loadInvoiceFormData = async (
         ? isOneTime(item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode)
         : isOneTimeCharge;
 
-      // Debug: Log item field extraction
-      if (__DEV__ && index === 0) {
-        console.log('[InvoiceFormService] First item field extraction:', {
-          grn_items_id: item.grn_items_id,
-          grn_items_item_name: item.grn_items_item_name,
-          dispatches_items_disp_qty: item.dispatches_items_disp_qty,
-          dispatches_items_id: item.dispatches_items_id,
-          unit_price: item.unit_price,
-          labour_rate: item.labour_rate,
-          tax_percent: item.tax_percent,
-          extracted: { grnItemId, itemName, qty, charge, labourRate, tax },
-        });
-      }
-
       return {
         // Generate temp_id for React keys
         temp_id: `temp_${Date.now()}_${index}`,
@@ -763,11 +749,6 @@ export const loadInvoiceData = async (
     // Available: id, disp_trl_id, item_name, qty, dispatch_no, dispatch_date,
     //            duration, no_of_days, charge, tax, labour_rate
 
-    // Debug: Log first item keys
-    if (__DEV__ && items.length > 0) {
-      console.log('[InvoiceFormService] loadInvoiceData item keys:', Object.keys(items[0]));
-    }
-
     const formattedItems: InvoiceItemData[] = items.map((item: any, index: number) => {
       const charge = item.charge || 0;
       // Duration can be fractional (e.g., 7.5 months), don't round it
@@ -944,42 +925,4 @@ export const updateInvoice = async (
   }
 };
 
-export const transformFormDataToPayload = (
-  header: any,
-  items: InvoiceItemData[]
-): CreateInvoicePayload => {
-  return {
-    header: {
-      customer_id: header.customer_id,
-      customer_name: header.customer_name,
-      gr_id: header.gr_id,
-      gr_no: header.gr_no,
-      inv_no: header.inv_no,
-      inv_fin_year:
-        typeof header.inv_fin_year === 'string'
-          ? parseInt(header.inv_fin_year.split('-')[0])
-          : header.inv_fin_year,
-      inv_date: header.inv_date.includes('T')
-        ? header.inv_date
-        : header.inv_date + 'T00:00:00Z',
-      discount: header.discount || 0,
-      discount_reason: header.discount_reason?.trim() || null,
-      // The save sends it only when a line has a zero charge.
-      zero_charge_reason: header.zero_charge_reason?.trim() || null,
-      labour: header.labour || 0,
-      tax_amount: header.tax_amount || 0,
-      total: header.total || 0,
-      one_time_charge: header.one_time_charge || false,
-    },
-    items: items.map((item) => ({
-      disp_trl_id: item.disp_trl_id,
-      grn_item_id: item.grn_item_id, // GRN item record ID (goodsreceived_trl.id)
-      qty: item.qty,
-      charge: item.charge,
-      labour_rate: item.labour_rate,
-      tax: item.tax,
-      duration: item.duration,
-      no_of_days: item.no_of_days,
-    })),
-  };
-};
+export { transformFormDataToPayload } from '../utils/invoicePayload';

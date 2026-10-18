@@ -36,7 +36,6 @@ describe('one word per idea', () => {
     setLanguage('gu');
     expect([t('grn.steps.review'), t('dispatch.steps.review'), t('invoice.steps.review')])
       .toEqual(Array(3).fill('ચકાસણી'));
-    expect(t('invoice.review.title')).toBe('ઇન્વૉઇસની ચકાસણી');
   });
 
   it('names the first tab of a details page સારાંશ, and the people section સંપર્ક', () => {

@@ -27,11 +27,12 @@ jest.mock('@/store/hooks', () => ({
 // Every screen-focus callback the screen registers, so the test can bring the screen back into focus.
 const mockFocusCallbacks: Array<() => void> = [];
 jest.mock('expo-router', () => ({
-  router: { push: jest.fn(), back: jest.fn(), dismiss: jest.fn() },
+  router: { push: jest.fn(), back: jest.fn(), dismiss: jest.fn(), dismissTo: jest.fn(), navigate: jest.fn() },
   useFocusEffect: (callback: () => void) => {
     mockFocusCallbacks.push(callback);
   },
 }));
+jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));

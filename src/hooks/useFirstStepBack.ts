@@ -27,9 +27,14 @@ export interface FirstStepBackOptions {
   askToDiscard: () => void;
   /** Where Back goes when nothing was entered: the list the form was opened from. */
   exitRoute: string;
+  /**
+   * How it leaves: `replace` (the default) puts the route in place of the form; `dismissTo` takes the form off the
+   * stack back to that route, which leaves a single entry of the tab screen (a replace left two).
+   */
+  exitWith?: 'replace' | 'dismissTo';
 }
 
-export function useFirstStepBack({ enabled = true, hasData, askToDiscard, exitRoute }: FirstStepBackOptions): void {
+export function useFirstStepBack({ enabled = true, hasData, askToDiscard, exitRoute, exitWith = 'replace' }: FirstStepBackOptions): void {
   const router = useRouter();
 
   useBackHandler({
@@ -38,7 +43,8 @@ export function useFirstStepBack({ enabled = true, hasData, askToDiscard, exitRo
       if (hasData) {
         askToDiscard();
       } else {
-        router.replace(exitRoute as Href);
+        if (exitWith === 'dismissTo') router.dismissTo(exitRoute as Href);
+        else router.replace(exitRoute as Href);
       }
       return true;
     },

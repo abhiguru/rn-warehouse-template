@@ -10,6 +10,7 @@ import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 import { getTokens } from '@/theme/tokens';
 import { setLanguage } from '@/i18n/language';
 
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/components/fiori', () => ({ KeyValueCell: () => null, InlineValidation: () => null }));
@@ -85,8 +86,18 @@ describe('the reason field for a zero charge', () => {
     await act(async () => { tree.unmount(); });
   });
 
-  it('is marked required, with a red border, for staff who have not written one', async () => {
+  it('is asked for, not red, before a save was refused', async () => {
     const tree = await render({ zeroChargeReasonRequired: true });
+
+    expect(labels(tree)).toContain('Reason for zero charge (required)');
+    const style = StyleSheet.flatten(reasonInput(tree)!.props.style);
+    expect(style.borderColor).toBe(getTokens('orange', 'light').border.field);
+    expect(style.borderWidth).toBe(1);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('is marked required, with a red border, for staff who have not written one, once a save was refused', async () => {
+    const tree = await render({ zeroChargeReasonRequired: true, showErrors: true });
 
     expect(labels(tree)).toContain('Reason for zero charge (required)');
     expect(labels(tree)).not.toContain('Reason for zero charge');

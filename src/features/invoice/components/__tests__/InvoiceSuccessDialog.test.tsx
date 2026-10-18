@@ -74,9 +74,45 @@ describe('InvoiceSuccessDialog', () => {
   it('uses update wording in edit mode and hides the redundant "another" action', () => {
     const text = allText(renderIn('gcsa', 'dark', true));
     expect(text).toContain('Invoice updated');
-    expect(text).toContain('View invoices');
+    expect(text).toContain('View invoice');
+    expect(text).not.toContain('View invoices');
     expect(text).not.toContain('Edit another invoice');
     expect(text).not.toContain('Create another invoice');
+  });
+
+  describe('a failure of the sharing', () => {
+    const renderWith = (shareError?: string | null) => {
+      mockState = { theme: { preference: 'light', brand: 'orange' } };
+      let tree!: ReactTestRenderer;
+      act(() => {
+        tree = create(
+          <InvoiceSuccessDialog
+            isVisible
+            invoiceData={invoice}
+            onCreateAnother={jest.fn()}
+            onViewList={jest.fn()}
+            onSharePDF={jest.fn()}
+            shareError={shareError}
+          />
+        );
+      });
+      return tree;
+    };
+
+    it('is drawn inside the dialog, as an alert the screen reader announces', () => {
+      const tree = renderWith("Couldn't share the PDF. Try again.");
+
+      const strip = tree.root.findByProps({ testID: 'invoice-share-error' });
+      expect(strip.props.accessibilityRole).toBe('alert');
+      expect(strip.props.accessibilityLiveRegion).toBe('polite');
+      expect(allText(tree)).toContain("Couldn't share the PDF. Try again.");
+    });
+
+    it('leaves no strip when there is no failure', () => {
+      const tree = renderWith(null);
+
+      expect(tree.root.findAllByProps({ testID: 'invoice-share-error' })).toHaveLength(0);
+    });
   });
 
   describe('the total it shows', () => {
