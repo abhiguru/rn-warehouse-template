@@ -5,7 +5,8 @@
 Fixes from the 2026-10-18 design review of the GRN tab and its filters, judged against `docs/STYLE_GUIDE.md`.
 Needs backend migration 98 (`grn_list_receipt_pages`: receipt pages and the low-stock filter): merge and deploy
 the backend first. On a facility without it the list pages lines as before, the apply button reads "Show
-results", and Low stock is ignored for staff (all lines show) and matches nothing for a customer account.
+results", and the Stock filter does not offer Low stock (the app learns from the list's answers that the facility
+pages by line; a stored Low stock is not sent and shows no chip).
 
 - **Whole GRNs on every page.** The list asks for pages of receipts (`p_filters.page_by = 'receipt'`, 20 a page),
   so a GRN's lines are never split across two pages and its stock, item count and tag are always its own. A
@@ -37,8 +38,48 @@ results", and Low stock is ignored for staff (all lines show) and matches nothin
   - The × of an active chip is a whole touch target.
   - Reset and Done in sheet and page headers are whole targets.
   - Customer and Item rows on Sort and filter press like rows.
-  - A range the wrong way round no longer disables Apply: a press says what to fix.
+  - A range the wrong way round no longer disables Apply: a press announces what to fix, scrolls the first wrong
+    field into view on Sort and filter, and moves screen-reader focus to its error (§10, §11.3).
+- **Dispatch and Invoice lists: load errors as the guide says (§14.9), like the GRN list.**
+  - A failed refresh keeps the rows under a strip that says when they were loaded, with Try again.
+  - A failed first page or a failed new search, filter or sort is the error state, not the old rows.
+  - A failed next page is the last row with Try again, which asks for the same page; the snackbar is gone.
+  - Offline, the first date heading (the top of the list when sorted by number or, for invoices, not by date) says when the rows were loaded.
+  - A customer account's capped Dispatch history ("Only the newest 10000 dispatches...", `CUSTOMER_DISPATCH_MAX`) is a footnote above the list, not a snackbar. It also shows when the capped history matches nothing, in the empty and filtered-empty states.
+- **Dispatch cards' open state is kept by the list**, as on the GRN list: a card no longer shows another dispatch's
+  open state after scrolling. Expand all also opens dispatches loaded later and is not animated; one card skips its
+  animation under Reduce Motion.
+- **Removed dead GRN filter keys.** `item_name`, `customer_name`, `gr_no` and `rack` of `GRNFilters` were ignored by
+  the staff function `get_all_grn_items` and set by no caller; they are gone from the type and from `getAllGRNItems`.
 - **Gujarati:** the new and changed texts are drafts for the owner's wording review.
+
+Fixes from the 2026-10-18 code review of this change (R1-01 to R1-08, R2-1 to R2-5, R3-02):
+
+- **Repeated rows on the next page (R1-01).** When a receipt is created while the list is open, the next page
+  repeats a receipt already loaded. A GRN card no longer counts its lines twice (it showed "40 of 40 bags" for a
+  GRN of 20), the offset still advances by the page as the server counted it, and a customer account's merge no
+  longer joins a repeated receipt to the held one. The Dispatch and Invoice lists already skipped repeated rows.
+- **Backend updated while the list is open (R1-03).** An answer in another unit than the loaded pages (lines, then
+  receipts) reloads the list from the first page instead of mixing offsets; the customer merge starts again in the
+  same call.
+- **After a failed next page** the end of the GRN list no longer asks again by itself; Try again does (R1-04).
+- **A reload that fails on a list with no rows** shows the error state, not the old empty state (R1-05).
+- **Swipe state belongs to the GRN (R1-06):** a recycled cell cannot show another GRN already swiped open.
+- **Low stock on a facility without migration 98 (R1-07, R3-02, owner decision):** not offered until the facility's
+  list has answered in receipts; a stored Low stock is not sent and shows no chip.
+- **Item filters say lots are hidden (R1-02, owner decision).** With Stock other than All, Item, Weight each,
+  Package or a search, the card reads "3 matching items" and "Only the items that match the filters are shown."
+  (also in its spoken label): its bags and tag are those of the matching items only.
+- **Dispatch: capped-history footnote with no rows (R2-1).** It is drawn above the list, so it also shows in the
+  empty state.
+- **Dispatch and Invoice: paging offset after a failed refresh (R2-2).** The offset is no longer reset before the
+  answer, so the next page continues after the rows on screen.
+- **Blocked Apply (R2-3):** moves focus as the guide says (see Filters on every list).
+- **Busy line under Reduce Motion (R2-4):** a still bar, half the track wide and centred, does not slide.
+- **Tests (R1-08):** a next page answered after a new filter or a refresh is dropped, and the next offset is the new
+  list's.
+- **Gujarati:** the two new GRN card texts (`lists.grn.matchingItems`, `lists.grn.filteredNote`) are drafts for the
+  owner's wording review.
 
 ## Unreleased — Ops review wave 4: tooling (2026-10-18)
 

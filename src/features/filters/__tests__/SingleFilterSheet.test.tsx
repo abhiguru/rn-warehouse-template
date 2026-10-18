@@ -1,6 +1,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Modal } from 'react-native';
+import { AccessibilityInfo, Modal } from 'react-native';
+import { Button } from '@/components/ui/Button';
 import { SingleFilterSheet, type OpenFilter } from '../components/SingleFilterSheet';
 import { FILTER_CONFIGS } from '../configs';
 import { currentSort, visibleFields } from '../filterModel';
@@ -57,7 +58,7 @@ function setup(values: FilterValues) {
         .props.onPress()
     );
   const modal = () => renderer.root.findAllByType(Modal).find(node => node.props.visible);
-  return { filters, onClose, input, press, modal, open: (open: OpenFilter) => act(() => renderer.update(element(open))) };
+  return { renderer, filters, onClose, input, press, modal, open: (open: OpenFilter) => act(() => renderer.update(element(open))) };
 }
 
 describe('single filter sheet', () => {
@@ -86,6 +87,29 @@ describe('single filter sheet', () => {
     sheet.press('Reset');
     expect(sheet.input('Weight each, minimum, in kg').props.value).toBe('');
     expect(sheet.filters.setField).not.toHaveBeenCalled();
+  });
+
+  // §10, §11.3 (code review 2026-10-18, R2-3): a blocked press says what is wrong and moves focus to the field's error.
+  it('never applies a reversed range: the press announces the error and focuses it', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
+    const sheet = setup({});
+    sheet.open({ type: 'field', key: 'weight' });
+    act(() => sheet.input('Weight each, minimum, in kg').props.onChangeText('50'));
+    act(() => sheet.input('Weight each, maximum, in kg').props.onChangeText('10'));
+    const apply = sheet.renderer.root.findAllByType(Button).find(button => button.props.type === 'primary')!;
+
+    act(() => apply.props.onPress());
+
+    expect(sheet.filters.setField).not.toHaveBeenCalled();
+    expect(sheet.onClose).not.toHaveBeenCalled();
+    expect(announce).toHaveBeenCalledWith('The minimum is larger than the maximum.');
+    expect(focus).toHaveBeenCalledTimes(1);
+    const [target, event] = focus.mock.calls[0] as unknown as [{ props: { children: string } }, string];
+    expect(event).toBe('focus');
+    expect(target.props.children).toBe('The minimum is larger than the maximum.');
+    announce.mockRestore();
+    focus.mockRestore();
   });
 
   it('applies a choice on tap and closes', () => {

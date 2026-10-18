@@ -4,7 +4,8 @@
  * Sort and small choices apply on tap. Everything else is edited as a draft and
  * applied by the one button, which shows how many results it will give.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, type Text } from 'react-native';
 import { t } from '@/i18n';
 import type { CountableFilterList } from '../configs';
 import { resolveDateRange } from '../datePresets';
@@ -30,6 +31,8 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
   const field = open?.type === 'field' ? filters.fields.find(candidate => candidate.key === open.key) : undefined;
   const [draft, setDraft] = useState<FilterValue | undefined>(undefined);
   const [invalid, setInvalid] = useState(false);
+  // The field's error text: a blocked press moves focus to it (the field itself is already in view).
+  const errorRef = useRef<Text>(null);
   // Counts presses of Reset: editors that keep typed text remount then, and only then.
   const [resets, setResets] = useState(0);
 
@@ -111,6 +114,9 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
           noun={config.noun}
           disabled={incomplete}
           blockedMessage={invalid ? t('filters.range.minAboveMax') : undefined}
+          onBlockedPress={() => {
+            if (errorRef.current) AccessibilityInfo.sendAccessibilityEvent(errorRef.current, 'focus');
+          }}
           onPress={() => {
             filters.setField(field.key, draft);
             onClose();
@@ -119,7 +125,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
       }
     >
       {/* Remount on Reset so editors that keep typed text start empty; never while typing, which would drop the focus. */}
-      <FieldEditor key={resets} field={field} value={draft} onChange={change} ctx={filters.ctx} onInvalid={setInvalid} />
+      <FieldEditor key={resets} field={field} value={draft} onChange={change} ctx={filters.ctx} onInvalid={setInvalid} errorRef={errorRef} />
     </SheetFrame>
   );
 }

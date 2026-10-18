@@ -20,6 +20,25 @@ import type {
 
 export type GrnListRequest = Pick<GRNListParams, 'p_date_from' | 'p_date_to' | 'p_filters' | 'p_sort_by' | 'p_sort_order'>;
 
+/**
+ * Whether the request's filters leave out lines of the GRNs they return. The line-level filters (Stock other
+ * than All, Item, Weight each, Package and the search text) return only the matching lines of each GRN, so
+ * the card's item count and totals are those of the matching lines, not of the whole GRN. Customer, Date and
+ * GRN number keep whole GRNs.
+ */
+export function grnLinesHidden(request: Pick<GrnListRequest, 'p_filters'>): boolean {
+  const filters = request.p_filters;
+  if (!filters) return false;
+  return (
+    (filters.stock_status !== undefined && filters.stock_status !== 'all') ||
+    Boolean(filters.item_ids?.length) ||
+    filters.weight_min !== undefined ||
+    filters.weight_max !== undefined ||
+    Boolean(filters.package_mark) ||
+    Boolean(filters.search)
+  );
+}
+
 export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
   listKey: 'grn-list',
   // Labels are getters so they follow the app's language (see FieldBase in ../types).
@@ -45,7 +64,13 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
       options: [
         { value: 'all', get label() { return t('common.all'); } },
         { value: 'in_stock', get label() { return t('common.inStock'); } },
-        { value: 'low_stock', get label() { return t('common.lowStock'); } },
+        {
+          value: 'low_stock',
+          get label() { return t('common.lowStock'); },
+          // A facility without migration 98 answers this wrongly (staff: every line, customer: none): offered
+          // only once its list has answered in receipts (code review 2026-10-18, R1-07, R3-02).
+          visibleTo: (ctx) => ctx.pagesByReceipt === true,
+        },
         { value: 'out_of_stock', get label() { return t('grn.status.fullyDispatched'); } },
       ],
     },

@@ -117,6 +117,16 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Which cards show their items. Not a FlashList: the cards stay mounted, so this section keeps the state.
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const handleToggleOpen = useCallback((dispatchId: string) => {
+    setOpenIds(previous => {
+      const next = new Set(previous);
+      if (next.has(dispatchId)) next.delete(dispatchId);
+      else next.add(dispatchId);
+      return next;
+    });
+  }, []);
 
   // Fetch dispatches for customer
   const fetchDispatches = useCallback(async () => {
@@ -246,6 +256,8 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
               key={dispatch.dispatch_id}
               dispatch={dispatch}
               onPress={handleDispatchPress}
+              expanded={openIds.has(dispatch.dispatch_id)}
+              onToggle={handleToggleOpen}
             />
           ))}
         </View>

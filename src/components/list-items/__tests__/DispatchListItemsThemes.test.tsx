@@ -108,7 +108,7 @@ describe('a refetched dispatch whose lines changed is drawn again', () => {
   it('dispatch card: a line swapped for another of the same quantity and weight', () => {
     const onPress = jest.fn();
     const words = undefined as never;
-    const element = (value: Dispatch) => <MemoizedDispatchItem dispatch={value} onPress={onPress} globalExpanded globalExpandedKey={1} words={words} />;
+    const element = (value: Dispatch) => <MemoizedDispatchItem dispatch={value} onPress={onPress} expanded words={words} />;
     const tree = render(element(dispatch));
     expect(allText(tree)).toContain('B-14');
 
@@ -139,7 +139,7 @@ const fiveBags = (over: Partial<Omit<typeof line, 'weight' | 'rack'>> & { weight
   ({ ...dispatch, total_qty: 5, total_weight: 250, total_items: 1, items: [{ ...line, ...over }] }) as unknown as Dispatch;
 const recentFiveBags = (over: { item_name?: string; weight?: number | null; rack?: string | null } = {}) =>
   ({ ...recent, total_qty: 5, items: [{ item_name: 'Potatoes', disp_qty: 5, rack: 'B-14', package_mark: 'PM', gr_no: '311', weight: 50, ...over }] }) as RecentDispatchedOrder;
-const open = (value: Dispatch) => render(<MemoizedDispatchItem dispatch={value} onPress={jest.fn()} globalExpanded globalExpandedKey={1} />);
+const open = (value: Dispatch) => render(<MemoizedDispatchItem dispatch={value} onPress={jest.fn()} expanded />);
 const openRecent = (value: RecentDispatchedOrder) => {
   const tree = render(<RecentDispatchedOrderCard dispatch={value} onPress={jest.fn()} />);
   const toggle = tree.root.find(node => typeof node.props.onPress === 'function' && node.props.accessibilityState?.expanded === false);

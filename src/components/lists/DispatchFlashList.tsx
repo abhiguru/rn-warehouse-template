@@ -19,11 +19,12 @@
 
 import { createLogger } from '@/utils/logger';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, LayoutAnimation } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { ActivityIndicator, Snackbar } from 'react-native-paper';
+import { ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
 
@@ -48,10 +49,12 @@ import {
 import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { formatCount, formatNumber } from '@/utils/formatters';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { formatCount, formatNumber, formatTime } from '@/utils/formatters';
 import { localizeDigits, t as translate } from '@/i18n';
 
 // State
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
@@ -69,6 +72,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
+import { animateExpand } from '@/utils/layoutMotion';
 
 const logger = createLogger('DispatchList');
 // ============================================================================
@@ -87,23 +91,35 @@ export interface DispatchFlashListProps {
 interface SectionHeaderProps {
   title: string;
   count: number;
+  /** Offline: when the rows were loaded, shown under the heading (§14.9). */
+  updatedAt?: number;
 }
 
+/** Which cards show their items: all of them, except those flipped (so a page loaded later follows "Expand all"). */
+interface OpenState {
+  all: boolean;
+  flipped: ReadonlySet<string>;
+}
+const isOpen = (open: OpenState, dispatchId: string) => open.all !== open.flipped.has(dispatchId);
+
 // Section header: footnote, capitals, text.secondary (style guide §13.6)
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt }) => {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View
-      style={styles.sectionHeader}
-      accessible
-      accessibilityRole="header"
-      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'dispatch', 'dispatches') })}
-    >
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionBadge}>
-        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
+    <>
+      <View
+        style={styles.sectionHeader}
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'dispatch', 'dispatches') })}
+      >
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
+        </View>
       </View>
-    </View>
+      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="dispatch-last-updated" /> : null}
+    </>
   );
 });
 
@@ -140,13 +156,21 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentOffset, setCurrentOffset] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  /** The first page failed with no rows to show. */
+  const [loadError, setLoadError] = useState(false);
+  /** A refresh failed: the rows loaded before stay, with a strip that says when (§14.9). */
+  const [refreshError, setRefreshError] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  /** A customer account's history is capped: a lasting fact about the list, not an event. */
+  const [historyLimited, setHistoryLimited] = useState(false);
+  const isOffline = useIsOffline();
+  const reduceMotion = useReducedMotion();
+  /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
+  const shownRequest = useRef<string | null>(null);
 
-  // Expand all state
-  const [allExpanded, setAllExpanded] = useState(false);
-  const [expandKey, setExpandKey] = useState(0);
+  // Open cards are kept here, not in the cards: FlashList reuses a cell for another dispatch.
+  const [open, setOpen] = useState<OpenState>({ all: false, flipped: new Set() });
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -163,16 +187,32 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // A newer request (the user kept typing, or changed a filter) replaces an
   // older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
+  /**
+   * A failed next page is the list's last row with Try again. A failed refresh of the rows on screen keeps them
+   * under a strip that says when they were loaded. A failed new search, filter or sort has no rows that answer
+   * it, so the list shows the error state (§14.9).
+   */
+  const showLoadFailure = useCallback((append: boolean, requestKey: string) => {
+    if (append) {
+      setLoadMoreFailed(true);
+    } else if (shownRequest.current === requestKey) {
+      setRefreshError(true);
+    } else {
+      setDispatches([]);
+      setHasMore(false);
+      shownRequest.current = null;
+      setRefreshError(false);
+      setLoadError(true);
+    }
+  }, []);
   // `fresh`: pull to refresh and a return to the screen read the server again;
   // a customer account's next page, sort and search use the history kept for it.
   const fetchDispatches = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
+    const requestKey = JSON.stringify([request, customerId ?? null]);
     try {
       if (append) setIsLoadingMore(true);
-      else {
-        setIsLoading(true);
-        setError(null);
-      }
+      else setIsLoading(true);
 
       const params = { ...request, p_limit: 20, offset };
       // The all-customers list is for warehouse roles; customer accounts read
@@ -194,24 +234,22 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         });
       } else {
         setDispatches(newDispatches);
+        setLoadError(false);
+        setRefreshError(false);
+        setLoadMoreFailed(false);
+        setLoadedAt(Date.now());
+        setHistoryLimited(Boolean(pagination.history_limit_reached));
+        shownRequest.current = requestKey;
         // A new search, filter or sort starts from its first row.
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
       }
       setHasMore(pagination.has_more);
       setCurrentOffset(offset + newDispatches.length);
-      if (!append && pagination.history_limit_reached) {
-        setSnackbarMessage(translate('lists.dispatch.historyLimited', { count: localizeDigits(String(CUSTOMER_DISPATCH_MAX)) }));
-        setSnackbarVisible(true);
-      }
     } catch (err: unknown) {
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
       // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
       logger.warn('List did not load', err instanceof Error ? err.message : err);
-      setError(err instanceof Error ? err.message : 'Failed to load dispatches');
-      setSnackbarMessage(append
-        ? translate('lists.dispatch.loadMoreFailed')
-        : translate('lists.dispatch.loadFailed'));
-      setSnackbarVisible(true);
+      showLoadFailure(append, requestKey);
     } finally {
       if (isMountedRef.current && requestId === latestRequest.current) {
         setIsLoading(false);
@@ -220,7 +258,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         setIsLoadingMore(false);
       }
     }
-  }, [customerId, request, isWarehouseRole, assignedCustomerIds]);
+  }, [customerId, request, isWarehouseRole, assignedCustomerIds, showLoadFailure]);
 
   // One owner for loading the first page. The newest request is kept in a ref so the
   // focus callback below never changes identity: expo-router reruns a focus effect
@@ -255,7 +293,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         const fresh = !changedWhileHiddenRef.current;
         blurredRef.current = false;
         changedWhileHiddenRef.current = false;
-        setCurrentOffset(0);
         fetchDispatchesRef.current(0, false, fresh);
       }
       return () => {
@@ -271,15 +308,22 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    setCurrentOffset(0);
+    // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
     fetchDispatches(0, false, true);
   }, [fetchDispatches]);
 
   const handleLoadMore = useCallback(() => {
     if (!isLoadingMore && hasMore && !isLoading) {
+      setLoadMoreFailed(false);
       fetchDispatches(currentOffset, true);
     }
   }, [isLoadingMore, hasMore, isLoading, currentOffset, fetchDispatches]);
+
+  // Reaching the end of the list asks for the next page, but not again right after one failed: the footer's
+  // Try again is the way (otherwise a dead connection would be retried in a loop).
+  const handleEndReached = useCallback(() => {
+    if (!loadMoreFailed) handleLoadMore();
+  }, [loadMoreFailed, handleLoadMore]);
 
   const handleDispatchPress = useCallback((dispatch: Dispatch) => {
     router.push(`/dispatch-details/${dispatch.dispatch_id}`);
@@ -289,15 +333,23 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     router.push('/dispatch-form/step1');
   }, []);
 
-  const dismissSnackbar = useCallback(() => {
-    setSnackbarVisible(false);
+  // One card. The animation is for one row at a time and is skipped under Reduce Motion (§9).
+  const handleToggle = useCallback((dispatchId: string) => {
+    setOpen(previous => {
+      const flipped = new Set(previous.flipped);
+      if (flipped.has(dispatchId)) flipped.delete(dispatchId);
+      else flipped.add(dispatchId);
+      return { all: previous.all, flipped };
+    });
   }, []);
+  const handleCardToggle = useCallback((dispatchId: string) => {
+    animateExpand(reduceMotion);
+    handleToggle(dispatchId);
+  }, [reduceMotion, handleToggle]);
 
-  // Toggle expand/collapse all cards
+  // Open or close every card, also those loaded later. Not animated: it changes the whole list (§9).
   const handleToggleAllExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setAllExpanded(prev => !prev);
-    setExpandKey(prev => prev + 1);
+    setOpen(previous => ({ all: !previous.all, flipped: new Set() }));
   }, []);
 
   // ============================================================================
@@ -337,9 +389,13 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   const keyExtractor = useCallback((item: FlattenedItem<Dispatch>) => item.key, []);
 
-  const renderItem = useCallback(({ item }: { item: FlattenedItem<Dispatch> }) => {
+  // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
+  // cards were loaded (§14.9). A failed refresh says it in its strip instead.
+  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+
+  const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Dispatch>; index: number }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} />;
+      return <SectionHeader title={item.title} count={item.count} updatedAt={index === 0 ? offlineUpdatedAt : undefined} />;
     }
 
     return (
@@ -347,14 +403,24 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         dispatch={item.data}
         onPress={handleDispatchPress}
         canPrint={canPrint || false}
-        globalExpanded={allExpanded}
-        globalExpandedKey={expandKey}
+        expanded={isOpen(open, item.key)}
+        onToggle={handleCardToggle}
         words={words}
       />
     );
-  }, [handleDispatchPress, canPrint, allExpanded, expandKey, words]);
+  }, [handleDispatchPress, canPrint, open, handleCardToggle, words, offlineUpdatedAt]);
 
   const ListFooter = useMemo(() => {
+    if (loadMoreFailed && !isLoadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={translate('lists.dispatch.loadMoreFailed')}
+          retryLabel={translate('lists.dispatch.retryMore')}
+          onRetry={handleLoadMore}
+          testID="dispatch-load-more-error"
+        />
+      );
+    }
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
@@ -362,7 +428,23 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         <Text style={styles.footerLoaderText}>{translate('lists.dispatch.loadingMore')}</Text>
       </View>
     );
-  }, [isLoadingMore, styles, t]);
+  }, [isLoadingMore, loadMoreFailed, handleLoadMore, styles, t]);
+
+  // The top of the list: in a flat list (sorted by number, so no headings), the offline line.
+  const flat = flattenedData.length > 0 && flattenedData[0].type === 'card';
+  const listHeader = useMemo(() => {
+    const updated = flat ? offlineUpdatedAt : undefined;
+    if (updated === undefined) return null;
+    return <LastUpdatedLine at={updated} top testID="dispatch-last-updated" />;
+  }, [flat, offlineUpdatedAt]);
+
+  // The capped-history footnote while it applies, above the list or the empty state, so it also shows with no rows:
+  // "no match" would otherwise read as covering the whole history (§14.9).
+  const historyNote = historyLimited ? (
+    <Text style={styles.historyNote} testID="dispatch-history-limited">
+      {translate('lists.dispatch.historyLimited', { count: localizeDigits(String(CUSTOMER_DISPATCH_MAX)) })}
+    </Text>
+  ) : null;
 
   // ============================================================================
   // RENDER
@@ -377,7 +459,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       filters={filters}
       loading={isLoading}
       expand={{
-        expanded: allExpanded,
+        expanded: open.all,
         onToggle: handleToggleAllExpanded,
         nounPlural: 'dispatches',
         disabled: dispatches.length === 0,
@@ -386,11 +468,24 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   );
 
   let content: React.ReactNode;
-  if (!hasLoaded && isLoading) {
+  if ((!hasLoaded || loadError) && isLoading && dispatches.length === 0) {
     // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
   } else if (dispatches.length > 0) {
     content = (
+      <>
+        {historyNote}
+        {/* A refresh failed: the dispatches loaded before stay, with Try again (§14.9) */}
+        {refreshError ? (
+          <StaleListStrip
+            title={translate('lists.dispatch.staleTitle')}
+            text={translate('lists.dispatch.staleText', { time: formatTime(new Date(loadedAt)) })}
+            retryLabel={translate('lists.dispatch.retryRefresh')}
+            onRetry={handleRefresh}
+            retrying={isRefreshing}
+            testID="dispatch-stale-strip"
+          />
+        ) : null}
       <FlashList
         ref={listRef}
         data={flattenedData}
@@ -399,7 +494,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey, words }}
+        extraData={{ canPrint, handleDispatchPress, open, words, offlineUpdatedAt }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -410,13 +505,15 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
             progressBackgroundColor={t.surface.card}
           />
         }
-        onEndReached={handleLoadMore}
+        onEndReached={handleEndReached}
         onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
+        ListHeaderComponent={listHeader}
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
       />
+      </>
     );
-  } else if (error) {
+  } else if (loadError) {
     content = (
       <ErrorStateView
         presentation="inline"
@@ -427,15 +524,18 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     );
   } else {
     content = (
-      <ListEmptyState
-        {...filteredEmptyProps(filters, 'dispatches')}
-        emptyIcon="truck-delivery-outline"
-        emptyTitle={translate('lists.dispatch.emptyTitle')}
-        emptySubtitle={canCreateDispatch ? translate('lists.dispatch.emptyCreator') : translate('lists.dispatch.emptyViewer')}
-        showCreateButton={canCreateDispatch}
-        createButtonLabel={translate('lists.dispatch.create')}
-        onCreatePress={handleCreateDispatch}
-      />
+      <>
+        {historyNote}
+        <ListEmptyState
+          {...filteredEmptyProps(filters, 'dispatches')}
+          emptyIcon="truck-delivery-outline"
+          emptyTitle={translate('lists.dispatch.emptyTitle')}
+          emptySubtitle={canCreateDispatch ? translate('lists.dispatch.emptyCreator') : translate('lists.dispatch.emptyViewer')}
+          showCreateButton={canCreateDispatch}
+          createButtonLabel={translate('lists.dispatch.create')}
+          onCreatePress={handleCreateDispatch}
+        />
+      </>
     );
   }
 
@@ -443,14 +543,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     <View style={styles.container}>
       {header}
       {content}
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={dismissSnackbar}
-        duration={4000}
-        style={styles.snackbar}
-      >
-        {snackbarMessage}
-      </Snackbar>
     </View>
   );
 };
@@ -509,12 +601,13 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
   },
-  // Snackbar: inverse surface (§13.9)
-  snackbar: {
-    marginBottom: 80,
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-    ...t.shadow[3],
+  // A lasting fact about the list (§14.9): footnote, text.secondary, inside the list's padding
+  historyNote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.sm,
+    paddingBottom: space.xs,
   },
 });
 

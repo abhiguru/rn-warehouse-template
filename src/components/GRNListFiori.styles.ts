@@ -113,6 +113,13 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 
+  // Says the card shows only the items that match the filters (code review 2026-10-18, R1-02).
+  filteredNote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
+  },
+
   footerDot: {
     width: 3,
     height: 3,

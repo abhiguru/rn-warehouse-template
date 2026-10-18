@@ -10,9 +10,9 @@
  * @module list-items/MemoizedDispatchItem
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import React, { useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
@@ -32,6 +32,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { animateExpand } from '@/utils/layoutMotion';
 
 // ============================================================================
 // TYPES
@@ -50,10 +51,13 @@ export interface MemoizedDispatchItemProps {
   onPrint?: (dispatch: Dispatch) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /** Global expand state from parent */
-  globalExpanded?: boolean;
-  /** Key to trigger sync with global state (increments on toggle) */
-  globalExpandedKey?: number;
+  /**
+   * Whether the card shows its items. The list owns this (a recycled list cell must not carry it to another
+   * dispatch), and so does any other screen that draws the card.
+   */
+  expanded?: boolean;
+  /** The card's own toggle was pressed; the owner flips this dispatch's state. */
+  onToggle?: (dispatchId: string) => void;
   /** Lower-cased search words to show in bold (see `searchWords`). */
   words?: string[];
 }
@@ -326,20 +330,15 @@ function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
 const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   dispatch,
   onPress,
-  globalExpanded,
-  globalExpandedKey,
+  expanded = false,
+  onToggle,
   words = NO_WORDS,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Sync with global expand/collapse state
-  useEffect(() => {
-    if (globalExpandedKey !== undefined && globalExpandedKey > 0) {
-      setIsExpanded(globalExpanded ?? false);
-    }
-  }, [globalExpandedKey, globalExpanded]);
+  const reduceMotion = useReducedMotion();
+  const isExpanded = expanded;
+  const dispatchId = dispatch.dispatch_id || dispatch.id;
   const statusConfig = getDispatchStatus(dispatch);
   const status = t.status[statusConfig.kind];
 
@@ -354,9 +353,10 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const matched = hiddenMatches(dispatch, words);
 
   const handleToggleExpand = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded(prev => !prev);
-  }, []);
+    // One card opens with the shared 200 ms motion, skipped under Reduce Motion (§9).
+    animateExpand(reduceMotion);
+    onToggle?.(dispatchId);
+  }, [reduceMotion, onToggle, dispatchId]);
 
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
@@ -371,7 +371,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   ].filter(Boolean).join(', ');
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} testID={`dispatch-card-${dispatchId}`}>
       <Pressable
         onPress={() => onPress(dispatch)}
         style={({ pressed }) => [styles.cardContent, pressed && styles.cardContentPressed]}
@@ -490,6 +490,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       {hasItems && (
         <Pressable
           onPress={handleToggleExpand}
+          testID={`dispatch-card-toggle-${dispatchId}`}
           style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
           accessibilityLabel={isExpanded ? translate('lists.dispatch.hideDetailsOf', { number: formatIdentifier(dispatch.disp_no) }) : translate('lists.dispatch.showDetailsOf', { items: itemsLabel })}
@@ -533,9 +534,9 @@ const areEqual = (
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
 
-    // Compare global expand state
-    prevProps.globalExpanded === nextProps.globalExpanded &&
-    prevProps.globalExpandedKey === nextProps.globalExpandedKey &&
+    // Open or closed, and who is told when it is toggled
+    prevProps.expanded === nextProps.expanded &&
+    prevProps.onToggle === nextProps.onToggle &&
     prevProps.words === nextProps.words
   );
 };

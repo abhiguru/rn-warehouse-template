@@ -71,6 +71,11 @@ export interface FilterContext {
   isWarehouseRole: boolean;
   /** Customers a customer account may see. Empty for warehouse roles. */
   assignedCustomers: PickedOption[];
+  /**
+   * The facility is known to page the GRN list by receipt (backend migration 98), learned from its list
+   * answers (`src/config/facilityGrnPaging.ts`). Absent or false until then.
+   */
+  pagesByReceipt?: boolean;
 }
 
 /**
@@ -88,9 +93,19 @@ interface FieldBase {
   /** Hide the field for some roles or accounts. Defaults to visible. */
   visibleTo?: (ctx: FilterContext) => boolean;
 }
+/** One choice of a choice field. */
+export interface ChoiceOption {
+  value: string;
+  label: string;
+  /**
+   * Offer the choice only to some accounts or facilities. Defaults to offered. A stored value that is not
+   * offered counts as no filter and is not sent.
+   */
+  visibleTo?: (ctx: FilterContext) => boolean;
+}
 export interface ChoiceField extends FieldBase {
   kind: 'choice';
-  options: { value: string; label: string }[];
+  options: ChoiceOption[];
   /** The value that means "no filter". It is never stored. */
   defaultValue: string;
 }

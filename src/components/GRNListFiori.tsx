@@ -37,6 +37,7 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { printGRNRange } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
+import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
@@ -63,6 +64,7 @@ import { iconSize, singleLineText } from '@/theme/tokens';
 
 // Filters, search and sort (docs/STYLE_GUIDE.md §14.5)
 import { GRN_FILTERS } from '@/features/filters/configs';
+import { grnLinesHidden } from '@/features/filters/configs/grn';
 import { useListFilters } from '@/features/filters/useListFilters';
 import { readSearch } from '@/features/filters/filterModel';
 import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
@@ -244,6 +246,8 @@ interface GRNCardProps {
   styles: GRNListStyles;
   /** Lower-cased search words to show in bold. */
   words: string[];
+  /** A line-level filter is on: the card shows only the matching items of the GRN (R1-02). */
+  linesHidden: boolean;
 }
 
 const GRNCardFiori = memo<GRNCardProps>(({
@@ -255,6 +259,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
   onPrint,
   styles,
   words,
+  linesHidden,
 }) => {
   const t = useTokens();
   const reduceMotion = useReducedMotion();
@@ -269,7 +274,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const stockStatus = stockStatusFor(totalStock, totalQty);
   const stock = stockText(totalStock, totalQty);
   const displayDate = formatDate(group.date, 'short');
-  const itemCountLabel = formatCount(group.items.length, 'item');
+  // Under a line-level filter the items, bags and tag are those of the matching lines only, and the card says so.
+  const itemCountLabel = linesHidden
+    ? translate('lists.grn.matchingItems', { count: group.items.length })
+    : formatCount(group.items.length, 'item');
+  const filteredNote = linesHidden ? translate('lists.grn.filteredNote') : null;
   const title = grnTitle(group.grNo);
 
   // The same actions for the swipe and for a screen reader (style guide 13.6).
@@ -337,6 +346,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             itemCountLabel,
             stock,
             stockStatus.label,
+            filteredNote,
             matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
           ].filter(Boolean).join(', ')}
           accessibilityHint={translate(actions.length > 0 ? 'lists.grn.openHintActions' : 'lists.grn.openHint')}
@@ -366,6 +376,9 @@ const GRNCardFiori = memo<GRNCardProps>(({
               <View style={styles.footerDot} />
               <Text style={styles.footerText} {...singleLineText()}>{itemCountLabel}</Text>
             </View>
+            {filteredNote ? (
+              <Text style={styles.filteredNote} testID={`grn-card-filtered-note-${group.grnId}`}>{filteredNote}</Text>
+            ) : null}
             {/* Why this GRN matched, when the match is inside the collapsed items */}
             {matched.length > 0 && !expanded ? (
               <HighlightedText
@@ -426,6 +439,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
   if (actions.length === 0) return card;
   return (
     <Swipeable
+      // One swipe state per GRN: FlashList reuses this cell for another GRN, which must not appear already swiped open.
+      key={group.grnId}
       ref={swipeableRef}
       renderRightActions={renderRightActions}
       overshootRight={false}
@@ -478,6 +493,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   const filters = useListFilters(GRN_FILTERS);
   const { request, sort } = filters;
   const sortedByNumber = sort?.field === 'gr_no';
+  const linesHidden = useMemo(() => grnLinesHidden(request), [request]);
   const words = useMemo(() => searchWords(readSearch(GRN_FILTERS, filters.values).text), [filters.values]);
   const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
 
@@ -546,10 +562,23 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
 
       if (result.success && result.data) {
         const unit = result.data.pagination.unit === 'receipt' ? 'receipt' : 'line';
+        // The facility answers in another unit than the one the loaded pages were counted in (backend migration 98
+        // arrived while the list was open): the offset means something else now. Start again from the first page.
+        if (append && unit !== pageUnit.current) {
+          pageUnit.current = unit;
+          void fetchGRNItems();
+          return;
+        }
         pageUnit.current = unit;
         const advance = unit === 'receipt' ? countReceipts(result.data.items) : result.data.items.length;
         if (append) {
-          setData(prev => prev ? { ...result.data, items: [...prev.items, ...result.data.items] } : result.data);
+          // The offset advances by the raw page; lines already loaded (the offset shifted while the list was
+          // open) are not added again.
+          setData(prev => {
+            if (!prev) return result.data;
+            const known = new Set(prev.items.map(grnLineKey));
+            return { ...result.data, items: [...prev.items, ...result.data.items.filter(item => !known.has(grnLineKey(item)))] };
+          });
           setCurrentOffset(prev => prev + advance);
         } else {
           setData(result.data);
@@ -641,6 +670,12 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
     setLoadMoreFailed(false);
     fetchGRNItems(currentOffset, true);
   }, [data, loadingMore, loading, fetchGRNItems, currentOffset]);
+
+  // Reaching the end of the list asks for the next page, but not again right after one failed: the footer's
+  // Try again is the way (otherwise a dead connection would be retried on every scroll back to the end).
+  const handleEndReached = useCallback(() => {
+    if (!loadMoreFailed) handleLoadMore();
+  }, [loadMoreFailed, handleLoadMore]);
 
   const handleToggle = useCallback((grnId: string) => {
     setOpen(previous => {
@@ -750,9 +785,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         onPrint={canPrint ? handlePrint : undefined}
         styles={styles}
         words={words}
+        linesHidden={linesHidden}
       />
     );
-  }, [handleGRNPress, handleEdit, handlePrint, handleToggle, canEdit, canPrint, styles, open, words, hasMore]);
+  }, [handleGRNPress, handleEdit, handlePrint, handleToggle, canEdit, canPrint, styles, open, words, hasMore, linesHidden]);
 
   const renderFooter = useCallback(() => {
     if (loadMoreFailed && !loadingMore) {
@@ -823,7 +859,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           renderItem={renderItem}
           keyExtractor={(item: FlattenedItem<GRNGroupData>) => item.key}
           getItemType={getItemType}
-          extraData={{ open, words, hasMore, canEdit, canPrint }}
+          extraData={{ open, words, hasMore, canEdit, canPrint, linesHidden }}
           ListHeaderComponent={renderListHeader}
           ListFooterComponent={renderFooter}
           refreshControl={
@@ -835,14 +871,15 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
               progressBackgroundColor={t.surface.card}
             />
           }
-          onEndReached={handleLoadMore}
+          onEndReached={handleEndReached}
           onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       </>
     );
-  } else if (loadError) {
+  } else if (loadError || refreshError) {
+    // No rows on screen: a failed first page, new filter, or reload of a request that had none is the error state.
     content = (
       <ErrorStateView
         presentation="inline"

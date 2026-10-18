@@ -20,9 +20,11 @@ export interface ApplyFiltersButtonProps {
    * instead of applying (§10). The field shows the same message.
    */
   blockedMessage?: string;
+  /** Called after the announcement on a blocked press: move focus to the first wrong field and bring it into view (§10, §11.3). */
+  onBlockedPress?: () => void;
 }
 
-export function ApplyFiltersButton({ result, noun, onPress, disabled, blockedMessage }: ApplyFiltersButtonProps) {
+export function ApplyFiltersButton({ result, noun, onPress, disabled, blockedMessage, onBlockedPress }: ApplyFiltersButtonProps) {
   const label = resultsLabel(result, noun);
   // Android reads the live region below; iOS needs an explicit announcement.
   useEffect(() => {
@@ -36,7 +38,14 @@ export function ApplyFiltersButton({ result, noun, onPress, disabled, blockedMes
       <Button
         type="primary"
         size="fullWidth"
-        onPress={blockedMessage ? () => AccessibilityInfo.announceForAccessibility(blockedMessage) : onPress}
+        onPress={
+          blockedMessage
+            ? () => {
+                AccessibilityInfo.announceForAccessibility(blockedMessage);
+                onBlockedPress?.();
+              }
+            : onPress
+        }
         disabled={disabled}
         loading={result.loading && result.count === null}
         loadingText={t('filters.results.showResults')}
