@@ -83,7 +83,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       </Button>
     ),
     // `language` is not read inside: the texts are, and they follow it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [language]
   );
 
@@ -153,7 +153,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       />
     ),
     // `language` is not read inside: the texts are, and they follow it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [handleCancel, handleStepPress, invoiceNo, isEdit, language]
   );
   const bottomBar = useMemo(
@@ -167,7 +167,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
         nextLabel={tr('invoice.items.nextReview')}
       />
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [handleBack, handleNext, language]
   );
   const closeHelp = useCallback(() => setHelpVisible(false), []);
@@ -201,7 +201,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
         />
       </>
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [helpVisible, errorDialog, closeHelp, closeError, language]
   );
 

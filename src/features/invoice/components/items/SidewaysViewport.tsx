@@ -23,7 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, makeMutable, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDecay, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useTokens } from '@/hooks/useTheme';
-import { space } from '@/theme/tokens';
+import { space, typography } from '@/theme/tokens';
 import { revealOffset } from './sidewaysScroll';
 
 /** One open card's sideways position and the width of its visible part (0 until a row has been laid out). */
@@ -71,7 +71,7 @@ interface CueProps {
   side: 'left' | 'right';
   fill: string;
   glyphColor: string;
-  style: ViewStyle;
+  style: React.ComponentProps<typeof Animated.View>['style'];
 }
 
 /** The fade and the ◂ / ▸ at one edge; its opacity (0 to 1) is the animated `style`. */
@@ -184,7 +184,7 @@ const cueStyles = StyleSheet.create({
   cue: { position: 'absolute', top: 0, bottom: 0, width: CUE_WIDTH, justifyContent: 'center' },
   left: { left: 0 },
   right: { right: 0 },
-  glyph: { fontSize: 12, lineHeight: 14 },
+  glyph: { ...typography.caption1 },
   glyphLeft: { textAlign: 'left', paddingLeft: 2 },
   glyphRight: { textAlign: 'right', paddingRight: 2 },
 });

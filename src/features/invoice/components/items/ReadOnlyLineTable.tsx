@@ -123,7 +123,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
 
   const defs = useMemo(() => lineColumnDefs(layout.lines.widths, oneTime), [layout.lines.widths, oneTime]);
   const model = useAppTable({ data: NO_LINES, columns: defs });
-  const table = useMemo(() => lineColumnsOf(model), [defs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const table = useMemo(() => lineColumnsOf(model), [defs]);  
 
   // The scrolling part is narrower here than in the step: the panel's padding and the nested card's outline are in the way.
   const viewport = rowWidth(screen) - 2 * TABLE_OUTLINE - space.md - layout.lines.pinned;

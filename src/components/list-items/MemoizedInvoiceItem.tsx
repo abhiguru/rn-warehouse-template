@@ -306,7 +306,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
         : []),
     ];
     // The language changes the words.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [total, taxAmount, labour, discount, language]);
   const customerName = invoice.customer?.name || translate('lists.invoice.customerNotSet');
   const invoiceDate = formatDate(invoice.invoice_date, 'short');

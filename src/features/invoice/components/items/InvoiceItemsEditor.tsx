@@ -312,7 +312,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   // from the held layout, once per layout, not per row.
   const lineDefs = useMemo(() => lineColumnDefs(layout.lines.widths, oneTime), [layout.lines.widths, oneTime, language]);
   const lineTableModel = useAppTable({ data: NO_LINES, columns: lineDefs });
-  const lineTable = useMemo(() => lineColumnsOf(lineTableModel), [lineDefs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lineTable = useMemo(() => lineColumnsOf(lineTableModel), [lineDefs]);  
 
   // Each open card's sideways position, kept for the life of the editor (the heading and the rows of a card share it).
   const scrolls = useRef(new Map<string, TableScroll>()).current;

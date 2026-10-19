@@ -154,7 +154,7 @@ export const newInvoiceStep1Schema = step1Schema.shape({
 // saved. That is a total of 0 before any discount. A charged invoice that a
 // discount takes down to 0 is refused as before, also when one of its lines is
 // free.
-const fullSchemaWith = (header: typeof step1Schema, items: yup.Schema = step2Schema.fields.items) => yup.object().shape({
+const fullSchemaWith = (header: typeof step1Schema, items: yup.Schema = step2Schema.fields.items as yup.Schema) => yup.object().shape({
   header: header.concat(
     yup.object().shape({
       labour: yup
