@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction, createSelector, original, isDraft } from '@reduxjs/toolkit';
 import {
   InvoiceFormState,
   InvoiceHeaderData,
@@ -16,6 +16,7 @@ import {
 } from '@/utils/invoiceCalculations';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
 // Initial header state. Built when it is needed, not once when this file is
 // loaded: the default date and financial year are "today", and the app can stay
 // open past midnight and past 1 April.
@@ -35,6 +36,59 @@ const createInitialHeader = (): InvoiceHeaderData => {
     tax_amount: 0,
     total: 0,
   };
+};
+
+/**
+ * The lines as a plain array. Reading them through the draft makes a proxy of every line visited, which for a few
+ * thousand lines costs far more than the edit. Call it before the reducer changes `state.items`.
+ */
+const plainLines = (items: InvoiceItemData[]): InvoiceItemData[] =>
+  isDraft(items) ? original(items)! : items;
+
+/**
+ * The lines of a saved invoice that keep a figure of their own (owner decision, 2026-10-19). Lines are compared within
+ * each set of one card, one item and one bag weight (a card can hold weight bands priced differently on purpose), for
+ * Charge and Labour separately, on the rounded figure. A set marks a line only when the set has a strict majority: one
+ * figure held by more lines than any other. The lines with another figure are then marked in `itemOverrides`, so an "All
+ * dispatches" entry skips them (as it skips a line whose figure was typed). On any tie nothing is marked, so the order
+ * of the lines does not matter; a set of one line marks nothing. Tax is never marked: it has no per-line editing.
+ * Only the marks are made: no line, fingerprint or payload changes.
+ */
+export const savedLineOverrides = (items: readonly InvoiceItemData[]): Record<string, string[]> => {
+  const sets = new Map<string, InvoiceItemData[]>();
+  items.forEach((line) => {
+    // From backend migration 109 the edited lines carry item_id; the item name stays as a fallback
+    // for facilities without migration 109.
+    const key = `${invoiceGroupKey(line)}|${line.item_id || line.item_name}|${Number(line.weight) || 0}`;
+    const set = sets.get(key);
+    if (set) set.push(line);
+    else sets.set(key, [line]);
+  });
+  const marks: Record<string, string[]> = {};
+  sets.forEach((lines) => {
+    if (lines.length < 2) return;
+    (['charge', 'labour_rate'] as const).forEach((field) => {
+      const figureOf = (line: InvoiceItemData) => roundMoney(Number(line[field]) || 0);
+      const counts = new Map<number, number>();
+      lines.forEach((line) => counts.set(figureOf(line), (counts.get(figureOf(line)) ?? 0) + 1));
+      if (counts.size < 2) return;
+      let common: number | null = null;
+      let best = 0;
+      let tied = false;
+      counts.forEach((count, figure) => {
+        if (count > best) {
+          best = count;
+          common = figure;
+          tied = false;
+        } else if (count === best) tied = true;
+      });
+      if (tied || common === null) return;
+      lines.forEach((line) => {
+        if (figureOf(line) !== common) (marks[line.temp_id] ??= []).push(field);
+      });
+    });
+  });
+  return marks;
 };
 
 /**
@@ -153,18 +207,21 @@ const invoiceFormSlice = createSlice({
         }
       });
 
-      // Update the item with the edited values and recalculate
-      const itemIndex = state.items.findIndex((item) => item.temp_id === temp_id);
+      // Update the item with the edited values and recalculate. The lines are read from the plain
+      // array, not through the draft: reading a draft makes a proxy of every line it visits, which
+      // for a few thousand lines costs more than the edit itself.
+      const lines = plainLines(state.items);
+      const itemIndex = lines.findIndex((item) => item.temp_id === temp_id);
+      let totalsOf: InvoiceItemData[] = lines;
       if (itemIndex !== -1) {
-        const item = state.items[itemIndex];
-        const editedItem = state.editedItems[temp_id];
-
         // Recalculate item using extracted function
-        state.items[itemIndex] = recalculateItemWithEdits(item, editedItem);
+        const recalculated = recalculateItemWithEdits(lines[itemIndex], state.editedItems[temp_id]);
+        state.items[itemIndex] = recalculated;
+        totalsOf = lines.map((item, index) => (index === itemIndex ? recalculated : item));
       }
 
       // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(totalsOf, state.header.discount);
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -187,11 +244,11 @@ const invoiceFormSlice = createSlice({
           discount === roundMoney(state.header.saved_discount || 0) ? savedReason : '';
       }
       state.header.discount = discount;
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(plainLines(state.items), state.header.discount);
       Object.assign(state.header, headerTotals);
     },
 
-    // Set the rates a saved rate form gives to the lines it concerns. This is not a typed edit:
+    // Puts lines back to given rates (the items editor's revert). This is not a typed edit:
     // a rate typed on the line itself (marked in itemOverrides) is kept, and no mark is added, so
     // a later group rate still applies. A group rate shown for a field that changed is dropped.
     applySavedRates: (
@@ -199,10 +256,18 @@ const invoiceFormSlice = createSlice({
       action: PayloadAction<Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }>>
     ) => {
       const changedGroups: Array<{ key: string; fields: Array<'charge' | 'labour_rate' | 'tax'> }> = [];
+      // Plain lines and one index of them, built once: a lookup through the draft for each rate was O(k*n) proxied reads.
+      // `current` holds the lines this reducer has already changed (a temp_id given twice sees its own first result).
+      const lines = plainLines(state.items);
+      const indexOf = new Map<string, number>();
+      lines.forEach((line, index) => {
+        if (!indexOf.has(line.temp_id)) indexOf.set(line.temp_id, index);
+      });
+      const current = new Map<number, InvoiceItemData>();
       action.payload.forEach(rates => {
-        const index = state.items.findIndex(item => item.temp_id === rates.temp_id);
-        if (index === -1) return;
-        const item = state.items[index];
+        const index = indexOf.get(rates.temp_id);
+        if (index === undefined) return;
+        const item = current.get(index) ?? lines[index];
         const overrides = state.itemOverrides[rates.temp_id] || [];
         const values: Partial<EditedItemValues> = {};
         (['charge', 'labour_rate', 'tax'] as const).forEach(field => {
@@ -210,7 +275,9 @@ const invoiceFormSlice = createSlice({
         });
         const fields = Object.keys(values) as Array<'charge' | 'labour_rate' | 'tax'>;
         if (fields.length === 0) return;
-        state.items[index] = recalculateItemWithEdits(item, values);
+        const recalculated = recalculateItemWithEdits(item, values);
+        current.set(index, recalculated);
+        state.items[index] = recalculated;
         state.editedItems[rates.temp_id] = { ...state.editedItems[rates.temp_id], ...values };
         changedGroups.push({ key: `${item.item_id}:::${item.package_mark}`, fields });
       });
@@ -220,7 +287,10 @@ const invoiceFormSlice = createSlice({
         fields.forEach(field => { delete applied[field]; });
       });
 
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(
+        current.size === 0 ? lines : lines.map((line, index) => current.get(index) ?? line),
+        state.header.discount
+      );
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -249,8 +319,9 @@ const invoiceFormSlice = createSlice({
       state.bulkPricing[group_key] = { ...state.bulkPricing[group_key], ...pricing };
 
       // Apply bulk group pricing using extracted function
+      const lines = plainLines(state.items);
       const { updatedItems } = applyBulkGroupPricing(
-        state.items,
+        lines,
         group_key,
         pricing,
         state.itemOverrides
@@ -258,7 +329,7 @@ const invoiceFormSlice = createSlice({
 
       // Track edited items for non-overridden fields
       updatedItems.forEach((updatedItem, index) => {
-        const originalItem = state.items[index];
+        const originalItem = lines[index];
         // Only track if item was actually updated (compare by reference)
         if (updatedItem !== originalItem) {
           const overrides = state.itemOverrides[updatedItem.temp_id] || [];
@@ -276,7 +347,7 @@ const invoiceFormSlice = createSlice({
       state.items = updatedItems;
 
       // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(updatedItems, state.header.discount);
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -349,7 +420,9 @@ const invoiceFormSlice = createSlice({
       // The lines carry the GRN's pricing mode (`one_time`) and their amounts
       // are worked out here as the server works them out. The header flag only
       // reports that mode; it is not a switch and never changes a duration.
-      const items = action.payload.items.map((item) => ({
+      // Each line is frozen here, as Immer would freeze it when the reducer ends. Immer skips a frozen
+      // object at once; an unfrozen one it walks and freezes field by field (thousands of lines: ~100 ms+).
+      const items = action.payload.items.map((item) => Object.freeze({
         ...item,
         ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time),
       }));
@@ -416,10 +489,11 @@ const invoiceFormSlice = createSlice({
 
       // Reset editing state (fresh start for edit mode)
       state.editedItems = {};
-      state.itemOverrides = {};
+      // Saved figures that differ from the strict majority of their item and bag weight are the lines' own (see savedLineOverrides).
+      state.itemOverrides = savedLineOverrides(action.payload.items);
 
       // No group rate has been applied yet. The group fields of the items step
-      // show the rate the lines of a group share, or "Mixed" when they differ.
+      // show the rate the lines of a group share (the unmarked lines, where some are marked), or "Mixed" (Labour, Tax) or their weighted average (Charge) when they differ.
       // (An average of the stored rates used to be kept here, and the first
       // group edit gave it to every line: a free line beside a paid one became
       // paid, and its stored reason was dropped with the save.)
@@ -434,7 +508,8 @@ const invoiceFormSlice = createSlice({
         inv_fin_year: state.header.inv_fin_year,
         gr_id: state.header.gr_id,
         header: { ...state.header },
-        items: state.items.map((item) => ({ ...item })),
+        // Frozen copies: see loadInvoiceFormData.
+        items: state.items.map((item) => Object.freeze({ ...item })),
       };
     },
 
@@ -453,7 +528,7 @@ const invoiceFormSlice = createSlice({
       state.items = saved.items.map((item) => ({ ...item }));
       state.selected_gr_id = saved.gr_id;
       state.editedItems = {};
-      state.itemOverrides = {};
+      state.itemOverrides = savedLineOverrides(saved.items);
       state.bulkPricing = {};
       Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },

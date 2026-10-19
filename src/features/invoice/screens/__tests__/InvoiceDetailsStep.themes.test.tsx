@@ -22,6 +22,7 @@ jest.mock('@/store/hooks', () => {
   const hooks = require('@/tests/helpers/invoiceFixtures').storeHooks(() => mockStore);
   return {
     useAppDispatch: hooks.useAppDispatch,
+    useAppStore: hooks.useAppStore,
     useAppSelector: (selector: (state: Record<string, unknown>) => unknown) => hooks.useAppSelector((state: Record<string, unknown>) => selector({ ...state, theme: mockTheme })),
   };
 });

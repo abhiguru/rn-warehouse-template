@@ -24,6 +24,7 @@ const mockStore = configureStore({
 });
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockStore.dispatch,
+  useAppStore: () => mockStore,
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockStore.getState()),
 }));
 

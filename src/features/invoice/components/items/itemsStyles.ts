@@ -1,9 +1,11 @@
 import { TABLE_OUTLINE, makeTableStyles } from '@/components/common/DetailTable';
-import { fontWeight, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { COL_GAP } from './itemsLayout';
 
 /**
- * Styles of the parts one group's card is drawn in. The card is several list rows (head, column
- * headings, lines, shared rows, total): `top`, `side` and `bottom` give them one outline. No part
+ * Styles of the parts one group's card is drawn in. The card is several list rows (head, shared rows,
+ * toggle and, while open, column headings and lines): `top`, `side` and `bottom` give them one
+ * outline; the last part draws `bottom`. No part
  * uses a negative margin, which a list measures wrongly.
  */
 export const makeItemsStyles = (t: ThemeTokens) => {
@@ -36,9 +38,9 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       borderColor: t.table.outline,
       ...t.shadow[0],
     },
-    headerRow: { ...table.headerRow, alignItems: 'flex-end' as const },
     headerText: { ...table.headerCell },
     headerNumber: { ...table.headerCell, textAlign: 'right' as const },
+    headerCentre: { ...table.headerCell, textAlign: 'center' as const },
     hint: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.xs },
     row: {
       flexDirection: 'row' as const,
@@ -48,30 +50,45 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       paddingHorizontal: space.md,
       paddingVertical: space.xs,
     },
+    // The line table (sideways scroll): the pinned Dispatch cell, then the scrolling viewport to the card's edge
+    tableRow: { flexDirection: 'row' as const, alignItems: 'stretch' as const, minHeight: touchTarget + 2 * space.xs, paddingLeft: space.md },
+    pinnedBox: {
+      justifyContent: 'center' as const,
+      paddingRight: space.sm,
+      borderRightWidth: TABLE_OUTLINE,
+      borderRightColor: t.table.divider,
+    },
+    columnBox: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingLeft: COL_GAP },
+    // The box of an editable cell starts after the gap before its column (space.lg), so it never touches the figure before it or the box beside it.
+    cellBox: { alignItems: 'stretch' as const },
+    figureText: { flex: 1, minWidth: 0 },
+    tableHeader: {
+      flexDirection: 'row' as const,
+      alignItems: 'flex-end' as const,
+      minHeight: layout.rowMinHeight,
+      paddingLeft: space.md,
+      paddingVertical: space.sm,
+      backgroundColor: t.table.headerFill,
+      borderBottomWidth: 1,
+      borderBottomColor: t.table.separator,
+    },
+    pinnedHead: { paddingRight: space.sm, borderRightWidth: TABLE_OUTLINE, borderRightColor: t.table.divider },
+    headCell: { paddingLeft: COL_GAP },
     rowDivider: { borderBottomWidth: 1, borderBottomColor: t.table.divider },
     grow: { flex: 1, minWidth: 0 },
     primaryStrong: table.primaryStrong,
     secondary: table.secondary,
     number: table.number,
+    numberCentre: { ...table.number, textAlign: 'center' as const },
+    columnCentre: { ...typography.subhead, color: t.text.primary, textAlign: 'center' as const },
     numberStrong: table.numberStrong,
     label: { ...typography.subhead, color: t.text.primary, flex: 1, minWidth: 0 },
-    note: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingBottom: space.xs },
     error: { ...typography.footnote, color: t.status.negative.text, paddingHorizontal: space.md, paddingBottom: space.xs },
     // Group head
     headRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.sm },
     headContent: { flex: 1, minWidth: 0 },
     nameRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const },
     name: { ...typography.headline, color: t.text.primary, flex: 1, minWidth: 0 },
-    pencil: {
-      width: touchTarget,
-      height: touchTarget,
-      marginVertical: -space.md,
-      marginRight: -space.sm,
-      borderRadius: radius.button,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    pencilPressed: { backgroundColor: t.brand.subtle },
     chips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.xs, paddingTop: space.xs },
     chip: {
       flexDirection: 'row' as const,
@@ -100,28 +117,33 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     cardTitle: { ...typography.headline, color: t.text.primary, flex: 1, minWidth: 0 },
     block: { paddingHorizontal: space.md, paddingVertical: space.md, gap: space.xs, backgroundColor: t.table.insetFill },
     blockTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary },
+    // The "(all lines)" figures: columns of one row, or stacked
+    sharedRow: { flexDirection: 'row' as const, alignItems: 'stretch' as const, gap: space.sm },
+    sharedColumn: { flex: 1, minWidth: 0, justifyContent: 'space-between' as const },
+    sharedStack: { gap: space.sm },
+    sharedStackItem: {},
+    sharedButtons: { paddingTop: space.xs },
     prefix: { ...typography.body, color: t.text.secondary },
-    // Total
-    totalRow: {
+    // Toggle that opens a group's dispatch lines
+    toggleRow: {
       flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
       alignItems: 'center' as const,
-      gap: space.md,
+      gap: space.sm,
       minHeight: touchTarget,
       paddingHorizontal: space.md,
       paddingVertical: space.sm,
       borderTopWidth: 1,
       borderTopColor: t.table.separator,
     },
-    totalLabel: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
+    toggleError: { ...typography.footnote, color: t.status.negative.text, paddingHorizontal: space.md, paddingBottom: space.sm },
+    togglePressed: { backgroundColor: t.brand.subtle },
+    toggleText: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flex: 1, minWidth: 0 },
     totalValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
     // Page
     empty: { padding: space.giant, alignItems: 'center' as const, gap: space.sm },
     emptyTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
     emptyText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
     listHeader: { paddingBottom: space.sm, alignItems: 'flex-start' as const },
-    loadingRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, paddingVertical: space.sm },
-    loadingText: { ...typography.subhead, color: t.text.secondary },
   };
 };
 export type ItemsStyles = ReturnType<typeof makeItemsStyles>;

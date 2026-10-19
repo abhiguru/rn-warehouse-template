@@ -11,9 +11,12 @@ import { normalizeDigits, t } from '@/i18n';
 
 export type RateField = 'charge' | 'labour_rate' | 'tax';
 
-/** The largest value the server accepts for a line (backend migration 41). The smallest is 0. */
+/**
+ * The largest value the app takes for a line; the smallest is 0. The server accepts up to 999999 (backend migration 41);
+ * the line Charge is held to 9999.99 by the owner's decision of 2026-10-19.
+ */
 export const RATE_MAX: Record<RateField, number> = {
-  charge: 999999,
+  charge: 9999.99,
   labour_rate: 999999,
   tax: 100,
 };

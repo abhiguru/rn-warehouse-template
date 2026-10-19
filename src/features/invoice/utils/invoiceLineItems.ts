@@ -75,6 +75,7 @@ export function buildInvoiceLineItems(
     tax: item.tax || 0,
     server_tax_amount: item.taxAmount,
     server_total_amount: item.totalAmount,
+    one_time: isOneTime(invoice.grn?.pricing_mode),
     grn_id: invoice.grn?.id || '',
     gr_no: item.grNo,
     // GRN Item ID for grouping (the dispatch keeps lines apart when it is not known)

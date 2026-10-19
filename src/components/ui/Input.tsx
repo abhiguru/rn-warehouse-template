@@ -21,6 +21,8 @@ import {
   TextInputProps,
   Pressable,
   Platform,
+  type LayoutChangeEvent,
+  type StyleProp,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -78,6 +80,10 @@ export interface InputProps extends TextInputProps {
    * (a tap places the cursor). For a field that opens with a value to be replaced, such as a rate.
    */
   selectTextOnFocus?: boolean;
+  /** Extra style for the field's box (the outlined frame), e.g. a fixed width for a short figure; the label and the message under it keep the full width. */
+  fieldStyle?: StyleProp<ViewStyle>;
+  /** Called with the field box's layout (`y` below the label, `height`): a caller that puts something beside the field, not beside its label, centres it on the box. */
+  onFieldLayout?: (event: LayoutChangeEvent) => void;
   /** The caller's ref to the TextInput; the field keeps its own too (the clear button refocuses). */
   ref?: React.Ref<TextInput>;
 }
@@ -103,6 +109,8 @@ export function Input({
   numeric = false,
   identifier = false,
   selectTextOnFocus = false,
+  fieldStyle,
+  onFieldLayout,
   ref: callerRef,
   value,
   onChangeText,
@@ -196,7 +204,7 @@ export function Input({
       )}
 
       {/* Field */}
-      <View style={[styles.inputContainer, fieldStateStyle]}>
+      <View style={[styles.inputContainer, fieldStateStyle, fieldStyle]} onLayout={onFieldLayout}>
         {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
 
         <TextInput

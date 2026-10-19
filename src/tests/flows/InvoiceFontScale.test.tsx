@@ -1,9 +1,11 @@
 /**
- * The invoice steps at a large text size, on the real screens at 411 dp: at a font scale of 1.0 the lines of the items
- * step are a table, from 1.3 they are cards; the Review ITEMS table keeps its Item | Qty | Amount columns at 1.3 (the
+ * The invoice steps at a large text size, on the real screens at 411 dp: the lines of the items step are a table at any
+ * text size (it scrolls sideways) and cards only while a screen reader is on; the Review ITEMS table keeps its Item | Qty | Amount columns at 1.3 (the
  * Qty goes under the item from 1.5); and the GRN number on step 1 wraps instead of being cut.
  */
 import 'expo-router/build/testing-library/mocks';
+import { AccessibilityInfo } from 'react-native';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { newFlowStore } from '@/tests/helpers/invoiceFlowStore';
 import { makeFlowServer, type FlowServer } from '@/tests/helpers/invoiceFlowServer';
@@ -57,6 +59,9 @@ afterEach(async () => {
   mockFontScale = 1;
   jest.useRealTimers();
   jest.restoreAllMocks();
+  // React Native's own jest mock stays a mock after restoreAllMocks: set it back to "off".
+  jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+  resetScreenReaderKnown();
 });
 
 const form = () => app.store.getState().invoiceForm;
@@ -79,13 +84,13 @@ describe('step 2, Items', () => {
     expect(app.testIDs(/^cols-/)).toEqual(['cols-i1:::M1', 'cols-i2:::M2']); // the column headings of the tables
   });
 
-  it('draws one card per line at font scale 1.3, and typing in a card changes the amounts', async () => {
+  it('keeps the table at font scale 1.3, and typing in a cell changes the amounts', async () => {
     await start(1.3);
     await app.tap('Next: items');
 
-    expect(lineRows()).toBe(0);
-    expect(lineCards()).toBe(3);
-    expect(app.testIDs(/^cols-/)).toEqual([]);
+    expect(lineRows()).toBe(3);
+    expect(lineCards()).toBe(0);
+    expect(app.testIDs(/^cols-/)).toEqual(['cols-i1:::M1', 'cols-i2:::M2']);
     const charge = cell(form().items[0].temp_id);
     expect(app.valueOf(charge)).toBe('5.00');
 
@@ -96,6 +101,20 @@ describe('step 2, Items', () => {
     expect(app.texts()).toContain('₹1,050.00');
     // The shared fields of the group are still there for all lines.
     expect(app.hasInput(groupField('i1:::M1', 'labour_rate'))).toBe(true);
+  });
+
+  it('draws one card per line while a screen reader is on, and typing in a card changes the amounts', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    await start(1);
+    await app.tap('Next: items');
+
+    expect(lineRows()).toBe(0);
+    expect(lineCards()).toBe(3);
+    expect(app.testIDs(/^cols-/)).toEqual([]);
+    const charge = cell(form().items[0].temp_id);
+    await app.typeKeys(charge, '8');
+    expect(form().items[0].item_total).toBe(1050);
+    expect(app.texts()).toContain('₹1,050.00');
   });
 });
 

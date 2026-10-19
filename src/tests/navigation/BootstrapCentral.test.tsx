@@ -72,7 +72,7 @@ jest.mock('@/config/sentryConfig', () => ({
   initializeSentry: jest.fn(), captureException: jest.fn(), captureMessage: jest.fn(), Sentry: { wrap: (c: unknown) => c },
 }));
 jest.mock('@/config/supabaseConfig', () => ({
-  initializeSupabase: jest.fn(), clearPendingEnrollment: jest.fn(), hasActiveOperatorMutation: jest.fn(() => false),
+  initializeSupabase: jest.fn(), invalidateStoredTokenCache: jest.fn(), clearPendingEnrollment: jest.fn(), hasActiveOperatorMutation: jest.fn(() => false),
 }));
 jest.mock('@/components/OperatorServerSelection', () => {
   const React = require('react');

@@ -1,59 +1,117 @@
-/** The column headings (with the hint under them) and the total row of a group's card. */
+/**
+ * The toggle that opens a group's dispatch lines, and the column headings (with the swipe hint
+ * under them) of an open group's card. The card's bottom edge is drawn by the last part: the toggle while
+ * the group is closed, the last line while it is open. The heading row is the line table's: the pinned Dispatch
+ * heading and, in the card's shared `SidewaysViewport`, the other headings (swiping the heading moves the whole table).
+ */
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { ONE_LINE } from '@/components/common/DetailTable';
+import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
-import { formatCount } from '@/utils/formatters';
-import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { CELL_CHROME, type ItemsWidths } from './itemsLayout';
-import { fieldHeading } from './itemsModel';
+import { iconSize } from '@/theme/tokens';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { columnInset, type LineTable } from './lineColumns';
+import { SidewaysViewport, type TableScroll } from './SidewaysViewport';
+import type { ItemsActions } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
 
 interface ColumnsProps {
   groupKey: string;
-  widths: ItemsWidths;
-  perLine: boolean;
-  oneTime: boolean;
+  /** The columns of the line table (TanStack column model, lineColumns.ts). */
+  table: LineTable;
+  /** The card's sideways position, shared with its rows. */
+  scroll: TableScroll;
+  /** The columns are wider than the screen: the hint to swipe sideways is shown. */
+  sideways: boolean;
   styles: ItemsStyles;
 }
 
-export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, widths, perLine, oneTime, styles }: ColumnsProps) {
-  const cell = (text: string, width: number, chrome = 0) => (
-    <Text style={[styles.headerNumber, { width, paddingRight: chrome }]} numberOfLines={1}>{text}</Text>
+interface HeadingRowProps {
+  groupKey: string;
+  table: LineTable;
+  scroll: TableScroll;
+  styles: ItemsStyles;
+}
+
+/** The heading row of the line table: the pinned Dispatch heading and the other headings in the card's shared viewport. */
+export const HeadingRow = React.memo(function HeadingRow({ groupKey, table, scroll, styles }: HeadingRowProps) {
+  const t = useTokens();
+  return (
+    // Keyed by the card: a part the list recycles for another card gets that card's scroll.
+    <SidewaysViewport
+      key={groupKey}
+      scroll={scroll}
+      content={table.content}
+      fill={t.table.headerFill}
+      rowStyle={styles.tableHeader}
+      pinned={
+        <View style={[styles.pinnedHead, { width: table.pinned.width }]}>
+          <Text style={styles.headerText} numberOfLines={1}>{table.pinned.header}</Text>
+        </View>
+      }
+    >
+      {table.scrolling.map((column) => (
+        <View key={column.id} style={[styles.headCell, { width: column.width, justifyContent: 'flex-end' }]}>
+          <Text
+            style={[column.align === 'right' ? styles.headerNumber : column.align === 'center' ? styles.headerCentre : styles.headerText, { paddingRight: columnInset(column.id) }]}
+            // Months is sized to its figures, not its heading: the heading shrinks a little to stay on one line.
+            // Labour is sized to its box, so its heading may wrap to two lines.
+            {...(column.id === 'duration' ? ONE_LINE : { numberOfLines: column.id === 'labour_rate' ? 2 : 1 })}
+          >
+            {column.header}
+          </Text>
+        </View>
+      ))}
+    </SidewaysViewport>
   );
+});
+
+export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, table, scroll, sideways, styles }: ColumnsProps) {
   return (
     <View style={styles.side} testID={`cols-${groupKey}`}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.headerText, styles.grow]} numberOfLines={1}>{tr('common.dispatch')}</Text>
-        {cell(tr('invoice.lineItem.colQty'), widths.qty)}
-        {cell(fieldHeading('charge'), widths.charge, CELL_CHROME / 2)}
-        {perLine && !oneTime ? cell(fieldHeading('labour_rate'), widths.labour, CELL_CHROME / 2) : null}
-        {perLine ? cell(fieldHeading('tax'), widths.tax, CELL_CHROME / 2) : null}
-        {cell(tr('invoice.items.colAmount'), widths.amount)}
-      </View>
-      <Text style={styles.hint}>{tr('invoice.items.hint')}</Text>
+      <HeadingRow groupKey={groupKey} table={table} scroll={scroll} styles={styles} />
+      {sideways ? <Text style={styles.hint}>{tr('invoice.items.swipeHint')}</Text> : null}
     </View>
   );
 });
 
-interface TotalProps {
+interface ToggleProps {
   groupKey: string;
+  /** The item's name and mark, as the screen reader says them. */
+  spokenItem: string;
+  /** The number of lines the table shows when open. */
   lines: number;
-  total: number;
+  open: boolean;
+  /** Figures of the lines with refused text, said under a closed toggle. */
+  refused: number;
+  actions: ItemsActions;
   styles: ItemsStyles;
 }
 
-export const GroupTotal = React.memo(function GroupTotal({ groupKey, lines, total, styles }: TotalProps) {
-  const dispatches = formatCount(lines, 'dispatch', 'dispatches');
-  const totalText = formatInvoiceAmount(total);
+/** "Show dispatch details (N)" / "Hide dispatch details": the last part of a closed card, the one before the lines of an open one. */
+export const GroupToggle = React.memo(function GroupToggle({ groupKey, spokenItem, lines, open, refused, actions, styles }: ToggleProps) {
+  const t = useTokens();
+  const count = formatNumber(lines);
+  const label = open ? tr('invoice.items.hideLines') : tr('invoice.items.showLines', { lines: count });
+  const refusedText = !open && refused > 0 ? tr('invoice.items.linesToFix', { count: refused }) : null;
+  const base = tr(open ? 'invoice.items.hideLinesA11y' : 'invoice.items.showLinesA11y', { item: spokenItem, dispatches: formatCount(lines, 'dispatch', 'dispatches') });
+  const spoken = refusedText ? `${base}, ${refusedText}` : base;
   return (
-    <View style={styles.bottomGap} testID={`group-total-${groupKey}`}>
-      <View
-        style={[styles.bottom, styles.totalRow]}
-        accessible
-        accessibilityLabel={tr('invoice.items.groupTotalA11y', { dispatches, total: totalText })}
-      >
-        <Text style={styles.totalLabel}>{tr('invoice.items.groupTotal', { dispatches })}</Text>
-        <Text style={styles.totalValue} numberOfLines={1}>{totalText}</Text>
+    <View style={open ? styles.side : styles.bottomGap} testID={`group-toggle-${groupKey}`}>
+      <View style={open ? null : styles.bottom}>
+        <Pressable
+          style={({ pressed }) => [styles.toggleRow, pressed && styles.togglePressed]}
+          onPress={() => actions.toggle(groupKey)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={spoken}
+        >
+          <Icon name={open ? 'chevron-down' : 'chevron-right'} size={iconSize.md} color={t.table.accent} />
+          <Text style={styles.toggleText} numberOfLines={2}>{label}</Text>
+        </Pressable>
+        {refusedText ? <Text style={styles.toggleError}>{refusedText}</Text> : null}
       </View>
     </View>
   );

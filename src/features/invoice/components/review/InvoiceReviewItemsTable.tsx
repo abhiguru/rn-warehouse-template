@@ -69,7 +69,9 @@ export interface InvoiceReviewItemsTableProps {
   testID?: string;
 }
 
-export function InvoiceReviewItemsTable({ items, testID = 'invoice-review-items-table' }: InvoiceReviewItemsTableProps) {
+// Memoized: the step draws again for reasons that do not touch the lines (a dialog, the discount field), and the
+// table is the costly part of the step.
+export const InvoiceReviewItemsTable = React.memo(function InvoiceReviewItemsTable({ items, testID = 'invoice-review-items-table' }: InvoiceReviewItemsTableProps) {
   const table = useThemedStyles(makeTableStyles);
   const styles = useThemedStyles(makeStyles);
   const screen = useTableLayout();
@@ -175,4 +177,4 @@ export function InvoiceReviewItemsTable({ items, testID = 'invoice-review-items-
       }
     />
   );
-}
+});

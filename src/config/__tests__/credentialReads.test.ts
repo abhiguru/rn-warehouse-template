@@ -30,6 +30,7 @@ import {
   getAuthenticatedClient,
   getStoredToken,
   initializeSupabase,
+  invalidateStoredTokenCache,
   storeTokens,
 } from '../supabaseConfig';
 import { getAppErrorCode } from '@/utils/appError';
@@ -85,6 +86,8 @@ async function signedIn(token: string, expiresAt = Date.now() + 3600 * 1000) {
 beforeEach(async () => {
   jest.clearAllMocks();
   secure.clear();
+  // The test fills and empties the secure store by itself, so the copy of the last session is dropped here.
+  invalidateStoredTokenCache();
   rpc.mockReset();
   from.mockReset();
   hold = undefined;
@@ -127,7 +130,11 @@ test('twenty lookups that start together share one read and one client', async (
   expect(sessionReads()).toBe(4);
   expect(bearers()).toEqual([`Bearer ${token}`]);
   expect(new Set(clients).size).toBe(1);
-  // Nothing is kept once the shared read has settled: the next lookup reads again.
+  // The session values are kept in memory once a complete session was read: the next lookup reads nothing.
+  await getAuthenticatedClient();
+  expect(sessionReads()).toBe(4);
+  // Until the copy is dropped: then the next lookup reads again.
+  invalidateStoredTokenCache();
   await getAuthenticatedClient();
   expect(sessionReads()).toBe(8);
 });
@@ -142,14 +149,15 @@ test('callers sharing a read each get their own copy', async () => {
   expect(b.authToken).not.toBe('changed-by-a-caller');
 });
 
-test('a token inside the renewal margin is renewed and its successor used, with six reads', async () => {
+test('a token inside the renewal margin is renewed and its successor used, with three reads (the refresh finds the session in memory)', async () => {
   await signedIn(jwt(), Date.now() + 60 * 1000);
   const next = jwt(undefined, 'renewed-session');
   rpc.mockResolvedValue({ data: { success: true, access_token: next, refresh_token: 's'.repeat(64), expires_in: 3600 }, error: null });
   await getAuthenticatedClient();
   expect(rpc).toHaveBeenCalledWith('refresh_jwt_token', { p_refresh_token: 'r'.repeat(64) });
   expect(bearers()).toEqual([`Bearer ${next}`]);
-  expect(sessionReads()).toBe(6);
+  // The first read fills the copy; refreshCustomJWT's own lookup of the refresh token is answered from it.
+  expect(sessionReads()).toBe(3);
 });
 
 test('a read queued after a token write does not share the read before it', async () => {
@@ -205,5 +213,74 @@ test('a session change between two reads: the first is refused, the second reads
   const p2 = getStoredToken();
   expect(await p1).toEqual({ isValid: false });
   expect((await p2).authToken).toBe(token);
-  expect(sessionReads()).toBe(6);
+  // The first is refused before it reads (the session changed); the second reads the three values.
+  expect(sessionReads()).toBe(3);
+});
+
+describe('the stored session kept in memory', () => {
+  test('a second lookup after a complete read reads nothing, and the copy is a new object each time', async () => {
+    await signedIn(jwt());
+    const first = await getStoredToken();
+    expect(sessionReads()).toBe(3);
+    const second = await getStoredToken();
+    expect(sessionReads()).toBe(3);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+  });
+
+  test('storing new tokens drops the copy: the next lookup reads the new session', async () => {
+    const old = jwt();
+    await signedIn(old);
+    expect((await getStoredToken()).authToken).toBe(old);
+    const fresh = jwt(undefined, 'rotated-session');
+    await storeTokens(fresh, 's'.repeat(64), Date.now() + 3600 * 1000);
+    jest.mocked(SecureStore.getItemAsync).mockClear();
+    expect((await getStoredToken()).authToken).toBe(fresh);
+    expect(sessionReads()).toBe(3);
+  });
+
+  test('clearing the session drops the copy: the next lookup finds no session', async () => {
+    await signedIn(jwt());
+    await getStoredToken();
+    await clearStoredTokens();
+    const after = await getStoredToken();
+    expect(after.authToken).toBeUndefined();
+    expect(after.isValid).toBe(false);
+  });
+
+  test('a session change drops the copy', async () => {
+    const token = jwt();
+    await signedIn(token);
+    await getStoredToken();
+    jest.mocked(SecureStore.getItemAsync).mockClear();
+    advanceSessionGeneration();
+    expect((await getStoredToken()).authToken).toBe(token);
+    expect(sessionReads()).toBe(3);
+  });
+
+  test('the copy is not used under another server', async () => {
+    await saveOperatorServer(serverA, false);
+    await signedIn(jwt());
+    await getStoredToken();
+    expect(sessionReads()).toBe(4);
+    await saveOperatorServer(serverB, false);
+    const other = await getStoredToken();
+    // The stored session belongs to server A: under B it is not handed out.
+    expect(other.authToken).toBeUndefined();
+    expect(sessionReads()).toBeGreaterThan(4);
+  });
+
+  test('an expired token is still returned from the copy, but as not valid (the expiry is checked on use)', async () => {
+    await signedIn(jwt(), Date.now() + 1000);
+    expect((await getStoredToken()).isValid).toBe(true);
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 5000);
+    try {
+      const late = await getStoredToken();
+      expect(late.authToken).toBeDefined();
+      expect(late.isValid).toBe(false);
+      expect(sessionReads()).toBe(3);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
 });

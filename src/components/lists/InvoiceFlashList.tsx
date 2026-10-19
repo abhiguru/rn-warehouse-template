@@ -412,7 +412,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   let content: React.ReactNode;
   if ((!hasLoaded || loadError) && isLoading && invoices.length === 0) {
     // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
-    content = <ListSkeleton count={5} metricsCount={3} />;
+    // One wide block under the header stands for the amounts table (ListSkeleton has no table option).
+    content = <ListSkeleton count={5} metricsCount={1} showAvatar={false} />;
   } else if (invoices.length > 0) {
     content = (
       <>

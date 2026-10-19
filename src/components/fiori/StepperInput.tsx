@@ -3,6 +3,13 @@
  *
  * Minus and plus buttons outlined in border.button with brand.tint icons; the
  * value in body with tabular numbers; the buttons disable at min and max.
+ *
+ * `StepperButtons` is the same pair of buttons on their own, for a field that sits above them (the
+ * invoice items step's "(all lines)" figures): each button is a full touch target wide and tall with the
+ * 36 dp outlined button drawn inside it, so the whole target works on Android (a hit slop outside a
+ * clipped parent does not). It holds no value; the caller steps it.
+ * `orientation="inline"` is the same two squares side by side at a fixed size (`INLINE_PAIR_WIDTH` wide, one touch
+ * target tall), + then −, for a pair that sits right after a short field instead of filling a column.
  */
 import React, { useState, useRef } from 'react';
 import {
@@ -20,6 +27,10 @@ import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 /** Visual size of the minus/plus buttons; the touch area is padded to touchTarget. */
 const BUTTON_SIZE = 36;
+/** The height of a button box in the inline pair (inside its `touchTarget` square). */
+const INLINE_BOX_HEIGHT = 40;
+/** The width of the inline pair: two touch targets side by side. */
+export const INLINE_PAIR_WIDTH = 2 * touchTarget;
 const VALUE_MIN_WIDTH = 80;
 const BUTTON_HIT_SLOP: Insets = {
   top: (touchTarget - BUTTON_SIZE) / 2,
@@ -369,6 +380,40 @@ const makeStyles = (t: ThemeTokens) => ({
   buttonDisabled: {
     opacity: t.interaction.disabledOpacity,
   },
+  pairRow: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+  },
+  pairHit: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+  },
+  pairBox: {
+    height: BUTTON_SIZE,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.field,
+    overflow: 'hidden' as const,
+  },
+  pairRowInline: {
+    flexDirection: 'row' as const,
+    width: INLINE_PAIR_WIDTH,
+  },
+  pairHitInline: {
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  pairBoxInline: {
+    width: BUTTON_SIZE,
+    height: INLINE_BOX_HEIGHT,
+  },
   valueContainer: {
     minWidth: VALUE_MIN_WIDTH,
     height: BUTTON_SIZE,
@@ -394,5 +439,61 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
 });
+
+interface StepperButtonsProps {
+  onDecrement: () => void;
+  onIncrement: () => void;
+  canDecrement: boolean;
+  canIncrement: boolean;
+  /** Spoken labels, complete ("Decrease charge by ₹0.25, Potatoes"). */
+  decreaseLabel: string;
+  increaseLabel: string;
+  testID?: string;
+  /**
+   * 'horizontal' (default): the two buttons share a row's width.
+   * 'inline': + then − side by side, each a `touchTarget` square (`INLINE_PAIR_WIDTH` in all).
+   */
+  orientation?: 'horizontal' | 'inline';
+}
+
+/** The + then − of a stepper without a value between them (the GRN rate sheet's order). Horizontal: they share the width equally. Inline: + beside −, the same squares. */
+export const StepperButtons: React.FC<StepperButtonsProps> = ({
+  onDecrement,
+  onIncrement,
+  canDecrement,
+  canIncrement,
+  decreaseLabel,
+  increaseLabel,
+  testID,
+  orientation = 'horizontal',
+}) => {
+  const t = useTokens();
+  const inline = orientation === 'inline';
+  // The inline pair uses a touch square and a box of its own (`pairHitInline`, `pairBoxInline`).
+  const styles = useThemedStyles(makeStyles);
+  const button = (name: 'minus' | 'plus', enabled: boolean, onPress: () => void, label: string, id?: string) => (
+    <Pressable
+      style={inline ? styles.pairHitInline : styles.pairHit}
+      onPress={onPress}
+      disabled={!enabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !enabled }}
+      testID={id}
+    >
+      {({ pressed }) => (
+        <View style={[styles.pairBox, inline && styles.pairBoxInline, pressed && styles.buttonPressed, !enabled && styles.buttonDisabled]}>
+          <Icon name={name} size={iconSize.md} color={t.brand.tint} />
+        </View>
+      )}
+    </Pressable>
+  );
+  return (
+    <View style={inline ? styles.pairRowInline : styles.pairRow} testID={testID}>
+      {button('plus', canIncrement, onIncrement, increaseLabel, testID ? `${testID}-plus` : undefined)}
+      {button('minus', canDecrement, onDecrement, decreaseLabel, testID ? `${testID}-minus` : undefined)}
+    </View>
+  );
+};
 
 export default StepperInput;

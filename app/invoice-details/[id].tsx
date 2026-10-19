@@ -5,7 +5,7 @@
  * breakdown), share and print actions, and loading and not-found states.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -188,9 +188,9 @@ function InvoiceDetailScreen() {
   };
 
   // Handle Dispatch navigation. The dispatch screen is opened by dispatch id (uuid).
-  const handleViewDispatch = (dispatchId: string) => {
+  const handleViewDispatch = useCallback((dispatchId: string) => {
     router.push(`/dispatch-details/${dispatchId}`);
-  };
+  }, []);
 
   // Handle Edit Invoice
   const handleEditInvoice = () => {
@@ -304,6 +304,15 @@ function InvoiceDetailScreen() {
     setShowPrintDialog(true);
   };
 
+  // Lines for the tab: the lines of get_invoice_data with the amounts the
+  // server computed for each of them (get_invoice_items_detailed).
+  // Items are grouped by GRN item in InvoiceLineItemsTab. Built once per fetch, so opening a
+  // lot or an unrelated re-render does not rebuild (and redraw) every row.
+  const lineItems: InvoiceLineItem[] = useMemo(
+    () => (data ? buildInvoiceLineItems(data.header, data.items, detailedItems) : []),
+    [data, detailedItems]
+  );
+
   // ============================================================================
   // LOADING / ERROR STATES
   // ============================================================================
@@ -353,11 +362,6 @@ function InvoiceDetailScreen() {
 
 
   const { header: invoice, items: invoiceItems } = data;
-
-  // Lines for the tab: the lines of get_invoice_data with the amounts the
-  // server computed for each of them (get_invoice_items_detailed).
-  // Items are grouped by GRN item in InvoiceLineItemsTab
-  const lineItems: InvoiceLineItem[] = buildInvoiceLineItems(invoice, invoiceItems, detailedItems);
 
   // Calculate financial summary
   const total = invoice.total || 0;

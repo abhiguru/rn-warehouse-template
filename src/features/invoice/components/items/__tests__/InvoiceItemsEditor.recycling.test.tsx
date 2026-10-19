@@ -4,10 +4,11 @@
  * the row: not the focus ring, not the text, not a row's identity.
  */
 import React from 'react';
-import { StyleSheet, TextInput, type StyleProp, type TextStyle } from 'react-native';
+import { AccessibilityInfo, StyleSheet, TextInput, type StyleProp, type TextStyle } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, inputOf, openAllGroups, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import type { ItemsRow } from '../itemsModel';
@@ -26,6 +27,18 @@ beforeEach(() => {
   mockFontScale = 1;
   resetFlashListWindow();
 });
+afterEach(() => {
+  act(() => unmountAll());
+  jest.restoreAllMocks();
+  jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+  resetScreenReaderKnown();
+});
+/** The lines are cards only while a screen reader is on. */
+const screenReaderOn = () => {
+  // React Native's own jest mock stays a mock after restoreAllMocks: the afterEach below sets it back to "off".
+  jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+  jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation((() => ({ remove: () => {} })) as never);
+};
 
 /** Thirty lines of one group whose charges differ: line n has charge n + 1. */
 const lines = (): InvoiceItemData[] => Array.from({ length: 30 }, (_, n) => invoiceLine({ charge: n + 1 }, n));
@@ -33,17 +46,29 @@ async function render(data: InvoiceItemData[] = lines()) {
   mockStore = makeInvoiceStore();
   fillNewInvoice(mockStore, data);
   let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<ConnectedEditor />); });
+  await act(async () => { tree = track(create(<ConnectedEditor />)); });
+  await openAllGroups(tree);
   return tree;
 }
 const list = (tree: ReactTestRenderer) => tree.root.findByType('FlashList' as never);
 const rowsOf = (tree: ReactTestRenderer): ItemsRow[] => list(tree).props.data;
 const chargeInputs = (tree: ReactTestRenderer) =>
   tree.root.findAllByType(TextInput).filter((node) => /^cell\|.*\|charge$/.test(String(node.props.testID)));
-/** A table cell shows the focus as a ring: its border is not transparent (the wrapper around it never takes touches). */
-const focusShown = (node: { props: { style?: StyleProp<TextStyle> } }) => {
-  const color = StyleSheet.flatten(node.props.style)?.borderColor;
-  return color !== undefined && color !== 'transparent';
+/**
+ * A field shows the focus as a 2 dp ring; at rest it is a 1 dp box. A table cell has the ring on its own style, a
+ * field of the "All dispatches" block (`Input`) on the frame around the text input (its parent, a few levels up).
+ */
+const ringed = (style: StyleProp<TextStyle> | undefined) => {
+  const flat = StyleSheet.flatten(style);
+  return (flat?.borderWidth ?? 0) >= 2 && flat?.borderColor !== undefined && flat.borderColor !== 'transparent';
+};
+const focusShown = (node: { props: { style?: StyleProp<TextStyle> }; parent: unknown }) => {
+  let current = node as { props: { style?: StyleProp<TextStyle> }; parent: unknown } | null;
+  for (let level = 0; current && level < 5; level += 1) {
+    if (ringed(current.props?.style)) return true;
+    current = current.parent as typeof current;
+  }
+  return false;
 };
 
 describe('rows that are reused for another line', () => {
@@ -64,9 +89,10 @@ describe('rows that are reused for another line', () => {
   });
 
   it('carry no focus ring in cards either (the field of a card shows it from its own state)', async () => {
-    mockFontScale = 1.3;
+    screenReaderOn();
     const tree = await render();
-    await act(async () => { setFlashListWindow(0, 4); });
+    // a card is head, shared block, toggle, then one row per line
+    await act(async () => { setFlashListWindow(0, 5); });
     const first = 'cell|edit_0_0|charge';
     await act(async () => { inputOf(tree, first).props.onFocus({}); });
     await act(async () => { setFlashListWindow(10, 14); });
@@ -80,12 +106,13 @@ describe('rows that are reused for another line', () => {
       Array.from({ length: 2 }, (_, i) => invoiceLine({ item_id: `it${g}`, item_name: `Example Item ${g}`, package_mark: `P${g}` }, g * 2 + i))
     ).flat();
     const tree = await render(groups);
-    // a group is 8 rows: head, headings, two lines, charge, labour, tax, total
-    await act(async () => { setFlashListWindow(0, 8); });
+    // a group is 6 rows: head, shared block, toggle, headings, two lines
+    await act(async () => { setFlashListWindow(0, 6); });
     const tax = 'group|it0:::P0|tax';
+    expect(focusShown(inputOf(tree, tax))).toBe(false);
     await act(async () => { inputOf(tree, tax).props.onFocus({}); });
     expect(focusShown(inputOf(tree, tax))).toBe(true);
-    await act(async () => { setFlashListWindow(16, 24); });
+    await act(async () => { setFlashListWindow(18, 24); });
     expect(hasInput(tree, tax)).toBe(false);
     const shared = tree.root.findAllByType(TextInput).filter((node) => /^group\|/.test(String(node.props.testID)));
     expect(shared).toHaveLength(3);
@@ -132,7 +159,7 @@ describe('the row plan', () => {
     const props = list(tree).props as { keyExtractor: (row: ItemsRow, index: number) => string; getItemType: (row: ItemsRow, index: number) => string };
     const rows = rowsOf(tree);
     const types = new Set(rows.map((row, index) => props.getItemType(row, index)));
-    expect(types).toEqual(new Set(['head', 'cols', 'line', 'shared', 'total']));
+    expect(types).toEqual(new Set(['head', 'block', 'toggle', 'cols', 'line']));
     expect(new Set(rows.map((row, index) => props.keyExtractor(row, index))).size).toBe(rows.length);
     const keyOfLine = (data: ItemsRow[], tempId: string) => {
       const index = data.findIndex((row) => row.type === 'line' && row.tempId === tempId);

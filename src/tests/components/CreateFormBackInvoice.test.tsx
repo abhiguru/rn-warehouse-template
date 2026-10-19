@@ -46,6 +46,7 @@ jest.mock('@/hooks/useInvoiceForm', () => ({ useInvoiceForm: () => mockForm }));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ role: 'staff' }) }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
+  useAppStore: () => ({ getState: () => ({ invoiceForm: { items: [], editedItems: {}, bulkPricing: {}, header: {} } }), subscribe: () => () => undefined, dispatch: jest.fn() }),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('expo-router', () => {

@@ -35,6 +35,8 @@ interface ListSkeletonCardProps {
   height?: number;
   /** Show footer row (default: true) */
   showFooter?: boolean;
+  /** Show the round placeholder at the start of the header (default: true) */
+  showAvatar?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -105,6 +107,7 @@ export const ListSkeletonCard = memo<ListSkeletonCardProps>(({
   metricsCount = 3,
   height,
   showFooter = true,
+  showAvatar = true,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
@@ -140,7 +143,7 @@ export const ListSkeletonCard = memo<ListSkeletonCardProps>(({
     >
       {/* Header Row: Avatar + Content + Attribute */}
       <View style={styles.header}>
-        <View style={[styles.avatar, styles.block]} />
+        {showAvatar ? <View style={[styles.avatar, styles.block]} /> : null}
 
         <View style={styles.content}>
           <View style={[styles.title, styles.block]} />

@@ -18,6 +18,7 @@ import {
   advanceSessionGeneration,
   credentialQueueStamp,
   getSessionGeneration,
+  onSessionChange,
   renewAheadMs,
   serializeCredentials,
 } from './sessionLifecycle';
@@ -1172,6 +1173,7 @@ export const signOut = async (options?: { localOnly?: boolean }) => {
  * the marker stays and the next start removes the session (readStoredToken).
  */
 async function clearEndedSession(): Promise<boolean> {
+  invalidateStoredTokenCache();
   let digest: string | null = null;
   try {
     const refreshToken = await SecureStore.getItemAsync(SECURE_KEYS.REFRESH_TOKEN);
@@ -1190,6 +1192,7 @@ async function clearEndedSession(): Promise<boolean> {
   }
   const cleared = await clearStoredTokensRaw();
   if (cleared && marked) await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT).catch(() => {});
+  invalidateStoredTokenCache();
   return cleared;
 }
 
@@ -1557,6 +1560,28 @@ export const acquireValidSession = async (): Promise<ValidSession | null> => {
 export const ensureValidTokens = async (): Promise<boolean> =>
   (await acquireValidSession()) !== null;
 
+// In-memory copy of the stored session values (auth token, refresh token, expiry), so a request
+// does not pay four SecureStore reads (90-190 ms each time on the phone).
+// - Filled by readStoredToken (which runs inside serializeCredentials) after a read that found a
+//   complete session, no sign-out marker and nothing to repair or migrate, i.e. exactly the
+//   values SecureStore holds. Expiry is not cached as a verdict: isValid is recomputed on use.
+// - Dropped by invalidateStoredTokenCache(), called at the start and end of every writer
+//   (storeTokensRaw, clearStoredTokensRaw, clearEndedSession) and when the app returns to the
+//   foreground. Every drop also bumps credentialCacheVersion, so a read that was running while a
+//   write began never fills the cache with its (older) values.
+// - Only valid for the operator server it was read under (operatorKey()); another one is a miss.
+// When in doubt it is dropped: that costs a full read (3 to 5 SecureStore reads), as before the cache existed.
+type CachedSession = { authToken: string; refreshToken: string; expiresAt: number; operator: string };
+let storedSessionCache: CachedSession | null = null;
+let credentialCacheVersion = 0;
+export function invalidateStoredTokenCache(): void {
+  credentialCacheVersion += 1;
+  storedSessionCache = null;
+}
+// A session change (advanceSessionGeneration) drops the copy synchronously, so reads queued right
+// after it read SecureStore again.
+onSessionChange(invalidateStoredTokenCache);
+
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
 const readStoredToken = async (): Promise<{
@@ -1567,6 +1592,22 @@ const readStoredToken = async (): Promise<{
   type?: 'jwt' | 'session';
 }> => {
   try {
+    const cached = storedSessionCache;
+    if (cached) {
+      if (cached.operator === operatorKey()) {
+        return {
+          authToken: cached.authToken,
+          refreshToken: cached.refreshToken,
+          expiresAt: cached.expiresAt,
+          isValid: cached.expiresAt > Date.now(),
+          type: 'jwt',
+        };
+      }
+      invalidateStoredTokenCache();
+    }
+    const versionAtStart = credentialCacheVersion;
+    const operatorAtStart = operatorKey();
+    let migrated = false;
     // S2/S3 Fix: First check SecureStore for tokens
     let authToken = await SecureStore.getItemAsync(SECURE_KEYS.AUTH_TOKEN);
     let refreshToken = await SecureStore.getItemAsync(
@@ -1607,6 +1648,7 @@ const readStoredToken = async (): Promise<{
         expiresAtStr = legacyExpiresAt;
 
         // Never use legacy credentials until secure persistence succeeds.
+        migrated = true;
         await storeTokensRaw(authToken, refreshToken, Number(expiresAtStr));
       }
     }
@@ -1616,6 +1658,13 @@ const readStoredToken = async (): Promise<{
       // Expiry is written last as the completion marker. Reject partial writes.
       if (!Number.isFinite(expires) || expires <= 0) return { isValid: false };
       const now = Date.now();
+      if (
+        !migrated &&
+        marker == null &&
+        versionAtStart === credentialCacheVersion &&
+        operatorAtStart === operatorKey()
+      )
+        storedSessionCache = { authToken, refreshToken, expiresAt: expires, operator: operatorAtStart };
 
       // Expired access tokens still carry a usable refresh token. Never delete it here.
       return {
@@ -1640,7 +1689,8 @@ type StoredToken = Awaited<ReturnType<typeof readStoredToken>>;
 // flight only when nothing has been queued after it (credentialQueueStamp), the
 // session generation and the selected server are the same: its own read would
 // have come next in the queue and found the same values. The slot is emptied
-// as soon as the read settles; nothing is kept. Sign-in (startNewSession) and
+// as soon as the read settles; it keeps nothing (the stored-session copy is the cache described
+// above storedSessionCache). Sign-in (startNewSession) and
 // sign-out queue their own reads and never share.
 let sharedRead: {
   generation: number;
@@ -1710,6 +1760,7 @@ const storeTokensRaw = async (
       throw new Error(t('errors.auth.incompleteSession'));
     }
     clearAuthenticatedClientCache();
+    invalidateStoredTokenCache();
     await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES);
     await AsyncStorage.multiRemove([
       'auth_token',
@@ -1731,6 +1782,7 @@ const storeTokensRaw = async (
     } catch {
       await SecureStore.setItemAsync(SECURE_KEYS.SIGNED_OUT, '');
     }
+    invalidateStoredTokenCache();
   } catch {
     // Never downgrade to unencrypted storage or log native errors that may echo
     // the value being written. Login/refresh must fail when persistence fails.
@@ -1766,6 +1818,7 @@ export const clearStoredTokens = () => {
 // S2/S3 Fix: Clears from both SecureStore and AsyncStorage
 const clearStoredTokensRaw = async (): Promise<boolean> => {
   clearAuthenticatedClientCache();
+  invalidateStoredTokenCache();
   // True only when every session key was really deleted (a delete that rejects is retried once).
   let all = true;
   const remove = async (key: string) => {
@@ -1801,6 +1854,7 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
   } catch (error) {
     authLogger.error('Error clearing tokens:');
   }
+  invalidateStoredTokenCache();
   return all;
 };
 

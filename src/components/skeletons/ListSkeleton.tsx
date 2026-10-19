@@ -20,12 +20,15 @@ export interface ListSkeletonProps {
   metricsCount?: number;
   /** Show footer row on each item (default: true) */
   showFooter?: boolean;
+  /** Show the round placeholder on each item (default: true) */
+  showAvatar?: boolean;
 }
 
 export const ListSkeleton = memo<ListSkeletonProps>(({
   count = 5,
   metricsCount = 3,
   showFooter = true,
+  showAvatar = true,
 }) => {
   return (
     <View style={styles.container} accessible accessibilityLabel={tr('components.skeleton.loadingList')} accessibilityState={{ busy: true }}>
@@ -34,6 +37,7 @@ export const ListSkeleton = memo<ListSkeletonProps>(({
           key={index}
           metricsCount={metricsCount}
           showFooter={showFooter}
+          showAvatar={showAvatar}
         />
       ))}
     </View>

@@ -3,13 +3,15 @@
  * rates, opening to its dispatch lines; totals that add the rows; links; large text; states.
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { InvoiceLineItemsTab, type InvoiceLineItem } from '../InvoiceLineItemsTab';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
+  useAppStore: () => ({ getState: () => ({ invoiceForm: { items: [], editedItems: {}, bulkPricing: {}, header: {} } }), subscribe: () => () => undefined, dispatch: jest.fn() }),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -59,6 +61,9 @@ afterEach(() => {
   mockFontScale = 1;
   mockWidth = 360;
   setLanguage('en');
+  resetScreenReaderKnown();
+  jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 const textOf = (node: ReactTestInstance): string =>
@@ -92,8 +97,9 @@ describe('invoice Items table', () => {
     expect(has('invoice-group-lines-lot-cumin')).toBe(false);
     press('invoice-group-row-lot-cumin');
     expect(textOf(byTestId('invoice-group-lines-lot-cumin'))).toBe(
-      // The tax of a line sits under its period, so the amount column holds only amounts.
-      'Dispatch|Bags|Amount|BDG001|10 May|35 days · 1.5 months|incl. ₹8.25 tax|10|₹173.25|BDG002|1 Jun|57 days · 2 months|incl. ₹21.00 tax|20|₹441.00|Before tax ₹585.00 · Tax ₹29.25'
+      // The lines are the Items step's sideways table without editing: the headings and the swipe hint, the pinned
+      // Dispatch column, then one row of Date | Months | Days | Qty | Charge | Labour | Tax | Amount per line.
+      'Dispatch|Date|Months|Days|Qty|Charge (₹)|Labour (₹)|Tax (%)|Amount|◂|▸|Swipe the table sideways to see more|BDG001|BDG002|10/05/26|1.5|35|10|9.00|3.00|5|₹173.25|01/06/26|2|57|20|9.00|3.00|5|₹441.00|◂|▸|Before tax ₹585.00 · Tax ₹29.25'
     );
     expect(byTestId('invoice-group-row-lot-cumin').props.accessibilityState).toEqual({ expanded: true });
   });
@@ -108,7 +114,7 @@ describe('invoice Items table', () => {
     const onGrn = jest.fn();
     render(<InvoiceLineItemsTab items={[cumin1, cumin2]} on_view_dispatch={onDispatch} on_view_grn={onGrn} />);
 
-    press('invoice-line-02');
+    press('invoice-line-link-02');
     expect(onDispatch).toHaveBeenCalledWith('d-02');
     press('invoice-lines-view-grn');
     expect(onGrn).toHaveBeenCalledWith('grn-1');
@@ -117,7 +123,84 @@ describe('invoice Items table', () => {
 
   it('does not link a line without a dispatch id', () => {
     render(<InvoiceLineItemsTab items={[line({ id: '09', dispatch_id: undefined })]} on_view_dispatch={jest.fn()} />);
-    expect(byTestId('invoice-line-09').props.disabled).toBe(true);
+    expect(byTestId('invoice-line-link-09').props.disabled).toBe(true);
+  });
+
+  it('shows the rate and labour of a lot only when every line of it agrees', () => {
+    const cheaper = line({ id: '02', charge: 8, charge_per_unit: 8, labour_rate: 2 });
+    render(<InvoiceLineItemsTab items={[cumin1, cheaper, pepper]} />);
+
+    // The two cumin lines differ in charge and labour: no Rate, no Labour (the first line's figures would be wrong).
+    expect(textOf(byTestId('invoice-group-row-lot-cumin'))).toBe('Cumin Seed|CS/1 · 50 kg each|Tax 5%|20|₹346.50');
+    // The pepper lot has one line: its rate shows.
+    expect(textOf(byTestId('invoice-group-row-lot-pepper'))).toBe('Black Pepper|25 kg each|Rate ₹12.00|5|₹90.00');
+  });
+
+  it('draws a long lot in steps until every line is there', () => {
+    jest.useFakeTimers();
+    const many = Array.from({ length: 130 }, (_, i) => line({ id: String(100 + i) }));
+    render(<InvoiceLineItemsTab items={many} />);
+
+    const count = () => tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.testID === 'string' && n.props.testID.startsWith('invoice-line-link-')).length;
+    expect(count()).toBe(40);
+    for (let i = 0; i < 4 && count() < 130; i += 1) act(() => { jest.advanceTimersByTime(50); });
+    expect(count()).toBe(130);
+  });
+
+  it('keeps the height of a long lot while its rows are still being drawn', () => {
+    jest.useFakeTimers();
+    const many = Array.from({ length: 130 }, (_, i) => line({ id: String(100 + i) }));
+    render(<InvoiceLineItemsTab items={many} />);
+
+    // Before any timer runs: 40 rows drawn, the other 90 are a spacer of the same total height.
+    const rowHeight = StyleSheet.flatten(byTestId('invoice-line-100').props.style).height as number;
+    const spacer = StyleSheet.flatten(byTestId('invoice-lines-spacer-lot-cumin').props.style).height as number;
+    const rows = tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.testID === 'string' && /^invoice-line-\d+$/.test(n.props.testID)).length;
+    expect(rows).toBe(40);
+    expect(rows * rowHeight + spacer).toBe(130 * rowHeight);
+    for (let i = 0; i < 4; i += 1) act(() => { jest.advanceTimersByTime(50); });
+    expect(has('invoice-lines-spacer-lot-cumin')).toBe(false);
+  });
+
+  it('with a screen reader on, a line without a dispatch id is an accessible view, not a disabled link', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    await act(async () => { tree = create(<InvoiceLineItemsTab items={[line({ id: '09', dispatch_id: undefined })]} on_view_dispatch={jest.fn()} />); });
+    const overlay = byTestId('invoice-line-overlay-09');
+    expect(overlay.props.accessible).toBe(true);
+    expect(overlay.props.accessibilityLabel).toContain('BDG009');
+    expect(overlay.props.accessibilityRole).toBeUndefined();
+    expect(overlay.props.disabled).toBeUndefined();
+  });
+
+  it('shows no Labour on the summary of a one-time lot', () => {
+    render(<InvoiceLineItemsTab items={[line({ id: '01', one_time: true })]} />);
+    expect(textOf(byTestId('invoice-group-row-lot-cumin'))).toBe('Cumin Seed|CS/1 · 50 kg each|Rate ₹9.00 · Tax 5%|10|₹173.25');
+  });
+
+  it('shows the Rate but no Labour when the charge agrees and the labour differs', () => {
+    render(<InvoiceLineItemsTab items={[cumin1, line({ id: '02', labour_rate: 2 })]} />);
+    const summary = textOf(byTestId('invoice-group-row-lot-cumin'));
+    expect(summary).toContain('Rate ₹9.00');
+    expect(summary).not.toContain('Labour');
+  });
+
+  it('with a screen reader on, puts a Pressable link over each line that opens the dispatch', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    const onDispatch = jest.fn();
+    await act(async () => { tree = create(<InvoiceLineItemsTab items={[cumin1, cumin2]} on_view_dispatch={onDispatch} />); });
+
+    const overlay = byTestId('invoice-line-overlay-02');
+    expect(overlay.props.accessibilityRole).toBe('link');
+    expect(overlay.props.accessibilityLabel).toContain('BDG002');
+    // It takes touches (a view that ignores them gets no hover events on Android).
+    expect(overlay.props.pointerEvents).toBeUndefined();
+    act(() => overlay.props.onPress());
+    expect(onDispatch).toHaveBeenCalledWith('d-02');
+  });
+
+  it('has no overlay when no screen reader is on', () => {
+    render(<InvoiceLineItemsTab items={[cumin1, cumin2]} />);
+    expect(has('invoice-line-overlay-01')).toBe(false);
   });
 
   it('keeps two lots of one item apart and lines without a lot id each on their own', () => {
@@ -167,7 +250,7 @@ describe('invoice Items table', () => {
     expect(StyleSheet.flatten(total.props.style).width).toBe(Math.ceil(84 * 1.3));
   });
 
-  it('beyond the design range (₹12 crore), moves the bags under the item and the amount onto its own line', () => {
+  it('beyond the design range (₹12 crore), keeps the item rows as they are and the lines in the same sideways table', () => {
     mockFontScale = 1.3;
     mockWidth = 411;
     const onion = (id: string, qty: number, total: number, tax: number) =>
@@ -176,15 +259,15 @@ describe('invoice Items table', () => {
 
     expect(textOf(byTestId('invoice-lines-table'))).toMatch(/^Item\|Amount\|/);
     expect(textOf(byTestId('invoice-lines-total'))).toBe('Total|1 item · 2 dispatch lines|99,999 bags|₹12,53,07,357.18');
-    // The lines stack too: the bags join the period, the dispatch number keeps its own line.
+    // The lines do not stack: each column is as wide as its widest text, and the table scrolls sideways.
     expect(textOf(byTestId('invoice-group-lines-lot-onion'))).toMatch(
-      /^Dispatch\|Amount\|WWDG8801\|10 May\|35 days · 1.5 months · 50,000 bags\|incl. ₹94,45,050.00 tax\|₹6,19,17,550.00\|/
+      /^Dispatch\|Date\|Months\|Days\|Qty\|Charge \(₹\)\|Labour \(₹\)\|Tax \(%\)\|Amount\|◂\|▸\|Swipe the table sideways to see more\|WWDG8801\|WWDG8802\|10\/05\/26\|1.5\|35\|50,000\|9.00\|3.00\|5\|₹6,19,17,550.00\|/
     );
     const number = byTestId('invoice-group-lines-lot-onion').findAll((n) => (n.type as unknown) === 'Text' && n.props.children === 'WWDG8801')[0];
     expect(number.props.numberOfLines).toBe(1);
   });
 
-  it('beyond the design range at font scale 2.0, puts the amount on its own line under the item, right-aligned', () => {
+  it('beyond the design range at font scale 2.0, puts the amount of the item on its own line, right-aligned; the lines keep their table', () => {
     mockFontScale = 2;
     mockWidth = 411;
     const onion = (id: string, qty: number, total: number, tax: number) =>
@@ -196,22 +279,18 @@ describe('invoice Items table', () => {
     // In the item's column (no fixed width), right-aligned like the other numbers.
     expect(StyleSheet.flatten(amount.props.style)).toMatchObject({ textAlign: 'right' });
     expect(StyleSheet.flatten(amount.props.style).width).toBeUndefined();
-    const lineAmount = byTestId('invoice-group-lines-lot-onion').findAll(
-      (n) => (n.type as unknown) === 'Text' && n.props.children === '₹35,48,260.00'
-    )[0];
-    expect(StyleSheet.flatten(lineAmount.props.style).width).toBeUndefined();
     expect(textOf(byTestId('invoice-group-lines-lot-onion'))).toMatch(
-      /^Dispatch\|Amount\|WWDG8801\|10 May\|35 days · 1.5 months · 50,000 bags\|incl. ₹5,41,260.00 tax\|₹35,48,260.00\|/
+      /^Dispatch\|Date\|Months\|Days\|Qty\|Charge \(₹\)\|Labour \(₹\)\|Tax \(%\)\|Amount\|◂\|▸\|Swipe the table sideways to see more\|WWDG8801\|WWDG8802\|10\/05\/26\|1.5\|35\|50,000\|9.00\|3.00\|5\|₹35,48,260.00\|/
     );
   });
 
-  it('moves the bags under the item and the lines at large text', () => {
+  it('moves the bags under the item at large text; the lines keep their table', () => {
     mockFontScale = 2;
     render(<InvoiceLineItemsTab items={[cumin1, cumin2]} />);
 
     expect(textOf(byTestId('invoice-lines-table'))).toMatch(/^Item\|Amount\|/);
     expect(textOf(byTestId('invoice-group-row-lot-cumin'))).toBe('Cumin Seed|CS/1 · 50 kg each|Rate ₹9.00 · Labour ₹3.00 · Tax 5% · 30 bags|₹614.25');
-    expect(textOf(byTestId('invoice-group-lines-lot-cumin'))).toMatch(/^Dispatch\|Amount\|BDG001\|10 May\|35 days · 1.5 months · 10 bags\|incl. ₹8.25 tax\|₹173.25\|/);
+    expect(textOf(byTestId('invoice-group-lines-lot-cumin'))).toMatch(/^Dispatch\|Date\|Months\|Days\|Qty\|Charge \(₹\)\|Labour \(₹\)\|Tax \(%\)\|Amount\|◂\|▸\|Swipe the table sideways to see more\|BDG001\|BDG002\|10\/05\/26\|1.5\|35\|10\|9.00\|3.00\|5\|₹173.25\|/);
   });
 
   it('writes the totals in Gujarati', () => {

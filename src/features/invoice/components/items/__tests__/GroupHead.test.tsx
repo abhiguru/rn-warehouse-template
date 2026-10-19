@@ -24,9 +24,6 @@ const head = (tree: ReactTestRenderer) => tree.root.find((node) => typeof node.p
 const spoken = (tree: ReactTestRenderer) => head(tree).find((node) => typeof node.props.accessibilityLabel === 'string' && node.props.accessible === true).props.accessibilityLabel as string;
 const icons = (tree: ReactTestRenderer, name: string) => tree.root.findAll((node) => (node.type as unknown) === 'Icon' && node.props.name === name);
 
-const pencilOf = (tree: ReactTestRenderer) =>
-  tree.root.find((node) => node.props.accessibilityLabel === 'Edit pricing for Example Potatoes' && typeof node.props.onPress === 'function');
-
 const LONG_MARK = 'BL/STRETCH-LOT-0004/WWWWWWWWWWWWWWWWWWWW';
 
 describe('the head of a group', () => {
@@ -81,28 +78,5 @@ describe('the head of a group', () => {
   it('puts the group total in the heading', async () => {
     const tree = await render([invoiceLine({}, 0), invoiceLine({}, 1)]);
     expect(spoken(tree)).toContain('total ₹1,470.00');
-  });
-});
-
-describe('the pencil of a group', () => {
-  it('with two weights opens the first line\'s weight and the group\'s mark', async () => {
-    mockStore = makeInvoiceStore();
-    fillNewInvoice(mockStore, [invoiceLine({ weight: 50 }, 0), invoiceLine({ weight: 25, grn_item_id: 'g-2' }, 1)]);
-    const onEditPricing = jest.fn();
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<ConnectedEditor onEditPricing={onEditPricing} />); });
-    await act(async () => { pencilOf(tree).props.onPress(); });
-    expect(onEditPricing).toHaveBeenCalledWith({ item_id: 'i1', item_name: 'Example Potatoes', package_mark: 'M1', weight: 50, charge: 5, labour_rate: 2, tax: 5 });
-  });
-
-  it('opens the price of the lot\'s own weight: the number that picks the price band', async () => {
-    mockStore = makeInvoiceStore();
-    fillNewInvoice(mockStore, [invoiceLine({ weight: 37 }, 0)]);
-    const onEditPricing = jest.fn();
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<ConnectedEditor onEditPricing={onEditPricing} />); });
-    await act(async () => { pencilOf(tree).props.onPress(); });
-    expect(onEditPricing).toHaveBeenCalledWith(expect.objectContaining({ weight: 37 }));
-    expect(textsOf(tree)).toContain('37 kg each');
   });
 });

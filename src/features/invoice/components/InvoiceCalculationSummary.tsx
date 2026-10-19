@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TextInput, Platform, Pressable, StyleSheet, AccessibilityInfo, findNodeHandle } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ConfirmInputDialog } from '@/components/ConfirmInputDialog';
@@ -253,7 +253,7 @@ function SummaryRow({
   );
 }
 
-export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps> = ({
+export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationSummary({
   header,
   items,
   onDiscountChange,
@@ -264,7 +264,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   zeroChargeReasonRequired = false,
   showErrors = false,
   focusRequest = 0,
-}) => {
+}: InvoiceCalculationSummaryProps) {
   const styles = useThemedStyles(makeStyles);
   const { stacked } = useTableLayout();
   const t = useTokens();
@@ -318,7 +318,13 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     if (node) AccessibilityInfo.setAccessibilityFocus(node);
   }, [focusRequest]);
 
-  const { subtotal, base, rounding } = calculateInvoiceBreakdown(items, header);
+  // Walks every line: only when the lines or a figure it uses changes, not on each keystroke in a field.
+  const { labour, tax_amount: taxAmount, discount, total } = header;
+  const { subtotal, base, rounding } = useMemo(
+    () => calculateInvoiceBreakdown(items, { labour, tax_amount: taxAmount, discount, total }),
+    [items, labour, taxAmount, discount, total]
+  );
+  const hasFreeLine = useMemo(() => hasZeroChargeLine(items), [items]);
 
   const handleDiscountFocus = () => {
     editing.current = true;
@@ -491,7 +497,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
       )}
 
       {/* Reason for a line with a charge of 0: recorded with the invoice, required from staff */}
-      {onZeroChargeReasonChange && hasZeroChargeLine(items) && (
+      {onZeroChargeReasonChange && hasFreeLine && (
         <View style={styles.reasonContainer}>
           <Text style={[styles.fieldLabel, zeroReasonRed && styles.fieldLabelError]}>
             {zeroChargeReasonRequired ? tr('invoice.summary.zeroChargeReasonRequired') : tr('invoice.label.zeroChargeReason')}
@@ -573,4 +579,4 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
       />
     </View>
   );
-};
+});

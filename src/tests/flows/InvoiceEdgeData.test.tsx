@@ -89,7 +89,7 @@ describe('WMIV0101: a group of 125 lines and a group of 3', () => {
     expect(app.testIDs(/^line-/)).toHaveLength(128);
     expect(app.testIDs(/^cell\|.*\|charge$/)).toHaveLength(128);
     // 125 lines of 12 bags at 3.50 + 1.00 labour + 5 % tax = 56.70 each; 3 onion lines of 52.50.
-    expect(app.texts()).toEqual(expect.arrayContaining(['₹7,087.50', '₹157.50', 'Group total · 125 dispatches', 'Group total · 3 dispatches']));
+    expect(app.texts()).toEqual(expect.arrayContaining(['₹7,087.50', '₹157.50']));
     expect(form().header.total).toBe(7245);
 
     await toReview();
@@ -132,8 +132,10 @@ describe('WMIV0102: 12 groups, two lots of one mark', () => {
     expect(lines).toHaveLength(38);
     expect(app.testIDs(/^items-head-(?!total-)/)).toHaveLength(12);
     expect(app.testIDs(/^line-/)).toHaveLength(38);
-    // SAME-MARK: 4 lines of the first lot and 2 of the second, one group.
-    expect(app.texts()).toContain('Group total · 6 dispatches');
+    // Each card has its toggle; SAME-MARK: 4 lines of the first lot and 2 of the second, one group of 6 lines.
+    expect(app.testIDs(/^group-toggle-/)).toHaveLength(12);
+    expect(app.texts()).toContain('Hide dispatch details');
+    expect(form().items.filter((line) => line.package_mark === 'SAME-MARK' && line.item_id === 'rai')).toHaveLength(6);
     expect(form().header.total).toBe(27930);
 
     await toReview();
@@ -162,7 +164,8 @@ describe('WMIV0103: a one-time GRN', () => {
     expect(app.hasInput(groupField('kashmiri:::OT-1', 'charge'))).toBe(true);
     expect(app.hasInput(groupField('kashmiri:::OT-1', 'tax'))).toBe(true);
     expect(app.texts()).not.toContain('Labour (₹) (all lines)');
-    expect(app.texts()).toContain('1 Oct · One-time');
+    // The Date column and the Months column, which says One-time.
+    expect(app.texts()).toEqual(expect.arrayContaining(['01/10/26', 'One-time']));
     expect(form().items.every((line) => !/month|day/.test(textOf(app.byTestID(`line-${line.temp_id}`))))).toBe(true);
     // 20 bags at 40 + 5 % tax = 840 a line; 30 bags at 6.50 + 5 % = 204.75.
     expect(app.texts()).toEqual(expect.arrayContaining(['₹840.00', '₹204.75', '₹1,680.00', '₹409.50']));
@@ -187,9 +190,9 @@ describe('WMIV0104: an amount near the design edge', () => {
 
     // 263 bags x (99.95 x 3 months + 12.50 labour) + 18 % tax.
     const texts = app.texts();
-    expect(texts.filter((text) => text === '₹96,934.70').length).toBeGreaterThanOrEqual(3); // head, line, group total
+    expect(texts.filter((text) => text === '₹96,934.70').length).toBeGreaterThanOrEqual(2); // head (the card's total) and the line
     expect(texts.some((text) => /…/.test(text))).toBe(false);
-    expect(texts).toContain('1 Oct · 3 months · 90 days');
+    expect(texts).toEqual(expect.arrayContaining(['01/10/26', '3', '90']));
 
     await toReview();
     expect(textOf(app.byTestID(reviewRow('kashmiri:::HIGH-1')))).toContain('₹96,934.70');
@@ -218,7 +221,8 @@ describe('WMIV0105: a dispatch on the GRN\'s own day', () => {
   it('is 1 month and 1 day, and goes through to Review', async () => {
     await openOnItems(edgeLines.sameDay());
 
-    expect(app.texts()).toContain('1 Oct · 1 month · 1 day');
+    expect(textOf(app.byTestID(`line-${form().items[0].temp_id}`))).toContain('01/10/26');
+    expect(app.texts()).toEqual(expect.arrayContaining(['01/10/26', '1']));
     await toReview();
     expect(footer()).toBe('Total: 1 item, 1 dispatch line, 10 bags');
     expect(estimatedTotal()).toBe('Estimated total, ₹50.00');
@@ -234,7 +238,7 @@ describe('WMIV0106: 1 bag with no weight and no mark', () => {
     expect(head).toContain('Garlic');
     expect(head).not.toMatch(/kg/);
     expect(app.texts().some((text) => /kg each/.test(text))).toBe(false);
-    expect(app.texts()).toEqual(expect.arrayContaining(['₹10.50', '1 Oct · 1 month · 30 days']));
+    expect(app.texts()).toEqual(expect.arrayContaining(['₹10.50', '01/10/26', '1', '30']));
 
     await toReview();
     const row = textOf(app.byTestID(reviewRow('garlic:::')));

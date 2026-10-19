@@ -1,5 +1,6 @@
 /**
- * Rate editor of the invoice pencil (pricing spec sections 7 and 10). The only way in is mode 'invoice' from the
+ * Rate editor of the invoice pencil (pricing spec sections 7 and 10). No screen opens it since 2026-10-19 (the
+ * invoice pricing pencil was removed); kept until the owner decides whether to remove it. It was opened with mode 'invoice' from the
  * invoice form: the line and its goods-received day decide whether it corrects the customer's own rate in force
  * (Correct rate) or adds one (Add customer rate). Every other rate is edited in its box on the item page and the
  * customer's Pricing tab. It loads the item's rates fresh (it writes money), keeps one draft, and saves everything
@@ -69,7 +70,8 @@ const RateEditorScreen: React.FC = () => {
   useEffect(() => {
     let live = true;
     setLoaded({ state: 'loading' });
-    // Only the invoice pencil opens this screen, and it always names the customer of the invoice: any other link
+    // No screen opens this since 2026-10-19 (the invoice pricing pencil was removed; kept until the owner decides whether
+    // to remove it). It was opened by the invoice pencil, and it always names the customer of the invoice: any other link
     // (another mode, or no customer, which would edit the default rate of everyone) is a rate that is not there.
     if (!params.item_id || !params.customer_id || params.mode !== 'invoice') {
       setLoaded({ state: 'error', message: t('pricing.edit.notFound') });

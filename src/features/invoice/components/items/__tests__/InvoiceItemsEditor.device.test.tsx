@@ -6,7 +6,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, chargeEntryOf, inputOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, chargeEntryOf, inputOf, track, unmountAll, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
 import { SCROLL_VIEW_POSITION } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -31,6 +31,7 @@ async function render(lines: InvoiceItemData[]) {
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
   await act(async () => { tree = track(create(<ConnectedEditor />)); });
+  await openAllGroups(tree);
   return tree;
 }
 const focus = async (tree: ReactTestRenderer, key: string) => { await act(async () => { inputOf(tree, key).props.onFocus({}); }); };
@@ -89,6 +90,7 @@ describe('under StrictMode (effects run twice)', () => {
     fillNewInvoice(mockStore, groupLines(2));
     let tree!: ReactTestRenderer;
     await act(async () => { tree = track(create(<React.StrictMode><ConnectedEditor /></React.StrictMode>)); });
+    await openAllGroups(tree);
     await focus(tree, CHARGE_1);
     await change(tree, CHARGE_1, '5');
     await focus(tree, CHARGE_2);
@@ -105,18 +107,22 @@ describe('the keyboard\'s Next key scrolls the next field above the keyboard', (
     act(() => { tree.root.findByType('FlashList' as never).props.innerRef({ scrollToIndex }); });
     const rows: { key: string }[] = tree.root.findByType('FlashList' as never).props.data;
     const rowOf = (key: string) => rows.findIndex((row) => row.key.includes(key.split('|')[1]) && row.key.includes('line'));
-    await focus(tree, CHARGE_1);
-    await act(async () => { inputOf(tree, CHARGE_1).props.onSubmitEditing(); });
+    const LABOUR_1 = 'cell|edit_0_0|labour_rate';
+    const TAX_ALL = 'group|i1:::M1|tax';
+    // Next from the Labour of line 1 goes to the Charge of line 2, which is the next row
+    await focus(tree, LABOUR_1);
+    await act(async () => { inputOf(tree, LABOUR_1).props.onSubmitEditing(); });
     expect(scrollToIndex).toHaveBeenCalledTimes(1);
     const call = scrollToIndex.mock.calls[0][0];
     expect(call.viewPosition).toBe(SCROLL_VIEW_POSITION);
     expect(SCROLL_VIEW_POSITION).toBeLessThan(0.5);
     expect(rows[call.index].key).toContain('edit_1_0');
     expect(rowOf(CHARGE_2)).toBe(call.index);
-    await focus(tree, CHARGE_2);
-    await act(async () => { inputOf(tree, CHARGE_2).props.onSubmitEditing(); });
-    // the next field is the group's "(all lines)" charge: another step, another scroll
+    // Next from the group's Tax goes to the Charge of line 1: another step, another scroll, to another row
+    await focus(tree, TAX_ALL);
+    await act(async () => { inputOf(tree, TAX_ALL).props.onSubmitEditing(); });
     expect(scrollToIndex).toHaveBeenCalledTimes(2);
+    expect(scrollToIndex.mock.calls[1][0].index).toBe(rowOf(CHARGE_1));
     expect(scrollToIndex.mock.calls[1][0].index).not.toBe(call.index);
   });
 });

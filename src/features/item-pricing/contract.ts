@@ -2,7 +2,8 @@ import type { PriceType } from '@/types/item-pricing.types';
 
 /**
  * How a rate form opens. The rate boxes (useRateEditor) use every mode; the edit screen (/item-rates/edit) is
- * opened with 'invoice' only, by the price pencil of an invoice line, and resolves it to a mode itself (section 10).
+ * opened with 'invoice' only (no screen opens it since 2026-10-19: the invoice pricing pencil was removed; kept until
+ * the owner decides whether to remove it), and resolves it to a mode itself (section 10).
  */
 export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming' | 'invoice';
 
@@ -72,7 +73,7 @@ export const customerRateAddPath = (itemId: string, customerId: string, customer
     pathname: '/item-rates/[itemId]/customer-add/[customerId]',
     params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}) },
   }) as const;
-/** What the edit screen is opened with: the price pencil of an invoice line, nothing else. */
+/** What the edit screen is opened with: formerly the price pencil of an invoice line; no screen opens it since 2026-10-19. */
 export type InvoiceEditorParams = EditorParams & { mode: 'invoice' };
 export const editorPath = (params: InvoiceEditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;

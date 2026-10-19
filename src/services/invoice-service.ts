@@ -170,7 +170,7 @@ export const getInvoicesList = async (
       success: true,
       message: serverText(data.message, t('errors.invoice.listRetrieved')),
       data: {
-        invoices: data.data || [],
+        invoices: ((data.data || []) as Invoice[]).map(withNumericAmounts),
         pagination: data.pagination || { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
       }
     };
@@ -222,6 +222,15 @@ interface CustomerInvoiceRow {
   tax_amount: number | null;
   notes: string | null;
 }
+
+/** The list RPC returns NULL for an amount an invoice never had (every auto-generated invoice has no discount): 0, as on the details screen. */
+const withNumericAmounts = (invoice: Invoice): Invoice => ({
+  ...invoice,
+  total: Number(invoice.total) || 0,
+  tax_amount: Number(invoice.tax_amount) || 0,
+  labour: Number(invoice.labour) || 0,
+  discount: Number(invoice.discount) || 0,
+});
 
 /** get_customer_invoice_summary returns a shorter row than the staff list; fill the list shape from it. */
 const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, customerName: string): Invoice => {

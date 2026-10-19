@@ -11,7 +11,7 @@ import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, chargeEntryOf, emitKeyboard, hostBlur, hostFocus, hostInputOf, hostKey, textsOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, chargeEntryOf, emitKeyboard, hostBlur, hostFocus, hostInputOf, hostKey, textsOf, track, unmountAll, openAllGroups, columnWidthsOf } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 jest.unmock('react-native/Libraries/Components/TextInput/TextInput');
@@ -44,6 +44,7 @@ afterEach(() => {
 
 const CHARGE_1 = 'cell|edit_0_0|charge';
 const CHARGE_2 = 'cell|edit_1_0|charge';
+const LABOUR_1 = 'cell|edit_0_0|labour_rate';
 /** The fictional Rai group of the phone run: four lines of one item and mark. */
 const raiLines = (): InvoiceItemData[] => groupLines(4, { item_id: 'rai', item_name: 'Example Rai', package_mark: 'BULK-4', qty: 12, weight: 25 });
 
@@ -52,9 +53,12 @@ async function render(lines: InvoiceItemData[] = groupLines(2)) {
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
   await act(async () => { tree = track(create(<ConnectedEditor />)); });
+  await openAllGroups(tree);
   return tree;
 }
-const widthsOf = (tree: ReactTestRenderer) => tree.root.findAll((node) => node.props.widths !== undefined && typeof node.type !== 'string')[0].props.widths;
+const widthsOf = columnWidthsOf;
+/** The hint "Swipe the table sideways" is shown: the columns are wider than the screen. */
+const sidewaysNow = (tree: ReactTestRenderer) => textsOf(tree).includes('Swipe the table sideways to see more');
 const cardsNow = (tree: ReactTestRenderer) => tree.root.findAll((node) => typeof node.props.testID === 'string' && node.props.testID.startsWith('line-')).length === 0;
 const pause = async (ms = 400) => { await act(async () => { jest.advanceTimersByTime(ms); }); };
 const lineTotals = (tree: ReactTestRenderer) => textsOf(tree).filter((text) => /^₹[\d,]+\.\d\d$/.test(text));
@@ -71,12 +75,13 @@ async function type(tree: ReactTestRenderer, key: string, texts: string[], seen?
 }
 
 describe('a cell typed in with the real TextInput', () => {
-  it('holds the table for 1, 10, 100 ... 1000000 (four lines, 411 dp, font scale 1.0), and follows the figures after the blur settles', async () => {
+  it('holds the column widths for 1, 10, 100 ... 1000000 (four lines, 411 dp, font scale 1.0), and follows the figures after the blur settles', async () => {
     const tree = await render(raiLines());
     const before = widthsOf(tree);
     expect(cardsNow(tree)).toBe(false);
     await act(async () => { hostFocus(tree, CHARGE_1); });
-    await type(tree, CHARGE_1, ['1', '10', '100', '1000', '10000', '100000', '1000000', '999999'], () => {
+    // 10000 and above are refused (a line's charge is limited to 9999.99 on entry); 9999.99 is the largest
+    await type(tree, CHARGE_1, ['1', '10', '100', '1000', '10000', '100000', '1000000', '9999.99'], () => {
       expect(widthsOf(tree)).toEqual(before);
       expect(cardsNow(tree)).toBe(false);
     });
@@ -84,8 +89,9 @@ describe('a cell typed in with the real TextInput', () => {
     // not at once: a move to the next field would take the focus within the settle time
     expect(widthsOf(tree)).toEqual(before);
     await pause();
-    // the charge of 999999 (1000000 was refused, 999999 is the largest) on 12 bags no longer fits a table at 411 dp: the lines are cards now
-    expect(cardsNow(tree)).toBe(true);
+    // the charge of 9999.99 on 12 bags makes wider Charge and Amount columns; the lines stay a table (cards only with a screen reader)
+    expect(widthsOf(tree)).not.toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 
   it('keeps the focused cell\'s entry across the ref release on every key', async () => {
@@ -117,8 +123,8 @@ describe('a cell typed in with the real TextInput', () => {
     expect(hostInputOf(tree, CHARGE_1).props.value).toBe('1000000');
     expect(hostInputOf(tree, CHARGE_1).props.accessibilityHint).toBeUndefined();
     await act(async () => { hostBlur(tree, CHARGE_1); });
-    expect(textsOf(tree)).toContain('Enter a charge from 0 to 999999.');
-    expect(hostInputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 999999.');
+    expect(textsOf(tree)).toContain('Enter a charge from 0 to 9999.99.');
+    expect(hostInputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
     expect(hostInputOf(tree, CHARGE_1).props.value).toBe('1000000');
     expect(lineTotals(tree)).toContain('₹735.00');
   });
@@ -135,19 +141,19 @@ describe('a cell typed in with the real TextInput', () => {
     expect(focused.blur).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the table in the gap between one field\'s blur and the next field\'s focus event (Next, focus arriving 400 ms late)', async () => {
+  it('keeps the column widths in the gap between one field\'s blur and the next field\'s focus event (Next, focus arriving 400 ms late)', async () => {
     const tree = await render(raiLines());
     const before = widthsOf(tree);
-    // the input object of line 2, which react-native hands to the editor: the one it records as focused
-    await act(async () => { hostFocus(tree, CHARGE_2); });
+    // the input object of the Labour cell of line 1, which Next goes to from its Charge: react-native hands it to the editor as the one it records as focused
+    await act(async () => { hostFocus(tree, LABOUR_1); });
     const second = TextInput.State.currentlyFocusedInput() as unknown as { focus: () => void };
-    await act(async () => { hostBlur(tree, CHARGE_2); });
+    await act(async () => { hostBlur(tree, LABOUR_1); });
     await pause();
     // react-native records the focus at once; the focus event of the host input comes later
     second.focus = () => require('react-native/Libraries/Components/TextInput/TextInputState').default.focusInput(second);
     await act(async () => { hostFocus(tree, CHARGE_1); });
-    await type(tree, CHARGE_1, ['9', '99', '999', '9999', '99999', '999999']);
-    await act(async () => { hostInputOf(tree, CHARGE_1).props.onSubmitEditing({ nativeEvent: { text: '999999' } }); });
+    await type(tree, CHARGE_1, ['9', '99', '999', '9999']);
+    await act(async () => { hostInputOf(tree, CHARGE_1).props.onSubmitEditing({ nativeEvent: { text: '9999' } }); });
     await act(async () => { hostBlur(tree, CHARGE_1); });
     await pause(400);
     expect(widthsOf(tree)).toEqual(before);
@@ -155,7 +161,9 @@ describe('a cell typed in with the real TextInput', () => {
     await act(async () => { hostFocus(tree, CHARGE_2); });
     await act(async () => { hostBlur(tree, CHARGE_2); });
     await pause(400);
-    expect(cardsNow(tree)).toBe(true);
+    // left for good: the widths follow the figures (9999.00 is wider than the 5.00 they were made for)
+    expect(widthsOf(tree)).not.toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 });
 
@@ -166,20 +174,29 @@ describe('a focused field drawn again by another component', () => {
   };
   const redraw = async (tree: ReactTestRenderer) => { await act(async () => { tree.update(<ConnectedEditor />); }); };
 
-  it('lets the layout follow the figures again after a width change while a cell is focused (411, 320, 411 dp)', async () => {
+  it('lets the layout follow the figures again after a width change while a cell is focused (411, 1200, 411 dp)', async () => {
     const tree = await render(raiLines());
+    const before = widthsOf(tree);
+    expect(sidewaysNow(tree)).toBe(true);
     await act(async () => { hostFocus(tree, CHARGE_1); });
     await type(tree, CHARGE_1, ['7']);
-    mockWidth = 320;
+    // a change of the screen is not held: at 1200 dp the columns fit and the hint goes at once
+    mockWidth = 1200;
     await redraw(tree);
-    expect(cardsNow(tree)).toBe(true);
+    expect(sidewaysNow(tree)).toBe(false);
     mockWidth = 411;
     await redraw(tree);
     await pause();
+    expect(sidewaysNow(tree)).toBe(true);
     expect(cardsNow(tree)).toBe(false);
-    // the field is gone with its focus: the hold has ended, and a charge that does not fit a table makes cards
-    await setCharge('edit_1_0', 999999);
-    expect(cardsNow(tree)).toBe(true);
+    // the cell still has the focus, so the hold is on: a charge that is wider than the columns does not widen them yet ...
+    await setCharge('edit_1_0', 9999.99);
+    expect(widthsOf(tree)).toEqual(before);
+    // ... and once the cell is left and the layout has settled, it does
+    await act(async () => { hostBlur(tree, CHARGE_1); });
+    await pause();
+    expect(widthsOf(tree)).not.toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 
   it('lets the layout follow the figures again after the screen reader is switched on and off while a cell is focused', async () => {
@@ -192,12 +209,15 @@ describe('a focused field drawn again by another component', () => {
     const tree = await render(raiLines());
     await act(async () => { hostFocus(tree, CHARGE_1); });
     await type(tree, CHARGE_1, ['7']);
+    const before = widthsOf(tree);
     await act(async () => { changed!(true); });
     expect(cardsNow(tree)).toBe(true);
     await act(async () => { changed!(false); });
     await pause();
     expect(cardsNow(tree)).toBe(false);
-    await setCharge('edit_1_0', 999999);
-    expect(cardsNow(tree)).toBe(true);
+    // the card's field took the focus away with it when it unmounted: the hold has ended, and a charge that is wider than the columns widens them
+    await setCharge('edit_1_0', 9999.99);
+    expect(widthsOf(tree)).not.toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 });

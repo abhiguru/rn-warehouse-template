@@ -13,8 +13,18 @@ const words = () => commonWords(getLanguage());
  * number the app formats goes through here; identifiers do not (see
  * `formatIdentifier` in `@/i18n/language`).
  */
-const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string =>
-  localizeDigits(new Intl.NumberFormat('en-IN', options).format(value));
+const indianFormats = new Map<string, Intl.NumberFormat>();
+
+const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
+  // Building an Intl formatter is slow on Hermes, so one is kept for each set of options.
+  const key = options ? JSON.stringify(options) : '';
+  let format = indianFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat('en-IN', options);
+    indianFormats.set(key, format);
+  }
+  return localizeDigits(format.format(value));
+};
 
 /**
  * Format a number as Indian Rupee currency
@@ -192,6 +202,18 @@ export const formatDate = (
   const d = toDate(date);
   if (!d) return '—';
   return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() }, format, indiaYear());
+};
+
+/**
+ * A date as day/month/year with two digits each, "01/06/23", in the language's digits. For the invoice items table only
+ * (owner, 2026-10-19), where a column of dates must line up and a month name would not; the app's other dates stay
+ * `formatDate`. Returns "—" when the date is missing or invalid.
+ */
+export const formatDateShort = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  const two = (n: number) => String(n).padStart(2, '0');
+  return localizeDigits(`${two(d.getDate())}/${two(d.getMonth() + 1)}/${two(d.getFullYear() % 100)}`);
 };
 
 /** Month titles (§12.3): "October 2026" (long, timelines), "Oct 2026" (short, report rows), "Oct" (narrow, chart axes). */

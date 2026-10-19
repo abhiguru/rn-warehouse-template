@@ -75,7 +75,7 @@ afterEach(async () => {
 });
 
 const form = () => app.store.getState().invoiceForm;
-const CHARGE_ERROR = 'Enter a charge from 0 to 999999.';
+const CHARGE_ERROR = 'Enter a charge from 0 to 9999.99.';
 const TAX_ERROR = 'Enter a tax from 0 to 100.';
 
 /** Types the text one key at a time in the field, staying in it; returns the form's charge-or-value after each key. */
@@ -98,9 +98,10 @@ describe('step 2', () => {
     expect(startTotal).toBe(22);
     expect(form().items[0].charge).toBe(5);
 
-    // Charge: the valid prefixes are applied as they come; the seventh key is refused and the 5 returns.
+    // Charge: the valid prefixes are applied as they come; a line's charge is limited to 9999.99 on entry, so the fifth key
+    // (10000) is refused, the 5 returns, and the keys after it stay refused.
     const charges = await keyByKey(charge, '1000000', () => form().items[0].charge);
-    expect(charges).toEqual([1, 10, 100, 1000, 10000, 100000, 5]);
+    expect(charges).toEqual([1, 10, 100, 1000, 5, 5, 5]);
     expect(form().header.total).toBe(startTotal);
     expect(app.valueOf(charge)).toBe('1000000');
 

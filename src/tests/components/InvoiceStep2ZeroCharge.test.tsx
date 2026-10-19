@@ -11,6 +11,7 @@ import InvoiceFormStep2 from '../../../app/invoice-form/step2';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
+  useAppStore: () => ({ getState: () => ({ invoiceForm: { items: mockItems, editedItems: {}, bulkPricing: {}, header: {} } }), subscribe: () => () => undefined, dispatch: jest.fn() }),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 

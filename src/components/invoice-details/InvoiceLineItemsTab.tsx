@@ -8,15 +8,17 @@
  * |   Rate ₹9.00 · Labour ₹3.00 · Tax 5%     |            |
  *
  * - One summary row per GRN lot (groupItemsByGrnItem); a lot without a GRN item id is a row of
- *   its own. A row opens to its dispatch lines (Dispatch | Bags | Amount): the dispatch number
- *   opens the dispatch, its date and the days and months charged sit under it, and the tax in
- *   the amount under the amount. A single lot starts open.
+ *   its own. A row opens to its dispatch lines as the same sideways table as the invoice form's
+ *   "Step 2 of 3 - Items" -> "Show dispatch details" (owner decision, 2026-10-19; style guide 13.7),
+ *   read-only: Dispatch (pinned, opens the dispatch) | Date | Months | Days | Qty | Charge | Labour |
+ *   Tax | Amount, one shared sideways position for the lot (features/invoice/components/items/
+ *   ReadOnlyLineTable.tsx). A single lot starts open.
  * - Amounts are the server's line totals with tax (get_invoice_items_detailed), worked out here
  *   by the same rules only when they did not load. The footer adds the rows; the invoice total,
  *   after its rounding and discount, is on the Breakdown tab, and the note says so.
  * - Virtualized (FlatList); empty and loading states as before.
- * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable; the dispatch lines under a lot
- *   are a nested table of their own.
+ * - Built on the app's table setup (components/table): useAppTable, drawn by DataTable; the lines under a lot
+ *   are the read-only sideways line table.
  */
 
 import React, { useMemo } from 'react';
@@ -26,7 +28,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
   ONE_LINE,
@@ -34,14 +36,15 @@ import {
   crowded,
   makeTableStyles,
   nb,
-  nestedRowWidth,
   numberColumnWidth,
   rowWidth,
   useStackedWhen,
   useTableLayout,
 } from '@/components/common/DetailTable';
+import type { ItemsLayout } from '@/features/invoice/components/items/itemsLayout';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable, useDefaultOpen } from '@/components/table/DataTable';
+import { ReadOnlyLineTable, readOnlyLayout, type ReadOnlyLine } from '@/features/invoice/components/items/ReadOnlyLineTable';
 
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
@@ -91,6 +94,8 @@ export interface DispatchLineItem {
   duration: number;
   charge_per_unit: number;
   labour_rate: number;
+  /** The line's tax RATE in percent. */
+  tax_rate: number;
   /** Before tax. */
   line_item_amount: number;
   /** The line's tax amount. */
@@ -104,11 +109,15 @@ export interface InvoiceLineItemGroupData {
   packaging?: string;
   weight: number;
   grn_quantity: number;
+  /** The lot's GRN is priced ONE_TIME: no months, no labour. */
+  one_time: boolean;
   total_dispatch_qty: number;
-  charge_per_unit: number;
+  /** Undefined when the lines of the lot have different charges (the summary then shows no rate). */
+  charge_per_unit?: number;
   /** Undefined when the lines of the lot have different tax rates. */
   tax_rate?: number;
-  labour_rate: number;
+  /** Undefined when the lines of the lot have different labour figures. */
+  labour_rate?: number;
   total_base_amount: number;
   total_tax_amount: number;
   total_amount: number;
@@ -144,10 +153,11 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
         packaging: item.packaging,
         weight: item.weight || 0,
         grn_quantity: item.grn_quantity || 0,
+        one_time: !!item.one_time,
         total_dispatch_qty: 0,
-        charge_per_unit: item.charge_per_unit || item.charge || 0,
+        charge_per_unit: undefined,
         tax_rate: item.tax || 0,
-        labour_rate: item.labour_rate || 0,
+        labour_rate: undefined,
         total_base_amount: 0,
         total_tax_amount: 0,
         total_amount: 0,
@@ -164,8 +174,9 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
     const parsedDuration = item.duration ? parseFloat(item.duration) : NaN;
     const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 1;
     const dispatch_qty = item.dispatch_qty || 0;
-    const charge_per_unit = item.charge_per_unit || item.charge || group.charge_per_unit || 0;
-    const labour_rate = item.labour_rate || group.labour_rate || 0;
+    // The line's own figures (a charge or labour of 0 is a figure), never another line's or the lot's.
+    const charge_per_unit = item.charge_per_unit ?? item.charge ?? 0;
+    const labour_rate = item.labour_rate ?? 0;
 
     const taxRate = item.tax || 0;
     // The amounts are the server's (get_invoice_items_detailed computes each
@@ -178,7 +189,14 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
     const lineTotal = hasServerAmounts ? item.server_total_amount! : computed.item_total;
     const baseAmount = hasServerAmounts ? roundMoney(lineTotal - taxAmount) : computed.taxable_amount;
 
-    // A group-level rate is only meaningful when every dispatch uses the same rate.
+    // A group-level rate is only meaningful when every dispatch uses the same rate (the first line sets it).
+    if (group.dispatch_items.length === 0) {
+      group.charge_per_unit = charge_per_unit;
+      group.labour_rate = labour_rate;
+    } else {
+      if (group.charge_per_unit !== undefined && group.charge_per_unit !== charge_per_unit) group.charge_per_unit = undefined;
+      if (group.labour_rate !== undefined && group.labour_rate !== labour_rate) group.labour_rate = undefined;
+    }
     if (group.tax_rate !== undefined && group.tax_rate !== taxRate) {
       group.tax_rate = undefined;
     }
@@ -194,6 +212,7 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
       duration,
       charge_per_unit,
       labour_rate,
+      tax_rate: taxRate,
       line_item_amount: baseAmount,
       tax: taxAmount,
     });
@@ -263,7 +282,6 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const bags = (qty: number) => formatCount(qty, 'bag');
-const dateText = (date: string | undefined) => (toDate(date) ? formatDate(date, 'short') : '—');
 
 /** "PM · 50 kg each", or null when the lot has neither. */
 const lotLine = (group: Pick<InvoiceLineItemGroupData, 'package_mark' | 'weight'>): string | null => {
@@ -271,120 +289,50 @@ const lotLine = (group: Pick<InvoiceLineItemGroupData, 'package_mark' | 'weight'
   return parts.length > 0 ? parts.join(' · ') : null;
 };
 
-/** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; labour and tax only when there are any, tax only when one rate. */
+/** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; each part only when every line of the lot agrees, labour (never in a one-time lot) and tax only when there are any. */
 const rateLine = (group: InvoiceLineItemGroupData): string =>
   [
-    tr('invoice.detailsTable.rate', { amount: formatInvoiceAmount(group.charge_per_unit) }),
-    group.labour_rate > 0 ? tr('invoice.detailsTable.labour', { amount: formatInvoiceAmount(group.labour_rate) }) : null,
+    group.charge_per_unit !== undefined ? tr('invoice.detailsTable.rate', { amount: formatInvoiceAmount(group.charge_per_unit) }) : null,
+    !group.one_time && group.labour_rate !== undefined && group.labour_rate > 0
+      ? tr('invoice.detailsTable.labour', { amount: formatInvoiceAmount(group.labour_rate) })
+      : null,
     group.tax_rate !== undefined && group.tax_rate > 0 ? tr('invoice.detailsTable.tax', { value: group.tax_rate }) : null,
   ]
     .filter(Boolean)
     .join(' · ');
 
-const periodText = (line: DispatchLineItem) =>
-  `${formatCount(line.no_of_days, 'day')} · ${formatCount(Math.round(line.duration * 10) / 10, 'month')}`;
-
-/**
- * Column widths for the whole table, so every row lines up. `nestedStacked`: the bags go under
- * the dispatch in the lines under a lot (big amounts would squeeze the dispatch numbers).
- */
-interface Widths {
-  bags: number;
-  amount: number;
-  lineBags: number;
-  lineAmount: number;
-  nestedStacked: boolean;
-  /** The amount on its own line, right-aligned under the item (or the dispatch): even stacked, its column would crowd the first. */
-  amountUnder: boolean;
-  lineAmountUnder: boolean;
-}
-
 const groupHelper = createAppColumnHelper<InvoiceLineItemGroupData>();
-const lineHelper = createAppColumnHelper<DispatchLineItem>();
+
+/** A lot's dispatch lines as the read-only table shows them. */
+const toReadOnlyLines = (group: InvoiceLineItemGroupData): ReadOnlyLine[] =>
+  group.dispatch_items.map((line) => ({
+    id: line.id,
+    dispatchNo: line.dispatch_no,
+    dispatchId: line.dispatch_id,
+    dispatchDate: line.dispatch_date,
+    qty: line.dispatch_qty,
+    days: line.no_of_days,
+    months: line.duration,
+    charge: line.charge_per_unit,
+    labour: line.labour_rate,
+    taxRate: line.tax_rate,
+    amount: roundMoney(line.line_item_amount + line.tax),
+  }));
 
 interface DispatchLinesProps {
   group: InvoiceLineItemGroupData;
-  widths: Widths;
+  lines: readonly ReadOnlyLine[];
+  /** The table geometry over all the invoice's lots. */
+  layout: ItemsLayout;
   onViewDispatch?: (dispatch_id: string) => void;
 }
 
-/** The dispatch lines under an open lot (Dispatch | Bags | Amount) and the base and tax of the lot. */
-const DispatchLines: React.FC<DispatchLinesProps> = ({ group, widths, onViewDispatch }) => {
+/** The dispatch lines under an open lot: the read-only sideways table of the invoice form's Step 2, and the base and tax of the lot. */
+const DispatchLines = React.memo(function DispatchLines({ group, lines, layout, onViewDispatch }: DispatchLinesProps) {
   const styles = useThemedStyles(makeTableStyles);
-  const { lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, lineAmountUnder } = widths;
-
-  const columns = useMemo(
-    () =>
-      lineHelper.columns([
-        lineHelper.accessor((line) => line.dispatch_no || '—', {
-          id: 'dispatch',
-          header: tr('invoice.detailsTable.dispatch'),
-          meta: { width: 'grow' },
-          cell: (info) => {
-            const line = info.row.original;
-            const canOpen = !!(line.dispatch_id && onViewDispatch);
-            const lineTotal = roundMoney(line.line_item_amount + line.tax);
-            return (
-              <>
-                <Text style={canOpen ? styles.link : styles.primary} {...ONE_LINE}>{line.dispatch_no || '—'}</Text>
-                <Text style={styles.secondary}>{dateText(line.dispatch_date)}</Text>
-                <Text style={styles.secondary}>
-                  {nb(nestedStacked ? `${periodText(line)} · ${bags(line.dispatch_qty)}` : periodText(line))}
-                </Text>
-                {/* Under the period, not under the amount: a long tax line squeezed the dispatch column. */}
-                {line.tax > 0 ? (
-                  <Text style={styles.secondary}>{tr('invoice.detailsTable.inclTax', { amount: formatInvoiceAmount(line.tax) })}</Text>
-                ) : null}
-                {lineAmountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(lineTotal)}</Text> : null}
-              </>
-            );
-          },
-        }),
-        ...(nestedStacked
-          ? []
-          : [
-              lineHelper.accessor('dispatch_qty', {
-                id: 'bags',
-                header: tr('invoice.detailsTable.bags'),
-                meta: { width: lineBagsWidth, numeric: true },
-                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatch_qty)}</Text>,
-              }),
-            ]),
-        lineHelper.accessor((line) => roundMoney(line.line_item_amount + line.tax), {
-          id: 'amount',
-          header: tr('invoice.detailsTable.amount'),
-          // Under the dispatch the amount has no column of its own, only its heading over the end of the row.
-          meta: { width: lineAmountUnder ? 'auto' : lineAmountWidth, numeric: true, headerOnly: lineAmountUnder },
-          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(info.getValue())}</Text>,
-        }),
-      ]),
-    [nestedStacked, lineAmountUnder, lineBagsWidth, lineAmountWidth, onViewDispatch, styles]
-  );
-  const grid = useAppTable({ data: group.dispatch_items, columns, getRowId: (line) => line.id });
-
   return (
     <>
-      <DataTable
-        table={grid}
-        variant="nested"
-        headerOneLine={false}
-        onRowPress={(row) => {
-          if (row.original.dispatch_id) onViewDispatch?.(row.original.dispatch_id);
-        }}
-        rowPressable={(row) => !!(row.original.dispatch_id && onViewDispatch)}
-        rowLabel={(row) => {
-          const line = row.original;
-          return tr('invoice.detailsTable.lineRowLabel', {
-            number: formatIdentifier(line.dispatch_no || '—'),
-            date: dateText(line.dispatch_date),
-            bags: bags(line.dispatch_qty),
-            period: periodText(line),
-            amount: formatInvoiceAmount(roundMoney(line.line_item_amount + line.tax)),
-          });
-        }}
-        rowHint={() => tr('invoice.lineItem.opensDispatchHint')}
-        rowTestID={(row) => `invoice-line-${row.original.id}`}
-      />
+      <ReadOnlyLineTable groupKey={group.grn_item_id} lines={lines} oneTime={group.one_time} layout={layout} onViewDispatch={onViewDispatch} />
       <Text style={styles.secondary}>
         {nb(
           tr('invoice.detailsTable.baseAndTax', {
@@ -395,7 +343,7 @@ const DispatchLines: React.FC<DispatchLinesProps> = ({ group, widths, onViewDisp
       </Text>
     </>
   );
-};
+});
 
 export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   items,
@@ -409,6 +357,12 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   const screen = useTableLayout();
 
   const groups = useMemo(() => groupItemsByGrnItem(items), [items]);
+  // The lines of each lot and the table geometry over ALL lots, so the columns line up from lot to lot (as in Step 2).
+  const lotLines = useMemo(() => new Map(groups.map((group) => [group.grn_item_id, toReadOnlyLines(group)])), [groups]);
+  const lineLayout = useMemo(
+    () => readOnlyLayout(screen, groups.map((group) => ({ lines: lotLines.get(group.grn_item_id) ?? [], oneTime: group.one_time }))),
+    [screen, groups, lotLines]
+  );
   const totalBags = groups.reduce((sum, group) => sum + group.total_dispatch_qty, 0);
   const totalAmount = roundMoney(groups.reduce((sum, group) => sum + group.total_amount, 0));
   // Each column as wide as its widest value or total; amounts that leave the item column under
@@ -416,26 +370,11 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.total_dispatch_qty)), [formatNumber(totalBags)]);
   const amountWidth = numberColumnWidth(screen, AMOUNT_WIDTH, groups.map((group) => formatInvoiceAmount(group.total_amount)), [formatInvoiceAmount(totalAmount)]);
   const table = useStackedWhen(screen, crowded(rowWidth(screen), [bagsWidth, amountWidth], undefined, screen.scale));
-  const dispatchLines = groups.flatMap((group) => group.dispatch_items);
-  const lineBagsWidth = numberColumnWidth(screen, BAGS_WIDTH, dispatchLines.map((line) => formatNumber(line.dispatch_qty)));
-  const lineAmountWidth = numberColumnWidth(
-    screen,
-    AMOUNT_WIDTH,
-    dispatchLines.map((line) => formatInvoiceAmount(roundMoney(line.line_item_amount + line.tax)))
-  );
-  const nestedStacked = table.stacked || crowded(nestedRowWidth(screen), [lineBagsWidth, lineAmountWidth], 0, screen.scale);
   // Stacked, an amount column that would still crowd the first, or take most of the row beside
   // several lines of text (large amounts at large text), goes under the item: the text gets the full width.
   const amountUnder =
     table.stacked &&
     (crowded(rowWidth(screen), [amountWidth], undefined, screen.scale) || amountWidth > rowWidth(screen) * LAST_COLUMN_SHARE);
-  const lineAmountUnder =
-    nestedStacked &&
-    (crowded(nestedRowWidth(screen), [lineAmountWidth], 0, screen.scale) || lineAmountWidth > nestedRowWidth(screen) * LAST_COLUMN_SHARE);
-  const widths = useMemo(
-    () => ({ bags: bagsWidth, amount: amountWidth, lineBags: lineBagsWidth, lineAmount: lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder }),
-    [bagsWidth, amountWidth, lineBagsWidth, lineAmountWidth, nestedStacked, amountUnder, lineAmountUnder]
-  );
   // A single lot starts open; a tap flips any lot.
   const open = useDefaultOpen(groups.length === 1 ? [groups[0].grn_item_id] : []);
 
@@ -454,7 +393,9 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
               <>
                 <Text style={styles.primary}>{group.item_name}</Text>
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
-                <Text style={styles.secondary}>{nb(table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates)}</Text>
+                {table.stacked || rates !== '' ? (
+                  <Text style={styles.secondary}>{nb(table.stacked ? [rates, bags(group.total_dispatch_qty)].filter(Boolean).join(' · ') : rates)}</Text>
+                ) : null}
                 {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
               </>
             );
@@ -557,7 +498,14 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     <DataTable
       table={grid}
       list="flat"
-      renderDetail={(row) => <DispatchLines group={row.original} widths={widths} onViewDispatch={on_view_dispatch} />}
+      renderDetail={(row) => (
+        <DispatchLines
+          group={row.original}
+          lines={lotLines.get(row.original.grn_item_id) ?? []}
+          layout={lineLayout}
+          onViewDispatch={on_view_dispatch}
+        />
+      )}
       rowLabel={(row) => {
         const group = row.original;
         return tr('invoice.detailsTable.groupRowLabel', {

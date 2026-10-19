@@ -24,7 +24,7 @@ async function render(lines: InvoiceItemData[], width: number, fontScale: number
   mockStore = makeInvoiceStore();
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<ConnectedEditor onEditPricing={jest.fn()} />); });
+  await act(async () => { tree = create(<ConnectedEditor />); });
   return tree;
 }
 const where = (tree: ReactTestRenderer, kind: 'under' | 'beside') =>

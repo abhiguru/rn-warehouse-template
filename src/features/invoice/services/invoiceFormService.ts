@@ -646,13 +646,11 @@ export const loadInvoiceData = async (
   try {
     const authenticatedClient = await getAuthenticatedClient();
 
-    // get_invoice_detail has the invoice and its lines. It does not say how the
-    // GRN is priced, which decides how every line is charged, so the GRN's
-    // pricing mode is read from get_invoice_data alongside it.
-    const [{ data, error }, grnPricing] = await Promise.all([
-      authenticatedClient.rpc('get_invoice_detail', { p_invoice_id: invoiceId }),
-      invoiceGrnPricingMode(authenticatedClient, invoiceId),
-    ]);
+    // get_invoice_detail has the invoice and its lines. The GRN's pricing mode,
+    // which decides how every line is charged, comes with it as
+    // invoice.grn_pricing_mode (the key is there, even when its value is null).
+    // Only an older server leaves the key out: then get_invoice_data is asked.
+    const { data, error } = await authenticatedClient.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
@@ -707,6 +705,11 @@ export const loadInvoiceData = async (
       }
     }
 
+    const grnPricing: { read: true; mode: string | null } | { read: false } =
+      'grn_pricing_mode' in header
+        ? { read: true, mode: header.grn_pricing_mode || null }
+        : await invoiceGrnPricingMode(authenticatedClient, invoiceId);
+
     // Without the GRN's pricing mode the form cannot say what a line costs: a
     // one-time invoice priced as monthly shows, and after any change totals,
     // amounts the server will not charge. The form is not opened on a guess.
@@ -747,7 +750,8 @@ export const loadInvoiceData = async (
 
     // Convert items data - backend now returns all needed fields
     // Available: id, disp_trl_id, item_name, qty, dispatch_no, dispatch_date,
-    //            duration, no_of_days, charge, tax, labour_rate
+    //            duration, no_of_days, charge, tax, labour_rate, and from migration 109
+    //            item_id, dispatch_id, rack
 
     const formattedItems: InvoiceItemData[] = items.map((item: any, index: number) => {
       const charge = item.charge || 0;

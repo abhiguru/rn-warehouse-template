@@ -21,6 +21,7 @@ jest.mock('@/store/hooks', () => {
   const { useSyncExternalStore } = require('react');
   return {
     useAppDispatch: () => mockStore.dispatch,
+    useAppStore: () => mockStore,
     useAppSelector: (selector: (state: unknown) => unknown) =>
       useSyncExternalStore(mockStore.subscribe, () => selector(mockStore.getState())),
   };
