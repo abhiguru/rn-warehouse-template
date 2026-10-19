@@ -35,6 +35,9 @@ export function discountNeedsReason(
  * line in the save question and the total of 0 that may be saved. So a charge
  * the money fields cannot produce (0.004) cannot make the server ask for a
  * reason while the app shows no field for it.
+ *
+ * The Save check in features/invoice/schemas/invoiceValidation.ts relies on this reading only `charge`: it checks
+ * a line's fields one distinct value at a time. If this ever reads another field, change that check too.
  */
 export function isZeroChargeLine(item: { charge?: number | null }): boolean {
   return roundMoney(Number(item.charge) || 0) === 0;

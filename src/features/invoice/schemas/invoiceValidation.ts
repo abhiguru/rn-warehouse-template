@@ -201,6 +201,72 @@ const LINE_FIELD_SCHEMAS = Object.entries(
   (step2Schema.fields.items as unknown as { innerType: yup.ObjectSchema<yup.AnyObject> }).innerType.fields
 ) as [string, yup.Schema][];
 
+/**
+ * Whether the per-field check is a faithful stand-in for the schema (yup 1.7.1). The line schema has no object-level
+ * test, transform, condition, dependency or valid/invalid list of its own, is not strict and strips nothing; no
+ * field of a line has a condition, a dependency or `strip`; and the `items` array has exactly the checks the fast path
+ * repeats by hand: `min(1)` (a `tests` entry named min with value 1) and `required` (internalTests nullable and
+ * optionality, spec nullable/optional false), with no transform, condition or strict of its own. Worked out once, when
+ * this file loads, and never throws: if the schema cannot be read, or has changed, the fast path is off and the full
+ * check runs (in development a warning says so).
+ */
+const LINE_FAST_PATH_OK: boolean = (() => {
+  const ok = ((): boolean => {
+    try {
+      const itemsSchema = step2Schema.fields.items as unknown as {
+        innerType: yup.ObjectSchema<yup.AnyObject>;
+        tests: { OPTIONS?: { name?: string; params?: { min?: unknown } } }[];
+        internalTests: Record<string, unknown>;
+        transforms: unknown[];
+        conditions: unknown[];
+        spec: { strict?: boolean; strip?: boolean; nullable?: boolean; optional?: boolean };
+      };
+      const line = itemsSchema.innerType;
+      const internals = line as unknown as {
+        tests: unknown[];
+        transforms: unknown[];
+        conditions: unknown[];
+        deps: unknown[];
+        spec: { strict?: boolean };
+        _whitelist: { size: number };
+        _blacklist: { size: number };
+      };
+      if (!Array.isArray(internals.tests) || internals.tests.length > 0) return false;
+      if (!Array.isArray(internals.transforms) || internals.transforms.length > 0) return false;
+      if (!Array.isArray(internals.conditions) || internals.conditions.length > 0) return false;
+      if (!Array.isArray(internals.deps) || internals.deps.length > 0) return false;
+      if (internals.spec?.strict !== false) return false;
+      if (internals._whitelist?.size !== 0 || internals._blacklist?.size !== 0) return false;
+      // The items array: exactly min(1) and required.
+      if (!Array.isArray(itemsSchema.tests) || itemsSchema.tests.length !== 1) return false;
+      const minTest = itemsSchema.tests[0]?.OPTIONS;
+      if (minTest?.name !== 'min' || minTest.params?.min !== 1) return false;
+      if (!itemsSchema.internalTests?.nullable || !itemsSchema.internalTests?.optionality) return false;
+      if (itemsSchema.spec?.nullable !== false || itemsSchema.spec?.optional !== false) return false;
+      if (!Array.isArray(itemsSchema.transforms) || itemsSchema.transforms.length > 0) return false;
+      if (!Array.isArray(itemsSchema.conditions) || itemsSchema.conditions.length > 0) return false;
+      if (itemsSchema.spec?.strict !== false) return false;
+      return LINE_FIELD_SCHEMAS.every(([, schema]) => {
+        const field = schema as unknown as { conditions: unknown[]; deps: unknown[]; spec: { strip?: boolean } };
+        return (
+          Array.isArray(field.conditions) &&
+          field.conditions.length === 0 &&
+          Array.isArray(field.deps) &&
+          field.deps.length === 0 &&
+          !field.spec?.strip
+        );
+      });
+    } catch {
+      return false;
+    }
+  })();
+  if (!ok && __DEV__) {
+    // eslint-disable-next-line no-console
+    console.warn('invoiceValidation: the per-line fast path is off (the lines schema no longer matches what it repeats); the full check runs.');
+  }
+  return ok;
+})();
+
 /** A token of the type and value of a plain primitive, or null for anything else. */
 const primitiveToken = (value: unknown): string | null => {
   if (value === null) return 'n';
@@ -218,11 +284,22 @@ const primitiveToken = (value: unknown): string | null => {
  * "not proven valid": the caller then runs the full check.
  */
 const linesPassPerField = (lines: unknown, chargeMustBeNumber = false): boolean => {
+  if (!LINE_FAST_PATH_OK) return false;
+  try {
+    return checkLinesPerField(lines, chargeMustBeNumber);
+  } catch {
+    // Not proven valid: the caller runs the full check.
+    return false;
+  }
+};
+
+const checkLinesPerField = (lines: unknown, chargeMustBeNumber: boolean): boolean => {
   if (!Array.isArray(lines) || lines.length === 0) return false;
   const seen = LINE_FIELD_SCHEMAS.map(() => new Map<string, boolean>());
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!(i in lines) || line === null || typeof line !== 'object' || Array.isArray(line)) return false;
+    // A plain object only (this also leaves out null and arrays): yup rejects any other kind of object.
+    if (!(i in lines) || Object.prototype.toString.call(line) !== '[object Object]') return false;
     const record = line as Record<string, unknown>;
     if (chargeMustBeNumber && typeof record.charge !== 'number') return false;
     for (let f = 0; f < LINE_FIELD_SCHEMAS.length; f++) {

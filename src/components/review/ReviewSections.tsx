@@ -1,9 +1,10 @@
 /**
  * The Review step's shared folding card (style guide §14.3): one outlined card whose rows are sections, one open at a
- * time. A closed section shows a one-line summary under its heading; its body stays mounted, only hidden. Lifted from
- * the GRN Review step, which draws exactly this. The parts read nothing from the store.
+ * time. A closed section shows a one-line summary under its heading; its body stays mounted, only hidden (a costly
+ * body may be drawn a moment after the screen shows: `deferBody`). Lifted from the GRN Review step, which draws
+ * exactly this. The parts read nothing from the store.
  */
-import React, { useCallback, useState, type ReactNode } from 'react';
+import React, { startTransition, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -46,6 +47,13 @@ export interface ReviewSectionProps {
   blockTestID?: string;
   onLayout?: ViewProps['onLayout'];
   bodyStyle?: StyleProp<ViewStyle>;
+  /**
+   * Draw the body a moment after the section first appears (after the first frame, as a low-priority update), so
+   * the screen shows first. Once drawn it stays mounted, closed or open, as always. For a closed section whose
+   * body is costly to draw (the invoice Review's Items). An open section draws it at once.
+   */
+  deferBody?: boolean;
+  /** Called once, when a deferred body has been drawn (timing probe). */
   children: ReactNode;
 }
 
@@ -65,8 +73,15 @@ export function ReviewSection({
   blockTestID,
   onLayout,
   bodyStyle,
+  deferBody = false,
   children,
 }: ReviewSectionProps) {
+  const [ready, setReady] = useState(!deferBody);
+  useEffect(() => {
+    if (!deferBody) return undefined;
+    const frame = requestAnimationFrame(() => startTransition(() => setReady(true)));
+    return () => cancelAnimationFrame(frame);
+  }, [deferBody]);
   const styles = useThemedStyles(makeStyles);
   const table = useThemedStyles(makeTableStyles);
   const t = useTokens();
@@ -118,7 +133,7 @@ export function ReviewSection({
         </View>
       </View>
       <View style={[table.details, bodyStyle, open ? undefined : styles.sectionHidden]} testID={`${testIDPrefix}-body-${id}`}>
-        {children}
+        {ready || open ? children : null}
       </View>
     </View>
   );

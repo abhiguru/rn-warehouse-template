@@ -373,7 +373,9 @@ const invoiceFormSlice = createSlice({
       // The lines carry the GRN's pricing mode (`one_time`) and their amounts
       // are worked out here as the server works them out. The header flag only
       // reports that mode; it is not a switch and never changes a duration.
-      const items = action.payload.items.map((item) => ({
+      // Each line is frozen here, as Immer would freeze it when the reducer ends. Immer skips a frozen
+      // object at once; an unfrozen one it walks and freezes field by field (thousands of lines: ~100 ms+).
+      const items = action.payload.items.map((item) => Object.freeze({
         ...item,
         ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time),
       }));
@@ -458,7 +460,8 @@ const invoiceFormSlice = createSlice({
         inv_fin_year: state.header.inv_fin_year,
         gr_id: state.header.gr_id,
         header: { ...state.header },
-        items: state.items.map((item) => ({ ...item })),
+        // Frozen copies: see loadInvoiceFormData.
+        items: state.items.map((item) => Object.freeze({ ...item })),
       };
     },
 

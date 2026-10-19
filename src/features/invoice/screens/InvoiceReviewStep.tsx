@@ -9,7 +9,7 @@
  * dialog, because a message under it would be hidden by it.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -48,7 +48,7 @@ import {
 import { t as tr, formatIdentifier } from '@/i18n';
 import { formatCount, formatFinancialYear } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
-import { groupInvoiceItems } from '@/features/invoice/utils/groupInvoiceItems';
+import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
 
 const log = createLogger('InvoiceReviewStep');
@@ -129,14 +129,15 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
 
   const { role } = useRoleBasedAccess();
   const reasonRequired = discountNeedsReason(header, role);
-  const handleDiscountReasonChange = (reason: string) => {
+  // Stable, so that the memoized charges card is not drawn again when only something else changed.
+  const handleDiscountReasonChange = useCallback((reason: string) => {
     updateHeaderField('discount_reason', reason);
-  };
+  }, [updateHeaderField]);
   // A line with a charge of 0 needs a reason from staff (server migration 48).
   const zeroChargeReasonRequired = zeroChargeNeedsReason(header, items, role);
-  const handleZeroChargeReasonChange = (reason: string) => {
+  const handleZeroChargeReasonChange = useCallback((reason: string) => {
     updateHeaderField('zero_charge_reason', reason);
-  };
+  }, [updateHeaderField]);
 
   const showError = (title: string, message: string) => {
     setErrorDialog({ visible: true, title, message });
@@ -335,7 +336,13 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     }
   };
 
-  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+  // Both walk every line: once per set of lines, not on each draw of the step.
+  const totalQty = useMemo(() => items.reduce((sum, item) => sum + item.qty, 0), [items]);
+  const groupCount = useMemo(() => new Set(items.map(invoiceGroupKey)).size, [items]);
+
+  // The text of the save question is worked out only while it is open, and keeps its last text while it closes.
+  const confirmMessage = useRef('');
+  if (showConfirmSubmitDialog) confirmMessage.current = invoiceConfirmMessage(header, items);
 
   // The step circles and the Edit links go to the steps already in the stack.
   const handleStepPress = async (stepNumber: number) => {
@@ -401,12 +408,13 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             id="items"
             testIDPrefix="invoice-review"
             title={tr('common.items')}
-            count={groupInvoiceItems(items).length}
+            count={groupCount}
             onEdit={() => handleStepPress(STEP_NUMBERS.ITEMS)}
             editLabel={tr('invoice.review.editItemsA11y')}
             closedLine={formatCount(totalQty, 'bag')}
             open={openSection === 'items'}
             onToggle={toggleSection}
+            deferBody
           >
             <InvoiceReviewItemsTable items={items} />
           </ReviewSection>
@@ -493,7 +501,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       <ConfirmDialog
         visible={showConfirmSubmitDialog}
         title={confirmTitle}
-        message={invoiceConfirmMessage(header, items)}
+        message={confirmMessage.current}
         confirmText={saveLabel}
         cancelText={tr('common.cancel')}
         onConfirm={performSubmit}
