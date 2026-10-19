@@ -16,6 +16,7 @@ import {
 } from '@/utils/invoiceCalculations';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
 // Initial header state. Built when it is needed, not once when this file is
 // loaded: the default date and financial year are "today", and the app can stay
 // open past midnight and past 1 April.
@@ -43,6 +44,51 @@ const createInitialHeader = (): InvoiceHeaderData => {
  */
 const plainLines = (items: InvoiceItemData[]): InvoiceItemData[] =>
   isDraft(items) ? original(items)! : items;
+
+/**
+ * The lines of a saved invoice that keep a figure of their own (owner decision, 2026-10-19). Lines are compared within
+ * each set of one card, one item and one bag weight (a card can hold weight bands priced differently on purpose), for
+ * Charge and Labour separately, on the rounded figure. A set marks a line only when the set has a strict majority: one
+ * figure held by more lines than any other. The lines with another figure are then marked in `itemOverrides`, so an "All
+ * dispatches" entry skips them (as it skips a line whose figure was typed). On any tie nothing is marked, so the order
+ * of the lines does not matter; a set of one line marks nothing. Tax is never marked: it has no per-line editing.
+ * Only the marks are made: no line, fingerprint or payload changes.
+ */
+export const savedLineOverrides = (items: readonly InvoiceItemData[]): Record<string, string[]> => {
+  const sets = new Map<string, InvoiceItemData[]>();
+  items.forEach((line) => {
+    // Edited lines have no item_id yet, so the item name stands in for it.
+    const key = `${invoiceGroupKey(line)}|${line.item_id || line.item_name}|${Number(line.weight) || 0}`;
+    const set = sets.get(key);
+    if (set) set.push(line);
+    else sets.set(key, [line]);
+  });
+  const marks: Record<string, string[]> = {};
+  sets.forEach((lines) => {
+    if (lines.length < 2) return;
+    (['charge', 'labour_rate'] as const).forEach((field) => {
+      const figureOf = (line: InvoiceItemData) => roundMoney(Number(line[field]) || 0);
+      const counts = new Map<number, number>();
+      lines.forEach((line) => counts.set(figureOf(line), (counts.get(figureOf(line)) ?? 0) + 1));
+      if (counts.size < 2) return;
+      let common: number | null = null;
+      let best = 0;
+      let tied = false;
+      counts.forEach((count, figure) => {
+        if (count > best) {
+          best = count;
+          common = figure;
+          tied = false;
+        } else if (count === best) tied = true;
+      });
+      if (tied || common === null) return;
+      lines.forEach((line) => {
+        if (figureOf(line) !== common) (marks[line.temp_id] ??= []).push(field);
+      });
+    });
+  });
+  return marks;
+};
 
 /**
  * What the saved invoice looked like when it was opened for editing: the
@@ -442,10 +488,11 @@ const invoiceFormSlice = createSlice({
 
       // Reset editing state (fresh start for edit mode)
       state.editedItems = {};
-      state.itemOverrides = {};
+      // Saved figures that differ from the strict majority of their item and bag weight are the lines' own (see savedLineOverrides).
+      state.itemOverrides = savedLineOverrides(action.payload.items);
 
       // No group rate has been applied yet. The group fields of the items step
-      // show the rate the lines of a group share, or "Mixed" (Labour, Tax) or their weighted average (Charge) when they differ.
+      // show the rate the lines of a group share (the unmarked lines, where some are marked), or "Mixed" (Labour, Tax) or their weighted average (Charge) when they differ.
       // (An average of the stored rates used to be kept here, and the first
       // group edit gave it to every line: a free line beside a paid one became
       // paid, and its stored reason was dropped with the save.)
@@ -480,7 +527,7 @@ const invoiceFormSlice = createSlice({
       state.items = saved.items.map((item) => ({ ...item }));
       state.selected_gr_id = saved.gr_id;
       state.editedItems = {};
-      state.itemOverrides = {};
+      state.itemOverrides = savedLineOverrides(saved.items);
       state.bulkPricing = {};
       Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },

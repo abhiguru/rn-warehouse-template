@@ -51,7 +51,8 @@ export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, tab
             <Text
               style={[column.align === 'right' ? styles.headerNumber : column.align === 'center' ? styles.headerCentre : styles.headerText, { paddingRight: columnInset(column.id) }]}
               // Months is sized to its figures, not its heading: the heading shrinks a little to stay on one line.
-              {...(column.id === 'duration' ? ONE_LINE : { numberOfLines: 1 })}
+              // Labour is sized to its box, so its heading may wrap to two lines.
+              {...(column.id === 'duration' ? ONE_LINE : { numberOfLines: column.id === 'labour_rate' ? 2 : 1 })}
             >
               {column.header}
             </Text>

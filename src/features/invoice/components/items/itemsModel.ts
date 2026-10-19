@@ -54,13 +54,13 @@ export function settle(field: RateField, typed: string): { value: number | null;
 export interface SharedView {
   /** The rate the lines share (or the one applied to the group), as text; '' while the lines differ or are free. */
   text: string;
-  /** The lines differ: the placeholder says "Mixed" (Labour and Tax, also where a line has its own labour; Charge shows `average` instead). */
+  /** The lines without their own figure differ: the placeholder says "Mixed" (Labour and Tax; Charge shows `average` instead). Where some lines keep their own and the others share one, `text` is that shared figure. */
   mixed: boolean;
   /** Charge only: the lines differ, so `text` is their average charge weighted by bag-months (by bags for a one-time GRN). */
   average: boolean;
   /** Whether a figure typed or stepped here reaches any line: false only when every line keeps its own typed charge. */
   applies: boolean;
-  /** Lines that keep a rate typed on the line itself. */
+  /** Lines that keep a rate of their own: marked in `itemOverrides`, typed on the line or saved differently on an edited invoice, and so differing from the shown figure. */
   keepOwn: number;
   /**
    * The rounded rate that the lines WITHOUT their own typed rate all share, which is what a group press sets and so what
@@ -98,7 +98,8 @@ export function weightedCharge(lines: readonly InvoiceItemData[]): number {
 
 /**
  * The group's shared rates as the form holds them: the rate applied to the group, else the rate all
- * lines share, else "Mixed". Charge is the exception (owner, 2026-10-19): while its lines differ it shows their
+ * lines share, else (Labour, Tax) the shared figure of the lines not marked as having their own, when some are marked and
+ * the rest agree, else "Mixed". Charge is the exception (owner, 2026-10-19): while its lines differ it shows their
  * weighted average (`weightedCharge`, flagged `average`), because that is the one charge that gives the same storage total.
  */
 export function groupView(
@@ -110,7 +111,15 @@ export function groupView(
   RATE_FIELDS.forEach((field) => {
     const rates = group.allItems.map((line) => roundMoney(Number(line[field]) || 0));
     const appliedRate = applied?.[field];
+    // Lines that keep a rate typed on the line itself (or marked when a saved invoice was opened), and the rest.
+    const typed = group.allItems.filter((line) => (overrides[line.temp_id] ?? []).includes(field));
+    const takers = group.allItems.filter((line) => !(overrides[line.temp_id] ?? []).includes(field));
+    const takerRates = takers.map((line) => roundMoney(Number(line[field]) || 0));
+    const stepFrom = takerRates.length > 0 && takerRates.every((rate) => rate === takerRates[0]) ? takerRates[0] : null;
     const differ = rates.some((rate) => rate !== rates[0]);
+    // Labour and Tax: while some lines keep their own figure and the others all share one, the field shows that shared figure
+    // (owner, 2026-10-19), not "Mixed"; "Mixed" is for lines without their own figure that differ among themselves.
+    const sharedByTakers = field !== 'charge' && typed.length > 0 && stepFrom !== null ? stepFrom : undefined;
     let text: string;
     let mixed = false;
     let average = false;
@@ -118,17 +127,14 @@ export function groupView(
       text = rateText(field, weightedCharge(group.allItems));
       average = true;
     } else if (appliedRate !== undefined) text = rateText(field, appliedRate);
+    else if (sharedByTakers !== undefined) text = sharedByTakers > 0 ? rateText(field, sharedByTakers) : '';
     else if (differ) {
       text = '';
       mixed = true;
     } else text = rates[0] > 0 ? rateText(field, rates[0]) : '';
-    const shown = appliedRate ?? (differ ? undefined : rates[0]);
-    // Lines that keep a rate typed on the line itself: those that differ from a shown rate, or, while the lines differ, all of them.
-    const typed = group.allItems.filter((line) => (overrides[line.temp_id] ?? []).includes(field));
+    const shown = appliedRate ?? sharedByTakers ?? (differ ? undefined : rates[0]);
+    // Lines that keep their own rate: those that differ from a shown rate, or, while the lines differ and none is shown, all of them.
     const keepOwn = shown === undefined ? typed.length : typed.filter((line) => roundMoney(Number(line[field]) || 0) !== roundMoney(shown)).length;
-    const takers = group.allItems.filter((line) => !(overrides[line.temp_id] ?? []).includes(field));
-    const takerRates = takers.map((line) => roundMoney(Number(line[field]) || 0));
-    const stepFrom = takerRates.length > 0 && takerRates.every((rate) => rate === takerRates[0]) ? takerRates[0] : null;
     view[field] = { text, mixed, average, applies: typed.length < group.allItems.length, keepOwn, stepFrom };
   });
   return view;

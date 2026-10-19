@@ -1,7 +1,8 @@
 /**
  * The "(all lines)" figures of a group (Charge for 2 or more lines, Labour, Tax): one part under the
  * group's head, in both modes. A value typed here is applied to every line that has not been given its
- * own; "Mixed" (Labour, Tax) says the lines differ; Charge shows their weighted average instead.
+ * own (typed on the line, or saved differently on an edited invoice); "Mixed" (Labour, Tax) says the lines without their
+ * own figure differ among themselves; Charge shows their weighted average instead.
  *
  * The fields stand side by side in one row of equal columns (1 to 3), each with its label, the field, its
  * notes and, under them, + then − buttons that step the figure by 0.25 (charge, labour) or 1 (tax). When the
@@ -10,7 +11,8 @@
  *
  * A press goes through `actions.step`, which applies the stepped figure like an accepted entry in the field.
  * Both buttons are disabled while the field shows "Mixed" (Labour, Tax), while every line keeps its own figure (Charge shows the
- * weighted average of the lines instead of "Mixed", and steps from it), or holds text that is refused or unfinished, at 0 (−) and at the
+ * weighted average of the lines instead of "Mixed", but its buttons step from `stepFrom`, the rate the lines without their own
+ * charge share, not from the average), or holds text that is refused or unfinished, at 0 (−) and at the
  * field's maximum (+). The buttons are not in the Next key's field walk.
  */
 import React from 'react';

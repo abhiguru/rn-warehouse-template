@@ -1,12 +1,12 @@
 /**
  * Sizes of the invoice items step (pure, unit-tested). The lines of an open card are one table that scrolls
  * sideways (owner decision, 2026-10-19, a single exception to "a table never scrolls sideways"): Dispatch (pinned)
- * | Date | Months | Days | Qty | Charge | Labour | Amount (no Tax column: Tax is set in "All dispatches" only).
+ * | Date | Months | Days | Qty | Charge | Labour | Tax | Amount (Tax is read-only: it is set in "All dispatches" only).
  * Each column is as wide as its widest text and heading at the current text size (`LineWidths`, worked out once per
  * layout from the held snapshot of the items, not per row), whatever the screen width: there is no crowding check and
  * no switch to cards because of width or text size. Months is the exception: it is only as wide as its widest figure
  * and normal cell padding, and its heading shrinks to fit (`ONE_LINE`). Every column starts with the same gap
- * (`COL_GAP`, space.lg); Date, Months, Days and Qty are centred in their columns, the money columns right-aligned. The lines are cards only while a screen reader is on (the editor sets `cards`).
+ * (`COL_GAP`, space.lg); Date, Months, Days and Qty are centred in their columns, the money columns and Tax right-aligned. The Labour box is sized for 999.99 (or its widest stored figure) and its heading may wrap to two lines, so the column is as wide as the box or its longest heading word. The lines are cards only while a screen reader is on (the editor sets `cards`).
  *
  * In a line card (screen reader) an editable figure (Charge, Labour) is a short input sized for the largest figure expected
  * (`lineInputs`), with + − side by side right after it.
@@ -31,9 +31,9 @@ export const END_GAP = space.md;
  * A figure typed wider than its column is cut with "…" until the field is left: the editor holds the layout meanwhile. */
 const BASE = { charge: 64, labour_rate: 56, amount: 84, days: 32, qty: 40, months: 32 } as const;
 
-export type LineColumnId = 'dispatch' | 'date' | 'duration' | 'days' | 'qty' | 'charge' | 'labour_rate' | 'amount';
+export type LineColumnId = 'dispatch' | 'date' | 'duration' | 'days' | 'qty' | 'charge' | 'labour_rate' | 'tax' | 'amount';
 /** The columns of the table, left to right; Labour is left out of a one-time GRN. */
-export const LINE_COLUMN_IDS: readonly LineColumnId[] = ['dispatch', 'date', 'duration', 'days', 'qty', 'charge', 'labour_rate', 'amount'];
+export const LINE_COLUMN_IDS: readonly LineColumnId[] = ['dispatch', 'date', 'duration', 'days', 'qty', 'charge', 'labour_rate', 'tax', 'amount'];
 
 export interface ItemsFigures {
   /** The texts of each column over all lines (each distinct text once is enough). */
@@ -44,7 +44,7 @@ export interface ItemsFigures {
   qty: readonly string[];
   charge: readonly string[];
   labour: readonly string[];
-  /** The stored tax rates: not a column, but the widest one sizes the "All dispatches" fields. */
+  /** The stored tax rates: the Tax column (read-only) and the "All dispatches" fields are sized to the widest one. */
   tax: readonly string[];
   /** Line totals, drawn in weight 600. */
   amount: readonly string[];
@@ -58,6 +58,7 @@ export interface ItemsHeadings {
   qty: string;
   charge: string;
   labour: string;
+  tax: string;
   amount: string;
 }
 
@@ -107,6 +108,9 @@ const LINE_INPUT_FIGURES: Record<keyof LineInputWidths, readonly string[]> = {
   labour_rate: ['9999.99'],
 };
 
+/** The widest Labour figure the table's box is made for (Charge's is 9999.99); a wider stored figure widens the box. */
+const LABOUR_BOX_FIGURE = '999.99';
+
 const headingWidth = (table: TableLayout, heading: string) =>
   numberColumnWidth(table, 0, [], [heading], typography.footnote.fontSize ?? 13);
 
@@ -129,6 +133,18 @@ const figureColumn = (table: TableLayout, base: number, values: readonly string[
 const cellColumn = (table: TableLayout, base: number, values: readonly string[], heading: string) =>
   Math.max(numberColumnWidth(table, base, values), headingWidth(table, heading)) + CELL_CHROME + COL_GAP;
 
+/** The longest word of a heading ("Labour" of "Labour (₹)"): what a heading that may wrap needs. */
+const longestWordWidth = (table: TableLayout, heading: string) =>
+  Math.max(0, ...heading.split(/\s+/).map((word) => headingWidth(table, word)));
+
+/** The Labour column (owner, 2026-10-19): its box fits 999.99 or the widest stored figure, and the heading wraps, so the column is the box or the heading's longest word, plus the cell's ring and the gap. */
+const labourColumn = (table: TableLayout, values: readonly string[], heading: string) =>
+  Math.max(numberColumnWidth(table, 0, [LABOUR_BOX_FIGURE, ...values]), longestWordWidth(table, heading)) + CELL_CHROME + COL_GAP;
+
+/** The Tax column: read-only, so its widest figure or heading, plus the gap before it. */
+const taxColumn = (table: TableLayout, values: readonly string[], heading: string) =>
+  Math.max(numberColumnWidth(table, 0, values), headingWidth(table, heading)) + COL_GAP;
+
 export function itemsLayout(
   table: TableLayout,
   figures: ItemsFigures,
@@ -143,7 +159,8 @@ export function itemsLayout(
     days: figureColumn(table, BASE.days, figures.days, headings.days),
     qty: figureColumn(table, BASE.qty, figures.qty, headings.qty),
     charge: cellColumn(table, BASE.charge, figures.charge, headings.charge),
-    labour_rate: cellColumn(table, BASE.labour_rate, figures.labour, headings.labour),
+    labour_rate: labourColumn(table, figures.labour, headings.labour),
+    tax: taxColumn(table, figures.tax, headings.tax),
     amount: Math.max(numberColumnWidth(table, BASE.amount, [], figures.amount), headingWidth(table, headings.amount)) + COL_GAP + END_GAP,
   };
   const content = LINE_COLUMN_IDS.filter((id) => id !== 'dispatch' && !(oneTime && id === 'labour_rate')).reduce((sum, id) => sum + widths[id], 0);

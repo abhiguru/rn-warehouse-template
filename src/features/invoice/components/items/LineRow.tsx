@@ -1,15 +1,15 @@
 /**
  * One dispatch line of a group, as a row of the line table (lineColumns.ts), which scrolls sideways: the pinned Dispatch cell
  * (the dispatch number) and, in a `SidewaysViewport` shared with the heading and the other rows of the card, Date (01/06/23) |
- * Months | Days | Qty | Charge | Labour | Amount. Date, Months, Days, Qty and Amount are read-only; Date, Months, Days and Qty are
- * centred, Charge, Labour and Amount right-aligned. The Charge and the Labour (not in a one-time GRN) are typed in their cells
- * (`EditableNumberCell`); a typed Labour is that line's own. There is no Tax column: tax is set in the card's "All dispatches" row. A line has no + / − (those are the "All dispatches" row's, and the line cards').
+ * Months | Days | Qty | Charge | Labour | Tax | Amount. Date, Months, Days, Qty, Tax and Amount are read-only; Date, Months, Days and Qty are
+ * centred, Charge, Labour, Tax and Amount right-aligned. The Charge and the Labour (not in a one-time GRN) are typed in their cells
+ * (`EditableNumberCell`); a typed Labour is that line's own. The Tax column is a plain figure (tax is set in the card's "All dispatches" row). A line has no + / − (those are the "All dispatches" row's, and the line cards').
  * The row is a part of the page's virtualized list, so only the rows on screen are drawn, however many lines the card has.
  */
 import React from 'react';
 import { Text, View } from 'react-native';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
-import { formatIdentifier } from '@/i18n';
+import { formatIdentifier, localizeDigits } from '@/i18n';
 import { useTokens } from '@/hooks/useTheme';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -98,6 +98,8 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
         return figure(column, lineDays(item));
       case 'qty':
         return figure(column, lineQty(item));
+      case 'tax':
+        return figure(column, localizeDigits(rateText('tax', item.tax)));
       case 'amount':
         return figure(column, formatInvoiceAmount(item.item_total), true);
       case 'charge':

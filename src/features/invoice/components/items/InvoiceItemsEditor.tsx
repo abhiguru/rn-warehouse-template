@@ -8,7 +8,7 @@
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
  * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: one table that
  * scrolls sideways at every text size (owner decision, 2026-10-19): Dispatch (pinned) | Date | Months | Days | Qty |
- * Charge ₹ | Labour ₹ | Amount (no Tax column), its columns described with the app's TanStack column model (lineColumns.ts) and
+ * Charge ₹ | Labour ₹ | Tax % (read-only) | Amount, its columns described with the app's TanStack column model (lineColumns.ts) and
  * sized to their widest text once per layout (itemsLayout.ts), with the Charge and the Labour (a line's own) typed in their cells, the
  * Next key walking Charge, then Labour, line by line. The heading and all rows of one open card
  * share one sideways position (a Reanimated shared value per card, SidewaysViewport.tsx), and a cell that takes the
@@ -273,6 +273,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
           qty: tr('invoice.items.colQty'),
           charge: fieldHeading('charge'),
           labour: fieldHeading('labour_rate'),
+          tax: fieldHeading('tax'),
           amount: tr('invoice.items.colAmount'),
         },
         oneTime
