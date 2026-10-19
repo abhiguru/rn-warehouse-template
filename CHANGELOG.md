@@ -28,8 +28,11 @@ No backend change.
 
 Pairs with the backend PR abhiguru/supabase-warehouse-template #128. Merge and deploy the backend first for the full behaviour:
 migration 100 (`invoice.grn_pricing_mode`) and migration 109 (`get_invoice_detail` lines gain `item_id`, `dispatch_id` and `rack`, in
-the order of the Create preview). On an older server the app still works: Edit falls back to `get_invoice_data` for the pricing mode
-and the lines, and the Line items tab groups the lines by `item_name` with an empty `dispatch_id` (no dispatch link). Migrations 101,
+the order of the Create preview). On an older server the app still works. Edit asks `get_invoice_data` only for the pricing mode; its lines always come from
+`get_invoice_detail`. Without migration 109 those lines carry no `item_id`, `dispatch_id` or `rack`: the Items step then groups by
+mark alone (`invoiceGroupKey`), so two items with one mark share a card; the lines come in no fixed order, and `savedLineOverrides`
+compares by item name. The Line items tab is unaffected by 100 and 109 (it uses `get_invoice_data` plus
+`get_invoice_items_detailed`). Migrations 101,
 102 and 110 and the Kong gzip are server-side only (smaller, faster answers; the app needs nothing from them).
 
 - **Invoice -> "Step 2 of 3 · Items": dispatch details behind a toggle.** Each item and mark card shows its dispatch lines behind
@@ -56,8 +59,8 @@ and the lines, and the Line items tab groups the lines by `item_name` with an em
 - **Speed (phone timings on a big GRN, HVD4).** The formatter cache; narrowed form subscriptions (typing in step 1 no longer
   redraws step 2); frozen lines; the per-field validation fast path on Next and Save with the full yup check as the fallback;
   the stored sign-in session kept in memory (cleared on every write, sign-out, server switch, session change and return to the
-  foreground); a cheaper GRN load and Review drawn with `deferBody`. Next on Items: 5 s -> 0.5 s; picking a big GRN: about
-  3 s -> about 1.2 s; a key in a line field: about 350 ms -> about 100 ms.
+  foreground); a cheaper GRN load and Review drawn with `deferBody`. Next on Items: 5 s -> 0.5 s; picking a big GRN: first byte about
+  0.75 s -> about 0.45 s (the phone was on a faster network for the second figure), storing the answer 280 ms -> 38 ms, the answer itself 27 MB -> 2.2 MB (gzip on top); a key in a line field: about 350 ms -> about 100 ms.
 - **Invoices list card.** The amounts are a nested table (a NULL amount is shown as 0). The header shows the invoice number only
   (the spoken label is still "Invoice N"), with the date and the GRN on one line.
 - **Invoice details -> Line items tab.** An opened lot shows the same table as step 2 (Dispatch pinned, Date, Months, Days, Qty,
@@ -69,7 +72,7 @@ and the lines, and the Line items tab groups the lines by `item_name` with an em
   `stepIncrease`, `stepLineDecrease`, `stepLineIncrease`, `stepLowerToMax`, `stepLineLowerToMax`, `stepUnitMoney`, `stepDone`,
   `stepDoneAverage`, `averageNote`, `groupAverageA11y`, `showLines`, `hideLines`, `showLinesA11y`, `hideLinesA11y`,
   `linesToFix`; `invoice.detailsTable.lineSpoken`, `lineSpokenOneTime`; and the changed `invoice.validation.chargeRange` text (limit
-  9999.99). Unused keys removed in English and Gujarati: `lists.invoice.labourAmount`, `adjustmentAmount`, `netBeforeTax`, `tax`.
+  9999.99). Unused keys removed in English and Gujarati: `lists.invoice.labour`, `labourAmount`, `adjustmentAmount`, `netBeforeTax`, `tax`.
 
 ## Unreleased — Dispatch and invoice review; invoice form
 

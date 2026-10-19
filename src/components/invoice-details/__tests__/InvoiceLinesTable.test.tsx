@@ -147,6 +147,43 @@ describe('invoice Items table', () => {
     expect(count()).toBe(130);
   });
 
+  it('keeps the height of a long lot while its rows are still being drawn', () => {
+    jest.useFakeTimers();
+    const many = Array.from({ length: 130 }, (_, i) => line({ id: String(100 + i) }));
+    render(<InvoiceLineItemsTab items={many} />);
+
+    // Before any timer runs: 40 rows drawn, the other 90 are a spacer of the same total height.
+    const rowHeight = StyleSheet.flatten(byTestId('invoice-line-100').props.style).height as number;
+    const spacer = StyleSheet.flatten(byTestId('invoice-lines-spacer-lot-cumin').props.style).height as number;
+    const rows = tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.testID === 'string' && /^invoice-line-\d+$/.test(n.props.testID)).length;
+    expect(rows).toBe(40);
+    expect(rows * rowHeight + spacer).toBe(130 * rowHeight);
+    for (let i = 0; i < 4; i += 1) act(() => { jest.advanceTimersByTime(50); });
+    expect(has('invoice-lines-spacer-lot-cumin')).toBe(false);
+  });
+
+  it('with a screen reader on, a line without a dispatch id is an accessible view, not a disabled link', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    await act(async () => { tree = create(<InvoiceLineItemsTab items={[line({ id: '09', dispatch_id: undefined })]} on_view_dispatch={jest.fn()} />); });
+    const overlay = byTestId('invoice-line-overlay-09');
+    expect(overlay.props.accessible).toBe(true);
+    expect(overlay.props.accessibilityLabel).toContain('BDG009');
+    expect(overlay.props.accessibilityRole).toBeUndefined();
+    expect(overlay.props.disabled).toBeUndefined();
+  });
+
+  it('shows no Labour on the summary of a one-time lot', () => {
+    render(<InvoiceLineItemsTab items={[line({ id: '01', one_time: true })]} />);
+    expect(textOf(byTestId('invoice-group-row-lot-cumin'))).toBe('Cumin Seed|CS/1 · 50 kg each|Rate ₹9.00 · Tax 5%|10|₹173.25');
+  });
+
+  it('shows the Rate but no Labour when the charge agrees and the labour differs', () => {
+    render(<InvoiceLineItemsTab items={[cumin1, line({ id: '02', labour_rate: 2 })]} />);
+    const summary = textOf(byTestId('invoice-group-row-lot-cumin'));
+    expect(summary).toContain('Rate ₹9.00');
+    expect(summary).not.toContain('Labour');
+  });
+
   it('with a screen reader on, puts a Pressable link over each line that opens the dispatch', async () => {
     jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
     const onDispatch = jest.fn();

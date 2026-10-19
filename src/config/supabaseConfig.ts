@@ -1570,7 +1570,7 @@ export const ensureValidTokens = async (): Promise<boolean> =>
 //   foreground. Every drop also bumps credentialCacheVersion, so a read that was running while a
 //   write began never fills the cache with its (older) values.
 // - Only valid for the operator server it was read under (operatorKey()); another one is a miss.
-// When in doubt it is dropped: that costs one SecureStore read, as before the cache existed.
+// When in doubt it is dropped: that costs a full read (3 to 5 SecureStore reads), as before the cache existed.
 type CachedSession = { authToken: string; refreshToken: string; expiresAt: number; operator: string };
 let storedSessionCache: CachedSession | null = null;
 let credentialCacheVersion = 0;

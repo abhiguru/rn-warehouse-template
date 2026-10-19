@@ -155,9 +155,9 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
         grn_quantity: item.grn_quantity || 0,
         one_time: !!item.one_time,
         total_dispatch_qty: 0,
-        charge_per_unit: item.charge_per_unit || item.charge || 0,
+        charge_per_unit: undefined,
         tax_rate: item.tax || 0,
-        labour_rate: item.labour_rate || 0,
+        labour_rate: undefined,
         total_base_amount: 0,
         total_tax_amount: 0,
         total_amount: 0,
@@ -289,11 +289,11 @@ const lotLine = (group: Pick<InvoiceLineItemGroupData, 'package_mark' | 'weight'
   return parts.length > 0 ? parts.join(' · ') : null;
 };
 
-/** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; each part only when every line of the lot agrees, labour and tax only when there are any. */
+/** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; each part only when every line of the lot agrees, labour (never in a one-time lot) and tax only when there are any. */
 const rateLine = (group: InvoiceLineItemGroupData): string =>
   [
     group.charge_per_unit !== undefined ? tr('invoice.detailsTable.rate', { amount: formatInvoiceAmount(group.charge_per_unit) }) : null,
-    group.labour_rate !== undefined && group.labour_rate > 0
+    !group.one_time && group.labour_rate !== undefined && group.labour_rate > 0
       ? tr('invoice.detailsTable.labour', { amount: formatInvoiceAmount(group.labour_rate) })
       : null,
     group.tax_rate !== undefined && group.tax_rate > 0 ? tr('invoice.detailsTable.tax', { value: group.tax_rate }) : null,

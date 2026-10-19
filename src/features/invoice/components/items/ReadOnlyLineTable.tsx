@@ -219,7 +219,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
           fill={t.surface.card}
           rowStyle={bodyRow}
           pinned={
-            <View style={[styles.pinnedBox, { width: pinnedWidth, paddingLeft: space.md }]} {...hidden}>
+            <View style={[styles.pinnedBox, { width: pinnedWidth, paddingRight: 0 }]} {...hidden}>
               {shown.map((line, index) => {
                 const canOpen = !!(line.dispatchId && onViewDispatch);
                 return (
@@ -229,7 +229,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
                       if (line.dispatchId) onViewDispatch?.(line.dispatchId);
                     }}
                     disabled={!canOpen}
-                    style={({ pressed }) => [{ height: rowHeight, justifyContent: 'center' }, rowBorder(index), pressed && detail.rowPressed]}
+                    style={({ pressed }) => [{ height: rowHeight, justifyContent: 'center', paddingLeft: space.md, paddingRight: space.sm }, rowBorder(index), pressed && detail.rowPressed]}
                     accessibilityRole={canOpen ? 'link' : undefined}
                     accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
                     testID={`invoice-line-link-${line.id}`}
@@ -255,6 +255,10 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
             ))}
           </View>
         </SidewaysViewport>
+        {/* The rows not drawn yet keep their height (every row has one), so a lot that mounts again does not move what is below it. */}
+        {shown.length < total ? (
+          <View style={{ height: (total - shown.length) * rowHeight }} testID={`invoice-lines-spacer-${groupKey}`} {...hidden} />
+        ) : null}
         {screenReader
           ? shown.map((line, index) => {
               const canOpen = !!(line.dispatchId && onViewDispatch);
@@ -263,18 +267,29 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
               };
               // A view that ignores touches gets no hover events on Android, so explore-by-touch would find nothing here:
               // while a screen reader is on the overlay is a Pressable that does what the pinned link does (style guide 13.7).
+              if (!canOpen) {
+                // No link, no "disabled": a plain accessible view with the line's label, still found by explore-by-touch.
+                return (
+                  <View
+                    key={line.id}
+                    style={[overlay, { top: index * rowHeight, height: rowHeight }]}
+                    accessible
+                    accessibilityLabel={spoken(line)}
+                    testID={`invoice-line-overlay-${line.id}`}
+                  />
+                );
+              }
               return (
                 <Pressable
                   key={line.id}
                   onPress={open}
-                  disabled={!canOpen}
                   style={[overlay, { top: index * rowHeight, height: rowHeight }]}
                   accessible
-                  accessibilityRole={canOpen ? 'link' : undefined}
+                  accessibilityRole="link"
                   accessibilityLabel={spoken(line)}
-                  accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
-                  accessibilityActions={canOpen ? [{ name: 'activate' }] : undefined}
-                  onAccessibilityAction={canOpen ? open : undefined}
+                  accessibilityHint={tr('invoice.lineItem.opensDispatchHint')}
+                  accessibilityActions={[{ name: 'activate' }]}
+                  onAccessibilityAction={open}
                   testID={`invoice-line-overlay-${line.id}`}
                 />
               );
