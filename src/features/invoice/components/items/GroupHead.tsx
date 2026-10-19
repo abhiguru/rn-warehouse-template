@@ -1,47 +1,42 @@
 /**
  * The top of a group's card: the item name, its mark (up to two lines, never an empty chip), the
- * weights, the group total and, in a new invoice for those who may change prices, the pencil that
- * opens the item's price list. How many bags were dispatched is a line of its own under the name
+ * weights and the group total (the card's total: there is no separate total row). How many bags were dispatched is a line of its own under the name
  * and total, across the width of the heading group (number and unit kept together with `nb`, never
  * cut), so it stays on one line at large text sizes instead of wrapping in the narrow name column.
- * The row and this line share one accessible element carrying the heading's spoken label; the
- * pencil stays beside it as its own button.
+ * The row and this line share one accessible element carrying the heading's spoken label.
  */
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { nb, numberColumnWidth, rowWidth, useTableLayout } from '@/components/common/DetailTable';
 import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
-import { iconSize, space, touchTarget, typography } from '@/theme/tokens';
+import { iconSize, space, typography } from '@/theme/tokens';
 import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
 import type { ItemsStyles } from './itemsStyles';
-import type { ItemsActions } from './itemsModel';
 
 interface Props {
   group: InvoiceItemGroup;
   groupKey: string;
   total: number;
-  canEditPricing: boolean;
   /** The hint "Tap a figure to change it." sits here when the group has no column headings (cards). */
   showHint: boolean;
-  actions: ItemsActions;
   styles: ItemsStyles;
 }
 
 /** The total sits beside the name while it takes no more than this share of the heading; otherwise it goes under the name. */
 export const HEAD_TOTAL_SHARE = 0.45;
 
-export const GroupHead = React.memo(function GroupHead({ group, groupKey, total, canEditPricing, showHint, actions, styles }: Props) {
+export const GroupHead = React.memo(function GroupHead({ group, groupKey, total, showHint, styles }: Props) {
   const t = useTokens();
   const table = useTableLayout();
   const totalText = formatInvoiceAmount(total);
   // Never cut: when the total (weight 600, at the text size) would take more than its share of the
   // heading beside the name, it goes on its own line under the name, as wide as the heading.
   const totalWidth = numberColumnWidth(table, 0, [], [totalText], typography.headline.fontSize ?? 17);
-  const headingWidth = rowWidth(table) - (canEditPricing ? touchTarget - space.sm : 0) - space.sm;
+  const headingWidth = rowWidth(table) - space.sm;
   const underName = totalWidth > headingWidth * HEAD_TOTAL_SHARE;
   const totalBlock = (
     <>
@@ -95,16 +90,6 @@ export const GroupHead = React.memo(function GroupHead({ group, groupKey, total,
         {/* Under the name and total, across the group's width; part of the heading's spoken label. */}
         <Text style={styles.dispatched}>{nb(dispatched)}</Text>
         </View>
-        {canEditPricing ? (
-          <Pressable
-            style={({ pressed }) => [styles.pencil, pressed && styles.pencilPressed]}
-            onPress={() => actions.editPricing(groupKey)}
-            accessibilityRole="button"
-            accessibilityLabel={tr('invoice.items.editPricingA11y', { item: group.item_name })}
-          >
-            <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
-          </Pressable>
-        ) : null}
       </View>
       {showHint ? <Text style={styles.hint}>{tr('invoice.items.hint')}</Text> : null}
     </View>

@@ -8,7 +8,7 @@ import { TextInput } from 'react-native';
 import type { ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applySavedRates, bulkUpdateItemGroupPricing, updateEditedItem } from '@/store/slices/invoiceFormSlice';
-import { InvoiceItemsEditor, type EditPricingParams, type InvoiceItemsEditorHandle } from '@/features/invoice/components/items/InvoiceItemsEditor';
+import { InvoiceItemsEditor, type InvoiceItemsEditorHandle } from '@/features/invoice/components/items/InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 interface State {
@@ -29,11 +29,9 @@ export const unmountAll = (): void => {
 export function ConnectedEditor({
   oneTime = false,
   editorRef,
-  onEditPricing,
 }: {
   oneTime?: boolean;
   editorRef?: React.Ref<InvoiceItemsEditorHandle>;
-  onEditPricing?: (params: EditPricingParams) => void;
 }) {
   const dispatch = useAppDispatch();
   const items = useAppSelector((state) => (state as unknown as State).invoiceForm.items);
@@ -47,7 +45,6 @@ export function ConnectedEditor({
       onItemUpdate={(temp_id, field, value) => dispatch(updateEditedItem({ temp_id, values: { [field]: value } }))}
       onBulkEdit={(group_key, pricing) => dispatch(bulkUpdateItemGroupPricing({ group_key, pricing }))}
       onRestoreRates={(rates) => dispatch(applySavedRates(rates))}
-      onEditPricing={onEditPricing}
     />
   );
 }

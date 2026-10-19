@@ -4,7 +4,7 @@ import { COL_GAP } from './itemsLayout';
 
 /**
  * Styles of the parts one group's card is drawn in. The card is several list rows (head, shared rows,
- * total, toggle and, while open, column headings and lines): `top`, `side` and `bottom` give them one
+ * toggle and, while open, column headings and lines): `top`, `side` and `bottom` give them one
  * outline; the last part draws `bottom`. No part
  * uses a negative margin, which a list measures wrongly.
  */
@@ -91,16 +91,6 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     headContent: { flex: 1, minWidth: 0 },
     nameRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const },
     name: { ...typography.headline, color: t.text.primary, flex: 1, minWidth: 0 },
-    pencil: {
-      width: touchTarget,
-      height: touchTarget,
-      marginVertical: -space.md,
-      marginRight: -space.sm,
-      borderRadius: radius.button,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    pencilPressed: { backgroundColor: t.brand.subtle },
     chips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.xs, paddingTop: space.xs },
     chip: {
       flexDirection: 'row' as const,
@@ -136,18 +126,6 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     sharedStackItem: {},
     sharedButtons: { paddingTop: space.xs },
     prefix: { ...typography.body, color: t.text.secondary },
-    // Total
-    totalRow: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      alignItems: 'center' as const,
-      gap: space.md,
-      minHeight: touchTarget,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
-      borderTopWidth: 1,
-      borderTopColor: t.table.separator,
-    },
     // Toggle that opens a group's dispatch lines
     toggleRow: {
       flexDirection: 'row' as const,
@@ -162,15 +140,12 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     toggleError: { ...typography.footnote, color: t.status.negative.text, paddingHorizontal: space.md, paddingBottom: space.sm },
     togglePressed: { backgroundColor: t.brand.subtle },
     toggleText: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flex: 1, minWidth: 0 },
-    totalLabel: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
     totalValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
     // Page
     empty: { padding: space.giant, alignItems: 'center' as const, gap: space.sm },
     emptyTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
     emptyText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
     listHeader: { paddingBottom: space.sm, alignItems: 'flex-start' as const },
-    loadingRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, paddingVertical: space.sm },
-    loadingText: { ...typography.subhead, color: t.text.secondary },
   };
 };
 export type ItemsStyles = ReturnType<typeof makeItemsStyles>;

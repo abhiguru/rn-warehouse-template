@@ -1,7 +1,7 @@
 /**
  * The pure parts of the invoice items editor: field keys, the text a rate shows, what a group's
  * "(all lines)" fields show, what their − / + steppers do (and those beside a line card's own figures), and the list rows a group is drawn as: head,
- * the shared figures (one part, side by side or stacked), total, the toggle and, only while the group
+ * the shared figures (one part, side by side or stacked), the toggle and, only while the group
  * is open, the column headings of the sideways-scrolling line table and one row per line (a card per line while a screen reader is on).
  */
 import { formatIdentifier, localizeDigits, t as tr, type TranslationKey } from '@/i18n';
@@ -148,7 +148,6 @@ export type ItemsRow =
   | { type: 'line'; key: string; groupKey: string; tempId: string; last: boolean }
   | { type: 'card'; key: string; groupKey: string; tempId: string; last: boolean }
   | { type: 'block'; key: string; groupKey: string; fields: SharedField[]; lines: number }
-  | { type: 'total'; key: string; groupKey: string }
   | { type: 'toggle'; key: string; groupKey: string; open: boolean; lines: number };
 
 export interface RowPlan {
@@ -181,7 +180,7 @@ export function sharedFieldsOf(lines: number, oneTime: boolean): SharedField[] {
 
 /**
  * The rows of the page. A group is: head, the shared block (the "(all lines)" figures in one part, in both
- * modes; the field walk keeps their order), total, the toggle and,
+ * modes; the field walk keeps their order), the toggle and,
  * only when `open` has the group, the column headings (table mode) and one row per line, the last of which
  * draws the card's bottom edge. A closed group has no line rows, so their fields are not in `order`/`rowOf`.
  */
@@ -214,7 +213,6 @@ export function planRows(
     if (shared.length > 0) {
       add({ type: 'block', key: `block|${groupKey}`, groupKey, fields: shared, lines: group.allItems.length }, shared.map((f) => groupFieldKey(groupKey, f)));
     }
-    add({ type: 'total', key: `total|${groupKey}`, groupKey });
     add({ type: 'toggle', key: `toggle|${groupKey}`, groupKey, open: isOpen, lines: group.allItems.length });
     if (isOpen && !mode.cards) add({ type: 'cols', key: `cols|${groupKey}`, groupKey });
     group.allItems.forEach((line: InvoiceItemData, index) => {
@@ -274,7 +272,6 @@ export interface ItemsActions {
   submit: (key: string) => void;
   /** The toggle of a group: opens or closes its dispatch lines (a focused cell of the group is left first). */
   toggle: (groupKey: string) => void;
-  editPricing: (groupKey: string) => void;
   /**
    * A − / + press under an "(all lines)" field: the field it belongs to is settled first (a focused field is left, as
    * the keyboard hiding does), then the stepped figure is applied as if it had been typed there and accepted.

@@ -248,7 +248,7 @@ const invoiceFormSlice = createSlice({
       Object.assign(state.header, headerTotals);
     },
 
-    // Set the rates a saved rate form gives to the lines it concerns. This is not a typed edit:
+    // Puts lines back to given rates (the items editor's revert). This is not a typed edit:
     // a rate typed on the line itself (marked in itemOverrides) is kept, and no mark is added, so
     // a later group rate still applies. A group rate shown for a field that changed is dropped.
     applySavedRates: (

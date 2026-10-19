@@ -4,7 +4,7 @@
  *
  * Each item + mark group is one card with its total in the heading. Under the heading come one part
  * for what all lines share (Charge for 2 or more lines, Labour unless one-time, Tax: always shown, "Mixed" where the lines differ; side by side in one row, each
- * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), the group total, and a toggle,
+ * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), and a toggle,
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
  * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: one table that
  * scrolls sideways at every text size (owner decision, 2026-10-19): Dispatch (pinned) | Date | Months | Days | Qty |
@@ -16,7 +16,7 @@
  * each line a small card instead. Opening and closing has no animation: the rows are virtualized.
  *
  * The page is one keyboard-aware, virtualized FlashList. A card is drawn as several list rows
- * (head, shared part, total, toggle and, while open, column headings and one row per line; the last
+ * (head, shared part, toggle and, while open, column headings and one row per line; the last
  * part draws the card's bottom edge), so a change that adds, removes or resizes a part changes the
  * rows of that group only, and every part keeps its own key. A closed group draws no line rows, so the
  * Next key walks only the fields that are shown.
@@ -62,7 +62,7 @@ import { GroupHead } from './GroupHead';
 import { LineCard } from './LineCard';
 import { LineRow } from './LineRow';
 import { SharedBlock } from './SharedRateRow';
-import { ColumnHeadings, GroupToggle, GroupTotal } from './TableParts';
+import { ColumnHeadings, GroupToggle } from './TableParts';
 import { lineColumnDefs, lineColumnsOf, type LineColumnId } from './lineColumns';
 import { itemsLayout, sameLayout, sharedSideBySide, type ItemsLayout } from './itemsLayout';
 import { countText, monthsText, tableDateText } from './lineText';
@@ -96,17 +96,6 @@ import {
 import { makeItemsStyles } from './itemsStyles';
 import { useFieldWalk, useRefFactory } from './useFieldWalk';
 
-export interface EditPricingParams {
-  item_id: string;
-  item_name: string;
-  /** The tapped group's mark: with the item it tells the group's own lines (and their received days) from other groups. */
-  package_mark: string;
-  weight: number;
-  charge: number;
-  labour_rate: number;
-  tax: number;
-}
-
 export interface RestoredRates {
   temp_id: string;
   charge: number;
@@ -136,7 +125,6 @@ interface Props {
    * refused). Required: without it a refused "(all lines)" value over "Mixed" lines could not be undone.
    */
   onRestoreRates: (rates: RestoredRates[]) => void;
-  onEditPricing?: (params: EditPricingParams) => void;
   /** The screen's content above the groups. */
   ListHeaderComponent?: React.ReactElement | null;
   style?: StyleProp<ViewStyle>;
@@ -186,7 +174,7 @@ const spokenItemOf = (group: InvoiceItemGroup): string => {
 };
 
 export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
-  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, ListHeaderComponent, style, contentContainerStyle },
+  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle },
   ref
 ) {
   const styles = useThemedStyles(makeItemsStyles);
@@ -412,8 +400,8 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   });
 
   // The latest props and state, for the actions below.
-  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk, lineTable, cards: layout.cards, scrollOf, viewport: layout.lines.viewport });
-  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk, lineTable, cards: layout.cards, scrollOf, viewport: layout.lines.viewport };
+  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, plan, walk, lineTable, cards: layout.cards, scrollOf, viewport: layout.lines.viewport });
+  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, plan, walk, lineTable, cards: layout.cards, scrollOf, viewport: layout.lines.viewport };
 
   // Next found a wrong field in a closed group and opened it: now its row is in the plan, scroll to it and focus it.
   useEffect(() => {
@@ -659,23 +647,6 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         stepKey(cellKey(tempId, field), field, direction, line ? lineView(field, line[field]) : undefined);
       },
 
-      editPricing: (groupKey) => {
-        const { onEditPricing: open, groupsByKey: byKey } = latest.current;
-        const group = byKey.get(groupKey);
-        // The first line's values, and its weight: the price that opens is the one of that weight.
-        const first = group?.allItems[0];
-        if (!open || !group || !first) return;
-        open({
-          item_id: group.item_id,
-          item_name: group.item_name,
-          package_mark: group.package_mark,
-          weight: first.weight,
-          charge: first.charge,
-          labour_rate: first.labour_rate,
-          tax: first.tax,
-        });
-      },
-
       refFor,
     };
     return api;
@@ -719,7 +690,6 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
     []
   );
 
-  const canEditPricing = !!onEditPricing;
   // The keyboard's key says "done" on the last field of the page and "next" on every other.
   const lastKey = plan.order[plan.order.length - 1];
   const renderRow = useCallback(
@@ -734,9 +704,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
               group={group}
               groupKey={row.groupKey}
               total={totals.get(row.groupKey) ?? 0}
-              canEditPricing={canEditPricing}
               showHint={mode.cards}
-              actions={actions}
               styles={styles}
             />
           );
@@ -800,14 +768,12 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
             />
           );
         }
-        case 'total':
-          return <GroupTotal groupKey={row.groupKey} lines={group.allItems.length} total={totals.get(row.groupKey) ?? 0} styles={styles} />;
         case 'toggle': {
           return <GroupToggle groupKey={row.groupKey} spokenItem={spokenItemOf(group)} lines={row.lines} open={row.open} refused={row.open ? 0 : refusedByGroup.get(row.groupKey) ?? 0} actions={actions} styles={styles} />;
         }
       }
     },
-    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, lineTable, scrollOf, refusedByGroup]
+    [groupsByKey, modes, totals, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, lineTable, scrollOf, refusedByGroup]
   );
 
   // FlashList spreads its style into an object: it takes one plain style, not an array.

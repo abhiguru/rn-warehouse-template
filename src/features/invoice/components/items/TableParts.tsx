@@ -1,5 +1,5 @@
 /**
- * The total row, the toggle that opens a group's dispatch lines, and the column headings (with the swipe hint
+ * The toggle that opens a group's dispatch lines, and the column headings (with the swipe hint
  * under them) of an open group's card. The card's bottom edge is drawn by the last part: the toggle while
  * the group is closed, the last line while it is open. The heading row is the line table's: the pinned Dispatch
  * heading and, in the card's shared `SidewaysViewport`, the other headings (swiping the heading moves the whole table).
@@ -12,7 +12,6 @@ import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { iconSize } from '@/theme/tokens';
 import { formatCount, formatNumber } from '@/utils/formatters';
-import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { columnInset, type LineTable } from './lineColumns';
 import { SidewaysViewport, type TableScroll } from './SidewaysViewport';
 import type { ItemsActions } from './itemsModel';
@@ -60,30 +59,6 @@ export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, tab
         ))}
       </SidewaysViewport>
       {sideways ? <Text style={styles.hint}>{tr('invoice.items.swipeHint')}</Text> : null}
-    </View>
-  );
-});
-
-interface TotalProps {
-  groupKey: string;
-  lines: number;
-  total: number;
-  styles: ItemsStyles;
-}
-
-export const GroupTotal = React.memo(function GroupTotal({ groupKey, lines, total, styles }: TotalProps) {
-  const dispatches = formatCount(lines, 'dispatch', 'dispatches');
-  const totalText = formatInvoiceAmount(total);
-  return (
-    <View style={styles.side} testID={`group-total-${groupKey}`}>
-      <View
-        style={styles.totalRow}
-        accessible
-        accessibilityLabel={tr('invoice.items.groupTotalA11y', { dispatches, total: totalText })}
-      >
-        <Text style={styles.totalLabel}>{tr('invoice.items.groupTotal', { dispatches })}</Text>
-        <Text style={styles.totalValue} numberOfLines={1}>{totalText}</Text>
-      </View>
     </View>
   );
 });
