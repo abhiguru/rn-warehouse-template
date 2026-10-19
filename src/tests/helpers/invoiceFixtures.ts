@@ -156,6 +156,7 @@ export type InvoiceStore = ReturnType<typeof makeInvoiceStore>;
 export function storeHooks(getStore: () => InvoiceStore) {
   return {
     useAppDispatch: () => getStore().dispatch,
+    useAppStore: () => getStore(),
     useAppSelector: (selector: (state: ReturnType<InvoiceStore['getState']>) => unknown) =>
       useSyncExternalStore(
         (listener) => getStore().subscribe(listener),

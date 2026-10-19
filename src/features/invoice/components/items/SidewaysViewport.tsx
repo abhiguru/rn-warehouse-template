@@ -87,7 +87,7 @@ function EdgeCue({ side, fill, glyphColor, style }: CueProps) {
       style={[cueStyles.cue, left ? cueStyles.left : cueStyles.right, style]}
     >
       <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-      <Text allowFontScaling={false} style={[cueStyles.glyph, left ? cueStyles.glyphLeft : cueStyles.glyphRight, { color: glyphColor }]}>
+      <Text allowFontScaling={false} style={[typography.caption1, left ? cueStyles.glyphLeft : cueStyles.glyphRight, { color: glyphColor }]}>
         {left ? '◂' : '▸'}
       </Text>
     </Animated.View>
@@ -184,7 +184,6 @@ const cueStyles = StyleSheet.create({
   cue: { position: 'absolute', top: 0, bottom: 0, width: CUE_WIDTH, justifyContent: 'center' },
   left: { left: 0 },
   right: { right: 0 },
-  glyph: { ...typography.caption1 },
   glyphLeft: { textAlign: 'left', paddingLeft: 2 },
   glyphRight: { textAlign: 'right', paddingRight: 2 },
 });

@@ -10,6 +10,7 @@ import { InvoiceLineItemsTab, type InvoiceLineItem } from '../InvoiceLineItemsTa
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
+  useAppStore: () => ({ getState: () => ({ invoiceForm: { items: [], editedItems: {}, bulkPricing: {}, header: {} } }), subscribe: () => () => undefined, dispatch: jest.fn() }),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
