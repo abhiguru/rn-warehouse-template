@@ -14,11 +14,9 @@ export const CARD_SCALE = 1.3;
 /** The ring (2) and the padding (xs) on each side of a cell's text. */
 export const CELL_CHROME = 2 * (2 + space.xs);
 
-/** Widths at font scale 1 for the figures a rate holds (₹999.99, 100 %, 9,999 bags, ₹99,999.00). */
+/** Widths at font scale 1 for the figures a rate holds (₹999.99, 100 %, 9,999 bags, ₹99,999.00).
+ * A figure typed wider than its column is cut with "…" until the field is left: the editor holds the layout meanwhile. */
 const BASE = { qty: 44, charge: 64, labour: 56, tax: 44, amount: 84 } as const;
-
-/** The Amount column always has room for this, so ordinary typing (a charge of 999.99 on 9,999 bags) never needs it wider. */
-export const AMOUNT_FLOOR = '₹99,999.00';
 
 export type FigureColumn = keyof typeof BASE;
 
@@ -68,7 +66,7 @@ export function itemsLayout(
     charge: cellColumn(table, BASE.charge, figures.charge, headings.charge),
     labour: cellColumn(table, BASE.labour, figures.labour, headings.labour),
     tax: cellColumn(table, BASE.tax, figures.tax, headings.tax),
-    amount: Math.max(numberColumnWidth(table, BASE.amount, [], [...figures.amount, AMOUNT_FLOOR]), headingWidth(table, headings.amount)) + space.xs,
+    amount: Math.max(numberColumnWidth(table, BASE.amount, [], figures.amount), headingWidth(table, headings.amount)) + space.xs,
   };
   const row = rowWidth(table);
   const scale = table.scale;

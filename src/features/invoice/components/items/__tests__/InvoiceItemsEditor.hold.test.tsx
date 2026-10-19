@@ -88,13 +88,6 @@ describe('the layout while a cell is focused', () => {
     await settle();
     expect(cardsNow(tree)).toBe(true);
   });
-
-  it('sizes the Amount column for at least ₹99,999.00 whatever the lines hold', async () => {
-    const { numberColumnWidth } = require('@/components/common/DetailTable');
-    const tree = await render(groupLines(2));
-    const table = { scale: 1, numberWidth: (base: number) => Math.ceil(base) };
-    expect(widthsOf(tree).amount).toBeGreaterThanOrEqual(numberColumnWidth(table, 0, [], ['₹99,999.00']));
-  });
 });
 
 describe('a press on a cell', () => {

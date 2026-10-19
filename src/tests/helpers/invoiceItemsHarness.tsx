@@ -80,3 +80,36 @@ export const focusedIds = (tree: ReactTestRenderer): string[] => {
   const focus = any.instance.focus as unknown as { mock: { contexts: Array<{ props?: { testID?: string } } | undefined> } };
   return focus.mock.contexts.map((context) => String(context?.props?.testID));
 };
+
+/**
+ * The real `TextInput` mode. A test file that calls these starts with
+ * `jest.unmock('react-native/Libraries/Components/TextInput/TextInput')`: react-native's own input
+ * releases the caller's ref and sets it again on every key it reports (`setLocalRef` depends on the
+ * event count), which its jest mock does not, and the editor has to hold up under that. The host input
+ * (the string-typed node with the test id) is driven with the events the device sends.
+ */
+const NATIVE_TARGET = 7;
+export const hostInputOf = (tree: ReactTestRenderer, testID: string): ReactTestInstance =>
+  tree.root.find((node) => typeof node.type === 'string' && node.props.testID === testID && typeof node.props.onChange === 'function');
+/** The focus event of the native input. */
+export const hostFocus = (tree: ReactTestRenderer, testID: string): void => {
+  hostInputOf(tree, testID).props.onFocus({ nativeEvent: { target: NATIVE_TARGET } });
+};
+/** One key: the whole text now, and the number of events so far (the native input counts them). */
+export const hostKey = (tree: ReactTestRenderer, testID: string, text: string, eventCount: number): void => {
+  hostInputOf(tree, testID).props.onChange({ nativeEvent: { text, eventCount, target: NATIVE_TARGET } });
+};
+export const hostBlur = (tree: ReactTestRenderer, testID: string): void => {
+  hostInputOf(tree, testID).props.onBlur({ nativeEvent: { target: NATIVE_TARGET } });
+};
+/** What the host input shows. */
+export const hostText = (tree: ReactTestRenderer, testID: string): string => String(hostInputOf(tree, testID).props.text ?? hostInputOf(tree, testID).props.value);
+
+/** Calls the handlers registered for a keyboard event, from the recorded calls of a spy on `Keyboard.addListener`. */
+export const emitKeyboard = (calls: ReadonlyArray<readonly unknown[]>, event: string): void => {
+  calls.filter(([name]) => name === event).forEach(([, handler]) => (handler as () => void)());
+};
+
+/** The text the editor holds for a line's charge entry (undefined: no entry, the stored figure shows). */
+export const chargeEntryOf = (tree: ReactTestRenderer, tempId: string): string | undefined =>
+  tree.root.find((node) => typeof node.type !== 'string' && node.props.item?.temp_id === tempId && 'charge' in node.props && 'lastKey' in node.props).props.charge?.text;

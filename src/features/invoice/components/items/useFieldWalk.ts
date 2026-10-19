@@ -80,9 +80,14 @@ export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk 
   }, [nodes]);
 }
 
-/** A stable ref callback per field key. */
+/**
+ * A stable ref callback per field key. `onGone` is called when a field's ref was released and not set
+ * again by the end of the commit: react-native's text input releases the ref and sets it again on every
+ * key it reports, and that is not the field going away.
+ */
 export function useRefFactory(register: FieldWalk['register'], onGone: (key: string) => void) {
   const cache = useRef(new Map<string, (node: TextInput | null) => void>()).current;
+  const live = useRef(new Set<string>()).current;
   const callbacks = useRef({ register, onGone });
   callbacks.current = { register, onGone };
   return useCallback(
@@ -91,12 +96,20 @@ export function useRefFactory(register: FieldWalk['register'], onGone: (key: str
       if (!ref) {
         ref = (node) => {
           callbacks.current.register(key, node);
-          if (!node) callbacks.current.onGone(key);
+          if (node) {
+            live.add(key);
+            return;
+          }
+          live.delete(key);
+          // After the commit: a re-set of the same key by then means the field is still there.
+          Promise.resolve().then(() => {
+            if (!live.has(key)) callbacks.current.onGone(key);
+          });
         };
         cache.set(key, ref);
       }
       return ref;
     },
-    [cache]
+    [cache, live]
   );
 }

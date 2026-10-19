@@ -42,6 +42,7 @@ describe('a cell without the focus', () => {
     await act(async () => { tap().props.onPress(); });
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledTimes(1);
+    expect(onStart.mock.invocationCallOrder[0]).toBeLessThan(focus.mock.invocationCallOrder[0]);
     // the caller's ref got the same input
     expect(ref.current).toBe(input().instance);
     expect(touch().props.pointerEvents).toBe('none');

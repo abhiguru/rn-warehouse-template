@@ -3,6 +3,7 @@
  * The real hook, a real invoice-form slice and the real summary.
  */
 import React from 'react';
+import { Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { fillNewInvoice, groupLines, invoiceLine, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
@@ -60,7 +61,17 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     await act(async () => { tree = create(<Step />); });
   };
   beforeEach(() => { jest.clearAllMocks(); mockRole = 'staff'; });
-  afterEach(async () => { await act(async () => { tree.unmount(); }); });
+  afterEach(async () => { jest.restoreAllMocks(); await act(async () => { tree.unmount(); }); });
+
+  it('lets go of the focused input when the keyboard hides (useBlurOnKeyboardHide)', async () => {
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation((() => ({ remove: jest.fn() })) as never);
+    const focused = { blur: jest.fn() };
+    jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(focused as never);
+    await open();
+    expect(focused.blur).not.toHaveBeenCalled();
+    await act(async () => { listen.mock.calls.filter(([name]) => name === 'keyboardDidHide').forEach(([, handler]) => (handler as () => void)()); });
+    expect(focused.blur).toHaveBeenCalledTimes(1);
+  });
 
   it('draws one card with three sections, and nothing but the kit as headings', async () => {
     await open();

@@ -26,6 +26,7 @@ import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, useWindowDimension
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTableLayout } from '@/components/common/DetailTable';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';
+import { useScreenReader } from '@/hooks/useScreenReader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { getLanguage, t as tr } from '@/i18n';
 import { iconSize } from '@/theme/tokens';
@@ -46,7 +47,7 @@ import { LineCard } from './LineCard';
 import { LineRow } from './LineRow';
 import { SharedBlock, SharedRateRow } from './SharedRateRow';
 import { ColumnHeadings, GroupTotal } from './TableParts';
-import { groupIsCards, itemsLayout, sameLayout } from './itemsLayout';
+import { groupIsCards, itemsLayout, sameLayout, type ItemsLayout } from './itemsLayout';
 import {
   cellKey,
   fieldHeading,
@@ -208,8 +209,23 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
   );
   const held = useRef(liveLayout);
   if (!sameLayout(held.current, liveLayout)) held.current = liveLayout;
-  const layout = held.current;
-  useEffect(() => () => clearTimeout(settleTimer.current), []);
+  // While a screen reader is on the lines are cards: TalkBack's explore-by-touch does not reach a table
+  // cell (its wrapper ignores touches, which Android's view group also applies to the hover events), while
+  // a card's input takes them. Like a change of text size, a switch while the step is open is not held.
+  const screenReader = useScreenReader();
+  const heldLayout = held.current;
+  const layout = useMemo<ItemsLayout>(
+    () => (screenReader && !heldLayout.cards ? { ...heldLayout, cards: true, rateColumns: false } : heldLayout),
+    [screenReader, heldLayout]
+  );
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+      clearTimeout(settleTimer.current);
+    },
+    []
+  );
 
   // A group whose lines differ in labour or tax shows them line by line, and keeps doing so while
   // it is on the screen: typing a line's labour equal to the others must not take the field away.
@@ -312,11 +328,11 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
   }, []);
 
   const dropIfValid = useCallback((key: string) => {
-    // The field that has the focus keeps its entry whatever happens to its ref (a row that is drawn
-    // again releases and sets it): what is typed is not taken away from the person typing.
-    const hasFocus = focusedKey.current === key;
+    // Called only for a field whose ref was released and not set again at once (the native text input
+    // releases and sets the ref on every key, which `useRefFactory` does not pass on): the field is gone.
+    // A field that is only focused is never dropped here, so what is typed is not taken away.
+    if (!mounted.current) return;
     released(key);
-    if (hasFocus) return;
     setFields((prev) => {
       const state = prev[key];
       if (!state || settle(parseKey(key).field, state.text).error) return prev;
