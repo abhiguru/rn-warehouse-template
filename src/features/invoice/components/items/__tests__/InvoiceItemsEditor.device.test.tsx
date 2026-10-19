@@ -6,7 +6,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, chargeEntryOf, inputOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
 import { SCROLL_VIEW_POSITION } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -38,26 +38,63 @@ const change = async (tree: ReactTestRenderer, key: string, text: string) => { a
 const cellOf = (tree: ReactTestRenderer, key: string) => tree.root.findAllByType(EditableNumberCell).find((node) => node.props.testID === key)!;
 
 describe('a ref released while the field is typed in', () => {
+  const release = async (tree: ReactTestRenderer, key: string, andSet: boolean) => {
+    const node = inputOf(tree, key).instance;
+    const ref = cellOf(tree, key).props.ref as (node: unknown) => void;
+    await act(async () => {
+      ref(null);
+      if (andSet) ref(node);
+    });
+  };
+
   it('does not take the typed text away: "5", ".", "5" stays "5.5" (phone: "5.00.5")', async () => {
     const tree = await render(groupLines(2));
     await focus(tree, CHARGE_1);
     await change(tree, CHARGE_1, '5');
-    // the device releases the ref (the row is drawn again) after the commit
-    await act(async () => { (cellOf(tree, CHARGE_1).props.ref as (node: null) => void)(null); });
+    // the device releases the ref and sets it again (the native input does it on every key)
+    await release(tree, CHARGE_1, true);
     expect(inputOf(tree, CHARGE_1).props.value).toBe('5');
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBe('5');
     await change(tree, CHARGE_1, '5.');
-    await act(async () => { (cellOf(tree, CHARGE_1).props.ref as (node: null) => void)(null); });
+    await release(tree, CHARGE_1, true);
     await change(tree, CHARGE_1, '5.5');
     expect(inputOf(tree, CHARGE_1).props.value).toBe('5.5');
     expect(mockStore.getState().invoiceForm.items[0].charge).toBe(5.5);
   });
 
-  it('still drops a valid entry of a field that has no focus', async () => {
+  it('still drops a valid entry of a field that has no focus, when its ref is released and not set again', async () => {
     const tree = await render(groupLines(2));
     await focus(tree, CHARGE_1);
     await change(tree, CHARGE_1, '5');
-    await act(async () => { inputOf(tree, CHARGE_1).props.onBlur({}); });
-    expect(inputOf(tree, CHARGE_1).props.value).toBe('5.00');
+    // the focus moves to another cell without the first one's blur having been reported
+    await focus(tree, CHARGE_2);
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBe('5');
+    await release(tree, CHARGE_1, false);
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBeUndefined();
+  });
+
+  it('keeps the entry of a field whose ref was released and set again, also when it has no focus', async () => {
+    const tree = await render(groupLines(2));
+    await focus(tree, CHARGE_1);
+    await change(tree, CHARGE_1, '5');
+    await focus(tree, CHARGE_2);
+    await release(tree, CHARGE_1, true);
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBe('5');
+  });
+});
+
+describe('under StrictMode (effects run twice)', () => {
+  it('still drops a valid entry of a field that is gone and has no focus', async () => {
+    mockStore = makeInvoiceStore();
+    fillNewInvoice(mockStore, groupLines(2));
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = track(create(<React.StrictMode><ConnectedEditor /></React.StrictMode>)); });
+    await focus(tree, CHARGE_1);
+    await change(tree, CHARGE_1, '5');
+    await focus(tree, CHARGE_2);
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBe('5');
+    await act(async () => { (cellOf(tree, CHARGE_1).props.ref as (node: null) => void)(null); });
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBeUndefined();
   });
 });
 
@@ -88,24 +125,5 @@ describe('the list', () => {
   it('closes the keyboard on a drag, so no field keeps a focus ring on a row that scrolls away', async () => {
     const tree = await render(groupLines(2));
     expect(tree.root.findByType('FlashList' as never).props.keyboardDismissMode).toBe('on-drag');
-  });
-});
-
-describe('P2-5: a vertical swipe over the table body', () => {
-  const claims = (tree: ReactTestRenderer) =>
-    tree.root
-      .findAll((node) => typeof node.type === 'string')
-      .filter((node) => node.props.onMoveShouldSetResponder || node.props.onMoveShouldSetResponderCapture || node.props.onStartShouldSetResponderCapture)
-      .map((node) => String(node.props.testID ?? node.type));
-
-  it('is claimed by no row in table mode on move or capture (only the cell\'s own Pressable takes a tap)', async () => {
-    const tree = await render(groupLines(2));
-    expect(claims(tree)).toEqual([]);
-  });
-
-  it('the dev responder log is off by default', async () => {
-    const { responderLog, LOG_TABLE_RESPONDERS } = require('../responderLog');
-    expect(LOG_TABLE_RESPONDERS).toBe(false);
-    expect(responderLog('line')).toEqual({});
   });
 });

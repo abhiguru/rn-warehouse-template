@@ -10,7 +10,6 @@ import type { InvoiceItemData } from '@/types/invoice.types';
 import type { ItemsWidths } from './itemsLayout';
 import { cellKey, cellLabel, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
-import { responderLog } from './responderLog';
 
 /** "9 Oct · 1.6 months · 48 days", or "9 Oct · One-time". */
 export const lineMeta = (item: InvoiceItemData, oneTime: boolean): string => {
@@ -61,7 +60,7 @@ export const LineRow = React.memo(function LineRow({ item, widths, perLine, oneT
   const errors = [charge, labour, tax].map((state) => (state?.shown ? state.error : null)).filter(Boolean);
   return (
     <View style={[styles.side, styles.rowDivider]}>
-      <View style={styles.row} testID={`line-${item.temp_id}`} {...responderLog('line')}>
+      <View style={styles.row} testID={`line-${item.temp_id}`}>
         <View style={styles.grow}>
           <Text style={styles.primaryStrong} numberOfLines={1}>{item.dispatch_no}</Text>
           <Text style={styles.secondary}>{lineMeta(item, oneTime)}</Text>

@@ -3,7 +3,7 @@
  * change prices and nowhere else, opens the price form, and Next stops at a figure that holds refused text.
  */
 import React from 'react';
-import { AccessibilityInfo, TextInput } from 'react-native';
+import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { getItemStoragePrices, listItemRates } from '@/services/item-pricing-service';
@@ -144,5 +144,17 @@ describe('Next', () => {
 
     expect(mockNavigateToStep).not.toHaveBeenCalled();
     expect(announce).toHaveBeenCalledWith('Fix the highlighted figure, then continue.');
+  });
+});
+
+describe('closing the keyboard', () => {
+  it('lets go of the focused input when the keyboard hides (useBlurOnKeyboardHide)', async () => {
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation((() => ({ remove: jest.fn() })) as never);
+    const focused = { blur: jest.fn() };
+    jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(focused as never);
+    await render('create');
+    expect(focused.blur).not.toHaveBeenCalled();
+    await act(async () => { listen.mock.calls.filter(([name]) => name === 'keyboardDidHide').forEach(([, handler]) => (handler as () => void)()); });
+    expect(focused.blur).toHaveBeenCalledTimes(1);
   });
 });

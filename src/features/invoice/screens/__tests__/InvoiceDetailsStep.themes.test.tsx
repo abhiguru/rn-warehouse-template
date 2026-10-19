@@ -5,7 +5,7 @@
  * Next only (no Back on step 1).
  */
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, space } from '@/theme/tokens';
 import { AA, contrastRatio } from '@/theme/tokens/contrast';
@@ -87,5 +87,22 @@ describe.each([['create', InvoiceFormStep1], ['edit', InvoiceEditStep1]] as cons
       expect(labels).not.toContain('Back');
       await act(async () => { tree.unmount(); });
     });
+  });
+});
+
+describe('closing the keyboard', () => {
+  afterEach(async () => { jest.restoreAllMocks(); await act(async () => { tree.unmount(); }); });
+
+  it('lets go of the focused input when the keyboard hides (useBlurOnKeyboardHide)', async () => {
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation((() => ({ remove: jest.fn() })) as never);
+    const focused = { blur: jest.fn() };
+    jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(focused as never);
+    mockTheme = { preference: 'light', brand: 'orange' };
+    mockStore = makeInvoiceStore();
+    fillNewInvoice(mockStore, groupLines(1));
+    await act(async () => { tree = create(<InvoiceFormStep1 />); });
+    expect(focused.blur).not.toHaveBeenCalled();
+    await act(async () => { listen.mock.calls.filter(([name]) => name === 'keyboardDidHide').forEach(([, handler]) => (handler as () => void)()); });
+    expect(focused.blur).toHaveBeenCalledTimes(1);
   });
 });

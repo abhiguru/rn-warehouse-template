@@ -22,7 +22,6 @@ import {
   type SharedView,
 } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
-import { responderLog } from './responderLog';
 
 interface FieldProps {
   groupKey: string;
@@ -51,7 +50,7 @@ export const SharedRateRow = React.memo(function SharedRateRow({ groupKey, itemN
   const error = state?.shown ? state.error ?? undefined : undefined;
   return (
     <View style={[styles.side, styles.rowDivider]} testID={`shared-${groupKey}-${field}`}>
-      <View style={styles.row} {...responderLog('shared')}>
+      <View style={styles.row}>
         <Text style={styles.label} numberOfLines={2}>{sharedLabel(field, lines)}</Text>
         <EditableNumberCell
           key={key}

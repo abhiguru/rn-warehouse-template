@@ -1,5 +1,6 @@
 import { CELL_CHROME, groupIsCards, itemsLayout, sameLayout, type ItemsFigures, type ItemsHeadings, type ItemsLayout } from '../itemsLayout';
 import type { TableLayout } from '@/components/common/DetailTable';
+import { setLanguage } from '@/i18n/language';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -23,7 +24,17 @@ const figures = (over: Partial<ItemsFigures> = {}): ItemsFigures => ({
   ...over,
 });
 
+afterEach(() => setLanguage('en'));
+
 describe('itemsLayout', () => {
+  it('draws a table in Gujarati digits for ordinary amounts (₹735, ₹1,500) at 398 to 405 dp and font scale 1.0 (no wider Amount column than its figures need)', () => {
+    setLanguage('gu');
+    const gujarati = figures({ qty: ['૧૨૦'], charge: ['૫.૦૦', '૧૨.૫૦'], labour: ['૨.૦૦'], tax: ['૫'], amount: ['₹૭૩૫.૦૦', '₹૧,૫૦૦.૦૦'] });
+    for (let width = 398; width <= 405; width += 1) {
+      expect([width, itemsLayout(table(width), 1, gujarati, headings).cards]).toEqual([width, false]);
+    }
+  });
+
   it('draws the table at 411 dp and font scale 1.0, also for ₹99,999.00 and 9,999 bags', () => {
     const layout = itemsLayout(table(411), 1, figures(), headings);
     expect(layout.cards).toBe(false);
