@@ -1,15 +1,14 @@
 /**
  * R1 + R4 (performance review 2026-10-13), end to end through the real live updates
- * hook and the real subscription service: leaving an order screen and coming back
- * costs exactly one load in total. The order editor's one load is the hook's catch-up;
- * the orders list's and queue's is their own return load. The first join of the new
- * subscription adds nothing; a later rejoin still catches up. Fix round 1 (M1): a trip
- * to the background while shown also costs exactly one load, for the lists too.
+ * hook: leaving an order screen and coming back costs exactly one load in total. The
+ * order editor's one load is the hook's catch-up; the orders list's and queue's is
+ * their own return load. A screen that is not shown, or an app in the background,
+ * reads nothing on the 15 s timer. A trip to the background while shown also costs
+ * exactly one load, for the lists too.
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { act, create } from 'react-test-renderer';
-import { createClient } from '@supabase/supabase-js';
 import OrderManagement from '@/components/OrderManagement';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import SupervisorOrderQueueList from '@/components/lists/SupervisorOrderQueueList';
@@ -21,24 +20,6 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,
   useIsFocused: () => require('./focusHarness').isScreenFocused(),
-}));
-type MockChannel = { on: jest.Mock; subscribe: jest.Mock };
-// Each realtime client hands its channel's status callback and change handler to the test.
-const mockSockets: Array<{ status: (status: string) => void; change: () => void; system: (payload: { status: string }) => void }> = [];
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => {
-    const socket = { status: (_: string) => {}, change: () => {}, system: (_: { status: string }) => {} };
-    mockSockets.push(socket);
-    const channel: MockChannel = {
-      on: jest.fn((event: string, _filter: unknown, callback: (payload: { status: string }) => void) => {
-        if (event === 'postgres_changes') socket.change = () => callback({ status: 'change' });
-        if (event === 'system') socket.system = callback;
-        return channel;
-      }),
-      subscribe: jest.fn((callback: (status: string) => void) => { socket.status = callback; return channel; }),
-    };
-    return { channel: () => channel, realtime: { disconnect: jest.fn() }, removeAllChannels: jest.fn().mockResolvedValue([]) };
-  }),
 }));
 jest.mock('@/config/supabaseConfig', () => ({
   getCurrentConfig: () => ({ url: 'http://localhost:18000', anonKey: 'public-key' }),
@@ -92,13 +73,10 @@ const order = {
   items: [{ id: 'line-1', order_id: 'order-fictional-1', grn_item_id: 'lot-1', requested_quantity: 2, created_at: '' }],
 } as Order;
 const service = jest.mocked(OrderService);
-// A join as the server sends it: SUBSCRIBED, then a system ok once the change feed is ready.
-const join = (socket: number) => {
-  mockSockets[socket].status('SUBSCRIBED');
-  mockSockets[socket].system({ status: 'ok' });
-};
-// Past the 150 ms debounce of the subscription service.
+// Past the 150 ms of a load; the timer of the hook is not reached.
 const settle = () => act(async () => { await jest.advanceTimersByTimeAsync(200); });
+// One 15 s interval of the order screens' timer.
+const interval = () => act(async () => { await jest.advanceTimersByTimeAsync(15_000); });
 let originalState: typeof AppState.currentState;
 // The app's AppState listeners; appState() is the app moving to that state.
 const appStateListeners = new Set<(state: AppStateStatus) => void>();
@@ -114,8 +92,6 @@ beforeEach(() => {
     return { remove: () => { appStateListeners.delete(listener); } };
   });
   resetScreenFocus();
-  mockSockets.length = 0;
-  jest.mocked(createClient).mockClear();
   service.getOrCreateOrder.mockReset().mockResolvedValue({ success: true, data: { cart_id: order.id } } as never);
   service.getOrderWithItems.mockReset().mockResolvedValue({ success: true, data: order } as never);
   service.getOrdersList.mockReset().mockResolvedValue({ success: true, data: [order], metadata: { has_more: false } } as never);
@@ -133,59 +109,50 @@ describe.each([
   ['orders list', () => <OrderFlashList />, () => service.getOrdersList],
   ['order queue', () => <SupervisorOrderQueueList />, () => service.getOrdersList],
 ])('%s', (_name, element, loads) => {
-  it('costs one load per return, one for each first join, one for a rejoin', async () => {
+  it('costs one load per return and one per interval while shown', async () => {
     let renderer!: ReturnType<typeof create>;
     await act(async () => { renderer = create(element()); });
     await settle();
     expect(loads()).toHaveBeenCalledTimes(1);
-    expect(mockSockets).toHaveLength(1);
-    await act(async () => { join(0); });
-    await settle();
-    // The first join loads once more: a change before the subscription was registered gives no event.
+    // Shown: the timer reads again after 15 s.
+    await interval();
     expect(loads()).toHaveBeenCalledTimes(2);
 
-    // Another screen covers this one: the subscription ends, a change reaches nobody.
+    // Another screen covers this one: nothing is read, however long it stays covered.
     await act(async () => { setScreenFocused(false); renderer.update(element()); });
-    await act(async () => { mockSockets[0].change(); });
-    await settle();
+    await interval();
+    await interval();
     expect(loads()).toHaveBeenCalledTimes(2);
 
-    // Back: one catch-up load, and the new subscription's first join adds one.
+    // Back: exactly one load for the return, then the timer goes on.
     await act(async () => { setScreenFocused(true); renderer.update(element()); });
     await settle();
-    expect(mockSockets).toHaveLength(2);
-    await act(async () => { join(1); });
-    await settle();
+    expect(loads()).toHaveBeenCalledTimes(3);
+    await interval();
     expect(loads()).toHaveBeenCalledTimes(4);
-
-    // A rejoin after a dropped socket still catches up, once.
-    await act(async () => { mockSockets[1].status('CHANNEL_ERROR'); join(1); });
-    await settle();
-    expect(loads()).toHaveBeenCalledTimes(5);
     await act(async () => { renderer.unmount(); });
+    await interval();
+    expect(loads()).toHaveBeenCalledTimes(4);
   });
 
-  it('costs one load for a trip to the background while shown, one for each first join', async () => {
+  it('costs one load for a trip to the background while shown', async () => {
     let renderer!: ReturnType<typeof create>;
     await act(async () => { renderer = create(element()); });
     await settle();
-    await act(async () => { join(0); });
-    await settle();
-    expect(loads()).toHaveBeenCalledTimes(2);
+    expect(loads()).toHaveBeenCalledTimes(1);
 
-    // In the background the subscription ends and a change reaches nobody.
+    // In the background nothing is read.
     await appState('background');
-    await act(async () => { mockSockets[0].change(); });
-    await settle();
-    expect(loads()).toHaveBeenCalledTimes(2);
+    await interval();
+    await interval();
+    expect(loads()).toHaveBeenCalledTimes(1);
 
-    // Back in the foreground: one catch-up load, and the new first join adds one.
+    // Back in the foreground: one catch-up load, then the timer goes on.
     await appState('active');
     await settle();
-    expect(mockSockets).toHaveLength(2);
-    await act(async () => { join(1); });
-    await settle();
-    expect(loads()).toHaveBeenCalledTimes(4);
+    expect(loads()).toHaveBeenCalledTimes(2);
+    await interval();
+    expect(loads()).toHaveBeenCalledTimes(3);
     await act(async () => { renderer.unmount(); });
   });
 });

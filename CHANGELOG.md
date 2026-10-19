@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — Orders and sensors refresh on a timer; no Realtime connection
+
+The backend's Realtime service is no longer used by the app, so the backend can remove it.
+
+- **What you see.** An order change (a customer adding or changing a line, a status change) appears within 15 seconds on the Orders list, the Order queue and the order screen. Sensor values on the Sensors list and a sensor's page refresh every minute while shown. Nothing refreshes while the screen is covered by another, the app is in the background or the phone is offline; coming back refreshes as before (once on the return to a screen or the foreground).
+- **How.** `useLiveUpdates` is now a timer: it calls the screen's refresh 15 s (orders) or 60 s (sensors) after the end of the previous call (timed reads never overlap; a catch-up on return may run beside a read that started before), and only while the screen is shown, the app is in the foreground, the phone is online and a user is signed in. The first timed read comes one interval after the screen opens (the screen loads itself).
+- **Removed.** `table-live-updates.ts`, `order-live-updates.ts` and `sensor-live-updates.ts` (the per-screen Realtime clients) and their tests. No app code opens a Realtime connection. The `realtime` field of the facility capabilities is left as it is; nothing gates on it.
+- **Docs.** `docs/ORDER_LIVE_UPDATES.md` describes the timer.
+
+## Unreleased — Clean-up: dead session branches and unused dispatch list call
+
+No backend change.
+
+- **Three dead `auth.getSession()` branches removed** (`checkAuthSession`, `getAllGRNItems`, and the start-up restore in `authSlice.ts`). Every supabase-js client is created with `persistSession: false` and the app never calls `setSession` or `signIn*` on it, so the call always returned no session. The custom session marker and stored-token restore behave as before.
+- **Dead session-marker read removed** from `getAllGRNItems` (nothing writes the old `session_marker` key), and the unused `serviceAuth` module and its test deleted (no runtime caller).
+- **Unused types removed:** the old `get_dispatch_list` row type `RpcDispatchListItem` and `RpcDispatchListResponse` in `rpc-canonical.types.ts`, with their exports and imports.
+- **Unused `getDispatchList` removed** (with `GetDispatchListParams`). The Dispatches list and search use `get_dispatch_list_with_items`; no app code names `get_dispatch_list` any more, so the backend can drop it.
+
 ## Unreleased — Dispatch and invoice review; invoice form
 
 No backend change. (An edit may already move an invoice into another financial year with another number:

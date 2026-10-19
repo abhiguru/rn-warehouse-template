@@ -1,13 +1,10 @@
 /**
- * The sensors list on the reports data layer: the facility is asked once, a Realtime
- * change asks again behind the rows, nothing polls, and a sensor turns "No recent data"
- * from the minute tick alone. The service, the Realtime subscription and the router are
- * stand-ins; the query layer, the status rules and the screen are the real ones.
+ * The sensors list on the reports data layer: the facility is asked once, the minute
+ * timer asks again behind the rows, and a sensor turns "No recent data" from the minute
+ * tick alone. The service and the router are stand-ins; the query layer, the live
+ * updates timer, the status rules and the screen are the real ones.
  *
- * Every timer is fake (`flush` moves the clock), so a poll would show as a request and as
- * a timer. The 150 ms coalescing of Realtime events is the subscription's own
- * (src/services/table-live-updates.ts, tested there): here the captured `refresh` is the
- * coalesced event.
+ * Every timer is fake (`flush` moves the clock), so an extra poll would show as a request.
  */
 import React from 'react';
 import { AppState } from 'react-native';
@@ -17,7 +14,6 @@ import { router } from 'expo-router';
 import { getSessionIdentity } from '@/config/supabaseConfig';
 import { writeReportCache } from '@/features/reports/reportCache';
 import { getSnapshot } from '@/services/sensor-service';
-import { subscribeToSensorChanges } from '@/services/sensor-live-updates';
 import type { SensorDevice, SensorPollingResponse } from '@/types/sensor.types';
 import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
 import SensorsScreen from '../../../app/sensors';
@@ -51,14 +47,12 @@ jest.mock('@/services/sensor-service', () => {
   // SensorService.pollSensorData is the screen before this change; it answers the same.
   return { getSnapshot: snapshot, getDevice: jest.fn(), SensorService: { pollSensorData: snapshot } };
 });
-jest.mock('@/services/sensor-live-updates', () => ({ subscribeToSensorChanges: jest.fn() }));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
 });
 
 const snapshot = jest.mocked(getSnapshot);
-const subscribe = jest.mocked(subscribeToSensorChanges);
 const push = jest.mocked(router.push);
 
 /** Monday 12 October 2026, 10:00 local time. */
@@ -134,7 +128,6 @@ beforeEach(async () => {
   originalAppState = AppState.currentState;
   AppState.currentState = 'active';
   snapshot.mockResolvedValue(answer([NORTH, SOUTH, DOCK]) as never);
-  subscribe.mockImplementation(() => () => undefined);
   jest.mocked(getSessionIdentity).mockResolvedValue(null);
 });
 afterEach(() => {
@@ -177,13 +170,6 @@ async function open() {
   };
 }
 
-/** The refresh the screen gave its Realtime subscription: one call is one (coalesced) change to sensor_latest. */
-function realtimeChange() {
-  const refresh = subscribe.mock.calls.at(-1)?.[0];
-  if (!refresh) throw new Error('The screen holds no Realtime subscription');
-  return refresh();
-}
-
 describe('the sensors list', () => {
   it('shows every sensor with its values, the figures and when they were read, from one request', async () => {
     const screen = await open();
@@ -203,16 +189,17 @@ describe('the sensors list', () => {
   });
 });
 
-describe('live without polling', () => {
-  it('a Realtime change asks again behind the rows, with no spinner, and shows the new value', async () => {
+describe('kept current by the minute timer', () => {
+  it('a minute on, the screen asks again behind the rows, with no spinner, and shows the new value', async () => {
     const screen = await open();
-    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(snapshot).toHaveBeenCalledTimes(1);
     const next = held();
     snapshot.mockImplementationOnce(() => next.promise as never);
 
-    await act(async () => {
-      void realtimeChange();
-    });
+    // Not before the minute is up.
+    await flush(59_000);
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    await flush(1_000);
     expect(snapshot).toHaveBeenCalledTimes(2);
     // Asked behind the rows: no pull spinner, no busy header button, no skeleton.
     expect(screen.refreshing()).toBe(false);
@@ -227,20 +214,13 @@ describe('live without polling', () => {
     expect(screen.texts()).not.toContain('−18.0°C');
   });
 
-  it('asks nothing by itself: one request in ten idle minutes, and no timer set but the minute tick', async () => {
+  it('asks once a minute while shown and nothing in between: 11 requests in ten minutes', async () => {
     await open();
-    const timeouts = jest.spyOn(globalThis, 'setTimeout');
-    const intervals = jest.spyOn(globalThis, 'setInterval');
     await flush(10 * 60_000);
-    // The screen before this change asked every 10 s: 60 more requests, each with its next timer.
-    expect(snapshot).toHaveBeenCalledTimes(1);
-    expect(timeouts.mock.calls.filter(([, delay]) => (delay ?? 0) > 0)).toEqual([]);
-    expect(intervals).not.toHaveBeenCalled();
-    timeouts.mockRestore();
-    intervals.mockRestore();
+    expect(snapshot).toHaveBeenCalledTimes(11);
   });
 
-  it('a sensor turns "No recent data" from the minute tick alone, with no request', async () => {
+  it('a sensor turns "No recent data" from the time alone, whatever the minute timer reads', async () => {
     const screen = await open();
     expect(screen.rowTags()).toEqual(['Healthy', 'Healthy', 'Battery low']);
     expect(screen.texts()).not.toContain('1 with no recent data');
@@ -252,16 +232,15 @@ describe('live without polling', () => {
     expect(screen.alerts()).toEqual(['1 with no recent data', '1 low battery']);
     expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 2', 'No recent data: 1', 'Battery low: 1']);
     expect(screen.texts()).toContain('Updated 7 min ago');
-    expect(snapshot).toHaveBeenCalledTimes(1);
+    // The minute timer asked twice more (60 s and 120 s); its answers did not change.
+    expect(snapshot).toHaveBeenCalledTimes(3);
   });
 
-  it('a list that could not be read holds no subscription: "Try again" asks, not a change', async () => {
-    const stop = jest.fn();
-    subscribe.mockImplementation(() => stop);
-    snapshot.mockResolvedValue({ success: false, message: 'Failed to fetch sensor data' } as never);
-    await open();
-    // Any subscription made while the first answer was awaited was given up once it failed.
-    expect(stop).toHaveBeenCalledTimes(subscribe.mock.calls.length);
+  it('stops asking once the screen is gone', async () => {
+    const screen = await open();
+    act(() => screen.tree.unmount());
+    await flush(5 * 60_000);
+    expect(snapshot).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -331,6 +310,14 @@ describe('failures', () => {
     await flush();
     expect(snapshot).toHaveBeenCalledTimes(2);
     expect(screen.texts()).toContain('North chamber probe');
+  });
+
+  it('a list that could not be read is not asked again by the minute timer', async () => {
+    snapshot.mockResolvedValue({ success: false, message: 'Access denied. Staff access required.', error: '42501' } as never);
+    await open();
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    await flush(5 * 60_000);
+    expect(snapshot).toHaveBeenCalledTimes(1);
   });
 
   it('pull to refresh asks again and shows the spinner until the answer', async () => {

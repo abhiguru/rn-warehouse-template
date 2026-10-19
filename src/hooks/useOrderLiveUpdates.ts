@@ -1,10 +1,12 @@
 import { useLiveUpdates, type LiveUpdatesOptions } from '@/hooks/useLiveUpdates';
-import { subscribeToOrderChanges } from '@/services/order-live-updates';
 
 export type OrderLiveUpdatesOptions = LiveUpdatesOptions;
 
+/** Orders are re-read every 15 s: a customer's change should show on the staff screens within 15 s. */
+export const ORDER_REFRESH_INTERVAL_MS = 15_000;
+
 /**
- * Follows changes to orders while the signed-in user's order screen is shown, the
+ * Re-reads orders every 15 s while the signed-in user's order screen is shown, the
  * app is in the foreground and the device is online; the gating and catch-up rules
  * are those of `useLiveUpdates`.
  */
@@ -13,5 +15,5 @@ export function useOrderLiveUpdates(
   enabled = true,
   options: OrderLiveUpdatesOptions = {},
 ) {
-  useLiveUpdates(subscribeToOrderChanges, refresh, enabled, options);
+  useLiveUpdates(refresh, enabled, { ...options, intervalMs: ORDER_REFRESH_INTERVAL_MS });
 }

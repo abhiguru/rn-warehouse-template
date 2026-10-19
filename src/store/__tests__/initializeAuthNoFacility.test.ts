@@ -56,7 +56,7 @@ jest.mock('@/config/sentryConfig', () => ({ setSentryUser: jest.fn(), clearSentr
 jest.mock('../sessionScopedState', () => ({ clearSessionScopedState: jest.fn(async () => {}) }));
 
 const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
-const CLIENT = { auth: { getSession: async () => ({ data: { session: null }, error: null }) } };
+const CLIENT = {};
 const makeStore = () => configureStore({ reducer: { auth: authReducer } });
 
 let errorLog: jest.SpyInstance;

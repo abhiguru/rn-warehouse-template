@@ -72,7 +72,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   initializeSupabase: jest.fn(),
   clearPendingEnrollment: jest.fn(async () => {}),
   hasActiveOperatorMutation: jest.fn(() => false),
-  getSupabaseClient: () => ({ auth: { getSession: async () => ({ data: { session: null }, error: null }) } }),
+  getSupabaseClient: () => ({}),
   getStoredToken: jest.fn(() => {
     if (mockReadsAnswered >= mockReadsToAnswer)
       return new Promise(resolve => { mockHeld.push(() => resolve({ ...mockStored })); });

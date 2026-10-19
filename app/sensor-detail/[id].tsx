@@ -8,8 +8,8 @@
  *
  * The sensor and its history are two report queries asked side by side
  * (useSensorDevice, useSensorHistory): each period has its own key, so a late
- * answer for a period left behind never shows under the one chosen. A Realtime
- * change marks the sensor out of date and it is asked again behind the screen
+ * answer for a period left behind never shows under the one chosen. Every minute
+ * while shown the sensor is marked out of date and asked again behind the screen
  * (useSensorLiveUpdates); the history of a period is not asked again for it.
  * The minute tick moves "No recent data" without a request.
  */

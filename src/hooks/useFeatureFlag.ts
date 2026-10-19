@@ -16,7 +16,6 @@ import { useAppSelector } from '@/store/hooks';
 export type FeatureFlagName =
   | 'otp_authentication'
   | 'file_uploads'
-  | 'realtime_updates'
   | 'advanced_search'
   | 'export_reports'
   | 'sensor_monitoring'

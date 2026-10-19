@@ -143,8 +143,8 @@ validation run passes.
 - [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) and
   [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md): release gates and the
   values an operator must decide.
-- [ORDER_LIVE_UPDATES.md](docs/ORDER_LIVE_UPDATES.md): order/cart live-update
-  behavior.
+- [ORDER_LIVE_UPDATES.md](docs/ORDER_LIVE_UPDATES.md): order and sensor refresh
+  on a timer.
 - [ATTRIBUTION_REVIEW.md](docs/ATTRIBUTION_REVIEW.md): ownership and third-party
   attribution.
 - Project history, the source-demo release and the pilot: [HISTORY.md](docs/HISTORY.md).

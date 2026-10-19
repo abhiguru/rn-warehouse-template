@@ -48,7 +48,6 @@ const fullData = () => ({
     api: `${origin}/rest/v1`,
     storage: `${origin}/storage/v1`,
     auth: `${origin}/rest/v1/rpc`,
-    realtime: 'ws://localhost:18000/realtime/v1',
   },
   limits: {
     otpHourlyLimit: 5,
@@ -99,6 +98,17 @@ it('uses the current secured custom session and never persists its bearer token'
   expect(
     JSON.stringify(await AsyncStorage.multiGet(await AsyncStorage.getAllKeys()))
   ).not.toContain(jwt({ sub: 'user-A', session_id: 'A' }));
+});
+it('accepts a full config without urls.realtime, and one that still sends it', async () => {
+  expect(fullData().urls).not.toHaveProperty('realtime');
+  expect(await ConfigService.getFullConfig(client)).toEqual(fullData());
+  await ConfigService.clearCache();
+  const withRealtime = {
+    ...fullData(),
+    urls: { ...fullData().urls, realtime: 'ws://localhost:18000/realtime/v1' },
+  };
+  jest.mocked(global.fetch).mockResolvedValue(response(withRealtime) as Response);
+  expect(await ConfigService.getFullConfig(client)).not.toBeNull();
 });
 it('does not send an expired token', async () => {
   jest

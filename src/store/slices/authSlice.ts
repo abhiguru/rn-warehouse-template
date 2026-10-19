@@ -186,185 +186,110 @@ export const initializeAuth = createAsyncThunk.withTypes<{
         // STEP 1: Ensure we have Supabase client (fallback to initialized one)
         const supabaseClient = getSupabaseClient();
 
-        // Check current Supabase session first
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabaseClient.auth.getSession();
+        // Restore from the stored JWT tokens first
+        let tokenData = await safeAsyncOp(
+          () => getStoredToken(),
+          { isValid: false as const },
+          'Failed to get stored token'
+        );
 
-        if (sessionError) {
-          authSliceLogger.error('Session error:', sessionError);
-          // Don't throw - try to recover from stored tokens instead
+        // Check if we have JWT tokens (valid or expired)
+        if (tokenData.type === 'jwt') {
+          // Check if token is expired or about to expire
+          const expiresAt = tokenData.expiresAt || 0;
+          const now = Date.now();
+          const bufferMs = 5 * 60 * 1000; // 5 minute buffer
+          const isTokenExpired = expiresAt <= now + bufferMs;
+
+          if (isTokenExpired && tokenData.refreshToken) {
+            authSliceLogger.info(
+              'JWT token expired, attempting refresh...'
+            );
+
+            // Try to refresh the token
+            const refreshResult = await safeAsyncOp(
+              () => refreshCustomJWT(),
+              null,
+              'Failed to refresh JWT token'
+            );
+
+            if (refreshResult) {
+              authSliceLogger.info('Token refresh successful!');
+              // Re-fetch token data after refresh
+              tokenData = await safeAsyncOp(
+                () => getStoredToken(),
+                { isValid: false as const },
+                'Failed to get refreshed token'
+              );
+            } else {
+              authSliceLogger.info(
+                'Token refresh failed, will require re-authentication'
+              );
+              // The session manager clears only definitive rejections, never transient network errors.
+              tokenData = await getStoredToken();
+              if (!tokenData.isValid)
+                return { session: null, user: null, userProfile: null };
+            }
+          }
         }
 
-        if (session && session.user) {
-          // Get cached user profile for instant UI
+        // Check if we have valid JWT tokens
+        if (tokenData.isValid && tokenData.type === 'jwt') {
+          authSliceLogger.info(
+            'Found valid JWT tokens, checking cached profile'
+          );
           const cachedProfile = await safeAsyncOp(
             () => getCachedUserProfile(),
             null,
-            'Failed to get cached profile'
+            'Failed to get cached profile for JWT auth'
           );
 
           if (cachedProfile) {
-            // STEP 2: If authenticated, fetch full config (guarded to prevent race conditions)
-            authSliceLogger.info('User authenticated, fetching full config');
-            fetchConfigOnce(dispatch, supabaseClient);
+            authSliceLogger.info(
+              'Restoring auth with cached profile (custom JWT auth)'
+            );
 
             // Auto-extend session to persist until logout
             extendSessionMarker().catch(err => {
-              authSliceLogger.warn('Failed to extend session marker:', err);
+              authSliceLogger.warn(
+                'Failed to extend session marker:',
+                err
+              );
             });
+
+            // Fetch config (guarded to prevent race conditions)
+            fetchConfigOnce(dispatch, supabaseClient);
 
             // Set user context for crash reporting
             setSentryUser(cachedProfile.role);
 
-            return { session, user: session.user, userProfile: cachedProfile };
+            // The cached copy may be up to a day old: ask the server in the
+            // background and show what it says now.
+            void reconcileCachedProfile(dispatch, cachedProfile);
+
+            return { session: null, user: null, userProfile: cachedProfile };
           } else {
-            // Try to fetch user profile
-            const profileResult = await safeAsyncOp(
-              () => getUserByIdDirect(session.user.id),
-              { status: 'error' as const, data: null },
-              'Profile fetch error'
-            );
-
-            if (profileResult.status === 'success' && profileResult.data) {
-              // Cache profile in background - don't block
-              cacheUserProfile(profileResult.data).catch(cacheError => {
-                authSliceLogger.warn(
-                  'Failed to cache profile:',
-                  cacheError
-                );
-              });
-
-              // Auto-extend session to persist until logout
-              extendSessionMarker().catch(err => {
-                authSliceLogger.warn(
-                  'Failed to extend session marker:',
-                  err
-                );
-              });
-
-              // Fetch config (guarded to prevent race conditions)
-              fetchConfigOnce(dispatch, supabaseClient);
-
-              // Set user context for crash reporting
-              setSentryUser(profileResult.data.role);
-
-              return {
-                session,
-                user: session.user,
-                userProfile: profileResult.data,
-              };
-            }
-
-            return { session, user: session.user, userProfile: null };
-          }
-        } else {
-          // No Supabase session, check for stored JWT tokens first
-          let tokenData = await safeAsyncOp(
-            () => getStoredToken(),
-            { isValid: false as const },
-            'Failed to get stored token'
-          );
-
-          // Check if we have JWT tokens (valid or expired)
-          if (tokenData.type === 'jwt') {
-            // Check if token is expired or about to expire
-            const expiresAt = tokenData.expiresAt || 0;
-            const now = Date.now();
-            const bufferMs = 5 * 60 * 1000; // 5 minute buffer
-            const isTokenExpired = expiresAt <= now + bufferMs;
-
-            if (isTokenExpired && tokenData.refreshToken) {
-              authSliceLogger.info(
-                'JWT token expired, attempting refresh...'
-              );
-
-              // Try to refresh the token
-              const refreshResult = await safeAsyncOp(
-                () => refreshCustomJWT(),
-                null,
-                'Failed to refresh JWT token'
-              );
-
-              if (refreshResult) {
-                authSliceLogger.info('Token refresh successful!');
-                // Re-fetch token data after refresh
-                tokenData = await safeAsyncOp(
-                  () => getStoredToken(),
-                  { isValid: false as const },
-                  'Failed to get refreshed token'
-                );
-              } else {
-                authSliceLogger.info(
-                  'Token refresh failed, will require re-authentication'
-                );
-                // The session manager clears only definitive rejections, never transient network errors.
-                tokenData = await getStoredToken();
-                if (!tokenData.isValid)
-                  return { session: null, user: null, userProfile: null };
-              }
-            }
-          }
-
-          // Check if we have valid JWT tokens
-          if (tokenData.isValid && tokenData.type === 'jwt') {
+            // A missing profile may be a temporary network/cache failure.
+            // Keep refresh credentials for retry; the API still enforces active sessions.
             authSliceLogger.info(
-              'Found valid JWT tokens, checking cached profile'
+              'Profile unavailable; session credentials retained for retry'
             );
-            const cachedProfile = await safeAsyncOp(
-              () => getCachedUserProfile(),
-              null,
-              'Failed to get cached profile for JWT auth'
-            );
-
-            if (cachedProfile) {
-              authSliceLogger.info(
-                'Restoring auth with cached profile (custom JWT auth)'
-              );
-
-              // Auto-extend session to persist until logout
-              extendSessionMarker().catch(err => {
-                authSliceLogger.warn(
-                  'Failed to extend session marker:',
-                  err
-                );
-              });
-
-              // Fetch config (guarded to prevent race conditions)
-              fetchConfigOnce(dispatch, supabaseClient);
-
-              // Set user context for crash reporting
-              setSentryUser(cachedProfile.role);
-
-              // The cached copy may be up to a day old: ask the server in the
-              // background and show what it says now.
-              void reconcileCachedProfile(dispatch, cachedProfile);
-
-              return { session: null, user: null, userProfile: cachedProfile };
-            } else {
-              // A missing profile may be a temporary network/cache failure.
-              // Keep refresh credentials for retry; the API still enforces active sessions.
-              authSliceLogger.info(
-                'Profile unavailable; session credentials retained for retry'
-              );
-              return { session: null, user: null, userProfile: null };
-            }
+            return { session: null, user: null, userProfile: null };
           }
-
-          // Fallback to session marker if no JWT tokens
-          if (tokenData.isValid && tokenData.type === 'session') {
-            // Remove session marker in background - don't block
-            AsyncStorage.removeItem('session_marker').catch(removeError => {
-              authSliceLogger.warn(
-                'Failed to remove session marker:',
-                removeError
-              );
-            });
-          }
-
-          return { session: null, user: null, userProfile: null };
         }
+
+        // Fallback to session marker if no JWT tokens
+        if (tokenData.isValid && tokenData.type === 'session') {
+          // Remove session marker in background - don't block
+          AsyncStorage.removeItem('session_marker').catch(removeError => {
+            authSliceLogger.warn(
+              'Failed to remove session marker:',
+              removeError
+            );
+          });
+        }
+
+        return { session: null, user: null, userProfile: null };
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : t('errors.auth.initializeFailed');

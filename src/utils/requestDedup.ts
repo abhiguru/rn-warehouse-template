@@ -66,7 +66,7 @@ export function generateRequestKey(
  *
  * @example
  * const result = await deduplicatedRequest(
- *   generateRequestKey('getDispatchList', { customerId, offset }),
+ *   generateRequestKey('getDispatchListWithItems', { customerId, offset }),
  *   () => fetchDispatchList(customerId, offset)
  * );
  */
@@ -155,10 +155,10 @@ export function isRequestPending(key: string): boolean {
  * HOF to wrap a service function with deduplication.
  *
  * @example
- * const getDispatchListDeduped = withDeduplication(
- *   'getDispatchList',
+ * const getDispatchListWithItemsDeduped = withDeduplication(
+ *   'getDispatchListWithItems',
  *   (params) => `${params.customerId}_${params.offset}`,
- *   getDispatchList
+ *   getDispatchListWithItems
  * );
  */
 export function withDeduplication<TParams, TResult>(

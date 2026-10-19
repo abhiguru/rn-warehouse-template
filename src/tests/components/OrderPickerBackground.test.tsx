@@ -2,7 +2,7 @@
  * The Add items picker keeps what was chosen through a trip to the background
  * (phone review 2026-10-14, OI-01: one second on the Home screen turned "Add (1)"
  * into "Add"). End to end on the harness of OrderRefocusRefreshTotal: the real
- * order editor, the real live updates hook and subscription service, and the real
+ * order editor, the real live updates hook (a 15 s timer), and the real
  * picker; only the bottom sheet library and the network are stand-ins.
  *
  * The order has no saved lines, so a picker that re-seeded its selection from the
@@ -24,24 +24,6 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,
   useIsFocused: () => require('./focusHarness').isScreenFocused(),
-}));
-type MockChannel = { on: jest.Mock; subscribe: jest.Mock };
-// Each realtime client hands its channel's status callback and change handler to the test.
-const mockSockets: Array<{ status: (status: string) => void; change: () => void; system: (payload: { status: string }) => void }> = [];
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => {
-    const socket = { status: (_: string) => {}, change: () => {}, system: (_: { status: string }) => {} };
-    mockSockets.push(socket);
-    const channel: MockChannel = {
-      on: jest.fn((event: string, _filter: unknown, callback: (payload: { status: string }) => void) => {
-        if (event === 'postgres_changes') socket.change = () => callback({ status: 'change' });
-        if (event === 'system') socket.system = callback;
-        return channel;
-      }),
-      subscribe: jest.fn((callback: (status: string) => void) => { socket.status = callback; return channel; }),
-    };
-    return { channel: () => channel, realtime: { disconnect: jest.fn() }, removeAllChannels: jest.fn().mockResolvedValue([]) };
-  }),
 }));
 jest.mock('@/config/supabaseConfig', () => ({
   getCurrentConfig: () => ({ url: 'http://localhost:18000', anonKey: 'public-key' }),
@@ -112,13 +94,10 @@ const service = jest.mocked(OrderService);
 let server: Order;
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
-// A join as the server sends it: SUBSCRIBED, then a system ok once the change feed is ready.
-const join = (socket: number) => {
-  mockSockets[socket].status('SUBSCRIBED');
-  mockSockets[socket].system({ status: 'ok' });
-};
-// Past the 150 ms debounce of the subscription service.
+// Past the 150 ms of a load; the timer of the hook is not reached.
 const settle = () => act(async () => { await jest.advanceTimersByTimeAsync(200); });
+// One 15 s interval of the order screen's timer: the editor reads the order again.
+const interval = () => act(async () => { await jest.advanceTimersByTimeAsync(15_000); });
 let originalState: typeof AppState.currentState;
 const appStateListeners = new Set<(state: AppStateStatus) => void>();
 const appState = (state: AppStateStatus) => act(async () => {
@@ -141,7 +120,6 @@ beforeEach(() => {
     return { remove: () => { appStateListeners.delete(listener); } };
   });
   resetScreenFocus();
-  mockSockets.length = 0;
   server = {
     id: 'order-fictional-1', customer_id: 'customer-fictional-1', created_at: '2026-10-01T08:00:00Z',
     customer: { id: 'customer-fictional-1', name: 'Fictional Farms' } as Order['customer'], items: [],
@@ -170,10 +148,8 @@ it('still reads "Add (1)" after the app went to the background and came back, an
     renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />);
   });
   await settle();
-  await act(async () => { join(0); });
-  // The first join of the live channel reads the order once more (nothing missed between the load and the join).
-  await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
+  // The editor loaded the order once; the timer has not read it again yet.
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
 
   // Start state: the picker is open on an order with no lines, nothing chosen.
   expect(addButtonText()).toBe('Add');
@@ -189,17 +165,13 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   await settle();
   await appState('active');
   await settle();
-  expect(mockSockets).toHaveLength(2);
-  await act(async () => { join(1); });
-  await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(4);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
   expect(addButtonText()).toBe('Add (1)');
   expect(isSelected('Fictional potatoes')).toBe(true);
 
-  // A change to some order arrives over the live connection: one more read.
-  await act(async () => { mockSockets[1].change(); });
-  await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(5);
+  // The 15 s timer reads the order again: one more read.
+  await interval();
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
   expect(addButtonText()).toBe('Add (1)');
 
   // Another user saves a lot on this order: one more read. The picker marks that
@@ -208,9 +180,8 @@ it('still reads "Add (1)" after the app went to the background and came back, an
     id: 'line-other', order_id: server.id, grn_item_id: 'lot-b', requested_quantity: 6, item_status: 'pending',
     created_at: '2026-10-01T09:00:00Z', grn_item: LOTS[1],
   } as OrderItem];
-  await act(async () => { mockSockets[1].change(); });
-  await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(6);
+  await interval();
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(4);
   expect(textOf(node('catalog-item-lot-b'))).toContain('In order');
   expect(addButtonText()).toBe('Add (1)');
   expect(isSelected('Fictional potatoes')).toBe(true);
@@ -223,9 +194,7 @@ it('closes on the next Add when the save that timed out was in fact applied', as
     renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />);
   });
   await settle();
-  await act(async () => { join(0); });
-  await settle();
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
   const pressAdd = async () => {
     await act(async () => { node('catalog-add').props.onPress(); });
     await settle();
@@ -254,7 +223,7 @@ it('closes on the next Add when the save that timed out was in fact applied', as
   expect(service.addItemToOrder.mock.calls).toEqual([['order-fictional-1', 'lot-a', 1]]);
   expect(textOf(node('catalog-reason-lot-a'))).toBe('Not saved. Check your connection and try again.');
   expect(addButtonText()).toBe('Add (1)');
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
   expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
 
   // Add again: the lot is in the order with that quantity, so nothing is sent and the picker closes.

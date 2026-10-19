@@ -18,9 +18,6 @@ import {
 
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
-  getSupabaseClient: jest.fn(() => ({
-    auth: { getSession: jest.fn().mockResolvedValue({ data: { session: null }, error: null }) },
-  })),
   getStoredToken: jest.fn(),
 }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));

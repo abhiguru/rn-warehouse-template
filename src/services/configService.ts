@@ -97,7 +97,6 @@ export interface FullConfig {
   urls: {
     api: string;
     storage: string;
-    realtime: string;
     auth: string;
   };
   limits: {

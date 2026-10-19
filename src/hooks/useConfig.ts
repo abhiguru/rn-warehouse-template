@@ -184,7 +184,7 @@ export const useExternalApiKeys = () => {
 
 /**
  * Hook to get URLs for various services
- * @returns URLs for API, storage, realtime, and auth services
+ * @returns URLs for API, storage, and auth services
  */
 export const useServiceUrls = () => {
   const { fullConfig, publicConfig } = useConfig();
@@ -193,7 +193,6 @@ export const useServiceUrls = () => {
     ? {
         api: fullConfig.urls.api,
         storage: fullConfig.urls.storage,
-        realtime: fullConfig.urls.realtime,
         auth: fullConfig.urls.auth,
       }
     : publicConfig?.urls || null;

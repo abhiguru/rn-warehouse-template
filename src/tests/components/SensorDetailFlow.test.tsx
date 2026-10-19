@@ -1,10 +1,10 @@
 /**
  * One sensor's detail on the reports data layer: the sensor and its history asked side by
  * side, a period chip asking for that period's history only, a late answer for a period
- * left behind never shown, a sensor the facility does not have, a Realtime change asking
+ * left behind never shown, a sensor the facility does not have, the minute timer asking
  * for the sensor again (not its history), the sensor's temperature limits on the chart, and a
  * sensor with less than a day of data (the 7-day period offered; the empty text only without readings).
- * The services, the Realtime subscription and the router are stand-ins.
+ * The services and the router are stand-ins; the live updates timer is the real one.
  */
 import React from 'react';
 import { AppState } from 'react-native';
@@ -13,7 +13,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SensorHistoryChart } from '@/components/sensors/SensorHistoryChart';
 import { getDevice } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
-import { subscribeToSensorChanges } from '@/services/sensor-live-updates';
 import type { SensorDeviceDetail } from '@/types/sensor.types';
 import type { SensorHistoryData } from '@/types/sensor-history.types';
 import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
@@ -44,7 +43,6 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'aut
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('@/services/sensor-service', () => ({ getSnapshot: jest.fn(), getDevice: jest.fn() }));
 jest.mock('@/services/sensor-history-service', () => ({ getSensorHistory: jest.fn() }));
-jest.mock('@/services/sensor-live-updates', () => ({ subscribeToSensorChanges: jest.fn() }));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
@@ -52,7 +50,6 @@ jest.mock('@/utils/logger', () => {
 
 const device = jest.mocked(getDevice);
 const history = jest.mocked(getSensorHistory);
-const subscribe = jest.mocked(subscribeToSensorChanges);
 
 /** Monday 12 October 2026, 10:00 local time. */
 const NOW = new Date(2026, 9, 12, 10, 0).getTime();
@@ -127,7 +124,6 @@ beforeEach(async () => {
   AppState.currentState = 'active';
   device.mockResolvedValue(found() as never);
   history.mockImplementation(async (_id, days = 7) => historyOf(days) as never);
-  subscribe.mockImplementation(() => () => undefined);
 });
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
@@ -246,28 +242,35 @@ describe('the sensor and its history', () => {
 });
 
 describe('live', () => {
-  it('a Realtime change asks for the sensor again, not its history, and shows the new value', async () => {
+  it('a minute on, the sensor is asked for again, not its history, and shows the new value', async () => {
     const screen = await open();
     expect(screen.texts()).toContain('2.0°C');
     device.mockResolvedValueOnce(found({ latest_temperature: 3.5, measured_at: minutesAgo(0) }) as never);
-    const refresh = subscribe.mock.calls.at(-1)?.[0];
-    if (!refresh) throw new Error('The screen holds no Realtime subscription');
-    await act(async () => {
-      await refresh();
-    });
-    await flush();
+    await flush(59_000);
+    expect(device).toHaveBeenCalledTimes(1);
+    await flush(1_000);
     expect(device).toHaveBeenCalledTimes(2);
     expect(history).toHaveBeenCalledTimes(1);
     expect(screen.texts()).toContain('3.5°C');
   });
 
-  it('the connection turns "No recent data" from the minute tick alone', async () => {
+  it('a sensor that could not be read is not asked again by the minute timer', async () => {
+    device.mockResolvedValue({ success: false, message: 'Failed to fetch sensor data' } as never);
+    await open();
+    expect(device).toHaveBeenCalledTimes(1);
+    await flush(5 * 60_000);
+    expect(device).toHaveBeenCalledTimes(1);
+  });
+
+  it('the connection turns "No recent data" as the time moves on', async () => {
     device.mockResolvedValue(found({ measured_at: minutesAgo(29), last_seen_at: minutesAgo(29) }) as never);
     const screen = await open();
     expect(screen.facts()[0]).toBe('Connection: Online');
     await flush(2 * 60_000);
     expect(screen.facts()[0]).toBe('Connection: No recent data');
-    expect(device).toHaveBeenCalledTimes(1);
+    // Two minutes: the minute timer asked for the sensor twice more (the answer is unchanged); history never.
+    expect(device).toHaveBeenCalledTimes(3);
+    expect(history).toHaveBeenCalledTimes(1);
   });
 });
 

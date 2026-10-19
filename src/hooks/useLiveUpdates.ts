@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
@@ -7,10 +7,15 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 export interface LiveUpdatesOptions {
   /**
    * Call `refresh` once when the screen is shown again after another screen covered
-   * it, to recover the changes missed while it had no subscription. A list that
+   * it, to recover the changes missed while it was not re-reading. A list that
    * reloads on its own return passes false so the return loads once.
    */
   refreshOnFocus?: boolean;
+}
+
+export interface UseLiveUpdatesOptions extends LiveUpdatesOptions {
+  /** Time between the end of one `refresh` and the start of the next, while the screen is shown. */
+  intervalMs: number;
 }
 
 /**
@@ -29,41 +34,107 @@ function useScreenFocused(): boolean {
 }
 
 /**
- * Follows changes to a table (through `subscribe`, e.g. `subscribeToOrderChanges`)
- * while the signed-in user's screen is shown, the app is in the foreground and the
- * device is online. Each subscription holds its own realtime connection, so a screen
- * that another screen covers (a tab left mounted, a list under a pushed detail) gives
- * its subscription up and catches up on its return. The same holds for the app going
- * to the background or the device going offline: the subscription ends, and when both
- * come back while the screen is shown it refreshes once (lists too, since their own
- * return load covers only navigation). The new subscription's first join refreshes
- * nothing, so this is the only catch-up then.
+ * Keeps a screen current by calling `refresh` on a timer while the signed-in user's
+ * screen is shown, the app is in the foreground and the device is online. There is no
+ * subscription and no connection to hold: a change made elsewhere shows within one
+ * interval.
  *
- * `subscribe` must be a stable function (a module export): it is not a dependency of
- * the subscription effect.
+ * Timer rules (the style of `usePolling`):
+ * - The first timed call comes `intervalMs` after the conditions hold, not at once: the
+ *   screen loads itself on mount.
+ * - Completion driven. The next timer starts when a call settles, so the interval is
+ *   measured from the end of the previous call.
+ * - Single flight. A tick that finds a call in flight is skipped, never queued, so timed
+ *   reads never overlap. A catch-up call (below) does not check: it may run beside a timed
+ *   read that started before the screen was left.
+ * - No timer runs while a condition is off (disabled, signed out, covered by another
+ *   screen, in the background, offline). It is cleared on every change and on unmount.
+ *
+ * Catch-up: a screen shown again after another screen covered it refreshes once when
+ * `refreshOnFocus` is set. The app coming back to the foreground or online while the
+ * screen is shown refreshes once (lists too, since their own return load covers only
+ * navigation). The first time the conditions hold refreshes nothing: the screen has
+ * just loaded itself.
+ *
+ * `refresh` may change on every render: the latest one is called.
  */
 export function useLiveUpdates(
-  subscribe: (refresh: () => void | Promise<void>) => () => void,
   refresh: () => void | Promise<void>,
-  enabled = true,
-  { refreshOnFocus = true }: LiveUpdatesOptions = {},
+  enabled: boolean,
+  { refreshOnFocus = true, intervalMs }: UseLiveUpdatesOptions,
 ): void {
   const profile = useAppSelector(state => state.auth.userProfile);
-  // A profile reloaded for the same account is not a new account: keep the connection.
+  // A profile reloaded for the same account is not a new account: keep the timer.
   const profileId = profile ? profile.id : null;
   const { isConnected } = useNetworkStatus();
   const focused = useScreenFocused();
   const [active, setActive] = useState(AppState.currentState === 'active');
-  const subscribeRef = useRef(subscribe);
-  subscribeRef.current = subscribe;
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
   const catchUpRef = useRef(enabled && refreshOnFocus);
   catchUpRef.current = enabled && refreshOnFocus;
-  // Foreground and online: the conditions the subscription needs besides the screen.
+  const intervalRef = useRef(intervalMs);
+  intervalRef.current = intervalMs;
+  // Foreground and online: the conditions the timer needs besides the screen.
   const live = active && isConnected;
+  const running = enabled && profileId !== null && focused && live;
+  const runningRef = useRef(running);
+  runningRef.current = running;
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const scheduleRef = useRef<() => void>(() => undefined);
+
+  // One call of `refresh`, counted as in flight until it settles; the next timer starts
+  // then. A refresh that throws or rejects ends the call like any other.
+  const call = useCallback(() => {
+    inFlightRef.current += 1;
+    let promise: Promise<void>;
+    try {
+      promise = Promise.resolve(refreshRef.current());
+    } catch (error) {
+      promise = Promise.reject(error);
+    }
+    void promise
+      .catch(() => undefined)
+      .then(() => {
+        inFlightRef.current -= 1;
+        if (mountedRef.current && runningRef.current && inFlightRef.current === 0) scheduleRef.current();
+      });
+  }, []);
+
+  scheduleRef.current = () => {
+    clearTimer();
+    if (!mountedRef.current || !runningRef.current) return;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      // A tick that finds a call in flight is skipped; its completion starts the next timer.
+      if (inFlightRef.current > 0) return;
+      call();
+    }, intervalRef.current);
+  };
+
+  // Declared first: React runs setups in declaration order (also after a Fast Refresh or
+  // under StrictMode, which run every cleanup and then every setup), and the timer effect
+  // below needs `mountedRef` true when it schedules.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimer();
+    };
+  }, [clearTimer]);
 
   useEffect(() => {
     const listener = AppState.addEventListener('change', state => setActive(state === 'active'));
@@ -84,14 +155,21 @@ export function useLiveUpdates(
     wasLiveRef.current = live;
     if (live) hasBeenLiveRef.current = true;
     if (returned) {
-      if (catchUpRef.current) void refreshRef.current();
+      if (catchUpRef.current) call();
     } else if (reconnected && focused && enabledRef.current) {
-      void refreshRef.current();
+      call();
     }
-  }, [focused, live]);
+  }, [focused, live, call]);
 
+  // The timer: started when every condition holds, cleared as soon as one stops holding.
   useEffect(() => {
-    if (!enabled || profileId === null || !focused || !live) return;
-    return subscribeRef.current(() => refreshRef.current());
-  }, [enabled, profileId, focused, live]);
+    if (!running) return undefined;
+    scheduleRef.current();
+    return clearTimer;
+  }, [running, clearTimer]);
+
+  // A changed interval applies to the timer already waiting.
+  useEffect(() => {
+    if (timerRef.current !== null) scheduleRef.current();
+  }, [intervalMs]);
 }

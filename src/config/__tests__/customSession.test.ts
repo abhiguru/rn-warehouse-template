@@ -1199,7 +1199,7 @@ describe('an access token the server refuses as expired', () => {
 test.each([
   [true, 'GET', '/rest/v1/customers?select=*'],
   [true, 'HEAD', '/rest/v1/customers'],
-  [true, 'POST', '/rest/v1/rpc/get_dispatch_list'],
+  [true, 'POST', '/rest/v1/rpc/get_dispatch_list_with_items'],
   [true, 'POST', '/rest/v1/rpc/search_customers'],
   [true, 'POST', '/rest/v1/rpc/check_grn_exists'],
   [true, 'POST', '/rest/v1/rpc/user_accessible_customers'],
@@ -1226,7 +1226,7 @@ test('a hung list request does not hold a server switch back and is aborted by i
     signals.push(init!.signal!);
     return new Promise<Response>((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('Aborted'))));
   });
-  const list = clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list', { method: 'POST' });
+  const list = clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list_with_items', { method: 'POST' });
   const select = clientFetch('http://localhost:18000/rest/v1/customers?select=*');
   expect(beginOperatorSwitch()).toBe(true);
   expect(signals.map(signal => signal.aborted)).toEqual([true, true]);
@@ -1273,7 +1273,7 @@ describe('a request the server never answers', () => {
   test('a list request is aborted after the read limit and reported as a timeout', async () => {
     const clientFetch = await authenticatedClientFetch();
     const signals = hang();
-    const list = outcome(clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list', { method: 'POST' }));
+    const list = outcome(clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list_with_items', { method: 'POST' }));
     await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.read - 1);
     expect(list.settled).toBe(false);
     expect(signals[0].aborted).toBe(false);
@@ -1367,7 +1367,7 @@ describe('an answer whose body never completes (M02)', () => {
   test('a read: the body read fails as a timeout once the read limit has passed, and the request is aborted', async () => {
     const clientFetch = await authenticatedClientFetch();
     const { signals } = answerWithHeldBody();
-    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list', { method: 'POST' });
+    const response = await clientFetch('http://localhost:18000/rest/v1/rpc/get_dispatch_list_with_items', { method: 'POST' });
     const body = outcome(response.json());
     await jest.advanceTimersByTimeAsync(REQUEST_TIME_LIMIT_MS.read - 1);
     expect(body.settled).toBe(false);

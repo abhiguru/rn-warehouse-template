@@ -277,7 +277,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   }, []);
 
   // The list owns the refresh on a return to the screen (below), so the live updates
-  // hook only follows changes while the screen is shown.
+  // hook only re-reads on a 15 s timer while the screen is shown.
   useOrderLiveUpdates(() => fetchOrders(true, true), true, { refreshOnFocus: false });
 
   // One owner for loading. The list is mounted by its screen, so it starts focused;

@@ -92,7 +92,6 @@ export type {
   // Dispatch types
   RpcStockUpdate,
   RpcCreateDispatchResponseData,
-  RpcDispatchListItem,
   RpcDispatchItemDetails,
   RpcDispatchStatistics,
   RpcDispatchGrnsSummary,
@@ -100,7 +99,6 @@ export type {
   RpcDispatchDetails,
   RpcDeleteDispatchResponseData,
   RpcVehicleSuggestion,
-  RpcDispatchListResponse,
   RpcDispatchDetailsResponse,
   RpcCreateDispatchResponse,
   RpcDeleteDispatchResponse,

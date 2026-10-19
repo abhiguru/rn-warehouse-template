@@ -38,7 +38,6 @@ jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'aut
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('@/services/sensor-service', () => ({ getSnapshot: jest.fn(), getDevice: jest.fn() }));
 jest.mock('@/services/sensor-history-service', () => ({ getSensorHistory: jest.fn() }));
-jest.mock('@/services/sensor-live-updates', () => ({ subscribeToSensorChanges: jest.fn(() => () => undefined) }));
 jest.mock('@/utils/logger', () => {
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return { createLogger: () => log };
