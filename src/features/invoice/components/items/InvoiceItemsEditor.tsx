@@ -733,6 +733,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
               labour={fields[cellKey(line.temp_id, 'labour_rate')]}
               tax={fields[cellKey(line.temp_id, 'tax')]}
               lastKey={lastKey}
+              inputWidths={layout.lineInputs}
               actions={actions}
               styles={styles}
             />

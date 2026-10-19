@@ -296,6 +296,8 @@ export interface StepperState {
   value: number | null;
   canDecrease: boolean;
   canIncrease: boolean;
+  /** The figure is above the field's entry maximum (a stored rate or saved invoice): + is off and − brings it to the maximum. */
+  aboveMax: boolean;
 }
 
 /**
@@ -308,13 +310,20 @@ export function stepperState(field: RateField, view: SharedView, state: FieldSta
     const settled = settle(field, state.text);
     value = settled.error || settled.value === null ? null : settled.value;
   } else value = view.mixed ? null : roundMoney(Number(view.text) || 0);
-  if (value === null) return { value, canDecrease: false, canIncrease: false };
-  return { value, canDecrease: value > 0, canIncrease: value < RATE_MAX[field] };
+  if (value === null) return { value, canDecrease: false, canIncrease: false, aboveMax: false };
+  return { value, canDecrease: value > 0, canIncrease: value < RATE_MAX[field], aboveMax: value > RATE_MAX[field] };
 }
 
-/** A figure one step up or down, rounded to two decimals (as the fields keep them) and held in 0 to the field's maximum. */
+/**
+ * A figure one step up or down, rounded to two decimals (as the fields keep them) and held in 0 to the field's maximum.
+ * A stored figure above the maximum (e.g. 12000.00 against 9999.99) goes straight to the maximum on −, not a step down from it.
+ */
 export const steppedValue = (field: RateField, from: number, direction: StepDirection): number =>
-  Math.min(RATE_MAX[field], Math.max(0, roundMoney(from + direction * STEP[field])));
+  from > RATE_MAX[field] ? RATE_MAX[field] : Math.min(RATE_MAX[field], Math.max(0, roundMoney(from + direction * STEP[field])));
+
+/** The field's entry maximum as spoken in a label: "₹9999.99" or "100%", in the language's digits. */
+export const maxAmountText = (field: RateField): string =>
+  tr(field === 'tax' ? 'invoice.items.stepAmountTax' : 'invoice.items.stepAmountMoney', { amount: localizeDigits(String(RATE_MAX[field])) });
 
 /** What the + / − beside a dispatch line's figure steps from: the line's own rate, as the cell shows it ("Mixed" never applies). */
 export const lineView = (field: RateField, rate: number): SharedView => ({ text: rateText(field, rate), mixed: false, keepOwn: 0 });
@@ -326,12 +335,17 @@ const STEP_NAME: Record<RateField, TranslationKey> = {
 };
 
 /** "Raise the charge by ₹0.25, dispatch I0042" / "Lower the tax by 1%, dispatch I0042": the spoken labels of a line's buttons. */
-export function lineStepLabels(field: RateField, dispatchNo: string): { increase: string; decrease: string } {
+export function lineStepLabels(field: RateField, dispatchNo: string, aboveMax = false): { increase: string; decrease: string } {
   const amount = localizeDigits(String(STEP[field]));
   const params = {
     name: tr(STEP_NAME[field]),
     amount: tr(field === 'tax' ? 'invoice.items.stepAmountTax' : 'invoice.items.stepAmountMoney', { amount }),
     number: formatIdentifier(dispatchNo),
   };
-  return { increase: tr('invoice.items.stepLineIncrease', params), decrease: tr('invoice.items.stepLineDecrease', params) };
+  // Above the maximum, − lowers the figure to the maximum (say so, with the maximum), not by a step.
+  const toMax = { ...params, amount: maxAmountText(field) };
+  return {
+    increase: tr('invoice.items.stepLineIncrease', params),
+    decrease: aboveMax ? tr('invoice.items.stepLineLowerToMax', toMax) : tr('invoice.items.stepLineDecrease', params),
+  };
 }

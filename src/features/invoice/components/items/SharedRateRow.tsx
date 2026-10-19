@@ -27,6 +27,7 @@ import {
   keepOwnNote,
   STEP,
   stepperState,
+  maxAmountText,
   type FieldState,
   type ItemsActions,
   type RateField,
@@ -128,7 +129,9 @@ export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName,
                     canIncrement={stepper.canIncrease}
                     onDecrement={() => actions.step(groupKey, field, -1)}
                     onIncrement={() => actions.step(groupKey, field, 1)}
-                    decreaseLabel={tr('invoice.items.stepDecrease', { name, amount, item: spokenItem })}
+                    decreaseLabel={stepper.aboveMax
+                      ? tr('invoice.items.stepLowerToMax', { name, amount: maxAmountText(field), item: spokenItem })
+                      : tr('invoice.items.stepDecrease', { name, amount, item: spokenItem })}
                     increaseLabel={tr('invoice.items.stepIncrease', { name, amount, item: spokenItem })}
                     testID={`step|${groupKey}|${field}`}
                   />

@@ -1,11 +1,13 @@
 /**
  * One dispatch line as a small card (large text or a narrow screen), in the style of the rate box's band cards.
- * Each field is a row: the input takes the rest of the width and its + above − (LineStepper) sits at its right.
+ * Each editable figure is its label, then one row: a short input sized for the largest figure expected (itemsLayout's
+ * `lineInputs`, no clear button) and, right after it, + then − side by side (LineStepper, inline). The rest of the row is empty.
  */
 import React, { useCallback, useState } from 'react';
-import { Text, View, type LayoutChangeEvent } from 'react-native';
+import { Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { INLINE_PAIR_WIDTH } from '@/components/fiori/StepperInput';
 import { formatIdentifier, t as tr } from '@/i18n';
-import { space, touchTarget } from '@/theme/tokens';
+import { space, touchTarget, typography } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { RateInput } from './RateInput';
@@ -13,6 +15,7 @@ import { LineStepper } from './LineStepper';
 import { lineSubline } from './LineRow';
 import { cellKey, cellLabel, fieldHeading, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
+import type { LineInputWidths } from './itemsLayout';
 
 interface Props {
   item: InvoiceItemData;
@@ -25,39 +28,49 @@ interface Props {
   tax?: FieldState;
   /** The last field of the page: its keyboard key is "done", every other one's is "next". */
   lastKey?: string;
+  /** The widths of the short inputs (the step's layout). */
+  inputWidths: LineInputWidths;
   actions: ItemsActions;
   styles: ItemsStyles;
 }
 
 /** The text input itself is at least a touch target tall (the field's frame alone is not what a finger meets). */
 const FIELD_INPUT = { minHeight: touchTarget };
-/** The input and its + above − in one row: the input takes the rest of the width, the pair keeps one touch target. */
-const FIELD_ROW = { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.xs, marginBottom: space.lg };
-const FIELD_CONTAINER = { flex: 1, minWidth: 0, marginBottom: 0 };
-/** The pair is two touch targets tall; the input is one. */
-const PAIR_OVERHANG = touchTarget / 2;
+/** The label above, then the input and its pair in one row; the row keeps the full width for the error line and hint. */
+const FIELD_ROW = { marginBottom: space.lg };
+const FIELD_CONTAINER = { marginBottom: 0 };
+/** The input's frame is as wide as its figure (set per field); it stays at the left. */
+const FIELD_BOX = { alignSelf: 'flex-start' as const };
 
 /**
- * The row of one field: the input (its label above it, drawn by the field) and the pair at its right. The label is taller
- * at large text, so the pair is moved down by the label's measured height (and up by the half the pair is taller than the
- * input), which keeps it centred on the input and not beside the label. The field's label, spoken label, error line and hint are the field's own.
+ * The row of one field: the input (its label above it, drawn by the field) and the pair right after it, placed
+ * absolutely so the label, error line and hint keep the full width. The pair's top is the field box's top (its
+ * measured `y` below the label) plus half the difference of the box's height and the pair's, so + and − are
+ * centred on the box at any text size, not beside the label.
  */
-function FieldRow({ stepper, children }: { stepper: React.ReactNode; children: (onLabelLayout: (event: LayoutChangeEvent) => void) => React.ReactNode }) {
-  const [labelBlock, setLabelBlock] = useState(0);
-  const onLabelLayout = useCallback((event: LayoutChangeEvent) => {
-    // The label's height plus the gap the field leaves under it.
-    const next = Math.round(event.nativeEvent.layout.height + space.xs);
-    setLabelBlock((old) => (old === next ? old : next));
+function FieldRow({ boxWidth, stepper, children }: { boxWidth: number; stepper: React.ReactNode; children: (onFieldLayout: (event: LayoutChangeEvent) => void) => React.ReactNode }) {
+  // Until the box is measured, an estimate of the same: the one-line label and its gap above, then the box's centring
+  // offset. FlashList remounts a recycled card, so starting at 0 would show the pair jumping into place.
+  const { fontScale } = useWindowDimensions();
+  const [top, setTop] = useState(() => {
+    const label = Math.round(typography.footnote.lineHeight * fontScale) + space.xs;
+    const box = Math.max(touchTarget, Math.round(typography.body.lineHeight * fontScale) + 2 * space.sm + 2);
+    return label + (box - touchTarget) / 2;
+  });
+  const onFieldLayout = useCallback((event: LayoutChangeEvent) => {
+    const { y, height } = event.nativeEvent.layout;
+    const next = y + (height - touchTarget) / 2;
+    setTop((old) => (Math.abs(old - next) < 0.01 ? old : next));
   }, []);
   return (
     <View style={FIELD_ROW}>
-      {children(onLabelLayout)}
-      <View style={{ marginTop: Math.max(0, labelBlock - PAIR_OVERHANG) }}>{stepper}</View>
+      {children(onFieldLayout)}
+      <View style={{ position: 'absolute', top, left: boxWidth + space.xs, width: INLINE_PAIR_WIDTH }}>{stepper}</View>
     </View>
   );
 }
 
-export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, last, charge, labour, tax, lastKey, actions, styles }: Props) {
+export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, last, charge, labour, tax, lastKey, inputWidths, actions, styles }: Props) {
   const number = formatIdentifier(item.dispatch_no);
   const field = (name: RateField, state: FieldState | undefined) => {
     const key = cellKey(item.temp_id, name);
@@ -65,19 +78,22 @@ export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, l
       // The key is on this wrapper (line and field): a recycled row gets a new input, with no focus ring or clear icon carried over.
       <FieldRow
         key={key}
-        stepper={<LineStepper tempId={item.temp_id} dispatchNo={item.dispatch_no} field={name} rate={item[name]} state={state} actions={actions} />}
+        boxWidth={inputWidths[name]}
+        stepper={<LineStepper orientation="inline" tempId={item.temp_id} dispatchNo={item.dispatch_no} field={name} rate={item[name]} state={state} actions={actions} />}
       >
-        {(onLabelLayout) => (
+        {(onFieldLayout) => (
         <RateInput
           ref={actions.refFor(key)}
           label={fieldHeading(name)}
           numeric
           selectTextOnFocus
+          showClearButton={false}
           keyboardType="decimal-pad"
           returnKeyType={key === lastKey ? 'done' : 'next'}
           inputStyle={FIELD_INPUT}
           containerStyle={FIELD_CONTAINER}
-          onLabelLayout={onLabelLayout}
+          fieldStyle={{ ...FIELD_BOX, width: inputWidths[name] }}
+          onFieldLayout={onFieldLayout}
           value={state?.text ?? rateText(name, item[name])}
           onChangeText={(text) => actions.change(key, text)}
           onFocus={() => actions.focus(key)}

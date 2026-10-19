@@ -11,7 +11,11 @@ import { isZeroChargeLine } from '@/utils/invoiceCalculations';
  */
 const msg = (key: TranslationKey, params?: TranslationParams) => () => t(key, params);
 
-/** A required line rate from 0 to 999999, the range the server accepts (backend migration 41). */
+/**
+ * A required line rate from 0 to 999999, the range the server accepts (backend migration 41). This is what Next and Save
+ * check, so a stored rate or a saved invoice above 9999.99 still passes. Entry on Items is limited to 9999.99 for
+ * Charge by the owner's decision of 2026-10-19 (`RATE_MAX.charge`), not here.
+ */
 const moneyField = (messages: { negative: TranslationKey; tooLarge: TranslationKey; required: TranslationKey }) =>
   yup
     .number()

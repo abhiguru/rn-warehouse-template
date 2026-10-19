@@ -152,6 +152,9 @@ export const invoice = {
     // The + / − beside a dispatch line's own figure: name and amount as above, number is the dispatch number.
     stepLineDecrease: 'Lower the {{name}} by {{amount}}, dispatch {{number}}',
     stepLineIncrease: 'Raise the {{name}} by {{amount}}, dispatch {{number}}',
+    // − on a figure above the entry maximum (a stored rate): it goes to the maximum, "₹9999.99".
+    stepLowerToMax: 'Lower the {{name}} to {{amount}}, {{item}}',
+    stepLineLowerToMax: 'Lower the {{name}} to {{amount}}, dispatch {{number}}',
     // Announced after a press: the field's name, new value and unit ("Charge 5.25 rupees", "Tax 3.5 percent"; percent is unitTax).
     stepUnitMoney: 'rupees',
     stepDone: '{{field}} {{value}} {{unit}}',
@@ -406,7 +409,7 @@ export const invoice = {
     taxRequired: 'Tax is required',
     taxNegative: 'Tax cannot be negative',
     taxTooHigh: 'Tax cannot exceed 100%',
-    chargeRange: 'Enter a charge from 0 to 999999.',
+    chargeRange: 'Enter a charge from 0 to 9999.99.',
     labourRateRange: 'Enter a labour rate from 0 to 999999.',
     taxRange: 'Enter a tax from 0 to 100.',
     rateNotNumber: 'Enter a number with up to 2 decimals, for example 5.50.',

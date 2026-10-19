@@ -159,6 +159,9 @@ export const invoice: Translation<typeof source> = {
     // The + / − beside a dispatch line's own figure (draft): number is the dispatch number.
     stepLineDecrease: 'જાવક {{number}}: {{name}} {{amount}} ઘટાડો',
     stepLineIncrease: 'જાવક {{number}}: {{name}} {{amount}} વધારો',
+    // Draft: − on a figure above the maximum brings it down to the maximum.
+    stepLowerToMax: '{{item}}: {{name}} ઘટાડીને {{amount}} કરો',
+    stepLineLowerToMax: 'જાવક {{number}}: {{name}} ઘટાડીને {{amount}} કરો',
     // Announced after a press: the field's new value.
     stepUnitMoney: 'રૂપિયા',
     stepDone: '{{field}} {{value}} {{unit}}',
@@ -408,6 +411,7 @@ export const invoice: Translation<typeof source> = {
     daysNegative: 'દિવસ શૂન્યથી ઓછા ન હોઈ શકે',
     chargeRequired: 'ભાડાનો દર જરૂરી છે',
     chargeNegative: 'ભાડાનો દર શૂન્યથી ઓછો ન હોઈ શકે',
+    // Draft for the owner's wording review (charge limit 2026-10-19): chargeRange.
     chargeTooLarge: 'ભાડાનો દર ઘણો વધારે છે',
     labourRateRequired: 'મજૂરીનો દર જરૂરી છે',
     labourRateNegative: 'મજૂરીનો દર શૂન્યથી ઓછો ન હોઈ શકે',
@@ -415,7 +419,7 @@ export const invoice: Translation<typeof source> = {
     taxRequired: 'ટેક્સ જરૂરી છે',
     taxNegative: 'ટેક્સ શૂન્યથી ઓછો ન હોઈ શકે',
     taxTooHigh: 'ટેક્સ ૧૦૦% થી વધુ ન હોઈ શકે',
-    chargeRange: 'ભાડાનો દર ૦ થી ૯૯૯૯૯૯ ની વચ્ચે લખો.',
+    chargeRange: 'ભાડાનો દર ૦ થી ૯૯૯૯.૯૯ ની વચ્ચે લખો.',
     labourRateRange: 'મજૂરીનો દર ૦ થી ૯૯૯૯૯૯ ની વચ્ચે લખો.',
     taxRange: 'ટેક્સ ૦ થી ૧૦૦ ની વચ્ચે લખો.',
     rateNotNumber: 'આંકડો લખો, દશાંશ પછી વધુમાં વધુ ૨ આંકડા, જેમ કે ૫.૫૦.',

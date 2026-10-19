@@ -8,6 +8,9 @@
  * An editable column (Charge, Labour, Tax) is as wide as its figure plus the cell's chrome plus the + above −
  * beside it (LINE_STEPPER). A table that no longer fits becomes cards, each line a small card with its fields.
  *
+ * In a line card an editable figure is a short input sized for the largest figure expected (`lineInputs`), with
+ * + − side by side right after it; the table keeps the stacked pair.
+ *
  * The "(all lines)" figures of a group are one row of columns (field, with − / + under it) while every column
  * is wide enough for its widest figure and two touch targets; otherwise they are stacked (`sharedSideBySide`).
  */
@@ -58,12 +61,26 @@ export interface ItemsLayout {
   sharedColumn: number;
   /** The text is so large (TABLE_STACK_SCALE) that the shared figures are always stacked. */
   sharedStacked: boolean;
+  /** The width of a line card's short input (its frame included) for Charge, Labour and Tax: the widest figure expected, at the field's text size. */
+  lineInputs: LineInputWidths;
 }
+
+export type LineInputWidths = Record<'charge' | 'labour_rate' | 'tax', number>;
 
 /** The gap between the columns of the shared row. */
 export const SHARED_GAP = space.sm;
 /** A field's frame: its outline (2 when focused) and padding on each side (`Input`). */
 const FIELD_CHROME = 2 * (space.md + 1);
+
+/**
+ * The widest figures expected in a line card's field: Charge and Labour 9999.99 (the Charge entry limit), Tax 99.99.
+ * The step's own figures are added, so a stored rate above these (12000.00) shows in full and is not clipped.
+ */
+const LINE_INPUT_FIGURES: Record<keyof LineInputWidths, readonly string[]> = {
+  charge: ['9999.99'],
+  labour_rate: ['9999.99'],
+  tax: ['99.99'],
+};
 
 const headingWidth = (table: TableLayout, heading: string) =>
   numberColumnWidth(table, 0, [], [heading], typography.footnote.fontSize ?? 13);
@@ -92,7 +109,15 @@ export function itemsLayout(
   const cards = fontScale >= CARD_SCALE || crowded(row, [widths.charge, widths.amount], 0, scale);
   const rateColumns =
     !cards && !crowded(row, [widths.charge, widths.labour, widths.tax, widths.amount], 0, scale);
-  return { widths, row, cards, rateColumns, sharedColumn, sharedStacked: table.stacked };
+  // A line card's input follows the text size (no cap): the widest of the expected figure and the stored ones.
+  const lineInput = (names: readonly string[]) =>
+    numberColumnWidth(table, 0, names, [], typography.body.fontSize ?? 16) + FIELD_CHROME;
+  const lineInputs: LineInputWidths = {
+    charge: lineInput([...LINE_INPUT_FIGURES.charge, ...figures.charge]),
+    labour_rate: lineInput([...LINE_INPUT_FIGURES.labour_rate, ...figures.labour]),
+    tax: lineInput([...LINE_INPUT_FIGURES.tax, ...figures.tax]),
+  };
+  return { widths, row, cards, rateColumns, sharedColumn, sharedStacked: table.stacked, lineInputs };
 }
 
 /** Whether a group's lines are cards: the step's layout says so, or the group needs rate columns that do not fit. */
@@ -110,4 +135,7 @@ export const sameLayout = (a: ItemsLayout, b: ItemsLayout): boolean =>
   a.rateColumns === b.rateColumns &&
   a.sharedColumn === b.sharedColumn &&
   a.sharedStacked === b.sharedStacked &&
+  a.lineInputs.charge === b.lineInputs.charge &&
+  a.lineInputs.labour_rate === b.lineInputs.labour_rate &&
+  a.lineInputs.tax === b.lineInputs.tax &&
   (Object.keys(a.widths) as FigureColumn[]).every((column) => a.widths[column] === b.widths[column]);
