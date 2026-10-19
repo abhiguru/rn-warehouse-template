@@ -137,7 +137,11 @@ export function SidewaysViewport({ scroll, content, fill, rowStyle, testID, pinn
         .onEnd((event) => {
           const max = Math.max(0, content - viewport.value);
           flinging.value = true;
-          offset.value = withDecay({ velocity: -event.velocityX, clamp: [0, max], deceleration: FLING_DECELERATION });
+          offset.value = withDecay({ velocity: -event.velocityX, clamp: [0, max], deceleration: FLING_DECELERATION }, () => {
+            'worklet';
+            // The fling is over (or was cut short): a later touch has nothing to stop, so it cannot cancel a focus reveal.
+            flinging.value = false;
+          });
         }),
     [offset, viewport, start, flinging, content]
   );

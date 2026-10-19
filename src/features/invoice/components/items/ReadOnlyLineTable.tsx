@@ -13,11 +13,14 @@
  * its child one column `content` wide holding every row's cells, with one fade per edge for the full height and one
  * glyph. The heading is the other viewport, on the same `TableScroll`.
  *
+ * Long lots are drawn in steps (`FIRST_ROWS`, then `ROWS_PER_STEP` a frame), the dividers are row borders.
+ *
  * Screen reader: one element per line. The cells are hidden from it (heading too) and N transparent accessible Views, one
- * row high each, lie over the body at `index * rowHeight`; each reads the whole line and opens the dispatch with the
- * "activate" action. They ignore touches (`pointerEvents="none"`), so the sideways pan still works.
+ * row high each, lie over the body at `index * rowHeight`; each reads the whole line and opens the dispatch (a Pressable, as the
+ * pinned link does, since Android gives no hover events to a view that ignores touches; with no screen reader they do not exist,
+ * so the sideways pan and the touches work as usual).
  */
-import React, { useMemo } from 'react';
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useScreenReader } from '@/hooks/useScreenReader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -73,6 +76,10 @@ interface Props {
 
 const NO_LINES: InvoiceItemData[] = [];
 
+/** The rows drawn at once, and the rows added with each following frame. */
+const FIRST_ROWS = 40;
+const ROWS_PER_STEP = 80;
+
 const dateOf = (line: ReadOnlyLine): string => (line.dispatchDate ? tableDateText(line.dispatchDate) : '—');
 const distinct = (values: string[]): string[] => Array.from(new Set(values));
 
@@ -123,15 +130,30 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
 
   const defs = useMemo(() => lineColumnDefs(layout.lines.widths, oneTime), [layout.lines.widths, oneTime]);
   const model = useAppTable({ data: NO_LINES, columns: defs });
-  const table = useMemo(() => lineColumnsOf(model), [defs]);  
+  const table = useMemo(() => lineColumnsOf(model), [defs]);
 
   // The scrolling part is narrower here than in the step: the panel's padding and the nested card's outline are in the way.
   const viewport = rowWidth(screen) - 2 * TABLE_OUTLINE - space.md - layout.lines.pinned;
-  const sideways = layout.lines.content > viewport;
+  const sideways = table.content > viewport;
 
   // One height for every row, in both parts, so the pinned cells and the scrolling cells line up (a cell is one line).
   const rowHeight = Math.max(touchTarget + 2 * space.xs, Math.ceil((typography.subhead.lineHeight ?? 20) * screen.scale) + 2 * space.xs);
   const pinnedWidth = table.pinned.width + space.md;
+
+  // A long lot is drawn in steps (the first rows at once, the rest a frame at a time as low-priority updates), so opening
+  // a lot of 300 lines does not mount 6,000 views in one go. The rows have a fixed height, so nothing moves while they come.
+  const [drawn, setDrawn] = useState(FIRST_ROWS);
+  const total = lines.length;
+  useEffect(() => {
+    if (drawn >= total) return undefined;
+    const frame = requestAnimationFrame(() => startTransition(() => setDrawn((count) => count + ROWS_PER_STEP)));
+    return () => cancelAnimationFrame(frame);
+  }, [drawn, total]);
+  const shown = useMemo(() => (drawn >= total ? lines : lines.slice(0, drawn)), [lines, drawn, total]);
+  // The last drawn row has no divider under it only when it is the last line.
+  const lastIndex = total - 1;
+  const rowBorder = (index: number) =>
+    index < lastIndex ? { borderBottomWidth: 1, borderBottomColor: t.table.divider } : null;
 
   const cellText = (line: ReadOnlyLine, column: LineColumn): string => {
     switch (column.id) {
@@ -198,7 +220,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
           rowStyle={bodyRow}
           pinned={
             <View style={[styles.pinnedBox, { width: pinnedWidth, paddingLeft: space.md }]} {...hidden}>
-              {lines.map((line) => {
+              {shown.map((line, index) => {
                 const canOpen = !!(line.dispatchId && onViewDispatch);
                 return (
                   <Pressable
@@ -207,9 +229,8 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
                       if (line.dispatchId) onViewDispatch?.(line.dispatchId);
                     }}
                     disabled={!canOpen}
-                    style={({ pressed }) => [{ height: rowHeight, justifyContent: 'center' }, pressed && detail.rowPressed]}
+                    style={({ pressed }) => [{ height: rowHeight, justifyContent: 'center' }, rowBorder(index), pressed && detail.rowPressed]}
                     accessibilityRole={canOpen ? 'link' : undefined}
-                    accessibilityLabel={canOpen ? spoken(line) : undefined}
                     accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
                     testID={`invoice-line-link-${line.id}`}
                   >
@@ -220,9 +241,9 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
             </View>
           }
         >
-          <View style={{ width: table.content }} {...hidden}>
-            {lines.map((line) => (
-              <View key={line.id} style={{ flexDirection: 'row', height: rowHeight }} testID={`invoice-line-${line.id}`}>
+          <View style={{ width: Math.max(table.content, viewport) }} {...hidden}>
+            {shown.map((line, index) => (
+              <View key={line.id} style={[{ flexDirection: 'row', height: rowHeight }, rowBorder(index)]} testID={`invoice-line-${line.id}`}>
                 {table.scrolling.map((column) => (
                   <View key={column.id} style={[styles.columnBox, { width: column.width }]}>
                     <Text style={[cellStyle(column), styles.figureText, { paddingRight: columnInset(column.id) }]} numberOfLines={1}>
@@ -234,34 +255,27 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
             ))}
           </View>
         </SidewaysViewport>
-        {/* The row dividers run to the card's edge, whatever the width of the cells. */}
-        {lines.slice(0, -1).map((line, index) => (
-          <View
-            key={line.id}
-            pointerEvents="none"
-            style={[dividerLine, { top: (index + 1) * rowHeight - 1, borderBottomColor: t.table.divider }]}
-          />
-        ))}
         {screenReader
-          ? lines.map((line, index) => {
+          ? shown.map((line, index) => {
               const canOpen = !!(line.dispatchId && onViewDispatch);
+              const open = () => {
+                if (line.dispatchId) onViewDispatch?.(line.dispatchId);
+              };
+              // A view that ignores touches gets no hover events on Android, so explore-by-touch would find nothing here:
+              // while a screen reader is on the overlay is a Pressable that does what the pinned link does (style guide 13.7).
               return (
-                <View
+                <Pressable
                   key={line.id}
-                  pointerEvents="none"
+                  onPress={open}
+                  disabled={!canOpen}
                   style={[overlay, { top: index * rowHeight, height: rowHeight }]}
                   accessible
                   accessibilityRole={canOpen ? 'link' : undefined}
                   accessibilityLabel={spoken(line)}
                   accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
                   accessibilityActions={canOpen ? [{ name: 'activate' }] : undefined}
-                  onAccessibilityAction={
-                    canOpen
-                      ? () => {
-                          if (line.dispatchId) onViewDispatch?.(line.dispatchId);
-                        }
-                      : undefined
-                  }
+                  onAccessibilityAction={canOpen ? open : undefined}
+                  testID={`invoice-line-overlay-${line.id}`}
                 />
               );
             })
@@ -273,4 +287,3 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
 
 const bodyRow = { flexDirection: 'row' as const, alignItems: 'stretch' as const };
 const overlay = { position: 'absolute' as const, left: 0, right: 0 };
-const dividerLine = { position: 'absolute' as const, left: 0, right: 0, height: 1, borderBottomWidth: 1 };

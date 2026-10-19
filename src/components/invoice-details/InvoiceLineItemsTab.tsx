@@ -112,10 +112,12 @@ export interface InvoiceLineItemGroupData {
   /** The lot's GRN is priced ONE_TIME: no months, no labour. */
   one_time: boolean;
   total_dispatch_qty: number;
-  charge_per_unit: number;
+  /** Undefined when the lines of the lot have different charges (the summary then shows no rate). */
+  charge_per_unit?: number;
   /** Undefined when the lines of the lot have different tax rates. */
   tax_rate?: number;
-  labour_rate: number;
+  /** Undefined when the lines of the lot have different labour figures. */
+  labour_rate?: number;
   total_base_amount: number;
   total_tax_amount: number;
   total_amount: number;
@@ -187,7 +189,14 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
     const lineTotal = hasServerAmounts ? item.server_total_amount! : computed.item_total;
     const baseAmount = hasServerAmounts ? roundMoney(lineTotal - taxAmount) : computed.taxable_amount;
 
-    // A group-level rate is only meaningful when every dispatch uses the same rate.
+    // A group-level rate is only meaningful when every dispatch uses the same rate (the first line sets it).
+    if (group.dispatch_items.length === 0) {
+      group.charge_per_unit = charge_per_unit;
+      group.labour_rate = labour_rate;
+    } else {
+      if (group.charge_per_unit !== undefined && group.charge_per_unit !== charge_per_unit) group.charge_per_unit = undefined;
+      if (group.labour_rate !== undefined && group.labour_rate !== labour_rate) group.labour_rate = undefined;
+    }
     if (group.tax_rate !== undefined && group.tax_rate !== taxRate) {
       group.tax_rate = undefined;
     }
@@ -280,11 +289,13 @@ const lotLine = (group: Pick<InvoiceLineItemGroupData, 'package_mark' | 'weight'
   return parts.length > 0 ? parts.join(' · ') : null;
 };
 
-/** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; labour and tax only when there are any, tax only when one rate. */
+/** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; each part only when every line of the lot agrees, labour and tax only when there are any. */
 const rateLine = (group: InvoiceLineItemGroupData): string =>
   [
-    tr('invoice.detailsTable.rate', { amount: formatInvoiceAmount(group.charge_per_unit) }),
-    group.labour_rate > 0 ? tr('invoice.detailsTable.labour', { amount: formatInvoiceAmount(group.labour_rate) }) : null,
+    group.charge_per_unit !== undefined ? tr('invoice.detailsTable.rate', { amount: formatInvoiceAmount(group.charge_per_unit) }) : null,
+    group.labour_rate !== undefined && group.labour_rate > 0
+      ? tr('invoice.detailsTable.labour', { amount: formatInvoiceAmount(group.labour_rate) })
+      : null,
     group.tax_rate !== undefined && group.tax_rate > 0 ? tr('invoice.detailsTable.tax', { value: group.tax_rate }) : null,
   ]
     .filter(Boolean)
@@ -382,7 +393,9 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
               <>
                 <Text style={styles.primary}>{group.item_name}</Text>
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
-                <Text style={styles.secondary}>{nb(table.stacked ? `${rates} · ${bags(group.total_dispatch_qty)}` : rates)}</Text>
+                {table.stacked || rates !== '' ? (
+                  <Text style={styles.secondary}>{nb(table.stacked ? [rates, bags(group.total_dispatch_qty)].filter(Boolean).join(' · ') : rates)}</Text>
+                ) : null}
                 {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
               </>
             );
