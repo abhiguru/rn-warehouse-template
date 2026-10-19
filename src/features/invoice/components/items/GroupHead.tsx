@@ -1,7 +1,11 @@
 /**
  * The top of a group's card: the item name, its mark (up to two lines, never an empty chip), the
- * weights, how many bags were dispatched, the group total and, in a new invoice for those who
- * may change prices, the pencil that opens the item's price list.
+ * weights, the group total and, in a new invoice for those who may change prices, the pencil that
+ * opens the item's price list. How many bags were dispatched is a line of its own under the name
+ * and total, across the width of the heading group (number and unit kept together with `nb`, never
+ * cut), so it stays on one line at large text sizes instead of wrapping in the narrow name column.
+ * The row and this line share one accessible element carrying the heading's spoken label; the
+ * pencil stays beside it as its own button.
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -62,7 +66,8 @@ export const GroupHead = React.memo(function GroupHead({ group, groupKey, total,
   return (
     <View style={styles.top} testID={`items-head-${groupKey}`}>
       <View style={styles.headRow}>
-        <View style={[styles.headRow, styles.grow]} accessible accessibilityLabel={spoken}>
+        <View style={styles.grow} accessible accessibilityLabel={spoken}>
+        <View style={styles.headRow}>
         <View style={styles.headContent}>
           <View style={styles.nameRow}>
             <Text style={styles.name} numberOfLines={2}>{group.item_name}</Text>
@@ -83,10 +88,12 @@ export const GroupHead = React.memo(function GroupHead({ group, groupKey, total,
               ))}
             </View>
           ) : null}
-          <Text style={styles.dispatched}>{nb(dispatched)}</Text>
           {underName ? <View style={styles.headTotalUnder} testID={`items-head-total-under-${groupKey}`}>{totalBlock}</View> : null}
         </View>
         {underName ? null : <View style={styles.headTotal} testID={`items-head-total-beside-${groupKey}`}>{totalBlock}</View>}
+        </View>
+        {/* Under the name and total, across the group's width; part of the heading's spoken label. */}
+        <Text style={styles.dispatched}>{nb(dispatched)}</Text>
         </View>
         {canEditPricing ? (
           <Pressable
