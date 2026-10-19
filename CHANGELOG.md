@@ -24,19 +24,52 @@ No backend change.
 - **Unused types removed:** the old `get_dispatch_list` row type `RpcDispatchListItem` and `RpcDispatchListResponse` in `rpc-canonical.types.ts`, with their exports and imports.
 - **Unused `getDispatchList` removed** (with `GetDispatchListParams`). The Dispatches list and search use `get_dispatch_list_with_items`; no app code names `get_dispatch_list` any more, so the backend can drop it.
 
-## Unreleased — Invoice Items: dispatch details behind a toggle
+## Unreleased — Invoice Items, Invoices list and Line items tab: dispatch table, shared rates, speed
 
-Pairs with backend migration 100 (`get_invoice_detail` sends each line once, with only the keys the app reads, and
-`grn_pricing_mode`): merge and deploy the backend first. Without it the app falls back and asks
-`get_invoice_data` for the pricing mode, as before.
+Pairs with the backend PR abhiguru/supabase-warehouse-template #128. Merge and deploy the backend first for the full behaviour:
+migration 100 (`invoice.grn_pricing_mode`) and migration 109 (`get_invoice_detail` lines gain `item_id`, `dispatch_id` and `rack`, in
+the order of the Create preview). On an older server the app still works: Edit falls back to `get_invoice_data` for the pricing mode
+and the lines, and the Line items tab groups the lines by `item_name` with an empty `dispatch_id` (no dispatch link). Migrations 101,
+102 and 110 and the Kong gzip are server-side only (smaller, faster answers; the app needs nothing from them).
 
-- **Dispatch toggle.** On Invoice → "Step 2 of 3 · Items" each item and mark card shows its dispatch lines behind a
-  "Show dispatch details (N)" / "Hide dispatch details" toggle at the bottom of the card, closed by default (a group
-  of one line starts open; coming back from Review keeps the groups as they were). Next opens the group of the first
-  wrong figure, even a closed one. A closed group with refused text says "N figures to fix" under its toggle. The
-  line table's columns come from the TanStack setup (`lineColumns.ts`). Gujarati: `invoice.items.showLines`, `hideLines`,
-  `showLinesA11y`, `hideLinesA11y`, `linesToFix` are drafts for the owner's wording review.
-- **Edit form.** The edit path reads `grn_pricing_mode` from `get_invoice_detail`.
+- **Invoice -> "Step 2 of 3 · Items": dispatch details behind a toggle.** Each item and mark card shows its dispatch lines behind
+  "Show dispatch details (N)" / "Hide dispatch details" at the bottom of the card, closed by default (a card of one line starts
+  open; coming back from Review keeps the cards as they were). Next opens the card of the first wrong figure, even a closed one;
+  a closed card with refused text says "N figures to fix" under its toggle. The "N of N bags dispatched" line sits under the name,
+  and the Group total line is gone.
+- **One sideways-scrolling table per card** (a style-guide exception approved by the owner for this section, §13.7): Dispatch
+  (pinned, stays on the left) | Date (DD/MM/YY) | Months | Days | Qty | Charge (editable, always boxed) | Labour (editable on every
+  line, a per-dispatch exception) | Tax (read-only) | Amount. All the lines of a card share one sideways position, with edge
+  cues and a swipe hint. The columns come from the TanStack setup (`lineColumns.ts`). While TalkBack (a screen reader) is on, the
+  lines are line cards instead, each editable figure a short input with + / −.
+- **"All dispatches" (shared Charge, Labour and Tax) side by side** with + / − steppers (0.25 / 0.25 / 1). The shared Charge shows
+  the average charge weighted by bag-months (by bags for a one-time GRN) with the note "Average of N lines" (and "N lines keep
+  their own charge"); the steppers step from the rate that the lines without their own charge share, not from the average.
+  Emptying a Mixed or average field reverts it (nothing is applied) and the average or "Mixed" shows as the placeholder again.
+- **Charge entry limit 9999.99** for typing and the steppers only; Next and Save still accept stored figures up to 999999 (the
+  server's range), so an old invoice with a higher charge opens and saves, and − brings it to 9999.99. The error text says
+  the range 0 to 9999.99.
+- **Edit keeps saved exceptions.** When an invoice is opened for editing, lines whose Charge or Labour differs from the strict
+  majority of their card, item and bag weight are kept as their own (`savedLineOverrides`), so an "All dispatches" entry does not
+  overwrite them; a tie or a single line marks nothing.
+- **Pricing pencil removed** (`usePricingPencil` and its test deleted).
+- **Speed (phone timings on a big GRN, HVD4).** The formatter cache; narrowed form subscriptions (typing in step 1 no longer
+  redraws step 2); frozen lines; the per-field validation fast path on Next and Save with the full yup check as the fallback;
+  the stored sign-in session kept in memory (cleared on every write, sign-out, server switch, session change and return to the
+  foreground); a cheaper GRN load and Review drawn with `deferBody`. Next on Items: 5 s -> 0.5 s; picking a big GRN: about
+  3 s -> about 1.2 s; a key in a line field: about 350 ms -> about 100 ms.
+- **Invoices list card.** The amounts are a nested table (a NULL amount is shown as 0). The header shows the invoice number only
+  (the spoken label is still "Invoice N"), with the date and the GRN on one line.
+- **Invoice details -> Line items tab.** An opened lot shows the same table as step 2 (Dispatch pinned, Date, Months, Days, Qty,
+  Charge, Labour, Tax, Amount), read-only; the lot summary shows Rate and Labour only when every line of the lot agrees.
+  While a screen reader is on, each line is one link element (a Pressable over the row) that reads the whole line and opens the
+  dispatch. A long lot is drawn in steps (the first 40 lines, then 80 a frame).
+- **Gujarati drafts for the owner's wording review** (`invoice.items.*` unless noted): `colMonths`, `colDays`, `colQty`,
+  `swipeHint`, `stepNameCharge`, `stepNameLabour`, `stepNameTax`, `stepAmountMoney`, `stepAmountTax`, `stepDecrease`,
+  `stepIncrease`, `stepLineDecrease`, `stepLineIncrease`, `stepLowerToMax`, `stepLineLowerToMax`, `stepUnitMoney`, `stepDone`,
+  `stepDoneAverage`, `averageNote`, `groupAverageA11y`, `showLines`, `hideLines`, `showLinesA11y`, `hideLinesA11y`,
+  `linesToFix`; `invoice.detailsTable.lineSpoken`, `lineSpokenOneTime`; and the changed `invoice.validation.chargeRange` text (limit
+  9999.99). Unused keys removed in English and Gujarati: `lists.invoice.labourAmount`, `adjustmentAmount`, `netBeforeTax`, `tax`.
 
 ## Unreleased — Dispatch and invoice review; invoice form
 
