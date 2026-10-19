@@ -1,6 +1,7 @@
 import {
   formatCount,
   formatDate,
+  formatDateShort,
   formatDateTime,
   formatIndiaDate,
   formatIndiaSectionDate,
@@ -14,6 +15,7 @@ import {
   formatWeightEach,
   indiaDay,
 } from '../formatters';
+import { setLanguage } from '@/i18n/language';
 import { avatarColors, avatarIndex, avatarInitials } from '../avatar';
 import { AA, BRANDS, contrastRatio, getTokens } from '@/theme/tokens';
 import { watchPhoneZone } from '@/tests/helpers/phoneZone';
@@ -343,5 +345,33 @@ describe('formatRelativeTime, a day or more ago', () => {
   it('is still how long ago under a day', () => {
     const threeHours = new Date(Date.now() - 3 * 3600000).toISOString();
     expect(formatRelativeTime(threeHours, time => formatIndiaDate(time, 'short'))).toBe('3 h ago');
+  });
+});
+
+describe('formatDateShort, the DD/MM/YY of the dispatch tables', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('writes two digits for the day, the month and the year', () => {
+    expect(formatDateShort('2026-06-01')).toBe('01/06/26');
+    expect(formatDateShort('2026-10-19')).toBe('19/10/26');
+    expect(formatDateShort('2030-12-31')).toBe('31/12/30');
+    expect(formatDateShort('2100-01-05')).toBe('05/01/00');
+  });
+
+  it('reads a date or a stored timestamp, and never moves the day', () => {
+    expect(formatDateShort(new Date(2026, 2, 9))).toBe('09/03/26');
+    expect(formatDateShort('2026-03-09T00:00:00')).toBe('09/03/26');
+  });
+
+  it('is a dash for a missing or invalid date', () => {
+    expect(formatDateShort(null)).toBe('—');
+    expect(formatDateShort(undefined)).toBe('—');
+    expect(formatDateShort('')).toBe('—');
+    expect(formatDateShort('not a date')).toBe('—');
+  });
+
+  it('uses the digits of the language: Gujarati digits in Gujarati', () => {
+    setLanguage('gu');
+    expect(formatDateShort('2026-06-01')).toBe('૦૧/૦૬/૨૬');
   });
 });

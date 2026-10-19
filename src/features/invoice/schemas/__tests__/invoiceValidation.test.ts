@@ -146,3 +146,85 @@ describe('a line with a charge of 0', () => {
     expect(result.errors['header.total']).toBe('Total must be positive');
   });
 });
+
+// The per-field fast path (linesPassPerField) only decides that a list is valid; whatever it does not prove valid runs
+// the full check, so errors, paths and messages are what they always were.
+describe('the lines check with many lines (each distinct value is checked once)', () => {
+  const line = (n: number, overrides: Record<string, unknown> = {}) => ({
+    temp_id: `t${n}`,
+    disp_trl_id: `aaaaaaaa-2222-4333-8444-${String(n).padStart(12, '0')}`,
+    qty: 100,
+    duration: 1,
+    no_of_days: 30,
+    charge: 5,
+    labour_rate: 2,
+    tax: 5,
+    ...overrides,
+  });
+  const many = (count: number, at?: [number, Record<string, unknown>]) =>
+    Array.from({ length: count }, (_, n) => line(n, at && at[0] === n ? at[1] : {}));
+  const totals = { ...header(), labour: 0, tax_amount: 0, total: 100 };
+
+  it('passes a long valid list at the items step and at Save', async () => {
+    expect(await validateStep2(many(500))).toEqual({ isValid: true, errors: {} });
+    expect(await validateFullInvoice({ header: totals, items: many(500) })).toEqual({ isValid: true, errors: {} });
+  });
+
+  it('reports one wrong line among many with its own path and message, as the full check does', async () => {
+    const result = await validateStep2(many(500, [317, { charge: -1 }]));
+
+    expect(result.isValid).toBe(false);
+    expect(Object.keys(result.errors)).toEqual(['items[317].charge']);
+    expect(result.errors['items[317].charge']).toBe('Charge cannot be negative');
+  });
+
+  it('reports every wrong line, also those with the same wrong value', async () => {
+    const items = many(50).map((entry, n) => (n % 10 === 0 ? { ...entry, duration: 0 } : entry));
+    const result = await validateStep2(items);
+
+    expect(Object.keys(result.errors).sort()).toEqual(['items[0].duration', 'items[10].duration', 'items[20].duration', 'items[30].duration', 'items[40].duration']);
+  });
+
+  it('refuses a wrong value that is the only one of its field, at Save too', async () => {
+    const result = await validateFullInvoice({ header: totals, items: many(200, [199, { duration: 0 }]) });
+
+    expect(result.isValid).toBe(false);
+    expect(Object.keys(result.errors)).toEqual(['items[199].duration']);
+  });
+
+  it.each([
+    ['an empty list', []],
+    ['no list', undefined],
+    ['null', null],
+    ['an object', { 0: line(0) }],
+  ])('does not prove %s valid: the full check answers', async (_name, items) => {
+    const result = await validateStep2(items);
+
+    expect(result.isValid).toBe(false);
+    expect(Object.keys(result.errors).length).toBeGreaterThan(0);
+  });
+
+  it('does not take a line that is not a plain object for valid', async () => {
+    expect((await validateStep2([line(0), null])).isValid).toBe(false);
+    expect((await validateStep2([line(0), 'a line'])).isValid).toBe(false);
+    expect((await validateStep2([line(0), [line(1)]])).isValid).toBe(false);
+  });
+
+  it('does not take an object where a figure belongs for valid', async () => {
+    expect((await validateStep2([line(0, { charge: { value: 5 } })])).isValid).toBe(false);
+  });
+
+  it('at Save, a charge that is not a number goes through the full check, which decides', async () => {
+    const result = await validateFullInvoice({ header: totals, items: [line(0, { charge: '5' })] });
+
+    // yup reads "5" as the number 5: the answer is the full check's, whatever it is, and not an unchecked pass of the fast path.
+    const full = await validateFullInvoice({ header: totals, items: [line(0, { charge: 5 })] });
+    expect(result.isValid).toBe(full.isValid);
+  });
+
+  it('keeps the header rules: a wrong header is refused with many good lines', async () => {
+    const result = await validateFullInvoice({ header: { ...totals, total: 0 }, items: many(300) });
+
+    expect(result.errors['header.total']).toBe('Total must be positive');
+  });
+});
