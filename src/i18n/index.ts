@@ -43,9 +43,11 @@ function lookup(table: unknown, key: string): string | Plural | undefined {
 /** English: one for exactly 1. Gujarati: one for 0 and 1 (most nouns do not change, so both forms are usually equal). */
 const isOne = (count: number, language: AppLanguage) => (language === 'gu' ? count === 0 || count === 1 : count === 1);
 
+const plainIndianFormat = new Intl.NumberFormat('en-IN');
+
 const formatParam = (value: string | number | null | undefined, language: AppLanguage): string => {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'number') return localizeDigits(new Intl.NumberFormat('en-IN').format(value), language);
+  if (typeof value === 'number') return localizeDigits(plainIndianFormat.format(value), language);
   return value;
 };
 

@@ -15,7 +15,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 
 import { router, useFocusEffect, type Href } from 'expo-router';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
 import {
   updateHeader,
   updateEditedItem,
@@ -35,9 +35,7 @@ import {
   numberCancelled,
   selectInvoiceFormHeader,
   selectInvoiceFormItems,
-  selectInvoiceFormEditedItems,
   selectInvoiceFormItemOverrides,
-  selectInvoiceFormBulkPricing,
   selectInvoiceFormId,
   selectInvoiceNumberStatus,
   selectInvoiceFormBaseline,
@@ -111,10 +109,10 @@ export interface StepCheck {
 export interface UseInvoiceFormReturn {
   // State
   header: InvoiceHeaderData;
+  /** On step 1 this array follows a change of the line COUNT only (that step shows nothing else of it); the other steps follow every change. */
   items: InvoiceItemData[];
-  editedItems: Record<string, EditedItemValues>;
+  /** The rates typed on the lines, by line. Read on step 2 only (the other steps get an empty object). */
   itemOverrides: Record<string, string[]>;
-  bulkPricing: Record<string, GroupRates>;
   invoiceId: string | null;
   isLoading: boolean;
   nextNumberFailed: boolean;
@@ -124,8 +122,8 @@ export interface UseInvoiceFormReturn {
   isLoadingItems: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
-  /** Edit only: the form differs from the saved invoice. */
-  isChanged: boolean;
+  /** Edit only: whether the form differs from the saved invoice. Asked when needed (the Back key), not followed. */
+  getIsChanged: () => boolean;
   /** Rates typed on the lines, a discount or a reason: all of it is lost when the lines are replaced. */
   hasLineEdits: boolean;
   /** Edit only: the GRN the invoice was saved with. */
@@ -207,30 +205,58 @@ const withoutHeaderPrefix = (errors: Record<string, string>): Record<string, str
   return flat;
 };
 
+const NO_OVERRIDES: Record<string, string[]> = {};
+const selectNoOverrides = () => NO_OVERRIDES;
+
+/** The header's totals follow the lines (every figure typed on step 2 moves them); steps 1 and 2 show none of them. */
+const TOTAL_KEYS: ReadonlyArray<keyof InvoiceHeaderData> = ['labour', 'tax_amount', 'total'];
+const sameHeaderBesidesTotals = (a: InvoiceHeaderData, b: InvoiceHeaderData): boolean => {
+  if (a === b) return true;
+  const keys = Object.keys(a) as Array<keyof InvoiceHeaderData>;
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => TOTAL_KEYS.includes(key) || Object.is(a[key], b[key]));
+};
+const sameCount = (a: readonly unknown[], b: readonly unknown[]): boolean => a === b || a.length === b.length;
+
+/** Whether an object holds any key (without listing them all). */
+const hasKeys = (value: object): boolean => {
+  for (const _key in value) return true;
+  return false;
+};
+
 export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoiceFormReturn {
   const dispatch = useAppDispatch();
 
-  const header = useAppSelector(selectInvoiceFormHeader);
-  const items = useAppSelector(selectInvoiceFormItems);
-  const editedItems = useAppSelector(selectInvoiceFormEditedItems);
-  const itemOverrides = useAppSelector(selectInvoiceFormItemOverrides);
-  const bulkPricing = useAppSelector(selectInvoiceFormBulkPricing);
+  const store = useAppStore();
+
+  // What a step subscribes to is what it shows. Steps 1 and 2 stay mounted together in the stack, so a figure
+  // typed on step 2 must not draw step 1 again: step 1 follows the line count, not the lines, and neither step
+  // follows the header's totals. The callbacks below read the latest state from the store, not these values.
+  const header = useAppSelector(selectInvoiceFormHeader, step === 3 ? undefined : sameHeaderBesidesTotals);
+  const items = useAppSelector(selectInvoiceFormItems, step === 1 ? sameCount : undefined);
+  const itemOverrides = useAppSelector(step === 2 ? selectInvoiceFormItemOverrides : selectNoOverrides);
   const invoiceId = useAppSelector(selectInvoiceFormId);
   const numberStatus = useAppSelector(selectInvoiceNumberStatus);
   const baseline = useAppSelector(selectInvoiceFormBaseline);
-  const isChanged = useAppSelector(selectInvoiceFormChanged);
+  // Not subscribed: step 1 stays mounted under step 2, and following the fingerprint would walk every line
+  // (JSON.stringify) on each key typed on step 2. The Back key asks at press time.
+  const getIsChanged = useCallback(() => selectInvoiceFormChanged(store.getState()), [store]);
   const validationErrors = useAppSelector((state) => state.invoiceForm.validationErrors);
   const isLoading = useAppSelector((state) => state.invoiceForm.is_loading);
   const isSaving = useAppSelector((state) => state.invoiceForm.is_saving);
   const isLoadingItems = useAppSelector((state) => state.invoiceForm.is_loading_items);
 
   const isCreateMode = mode === 'create';
-  const hasLineEdits =
-    Object.keys(editedItems).length > 0 ||
-    Object.keys(bulkPricing).length > 0 ||
-    (header.discount || 0) !== 0 ||
-    !!header.discount_reason?.trim() ||
-    !!header.zero_charge_reason?.trim();
+  const hasLineEdits = useAppSelector((state) => {
+    const form = state.invoiceForm;
+    return (
+      hasKeys(form.editedItems) ||
+      hasKeys(form.bulkPricing) ||
+      (form.header.discount || 0) !== 0 ||
+      !!form.header.discount_reason?.trim() ||
+      !!form.header.zero_charge_reason?.trim()
+    );
+  });
   const savedGrn = useMemo(
     () => (baseline ? { id: baseline.gr_id, gr_no: baseline.header.gr_no, customer_name: baseline.header.customer_name } : null),
     [baseline]
@@ -432,6 +458,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
 
   /** Step 1 (`details`) or the whole invoice (`full`), with the rules of a new invoice or of an edit. */
   const runSchema = useCallback(async (kind: 'details' | 'full') => {
+    const { header, items } = store.getState().invoiceForm;
     const data = { header, items };
     if (isCreateMode) {
       return kind === 'details' ? validateNewInvoiceStep1(header) : validateNewInvoice(data);
@@ -443,7 +470,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     const extra = numberErrors(capped.errors);
     if (Object.keys(extra).length === 0 || Object.keys(numberErrors(result.errors)).length > 0) return result;
     return { isValid: false, errors: { ...result.errors, ...extra } };
-  }, [header, items, isCreateMode, numberChanged]);
+  }, [store, isCreateMode, numberChanged]);
 
   /**
    * Validate a specific step (1 Details, 2 Items, 3 the whole invoice) and
@@ -451,6 +478,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
    */
   const validateCurrentStep = useCallback(async (checkedStep: number): Promise<StepCheck> => {
     let result: StepCheck;
+    const { items } = store.getState().invoiceForm;
 
     switch (checkedStep) {
       case 1:
@@ -478,7 +506,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
 
     dispatch(setValidationErrors(withoutHeaderPrefix(result.errors)));
     return result;
-  }, [items, runSchema, dispatch]);
+  }, [store, runSchema, dispatch]);
 
   const validateField = useCallback(async (field: string) => {
     const result = await runSchema('details');
@@ -620,9 +648,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   return {
     header,
     items,
-    editedItems,
     itemOverrides,
-    bulkPricing,
     invoiceId,
     isLoading,
     nextNumberFailed,
@@ -631,7 +657,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     isLoadingItems,
     validationErrors,
     isCreateMode,
-    isChanged,
+    getIsChanged,
     hasLineEdits,
     savedGrId: baseline?.gr_id ?? null,
     savedGrn,

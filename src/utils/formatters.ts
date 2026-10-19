@@ -13,8 +13,18 @@ const words = () => commonWords(getLanguage());
  * number the app formats goes through here; identifiers do not (see
  * `formatIdentifier` in `@/i18n/language`).
  */
-const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string =>
-  localizeDigits(new Intl.NumberFormat('en-IN', options).format(value));
+const indianFormats = new Map<string, Intl.NumberFormat>();
+
+const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
+  // Building an Intl formatter is slow on Hermes, so one is kept for each set of options.
+  const key = options ? JSON.stringify(options) : '';
+  let format = indianFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat('en-IN', options);
+    indianFormats.set(key, format);
+  }
+  return localizeDigits(format.format(value));
+};
 
 /**
  * Format a number as Indian Rupee currency

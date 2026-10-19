@@ -63,6 +63,7 @@ import {
   linesDifferInLabourOrTax,
   parseKey,
   planRows,
+  samePlan,
   RATE_FIELDS,
   rateText,
   settle,
@@ -73,6 +74,7 @@ import {
   type ItemsActions,
   type ItemsRow,
   type RateField,
+  type RowPlan,
 } from './itemsModel';
 import { makeItemsStyles } from './itemsStyles';
 import { useFieldWalk, useRefFactory } from './useFieldWalk';
@@ -138,6 +140,16 @@ interface FocusRecord {
 const rowKey = (row: ItemsRow) => row.key;
 const rowType = (row: ItemsRow) => row.type;
 const EMPTY_MAP: Record<string, string[]> = {};
+/**
+ * The text of one figure column, each distinct value formatted once (the text depends on the value
+ * alone, and the layout only takes the widest text of a column, so repeats add nothing).
+ */
+function distinctTexts<T, V>(lines: readonly T[], valueOf: (line: T) => V, format: (value: V) => string): string[] {
+  const values = new Set<V>();
+  lines.forEach((line) => values.add(valueOf(line)));
+  return Array.from(values, (value) => format(value));
+}
+
 /** The line tables' column model needs no rows: the rows are the list's own. */
 const NO_LINES: InvoiceItemData[] = [];
 /** How long after a field is left the layout may change again (a move to the next field comes sooner). */
@@ -148,7 +160,7 @@ const SETTLE_MS = 150;
  */
 export const SCROLL_VIEW_POSITION = 0.15;
 
-export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
+export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
   { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, ListHeaderComponent, style, contentContainerStyle },
   ref
 ) {
@@ -220,11 +232,11 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
         table,
         fontScale,
         {
-          qty: layoutItems.map((line) => formatNumber(line.qty)),
-          charge: layoutItems.map((line) => rateText('charge', line.charge)),
-          labour: layoutItems.map((line) => rateText('labour_rate', line.labour_rate)),
-          tax: layoutItems.map((line) => rateText('tax', line.tax)),
-          amount: layoutItems.map((line) => formatInvoiceAmount(line.item_total)),
+          qty: distinctTexts(layoutItems, (line) => line.qty, (v) => formatNumber(v)),
+          charge: distinctTexts(layoutItems, (line) => line.charge, (v) => rateText('charge', v)),
+          labour: distinctTexts(layoutItems, (line) => line.labour_rate, (v) => rateText('labour_rate', v)),
+          tax: distinctTexts(layoutItems, (line) => line.tax, (v) => rateText('tax', v)),
+          amount: distinctTexts(layoutItems, (line) => line.item_total, (v) => formatInvoiceAmount(v)),
         },
         {
           qty: tr('invoice.lineItem.colQty'),
@@ -260,6 +272,9 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
   // A group whose lines differ in labour or tax shows them line by line, and keeps doing so while
   // it is on the screen: typing a line's labour equal to the others must not take the field away.
   const perLineGroups = useRef(new Set<string>()).current;
+  // The plan holds no figures, so while only a figure changes the earlier plan is kept: the list gets the
+  // same data and does not lay its rows out again (the rows read their figures when they are drawn).
+  const keptPlan = useRef<RowPlan | undefined>(undefined);
   const { plan, modes } = useMemo(() => {
     const byGroup = new Map<string, GroupMode>();
     const modeOf = (group: InvoiceItemGroup): GroupMode => {
@@ -270,7 +285,10 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
       byGroup.set(groupKey, mode);
       return mode;
     };
-    return { plan: planRows(groups, modeOf, oneTime, openSet), modes: byGroup };
+    const built = planRows(groups, modeOf, oneTime, openSet);
+    const kept = keptPlan.current && samePlan(keptPlan.current, built) ? keptPlan.current : built;
+    keptPlan.current = kept;
+    return { plan: kept, modes: byGroup };
   }, [groups, layout, oneTime, perLineGroups, openSet]);
 
   // The line table's columns: TanStack decides the headings, widths and which cells a row has; the rows
@@ -729,6 +747,6 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
       keyboardDismissMode="on-drag"
     />
   );
-});
+}));
 
 export default InvoiceItemsEditor;

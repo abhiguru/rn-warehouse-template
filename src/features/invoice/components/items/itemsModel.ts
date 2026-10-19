@@ -198,6 +198,31 @@ export function planRows(
   return { rows, order, allOrder, rowOf };
 }
 
+const sameList = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+
+const sameRow = (a: ItemsRow, b: ItemsRow): boolean => {
+  const keys = Object.keys(a) as Array<keyof ItemsRow>;
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => {
+    const x: unknown = a[key];
+    const y: unknown = (b as Record<string, unknown>)[key];
+    return Array.isArray(x) && Array.isArray(y) ? sameList(x, y) : x === y;
+  });
+};
+
+/**
+ * Whether two plans are the same page: the same rows (keys, kinds, flags) in the same order and the same
+ * fields in the same rows. A row holds no figures (the rows read those when they are drawn), so a typed
+ * figure leaves the plan the same and the earlier one can be kept: the list is not given new data.
+ */
+export function samePlan(a: RowPlan, b: RowPlan): boolean {
+  if (a === b) return true;
+  if (a.rows.length !== b.rows.length || a.rowOf.size !== b.rowOf.size) return false;
+  if (!sameList(a.order, b.order) || !sameList(a.allOrder, b.allOrder)) return false;
+  for (const [key, index] of a.rowOf) if (b.rowOf.get(key) !== index) return false;
+  return a.rows.every((row, index) => sameRow(row, b.rows[index]));
+}
+
 /** The functions the rows call. One object for the life of the editor, so memoized rows keep their props. */
 export interface ItemsActions {
   focus: (key: string) => void;

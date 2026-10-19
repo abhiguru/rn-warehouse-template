@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction, createSelector, original, isDraft } from '@reduxjs/toolkit';
 import {
   InvoiceFormState,
   InvoiceHeaderData,
@@ -36,6 +36,13 @@ const createInitialHeader = (): InvoiceHeaderData => {
     total: 0,
   };
 };
+
+/**
+ * The lines as a plain array. Reading them through the draft makes a proxy of every line visited, which for a few
+ * thousand lines costs far more than the edit. Call it before the reducer changes `state.items`.
+ */
+const plainLines = (items: InvoiceItemData[]): InvoiceItemData[] =>
+  isDraft(items) ? original(items)! : items;
 
 /**
  * What the saved invoice looked like when it was opened for editing: the
@@ -153,18 +160,21 @@ const invoiceFormSlice = createSlice({
         }
       });
 
-      // Update the item with the edited values and recalculate
-      const itemIndex = state.items.findIndex((item) => item.temp_id === temp_id);
+      // Update the item with the edited values and recalculate. The lines are read from the plain
+      // array, not through the draft: reading a draft makes a proxy of every line it visits, which
+      // for a few thousand lines costs more than the edit itself.
+      const lines = plainLines(state.items);
+      const itemIndex = lines.findIndex((item) => item.temp_id === temp_id);
+      let totalsOf: InvoiceItemData[] = lines;
       if (itemIndex !== -1) {
-        const item = state.items[itemIndex];
-        const editedItem = state.editedItems[temp_id];
-
         // Recalculate item using extracted function
-        state.items[itemIndex] = recalculateItemWithEdits(item, editedItem);
+        const recalculated = recalculateItemWithEdits(lines[itemIndex], state.editedItems[temp_id]);
+        state.items[itemIndex] = recalculated;
+        totalsOf = lines.map((item, index) => (index === itemIndex ? recalculated : item));
       }
 
       // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(totalsOf, state.header.discount);
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -187,7 +197,7 @@ const invoiceFormSlice = createSlice({
           discount === roundMoney(state.header.saved_discount || 0) ? savedReason : '';
       }
       state.header.discount = discount;
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(plainLines(state.items), state.header.discount);
       Object.assign(state.header, headerTotals);
     },
 
@@ -199,10 +209,18 @@ const invoiceFormSlice = createSlice({
       action: PayloadAction<Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }>>
     ) => {
       const changedGroups: Array<{ key: string; fields: Array<'charge' | 'labour_rate' | 'tax'> }> = [];
+      // Plain lines and one index of them, built once: a lookup through the draft for each rate was O(k*n) proxied reads.
+      // `current` holds the lines this reducer has already changed (a temp_id given twice sees its own first result).
+      const lines = plainLines(state.items);
+      const indexOf = new Map<string, number>();
+      lines.forEach((line, index) => {
+        if (!indexOf.has(line.temp_id)) indexOf.set(line.temp_id, index);
+      });
+      const current = new Map<number, InvoiceItemData>();
       action.payload.forEach(rates => {
-        const index = state.items.findIndex(item => item.temp_id === rates.temp_id);
-        if (index === -1) return;
-        const item = state.items[index];
+        const index = indexOf.get(rates.temp_id);
+        if (index === undefined) return;
+        const item = current.get(index) ?? lines[index];
         const overrides = state.itemOverrides[rates.temp_id] || [];
         const values: Partial<EditedItemValues> = {};
         (['charge', 'labour_rate', 'tax'] as const).forEach(field => {
@@ -210,7 +228,9 @@ const invoiceFormSlice = createSlice({
         });
         const fields = Object.keys(values) as Array<'charge' | 'labour_rate' | 'tax'>;
         if (fields.length === 0) return;
-        state.items[index] = recalculateItemWithEdits(item, values);
+        const recalculated = recalculateItemWithEdits(item, values);
+        current.set(index, recalculated);
+        state.items[index] = recalculated;
         state.editedItems[rates.temp_id] = { ...state.editedItems[rates.temp_id], ...values };
         changedGroups.push({ key: `${item.item_id}:::${item.package_mark}`, fields });
       });
@@ -220,7 +240,10 @@ const invoiceFormSlice = createSlice({
         fields.forEach(field => { delete applied[field]; });
       });
 
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(
+        current.size === 0 ? lines : lines.map((line, index) => current.get(index) ?? line),
+        state.header.discount
+      );
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -249,8 +272,9 @@ const invoiceFormSlice = createSlice({
       state.bulkPricing[group_key] = { ...state.bulkPricing[group_key], ...pricing };
 
       // Apply bulk group pricing using extracted function
+      const lines = plainLines(state.items);
       const { updatedItems } = applyBulkGroupPricing(
-        state.items,
+        lines,
         group_key,
         pricing,
         state.itemOverrides
@@ -258,7 +282,7 @@ const invoiceFormSlice = createSlice({
 
       // Track edited items for non-overridden fields
       updatedItems.forEach((updatedItem, index) => {
-        const originalItem = state.items[index];
+        const originalItem = lines[index];
         // Only track if item was actually updated (compare by reference)
         if (updatedItem !== originalItem) {
           const overrides = state.itemOverrides[updatedItem.temp_id] || [];
@@ -276,7 +300,7 @@ const invoiceFormSlice = createSlice({
       state.items = updatedItems;
 
       // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
+      const headerTotals = calculateHeaderTotals(updatedItems, state.header.discount);
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;

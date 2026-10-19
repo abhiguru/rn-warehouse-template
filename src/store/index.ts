@@ -45,12 +45,20 @@ const persistConfig = {
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
+const LARGE_INVOICE_PATHS = ['invoiceForm.items', 'invoiceForm.baseline.items'];
+
 export const store = configureStore({
   reducer: persistedReducer,
   middleware: getDefaultMiddleware =>
     getDefaultMiddleware({
+      // The line list of a big GRN (thousands of objects, and the edit baseline's copy) made every
+      // keystroke walk all of them in these two dev-only checks. Everything else is still checked.
+      immutableCheck: {
+        ignoredPaths: LARGE_INVOICE_PATHS,
+      },
       serializableCheck: {
         ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+        ignoredPaths: LARGE_INVOICE_PATHS,
       },
     }).concat(validationMiddleware),
 });

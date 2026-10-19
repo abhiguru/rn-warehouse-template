@@ -70,10 +70,10 @@ export interface InvoiceStepProps {
  * header's X asks, without it leaves at once. Drawn in an edit only, so that a
  * new invoice listens for Back once (the header does it there).
  */
-function EditBackKey({ isChanged, onLeave }: { isChanged: boolean; onLeave: () => void }) {
+function EditBackKey({ getIsChanged, onLeave }: { getIsChanged: () => boolean; onLeave: () => void }) {
   useBackHandler({
     onBackPress: () => {
-      if (isChanged) {
+      if (getIsChanged()) {
         showAlert(tr('invoice.steps.discardEditTitle'), tr('invoice.steps.discardEditMessage'), [
           { text: tr('common.keepEditing'), style: 'cancel' },
           { text: tr('common.discard'), style: 'destructive', onPress: onLeave },
@@ -100,7 +100,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
     invoiceId,
     isLoading,
     isLoadingItems,
-    isChanged,
+    getIsChanged,
     hasLineEdits,
     savedGrId,
     savedGrn,
@@ -280,7 +280,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
 
   return (
     <View style={styles.container}>
-      {isEdit && <EditBackKey isChanged={isChanged} onLeave={leaveEdit} />}
+      {isEdit && <EditBackKey getIsChanged={getIsChanged} onLeave={leaveEdit} />}
 
       <InvoiceStepIndicator
         steps={invoiceSteps()}
