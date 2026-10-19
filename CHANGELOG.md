@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — CI jobs can run on the project's own runner
+
+- Every CI job now takes its runner from a repository variable: `CI_RUNNER` for the lint/test, dependency and secret-scan jobs, `ANDROID_ARTIFACT_RUNNER` (as before) for the Android artifact audit. Without the variable a job runs on `ubuntu-latest`.
+- A pull request from a fork always runs on GitHub's hosted runners, so code from a fork never runs on the project's machine.
+- No app change.
+
 ## Unreleased — Orders and sensors refresh on a timer; no Realtime connection
 
 The backend's Realtime service is no longer used by the app, so the backend can remove it.

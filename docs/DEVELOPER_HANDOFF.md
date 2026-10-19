@@ -135,11 +135,13 @@ Three CI details to keep in step. (1) `expo-doctor` is a devDependency at an exa
 `no-console` in `app/` and `src/`; lower it whenever warnings are fixed, never raise it. (3) `npm run audit:artifact -- dist`
 scans every file of the Android export (the Hermes bundle too) and fails on a file it cannot scan.
 
-`Android debug artifact audit` is the only job that can run outside GitHub's hosted runners. Its
-`runs-on` is the repository variable `ANDROID_ARTIFACT_RUNNER` (Settings, Secrets and variables,
-Actions, Variables), a JSON value such as `["self-hosted","linux","x64","warehouse-vm"]`. Without the
-variable the job runs on `ubuntu-latest`, so a fork needs nothing; to go back to hosted runners,
-delete the variable. The job is not a required check: when the runner is offline it waits (GitHub
+Every CI job takes its runner from a repository variable (Settings, Secrets and variables, Actions,
+Variables), a JSON value such as `["self-hosted","linux","x64","warehouse-vm"]`: `Android debug
+artifact audit` reads `ANDROID_ARTIFACT_RUNNER`, the other jobs read `CI_RUNNER`. Without the variable
+a job runs on `ubuntu-latest`, so a fork needs nothing; a pull request from a fork always runs on
+GitHub's hosted runners, whatever the variables say, so a fork's code never runs on the project's
+own machine. To go back to hosted runners, delete the variables. One self-hosted runner runs the
+jobs one after another. The job is not a required check: when the runner is offline it waits (GitHub
 gives up on a job after 24 hours in the queue) and merging is not blocked. On a runner that keeps
 the Gradle caches the job took 11.5 minutes instead of 28.5 (measured 2026-10-11, second run in a
 row).

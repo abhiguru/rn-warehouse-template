@@ -12,7 +12,11 @@ permissions:
 jobs:
   ci:
     name: Lint & Type Check
-    runs-on: ubuntu-latest
+    # Where this job runs is the repository variable CI_RUNNER (a JSON value for
+    # runs-on, for example ["self-hosted","linux","x64","my-label"]). Without it,
+    # and always for a pull request from a fork, it runs on a GitHub-hosted runner:
+    # code from a fork never runs on the project's own machine.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
 
     steps:
       - name: Checkout
@@ -68,11 +72,11 @@ jobs:
     name: Android debug artifact audit
     # Where this job runs is the repository variable ANDROID_ARTIFACT_RUNNER: a
     # JSON value for runs-on, for example ["self-hosted","linux","x64","my-label"].
-    # Without the variable (a fork, for instance) it runs on a GitHub-hosted
-    # runner. A runner that keeps the Gradle caches between runs more than halves
+    # Without the variable, and always for a pull request from a fork, it runs on
+    # a GitHub-hosted runner. A runner that keeps the Gradle caches between runs more than halves
     # the time; it must provide ANDROID_HOME with the command-line tools. See
     # docs/DEVELOPER_HANDOFF.md, "CI and releases". This job is not a required check.
-    runs-on: ${{ fromJSON(vars.ANDROID_ARTIFACT_RUNNER || '"ubuntu-latest"') }}
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON(vars.ANDROID_ARTIFACT_RUNNER || '"ubuntu-latest"') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -120,7 +124,11 @@ jobs:
         run: npm run audit:artifact -- android/app/build/outputs/apk/debug/app-debug.apk
 
   dependencies:
-    runs-on: ubuntu-latest
+    # Where this job runs is the repository variable CI_RUNNER (a JSON value for
+    # runs-on, for example ["self-hosted","linux","x64","my-label"]). Without it,
+    # and always for a pull request from a fork, it runs on a GitHub-hosted runner:
+    # code from a fork never runs on the project's own machine.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -144,7 +152,11 @@ jobs:
 
   secrets:
     name: Redacted source and history scan
-    runs-on: ubuntu-latest
+    # Where this job runs is the repository variable CI_RUNNER (a JSON value for
+    # runs-on, for example ["self-hosted","linux","x64","my-label"]). Without it,
+    # and always for a pull request from a fork, it runs on a GitHub-hosted runner:
+    # code from a fork never runs on the project's own machine.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

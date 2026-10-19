@@ -61,9 +61,10 @@ test('every Dependabot ignore entry names the update types it ignores', () => {
 });
 
 // A self-hosted label written into a workflow would leave that job waiting for
-// ever in every fork. The one job that may run on such a runner takes it from a
-// repository variable and falls back to a hosted runner.
-test('no workflow names a self-hosted runner; the Android artifact job takes its runner from a repository variable', () => {
+// ever in every fork. CI jobs take their runner from a repository variable, fall
+// back to a hosted runner, and always use a hosted runner for a pull request from
+// a fork, so a fork's code never runs on the project's own machine.
+test('no workflow names a self-hosted runner; CI jobs take their runner from a repository variable, never for a fork', () => {
   let count = 0;
   for (const [file, lines] of workflows) {
     for (const line of lines.filter(text => /^\s*runs-on:/.test(text))) {
@@ -74,7 +75,12 @@ test('no workflow names a self-hosted runner; the Android artifact job takes its
   assert.ok(count >= 5, 'the jobs were read');
   const ci = workflows.find(([file]) => file === 'ci.yml')[1].join('\n');
   const job = ci.slice(ci.indexOf('\n  android-artifact:\n') + 1).split(/\n {2}[a-z-]+:\n/)[0];
-  assert.match(job, /\n {4}runs-on: \$\{\{ fromJSON\(vars\.ANDROID_ARTIFACT_RUNNER \|\| '"ubuntu-latest"'\) \}\}\n/);
+  assert.match(job, /\n {4}runs-on: \$\{\{ github\.event\.pull_request\.head\.repo\.fork && 'ubuntu-latest' \|\| fromJSON\(vars\.ANDROID_ARTIFACT_RUNNER \|\| '"ubuntu-latest"'\) \}\}\n/);
+  const ciRunsOn = ci.split('\n').filter(line => /^ {4}runs-on:/.test(line));
+  assert.ok(ciRunsOn.length >= 4, 'the CI jobs were read');
+  for (const line of ciRunsOn) {
+    assert.match(line, /^ {4}runs-on: \$\{\{ github\.event\.pull_request\.head\.repo\.fork && 'ubuntu-latest' \|\| fromJSON\(vars\.(?:CI_RUNNER|ANDROID_ARTIFACT_RUNNER) \|\| '"ubuntu-latest"'\) \}\}$/, line.trim());
+  }
 });
 
 // Review 2026-10-17, M03: the test files are excluded from `tsc --noEmit`, so a
