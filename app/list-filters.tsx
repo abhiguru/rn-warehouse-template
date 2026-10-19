@@ -6,8 +6,8 @@
  * open inside this page with Back, never as a second sheet. Closing with
  * unsaved changes asks first.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, BackHandler, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -50,6 +50,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.card,
     backgroundColor: t.surface.card,
   },
+  // A row pressed shows the pressed surface, not a fade (§10).
+  sectionPressed: { backgroundColor: t.surface.cardPressed },
   sectionTitle: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.secondary },
   pickerRow: {
     flexDirection: 'row' as const,
@@ -83,6 +85,11 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
   const [sort, setSort] = useState<SortState | undefined>(filters.sort);
   const [picker, setPicker] = useState<PickerField | null>(null);
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
+  // Where each filter section starts in the scrolled content, and each wrong range's error text, so a blocked
+  // Apply can bring the first wrong field into view and move focus to its error (§10, §11.3).
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionY = useRef<Record<string, number>>({});
+  const errorNodes = useRef<Record<string, Text | null>>({});
   // Counts presses of Reset: fields that keep typed text remount then, and only then.
   const [resets, setResets] = useState(0);
 
@@ -131,6 +138,14 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
     filters.apply(values, sort);
     router.back();
   };
+  const focusFirstInvalid = () => {
+    const first = filters.fields.find(field => invalid[field.key]);
+    if (!first) return;
+    const y = sectionY.current[first.key];
+    if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, y - space.md), animated: false });
+    const error = errorNodes.current[first.key];
+    if (error) AccessibilityInfo.sendAccessibilityEvent(error, 'focus');
+  };
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top }]}>
@@ -156,31 +171,28 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
       <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.6}>
         {picker ? picker.label : translate('filters.page.title')}
       </Text>
-      <View style={[styles.headerSide, styles.headerEnd]}>
-        {picker ? (
-          <Pressable
-            style={({ pressed }) => pressed && styles.pressed}
-            onPress={() => setPicker(null)}
-            hitSlop={space.md}
-            accessibilityRole="button"
-            accessibilityLabel={pickerText(picker.noun, 'done')}
-          >
-            <Text style={styles.headerAction} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.done')}</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={({ pressed }) => pressed && styles.pressed}
-            onPress={reset}
-            disabled={!hasDraftFilters}
-            hitSlop={space.md}
-            accessibilityRole="button"
-            accessibilityLabel={translate('filters.page.resetLabel')}
-            accessibilityState={{ disabled: !hasDraftFilters }}
-          >
-            <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.reset')}</Text>
-          </Pressable>
-        )}
-      </View>
+      {/* The whole side is the target, as for close: at least touchTarget square (§11.2). */}
+      {picker ? (
+        <Pressable
+          style={({ pressed }) => [styles.headerSide, styles.headerEnd, pressed && styles.pressed]}
+          onPress={() => setPicker(null)}
+          accessibilityRole="button"
+          accessibilityLabel={pickerText(picker.noun, 'done')}
+        >
+          <Text style={styles.headerAction} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.done')}</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [styles.headerSide, styles.headerEnd, pressed && styles.pressed]}
+          onPress={reset}
+          disabled={!hasDraftFilters}
+          accessibilityRole="button"
+          accessibilityLabel={translate('filters.page.resetLabel')}
+          accessibilityState={{ disabled: !hasDraftFilters }}
+        >
+          <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.reset')}</Text>
+        </Pressable>
+      )}
     </View>
   );
 
@@ -201,7 +213,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
     <View style={styles.screen}>
       {header}
       <KeyboardAvoidingView style={styles.body} behavior="padding">
-        <ScrollView style={styles.body} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {config.sort && sort ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle} accessibilityRole="header">{translate('filters.page.sortByHeading')}</Text>
@@ -212,7 +224,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             field.kind === 'picker' ? (
               <Pressable
                 key={field.key}
-                style={({ pressed }) => [styles.section, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.section, pressed && styles.sectionPressed]}
                 onPress={() => setPicker(field)}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -235,7 +247,11 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                 </View>
               </Pressable>
             ) : (
-              <View key={field.key} style={styles.section}>
+              <View
+                key={field.key}
+                style={styles.section}
+                onLayout={event => { sectionY.current[field.key] = event.nativeEvent.layout.y; }}
+              >
                 <Text style={styles.sectionTitle} accessibilityRole="header">
                   {field.kind === 'numberRange' && field.unit
                     ? translate('filters.page.sectionWithUnit', { label: field.label.toUpperCase(), unit: field.unit.toUpperCase() })
@@ -250,13 +266,14 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                   onChange={value => setField(field.key, value)}
                   ctx={filters.ctx}
                   onInvalid={bad => setInvalid(previous => ({ ...previous, [field.key]: bad }))}
+                  errorRef={node => { errorNodes.current[field.key] = node; }}
                 />
               </View>
             )
           )}
         </ScrollView>
         <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>
-          <ApplyFiltersButton result={result} noun={config.noun} onPress={apply} disabled={anyInvalid} />
+          <ApplyFiltersButton result={result} noun={config.noun} onPress={apply} blockedMessage={anyInvalid ? translate('filters.range.minAboveMax') : undefined} onBlockedPress={focusFirstInvalid} />
         </View>
       </KeyboardAvoidingView>
     </View>

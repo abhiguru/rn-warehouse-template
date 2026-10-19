@@ -41,7 +41,7 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-reanimated', () => {
   const { View } = jest.requireActual('react-native');
-  return { __esModule: true, default: { View }, FadeIn: { duration: () => undefined } };
+  return { __esModule: true, default: { View }, FadeIn: { duration: () => undefined }, useReducedMotion: () => false };
 });
 
 const GUJARATI_DIGIT = /[૦-૯]/;

@@ -1,23 +1,16 @@
 /**
- * GRNListFiori - GRN list report (style guide 14.1)
+ * GRNListFiori - the GRN tab's list report (style guide 14.1)
  *
- * - Object cell layout (13.6) on surface.card over background.base
- * - Status tags with icon and word (3.5, 13.5); colour is never the only signal
- * - Applied filters bar, sort chips, pull to refresh, infinite scroll
- * - Skeleton, empty, filtered-empty and error states
- * - Floating create button for roles that can create
+ * - The shared list header (FilteredListHeader: title, expand all, search, filter bar), shown in every state
+ * - Object cells (13.6) with the stock tag (3.5); an open cell shows its lines as a nested table (13.7)
+ * - Pages of whole receipts (backend migration 98; a facility without it pages lines, as before)
+ * - Shared states: skeleton, empty and filtered-empty, error, stale rows, failed next page, offline (14.9)
+ * - Swipe actions only for the roles that have them, also offered to screen readers (13.6)
+ * - Which cells are open is kept by the list, so a recycled cell never shows another GRN's state
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  RefreshControl,
-  Pressable,
-  LayoutAnimation,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   FlattenedItem,
@@ -25,52 +18,73 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
 } from '@/components/lists/types';
-import { Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
-import Animated, {
-  FadeIn,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
+  countReceipts,
   getAllGRNItems,
   getAssignedCustomerGRNItems,
+  withReceiptPages,
   GRNItem,
   GRNListResponse,
 } from '@/services/grn-service';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
-import { Button } from '@/components/ui/Button';
 import { printGRNRange } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
+import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { ListSkeleton } from '@/components/skeletons';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
+import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import { DataTable } from '@/components/table/DataTable';
+import {
+  CUT_LINE,
+  crowded,
+  lastColumnAlone,
+  makeTableStyles,
+  nb,
+  nestedRowWidth,
+  numberColumnWidth,
+  useTableLayout,
+  type TableLayout,
+} from '@/components/common/DetailTable';
 import { createLogger } from '@/utils/logger';
+import { showToast } from '@/utils/toast';
+import { showAlert } from '@/utils/alert';
+import { animateExpand } from '@/utils/layoutMotion';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, singleLineText } from '@/theme/tokens';
+import { iconSize, singleLineText, space } from '@/theme/tokens';
 
 // Filters, search and sort (docs/STYLE_GUIDE.md §14.5)
-import { FILTER_CONFIGS, GRN_FILTERS } from '@/features/filters/configs';
+import { GRN_FILTERS } from '@/features/filters/configs';
+import { grnLinesHidden } from '@/features/filters/configs/grn';
 import { useListFilters } from '@/features/filters/useListFilters';
 import { readSearch } from '@/features/filters/filterModel';
-import { FilterBar } from '@/features/filters/components/FilterBar';
-import { ListSearchField } from '@/features/filters/components/ListSearchField';
+import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
 import { HighlightedText, matchesAnyWord, searchWords } from '@/features/filters/components/HighlightedText';
 
 // Styles
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
-import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeightEach } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatDate, formatTime, formatWeightEach } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
 const logger = createLogger('GRNListFiori');
+
+/** Receipts on the first page and on each later one. A facility that pages lines gets 20, then 80 lines. */
+const PAGE_SIZE = 20;
+const LINE_PAGE_SIZE = 80;
 
 /** Row title. A receipt saved without a number says so instead of showing a bare "GRN". */
 const grnTitle = (grNo: string) => (grNo.trim() ? translate('lists.grn.cardTitle', { number: formatIdentifier(grNo) }) : translate('lists.grn.noNumber'));
@@ -82,6 +96,16 @@ const noQuantityStatus = (): GRNStockStatus => ({ status: 'neutral', label: tran
 const stockStatusFor = (stock: number, qty: number): GRNStockStatus =>
   getGRNStockStatus(stock, qty) ?? noQuantityStatus();
 
+/** "120 of 200 bags": what is left of what was received (style guide 13.5, StockIndicator). */
+const stockText = (stock: number, qty: number) =>
+  qty > 0
+    // "9,999 bags" keeps its unit at a line break: a wrap falls after "of" (phone run GL, 2026-10-18).
+    ? translate('components.stock.currentOfTotal', { current: formatNumber(stock), total: nb(formatCount(qty, 'bag')) })
+    : nb(formatCount(stock, 'bag'));
+
+/** Whole kilograms, as the column always showed. A line without a weight has none to show or say. */
+const kgEachOf = (item: GRNItem) => Math.round(item.weight || 0);
+
 // Type for grouped GRN data
 interface GRNGroupData {
   grnId: string;
@@ -92,70 +116,15 @@ interface GRNGroupData {
   items: GRNItem[];
 }
 
-// ============================================================================
-// SKELETON CARD
-// ============================================================================
-const SkeletonCard = memo<{ styles: GRNListStyles }>(({ styles }) => {
-  const reduceMotion = useReducedMotion();
-  const opacity = useSharedValue(reduceMotion ? 1 : 0.4);
-
-  React.useEffect(() => {
-    if (reduceMotion) return undefined;
-    const animate = () => {
-      opacity.value = withSpring(1, { damping: 15 }, () => {
-        opacity.value = withSpring(0.4, { damping: 15 });
-      });
-    };
-    animate();
-    const interval = setInterval(animate, 1600);
-    return () => clearInterval(interval);
-  }, [reduceMotion]);
-
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  return (
-    <Animated.View
-      style={[styles.skeletonCard, animatedStyle]}
-      accessible={false}
-      importantForAccessibility="no-hide-descendants"
-    >
-      <View style={styles.skeletonObjectCell}>
-        <View style={styles.skeletonStatusIcon} />
-        <View style={styles.skeletonContent}>
-          <View style={styles.skeletonTitle} />
-          <View style={styles.skeletonSubtitle} />
-          <View style={styles.skeletonFooter} />
-        </View>
-        <View style={styles.skeletonAttributes}>
-          <View style={styles.skeletonBadge} />
-          <View style={styles.skeletonStockValue} />
-        </View>
-      </View>
-    </Animated.View>
-  );
-});
-
-SkeletonCard.displayName = 'SkeletonCard';
-
-// ============================================================================
-// GRN CARD (object cell)
-// ============================================================================
-interface GRNCardProps {
-  group: GRNGroupData;
-  onPress: (group: GRNGroupData) => void;
-  onViewDetails: (group: GRNGroupData) => void;
-  onEdit: (group: GRNGroupData) => void;
-  onPrint: (group: GRNGroupData) => void;
-  canPrint: boolean;
-  defaultExpanded?: boolean;
-  styles: GRNListStyles;
-  /** Global expand state from parent */
-  globalExpanded?: boolean;
-  /** Key to trigger sync with global state (increments on toggle) */
-  globalExpandedKey?: number;
-  /** Lower-cased search words to show in bold. */
-  words: string[];
+/**
+ * Which cells are open: every cell, or none, apart from the ones the user flipped. Kept by the list, not
+ * by each cell, because FlashList reuses a cell's component for another GRN as the list scrolls.
+ */
+interface OpenState {
+  all: boolean;
+  flipped: ReadonlySet<string>;
 }
+const isOpen = (open: OpenState, grnId: string) => open.all !== open.flipped.has(grnId);
 
 /** Where a search matched inside a collapsed card: item, package or rack names. */
 function hiddenMatches(group: GRNGroupData, words: string[]): string[] {
@@ -169,56 +138,203 @@ function hiddenMatches(group: GRNGroupData, words: string[]): string[] {
   return [...found].slice(0, 3);
 }
 
+// ============================================================================
+// THE LINES OF AN OPEN CARD (nested table, style guide 13.7)
+// ============================================================================
+const lineHelper = createAppColumnHelper<GRNItem>();
+/** Number columns at font scale 1, grown with the text and the widest value (`numberColumnWidth`). */
+const BAGS_WIDTH = 48;
+/** 72: room for the Gujarati heading "દરેકના kg" on one line (2026-10-14, e8d3fe9). */
+const KG_WIDTH = 72;
+const STOCK_WIDTH = 52;
+
+/**
+ * The columns of an open card's lines table (§13.7): Item | Bags | Kg each | Stock. When they would crowd the
+ * item (or from font scale 1.5) "Kg each" moves under it; if Bags and Stock still crowd it, Bags moves too; and a
+ * Stock that would still crowd the item, or take too much of the row, goes under the item as well (right-aligned).
+ */
+export function grnLinesLayout(
+  screen: Pick<TableLayout, 'stacked' | 'scale' | 'width'>,
+  bagsWidth: number,
+  kgWidth: number,
+  stockWidth: number
+): { kgUnder: boolean; bagsUnder: boolean; stockUnder: boolean } {
+  const row = nestedRowWidth(screen);
+  const kgUnder = screen.stacked || crowded(row, [bagsWidth, kgWidth, stockWidth], 0, screen.scale);
+  const bagsUnder = kgUnder && crowded(row, [bagsWidth, stockWidth], 0, screen.scale);
+  const stockUnder = bagsUnder && lastColumnAlone(row, stockWidth, screen.scale);
+  return { kgUnder, bagsUnder, stockUnder };
+}
+
+const GRNLinesTable = memo<{ items: GRNItem[]; styles: GRNListStyles; testID?: string }>(({ items, styles, testID }) => {
+  const table = useThemedStyles(makeTableStyles);
+  const screen = useTableLayout();
+  const kgText = (item: GRNItem) => (kgEachOf(item) > 0 ? formatNumber(kgEachOf(item)) : '—');
+  // The columns are drawn `space.xs` wider than the estimate, and the layout counts that margin, so an
+  // estimate a little short never cuts a figure (it is never shrunk either).
+  const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, items.map(item => formatNumber(item.qty || 0)));
+  const kgWidth = numberColumnWidth(screen, KG_WIDTH, items.map(kgText));
+  const stockWidth = numberColumnWidth(screen, STOCK_WIDTH, items.map(item => formatNumber(item.stock || 0)));
+  // At large text, or when the figures would crowd the item, "Kg each" moves under the item.
+  const { kgUnder, bagsUnder, stockUnder } = grnLinesLayout(screen, bagsWidth + space.xs, kgWidth + space.xs, stockWidth + space.xs);
+
+  const columns = useMemo(
+    () =>
+      lineHelper.columns([
+        lineHelper.display({
+          id: 'item',
+          header: translate('common.item'),
+          meta: { width: 'grow' },
+          cell: ({ row }) => {
+            const item = row.original;
+            const status = stockStatusFor(item.stock, item.qty);
+            const weight = kgUnder ? formatWeightEach(kgEachOf(item)) : null;
+            const mark = item.package_mark || null;
+            return (
+              <>
+                <Text style={table.primary}>{item.item_name}</Text>
+                {/* A long mark is cut at the normal size, never wrapped by letters (§13.7); the full mark is in the row's label. */}
+                {mark ? <Text style={table.secondary} {...CUT_LINE}>{nb(mark)}</Text> : null}
+                {weight ? <Text style={table.secondary}>{nb(weight)}</Text> : null}
+                {bagsUnder ? <Text style={table.secondary} numberOfLines={1}>{nb(formatCount(item.qty || 0, 'bag'))}</Text> : null}
+                {/* The line's status only when it is not In stock: a word under the item, never a cut figure. */}
+                {status.status !== 'positive' ? (
+                  <StatusTag status={status.status} label={status.label} icon={status.icon} wrap style={styles.lineTag} />
+                ) : null}
+                {stockUnder ? <Text style={table.number} numberOfLines={1}>{formatNumber(item.stock || 0)}</Text> : null}
+              </>
+            );
+          },
+        }),
+        ...(bagsUnder
+          ? []
+          : [
+              lineHelper.display({
+                id: 'bags',
+                header: translate('common.bags'),
+                meta: { width: bagsWidth + space.xs, numeric: true },
+                cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{formatNumber(row.original.qty || 0)}</Text>,
+              }),
+            ]),
+        ...(kgUnder
+          ? []
+          : [
+              lineHelper.display({
+                id: 'kgEach',
+                header: translate('lists.card.colKgEach'),
+                meta: { width: kgWidth + space.xs, numeric: true },
+                cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{kgText(row.original)}</Text>,
+              }),
+            ]),
+        lineHelper.display({
+          id: 'stock',
+          header: translate('common.stock'),
+          // Under the item the stock has no column of its own, only its heading over the end of the row.
+          meta: { width: stockUnder ? 'auto' : stockWidth + space.xs, numeric: true, headerOnly: stockUnder },
+          cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{formatNumber(row.original.stock || 0)}</Text>,
+        }),
+      ]),
+    // kgText reads only its argument.
+    [kgUnder, bagsUnder, stockUnder, bagsWidth, kgWidth, stockWidth, table, styles]
+  );
+  const grid = useAppTable({ data: items, columns, getRowId: (item, index) => item.grn_item_id || `${item.id}-${index}` });
+
+  return (
+    <DataTable
+      table={grid}
+      variant="nested"
+      headerOneLine={false}
+      rowStyle={styles.lineCompact}
+      rowLabel={(row) => {
+        const item = row.original;
+        const status = stockStatusFor(item.stock, item.qty);
+        return [
+          item.item_name,
+          item.package_mark,
+          formatCount(item.qty || 0, 'bag'),
+          formatWeightEach(kgEachOf(item)),
+          translate('lists.grn.itemStock', { stock: formatNumber(item.stock || 0), status: status.label }),
+        ].filter(Boolean).join(', ');
+      }}
+      rowTestID={(row) => `grn-line-${row.id}`}
+      testID={testID}
+    />
+  );
+});
+
+GRNLinesTable.displayName = 'GRNLinesTable';
+
+// ============================================================================
+// GRN CARD (object cell)
+// ============================================================================
+interface GRNCardProps {
+  group: GRNGroupData;
+  expanded: boolean;
+  onToggle: (grnId: string) => void;
+  onPress: (group: GRNGroupData) => void;
+  /** Absent for a role that cannot edit: no Edit action, in the swipe or for a screen reader. */
+  onEdit?: (group: GRNGroupData) => void;
+  /** Absent for a role that cannot print. */
+  onPrint?: (group: GRNGroupData) => void;
+  styles: GRNListStyles;
+  /** Lower-cased search words to show in bold. */
+  words: string[];
+  /** A line-level filter is on: the card shows only the matching items of the GRN (R1-02). */
+  linesHidden: boolean;
+}
+
 const GRNCardFiori = memo<GRNCardProps>(({
   group,
+  expanded,
+  onToggle,
   onPress,
-  onViewDetails,
   onEdit,
   onPrint,
-  canPrint,
-  defaultExpanded = false,
   styles,
-  globalExpanded,
-  globalExpandedKey,
   words,
+  linesHidden,
 }) => {
   const t = useTokens();
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const reduceMotion = useReducedMotion();
   const matched = hiddenMatches(group, words);
-
-  // Sync with global expand/collapse state
-  useEffect(() => {
-    if (globalExpandedKey !== undefined && globalExpandedKey > 0) {
-      setIsExpanded(globalExpanded ?? false);
-    }
-  }, [globalExpandedKey, globalExpanded]);
   const swipeableRef = useRef<Swipeable>(null);
 
   // Totals of the receipt: bags received and bags in stock. A total weight is
-  // not shown (style guide 12.3); the expanded table has each line's "Kg each".
+  // not shown (style guide 12.3); the open table has each line's "Kg each".
   const totalQty = group.items.reduce((sum, item) => sum + (item.qty || 0), 0);
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
-  // Fiori semantic status for the whole GRN
   const stockStatus = stockStatusFor(totalStock, totalQty);
+  const stock = stockText(totalStock, totalQty);
   const displayDate = formatDate(group.date, 'short');
-  const itemCountLabel = formatCount(group.items.length, 'item');
+  // Under a line-level filter the items, bags and tag are those of the matching lines only, and the card says so.
+  const itemCountLabel = linesHidden
+    ? translate('lists.grn.matchingItems', { count: group.items.length })
+    : formatCount(group.items.length, 'item');
+  const filteredNote = linesHidden ? translate('lists.grn.filteredNote') : null;
+  const title = grnTitle(group.grNo);
 
-  const handleSwipeAction = (action: 'view' | 'edit' | 'print') => {
+  // The same actions for the swipe and for a screen reader (style guide 13.6).
+  const actions = [
+    onPrint ? { name: 'print', label: translate('common.print') } : null,
+    onEdit ? { name: 'edit', label: translate('common.edit') } : null,
+  ].filter((action): action is { name: string; label: string } => action !== null);
+
+  const runAction = (name: string) => {
     swipeableRef.current?.close();
-    if (action === 'view') onViewDetails(group);
-    else if (action === 'edit') onEdit(group);
-    else if (action === 'print') onPrint(group);
+    if (name === 'view') onPress(group);
+    else if (name === 'edit') onEdit?.(group);
+    else if (name === 'print') onPrint?.(group);
   };
 
   const renderRightActions = () => (
     <View style={styles.swipeActions}>
-      {canPrint && (
+      {onPrint && (
         <Pressable
           style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
-          onPress={() => handleSwipeAction('print')}
+          onPress={() => runAction('print')}
           accessibilityRole="button"
-          accessibilityLabel={translate('lists.grn.printLabel', { title: grnTitle(group.grNo) })}
+          accessibilityLabel={translate('lists.grn.printLabel', { title })}
         >
           <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
           <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>{translate('common.print')}</Text>
@@ -226,169 +342,145 @@ const GRNCardFiori = memo<GRNCardProps>(({
       )}
       <Pressable
         style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
-        onPress={() => handleSwipeAction('view')}
+        onPress={() => runAction('view')}
         accessibilityRole="button"
-        accessibilityLabel={translate('lists.grn.viewLabel', { title: grnTitle(group.grNo) })}
+        accessibilityLabel={translate('lists.grn.viewLabel', { title })}
       >
         <Icon name="eye-outline" size={iconSize.lg} color={t.icon.primary} />
         <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>{translate('common.view')}</Text>
       </Pressable>
-      <Pressable
-        style={({ pressed }) => [styles.swipeButton, styles.swipePrimary, pressed && styles.swipePrimaryPressed]}
-        onPress={() => handleSwipeAction('edit')}
-        accessibilityRole="button"
-        accessibilityLabel={translate('lists.grn.editLabel', { title: grnTitle(group.grNo) })}
-      >
-        <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
-        <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>{translate('common.edit')}</Text>
-      </Pressable>
+      {onEdit && (
+        <Pressable
+          style={({ pressed }) => [styles.swipeButton, styles.swipePrimary, pressed && styles.swipePrimaryPressed]}
+          onPress={() => runAction('edit')}
+          accessibilityRole="button"
+          accessibilityLabel={translate('lists.grn.editLabel', { title })}
+        >
+          <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
+          <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>{translate('common.edit')}</Text>
+        </Pressable>
+      )}
     </View>
   );
 
+  const card = (
+    <View style={styles.card}>
+      <View style={styles.cardContentWrapper}>
+        {/* Object cell row */}
+        <Pressable
+          onPress={() => onPress(group)}
+          style={({ pressed }) => [styles.objectCellRow, pressed && styles.cardPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={[
+            title,
+            group.customerName,
+            displayDate,
+            group.registration,
+            itemCountLabel,
+            stock,
+            stockStatus.label,
+            filteredNote,
+            matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
+          ].filter(Boolean).join(', ')}
+          accessibilityHint={translate(actions.length > 0 ? 'lists.grn.openHintActions' : 'lists.grn.openHint')}
+          accessibilityActions={actions.length > 0 ? actions : undefined}
+          onAccessibilityAction={actions.length > 0 ? event => runAction(event.nativeEvent.actionName) : undefined}
+          testID={`grn-card-${group.grnId}`}
+        >
+          {/* Main content */}
+          <View style={styles.mainContent}>
+            <HighlightedText style={styles.titleText} numberOfLines={2} text={title} words={words} />
+            <HighlightedText style={styles.subtitleText} numberOfLines={2} text={group.customerName ?? ''} words={words} />
+
+            <View style={styles.footerRow}>
+              <View style={styles.footerItem}>
+                <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.footerText} {...singleLineText()}>{displayDate}</Text>
+              </View>
+              {group.registration && (
+                <>
+                  <View style={styles.footerDot} />
+                  <View style={styles.footerItem}>
+                    <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
+                    <HighlightedText style={styles.footerText} text={group.registration} words={words} />
+                  </View>
+                </>
+              )}
+              <View style={styles.footerDot} />
+              <Text style={styles.footerText} {...singleLineText()}>{itemCountLabel}</Text>
+            </View>
+            {filteredNote ? (
+              <Text style={styles.filteredNote} testID={`grn-card-filtered-note-${group.grnId}`}>{filteredNote}</Text>
+            ) : null}
+            {/* Why this GRN matched, when the match is inside the collapsed items */}
+            {matched.length > 0 && !expanded ? (
+              <HighlightedText
+                style={styles.footerText}
+                numberOfLines={1}
+                text={matched.join(' · ')}
+                words={words}
+              />
+            ) : null}
+          </View>
+
+          {/* Attribute stack: what is left of what was received, then its status */}
+          <View style={styles.attributeStack} testID={`grn-card-stock-${group.grnId}`}>
+            <Text style={styles.stockValueText}>{stock}</Text>
+            <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
+          </View>
+        </Pressable>
+
+        {/* The receipt's lines */}
+        {expanded && group.items.length > 0 && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.expandedSection}>
+            <GRNLinesTable items={group.items} styles={styles} testID={`grn-lines-${group.grnId}`} />
+          </Animated.View>
+        )}
+
+        {/* Open / close */}
+        {group.items.length > 0 && (
+          <Pressable
+            onPress={() => {
+              animateExpand(reduceMotion);
+              onToggle(group.grnId);
+            }}
+            style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={
+              expanded
+                ? translate('lists.grn.hideDetailsOf', { title })
+                : translate('lists.grn.showDetailsOf', { title, items: itemCountLabel })
+            }
+            accessibilityState={{ expanded }}
+            testID={`grn-card-toggle-${group.grnId}`}
+          >
+            <Text style={styles.expandButtonText}>
+              {expanded ? translate('lists.card.hideDetails') : translate('lists.card.showDetails')}
+            </Text>
+            <Icon
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.md}
+              color={t.brand.tint}
+            />
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+
+  // A role with no action to offer gets a plain card: no swipe that would show only "View".
+  if (actions.length === 0) return card;
   return (
     <Swipeable
+      // One swipe state per GRN: FlashList reuses this cell for another GRN, which must not appear already swiped open.
+      key={group.grnId}
       ref={swipeableRef}
       renderRightActions={renderRightActions}
       overshootRight={false}
       friction={2}
       rightThreshold={40}
     >
-      <View style={styles.card}>
-        <View style={styles.cardContentWrapper}>
-          {/* Object cell row */}
-          <Pressable
-            onPress={() => onPress(group)}
-            style={({ pressed }) => [styles.objectCellRow, pressed && styles.cardPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={[
-              grnTitle(group.grNo),
-              group.customerName,
-              displayDate,
-              group.registration,
-              itemCountLabel,
-              translate('lists.grn.stockCount', { stock: formatNumber(totalStock) }),
-              stockStatus.label,
-              matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
-            ].filter(Boolean).join(', ')}
-            accessibilityHint={translate('lists.grn.openHint')}
-          >
-            {/* Object icon (§13.6): the GRN glyph; stock status is the tag on the right */}
-            <View style={styles.statusIconContainer}>
-              <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-            </View>
-
-            {/* Main content */}
-            <View style={styles.mainContent}>
-              <HighlightedText style={styles.titleText} numberOfLines={2} text={grnTitle(group.grNo)} words={words} />
-              <HighlightedText style={styles.subtitleText} numberOfLines={2} text={group.customerName ?? ''} words={words} />
-
-              <View style={styles.footerRow}>
-                <View style={styles.footerItem}>
-                  <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.footerText} {...singleLineText()}>{displayDate}</Text>
-                </View>
-                {group.registration && (
-                  <>
-                    <View style={styles.footerDot} />
-                    <View style={styles.footerItem}>
-                      <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
-                      <HighlightedText style={styles.footerText} text={group.registration} words={words} />
-                    </View>
-                  </>
-                )}
-                <View style={styles.footerDot} />
-                <Text style={styles.footerText} {...singleLineText()}>{itemCountLabel}</Text>
-              </View>
-              {/* Why this GRN matched, when the match is inside the collapsed items */}
-              {matched.length > 0 && !isExpanded ? (
-                <HighlightedText
-                  style={styles.footerText}
-                  numberOfLines={1}
-                  text={matched.join(' · ')}
-                  words={words}
-                />
-              ) : null}
-            </View>
-
-            {/* Attribute stack */}
-            <View style={styles.attributeStack}>
-              <Text style={styles.stockValueText}>{formatNumber(totalStock)}</Text>
-              <Text style={styles.stockLabel}>{translate('lists.grn.stockLabel')}</Text>
-              <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
-            </View>
-          </Pressable>
-
-          {/* Expanded items table */}
-          {isExpanded && group.items.length > 0 && (
-            <Animated.View entering={FadeIn.duration(200)} style={styles.expandedSection}>
-              <View style={styles.tableHeader} accessibilityRole="header">
-                <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
-                <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('common.bags')}</Text>
-                <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
-                <Text style={[styles.tableHeaderCell, styles.colStock]}>{translate('common.stock')}</Text>
-              </View>
-
-              {group.items.map((item, idx) => {
-                const itemStatus = stockStatusFor(item.stock, item.qty);
-                // Whole kilograms, as the column always showed. A line without a weight has none to show or say.
-                const kgEach = Math.round(item.weight || 0);
-                return (
-                  <View
-                    key={`${item.id}-${idx}`}
-                    style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
-                    accessible
-                    accessibilityLabel={[
-                      item.item_name,
-                      item.package_mark,
-                      formatCount(item.qty || 0, 'bag'),
-                      formatWeightEach(kgEach),
-                      translate('lists.grn.itemStock', { stock: formatNumber(item.stock || 0), status: itemStatus.label }),
-                    ].filter(Boolean).join(', ')}
-                  >
-                    <View style={[styles.tableCell, styles.colItem]}>
-                      <Text style={styles.itemName} numberOfLines={2}>{item.item_name}</Text>
-                      {item.package_mark && (
-                        <Text style={styles.itemMark}>{item.package_mark}</Text>
-                      )}
-                    </View>
-                    <Text style={[styles.tableCell, styles.colQty, styles.cellValue]}>{formatNumber(item.qty)}</Text>
-                    <Text style={[styles.tableCell, styles.colWeight, styles.cellValue]}>
-                      {kgEach > 0 ? formatNumber(kgEach) : '—'}
-                    </Text>
-                    <View style={[styles.tableCell, styles.colStock]}>
-                      <StatusTag status={itemStatus.status} label={formatNumber(item.stock)} icon={itemStatus.icon} style={styles.stockTag} />
-                    </View>
-                  </View>
-                );
-              })}
-            </Animated.View>
-          )}
-
-          {/* Expand / collapse */}
-          {group.items.length > 0 && (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setIsExpanded(prev => !prev);
-              }}
-              style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={isExpanded ? translate('lists.grn.hideDetailsOf', { title: grnTitle(group.grNo) }) : translate('lists.grn.showDetailsOf', { items: itemCountLabel })}
-              accessibilityState={{ expanded: isExpanded }}
-            >
-              <Text style={styles.expandButtonText}>
-                {isExpanded ? translate('lists.card.hideDetails') : translate('lists.card.showDetails')}
-              </Text>
-              <Icon
-                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={iconSize.md}
-                color={t.brand.tint}
-              />
-            </Pressable>
-          )}
-        </View>
-      </View>
+      {card}
     </Swipeable>
   );
 });
@@ -396,87 +488,18 @@ const GRNCardFiori = memo<GRNCardProps>(({
 GRNCardFiori.displayName = 'GRNCardFiori';
 
 // ============================================================================
-// APPLIED FILTERS BAR
-// ============================================================================
-interface EmptyStateProps {
-  /** A filter or a search is narrowing the list. */
-  filtered: boolean;
-  /** The search text in effect, if any. */
-  search: string;
-  onCreateGRN: () => void;
-  onClearFilters: () => void;
-  canCreate: boolean;
-  styles: GRNListStyles;
-}
-
-const EmptyState: React.FC<EmptyStateProps> = memo(({ filtered, search, onCreateGRN, onClearFilters, canCreate, styles }) => {
-  const t = useTokens();
-  return (
-    <View style={styles.emptyContainer}>
-      <Icon
-        name={filtered ? 'filter-remove-outline' : 'package-down'}
-        size={iconSize.hero}
-        color={t.icon.secondary}
-      />
-      <Text style={styles.emptyTitle} accessibilityRole="header">
-        {filtered ? (search ? translate('filters.empty.noMatchSearch.grn', { search }) : translate('filters.empty.noMatchFilters.grn')) : translate('lists.grn.emptyTitle')}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {filtered
-          ? search
-            ? translate('filters.empty.searchHint')
-            : translate('filters.empty.filterHint')
-          : canCreate
-            ? translate('lists.grn.emptyCreator')
-            : translate('lists.grn.emptyViewer')}
-      </Text>
-      {filtered ? (
-        <Button type="secondary" variant="tint" onPress={onClearFilters}>
-          {search ? translate('filters.empty.clearSearchAndFilters') : translate('filters.empty.clearFilters')}
-        </Button>
-      ) : canCreate ? (
-        <Button type="primary" variant="tint" leftIcon="plus" onPress={onCreateGRN}>
-          {translate('lists.grn.create')}
-        </Button>
-      ) : null}
-    </View>
-  );
-});
-
-EmptyState.displayName = 'EmptyState';
-
-const ErrorState: React.FC<{ onRetry: () => void; styles: GRNListStyles }> = memo(({ onRetry, styles }) => {
-  const t = useTokens();
-  return (
-    <View style={styles.emptyContainer}>
-      <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-      <Text style={styles.emptyTitle} accessibilityRole="header">{translate('lists.grn.loadFailedTitle')}</Text>
-      <Text style={styles.emptySubtitle}>{translate('common.checkConnection')}</Text>
-      <Button type="secondary" variant="tint" onPress={onRetry}>
-        {translate('common.retry')}
-      </Button>
-    </View>
-  );
-});
-
-ErrorState.displayName = 'ErrorState';
-
-// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 interface GRNListFioriProps {
-  onItemPress?: (item: GRNItem) => void;
   /** Open the list showing this range of GRN numbers (print-range links). Replaces any filters. */
   initialNumberRange?: { from?: string; to?: string };
 }
 
-const GRNListFiori: React.FC<GRNListFioriProps> = ({
-  onItemPress,
-  initialNumberRange,
-}) => {
+const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeGRNListStyles);
   const t = useTokens();
+  const isOffline = useIsOffline();
   const isCustomerAccount = userProfile?.role === 'customer';
   const assignedCustomerIds = useMemo(
     () =>
@@ -492,34 +515,40 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
+  /** The first page failed with no rows to show. */
   const [loadError, setLoadError] = useState(false);
+  /** A refresh failed: the rows loaded before stay, with a strip that says when (§14.9). */
+  const [refreshError, setRefreshError] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
   // Filters, search and sort
   const filters = useListFilters(GRN_FILTERS);
-  const { request, sort, search } = filters;
+  const { request, sort } = filters;
   const sortedByNumber = sort?.field === 'gr_no';
+  const linesHidden = useMemo(() => grnLinesHidden(request), [request]);
   const words = useMemo(() => searchWords(readSearch(GRN_FILTERS, filters.values).text), [filters.values]);
   const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
 
-  // Expand all state
-  const [allExpanded, setAllExpanded] = useState(false);
-  const [expandKey, setExpandKey] = useState(0);
+  // Open cells
+  const [open, setOpen] = useState<OpenState>({ all: false, flipped: new Set() });
 
   // Print state
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [selectedGRNForPrint, setSelectedGRNForPrint] = useState('');
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Refs
   const printJobsBottomSheetRef = useRef<PrintJobsBottomSheetRef>(null);
-  const hasDataRef = useRef(false);
-  hasDataRef.current = (data?.items?.length ?? 0) > 0;
+  /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
+  const shownRequest = useRef<string | null>(null);
+  /** What the facility pages by, from its latest answer. */
+  const pageUnit = useRef<'line' | 'receipt'>('receipt');
 
   // Permissions - use centralized permission system
   const { canCreate, canUpdate } = usePermissions();
   const canCreateGRN = canCreate;
   const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
+  const canEdit = canUpdate;
 
   // A print-range link opens the list on exactly that range.
   const initialFrom = initialNumberRange?.from;
@@ -527,57 +556,82 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   useEffect(() => {
     if (initialFrom || initialTo) filters.apply({ numberRange: { from: initialFrom, to: initialTo } });
     // Only when the link's range changes.
-     
+
   }, [initialFrom, initialTo]);
 
-  // A failed first page shows the error state; a failed later page or
-  // refresh with data on screen shows a snackbar and keeps the list.
-  const showLoadFailure = useCallback((append: boolean) => {
+  /**
+   * A failed next page is the list's last row with Try again. A failed refresh of the rows on screen keeps
+   * them under a strip that says when they were loaded. A failed new search or filter has no rows that
+   * answer it, so the list shows the error state (§14.9).
+   */
+  const showLoadFailure = useCallback((append: boolean, requestKey: string) => {
     if (append) {
-      setSnackbarMessage(translate('lists.grn.loadMoreFailed'));
-      setSnackbarVisible(true);
-    } else if (hasDataRef.current) {
-      setSnackbarMessage(translate('lists.grn.refreshFailed'));
-      setSnackbarVisible(true);
+      setLoadMoreFailed(true);
+    } else if (shownRequest.current === requestKey) {
+      setRefreshError(true);
     } else {
+      setData(null);
+      shownRequest.current = null;
       setLoadError(true);
     }
   }, []);
 
-  // Fetch GRN items. A newer request (the user kept typing, or changed a filter)
+  // Fetch a page. A newer request (the user kept typing, or changed a filter)
   // replaces an older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
   const fetchGRNItems = useCallback(async (offset = 0, append = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
+    const requestKey = JSON.stringify(request);
     try {
       if (offset === 0 && !append) setLoading(true);
-      if (offset > 0) setLoadingMore(true);
+      if (append) setLoadingMore(true);
 
-      const params = { ...request, p_limit: offset === 0 ? 20 : 80, p_offset: offset };
+      const limit = offset === 0 || pageUnit.current === 'receipt' ? PAGE_SIZE : LINE_PAGE_SIZE;
+      const params = withReceiptPages({ ...request, p_limit: limit, p_offset: offset });
       const result = isCustomerAccount
         ? await getAssignedCustomerGRNItems(assignedCustomerIds, params)
         : await getAllGRNItems(params);
       if (requestId !== latestRequest.current) return;
 
       if (result.success && result.data) {
-        setLoadError(false);
+        const unit = result.data.pagination.unit === 'receipt' ? 'receipt' : 'line';
+        // The facility answers in another unit than the one the loaded pages were counted in (backend migration 98
+        // arrived while the list was open): the offset means something else now. Start again from the first page.
+        if (append && unit !== pageUnit.current) {
+          pageUnit.current = unit;
+          void fetchGRNItems();
+          return;
+        }
+        pageUnit.current = unit;
+        const advance = unit === 'receipt' ? countReceipts(result.data.items) : result.data.items.length;
         if (append) {
-          setData(prev => prev ? { ...result.data, items: [...prev.items, ...result.data.items] } : result.data);
-          setCurrentOffset(prev => prev + result.data.items.length);
+          // The offset advances by the raw page; lines already loaded (the offset shifted while the list was
+          // open) are not added again.
+          setData(prev => {
+            if (!prev) return result.data;
+            const known = new Set(prev.items.map(grnLineKey));
+            return { ...result.data, items: [...prev.items, ...result.data.items.filter(item => !known.has(grnLineKey(item)))] };
+          });
+          setCurrentOffset(prev => prev + advance);
         } else {
           setData(result.data);
-          setCurrentOffset(result.data.items.length);
+          setCurrentOffset(advance);
+          setLoadError(false);
+          setRefreshError(false);
+          setLoadMoreFailed(false);
+          setLoadedAt(Date.now());
+          shownRequest.current = requestKey;
           listRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
       } else {
         // Keep the server message for support; show plain words to the user
         logger.warn('Load failed:', result.error || result.message);
-        showLoadFailure(append);
+        showLoadFailure(append, requestKey);
       }
     } catch (error) {
       if (requestId !== latestRequest.current) return;
       logger.error('Exception:', error);
-      showLoadFailure(append);
+      showLoadFailure(append, requestKey);
     } finally {
       if (requestId === latestRequest.current) {
         setLoading(false);
@@ -602,11 +656,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     router.push(`/grn-details/${group.grnId}`);
   }, []);
 
-  const handleViewDetails = useCallback((group: GRNGroupData) => {
-    if (!group?.grnId) return;
-    router.push(`/grn-details/${group.grnId}`);
-  }, []);
-
   const handleEdit = useCallback((group: GRNGroupData) => {
     if (!group?.grnId) return;
     router.push(`/grn-edit/${group.grnId}/step1`);
@@ -621,26 +670,26 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     setShowPrintDialog(true);
   }, []);
 
+  // A job sent is a short confirmation; a failure needs the person to act, so it is a dialog (§13.9).
   const handlePrintConfirm = useCallback(async (start: string, end: string) => {
     try {
       const result = await printGRNRange(start, end);
       if (result.success) {
-        setSnackbarMessage(
+        showToast(
           result.print_job?.cups_job_id
             ? translate('lists.grn.printSentNumbered', { job: String(result.print_job.cups_job_id) })
             : translate('lists.grn.printSent')
         );
       } else {
         logger.warn('Print failed:', result.error);
-        setSnackbarMessage(
+        showAlert(
+          translate(result.unconfirmed ? 'grn.review.printUnconfirmedTitle' : 'grn.review.printFailedTitle'),
           result.unconfirmed ? translate('grn.details.printUnconfirmed') : translate('lists.grn.printFailedPrinter')
         );
       }
-      setSnackbarVisible(true);
     } catch (error) {
       logger.error('Print exception:', error);
-      setSnackbarMessage(translate('lists.grn.printFailedConnection'));
-      setSnackbarVisible(true);
+      showAlert(translate('grn.review.printFailedTitle'), translate('lists.grn.printFailedConnection'));
     }
   }, []);
 
@@ -649,17 +698,30 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     fetchGRNItems();
   }, [fetchGRNItems]);
 
-  const onEndReached = useCallback(() => {
-    if (data?.pagination.has_more && !loadingMore) {
-      fetchGRNItems(currentOffset, true);
-    }
-  }, [data, loadingMore, fetchGRNItems, currentOffset]);
+  const handleLoadMore = useCallback(() => {
+    if (!data?.pagination.has_more || loadingMore || loading) return;
+    setLoadMoreFailed(false);
+    fetchGRNItems(currentOffset, true);
+  }, [data, loadingMore, loading, fetchGRNItems, currentOffset]);
 
-  // Toggle expand/collapse all cards
-  const handleToggleAllExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setAllExpanded(prev => !prev);
-    setExpandKey(prev => prev + 1);
+  // Reaching the end of the list asks for the next page, but not again right after one failed: the footer's
+  // Try again is the way (otherwise a dead connection would be retried on every scroll back to the end).
+  const handleEndReached = useCallback(() => {
+    if (!loadMoreFailed) handleLoadMore();
+  }, [loadMoreFailed, handleLoadMore]);
+
+  const handleToggle = useCallback((grnId: string) => {
+    setOpen(previous => {
+      const flipped = new Set(previous.flipped);
+      if (flipped.has(grnId)) flipped.delete(grnId);
+      else flipped.add(grnId);
+      return { all: previous.all, flipped };
+    });
+  }, []);
+
+  // Open or close every card, also those loaded later. Not animated: it changes the whole list (§9).
+  const handleToggleAll = useCallback(() => {
+    setOpen(previous => ({ all: !previous.all, flipped: new Set() }));
   }, []);
 
   // Group items - by date when sorting by date, or flat list when sorting by GRN No
@@ -667,14 +729,12 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     if (!data?.items) return [];
 
     // Consolidate items into GRN groups
-    // BACKEND ISSUE: get_all_grn_items RPC is returning camelCase (grNo, grnId, customerName)
-    // instead of snake_case (gr_no, grn_id, customer_name). Backend team needs to fix this.
     const groups = data.items.reduce((acc, item) => {
       // A missing field means a malformed row. An empty number is a real receipt
       // (older data can hold one) and must stay visible so it can be opened and fixed.
       if (item.gr_no == null) {
         if (__DEV__) {
-          logger.warn('Item missing gr_no (backend returning camelCase?):', item);
+          logger.warn('Item missing gr_no:', item);
         }
         return acc;
       }
@@ -726,48 +786,54 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     return flattenSections(sections, (group) => `${group.grnId}_${group.grNo}`);
   }, [data?.items, sortedByNumber]);
 
-
   const handleRetry = useCallback(() => {
     setLoadError(false);
     fetchGRNItems();
   }, [fetchGRNItems]);
 
+  const hasMore = Boolean(data?.pagination.has_more);
 
   // Render functions
   const renderItem = useCallback(({ item }: { item: FlattenedItem<GRNGroupData> }) => {
     if (item.type === 'header') {
+      // While more pages remain the count is a lower bound ("20+"), never the day's size.
       return (
-        <View
+        <SectionHeader
+          title={item.title}
+          count={item.count}
+          countText={hasMore ? translate('lists.section.countMore', { count: formatNumber(item.count) }) : formatNumber(item.count)}
+          countLabel={hasMore ? translate('lists.section.moreThanGrns', { count: formatNumber(item.count) }) : formatCount(item.count, 'GRN')}
           style={styles.sectionHeader}
-          accessible
-          accessibilityRole="header"
-          accessibilityLabel={translate('lists.section.label', { title: item.title, countText: formatCount(item.count, 'GRN') })}
-        >
-          <Text style={styles.sectionTitle}>{item.title}</Text>
-          <View style={styles.sectionBadge}>
-            <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(item.count)}</Text>
-          </View>
-        </View>
+        />
       );
     }
 
     return (
       <GRNCardFiori
         group={item.data}
+        expanded={isOpen(open, item.data.grnId)}
+        onToggle={handleToggle}
         onPress={handleGRNPress}
-        onViewDetails={handleViewDetails}
-        onEdit={handleEdit}
-        onPrint={handlePrint}
-        canPrint={canPrint ?? false}
+        onEdit={canEdit ? handleEdit : undefined}
+        onPrint={canPrint ? handlePrint : undefined}
         styles={styles}
-        globalExpanded={allExpanded}
-        globalExpandedKey={expandKey}
         words={words}
+        linesHidden={linesHidden}
       />
     );
-  }, [handleGRNPress, handleViewDetails, handleEdit, handlePrint, canPrint, styles, allExpanded, expandKey, words]);
+  }, [handleGRNPress, handleEdit, handlePrint, handleToggle, canEdit, canPrint, styles, open, words, hasMore, linesHidden]);
 
   const renderFooter = useCallback(() => {
+    if (loadMoreFailed && !loadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={translate('lists.grn.loadMoreFailed')}
+          retryLabel={translate('lists.grn.retryMore')}
+          onRetry={handleLoadMore}
+          testID="grn-load-more-error"
+        />
+      );
+    }
     if (!loadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
@@ -775,82 +841,49 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         <Text style={styles.footerLoaderText}>{translate('lists.grn.loadingMore')}</Text>
       </View>
     );
-  }, [loadingMore, styles, t]);
+  }, [loadingMore, loadMoreFailed, handleLoadMore, styles, t]);
 
-  const renderHeader = (interactive: boolean) => (
-    <View style={styles.header}>
-      <Text style={styles.headerTitle} accessibilityRole="header">{translate('lists.grn.title')}</Text>
-      <View style={styles.headerActions}>
-        <Pressable
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-          onPress={handleToggleAllExpanded}
-          disabled={!interactive}
-          accessibilityRole="button"
-          accessibilityLabel={allExpanded ? translate('filters.header.collapseAll.grn') : translate('filters.header.expandAll.grn')}
-          accessibilityState={{ disabled: !interactive, expanded: allExpanded }}
-        >
-          <Icon
-            name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={iconSize.lg}
-            color={t.icon.primary}
-          />
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-          onPress={() => router.push('/settings')}
-          accessibilityRole="button"
-          accessibilityLabel={translate('common.toolsAndSettings')}
-        >
-          <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
-        </Pressable>
-      </View>
-    </View>
+  // Offline with no failed refresh: the top of the list says when the cards were loaded (§14.9). A failed
+  // refresh says it in its strip instead.
+  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+  const renderListHeader = useCallback(
+    () => (offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="grn-last-updated" /> : null),
+    [offlineUpdatedAt]
   );
 
-  // Search field and filter bar: shown in every state, so a search or filter
-  // can always be changed or cleared, also while loading or when nothing matches.
-  const openAllFilters = () => router.push({ pathname: '/list-filters', params: { listKey: GRN_FILTERS.listKey } });
-  const renderSearchAndFilters = () => (
-    <>
-      <ListSearchField
-        listKey={GRN_FILTERS.listKey}
-        value={search}
-        onSearch={filters.setSearch}
-        placeholder={GRN_FILTERS.search?.placeholder ?? translate('common.search')}
-        loading={loading}
-      />
-      <FilterBar config={FILTER_CONFIGS[GRN_FILTERS.listKey]} filters={filters} onOpenAll={openAllFilters} />
-    </>
+  const hasRows = flattenedData.length > 0;
+
+  // The header, search field and filter bar are shown in every state, so a search
+  // or filter can always be changed or cleared, also while loading or when nothing matches.
+  const header = (
+    <FilteredListHeader
+      title={translate('lists.grn.title')}
+      config={GRN_FILTERS}
+      filters={filters}
+      loading={loading}
+      busy={loading && !refreshing && data !== null}
+      expand={{ expanded: open.all, onToggle: handleToggleAll, nounPlural: 'GRNs', disabled: !hasRows }}
+    />
   );
 
-  // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
-  if (loading && !refreshing && !data) {
-    return (
-      <View style={styles.container}>
-        {renderHeader(false)}
-        {renderSearchAndFilters()}
-        <View accessible accessibilityLabel={translate('lists.grn.loading')} accessibilityState={{ busy: true }} style={{ flex: 1 }}>
-          <FlatList
-            data={[1, 2, 3, 4, 5]}
-            renderItem={() => <SkeletonCard styles={styles} />}
-            keyExtractor={(item) => item.toString()}
-            contentContainerStyle={styles.listContent}
-            scrollEnabled={false}
+  let content: React.ReactNode;
+  if (loading && !data) {
+    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+    content = <ListSkeleton count={5} metricsCount={3} />;
+  } else if (hasRows) {
+    content = (
+      <>
+        {/* A refresh failed: the GRNs loaded before stay, with Try again (§14.9) */}
+        {refreshError ? (
+          <StaleListStrip
+            title={translate('lists.grn.staleTitle')}
+            text={translate('lists.grn.staleText', { time: formatTime(new Date(loadedAt)) })}
+            retryLabel={translate('lists.grn.retryRefresh')}
+            onRetry={onRefresh}
+            retrying={refreshing}
+            testID="grn-stale-strip"
           />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      {renderHeader(true)}
-
-      {renderSearchAndFilters()}
-
-      {/* Main content */}
-      {flattenedData.length > 0 ? (
+        ) : null}
         <FlashList
           ref={listRef}
           data={flattenedData}
@@ -859,6 +892,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           renderItem={renderItem}
           keyExtractor={(item: FlattenedItem<GRNGroupData>) => item.key}
           getItemType={getItemType}
+          extraData={{ open, words, hasMore, canEdit, canPrint, linesHidden }}
+          ListHeaderComponent={renderListHeader}
           ListFooterComponent={renderFooter}
           refreshControl={
             <RefreshControl
@@ -869,23 +904,41 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
               progressBackgroundColor={t.surface.card}
             />
           }
-          onEndReached={onEndReached}
+          onEndReached={handleEndReached}
           onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
-      ) : loadError ? (
-        <ErrorState onRetry={handleRetry} styles={styles} />
-      ) : (
-        <EmptyState
-          filtered={filters.hasAny}
-          search={search}
-          onCreateGRN={handleCreateGRN}
-          onClearFilters={filters.clear}
-          canCreate={canCreateGRN}
-          styles={styles}
-        />
-      )}
+      </>
+    );
+  } else if (loadError || refreshError) {
+    // No rows on screen: a failed first page, new filter, or reload of a request that had none is the error state.
+    content = (
+      <ErrorStateView
+        presentation="inline"
+        title={translate('lists.grn.loadFailedTitle')}
+        message={translate('common.checkConnection')}
+        onRetry={handleRetry}
+      />
+    );
+  } else {
+    content = (
+      <ListEmptyState
+        {...filteredEmptyProps(filters, 'GRNs')}
+        emptyIcon="package-down"
+        emptyTitle={translate('lists.grn.emptyTitle')}
+        emptySubtitle={canCreateGRN ? translate('lists.grn.emptyCreator') : translate('lists.grn.emptyViewer')}
+        showCreateButton={canCreateGRN}
+        createButtonLabel={translate('lists.grn.create')}
+        onCreatePress={handleCreateGRN}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {header}
+      {content}
 
       {/* Create GRN (floating action button, guide 14.1) */}
       {canCreateGRN && (
@@ -909,16 +962,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
       {/* Print jobs sheet */}
       <PrintJobsBottomSheet ref={printJobsBottomSheetRef} />
-
-      {/* Snackbar */}
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
-        duration={4000}
-        style={styles.snackbar}
-      >
-        <Text style={styles.snackbarText}>{snackbarMessage}</Text>
-      </Snackbar>
     </View>
   );
 };

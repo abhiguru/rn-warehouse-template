@@ -1,5 +1,6 @@
 /** The editor for one filter field, whatever its kind. Used by the single-filter sheet and the full page. */
 import React from 'react';
+import type { Text } from 'react-native';
 import { t } from '@/i18n';
 import type {
   DateRangeValue,
@@ -10,6 +11,7 @@ import type {
   PickedOption,
   TextRangeValue,
 } from '../types';
+import { visibleOptions } from '../filterModel';
 import { ChoiceChips } from './ChoiceChips';
 import { DateRangeEditor } from './editors/DateRangeEditor';
 import { OptionPicker } from './editors/OptionPicker';
@@ -21,15 +23,17 @@ export interface FieldEditorProps {
   onChange: (value: FilterValue | undefined) => void;
   ctx: FilterContext;
   onInvalid?: (invalid: boolean) => void;
+  /** The error text of a number range, for moving focus to it when Apply is pressed while the range is wrong. */
+  errorRef?: React.Ref<Text>;
 }
 
-export function FieldEditor({ field, value, onChange, ctx, onInvalid }: FieldEditorProps) {
+export function FieldEditor({ field, value, onChange, ctx, onInvalid, errorRef }: FieldEditorProps) {
   switch (field.kind) {
     case 'choice':
       return (
         <ChoiceChips
           accessibilityLabel={field.label}
-          options={field.options}
+          options={visibleOptions(field, ctx)}
           value={typeof value === 'string' ? value : field.defaultValue}
           onChange={onChange}
         />
@@ -55,6 +59,7 @@ export function FieldEditor({ field, value, onChange, ctx, onInvalid }: FieldEdi
           integer={field.integer}
           identifier={field.identifier}
           onInvalid={onInvalid}
+          errorRef={errorRef}
         />
       );
     case 'textRange':

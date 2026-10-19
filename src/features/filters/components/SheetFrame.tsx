@@ -85,21 +85,21 @@ export function SheetFrame({ visible, title, onClose, closeLabel = t('common.can
               <Text style={styles.sideText} maxFontSizeMultiplier={1.6}>{closeLabel}</Text>
             </Pressable>
             <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.6}>{title}</Text>
-            <View style={[styles.side, styles.sideEnd]}>
-              {action ? (
-                <Pressable
-                  style={({ pressed }) => pressed && styles.pressed}
-                  onPress={action.onPress}
-                  disabled={action.disabled}
-                  hitSlop={space.md}
-                  accessibilityRole="button"
-                  accessibilityLabel={action.label}
-                  accessibilityState={{ disabled: !!action.disabled }}
-                >
-                  <Text style={[styles.sideText, action.disabled && styles.sideTextDisabled]} maxFontSizeMultiplier={1.6}>{action.label}</Text>
-                </Pressable>
-              ) : null}
-            </View>
+            {/* The whole side is the target, as for Cancel: at least touchTarget square (§11.2). */}
+            {action ? (
+              <Pressable
+                style={({ pressed }) => [styles.side, styles.sideEnd, pressed && styles.pressed]}
+                onPress={action.onPress}
+                disabled={action.disabled}
+                accessibilityRole="button"
+                accessibilityLabel={action.label}
+                accessibilityState={{ disabled: !!action.disabled }}
+              >
+                <Text style={[styles.sideText, action.disabled && styles.sideTextDisabled]} maxFontSizeMultiplier={1.6}>{action.label}</Text>
+              </Pressable>
+            ) : (
+              <View style={[styles.side, styles.sideEnd]} />
+            )}
           </View>
           <View style={[styles.content, tall && styles.contentTall, !footer && { paddingBottom: space.lg + insets.bottom }]}>{children}</View>
           {footer ? <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>{footer}</View> : null}

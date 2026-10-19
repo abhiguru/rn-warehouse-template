@@ -196,6 +196,10 @@ export interface DispatchUserAccess {
 export interface DispatchListResponseNew {
   success: boolean;
   message: string;
+  /** True when the network failed and this is the list kept on the phone from an earlier load, not a fresh answer. */
+  fromCache?: boolean;
+  /** With `fromCache`: when (ms since 1970) the kept list was stored, i.e. really loaded. */
+  cachedAt?: number;
   data: {
     dispatches: Dispatch[];
     pagination: RpcPagination;
@@ -518,13 +522,15 @@ export const getDispatchListWithItems = async (
   // error object rather than an exception, so both branches below use this.
   const serveCachedList = async (error: unknown): Promise<DispatchListResponseNew | null> => {
     if (!cacheKey || !isOfflineFailure(error)) return null;
-    const cachedData = await dispatchCache.get<DispatchListResponseNew['data']>(cacheKey, cacheGeneration);
-    if (!cachedData) return null;
+    const cachedEntry = await dispatchCache.getEntry<DispatchListResponseNew['data']>(cacheKey, cacheGeneration);
+    if (!cachedEntry) return null;
     console.log('[DispatchService] Network error, returning cached dispatch data as fallback');
     return {
       success: true,
+      fromCache: true,
+      cachedAt: cachedEntry.storedAt,
       message: t('errors.dispatch.listFromCache'),
-      data: cachedData,
+      data: cachedEntry.data,
     };
   };
 

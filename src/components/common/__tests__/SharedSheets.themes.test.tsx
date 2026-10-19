@@ -3,7 +3,7 @@
  * and checks they take their colours from the semantic tokens.
  */
 import React from 'react';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import ChangeLogBottomSheet from '../../ChangeLogBottomSheet';
@@ -121,6 +121,22 @@ describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
     expect(hasStyle(tree, 'backgroundColor', t.surface.sheet)).toBe(true);
     const radios = tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.type !== 'string');
     expect(radios.some(r => r.props.accessibilityState?.checked)).toBe(true);
+    act(() => tree.unmount());
+  });
+
+  // Style guide 3.8: each role has its own palette colour (admin 0, supervisor 5, staff 8, customer 6), and the icon
+  // colour follows the mode only through `avatarColorsAt`. The expectations here are the theme's tokens, read by index.
+  it('role picker draws each role icon on its own avatar background, in the literal text token of the mode', () => {
+    const tree = renderIn(brand, mode,
+      <RolePickerBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} currentRole="staff" callerRole="admin" />);
+    // The icons that sit in a circle of the avatar palette are the roles' (the close button's has none).
+    const circleOf = (icon: { parent: { props: { style?: unknown } } | null }) =>
+      (StyleSheet.flatten(icon.parent?.props.style as never) as { backgroundColor?: string } | undefined)?.backgroundColor;
+    const icons = tree.root.findAll(n => (n.type as unknown) === 'Icon' && t.avatar.includes(circleOf(n as never) as string));
+    expect(icons.map(icon => circleOf(icon as never))).toEqual([0, 5, 8, 6].map(index => t.avatar[index % t.avatar.length]));
+    expect(new Set(icons.map(icon => circleOf(icon as never))).size).toBeGreaterThan(1);
+    const text = mode === 'light' ? t.text.primary : t.overlay.onImage;
+    for (const icon of icons) expect(icon.props.color).toBe(text);
     act(() => tree.unmount());
   });
 

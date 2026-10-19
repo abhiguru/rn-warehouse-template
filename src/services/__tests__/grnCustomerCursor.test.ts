@@ -6,9 +6,12 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
+import { noteGrnPagingUnit } from '@/config/facilityGrnPaging';
 import {
   compareGRNItems,
+  countReceipts,
   getAssignedCustomerGRNItems,
+  withReceiptPages,
   type GRNItem,
   type GRNListParams,
 } from '../grn-service';
@@ -21,6 +24,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   getStoredToken: jest.fn(),
 }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
+jest.mock('@/config/facilityGrnPaging', () => ({ noteGrnPagingUnit: jest.fn() }));
 jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: jest.fn() }));
 
 type RpcParams = {
@@ -117,6 +121,7 @@ it('pages ten UI pages with ten RPCs, in the order the full merge gives, never r
       limit: params.p_limit,
       offset: params.p_offset,
       has_more: true,
+      unit: 'line',
     });
     expect(result.data.aggregations).toEqual({ total_qty: 14, total_stock: 6 });
     expect(result.data.user_access.accessible_customers).toBe(2);
@@ -141,11 +146,11 @@ it('starts again from offset 0 when a filter changes, then continues under the n
   await getAssignedCustomerGRNItems(['a', 'b'], { ...base, ...uiPage(1) });
 
   rpc.mockClear();
-  const filtered = { ...base, p_filters: { item_name: 'Example' } };
+  const filtered = { ...base, p_filters: { search: 'Example' } };
   await getAssignedCustomerGRNItems(['a', 'b'], { ...filtered, ...uiPage(0) });
   expect(callsOf('a')).toEqual([[0, 20]]);
   expect(callsOf('b')).toEqual([[0, 20]]);
-  expect(calls()[0].p_filters).toEqual({ item_name: 'Example' });
+  expect(calls()[0].p_filters).toEqual({ search: 'Example' });
 
   rpc.mockClear();
   const next = await getAssignedCustomerGRNItems(['a', 'b'], { ...filtered, ...uiPage(1) });
@@ -315,4 +320,125 @@ it('stops asking a customer whose rows have run out', async () => {
     expect(result.data.pagination.total_count).toBe(100030);
   }
   expect(callsOf('b')).toEqual([[0, 20], [20, 80]]);
+});
+
+describe('receipt pages (backend migration 98)', () => {
+  /** Receipt k of a customer has 1 to 3 lines; a's and b's receipt numbers interleave. */
+  const linesOf = (customerId: string, receipt: number) =>
+    Array.from({ length: (receipt % 3) + 1 }, (_, line) => ({
+      ...defaultRow(customerId, receipt),
+      id: `${customerId}-${receipt}-${line}`,
+      grn_id: `grn-${customerId}-${receipt}`,
+      gr_no: String(100000 - 2 * receipt - (customerId === 'a' ? 0 : 1)),
+    }));
+  const RECEIPTS = 500;
+
+  /** A facility with migration 98: limit and offset count receipts, and a page holds whole receipts. */
+  const receiptBackend = (_name: string, params: RpcParams) => {
+    const byReceipt = params.p_filters?.page_by === 'receipt';
+    const end = Math.min(RECEIPTS, params.p_offset + params.p_limit);
+    const items = byReceipt
+      ? Array.from({ length: Math.max(0, end - params.p_offset) }, (_, i) => linesOf(params.p_customer_id, params.p_offset + i)).flat()
+      : [];
+    return Promise.resolve({
+      data: {
+        success: true,
+        data: {
+          items,
+          pagination: { total_count: RECEIPTS, has_more: end < RECEIPTS, unit: 'receipt' },
+          aggregations: { total_qty: 7, total_stock: 3 },
+        },
+      },
+      error: null,
+    });
+  };
+
+  /** The whole merged list in receipts, then receipts offset..end-1 as lines. */
+  const expectedIds = (customerIds: string[], offset: number, limit: number) =>
+    customerIds
+      .flatMap(customerId => Array.from({ length: RECEIPTS }, (_, receipt) => linesOf(customerId, receipt)))
+      .sort((left, right) => compareGRNItems(left[0] as unknown as GRNItem, right[0] as unknown as GRNItem, 'gr_no', 'desc'))
+      .slice(offset, offset + limit)
+      .flat()
+      .map(row => row.id);
+
+  beforeEach(() => rpc.mockImplementation(receiptBackend));
+
+  it('pages whole receipts in the full merged order, counting receipts', async () => {
+    for (let n = 0; n < 6; n++) {
+      const params = withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', p_sort_order: 'desc', p_offset: n * 20, p_limit: 20 });
+      const result = await getAssignedCustomerGRNItems(['a', 'b'], params);
+      expect(result.success).toBe(true);
+      expect(ids(result.data.items)).toEqual(expectedIds(['a', 'b'], n * 20, 20));
+      expect(countReceipts(result.data.items)).toBe(20);
+      expect(result.data.pagination).toEqual({ total_count: 1000, limit: 20, offset: n * 20, has_more: true, unit: 'receipt' });
+    }
+    // Each customer's requests continue from the receipts already held, never from a line count.
+    for (const customerId of ['a', 'b']) {
+      let held = 0;
+      for (const [offset, limit] of callsOf(customerId)) {
+        expect(offset).toBe(held);
+        held += limit;
+      }
+    }
+    expect(calls().every(params => params.p_filters?.page_by === 'receipt')).toBe(true);
+  });
+
+  it('a receipt a later page repeats (one was created meanwhile) is not merged into the held one (R1-01)', async () => {
+    // After page 1 a receipt was created: every offset now points one receipt earlier.
+    rpc.mockImplementation((name: string, params: RpcParams) =>
+      receiptBackend(name, { ...params, p_offset: Math.max(0, params.p_offset - (params.p_offset > 0 ? 1 : 0)) })
+    );
+    const first = await getAssignedCustomerGRNItems(['a', 'b'], withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', p_sort_order: 'desc', p_offset: 0, p_limit: 20 }));
+    const second = await getAssignedCustomerGRNItems(['a', 'b'], withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', p_sort_order: 'desc', p_offset: 20, p_limit: 20 }));
+
+    const all = [...first.data.items, ...second.data.items];
+    expect(new Set(ids(all)).size).toBe(all.length);
+    // Every receipt keeps exactly its own lines (1 to 3), and the pages are the unshifted merge.
+    const perReceipt = new Map<string, number>();
+    for (const item of all) perReceipt.set(item.grn_id!, (perReceipt.get(item.grn_id!) ?? 0) + 1);
+    for (const [grnId, lines] of perReceipt) expect(lines).toBe((Number(grnId.split('-')[2]) % 3) + 1);
+    expect(ids(second.data.items)).toEqual(expectedIds(['a', 'b'], 20, 20));
+    expect(countReceipts(second.data.items)).toBe(20);
+  });
+
+  it('starts again in receipts when the facility changes unit between pages, and never returns mixed units (R1-03)', async () => {
+    rpc.mockImplementation(fakeBackend);
+    const params = withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', p_sort_order: 'desc' });
+    const first = await getAssignedCustomerGRNItems(['a', 'b'], { ...params, ...uiPage(0) });
+    expect(first.data.pagination.unit).toBe('line');
+
+    // Migration 98 is deployed while the list is open.
+    rpc.mockImplementation(receiptBackend);
+    const second = await getAssignedCustomerGRNItems(['a', 'b'], { ...params, ...uiPage(1) });
+
+    expect(second.success).toBe(true);
+    expect(second.data.pagination.unit).toBe('receipt');
+    expect(ids(second.data.items)).toEqual(expectedIds(['a', 'b'], 20, 80));
+    // Customer a was asked for line 20 (found to be answered in receipts), then again from receipt 0.
+    expect(callsOf('a')).toEqual([[0, 20], [20, 80], [0, 100]]);
+  });
+
+  it('tells the paging store what each receipt-paged answer paged by, and nothing for a request that did not ask', async () => {
+    jest.mocked(noteGrnPagingUnit).mockClear();
+    await getAssignedCustomerGRNItems(['a'], withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', p_offset: 0, p_limit: 20 }));
+    expect(noteGrnPagingUnit).toHaveBeenLastCalledWith('receipt');
+
+    rpc.mockImplementation(fakeBackend);
+    await getAssignedCustomerGRNItems(['a'], withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', p_offset: 0, p_limit: 20 }));
+    expect(noteGrnPagingUnit).toHaveBeenLastCalledWith('line');
+
+    jest.mocked(noteGrnPagingUnit).mockClear();
+    await getAssignedCustomerGRNItems(['a'], { p_sort_by: 'gr_no', p_offset: 0, p_limit: 20 });
+    expect(noteGrnPagingUnit).not.toHaveBeenCalled();
+  });
+
+  it('works in lines when the facility has no migration 98 and ignores page_by', async () => {
+    rpc.mockImplementation(fakeBackend);
+    const params = withReceiptPages<GRNListParams>({ p_sort_by: 'gr_no', ...uiPage(0) });
+    const result = await getAssignedCustomerGRNItems(['a', 'b'], params);
+    expect(result.data.items).toHaveLength(20);
+    expect(result.data.pagination.unit).toBe('line');
+    expect(ids(result.data.items)).toEqual(oldAlgorithmIds(['a', 'b'], params));
+  });
 });

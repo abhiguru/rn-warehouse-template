@@ -53,7 +53,7 @@ export function useFilterResultCount(
 }
 
 /** The nouns a list can count. Each has its own whole sentences (`filters.results.<noun>`). */
-const RESULT_NOUNS = ['item', 'dispatch', 'invoice', 'order', 'price'] as const;
+const RESULT_NOUNS = ['item', 'grn', 'dispatch', 'invoice', 'order', 'price'] as const;
 type ResultNoun = (typeof RESULT_NOUNS)[number];
 const isResultNoun = (noun: string): noun is ResultNoun => (RESULT_NOUNS as readonly string[]).includes(noun);
 

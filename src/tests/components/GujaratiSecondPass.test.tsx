@@ -7,7 +7,6 @@
  *    in Gujarati, so a last word cannot drop to a clipped second line.
  *  - The order title does not inflect the customer's name, and the order status line
  *    puts the name on its own line in Gujarati instead of ending in a cut separator.
- *  - The stock tag of the GRN table sits under its right-aligned header.
  */
 import React from 'react';
 import { Text, TextInput } from 'react-native';
@@ -19,9 +18,6 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { StepperInput } from '@/components/fiori/StepperInput';
 import { NumberRangeEditor } from '@/features/filters/components/editors/RangeEditors';
 import CustomerOrderSummary from '@/components/CustomerOrderSummary';
-import { getThemedStyles } from '@/hooks/useTheme';
-import { getTokens } from '@/theme/tokens';
-import { makeGRNListStyles } from '@/components/GRNListFiori.styles';
 import type { Order } from '@/types/order.types';
 
 jest.mock('@/store/hooks', () => ({
@@ -202,10 +198,4 @@ describe('order screen', () => {
   });
 });
 
-describe('GRN table', () => {
-  it('the stock tag is aligned to the end of its column, like its header', () => {
-    const styles = getThemedStyles(makeGRNListStyles, getTokens('orange', 'light'));
-    expect(styles.colStock.textAlign).toBe('right');
-    expect(styles.stockTag.alignSelf).toBe('flex-end');
-  });
-});
+

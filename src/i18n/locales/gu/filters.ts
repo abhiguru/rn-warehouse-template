@@ -25,7 +25,8 @@ export const filters: Translation<typeof source> = {
     packageName: 'માર્કાનું નામ',
   },
   list: {
-    grn: { title: 'આવક પાવતી ફિલ્ટર કરો', search: 'આવક પાવતી શોધો' },
+    // Draft for the owner's wording review (GRN list review 2026-10-18).
+    grn: { title: 'આવક પાવતી ફિલ્ટર કરો', search: 'આવક નં., વેપારી, આઇટમ કે તારીખ' },
     dispatch: { title: 'જાવક ફિલ્ટર કરો', search: 'જાવક શોધો' },
     invoice: { title: 'ઇન્વૉઇસ ફિલ્ટર કરો', search: 'ઇન્વૉઇસ શોધો' },
     order: { title: 'ઑર્ડર ફિલ્ટર કરો', search: 'ઑર્ડર શોધો' },
@@ -61,6 +62,8 @@ export const filters: Translation<typeof source> = {
   results: {
     showResults: 'પરિણામો બતાવો',
     item: { show: { one: '{{count}} આઇટમ બતાવો', other: '{{count}} આઇટમ બતાવો' }, none: 'કોઈ આઇટમ મળતી નથી' },
+    // Draft for the owner's wording review (GRN list review 2026-10-18).
+    grn: { show: { one: '{{count}} આવક પાવતી બતાવો', other: '{{count}} આવક પાવતી બતાવો' }, none: 'કોઈ આવક પાવતી મળી નથી' },
     dispatch: { show: { one: '{{count}} જાવક બતાવો', other: '{{count}} જાવક બતાવો' }, none: 'કોઈ જાવક મળતી નથી' },
     invoice: { show: { one: '{{count}} ઇન્વૉઇસ બતાવો', other: '{{count}} ઇન્વૉઇસ બતાવો' }, none: 'કોઈ ઇન્વૉઇસ મળતું નથી' },
     order: { show: { one: '{{count}} ઑર્ડર બતાવો', other: '{{count}} ઑર્ડર બતાવો' }, none: 'કોઈ ઑર્ડર મળતો નથી' },
@@ -105,6 +108,8 @@ export const filters: Translation<typeof source> = {
     clearAllLabel: 'બધા ફિલ્ટર અને શોધ સાફ કરો',
   },
   header: {
+    // Draft for the owner's wording review (GRN list review 2026-10-18).
+    busy: 'નવાં પરિણામો લોડ થઈ રહ્યાં છે',
     expandAll: {
       grn: 'બધી આવક પાવતીની વિગતો ખોલો',
       dispatch: 'બધી જાવકની વિગતો ખોલો',

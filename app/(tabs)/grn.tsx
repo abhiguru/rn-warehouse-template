@@ -7,9 +7,8 @@
 
 import React from 'react';
 import { View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import GRNListFiori from '@/components/GRNListFiori';
-import { GRNItem } from '@/services/grn-service';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { useThemedStyles } from '@/hooks/useTheme';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -34,19 +33,10 @@ export default function GRNTab() {
     [rangeStart, rangeEnd]
   );
 
-  const handleItemPress = (item: GRNItem) => {
-    if (__DEV__) console.log('[GRNTab] Item pressed:', item);
-    // Use grn_id if available, fallback to id
-    router.push(`/grn-details/${item.grn_id || item.id}`);
-  };
-
   return (
     <View style={styles.container}>
       <ListErrorBoundary listName="GRN items">
-        <GRNListFiori
-          onItemPress={handleItemPress}
-          initialNumberRange={initialNumberRange}
-        />
+        <GRNListFiori initialNumberRange={initialNumberRange} />
       </ListErrorBoundary>
     </View>
   );

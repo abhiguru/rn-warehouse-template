@@ -99,6 +99,10 @@ export interface SegmentedProgressProps {
 // ============================================================================
 // LINEAR PROGRESS COMPONENT (Determinate/Indeterminate)
 // ============================================================================
+/** The indeterminate bar under Reduce Motion: fixed, half the track, centred. */
+const STILL_BUSY_WIDTH = '50%';
+const STILL_BUSY_LEFT = '25%';
+
 export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
   progress = 0,
   variant = 'default',
@@ -152,9 +156,10 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
     }
   }, [clampedProgress, indeterminate, animatedValue, reduceMotion]);
 
-  // Animate indeterminate progress
+  // Animate indeterminate progress. Under Reduce Motion the bar does not slide (§9): a still bar, half the
+  // track wide and centred, says the same "busy".
   useEffect(() => {
-    if (indeterminate) {
+    if (indeterminate && !reduceMotion) {
       const animation = Animated.loop(
         Animated.timing(indeterminateAnim, {
           toValue: 1,
@@ -167,14 +172,16 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
 
       return () => animation.stop();
     }
-  }, [indeterminate, indeterminateAnim]);
+  }, [indeterminate, indeterminateAnim, reduceMotion]);
 
   // Calculate animated width
   const animatedWidth = indeterminate
-    ? indeterminateAnim.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: ['0%', '50%', '0%'],
-      })
+    ? reduceMotion
+      ? STILL_BUSY_WIDTH
+      : indeterminateAnim.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: ['0%', '50%', '0%'],
+        })
     : animatedValue.interpolate({
         inputRange: [0, 1],
         outputRange: ['0%', '100%'],
@@ -182,10 +189,12 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
 
   // Calculate animated position for indeterminate
   const animatedLeft = indeterminate
-    ? indeterminateAnim.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: ['0%', '25%', '100%'],
-      })
+    ? reduceMotion
+      ? STILL_BUSY_LEFT
+      : indeterminateAnim.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: ['0%', '25%', '100%'],
+        })
     : '0%';
 
   // Accessibility

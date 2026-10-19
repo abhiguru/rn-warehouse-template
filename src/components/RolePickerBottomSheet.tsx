@@ -20,6 +20,7 @@ import { iconSize, layout, radius, space, touchTarget, typography } from '@/them
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { roleLabel } from '@/utils/roleLabel';
+import { avatarColorsAt } from '@/utils/avatar';
 
 // =============================================================================
 // ROLE CONFIGURATION
@@ -98,7 +99,6 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
   const dynamicStyles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const avatarIconColor = t.mode === 'dark' ? t.overlay.onImage : t.text.primary;
 
   // Android back closes the sheet first (style guide 15)
   useEffect(() => {
@@ -192,6 +192,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
             const isSelected = role.value === currentRole;
             const label = roleLabel(role.value);
             const description = tr(role.descriptionKey);
+            const avatar = avatarColorsAt(role.avatarIndex, t);
             return (
               <Pressable
                 key={role.value}
@@ -206,9 +207,9 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
                 accessibilityLabel={tr('users.rolePicker.optionLabel', { role: label, description })}
               >
                 <View
-                  style={[styles.roleIcon, { backgroundColor: t.avatar[role.avatarIndex % t.avatar.length] }]}
+                  style={[styles.roleIcon, { backgroundColor: avatar.background }]}
                 >
-                  <Icon name={role.icon} size={iconSize.lg} color={avatarIconColor} />
+                  <Icon name={role.icon} size={iconSize.lg} color={avatar.text} />
                 </View>
                 <View style={styles.roleContent}>
                   <Text style={dynamicStyles.roleLabel}>{label}</Text>

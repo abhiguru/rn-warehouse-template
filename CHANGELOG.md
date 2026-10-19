@@ -1,5 +1,118 @@
 # Changelog
 
+## Unreleased — GRN tab and filters: design review fixes (2026-10-18)
+
+Fixes from the 2026-10-18 design review of the GRN tab and its filters, judged against `docs/STYLE_GUIDE.md`.
+Needs backend migration 98 (`grn_list_receipt_pages`: receipt pages and the low-stock filter): merge and deploy
+the backend first. On a facility without it the list pages lines as before, the apply button reads "Show
+results", and the Stock filter does not offer Low stock (the app learns from the list's answers that the facility
+pages by line; a stored Low stock is not sent and shows no chip).
+
+- **Whole GRNs on every page.** The list asks for pages of receipts (`p_filters.page_by = 'receipt'`, 20 a page),
+  so a GRN's lines are never split across two pages and its stock, item count and tag are always its own. A
+  customer account with several customers merges receipts, not lines. "Show 9 GRNs" counts GRNs.
+- **Actions by role.** Customers get a plain card: no swipe and no Edit (it used to bounce them back to the list).
+  For the other roles, Print and Edit are also screen-reader actions of the card, and its hint says so.
+- **Load errors as the guide says (§14.9).**
+  - A failed refresh keeps the rows under a strip that says when they were loaded, with Try again.
+  - A failed next page is the last row with Try again.
+  - A failed new filter is the error state, not old rows.
+  - Offline, the top of the list says when it was loaded.
+  - A print job sent is a toast; a failed or unconfirmed one is a dialog.
+- **Shared parts.** The header, the empty, filtered-empty and error states, the skeleton and the date headings
+  ("20+" while more pages remain) are the shared ones.
+- **The open card's lines are a nested `DataTable`.**
+  - Number columns are sized to their figures, so 9,999 bags never break at font scale 1.3.
+  - "Kg each" moves under the item when crowded.
+  - A line that is not In stock has its status under the item.
+- **Phone run GL fixes.**
+  - The open cards' figures (GRN and Dispatch line tables) are no longer auto-shrunk: one row drew its figures tiny on Android. Columns are drawn 4 dp wider than the estimate.
+  - A long package mark in those tables is cut with "…" on one line at the normal size; the weight is on its own line under it; the full mark stays in the row's spoken label.
+  - The GRN card's stock text keeps "9,999 bags" together; a wrap falls after "of".
+  - Dispatch: a pull to refresh answered from the list saved on the phone (the network was down) is a failed refresh: the strip shows, with the time of the real load (the service marks such an answer `fromCache`).
+- **Dispatch cards' open lines are a nested `DataTable`** (Item | Kg each | GRN | Qty), as on the GRN list: figures are
+  sized to their values and stay on one line, 9,999 bags never split at font scale 1.3, and "Kg each" moves under the
+  item when crowded or at font scale 1.5 and over. Every spoken label is unchanged.
+- **Review R4 fixes: both lines tables keep the item column at least 5 em.**
+  - Dispatch card: when crowded or from font scale 1.5, "Kg each" and the GRN text both move under the item, leaving
+    Item | Qty. A Qty that would still crowd the item, or take over 45 % of the row, goes on its own line under it
+    (new `lastColumnAlone` in `common/DetailTable`). At 392 dp, font scale 2.0 and 9,999 bags the item used to get
+    0 dp.
+  - GRN card: the same rule. "Kg each" moves first, then Bags (at font scale 2.0 on 392 dp Bags now sits under the
+    item too, leaving Item | Stock), then Stock if it would still crowd the item.
+  - The GRN text of the Dispatch card is left-aligned text, as on Dispatch → Items.
+  - Stacked, the search highlight bolds only the searched package mark, not "50 kg each".
+  - "Kg each" has 72 dp at font scale 1 on both tables, room for the Gujarati heading on one line (as in e8d3fe9).
+    On a 360 dp phone ordinary Dispatch card lines therefore stack at font scale 1.
+  - The Dispatch card's figures now sit at the top of their row, as in the other tables (they were centred).
+  - Tests: column sets and the item column's width at font scale 1, 1.3, 1.5 and 2.0 on 360, 392 and 411 dp; the role
+    picker test fails when roles share one background.
+- **Review R6 fixes (Dispatch and GRN card tables).**
+  - Identifier text is never cut: the width estimate counts capital letters at 0.76 em and W and M at 0.92 em (digits, separators, ₹ and Gujarati unchanged), so "WMWM8884/21" fits its GRN column; under the item the Dispatch GRN text may wrap instead of ending in "…".
+  - The Dispatch layout counts the 4 dp margin the columns are drawn with, as the GRN table does. Result: on 392 dp at font scale 1 the lines now stack to Item | Qty (English and Gujarati); 411 dp keeps four columns for ordinary data. The item column keeps 5 em and 25 % of the row; the matrix test runs in English and Gujarati and checks both.
+  - "Kg each" stays 72 dp (owner decision).
+  - The Dispatch row's spoken label now includes the full package mark (as the GRN card's does); this corrects the earlier note that said it did.
+  - A searched GR number is bold in the Dispatch card table, in its column and under the item (the quantity after "/" stays plain).
+  - A Dispatch list answered only from the list saved on the phone (first load, new search, filter or sort) says "Last updated" with the time that list was saved, not now (`getEntry` on the bounded cache, `cachedAt` on the service answer).
+  - Tests: an offline sort change and a next page answered from the saved list keep their rows; the no-auto-shrink tests cover every figure and identifier Text in both card tables.
+- **Role picker icons** take their colour from `avatarColors` (`avatarColorsAt` for a role's fixed palette index),
+  not from a check of the mode (§3.8).
+- **Open cards are kept by the list.** A card no longer shows another GRN's open state after scrolling. Expand all
+  also opens cards loaded later and is not animated; one card opening skips its animation under Reduce Motion.
+- **The card.**
+  - The package icon that was the same on every row is gone.
+  - The right side reads "120 of 200 bags" over the status tag, instead of "120 / in stock / In stock".
+- **Busy line.** While new results load over the rows on screen, a moving line shows over the filter bar's bottom
+  edge (`FilteredListHeader` `busy`).
+- **Stock filter:** All, In stock, Low stock, Fully dispatched, the words of the cards' tags.
+- **Search hint:** "GRN no., customer, item or date".
+- **Filters on every list.**
+  - The × of an active chip is a whole touch target.
+  - Reset and Done in sheet and page headers are whole targets.
+  - Customer and Item rows on Sort and filter press like rows.
+  - A range the wrong way round no longer disables Apply: a press announces what to fix, scrolls the first wrong
+    field into view on Sort and filter, and moves screen-reader focus to its error (§10, §11.3).
+- **Dispatch and Invoice lists: load errors as the guide says (§14.9), like the GRN list.**
+  - A failed refresh keeps the rows under a strip that says when they were loaded, with Try again.
+  - A failed first page or a failed new search, filter or sort is the error state, not the old rows.
+  - A failed next page is the last row with Try again, which asks for the same page; the snackbar is gone.
+  - Offline, the first date heading (the top of the list when sorted by number or, for invoices, not by date) says when the rows were loaded.
+  - A customer account's capped Dispatch history ("Only the newest 10000 dispatches...", `CUSTOMER_DISPATCH_MAX`) is a footnote above the list, not a snackbar. It also shows when the capped history matches nothing, in the empty and filtered-empty states.
+- **Dispatch cards' open state is kept by the list**, as on the GRN list: a card no longer shows another dispatch's
+  open state after scrolling. Expand all also opens dispatches loaded later and is not animated; one card skips its
+  animation under Reduce Motion.
+- **Removed dead GRN filter keys.** `item_name`, `customer_name`, `gr_no` and `rack` of `GRNFilters` were ignored by
+  the staff function `get_all_grn_items` and set by no caller; they are gone from the type and from `getAllGRNItems`.
+- **Gujarati:** the new and changed texts are drafts for the owner's wording review.
+
+Fixes from the 2026-10-18 code review of this change (R1-01 to R1-08, R2-1 to R2-5, R3-02):
+
+- **Repeated rows on the next page (R1-01).** When a receipt is created while the list is open, the next page
+  repeats a receipt already loaded. A GRN card no longer counts its lines twice (it showed "40 of 40 bags" for a
+  GRN of 20), the offset still advances by the page as the server counted it, and a customer account's merge no
+  longer joins a repeated receipt to the held one. The Dispatch and Invoice lists already skipped repeated rows.
+- **Backend updated while the list is open (R1-03).** An answer in another unit than the loaded pages (lines, then
+  receipts) reloads the list from the first page instead of mixing offsets; the customer merge starts again in the
+  same call.
+- **After a failed next page** the end of the GRN list no longer asks again by itself; Try again does (R1-04).
+- **A reload that fails on a list with no rows** shows the error state, not the old empty state (R1-05).
+- **Swipe state belongs to the GRN (R1-06):** a recycled cell cannot show another GRN already swiped open.
+- **Low stock on a facility without migration 98 (R1-07, R3-02, owner decision):** not offered until the facility's
+  list has answered in receipts; a stored Low stock is not sent and shows no chip.
+- **Item filters say lots are hidden (R1-02, owner decision).** With Stock other than All, Item, Weight each,
+  Package or a search, the card reads "3 matching items" and "Only the items that match the filters are shown."
+  (also in its spoken label): its bags and tag are those of the matching items only.
+- **Dispatch: capped-history footnote with no rows (R2-1).** It is drawn above the list, so it also shows in the
+  empty state.
+- **Dispatch and Invoice: paging offset after a failed refresh (R2-2).** The offset is no longer reset before the
+  answer, so the next page continues after the rows on screen.
+- **Blocked Apply (R2-3):** moves focus as the guide says (see Filters on every list).
+- **Busy line under Reduce Motion (R2-4):** a still bar, half the track wide and centred, does not slide.
+- **Tests (R1-08):** a next page answered after a new filter or a refresh is dropped, and the next offset is the new
+  list's.
+- **Gujarati:** the two new GRN card texts (`lists.grn.matchingItems`, `lists.grn.filteredNote`) are drafts for the
+  owner's wording review.
+
 ## Unreleased — Ops review wave 4: tooling (2026-10-18)
 
 Fixes from the 2026-10-17 operational review (findings M03, M04, M10, M11, M13, and a Low left from wave 2). No

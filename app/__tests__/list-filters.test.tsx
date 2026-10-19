@@ -4,11 +4,14 @@
  * from a picker returns to the form.
  */
 import React from 'react';
-import { BackHandler } from 'react-native';
+import { AccessibilityInfo, BackHandler, ScrollView, StyleSheet } from 'react-native';
+import { Button } from '@/components/ui/Button';
 import TestRenderer, { act } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { ApplyFiltersButton } from '@/features/filters/components/ApplyFiltersButton';
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import { space, touchTarget } from '@/theme/tokens';
 import ListFiltersScreen from '../list-filters';
 
 // The mocked react-native components are plain strings in the tree, so the tag names are cast
@@ -126,6 +129,15 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 describe('Sort and filter page', () => {
+  it('makes Reset in the header a whole touch target, with no hitSlop (§11.2)', () => {
+    const page = open();
+    page.press('In stock');
+    const reset = page.renderer.root.findAll(node => node.props.accessibilityLabel === t('filters.page.resetLabel') && typeof node.props.onPress === 'function')[0];
+    const style = StyleSheet.flatten(typeof reset.props.style === 'function' ? reset.props.style({ pressed: false }) : reset.props.style);
+    expect(reset.props.hitSlop).toBeUndefined();
+    expect(style.minHeight).toBe(touchTarget);
+  });
+
   it('closes at once when nothing was changed', () => {
     const page = open();
     page.press('Close without applying');
@@ -179,6 +191,40 @@ describe('Sort and filter page', () => {
       payload: { key: 'grn-list', values: { stock: 'in_stock' }, sort: { field: 'gr_no', order: 'asc' } },
     });
     expect(backMock).toHaveBeenCalledTimes(1);
+  });
+
+  // §10, §11.3 (code review 2026-10-18, R2-3): a blocked press brings the first wrong field into view and focuses its error.
+  it('never applies a reversed range: the press scrolls to the field and focuses its error', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<ListFiltersScreen />);
+    });
+    const scrollTo = renderer.root.findByType(ScrollView).instance.scrollTo as jest.Mock;
+    scrollTo.mockClear();
+    const input = (label: string) =>
+      renderer.root.findAll(node => node.type === TEXT_INPUT && node.props.accessibilityLabel === label)[0];
+    // The Weight each section is laid out 300 down the scrolled content.
+    let section = input('Weight each, minimum, in kg').parent;
+    while (section && typeof section.props.onLayout !== 'function') section = section.parent;
+    act(() => section!.props.onLayout({ nativeEvent: { layout: { y: 300 } } }));
+    act(() => input('Weight each, minimum, in kg').props.onChangeText('50'));
+    act(() => input('Weight each, maximum, in kg').props.onChangeText('10'));
+
+    const apply = renderer.root.findAllByType(Button).find(button => button.props.type === 'primary')!;
+    act(() => apply.props.onPress());
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(backMock).not.toHaveBeenCalled();
+    expect(announce).toHaveBeenCalledWith('The minimum is larger than the maximum.');
+    expect(scrollTo).toHaveBeenCalledWith({ y: 300 - space.md, animated: false });
+    expect(focus).toHaveBeenCalledTimes(1);
+    const [target, event] = focus.mock.calls[0] as unknown as [{ props: { children: string } }, string];
+    expect(event).toBe('focus');
+    expect(target.props.children).toBe('The minimum is larger than the maximum.');
+    announce.mockRestore();
+    focus.mockRestore();
   });
 
   it('keeps a number field mounted while typing, so the keyboard stays on it', () => {

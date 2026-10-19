@@ -50,7 +50,9 @@ afterEach(() => logs.forEach(log => log.mockRestore()));
 
 it('caches a list under the session identity and serves it only to that identity when offline', async () => {
   rpc.mockResolvedValueOnce(listResponse('d1'));
-  expect((await getDispatchListWithItems({ p_limit: 20 })).success).toBe(true);
+  const online = await getDispatchListWithItems({ p_limit: 20 });
+  expect(online.success).toBe(true);
+  expect(online.fromCache).toBeUndefined();
   const keys = await dispatchCacheKeys();
   expect(keys).toHaveLength(1);
   expect(keys[0]).toContain('instance-a');
@@ -60,6 +62,8 @@ it('caches a list under the session identity and serves it only to that identity
   const offline = await getDispatchListWithItems({ p_limit: 20 });
   expect(offline.success).toBe(true);
   expect(offline.message).toMatch(/cache/);
+  // The list tells that this is the saved list and not a fresh answer, so a refresh is not counted as a load.
+  expect(offline.fromCache).toBe(true);
   expect(offline.data.dispatches.map(d => d.id)).toEqual(['d1']);
 
   for (const other of [identityB, identityC]) {

@@ -3,7 +3,8 @@
  * Changes apply at once; there is no debounce here (the search field debounces
  * its own typing).
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { facilityPagesGrnsByReceipt, subscribeFacilityGrnPaging } from '@/config/facilityGrnPaging';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { toLocalISODate } from '@/utils/formatters';
 import {
@@ -26,13 +27,14 @@ import {
 
 export function useFilterContext(): FilterContext {
   const profile = useAppSelector(state => state.auth.userProfile);
+  const pagesByReceipt = useSyncExternalStore(subscribeFacilityGrnPaging, facilityPagesGrnsByReceipt, facilityPagesGrnsByReceipt);
   return useMemo(() => {
     const role = profile?.role ?? null;
     const isWarehouseRole = role === 'admin' || role === 'supervisor' || role === 'staff';
     const named = profile?.assignedCustomers?.map(customer => ({ id: customer.id, label: customer.name }));
     const assigned = named ?? (profile?.assignedCustomerIds ?? []).map(id => ({ id, label: '' }));
-    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned };
-  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds]);
+    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt };
+  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt]);
 }
 
 export interface UseListFiltersOptions {

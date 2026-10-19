@@ -10,6 +10,8 @@ import { parseQuickSearch, type QuickSearchResult } from './parseQuickSearch';
 import {
   SEARCH_KEY,
   SEARCH_LITERAL_KEY,
+  type ChoiceField,
+  type ChoiceOption,
   type DateRangeValue,
   type FilterContext,
   type FilterFieldDef,
@@ -63,6 +65,11 @@ export function visibleFields(config: FilterListDefinition, ctx: FilterContext):
   return config.fields.filter(field => !field.visibleTo || field.visibleTo(ctx));
 }
 
+/** The choices of a choice field this account and facility may use, in config order. */
+export function visibleOptions(field: ChoiceField, ctx: FilterContext): ChoiceOption[] {
+  return field.options.filter(option => !option.visibleTo || option.visibleTo(ctx));
+}
+
 /** Values with every inactive, unknown or hidden field removed. This is what gets stored. */
 export function normalizeValues(config: FilterListDefinition, values: FilterValues, ctx: FilterContext): FilterValues {
   const result: FilterValues = {};
@@ -73,6 +80,11 @@ export function normalizeValues(config: FilterListDefinition, values: FilterValu
     if (field.kind === 'picker' && field.key === CUSTOMERS_KEY && !ctx.isWarehouseRole && Array.isArray(value)) {
       const assigned = new Set(ctx.assignedCustomers.map(customer => customer.id));
       value = (value as PickedOption[]).filter(option => assigned.has(option.id));
+    }
+    // A choice that is not offered here (Low stock on a facility without migration 98) is no filter.
+    if (field.kind === 'choice' && typeof value === 'string') {
+      const chosen = field.options.find(option => option.value === value);
+      if (chosen?.visibleTo && !chosen.visibleTo(ctx)) value = undefined;
     }
     if (!isFieldActive(field, value)) continue;
     result[field.key] = typeof value === 'string' ? value.trim() : value;

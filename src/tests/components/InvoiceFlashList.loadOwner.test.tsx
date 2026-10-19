@@ -15,7 +15,8 @@ jest.mock('expo-router', () => ({
   useFocusEffect: require('./focusHarness').useFocusEffect,
 }));
 jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
-jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator', Snackbar: 'Snackbar' }));
+jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));

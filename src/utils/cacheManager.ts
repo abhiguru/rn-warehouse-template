@@ -129,6 +129,14 @@ export async function getCachedData<T>(
   cacheKey: string,
   options: CacheOptions = {}
 ): Promise<T | null> {
+  return (await getCachedEntry<T>(cacheKey, options))?.data ?? null;
+}
+
+/** Like getCachedData, with the time (ms since 1970) the entry was stored. */
+export async function getCachedEntry<T>(
+  cacheKey: string,
+  options: CacheOptions = {}
+): Promise<{ data: T; storedAt: number } | null> {
   const { expiryMs = DEFAULT_CACHE_EXPIRY_MS, version = '1.0', verbose = false } = options;
 
   try {
@@ -170,7 +178,7 @@ export async function getCachedData<T>(
       cacheLogger.info(`Cache hit: ${cacheKey} (age: ${age}s)`);
     }
 
-    return parsedCache.data;
+    return { data: parsedCache.data, storedAt: parsedCache.timestamp };
   } catch (error) {
     cacheLogger.warn(`Error reading cache for ${cacheKey}:`, error);
     return null;
@@ -257,6 +265,8 @@ export interface BoundedCache {
   set<T>(key: string, data: T, generation?: number): Promise<boolean>;
   /** The entry under `key` if younger than `expiryMs` and the session has not changed since `generation`. */
   get<T>(key: string, generation?: number): Promise<T | null>;
+  /** Like `get`, with the time (ms since 1970) the entry was stored. */
+  getEntry<T>(key: string, generation?: number): Promise<{ data: T; storedAt: number } | null>;
   /** Remove every entry and the index, after the writes already queued. */
   clear(): Promise<void>;
 }
@@ -366,9 +376,12 @@ export function createBoundedCache(prefix: string, limits: BoundedCacheLimits): 
       return enqueue(() => write(key, value, storedAt, generation));
     },
     async get<T>(key: string, generation: number = getSessionGeneration()): Promise<T | null> {
+      return (await this.getEntry<T>(key, generation))?.data ?? null;
+    },
+    async getEntry<T>(key: string, generation: number = getSessionGeneration()): Promise<{ data: T; storedAt: number } | null> {
       if (!ownKey(key) || generation !== getSessionGeneration()) return null;
-      const data = await getCachedData<T>(key, { expiryMs: limits.expiryMs });
-      return generation === getSessionGeneration() ? data : null;
+      const entry = await getCachedEntry<T>(key, { expiryMs: limits.expiryMs });
+      return generation === getSessionGeneration() ? entry : null;
     },
     clear(): Promise<void> {
       return enqueue(() => invalidateCacheByPrefix(prefix));

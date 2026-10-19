@@ -35,6 +35,24 @@ describe('numberColumnWidth', () => {
     expect(numberColumnWidth(layout(1.3), 88, [], ['₹56,761.00'])).toBe(115);
   });
 
+  it('counts capital letters conservatively, so an identifier is never cut (R6-1)', () => {
+    // Widths measured with Android's Roboto at 15 sp (subhead, -0.24 per character): the column must be at least this wide.
+    const measured: [string, number, number][] = [
+      ['WMWM8884/21', 1, 106.9],
+      ['WMWM8881/9,999', 2, 222],
+      ['RV15001/9,999', 2, 177.9],
+    ];
+    for (const [text, scale, needs] of measured) {
+      expect(numberColumnWidth(layout(scale), 72, [text])).toBeGreaterThanOrEqual(Math.ceil(needs));
+    }
+    // A W or M counts wider than another capital, and a capital wider than a lower-case letter.
+    const width = (text: string) => numberColumnWidth(layout(1), 0, [text]);
+    expect(width('WWWW')).toBeGreaterThan(width('RRRR'));
+    expect(width('RRRR')).toBeGreaterThan(width('rrrr'));
+    // Figures keep their widths.
+    expect(numberColumnWidth(layout(1), 0, ['9,999'])).toBe(Math.ceil((4 * 0.57 + 0.28) * 15) + 2);
+  });
+
   it('allows a little more for Gujarati digits', () => {
     const english = numberColumnWidth(layout(1.3), 60, ['૧,૧૦,૦૨૧']);
     setLanguage('gu');

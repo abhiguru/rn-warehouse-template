@@ -97,8 +97,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   labelActive: { fontWeight: fontWeight.semibold, color: t.brand.tint },
   labelText: { fontWeight: fontWeight.semibold, color: t.brand.tint },
+  // The close target is a whole touch target square (§11.2); the pill grows to hold it.
   remove: {
-    width: CHIP_HEIGHT,
+    width: touchTarget,
     minHeight: touchTarget,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,

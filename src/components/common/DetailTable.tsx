@@ -72,11 +72,21 @@ export const nestedRowWidth = (table: Pick<TableLayout, 'width'>): number =>
 export const CHEVRON_LEAD = iconSize.md + space.sm;
 
 // Widths of a number's characters, as a share of the font size, a little above Roboto's: tabular
-// digits 0.57 em (0.6 in weight 600), separators 0.28 em, ₹ and anything else 0.62 em. Gujarati
-// digits are a little wider. A cell may still shrink a little (ONE_LINE) if the estimate is short.
+// digits 0.57 em (0.6 in weight 600), separators 0.28 em, ₹ and anything else 0.62 em. Capital
+// letters (identifiers such as "WMWM8884/21") are counted at 0.76 em, and W and M, which Roboto draws at
+// 0.87-0.89 em, at 0.92 em (and w, m at 0.9), so identifier text is never cut. Gujarati digits are a
+// little wider. A cell may still shrink a little (ONE_LINE) if the estimate is short.
 const GUJARATI_DIGITS = 1.08;
 const charEm = (char: string, strong: boolean): number =>
-  /[\d૦-૯]/.test(char) ? (strong ? 0.6 : 0.57) : /[,.\s]/.test(char) ? 0.28 : 0.62;
+  /[\d૦-૯]/.test(char)
+    ? strong ? 0.6 : 0.57
+    : /[,.\s]/.test(char)
+      ? 0.28
+      : /[WMwm]/.test(char)
+        ? /[WM]/.test(char) ? 0.92 : 0.9
+        : /[A-Z]/.test(char)
+          ? 0.76
+          : 0.62;
 const emWidth = (text: string, strong: boolean): number => Array.from(text).reduce((sum, char) => sum + charEm(char, strong), 0);
 
 /**
@@ -117,6 +127,13 @@ export function crowded(row: number, columns: readonly number[], lead: number = 
   const least = Math.max(row * FIRST_COLUMN_SHARE, FIRST_COLUMN_EM * (typography.subhead.fontSize ?? 15) * scale);
   return row - taken < least;
 }
+
+/** A last column wider than this share of a stacked row goes on its own line under the first column (§13.7). */
+export const LAST_COLUMN_SHARE = 0.45;
+
+/** Whether the last column, alone beside the first, would crowd it or take more than LAST_COLUMN_SHARE of a nested row. */
+export const lastColumnAlone = (row: number, width: number, scale = 1): boolean =>
+  crowded(row, [width], 0, scale) || width > row * LAST_COLUMN_SHARE;
 
 /** The layout with the middle columns stacked when the table's own columns crowd the first one. */
 export function useStackedWhen(table: TableLayout, crowd: boolean): TableLayout {

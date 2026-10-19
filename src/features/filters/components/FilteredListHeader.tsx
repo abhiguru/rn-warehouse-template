@@ -5,6 +5,7 @@
  *   [children]    for example the Orders | Queue switch
  *   search field
  *   filter bar    Filters, sort, active filters, fast filters, Clear all
+ *   busy line     over the filter bar's bottom edge while new results load with rows on screen
  *
  * It is shown in every state of the list, so a search or filter can always be
  * changed or cleared: while loading, on an error and when nothing matches.
@@ -16,6 +17,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import { FILTER_CONFIGS } from '../configs';
 import type { FilterListDefinition } from '../types';
 import type { useListFilters } from '../useListFilters';
@@ -39,6 +41,11 @@ export interface FilteredListHeaderProps {
   filters: ReturnType<typeof useListFilters>;
   /** The list is loading results for the current search or filters. */
   loading?: boolean;
+  /**
+   * New results are loading while the earlier rows stay on screen (a filter or sort was changed): a thin moving
+   * line over the filter bar's bottom edge says so. It takes no space, so nothing below moves (§14.5).
+   */
+  busy?: boolean;
   /** Expand or collapse every card. Omit for lists whose rows do not expand. */
   expand?: { expanded: boolean; onToggle: () => void; nounPlural: ListNounPlural; disabled?: boolean };
   /** Extra buttons in the title row, before the profile. */
@@ -71,9 +78,11 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   iconButtonPressed: { backgroundColor: t.surface.cardPressed },
   slot: { backgroundColor: t.surface.header },
+  barSlot: { position: 'relative' as const },
+  busy: { position: 'absolute' as const, left: 0, right: 0, bottom: 0 },
 });
 
-export function FilteredListHeader({ title, config, filters, loading, expand, actions, children }: FilteredListHeaderProps) {
+export function FilteredListHeader({ title, config, filters, loading, busy = false, expand, actions, children }: FilteredListHeaderProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const countable = FILTER_CONFIGS[config.listKey];
@@ -124,7 +133,14 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
         />
       ) : null}
       {countable && (config.fields.length > 0 || config.sort) ? (
-        <FilterBar config={countable} filters={filters} onOpenAll={hasPage ? openAll : undefined} />
+        <View style={styles.barSlot}>
+          <FilterBar config={countable} filters={filters} onOpenAll={hasPage ? openAll : undefined} />
+          {busy ? (
+            <View style={styles.busy} pointerEvents="none" testID="list-header-busy">
+              <FioriLinearProgress indeterminate accessibilityLabel={translate('filters.header.busy')} />
+            </View>
+          ) : null}
+        </View>
       ) : null}
     </>
   );

@@ -4,7 +4,8 @@
  * List report (style guide 14.1) with object cells (13.6). Built from the
  * semantic tokens for the current brand and mode; use with
  * `useThemedStyles(makeGRNListStyles)`. The factory is module-level so the
- * stylesheet is cached and shared by every card.
+ * stylesheet is cached and shared by every card. The header, states and the
+ * open card's table come from the shared parts and bring their own styles.
  */
 
 import { StyleSheet } from 'react-native';
@@ -17,256 +18,22 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
-  trackedText,
 } from '@/theme/tokens';
-
-const tabular = ['tabular-nums' as const];
 
 export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
-  // Container & header
+  // Container
   // =========================================================================
   container: {
     flex: 1,
     backgroundColor: t.background.base,
   },
 
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingLeft: layout.marginCompact,
-    paddingRight: space.sm,
-    paddingVertical: space.xs,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-
-  headerTitle: {
-    // Top-level tab title (guide §13.8): large title on every tab.
-    ...typography.largeTitle,
-    color: t.text.primary,
-  },
-
-  headerActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
-
-  iconButton: {
-    width: touchTarget,
-    height: touchTarget,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-
-  iconButtonPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-
-  filterBadge: {
-    position: 'absolute' as const,
-    top: space.xs,
-    right: space.xs,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: space.xs,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.fill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-
-  filterBadgeText: {
-    ...typography.caption2,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-
   // =========================================================================
-  // Applied filters bar
-  // =========================================================================
-  filterChipsContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    backgroundColor: t.surface.card,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-
-  filterChipsHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-  },
-
-  filterCountBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
-
-  filterCountText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-  },
-
-  clearAllButton: {
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    justifyContent: 'center' as const,
-    borderRadius: radius.button,
-  },
-
-  clearAllButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-
-  clearAllText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
-
-  filterChipsList: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: space.sm,
-  },
-
-  filterChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingLeft: space.md,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.subtle,
-  },
-
-  filterChipText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-    flexShrink: 1,
-  },
-
-  filterChipRemove: {
-    width: touchTarget,
-    height: 32,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-
-  // =========================================================================
-  // Sort controls
-  // =========================================================================
-  sortRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    flexWrap: 'wrap' as const,
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    backgroundColor: t.surface.card,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-    gap: space.sm,
-  },
-
-  sortLabel: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
-
-  sortLabelText: {
-    ...typography.footnote,
-    color: t.text.secondary,
-  },
-
-  sortOptions: {
-    flexDirection: 'row' as const,
-    gap: space.sm,
-    flex: 1,
-  },
-
-  chip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: 32,
-    paddingHorizontal: space.md,
-    paddingVertical: space.s6,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    backgroundColor: t.surface.card,
-    gap: space.xs,
-  },
-
-  chipPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-
-  chipSelected: {
-    backgroundColor: t.brand.subtle,
-    borderColor: t.brand.subtle,
-  },
-
-  chipText: {
-    ...typography.caption1,
-    color: t.text.primary,
-  },
-
-  chipTextSelected: {
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
-
-  expandAllBtn: {
-    marginLeft: 'auto' as const,
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.pill,
-  },
-
-  // =========================================================================
-  // Section headers
+  // Section headers (ui/SectionHeader): in line with the cards' edge
   // =========================================================================
   sectionHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
     paddingHorizontal: space.xs,
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-  },
-
-  sectionTitle: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
-    textTransform: 'uppercase' as const,
-    letterSpacing: trackedText(0.5),
-  },
-
-  sectionBadge: {
-    marginLeft: space.sm,
-    backgroundColor: t.status.neutral.background,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.pill,
-    minWidth: 24,
-    alignItems: 'center' as const,
-  },
-
-  sectionCount: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
-    fontVariant: tabular,
   },
 
   // =========================================================================
@@ -310,15 +77,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     gap: space.md,
   },
 
-  statusIconContainer: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.subtle,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-
   mainContent: {
     flex: 1,
     gap: space.xxs,
@@ -355,6 +113,13 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 
+  // Says the card shows only the items that match the filters (code review 2026-10-18, R1-02).
+  filteredNote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
+  },
+
   footerDot: {
     width: 3,
     height: 3,
@@ -363,109 +128,42 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     marginHorizontal: space.xs,
   },
 
+  // "120 of 200 bags" over the status tag. It may wrap at large text; it is never cut.
   attributeStack: {
     alignItems: 'flex-end' as const,
     gap: space.xs,
     minWidth: 72,
+    maxWidth: '45%' as const,
   },
 
+  // The main value of an object cell (13.6): headline, tabular.
   stockValueText: {
     ...typography.headline,
     color: t.text.primary,
-    fontVariant: tabular,
+    fontVariant: ['tabular-nums' as const],
     textAlign: 'right' as const,
   },
 
-  stockLabel: {
-    ...typography.caption1,
-    color: t.text.secondary,
-  },
-
   // =========================================================================
-  // Expanded items table (guide 13.7)
+  // The open card's lines (a nested DataTable, guide 13.7)
   // =========================================================================
   expandedSection: {
+    paddingHorizontal: space.md,
+    paddingTop: space.xs,
+    paddingBottom: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: t.border.divider,
   },
 
-  tableHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.background.base,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
+  /** Read-only lines: the compact row height (§5.2), a one-line row in its middle. */
+  lineCompact: {
     minHeight: 36,
-  },
-
-  tableHeaderCell: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
-  },
-
-  tableRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
     paddingVertical: space.sm,
-    paddingHorizontal: space.md,
-    minHeight: layout.rowMinHeight,
-    backgroundColor: t.surface.card,
   },
 
-  tableRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-  },
-
-  tableCell: {
-    justifyContent: 'center' as const,
-  },
-
-  colItem: {
-    flex: 2.5,
-  },
-
-  colQty: {
-    width: 48,
-    textAlign: 'right' as const,
-  },
-
-  // Wide enough for the header "Kg each" on one line at font scales 1.0 and 1.3.
-  colWeight: {
-    width: 72,
-    textAlign: 'right' as const,
-    marginLeft: space.sm,
-  },
-
-  colStock: {
-    width: 72,
-    alignItems: 'flex-end' as const,
-    textAlign: 'right' as const,
-    marginLeft: space.sm,
-  },
-
-  // StatusTag aligns itself to the start; in the table it sits under its right-aligned header.
-  stockTag: {
-    alignSelf: 'flex-end' as const,
-  },
-
-  cellValue: {
-    ...typography.subhead,
-    color: t.text.primary,
-    fontVariant: tabular,
-  },
-
-  itemName: {
-    ...typography.subhead,
-    color: t.text.primary,
-  },
-
-  itemMark: {
-    ...typography.caption1,
-    color: t.text.secondary,
+  /** A line's stock status under its item, when it is not In stock. */
+  lineTag: {
+    marginTop: space.xxs,
   },
 
   // =========================================================================
@@ -497,7 +195,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   },
 
   // =========================================================================
-  // Swipe actions
+  // Swipe actions (guide 13.6)
   // =========================================================================
   swipeActions: {
     flexDirection: 'row' as const,
@@ -542,100 +240,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   },
 
   // =========================================================================
-  // Skeleton loading (guide 13.6)
-  // =========================================================================
-  skeletonCard: {
-    marginBottom: space.sm,
-    backgroundColor: t.surface.card,
-    borderRadius: radius.card,
-    padding: space.lg,
-    ...t.shadow[2],
-  },
-
-  skeletonObjectCell: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.md,
-  },
-
-  skeletonStatusIcon: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.button,
-    backgroundColor: t.surface.cardActive,
-  },
-
-  skeletonContent: {
-    flex: 1,
-    gap: space.sm,
-  },
-
-  skeletonTitle: {
-    width: '60%' as const,
-    height: 16,
-    borderRadius: radius.field,
-    backgroundColor: t.surface.cardActive,
-  },
-
-  skeletonSubtitle: {
-    width: '80%' as const,
-    height: 14,
-    borderRadius: radius.field,
-    backgroundColor: t.surface.cardActive,
-  },
-
-  skeletonFooter: {
-    width: '50%' as const,
-    height: 12,
-    borderRadius: radius.field,
-    backgroundColor: t.surface.cardActive,
-  },
-
-  skeletonAttributes: {
-    alignItems: 'flex-end' as const,
-    gap: space.sm,
-  },
-
-  skeletonBadge: {
-    width: 56,
-    height: 20,
-    borderRadius: radius.field,
-    backgroundColor: t.surface.cardActive,
-  },
-
-  skeletonStockValue: {
-    width: 40,
-    height: 20,
-    borderRadius: radius.field,
-    backgroundColor: t.surface.cardActive,
-  },
-
-  // =========================================================================
-  // Empty and error states (guide 13.6)
-  // =========================================================================
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    padding: space.xxl,
-    gap: space.sm,
-  },
-
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.sm,
-  },
-
-  emptySubtitle: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-  },
-
-  // =========================================================================
   // Footer loading
   // =========================================================================
   footerLoader: {
@@ -649,21 +253,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-
-  // =========================================================================
-  // Snackbar (guide 13.9)
-  // =========================================================================
-  snackbar: {
-    marginBottom: space.lg,
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-    ...t.shadow[3],
-  },
-
-  snackbarText: {
-    ...typography.subhead,
-    color: t.text.inverse,
   },
 });
 

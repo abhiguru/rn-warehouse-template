@@ -168,3 +168,14 @@ it('refuses a key outside its prefix', async () => {
   expect(await cache.set(INDEX_KEY, payload(10))).toBe(false);
   expect(await AsyncStorage.getItem('grn_form_draft_fictional')).toBeNull();
 });
+
+it('getEntry returns the data with the time it was stored, and nothing once expired (R6-6)', async () => {
+  const cache = create();
+  await cache.set(key('a'), payload(10));
+  jest.advanceTimersByTime(60 * 1000);
+  const entry = await cache.getEntry<ReturnType<typeof payload>>(key('a'));
+  expect(entry).toEqual({ data: payload(10), storedAt: new Date('2026-10-13T09:00:00Z').getTime() });
+  expect(await cache.get(key('a'))).toEqual(payload(10));
+  jest.advanceTimersByTime(LIMITS.expiryMs);
+  expect(await cache.getEntry(key('a'))).toBeNull();
+});

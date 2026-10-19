@@ -21,7 +21,7 @@ import { createLogger } from '@/utils/logger';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { ActivityIndicator, Snackbar } from 'react-native-paper';
+import { ActivityIndicator } from 'react-native-paper';
 import { router, useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
 
@@ -43,6 +43,7 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 // State
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
@@ -52,10 +53,11 @@ import { readSearch } from '@/features/filters/filterModel';
 import { useListFilters } from '@/features/filters/useListFilters';
 import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
 import { searchWords } from '@/features/filters/components/HighlightedText';
-import { formatCount, formatNumber, formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatNumber, formatSectionDate, formatTime } from '@/utils/formatters';
 import { t as translate } from '@/i18n';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -82,23 +84,28 @@ export interface InvoiceFlashListProps {
 interface SectionHeaderProps {
   title: string;
   count: number;
+  /** Offline: when the rows were loaded, shown under the heading (§14.9). */
+  updatedAt?: number;
 }
 
 // Section header: footnote, capitals, text.secondary (style guide §13.6)
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt }) => {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View
-      style={styles.sectionHeader}
-      accessible
-      accessibilityRole="header"
-      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'invoice') })}
-    >
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionBadge}>
-        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
+    <>
+      <View
+        style={styles.sectionHeader}
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'invoice') })}
+      >
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
+        </View>
       </View>
-    </View>
+      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="invoice-last-updated" /> : null}
+    </>
   );
 });
 
@@ -141,9 +148,15 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentOffset, setCurrentOffset] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  /** The first page failed with no rows to show. */
+  const [loadError, setLoadError] = useState(false);
+  /** A refresh failed: the rows loaded before stay, with a strip that says when (§14.9). */
+  const [refreshError, setRefreshError] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  const isOffline = useIsOffline();
+  /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
+  const shownRequest = useRef<string | null>(null);
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -160,10 +173,29 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // A newer request (the user kept typing, or changed a filter) replaces an
   // older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
+  /**
+   * A failed next page is the list's last row with Try again. A failed refresh of the rows on screen keeps them
+   * under a strip that says when they were loaded. A failed new search, filter or sort has no rows that answer
+   * it, so the list shows the error state (§14.9).
+   */
+  const showLoadFailure = useCallback((append: boolean, requestKey: string) => {
+    if (append) {
+      setLoadMoreFailed(true);
+    } else if (shownRequest.current === requestKey) {
+      setRefreshError(true);
+    } else {
+      setInvoices([]);
+      setHasMore(false);
+      shownRequest.current = null;
+      setRefreshError(false);
+      setLoadError(true);
+    }
+  }, []);
   // `fresh`: pull to refresh and a return to the screen read the server again;
   // a customer account's next page, sort and search use the history kept for it.
   const fetchInvoices = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
+    const requestKey = JSON.stringify(request);
     try {
       if (append) setIsLoadingMore(true);
       else setIsLoading(true);
@@ -177,7 +209,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
       if (!result.success || !result.data) throw new Error(result.message || 'Failed to load invoices');
-      setError(null);
       const page = result.data.invoices ?? [];
       if (append) {
         setInvoices(prev => {
@@ -186,6 +217,11 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         });
       } else {
         setInvoices(page);
+        setLoadError(false);
+        setRefreshError(false);
+        setLoadMoreFailed(false);
+        setLoadedAt(Date.now());
+        shownRequest.current = requestKey;
         // A new search, filter or sort starts from its first row.
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
       }
@@ -195,11 +231,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
       // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
       logger.warn('List did not load', err instanceof Error ? err.message : err);
-      setError(err instanceof Error ? err.message : 'Failed to load invoices');
-      setSnackbarMessage(append
-        ? translate('lists.invoice.loadMoreFailed')
-        : translate('lists.invoice.loadFailed'));
-      setSnackbarVisible(true);
+      showLoadFailure(append, requestKey);
     } finally {
       if (isMountedRef.current && requestId === latestRequest.current) {
         setIsLoading(false);
@@ -208,7 +240,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         setIsLoadingMore(false);
       }
     }
-  }, [request, isWarehouseRole, assignedCustomerIds, assignedCustomerNames]);
+  }, [request, isWarehouseRole, assignedCustomerIds, assignedCustomerNames, showLoadFailure]);
 
   // One owner for loading the first page. The newest request is kept in a ref so the
   // focus callback below never changes identity: expo-router reruns a focus effect
@@ -249,7 +281,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         const fresh = !changedWhileHiddenRef.current;
         blurredRef.current = false;
         changedWhileHiddenRef.current = false;
-        setCurrentOffset(0);
         fetchInvoicesRef.current(0, false, fresh);
       }
       return () => {
@@ -265,15 +296,22 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    setCurrentOffset(0);
+    // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
     fetchInvoices(0, false, true);
   }, [fetchInvoices]);
 
   const handleLoadMore = useCallback(() => {
     if (!isLoadingMore && hasMore && !isLoading) {
+      setLoadMoreFailed(false);
       fetchInvoices(currentOffset, true);
     }
   }, [isLoadingMore, hasMore, isLoading, currentOffset, fetchInvoices]);
+
+  // Reaching the end of the list asks for the next page, but not again right after one failed: the footer's
+  // Try again is the way (otherwise a dead connection would be retried in a loop).
+  const handleEndReached = useCallback(() => {
+    if (!loadMoreFailed) handleLoadMore();
+  }, [loadMoreFailed, handleLoadMore]);
 
   const handleInvoicePress = useCallback((invoice: Invoice) => {
     if (onItemPress) {
@@ -289,10 +327,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
   }, [dispatch]);
-
-  const dismissSnackbar = useCallback(() => {
-    setSnackbarVisible(false);
-  }, []);
 
   // ============================================================================
   // FLATTENED DATA (for FlashList)
@@ -326,9 +360,13 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   const keyExtractor = useCallback((item: FlattenedItem<Invoice>) => item.key, []);
 
-  const renderItem = useCallback(({ item }: { item: FlattenedItem<Invoice> }) => {
+  // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
+  // cards were loaded (§14.9). A failed refresh says it in its strip instead.
+  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+
+  const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Invoice>; index: number }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} />;
+      return <SectionHeader title={item.title} count={item.count} updatedAt={index === 0 ? offlineUpdatedAt : undefined} />;
     }
 
     return (
@@ -339,9 +377,19 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         words={words}
       />
     );
-  }, [handleInvoicePress, canPrint, words]);
+  }, [handleInvoicePress, canPrint, words, offlineUpdatedAt]);
 
   const ListFooter = useMemo(() => {
+    if (loadMoreFailed && !isLoadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={translate('lists.invoice.loadMoreFailed')}
+          retryLabel={translate('lists.invoice.retryMore')}
+          onRetry={handleLoadMore}
+          testID="invoice-load-more-error"
+        />
+      );
+    }
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
@@ -349,18 +397,36 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         <Text style={styles.footerLoaderText}>{translate('lists.invoice.loadingMore')}</Text>
       </View>
     );
-  }, [isLoadingMore, styles, t]);
+  }, [isLoadingMore, loadMoreFailed, handleLoadMore, styles, t]);
+
+  // Sorted by anything but date there are no headings: the offline line is then the top of the list.
+  const listHeader = useMemo(
+    () => (!sortedByDate && offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="invoice-last-updated" /> : null),
+    [sortedByDate, offlineUpdatedAt]
+  );
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
   let content: React.ReactNode;
-  if (!hasLoaded && isLoading) {
+  if ((!hasLoaded || loadError) && isLoading && invoices.length === 0) {
     // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
   } else if (invoices.length > 0) {
     content = (
+      <>
+        {/* A refresh failed: the invoices loaded before stay, with Try again (§14.9) */}
+        {refreshError ? (
+          <StaleListStrip
+            title={translate('lists.invoice.staleTitle')}
+            text={translate('lists.invoice.staleText', { time: formatTime(new Date(loadedAt)) })}
+            retryLabel={translate('lists.invoice.retryRefresh')}
+            onRetry={handleRefresh}
+            retrying={isRefreshing}
+            testID="invoice-stale-strip"
+          />
+        ) : null}
       <FlashList
         ref={listRef}
         data={flattenedData}
@@ -369,7 +435,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleInvoicePress, words }}
+        extraData={{ canPrint, handleInvoicePress, words, offlineUpdatedAt }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -380,13 +446,15 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
             progressBackgroundColor={t.surface.card}
           />
         }
-        onEndReached={handleLoadMore}
+        onEndReached={handleEndReached}
         onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
+        ListHeaderComponent={listHeader}
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
       />
+      </>
     );
-  } else if (error) {
+  } else if (loadError) {
     content = (
       <ErrorStateView
         presentation="inline"
@@ -414,14 +482,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       {/* The header, search field and filter bar are shown in every state. */}
       <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} />
       {content}
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={dismissSnackbar}
-        duration={4000}
-        style={styles.snackbar}
-      >
-        {snackbarMessage}
-      </Snackbar>
     </View>
   );
 };
@@ -479,13 +539,6 @@ const makeStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-  // Snackbar: inverse surface (§13.9)
-  snackbar: {
-    marginBottom: 80,
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-    ...t.shadow[3],
   },
 });
 

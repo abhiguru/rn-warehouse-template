@@ -5,7 +5,7 @@
  * The list and the result count both call it, and a test checks that every
  * field changes the request, so a field cannot be shown and then ignored.
  */
-import { getAllGRNItems, getAssignedCustomerGRNItems, type GRNFilters, type GRNListParams } from '@/services/grn-service';
+import { getAllGRNItems, getAssignedCustomerGRNItems, withReceiptPages, type GRNFilters, type GRNListParams } from '@/services/grn-service';
 import { t } from '@/i18n';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
@@ -20,12 +20,31 @@ import type {
 
 export type GrnListRequest = Pick<GRNListParams, 'p_date_from' | 'p_date_to' | 'p_filters' | 'p_sort_by' | 'p_sort_order'>;
 
+/**
+ * Whether the request's filters leave out lines of the GRNs they return. The line-level filters (Stock other
+ * than All, Item, Weight each, Package and the search text) return only the matching lines of each GRN, so
+ * the card's item count and totals are those of the matching lines, not of the whole GRN. Customer, Date and
+ * GRN number keep whole GRNs.
+ */
+export function grnLinesHidden(request: Pick<GrnListRequest, 'p_filters'>): boolean {
+  const filters = request.p_filters;
+  if (!filters) return false;
+  return (
+    (filters.stock_status !== undefined && filters.stock_status !== 'all') ||
+    Boolean(filters.item_ids?.length) ||
+    filters.weight_min !== undefined ||
+    filters.weight_max !== undefined ||
+    Boolean(filters.package_mark) ||
+    Boolean(filters.search)
+  );
+}
+
 export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
   listKey: 'grn-list',
   // Labels are getters so they follow the app's language (see FieldBase in ../types).
   get title() { return t('filters.list.grn.title'); },
-  // The backend counts receipt lines, not receipts.
-  noun: ['item', 'items'],
+  // Counted in receipts (backend migration 98): "Show 9 GRNs".
+  noun: ['grn', 'grns'],
   search: { get placeholder() { return t('filters.list.grn.search'); }, dates: true, range: 'document', dateField: 'date', rangeField: 'numberRange' },
   sort: {
     options: [
@@ -41,10 +60,18 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
       get label() { return t('common.stock'); },
       icon: 'chart-bar',
       defaultValue: 'all',
+      // The words of the cards' stock tags (style guide 3.5). Each is per line: a GRN shows its matching lines.
       options: [
         { value: 'all', get label() { return t('common.all'); } },
         { value: 'in_stock', get label() { return t('common.inStock'); } },
-        { value: 'out_of_stock', get label() { return t('common.outOfStock'); } },
+        {
+          value: 'low_stock',
+          get label() { return t('common.lowStock'); },
+          // A facility without migration 98 answers this wrongly (staff: every line, customer: none): offered
+          // only once its list has answered in receipts (code review 2026-10-18, R1-07, R3-02).
+          visibleTo: (ctx) => ctx.pagesByReceipt === true,
+        },
+        { value: 'out_of_stock', get label() { return t('grn.status.fullyDispatched'); } },
       ],
     },
     { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
@@ -102,11 +129,13 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
   },
 
   async fetchCount(request, ctx) {
-    const params = { ...request, p_limit: 1, p_offset: 0 };
+    const params = withReceiptPages({ ...request, p_limit: 1, p_offset: 0 });
     const response = ctx.isWarehouseRole
       ? await getAllGRNItems(params)
       : await getAssignedCustomerGRNItems(ctx.assignedCustomers.map(customer => customer.id), params);
     if (!response.success) throw new Error(response.message || 'Count failed');
+    // A facility without migration 98 counts lines, not GRNs: no number then, and the button reads "Show results".
+    if (response.data.pagination.unit !== 'receipt') throw new Error('Count of GRNs not available');
     return response.data.pagination.total_count;
   },
 };

@@ -137,4 +137,10 @@ describe('apply button label', () => {
     expect(resultsLabel({ count: 0, loading: false }, noun)).toBe('No items match');
     expect(resultsLabel({ count: null, loading: true }, noun)).toBe('Show results');
   });
+  it('counts GRNs on the GRN list, not their lines', () => {
+    const grns: [string, string] = ['grn', 'grns'];
+    expect(resultsLabel({ count: 9, loading: false }, grns)).toBe('Show 9 GRNs');
+    expect(resultsLabel({ count: 1, loading: false }, grns)).toBe('Show 1 GRN');
+    expect(resultsLabel({ count: 0, loading: false }, grns)).toBe('No GRNs match');
+  });
 });
