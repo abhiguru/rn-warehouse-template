@@ -144,7 +144,8 @@ export const invoice: Translation<typeof source> = {
     colLabour: 'મજૂરી (₹)',
     colTax: 'ટેક્સ (%)',
     colAmount: 'રકમ',
-    colDuration: 'મુદત',
+    // Draft for the owner's wording review (tweak 2026-10-19): the glossary's word for this column was મુદત (Duration); the heading now says Months.
+    colMonths: 'મહિના',
     colDays: 'દિવસ',
     colQty: 'નંગ',
     // Draft for the owner's wording review (tweak 2026-10-19): the line table scrolls sideways.
@@ -170,6 +171,9 @@ export const invoice: Translation<typeof source> = {
     // Announced after a press: the field's new value.
     stepUnitMoney: 'રૂપિયા',
     stepDone: '{{field}} {{value}} {{unit}}',
+    // Under a Charge that shows the weighted average of its lines (bag-months; bags for a one-time GRN). Gujarati is a draft.
+    averageNote: { one: '{{count}} લાઇનની સરેરાશ', other: '{{count}} લાઇનની સરેરાશ' },
+    stepDoneAverage: 'પોતાનું ભાડું ન હોય તેવી લાઇન પર ભાડું {{value}} રૂપિયા કર્યું',
     keepOwnCharge: { one: '{{count}} લાઇનનું ભાડું તેનું પોતાનું રહે છે', other: '{{count}} લાઇનનું ભાડું તેમનું પોતાનું રહે છે' },
     keepOwnLabour: { one: '{{count}} લાઇનની મજૂરી તેની પોતાની રહે છે', other: '{{count}} લાઇનની મજૂરી તેમની પોતાની રહે છે' },
     keepOwnTax: { one: '{{count}} લાઇનનો ટેક્સ તેનો પોતાનો રહે છે', other: '{{count}} લાઇનનો ટેક્સ તેમનો પોતાનો રહે છે' },
@@ -191,6 +195,7 @@ export const invoice: Translation<typeof source> = {
       other: 'સુધારવાના {{count}} આંકડા',
     },
     cellA11y: '{{field}}, જાવક {{number}}, {{unit}}',
+    groupAverageA11y: '{{field}}, {{item}}, બધી લાઇન, સરેરાશ, {{unit}}',
     groupCellA11y: '{{field}}, {{item}}, બધી લાઇન, {{unit}}',
     unitCharge: 'નંગદીઠ રૂપિયા, દર મહિને',
     unitChargeOneTime: 'રૂપિયા, નંગ દીઠ',

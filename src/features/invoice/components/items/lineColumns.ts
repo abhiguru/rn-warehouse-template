@@ -1,6 +1,6 @@
 /**
  * The column model of an open card's line table (style guide 13.7), which scrolls sideways (owner decision, 2026-10-19):
- * Dispatch (pinned) | Date | Duration | Days | Qty | Charge (₹) | Labour (₹) | Tax (%) | Amount, described with the app's TanStack
+ * Dispatch (pinned) | Date | Months | Days | Qty | Charge (₹) | Labour (₹) | Tax (%) | Amount, described with the app's TanStack
  * setup (`createAppColumnHelper`, `useAppTable`). TanStack decides the headings, the widths (column meta) and which
  * cells a row has; Labour is left out of a one-time GRN. The rows are not drawn by `DataTable`: they are parts of
  * the page's virtualized list (`LineRow`, `ColumnHeadings`), which read the columns from here, so an open card of
@@ -21,7 +21,7 @@ export interface LineColumn {
   header: string;
   /** The column's outer width in dp. */
   width: number;
-  /** Right-aligned figure (Days, Qty, the three rates, Amount); Date and Duration are left-aligned text. */
+  /** Right-aligned figure (Months, Days, Qty, the three rates, Amount); Date, and Months of a one-time GRN ("One-time"), are left-aligned text. */
   numeric: boolean;
   /** Left edge in the scrolling part (0 for the pinned Dispatch column, which is not in it). */
   x: number;
@@ -43,7 +43,8 @@ export function lineColumnDefs(widths: LineWidths, oneTime: boolean) {
   const cols = [
     text('dispatch', tr('common.dispatch')),
     text('date', tr('common.date')),
-    text('duration', tr('invoice.items.colDuration')),
+    // A figure column (right-aligned, tabular) except for a one-time GRN, where the cell says "One-time" in words.
+    (oneTime ? text : figure)('duration', tr('invoice.items.colMonths')),
     figure('days', tr('invoice.items.colDays')),
     figure('qty', tr('invoice.items.colQty')),
     figure('charge', fieldHeading('charge')),

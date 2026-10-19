@@ -15,11 +15,16 @@ export const dateText = (date: string): string => formatDate(date, 'short');
 export const durationText = (duration: number, oneTime: boolean): string =>
   oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(duration * 10) / 10, 'month');
 
+/** The months column of the sideways table: the number alone ("1", "1.6", same rounding as `durationText`), or "One-time"; the heading says "Months". */
+export const monthsText = (duration: number, oneTime: boolean): string =>
+  oneTime ? tr('invoice.items.oneTime') : formatNumber(Math.round(duration * 10) / 10);
+
 /** A day or quantity count ("48", "120") in the language's digits. */
 export const countText = (value: number): string => formatNumber(value);
 
 export const lineDate = (item: InvoiceItemData): string => dateText(item.dispatch_date);
 export const lineDuration = (item: InvoiceItemData, oneTime: boolean): string => durationText(item.duration, oneTime);
+export const lineMonths = (item: InvoiceItemData, oneTime: boolean): string => monthsText(item.duration, oneTime);
 export const lineDays = (item: InvoiceItemData): string => countText(item.no_of_days);
 export const lineQty = (item: InvoiceItemData): string => countText(item.qty);
 

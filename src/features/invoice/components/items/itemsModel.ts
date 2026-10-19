@@ -54,16 +54,52 @@ export function settle(field: RateField, typed: string): { value: number | null;
 export interface SharedView {
   /** The rate the lines share (or the one applied to the group), as text; '' while the lines differ or are free. */
   text: string;
-  /** The lines differ: the placeholder says "Mixed". */
+  /** The lines differ: the placeholder says "Mixed" (Labour and Tax; Charge shows `average` instead). */
   mixed: boolean;
+  /** Charge only: the lines differ, so `text` is their average charge weighted by bag-months (by bags for a one-time GRN). */
+  average: boolean;
+  /** Whether a figure typed or stepped here reaches any line: false only when every line keeps its own typed charge. */
+  applies: boolean;
   /** Lines that keep a rate typed on the line itself. */
   keepOwn: number;
+  /**
+   * The rounded rate that the lines WITHOUT their own typed rate all share, which is what a group press sets and so what
+   * the steppers step from while an average is shown; null when those lines differ or there are none.
+   */
+  stepFrom: number | null;
 }
 export type GroupView = Record<RateField, SharedView>;
 
 /**
+ * The charge that, applied to every line, gives the same storage total as the lines' own charges: the mean charge
+ * weighted by bag-months, Σ(charge x qty x duration) / Σ(qty x duration), or by bags for a one-time GRN,
+ * Σ(charge x qty) / Σ(qty); the plain mean when the weights add up to 0. Each line is read as `calculateItemAmounts`
+ * reads it (a bad qty or charge counts as 0, a duration that is not above 0 as 1), and the result is rounded to 2 places.
+ */
+export function weightedCharge(lines: readonly InvoiceItemData[]): number {
+  let weighted = 0;
+  let weights = 0;
+  let sum = 0;
+  lines.forEach((line) => {
+    // Number() first, as the form holds text-like or missing values too; the same guards as `calculateItemAmounts`.
+    const rawQty = Number(line.qty);
+    const rawCharge = Number(line.charge);
+    const rawMonths = Number(line.duration);
+    const qty = isNaN(rawQty) || rawQty < 0 ? 0 : rawQty;
+    const charge = isNaN(rawCharge) || rawCharge < 0 ? 0 : rawCharge;
+    const months = isNaN(rawMonths) || rawMonths <= 0 ? 1 : rawMonths;
+    const weight = line.one_time ? qty : qty * months;
+    weighted += charge * weight;
+    weights += weight;
+    sum += charge;
+  });
+  return roundMoney(weights > 0 ? weighted / weights : lines.length > 0 ? sum / lines.length : 0);
+}
+
+/**
  * The group's shared rates as the form holds them: the rate applied to the group, else the rate all
- * lines share, else "Mixed". Never an average: an average is the rate of no line.
+ * lines share, else "Mixed". Charge is the exception (owner, 2026-10-19): while its lines differ it shows their
+ * weighted average (`weightedCharge`, flagged `average`), because that is the one charge that gives the same storage total.
  */
 export function groupView(
   group: InvoiceItemGroup,
@@ -74,18 +110,26 @@ export function groupView(
   RATE_FIELDS.forEach((field) => {
     const rates = group.allItems.map((line) => roundMoney(Number(line[field]) || 0));
     const appliedRate = applied?.[field];
+    const differ = rates.some((rate) => rate !== rates[0]);
     let text: string;
     let mixed = false;
-    if (appliedRate !== undefined) text = rateText(field, appliedRate);
-    else if (rates.some((rate) => rate !== rates[0])) {
+    let average = false;
+    if (field === 'charge' && differ) {
+      text = rateText(field, weightedCharge(group.allItems));
+      average = true;
+    } else if (appliedRate !== undefined) text = rateText(field, appliedRate);
+    else if (differ) {
       text = '';
       mixed = true;
     } else text = rates[0] > 0 ? rateText(field, rates[0]) : '';
-    const shown = appliedRate ?? (mixed ? undefined : rates[0]);
-    // Lines that keep a rate typed on the line itself: those that differ from a shown rate, or, while "Mixed", all of them.
+    const shown = appliedRate ?? (differ ? undefined : rates[0]);
+    // Lines that keep a rate typed on the line itself: those that differ from a shown rate, or, while the lines differ, all of them.
     const typed = group.allItems.filter((line) => (overrides[line.temp_id] ?? []).includes(field));
     const keepOwn = shown === undefined ? typed.length : typed.filter((line) => roundMoney(Number(line[field]) || 0) !== roundMoney(shown)).length;
-    view[field] = { text, mixed, keepOwn };
+    const takers = group.allItems.filter((line) => !(overrides[line.temp_id] ?? []).includes(field));
+    const takerRates = takers.map((line) => roundMoney(Number(line[field]) || 0));
+    const stepFrom = takerRates.length > 0 && takerRates.every((rate) => rate === takerRates[0]) ? takerRates[0] : null;
+    view[field] = { text, mixed, average, applies: typed.length < group.allItems.length, keepOwn, stepFrom };
   });
   return view;
 }
@@ -269,8 +313,8 @@ export const cellLabel = (field: RateField, dispatchNo: string, oneTime: boolean
   tr('invoice.items.cellA11y', { field: tr(FIELD_NAME[field]), number: formatIdentifier(dispatchNo), unit: unitOf(field, oneTime) });
 
 /** "Charge, Example Potatoes, all lines, rupees per bag per month" */
-export const groupCellLabel = (field: RateField, itemName: string, oneTime: boolean): string =>
-  tr('invoice.items.groupCellA11y', { field: tr(FIELD_NAME[field]), item: itemName, unit: unitOf(field, oneTime) });
+export const groupCellLabel = (field: RateField, itemName: string, oneTime: boolean, average = false): string =>
+  tr(average ? 'invoice.items.groupAverageA11y' : 'invoice.items.groupCellA11y', { field: tr(FIELD_NAME[field]), item: itemName, unit: unitOf(field, oneTime) });
 
 const KEEP_OWN: Record<RateField, TranslationKey> = {
   charge: 'invoice.items.keepOwnCharge',
@@ -278,6 +322,16 @@ const KEEP_OWN: Record<RateField, TranslationKey> = {
   tax: 'invoice.items.keepOwnTax',
 };
 export const keepOwnNote = (field: RateField, count: number): string => tr(KEEP_OWN[field], { count });
+
+/** The note under a Charge that shows the average: "Average of 3 lines", then, when some lines keep their own charge, that note on a second line. */
+export const averageNote = (lines: number, keepOwn: number): string => {
+  const average = tr('invoice.items.averageNote', { count: lines });
+  return keepOwn > 0 ? `${average}\n${keepOwnNote('charge', keepOwn)}` : average;
+};
+
+/** Announced after a press under an average: the figure set on the lines that take it (the field then shows the new average). */
+export const stepDoneAverageText = (value: number, localize: (text: string) => string): string =>
+  tr('invoice.items.stepDoneAverage', { value: localize(rateText('charge', value)) });
 
 /** What is announced after a press: "Charge 5.25 rupees", "Tax 3.5 percent" (the field's name and unit in words, digits of the language). */
 export const stepDoneText = (field: RateField, value: number, localize: (text: string) => string): string =>
@@ -301,7 +355,9 @@ export interface StepperState {
 }
 
 /**
- * The figure the steppers step from, and which of them work. None does while the lines differ ("Mixed", no single figure),
+ * The figure the steppers step from, and which of them work. None does while the lines differ ("Mixed", no single figure;
+ * under a Charge average the figure is `stepFrom`, the rate the lines without their own charge share, or none), when every
+ * line keeps its own charge,
  * or while the field holds text that is refused or unfinished. Text that is a number in range is applied already, so it is the figure.
  */
 export function stepperState(field: RateField, view: SharedView, state: FieldState | undefined): StepperState {
@@ -309,8 +365,10 @@ export function stepperState(field: RateField, view: SharedView, state: FieldSta
   if (state) {
     const settled = settle(field, state.text);
     value = settled.error || settled.value === null ? null : settled.value;
-  } else value = view.mixed ? null : roundMoney(Number(view.text) || 0);
-  if (value === null) return { value, canDecrease: false, canIncrease: false, aboveMax: false };
+  } else if (view.average) value = view.stepFrom; // not the average: a press sets only the lines without their own charge
+  else value = view.mixed ? null : roundMoney(Number(view.text) || 0);
+  // A press changes nothing when every line keeps its own charge.
+  if (value === null || (field === 'charge' && !view.applies)) return { value, canDecrease: false, canIncrease: false, aboveMax: false };
   return { value, canDecrease: value > 0, canIncrease: value < RATE_MAX[field], aboveMax: value > RATE_MAX[field] };
 }
 
@@ -325,8 +383,8 @@ export const steppedValue = (field: RateField, from: number, direction: StepDire
 export const maxAmountText = (field: RateField): string =>
   tr(field === 'tax' ? 'invoice.items.stepAmountTax' : 'invoice.items.stepAmountMoney', { amount: localizeDigits(String(RATE_MAX[field])) });
 
-/** What the + / − beside a dispatch line's figure steps from: the line's own rate, as the cell shows it ("Mixed" never applies). */
-export const lineView = (field: RateField, rate: number): SharedView => ({ text: rateText(field, rate), mixed: false, keepOwn: 0 });
+/** What the + / − beside a dispatch line's figure steps from: the line's own rate, as the cell shows it (neither "Mixed" nor an average applies). */
+export const lineView = (field: RateField, rate: number): SharedView => ({ text: rateText(field, rate), mixed: false, average: false, applies: true, keepOwn: 0, stepFrom: roundMoney(rate) });
 
 const STEP_NAME: Record<RateField, TranslationKey> = {
   charge: 'invoice.items.stepNameCharge',

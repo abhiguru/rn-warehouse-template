@@ -138,7 +138,7 @@ export const invoice = {
     colLabour: 'Labour (₹)',
     colTax: 'Tax (%)',
     colAmount: 'Amount',
-    colDuration: 'Duration',
+    colMonths: 'Months',
     colDays: 'Days',
     colQty: 'Qty',
     // Under the heading of the line table, which scrolls sideways (owner decision 2026-10-19).
@@ -163,6 +163,9 @@ export const invoice = {
     // Announced after a press: the field's name, new value and unit ("Charge 5.25 rupees", "Tax 3.5 percent"; percent is unitTax).
     stepUnitMoney: 'rupees',
     stepDone: '{{field}} {{value}} {{unit}}',
+    // Under a Charge that shows the weighted average of its lines (bag-months; bags for a one-time GRN). Gujarati is a draft.
+    averageNote: { one: 'Average of {{count}} line', other: 'Average of {{count}} lines' },
+    stepDoneAverage: 'Charge {{value}} rupees set on the lines without their own charge',
     keepOwnCharge: { one: '{{count}} line keeps its own charge', other: '{{count}} lines keep their own charge' },
     keepOwnLabour: { one: '{{count}} line keeps its own labour', other: '{{count}} lines keep their own labour' },
     keepOwnTax: { one: '{{count}} line keeps its own tax', other: '{{count}} lines keep their own tax' },
@@ -185,6 +188,7 @@ export const invoice = {
       other: '{{count}} figures to fix',
     },
     cellA11y: '{{field}}, dispatch {{number}}, {{unit}}',
+    groupAverageA11y: '{{field}}, {{item}}, all lines, average, {{unit}}',
     groupCellA11y: '{{field}}, {{item}}, all lines, {{unit}}',
     unitCharge: 'rupees per bag, per month',
     unitChargeOneTime: 'rupees per bag',

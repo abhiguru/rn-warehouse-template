@@ -1,5 +1,5 @@
 /**
- * The total row, the toggle that opens a group's dispatch lines, and the column headings (with the hints
+ * The total row, the toggle that opens a group's dispatch lines, and the column headings (with the swipe hint
  * under them) of an open group's card. The card's bottom edge is drawn by the last part: the toggle while
  * the group is closed, the last line while it is open. The heading row is the line table's: the pinned Dispatch
  * heading and, in the card's shared `SidewaysViewport`, the other headings (swiping the heading moves the whole table).
@@ -56,8 +56,7 @@ export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, tab
           </View>
         ))}
       </SidewaysViewport>
-      <Text style={styles.hint}>{tr('invoice.items.hint')}</Text>
-      {sideways ? <Text style={styles.hintSecond}>{tr('invoice.items.swipeHint')}</Text> : null}
+      {sideways ? <Text style={styles.hint}>{tr('invoice.items.swipeHint')}</Text> : null}
     </View>
   );
 });

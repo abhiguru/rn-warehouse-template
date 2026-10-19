@@ -7,7 +7,7 @@
  * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), the group total, and a toggle,
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
  * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: one table that
- * scrolls sideways at every text size (owner decision, 2026-10-19): Dispatch (pinned) | Date | Duration | Days | Qty |
+ * scrolls sideways at every text size (owner decision, 2026-10-19): Dispatch (pinned) | Date | Months | Days | Qty |
  * Charge ₹ | Labour ₹ | Tax % | Amount, its columns described with the app's TanStack column model (lineColumns.ts) and
  * sized to their widest text once per layout (itemsLayout.ts), with the Charge typed in its cell; Labour and Tax are
  * cells too only where the lines differ in them, else read-only figures. The heading and all rows of one open card
@@ -65,7 +65,7 @@ import { SharedBlock } from './SharedRateRow';
 import { ColumnHeadings, GroupToggle, GroupTotal } from './TableParts';
 import { lineColumnDefs, lineColumnsOf, type LineColumnId } from './lineColumns';
 import { itemsLayout, sameLayout, sharedSideBySide, type ItemsLayout } from './itemsLayout';
-import { countText, dateText, durationText } from './lineText';
+import { countText, dateText, monthsText } from './lineText';
 import { makeTableScroll, scrollToReveal, type TableScroll } from './SidewaysViewport';
 import {
   cellKey,
@@ -82,6 +82,7 @@ import {
   settle,
   sharedFieldsOf,
   stepDoneText,
+  stepDoneAverageText,
   stepperState,
   steppedValue,
   type FieldState,
@@ -256,7 +257,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         {
           dispatch: distinctTexts(layoutItems, (line) => line.dispatch_no, (v) => v),
           date: distinctTexts(layoutItems, (line) => line.dispatch_date, dateText),
-          duration: distinctTexts(layoutItems, (line) => line.duration, (v) => durationText(v, oneTime)),
+          duration: distinctTexts(layoutItems, (line) => line.duration, (v) => monthsText(v, oneTime)),
           days: distinctTexts(layoutItems, (line) => line.no_of_days, countText),
           qty: distinctTexts(layoutItems, (line) => line.qty, countText),
           charge: distinctTexts(layoutItems, (line) => line.charge, (v) => rateText('charge', v)),
@@ -267,7 +268,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         {
           dispatch: tr('common.dispatch'),
           date: tr('common.date'),
-          duration: tr('invoice.items.colDuration'),
+          duration: tr('invoice.items.colMonths'),
           days: tr('invoice.items.colDays'),
           qty: tr('invoice.items.colQty'),
           charge: fieldHeading('charge'),
@@ -361,7 +362,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       RATE_FIELDS.forEach((field) => {
         const a = before[field];
         const b = next[field];
-        same[field] = a.text === b.text && a.mixed === b.mixed && a.keepOwn === b.keepOwn ? a : b;
+        same[field] = a.text === b.text && a.mixed === b.mixed && a.average === b.average && a.applies === b.applies && a.stepFrom === b.stepFrom && a.keepOwn === b.keepOwn ? a : b;
       });
       result.set(groupKey, RATE_FIELDS.every((field) => same[field] === before[field]) ? before : same);
     });
@@ -556,7 +557,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         return rest;
       });
       commit(key, next);
-      AccessibilityInfo.announceForAccessibility(stepDoneText(field, next, localizeDigits));
+      AccessibilityInfo.announceForAccessibility(view.average ? stepDoneAverageText(next, localizeDigits) : stepDoneText(field, next, localizeDigits));
       released();
     };
 
@@ -727,7 +728,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
               groupKey={row.groupKey}
               total={totals.get(row.groupKey) ?? 0}
               canEditPricing={canEditPricing}
-              showHint={mode.cards || !openSet.has(row.groupKey)}
+              showHint={mode.cards}
               actions={actions}
               styles={styles}
             />
@@ -781,6 +782,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
               groupKey={row.groupKey}
               itemName={group.item_name}
               fields={row.fields}
+              lineCount={row.lines}
               spokenItem={spokenItemOf(group)}
               oneTime={oneTime}
               views={views.get(row.groupKey)!}
@@ -802,7 +804,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         }
       }
     },
-    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, lineTable, scrollOf, refusedByGroup, openSet]
+    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, lineTable, scrollOf, refusedByGroup]
   );
 
   // FlashList spreads its style into an object: it takes one plain style, not an array.

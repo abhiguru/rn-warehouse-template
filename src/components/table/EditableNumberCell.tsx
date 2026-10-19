@@ -1,6 +1,8 @@
 /**
  * One editable figure of a table (style guide 13.7, "Editable tables"): a borderless input in the
- * table's text style (subhead, right-aligned tabular numbers) that shows a 2 px ring while it is
+ * table's text style (subhead, right-aligned tabular numbers); with `boxed` (the invoice items table, owner
+ * decision 2026-10-19) it is drawn as an input box at rest, a 1 dp `border.field` frame on `surface.field`, so it is
+ * plain which figures can be changed. It shows a 2 px ring while it is
  * being typed in (`border.fieldFocus`) or wrong (`status.negative.border`). It selects its text on
  * focus, opens a decimal pad, is at least `touchTarget` tall and never grows past
  * `CELL_MAX_FONT_SCALE`, so a column sized to its text keeps the figure on one line.
@@ -65,9 +67,14 @@ const makeStyles = (t: ThemeTokens) => ({
     borderColor: 'transparent',
     borderRadius: radius.field,
   },
-  focused: { borderColor: t.border.fieldFocus, backgroundColor: t.surface.field },
-  invalid: { borderColor: t.status.negative.border },
+  // `boxed`: an input box at rest (the field look of 13.2: a 1 dp `border.field` frame on `surface.field`). The ring
+  // (2 dp) takes one dp from the padding, so the cell's size never changes.
+  boxed: { borderWidth: 1, paddingHorizontal: space.xs + 1, borderColor: t.border.field, backgroundColor: t.surface.field },
+  focused: { borderWidth: 2, paddingHorizontal: space.xs, borderColor: t.border.fieldFocus, backgroundColor: t.surface.field },
+  invalid: { borderWidth: 2, paddingHorizontal: space.xs, borderColor: t.status.negative.border },
+  // A cell that cannot be changed is a plain figure: no box, even when `boxed`.
   disabled: { color: t.text.secondary },
+  unboxed: { borderWidth: 2, paddingHorizontal: space.xs, borderColor: 'transparent', backgroundColor: 'transparent' },
   // Centres the input when the parent stretches the cell taller than it (a row of the invoice items table), so the whole height is its touch area.
   grow: { flex: 1, minWidth: 0, justifyContent: 'center' as const },
 });
@@ -87,6 +94,8 @@ export interface EditableNumberCellProps
   onHold?: (held: boolean) => void;
   /** A tap, before the input is focused: the caller scrolls the cell's row up. */
   onStart?: () => void;
+  /** Draw the cell as an input box at rest (default false: borderless, the general rule of 13.7). */
+  boxed?: boolean;
   ref?: React.Ref<TextInput>;
 }
 
@@ -98,6 +107,7 @@ export function EditableNumberCell({
   width,
   onHold,
   onStart,
+  boxed = false,
   ref,
   onFocus,
   onBlur,
@@ -166,9 +176,11 @@ export function EditableNumberCell({
           editable={editable}
           style={[
             styles.cell,
+            boxed && styles.boxed,
             focused && styles.focused,
             !!error && styles.invalid,
             !editable && styles.disabled,
+            !editable && boxed && styles.unboxed,
           ]}
           accessibilityLabel={label}
           accessibilityHint={error}

@@ -1,7 +1,7 @@
 /**
  * The "(all lines)" figures of a group (Charge for 2 or more lines, Labour, Tax): one part under the
  * group's head, in both modes. A value typed here is applied to every line that has not been given its
- * own; "Mixed" says the lines differ.
+ * own; "Mixed" (Labour, Tax) says the lines differ; Charge shows their weighted average instead.
  *
  * The fields stand side by side in one row of equal columns (1 to 3), each with its label, the field, its
  * notes and, under them, + then − buttons that step the figure by 0.25 (charge, labour) or 1 (tax). When the
@@ -9,7 +9,8 @@
  * parts stand one under the other, each field full width with its buttons beneath it.
  *
  * A press goes through `actions.step`, which applies the stepped figure like an accepted entry in the field.
- * Both buttons are disabled while the field shows "Mixed" or holds text that is refused or unfinished, at 0 (−) and at the
+ * Both buttons are disabled while the field shows "Mixed" (Labour, Tax), while every line keeps its own charge (Charge shows the
+ * weighted average of the lines instead of "Mixed", and steps from it), or holds text that is refused or unfinished, at 0 (−) and at the
  * field's maximum (+). The buttons are not in the Next key's field walk.
  */
 import React from 'react';
@@ -24,6 +25,7 @@ import {
   groupCellLabel,
   groupFieldKey,
   fieldHeading,
+  averageNote,
   keepOwnNote,
   STEP,
   stepperState,
@@ -46,6 +48,8 @@ interface BlockProps {
   /** The item with its mark, as a screen reader says it (the buttons' labels and the announcement). */
   spokenItem: string;
   fields: RateField[];
+  /** The number of lines of the group (the average is over all of them). */
+  lineCount: number;
   oneTime: boolean;
   views: Record<RateField, SharedView>;
   charge?: FieldState;
@@ -72,7 +76,7 @@ const stepAmount = (field: RateField): string =>
     ? tr('invoice.items.stepAmountTax', { amount: localizeDigits(String(STEP.tax)) })
     : tr('invoice.items.stepAmountMoney', { amount: localizeDigits(String(STEP[field])) });
 
-export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName, spokenItem, fields, oneTime, views, charge, labour, tax, heading, sideBySide, lastKey, actions, styles }: BlockProps) {
+export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName, spokenItem, fields, lineCount, oneTime, views, charge, labour, tax, heading, sideBySide, lastKey, actions, styles }: BlockProps) {
   const states = { charge, labour_rate: labour, tax };
   const t = useTokens();
   // How far a stacked field starts below the top of the part: the stack's place in the block plus the field's in the stack.
@@ -118,9 +122,9 @@ export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName,
                   blurOnSubmit={false}
                   placeholder={view.mixed ? tr('invoice.items.mixed') : '0'}
                   placeholderTextColor={t.text.placeholder}
-                  helperText={view.keepOwn > 0 ? keepOwnNote(field, view.keepOwn) : undefined}
+                  helperText={view.average ? averageNote(lineCount, view.keepOwn) : view.keepOwn > 0 ? keepOwnNote(field, view.keepOwn) : undefined}
                   error={state?.shown ? state.error ?? undefined : undefined}
-                  accessibilityLabel={groupCellLabel(field, itemName, oneTime)}
+                  accessibilityLabel={groupCellLabel(field, itemName, oneTime, view.average)}
                   testID={key}
                 />
                 <View style={styles.sharedButtons}>

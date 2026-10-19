@@ -1,7 +1,7 @@
 /**
  * Sizes of the invoice items step (pure, unit-tested). The lines of an open card are one table that scrolls
  * sideways (owner decision, 2026-10-19, a single exception to "a table never scrolls sideways"): Dispatch (pinned)
- * | Date | Duration | Days | Qty | Charge | Labour | Tax | Amount. Each column is as wide as its widest text and
+ * | Date | Months | Days | Qty | Charge | Labour | Tax | Amount. Each column is as wide as its widest text and
  * heading at the current text size (`LineWidths`, worked out once per layout from the held snapshot of the items,
  * not per row), whatever the screen width: there is no crowding check and no switch to cards because of width or
  * text size. The lines are cards only while a screen reader is on (the editor sets `cards`).
@@ -107,7 +107,7 @@ const LINE_INPUT_FIGURES: Record<keyof LineInputWidths, readonly string[]> = {
 const headingWidth = (table: TableLayout, heading: string) =>
   numberColumnWidth(table, 0, [], [heading], typography.footnote.fontSize ?? 13);
 
-/** A text column (Date, Duration): its widest text or heading, plus the gap before it. */
+/** A text column (Date, Months): its widest text or heading, plus the gap before it. */
 const textColumn = (table: TableLayout, values: readonly string[], heading: string) =>
   Math.max(numberColumnWidth(table, 0, values), headingWidth(table, heading)) + COL_GAP;
 

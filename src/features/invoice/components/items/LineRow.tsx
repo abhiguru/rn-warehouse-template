@@ -1,7 +1,7 @@
 /**
  * One dispatch line of a group, as a row of the line table (lineColumns.ts), which scrolls sideways: the pinned Dispatch cell
- * (the dispatch number) and, in a `SidewaysViewport` shared with the heading and the other rows of the card, Date | Duration |
- * Days | Qty | Charge | Labour | Tax | Amount. Date, Duration, Days, Qty and Amount are read-only. The Charge is typed in its cell
+ * (the dispatch number) and, in a `SidewaysViewport` shared with the heading and the other rows of the card, Date | Months |
+ * Days | Qty | Charge | Labour | Tax | Amount. Date, Months, Days, Qty and Amount are read-only. The Charge is typed in its cell
  * (`EditableNumberCell`); Labour and Tax are cells too only on a card whose lines differ in them (`perLine`), else read-only
  * figures, set from the card's "All dispatches" row. A line has no + / − (those are the "All dispatches" row's, and the line cards').
  * The row is a part of the page's virtualized list, so only the rows on screen are drawn, however many lines the card has.
@@ -14,7 +14,7 @@ import { useTokens } from '@/hooks/useTheme';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { columnInset, type LineColumn, type LineTable } from './lineColumns';
-import { lineDate, lineDays, lineDuration, lineQty } from './lineText';
+import { lineDate, lineDays, lineMonths, lineQty } from './lineText';
 import { SidewaysViewport, type TableScroll } from './SidewaysViewport';
 import { cellKey, cellLabel, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
@@ -54,6 +54,7 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
       // The cell stretches to the column's height (its whole height is the touch area; its own grow style centres the input).
       <View key={key} style={[styles.columnBox, styles.cellBox, { width: column.width }]}>
         <EditableNumberCell
+          boxed
           // The focus ring belongs to this line's cell.
           ref={actions.refFor(key)}
           returnKeyType={key === lastKey ? 'done' : 'next'}
@@ -85,9 +86,10 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
           </View>
         );
       case 'duration':
+        if (!oneTime) return figure(column, lineMonths(item, oneTime));
         return (
           <View key={column.id} style={[styles.columnBox, { width: column.width }]}>
-            <Text style={styles.columnText} numberOfLines={1}>{lineDuration(item, oneTime)}</Text>
+            <Text style={styles.columnText} numberOfLines={1}>{lineMonths(item, oneTime)}</Text>
           </View>
         );
       case 'days':

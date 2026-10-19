@@ -445,7 +445,7 @@ const invoiceFormSlice = createSlice({
       state.itemOverrides = {};
 
       // No group rate has been applied yet. The group fields of the items step
-      // show the rate the lines of a group share, or "Mixed" when they differ.
+      // show the rate the lines of a group share, or "Mixed" (Labour, Tax) or their weighted average (Charge) when they differ.
       // (An average of the stored rates used to be kept here, and the first
       // group edit gave it to every line: a free line beside a paid one became
       // paid, and its stored reason was dropped with the save.)

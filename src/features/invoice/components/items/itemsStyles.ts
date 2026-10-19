@@ -58,6 +58,7 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       borderRightColor: t.table.divider,
     },
     columnBox: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingLeft: COL_GAP },
+    // The box of an editable cell starts after the gap before its column, so two boxes side by side do not touch.
     cellBox: { alignItems: 'stretch' as const },
     figureText: { flex: 1, minWidth: 0 },
     columnText: { ...typography.subhead, color: t.text.primary },
@@ -73,7 +74,6 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     },
     pinnedHead: { paddingRight: space.sm, borderRightWidth: TABLE_OUTLINE, borderRightColor: t.table.divider },
     headCell: { paddingLeft: COL_GAP },
-    hintSecond: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingBottom: space.xs },
     rowDivider: { borderBottomWidth: 1, borderBottomColor: t.table.divider },
     grow: { flex: 1, minWidth: 0 },
     primaryStrong: table.primaryStrong,
