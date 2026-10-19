@@ -150,7 +150,7 @@ export const newInvoiceStep1Schema = step1Schema.shape({
 // saved. That is a total of 0 before any discount. A charged invoice that a
 // discount takes down to 0 is refused as before, also when one of its lines is
 // free.
-const fullSchemaWith = (header: typeof step1Schema) => yup.object().shape({
+const fullSchemaWith = (header: typeof step1Schema, items: yup.Schema = step2Schema.fields.items) => yup.object().shape({
   header: header.concat(
     yup.object().shape({
       labour: yup
@@ -166,7 +166,7 @@ const fullSchemaWith = (header: typeof step1Schema) => yup.object().shape({
         .required(msg('invoice.validation.totalRequired')),
     })
   ),
-  items: step2Schema.fields.items,
+  items,
 }).test('total-positive', function (value) {
   const total = Number(value?.header?.total);
   // A missing or unreadable total is reported by the field itself.
@@ -189,19 +189,109 @@ export const newInvoiceSchema = fullSchemaWith(newInvoiceStep1Schema);
 
 export const validateStep1 = createStepValidator(step1Schema);
 
+const validateStep2Full = createStepValidator(step2Schema);
+
+/**
+ * The schema of each field of a line, taken from step2Schema itself so that no
+ * rule is copied. The line schema is a plain object of independent fields: no
+ * `when`, `ref`, sibling test, object-level test or `noUnknown`. So a field
+ * of a line in the list passes exactly when `field.isValidSync(value)` does.
+ */
+const LINE_FIELD_SCHEMAS = Object.entries(
+  (step2Schema.fields.items as unknown as { innerType: yup.ObjectSchema<yup.AnyObject> }).innerType.fields
+) as [string, yup.Schema][];
+
+/** A token of the type and value of a plain primitive, or null for anything else. */
+const primitiveToken = (value: unknown): string | null => {
+  if (value === null) return 'n';
+  const type = typeof value;
+  if (type === 'undefined') return 'u';
+  if (type === 'string') return `s${value as string}`;
+  if (type === 'number') return Object.is(value, -0) ? 'd-0' : `d${value as number}`;
+  if (type === 'boolean') return `b${value as boolean}`;
+  return null;
+};
+
+/**
+ * True only when `lines` is a non-empty array (no holes) of plain objects and
+ * every distinct value of every line field passes its own schema. False means
+ * "not proven valid": the caller then runs the full check.
+ */
+const linesPassPerField = (lines: unknown, chargeMustBeNumber = false): boolean => {
+  if (!Array.isArray(lines) || lines.length === 0) return false;
+  const seen = LINE_FIELD_SCHEMAS.map(() => new Map<string, boolean>());
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!(i in lines) || line === null || typeof line !== 'object' || Array.isArray(line)) return false;
+    const record = line as Record<string, unknown>;
+    if (chargeMustBeNumber && typeof record.charge !== 'number') return false;
+    for (let f = 0; f < LINE_FIELD_SCHEMAS.length; f++) {
+      const [name, schema] = LINE_FIELD_SCHEMAS[f];
+      const value = record[name];
+      const token = primitiveToken(value);
+      if (token === null) return false;
+      let ok = seen[f].get(token);
+      if (ok === undefined) {
+        ok = schema.isValidSync(value);
+        seen[f].set(token, ok);
+      }
+      if (!ok) return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * Only for speed: an invoice can have thousands of lines (3,055 for one GRN
+ * measured 660 ms) and almost all lines repeat the same values. Each field of a
+ * line is checked once per distinct value, by the schema's own field schema. If
+ * all pass, and the list is a non-empty array (min(1), required), the result is
+ * the one the full check gives for a valid list. Anything else (a failing value,
+ * an empty or odd list) runs the full check unchanged, so errors, paths and
+ * messages are exactly what they always were.
+ */
 export const validateStep2 = async (data: unknown): Promise<ValidationResult> => {
+  if (linesPassPerField(data)) return { isValid: true, errors: {} };
   // Step2 wraps data in { items: ... } structure
-  return createStepValidator(step2Schema)({ items: data });
+  return validateStep2Full({ items: data });
 };
 
 export const validateStep3 = createStepValidator(fullInvoiceSchema);
 
-export const validateFullInvoice = createStepValidator(fullInvoiceSchema);
+const validateFullInvoiceInFull = createStepValidator(fullInvoiceSchema);
+const validateNewInvoiceInFull = createStepValidator(newInvoiceSchema);
+
+/**
+ * The same speed-up at Save: the header (and the total-positive rule, which
+ * reads the lines' charges) is checked by the schema with a loose list, the
+ * lines by linesPassPerField. A charge that is not a number, or any failure,
+ * runs the full check unchanged.
+ */
+const withFastLines = (
+  headerSchema: ReturnType<typeof fullSchemaWith>,
+  full: (data: unknown) => Promise<ValidationResult>
+) => async (data: unknown): Promise<ValidationResult> => {
+  const items = data !== null && typeof data === 'object' ? (data as { items?: unknown }).items : undefined;
+  if (linesPassPerField(items, true)) {
+    try {
+      await headerSchema.validate(data, { abortEarly: false });
+      return { isValid: true, errors: {} };
+    } catch {
+      // Not proven valid: the full check gives the errors.
+    }
+  }
+  return full(data);
+};
+
+export const validateFullInvoice = withFastLines(fullSchemaWith(step1Schema, yup.array()), validateFullInvoiceInFull);
 
 /** Step 1 of a new invoice (the number has the server's ceiling). */
 export const validateNewInvoiceStep1 = createStepValidator(newInvoiceStep1Schema);
 
 /** The whole of a new invoice (the number has the server's ceiling). */
-export const validateNewInvoice = createStepValidator(newInvoiceSchema);
+export const validateNewInvoice = withFastLines(
+  fullSchemaWith(newInvoiceStep1Schema, yup.array()),
+  validateNewInvoiceInFull
+);
 
 export const validateItemPricing = createStepValidator(itemPricingSchema);
