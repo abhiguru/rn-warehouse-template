@@ -466,33 +466,6 @@ export interface RpcCreateDispatchResponseData {
 }
 
 /**
- * Dispatch list item from get_dispatch_list RPC
- * Source: RPC_DOCUMENTATION.md - DispatchListItem schema
- */
-export interface RpcDispatchListItem {
-  id: string;
-  dispatch_id: string;
-  disp_no: string;
-  disp_date: string; // ISO 8601 timestamptz
-  customer_id: string;
-  customer_name: string;
-  supervisor_id: string | null;
-  supervisor_name: string | null;
-  registration: string | null;
-  note: string | null;
-  total_items: number;
-  total_qty: number;
-  total_weight: number | null;
-  unique_grns: number;
-  grn_numbers: string[];
-  items: unknown[]; // jsonb array of items
-  source_order_id: string | null;
-  source_order_no: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
  * One dispatch line in the get_dispatch_details response, as the function builds it
  * (checked against the live definition on 2026-10-16). `id` is the dispatch line; the
  * receipt lot is `grn_item_details` and `weight` is the weight of one bag of it.
@@ -640,7 +613,6 @@ export type RpcGrnActivityResponse = RpcResponse<RpcGrnActivityData>;
 export type RpcGrnPrefixesResponse = RpcResponse<RpcGrnPrefixItem[]>;
 
 /** Dispatch list response */
-export type RpcDispatchListResponse = RpcPaginatedResponse<RpcDispatchListItem>;
 
 /** Dispatch details response */
 export type RpcDispatchDetailsResponse = RpcResponse<{ dispatch: RpcDispatchDetails }>;

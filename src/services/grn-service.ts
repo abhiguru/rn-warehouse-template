@@ -1,6 +1,5 @@
-import { getSupabaseClient, getAuthenticatedClient } from '../config/supabaseConfig';
+import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { compareDocumentNumbers } from '@/utils/documentNumber';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { createErrorResponse } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
@@ -151,28 +150,6 @@ export interface GRNListResponse {
 
 export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNListResponse> => {
   try {
-    
-    // Check for any valid session (Supabase built-in or custom)
-    const { data: { session }, error: sessionError } = await getSupabaseClient().auth.getSession();
-    
-    // Get the stored session marker for custom sessions
-    const sessionMarker = await AsyncStorage.getItem('session_marker');
-    let userId: string | null = null;
-    
-    if (session && session.user) {
-      userId = session.user.id;
-    } else if (sessionMarker) {
-      try {
-        const parsedMarker = JSON.parse(sessionMarker);
-        if (parsedMarker && parsedMarker.expires_at > Date.now()) {
-          userId = parsedMarker.user_id;
-        }
-      } catch (parseError) {
-        console.error('[GRNService] Failed to parse session marker:', parseError);
-        // Continue without userId - will rely on RLS or other auth
-      }
-    }
-    
     // Prepare RPC parameters - only include non-null/non-undefined values
     const rpcParams: GRNRpcParams = {
       p_limit: Math.min(params.p_limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT)

@@ -309,9 +309,7 @@ describe('the stored custom session', () => {
 
   const cached = { id: 'user-1', auth_user_id: 'auth-1', name: 'Asha Example', role: 'supervisor', assignedCustomerIds: ['c1'] };
   const start = async (fresh: unknown) => {
-    jest.mocked(getSupabaseClient).mockReturnValue({
-      auth: { getSession: async () => ({ data: { session: null }, error: null }) },
-    } as unknown as ReturnType<typeof getSupabaseClient>);
+    jest.mocked(getSupabaseClient).mockReturnValue({} as unknown as ReturnType<typeof getSupabaseClient>);
     jest.mocked(getStoredToken).mockResolvedValue(stored(Date.now() + 30 * 60 * 1000));
     jest.mocked(getCachedUserProfile).mockResolvedValue(cached);
     jest.mocked(reloadUserProfile).mockResolvedValue(fresh as never);

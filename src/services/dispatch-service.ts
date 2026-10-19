@@ -4,13 +4,13 @@ import { offsetToPage, hasMoreItems } from '@/utils/paginationUtils';
 import { createBoundedCache, generateScopedCacheKey, getSessionCacheScope } from '@/utils/cacheManager';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { unwrapNestedData } from '@/utils/responseUtils';
-import { createErrorResponse, executeRPC, handleGlobalAuthError, isOfflineFailure } from '@/utils/serviceErrorHandler';
+import { createErrorResponse, handleGlobalAuthError, isOfflineFailure } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { BackendDispatchData, RecentDispatchedOrdersResponse } from '@/types/dispatch.types';
 import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
-import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.types';
+import type { RpcPagination } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { serverText } from '@/utils/serverText';
@@ -216,19 +216,6 @@ export interface DispatchListResponseNew {
 }
 
 /**
- * Get dispatch list parameters - uses snake_case for sort fields
- */
-export interface GetDispatchListParams {
-  p_date_from?: string;
-  p_date_to?: string;
-  p_filters?: DispatchFilters;
-  p_sort_by?: 'disp_date' | 'disp_no' | 'customer_name' | 'supervisor_name' | 'total_qty' | 'total_weight' | 'created_at';
-  p_sort_order?: 'asc' | 'desc';
-  p_limit?: number;
-  p_offset?: number;
-}
-
-/**
  * Get dispatch list with items parameters
  */
 export interface GetDispatchListWithItemsParams {
@@ -409,91 +396,6 @@ export const getAllDispatchItems = async (
 
   } catch (error) {
     return createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getAllDispatchItems');
-  }
-};
-
-// New dispatch-wise function using get_dispatch_list RPC
-export const getDispatchList = async (
-  params: GetDispatchListParams = {}
-): Promise<DispatchListResponseNew> => {
-  try {
-    const {
-      p_date_from,
-      p_date_to,
-      p_filters = {},
-      p_sort_by = 'dispDate',
-      p_sort_order = 'desc',
-      p_limit = 20,
-      p_offset = 0
-    } = params;
-
-    // Generate deduplication key for this request
-    const dedupKey = generateRequestKey('getDispatchList', {
-      p_date_from, p_date_to, p_filters, p_sort_by, p_sort_order, p_limit, p_offset
-    });
-
-    // Use deduplication to prevent duplicate simultaneous requests
-    const { data, error } = await deduplicatedRequest(dedupKey, async () => {
-      const authenticatedClient = await getAuthenticatedClient();
-      return authenticatedClient.rpc('get_dispatch_list', {
-        p_date_from: p_date_from || null,
-        p_date_to: p_date_to || null,
-        p_filters: p_filters,
-        p_sort_by,
-        p_sort_order,
-        p_limit,
-        p_offset
-      });
-    });
-    
-
-    if (error) {
-      // Global auth error handling - auto logout on auth failures
-      handleGlobalAuthError(error);
-      return {
-        success: false,
-        message: t('errors.dispatch.fetchListFailed'),
-        data: {
-          dispatches: [],
-          pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
-          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
-          filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: p_sort_by, sort_order: p_sort_order },
-          user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
-        }
-      };
-    }
-
-    if (!data || !data.success) {
-      return {
-        success: false,
-        message: serverText(data?.message, t('errors.general.noDataFromServer')),
-        data: {
-          dispatches: [],
-          pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
-          aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
-          filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: p_sort_by, sort_order: p_sort_order },
-          user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
-        }
-      };
-    }
-
-    return {
-      success: true,
-      message: serverText(data.message, t('errors.dispatch.listRetrieved')),
-      data: data.data
-    };
-
-  } catch (error) {
-    return {
-      ...createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getDispatchList'),
-      data: {
-        dispatches: [],
-        pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0, has_more: false },
-        aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
-        filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: params.p_sort_by || 'disp_date', sort_order: params.p_sort_order || 'desc' },
-        user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
-      }
-    };
   }
 };
 

@@ -3,8 +3,8 @@
  * report layout (docs/STYLE_GUIDE.md §14.10) so loading, failure, a kept copy and pull to
  * refresh look as they do in every report.
  *
- * Live without polling: a Realtime change to `sensor_latest` marks the list out of date
- * and it is asked again behind the rows (useSensorLiveUpdates). Staleness is the absence
+ * Kept current by a timer: every minute while shown the list is marked out of date and
+ * asked again behind the rows (useSensorLiveUpdates). Staleness is the absence
  * of changes, so the minute tick (useMinuteTick) redraws the figures, the alerts and the
  * rows from the time alone: a sensor turns "No recent data" without a request.
  */

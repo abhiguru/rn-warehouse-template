@@ -45,7 +45,6 @@ export type { CacheOptions } from './cacheManager';
 // ============================================================================
 // Authentication
 // ============================================================================
-export * from './serviceAuth';
 export * from './secureStorage';
 export * from './secureSessionMarker';
 export * from './authTokenUtils';

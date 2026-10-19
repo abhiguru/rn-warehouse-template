@@ -1,72 +1,50 @@
-# Order/cart live updates
+# Order and sensor refresh on a timer
 
-The source demo subscribes to `public.orders` while an authenticated order list,
-supervisor queue or customer cart is mounted, the app is active and the network
-is connected. Live sensor screens follow `public.sensor_latest` the same way (see
-"Other tables" below). Stock and invoice subscriptions are not included.
+The app no longer holds a Realtime connection. Screens that must stay current
+re-read their data on a timer while they are shown. (Earlier versions subscribed to
+`public.orders` and `public.sensor_latest` through Supabase Realtime; the backend's
+Realtime service is no longer used by the app.)
 
-Events are invalidation signals: the screen refetches using its existing
-custom-session RPC/RLS path, never by copying socket records into local state.
-Bursts are coalesced and an event received during a fetch queues another fetch.
-A successful join/rejoin triggers a full refetch to recover missed changes.
-Manual refresh remains available when Realtime is unreachable.
-Use the refresh-arrow button in the Orders or Order Queue header; it uses the
-same authorized API fetch as pull-to-refresh and stays available for empty
-lists. Its busy state prevents duplicate presses. A navigation-triggered fetch
-does not count as a manual-refresh or live-update acceptance pass.
+## What re-reads, and how often
 
-The dedicated Supabase client obtains the current custom JWT for connection and
-heartbeat authentication. It does not use GoTrue sessions or fall back to an
-anonymous subscription. A session-generation change disconnects immediately,
-cancels pending refreshes and rejects late token reads. Background/offline
-transitions remove the subscription; foreground/network restoration creates it
-again. Order/cart fetch results from an obsolete session are discarded.
+| Screen | Interval | Hook |
+| --- | --- | --- |
+| Orders list, Order queue, order screen (editor) | 15 s | `useOrderLiveUpdates` |
+| Sensors list, sensor detail | 60 s | `useSensorLiveUpdates` |
 
-Use the companion backend with Realtime enabled in its default Compose services.
-Older immutable release tags do not include this mobile behavior. No schema
-change is needed: the existing orders publication and customer RLS are used.
+Orders: a customer's change should show within 15 s. Sensors: the bridge posts at
+most one reading a minute.
 
-## Other tables
+Both are wrappers of `useLiveUpdates(refresh, enabled, { refreshOnFocus, intervalMs })`
+(`src/hooks/useLiveUpdates.ts`). The order screens re-read through their own
+authorized API fetch (the same one as pull-to-refresh), never by copying pushed
+records into local state. The sensor hook marks the sensor report queries
+(`['report', 'sensors', ...]`) out of date so the screen asks again behind the rows.
 
-The subscription is table-agnostic: `subscribeToTableChanges({ table, channel,
-schema = 'public' }, refresh)` in `src/services/table-live-updates.ts` holds the
-rules above (own client with the custom JWT, 150 ms debounce, one queued refetch,
-first join and first system `ok` refetch nothing, stop on session change or
-operator suspension). `subscribeToOrderChanges` is that call for `orders` on the
-`warehouse-orders` channel. `subscribeToSensorChanges`
-(`src/services/sensor-live-updates.ts`) follows `sensor_latest` on the
-`warehouse-sensors` channel; the backend publishes that table with RLS for
-admin, supervisor and staff. The screen hook is `useLiveUpdates(subscribe,
-refresh, enabled, options)` (`src/hooks/useLiveUpdates.ts`), with the same
-focus, foreground, network and profile gating; `useOrderLiveUpdates` and
-`useSensorLiveUpdates` wrap it. A sensor event only marks the sensor report
-queries (`['report', 'sensors', ...]`) out of date; it does not refresh on focus,
-since the report query asks again on its own return.
+## Rules
+
+- The timer runs only while a profile is signed in, the screen is shown (not covered by
+  another screen), the app is in the foreground, the device is online and the screen
+  enabled the hook. The timer is cleared as soon as one of these stops holding, and on
+  unmount.
+- The first timed read comes one interval after those conditions hold, not at once: the
+  screen loads itself on mount.
+- Single flight, completion driven: the next timer starts when a read settles, so the
+  interval is measured from the end of the previous read and timed reads never overlap. A
+  tick that finds a read in flight is skipped. A catch-up read does not check for one in
+  flight, so it may run beside a timed read that started before the screen was left.
+- Catch-up: a screen shown again after another screen covered it reads once
+  (`refreshOnFocus`; the lists load on their own return and pass false). The app coming
+  back to the foreground or online while the screen is shown reads once. The first time
+  the conditions hold reads nothing.
+- A timed read reloads the rows already loaded (the list asks for as many rows as it
+  holds), so a user who scrolled far gets a larger read every 15 s.
+- The refresh-arrow button in the Orders or Order Queue header and pull-to-refresh are
+  unchanged and work whether or not a timer is running.
 
 ## Verification
 
-Automated coverage checks burst coalescing, queued refetch, reconnect refresh,
-rotated token reads, expired-session rejection, logout races, late socket events,
-background/foreground transitions, offline/online transitions and account change.
-The backend delivery probe separately checks administrator/customer delivery,
-unrelated-customer exclusion, reconnect and invalid-token denial.
-
-Android API-36 emulator acceptance on 2026-09-22 passed using the existing
-native debug shell and the changed Metro bundle against the owned loopback demo:
-restored session, automatic order-list timestamp refresh, live cart insertion
-(quantity 7), missed-event recovery (quantity 9 after Realtime stop/restart),
-and cleanup back to an empty cart. No manual refresh was used for these changes.
-
-The full mobile suite passed 29 suites / 200 tests, setup 28 tests, typecheck,
-lint (zero errors; existing warnings), and Android export. Those are the original
-Android implementation results, not an Android rerun on the Mac. The subsequent
-physical-iPhone matrix passed on 2026-09-23 at mobile `c943de5` / backend `8c682e4`,
-including the USB WebSocket relay and manual Refresh repairs. Full immutable
-SHAs, case-by-case results and exact-main CI are in the archived native
-acceptance record (see [HISTORY.md](HISTORY.md)).
-Production native signing is separate.
-Production scale, soak, host-loss and latency objectives remain operator-dependent.
-
-The completed physical-iPhone regression retains its reproduction procedure and
-case matrix in the archived iOS order live-update acceptance record (see
-[HISTORY.md](HISTORY.md)).
+Jest with fake timers (`src/hooks/__tests__/useLiveUpdates.test.ts`,
+`useOrderLiveUpdates.test.ts`, `useOrderLiveUpdates.focus.test.tsx`) covers: no read at
+mount, a read after each interval, no overlap, stopping when unfocused, backgrounded,
+offline, disabled or signed out, the catch-up rules, and the 15 s and 60 s intervals.

@@ -5,6 +5,7 @@
  * reach the service with the card's own line.
  */
 import React from 'react';
+import { RefreshControl } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
@@ -124,6 +125,37 @@ it('renders no card when a refresh starts or brings the same lines back, and one
   await act(async () => { await mockLive.refresh?.(); });
   expect(mockCards.renders).toBe(1);
   expect(mockCards.props.get('line-3')?.item.requested_quantity).toBe(7);
+  await act(async () => { renderer.unmount(); });
+});
+
+it('a timed refresh runs behind the lines with no spinner; pull-to-refresh shows it', async () => {
+  const renderer = await open();
+  const spinner = () => renderer.root.findByType(RefreshControl).props.refreshing as boolean;
+  const hold = () => {
+    let finish!: () => void;
+    service.getOrderWithItems.mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({ success: true, data: copy(server) } as never);
+    }));
+    return () => finish();
+  };
+  expect(spinner()).toBe(false);
+
+  // The timer's refresh (what the live-updates hook calls): silent.
+  const finishTimed = hold();
+  let timed: Promise<void> | void;
+  await act(async () => { timed = mockLive.refresh?.(); });
+  expect(service.getOrderWithItems).toHaveBeenCalled();
+  expect(spinner()).toBe(false);
+  await act(async () => { finishTimed(); await timed; });
+  expect(spinner()).toBe(false);
+
+  // The pull: the spinner shows until the answer.
+  const finishPull = hold();
+  let pulled: Promise<void> | void;
+  await act(async () => { pulled = renderer.root.findByType(RefreshControl).props.onRefresh(); });
+  expect(spinner()).toBe(true);
+  await act(async () => { finishPull(); await pulled; });
+  expect(spinner()).toBe(false);
   await act(async () => { renderer.unmount(); });
 });
 

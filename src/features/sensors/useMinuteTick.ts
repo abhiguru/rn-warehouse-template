@@ -1,7 +1,7 @@
 /**
  * The time, moved on once a minute while the screen is in front of the person.
  *
- * Staleness is the absence of events: no Realtime change says a sensor went quiet. The
+ * Staleness is the absence of events: no change arrives to say a sensor went quiet. The
  * sensor screens pass this `now` to the status rules (./sensorStatus.ts) and redraw their
  * rows with it, so "No recent data" and "Updated 5 min ago" move by themselves, without a
  * request. A screen covered by another, or an app in the background, keeps no timer; on

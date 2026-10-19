@@ -195,7 +195,6 @@ export function validateFullConfig(
   endpoint(urls.api, origin, '/rest/v1');
   endpoint(urls.storage, origin, '/storage/v1');
   endpoint(urls.auth, origin, '/rest/v1/rpc');
-  endpoint(urls.realtime, origin.replace(/^http/, 'ws'), '/realtime/v1');
   const limits = object(config.limits);
   if (
     [

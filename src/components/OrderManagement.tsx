@@ -278,7 +278,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const refreshesRunning = useRef(0);
 
   // Handle refresh. Stable, so the line cards keep their props while it runs.
-  const onRefresh = useCallback(async () => {
+  const onRefresh = useCallback(async (showSpinner: boolean = true) => {
     const current = orderRef.current;
     if (!current) return;
 
@@ -286,7 +286,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     refreshStarted.current += 1;
     const sequence = refreshStarted.current;
     refreshesRunning.current += 1;
-    setRefreshing(true);
+    // Pull-to-refresh shows the spinner; the timed read is silent (as the lists' `isSilent`).
+    if (showSpinner !== false) setRefreshing(true);
     try {
       const result = await OrderService.getOrderWithItems(current.id);
       if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return;
@@ -304,7 +305,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     }
   }, []);
 
-  useOrderLiveUpdates(onRefresh, !!order);
+  useOrderLiveUpdates(() => onRefresh(false), !!order);
 
   // Handle quantity update for one line, by its id; one function for every card.
   // Resolves true only when the server stored the quantity.

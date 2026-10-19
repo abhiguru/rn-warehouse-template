@@ -109,8 +109,7 @@ jest.mock('@/services/sensor-service', () => ({
   ),
   getDevice: jest.fn(() => Promise.resolve({ success: true, data: { device: { ...mockDevice, first_reading_at: mockDevice.earliest_reading_at, hub: null } } })),
 }));
-// The sensor screens follow Realtime changes; no test here reaches a facility.
-jest.mock('@/services/sensor-live-updates', () => ({ subscribeToSensorChanges: jest.fn(() => () => undefined) }));
+// The sensor screens re-read on a timer; no test here reaches a facility.
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
 
 jest.mock('@/services/sensor-history-service', () => {

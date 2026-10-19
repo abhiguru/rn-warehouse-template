@@ -2,8 +2,8 @@
  * Temperature and humidity sensors: what the facility holds now, for the list and for one
  * sensor. The answers are shaped for `useReportQuery` (src/features/reports/useReportQuery.ts):
  * a refusal carries a code that `isAccessRefusal` reads, so the screen drops what it showed.
- * Live changes come by Realtime (src/hooks/useSensorLiveUpdates.ts), which only marks these
- * answers out of date; nothing here polls.
+ * The sensor screens re-read every minute while shown (src/hooks/useSensorLiveUpdates.ts), which
+ * only marks these answers out of date; nothing here polls.
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type { ReportServiceResult } from '@/features/reports/useReportQuery';

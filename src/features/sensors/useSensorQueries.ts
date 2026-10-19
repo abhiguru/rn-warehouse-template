@@ -1,8 +1,8 @@
 /**
  * The sensor screens' data, on the reports data layer (`useReportQuery`): shown from the
  * last answer (also the one kept on the phone) while it is asked again, never mixed between
- * sensors or periods, and asked again on a return after 30 s. A Realtime change to
- * `sensor_latest` marks the latest values out of date (`invalidateSensorQueries`); nothing polls.
+ * sensors or periods, and asked again on a return after 30 s. A minute timer
+ * (`useSensorLiveUpdates`) marks the latest values out of date (`invalidateSensorQueries`).
  */
 import { useReportQuery, type ReportQuery } from '@/features/reports/useReportQuery';
 import { sensorKeys } from '@/features/sensors/sensorQueries';
@@ -32,8 +32,8 @@ export function useSensorDevice(id: string | undefined): ReportQuery<SensorDevic
 }
 
 /**
- * One sensor's history over the period, asked for beside the sensor itself. A Realtime
- * change does not mark it out of date (`invalidateSensorQueries`).
+ * One sensor's history over the period, asked for beside the sensor itself. The minute timer
+ * does not mark it out of date (`invalidateSensorQueries`).
  */
 export function useSensorHistory(id: string | undefined, days: SensorHistoryPeriod): ReportQuery<SensorHistoryData> {
   return useReportQuery<SensorHistoryData>({

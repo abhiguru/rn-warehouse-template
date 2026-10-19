@@ -17,7 +17,7 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 
 export interface AuthTokenResult {
   token: string | null;
-  source: 'supabase' | 'securestore' | 'asyncstorage' | 'none';
+  source: 'securestore' | 'asyncstorage' | 'none';
   expiresAt?: number;
 }
 

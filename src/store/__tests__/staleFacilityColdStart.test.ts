@@ -77,7 +77,6 @@ beforeEach(async () => {
   jest.mocked(createClient).mockReturnValue({
     rpc,
     from: jest.fn(),
-    auth: { getSession: async () => ({ data: { session: null }, error: null }) },
   } as unknown as ReturnType<typeof createClient>);
   rpc.mockResolvedValue({ data: [], error: null });
   initializeSupabase(NORTH.origin, 'local-test-anon');

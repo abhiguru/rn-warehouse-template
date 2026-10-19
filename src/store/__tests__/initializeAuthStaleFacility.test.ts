@@ -34,7 +34,7 @@ jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => mockServer,
 }));
 jest.mock('@/config/supabaseConfig', () => ({
-  getSupabaseClient: () => ({ auth: { getSession: async () => ({ data: { session: null }, error: null }) } }),
+  getSupabaseClient: () => ({}),
   getStoredToken: () => mockGetStoredToken(),
   getCachedUserProfile: () => mockGetCachedUserProfile(),
   reloadUserProfile: jest.fn(async () => null),

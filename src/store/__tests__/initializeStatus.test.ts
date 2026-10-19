@@ -10,7 +10,7 @@ import { advanceSessionGeneration, getSessionGeneration } from '@/config/session
 let releaseRead: (() => void) | undefined;
 const mockGetStoredToken = jest.fn();
 jest.mock('@/config/supabaseConfig', () => ({
-  getSupabaseClient: () => ({ auth: { getSession: async () => ({ data: { session: null }, error: null }) } }),
+  getSupabaseClient: () => ({}),
   getStoredToken: (...args: unknown[]) => mockGetStoredToken(...args),
   getCachedUserProfile: jest.fn(async () => null),
   reloadUserProfile: jest.fn(async () => null),
