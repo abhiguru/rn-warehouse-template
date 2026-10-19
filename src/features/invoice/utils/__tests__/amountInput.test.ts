@@ -43,8 +43,11 @@ describe('a line rate as typed', () => {
   });
 
   it('holds each field to the range the server accepts', () => {
-    expect(parseRateInput('charge', '999999').value).toBe(999999);
-    expect(parseRateInput('charge', '999999.01')).toMatchObject({ value: null, error: t('invoice.validation.chargeRange') });
+    // A line's charge is held to 9999.99 on entry (owner, 2026-10-19); the server takes up to 999999, and Next and Save keep that range.
+    expect(parseRateInput('charge', '9999.99').value).toBe(9999.99);
+    expect(parseRateInput('charge', '10000')).toMatchObject({ value: null, error: t('invoice.validation.chargeRange') });
+    expect(parseRateInput('charge', '9999.995')).toMatchObject({ value: null });
+    expect(parseRateInput('labour_rate', '999999').value).toBe(999999);
     expect(parseRateInput('labour_rate', '1000000')).toMatchObject({ value: null, error: t('invoice.validation.labourRateRange') });
     expect(parseRateInput('tax', '100').value).toBe(100);
     expect(parseRateInput('tax', '100.5')).toMatchObject({ value: null, error: t('invoice.validation.taxRange') });

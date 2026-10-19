@@ -125,8 +125,9 @@ describe('document numbers on the list cards in Gujarati', () => {
 
   it('the invoice card shows the invoice number in 0-9 in its title and its spoken label', () => {
     const tree = render(<MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />);
-    expect(texts(tree)).toContain('ઇન્વૉઇસ 53');
-    expect(texts(tree)).not.toContain('ઇન્વૉઇસ ૫૩');
+    // The title is the number alone (the card says what it is by its place in the list); the spoken label names the document.
+    expect(texts(tree)).toContain('53');
+    expect(texts(tree)).not.toContain('૫૩');
     const label = labels(tree).find(text => text.includes('Lakeview Spices'));
     expect(label).toContain('ઇન્વૉઇસ 53,');
     expect(label).toContain('આવક પાવતી 12');
@@ -142,15 +143,16 @@ describe('document numbers on the list cards in Gujarati', () => {
 
   // The guard: whatever a card adds later, the line that names the document has no Gujarati digit.
   it.each([
-    ['invoice', () => <MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />, 'ઇન્વૉઇસ 53'],
-    ['dispatch', () => <MemoizedDispatchItem dispatch={dispatch} onPress={jest.fn()} />, 'જાવક 207'],
-    ['recent dispatch', () => <RecentDispatchedOrderCard dispatch={recent} onPress={jest.fn()} />, 'જાવક 43'],
-  ])('the %s card names its document in 0-9', (_name, element, title) => {
+    ['invoice', () => <MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />, '53', 'ઇન્વૉઇસ 53'],
+    ['dispatch', () => <MemoizedDispatchItem dispatch={dispatch} onPress={jest.fn()} />, 'જાવક 207', 'જાવક 207'],
+    ['recent dispatch', () => <RecentDispatchedOrderCard dispatch={recent} onPress={jest.fn()} />, 'જાવક 43', 'જાવક 43'],
+  ])('the %s card names its document in 0-9', (_name, element, title, spokenStart) => {
     const tree = render(element());
     expect(texts(tree)).toContain(title);
-    const spoken = labels(tree).find(text => text.startsWith(title));
+    const spoken = labels(tree).find(text => text.startsWith(spokenStart));
     expect(spoken).toBeDefined();
     expect(GUJARATI_DIGIT.test(title)).toBe(false);
+    expect(GUJARATI_DIGIT.test(spokenStart)).toBe(false);
   });
 
   it('the dispatch card keeps the vehicle number as stored and the counts in Gujarati digits', () => {

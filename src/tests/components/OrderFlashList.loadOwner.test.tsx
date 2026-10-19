@@ -25,7 +25,7 @@ const mockLive: { refresh?: () => unknown; args?: unknown[] } = {};
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({
   useOrderLiveUpdates: (...args: unknown[]) => { mockLive.refresh = args[0] as () => unknown; mockLive.args = args; },
 }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: jest.fn() }));
 jest.mock('@/features/filters/configs', () => ({ ORDER_FILTERS: { listKey: 'order-list' } }));
 const mockHeader: { loading?: boolean } = {};
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({

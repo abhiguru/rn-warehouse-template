@@ -94,6 +94,7 @@ describe('one word per idea', () => {
       '{{name}} added.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       '{{name}} saved.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       'critical': 'a sensor status and a battery level',
+      'charge': 'the field label (ભાડાનો દર) and the stepper buttons\' spoken phrase "Lower the charge by ..." (ભાડું), a draft of the 2026-10-19 tweaks that waits for the owner\'s wording review',
     };
     const groups = new Map<string, Map<string, string[]>>();
     for (const [key, value] of ENGLISH) {

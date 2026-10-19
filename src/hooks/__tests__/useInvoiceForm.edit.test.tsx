@@ -334,13 +334,13 @@ describe('the financial year of an edit', () => {
 describe('the changed flag of an edit', () => {
   it('follows the form against the saved invoice', async () => {
     const { form, unmount } = await mount('edit', 1, (s) => openForEdit(s));
-    expect(form().isChanged).toBe(false);
+    expect(form().getIsChanged()).toBe(false);
 
     await act(async () => { form().updateDiscountAmount(10); });
-    expect(form().isChanged).toBe(true);
+    expect(form().getIsChanged()).toBe(true);
 
     await act(async () => { form().updateDiscountAmount(0); });
-    expect(form().isChanged).toBe(false);
+    expect(form().getIsChanged()).toBe(false);
     await unmount();
   });
 });
