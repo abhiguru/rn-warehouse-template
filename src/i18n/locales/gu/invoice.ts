@@ -147,7 +147,7 @@ export const invoice: Translation<typeof source> = {
     // Placeholder of an (all lines) field when the lines do not all have the same rate.
     mixed: 'જુદા જુદા',
     allDispatches: 'બધી જાવક',
-    // Draft for the owner's wording review (tweak 2026-10-19, − / + under the (all lines) figures): stepNameCharge to stepUnitMoney.
+    // Draft for the owner's wording review (tweak 2026-10-19, − / + under the (all lines) figures): stepNameCharge to stepUnitMoney, and stepLineDecrease, stepLineIncrease (+ / − beside a dispatch line's figure).
     // The − / + under an (all lines) figure: name is lowercase, amount is "₹0.25" or "1%" in the language's digits.
     stepNameCharge: 'ભાડું',
     stepNameLabour: 'મજૂરી',
@@ -156,6 +156,9 @@ export const invoice: Translation<typeof source> = {
     stepAmountTax: '{{amount}}%',
     stepDecrease: '{{item}}: {{name}} {{amount}} ઘટાડો',
     stepIncrease: '{{item}}: {{name}} {{amount}} વધારો',
+    // The + / − beside a dispatch line's own figure (draft): number is the dispatch number.
+    stepLineDecrease: 'જાવક {{number}}: {{name}} {{amount}} ઘટાડો',
+    stepLineIncrease: 'જાવક {{number}}: {{name}} {{amount}} વધારો',
     // Announced after a press: the field's new value.
     stepUnitMoney: 'રૂપિયા',
     stepDone: '{{field}} {{value}} {{unit}}',
@@ -372,7 +375,6 @@ export const invoice: Translation<typeof source> = {
   },
   lineItem: {
     qty: 'નંગ {{qty}}',
-    colQty: 'નંગ',
     hidesDispatchesHint: 'જાવક છુપાવશે',
     showsDispatchesHint: 'જાવક બતાવશે',
     opensDispatchHint: 'જાવક ખોલે છે',

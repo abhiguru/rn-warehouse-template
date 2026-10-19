@@ -21,6 +21,7 @@ import {
   TextInputProps,
   Pressable,
   Platform,
+  type LayoutChangeEvent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -78,6 +79,8 @@ export interface InputProps extends TextInputProps {
    * (a tap places the cursor). For a field that opens with a value to be replaced, such as a rate.
    */
   selectTextOnFocus?: boolean;
+  /** Called with the label's layout: a caller that puts something beside the field (not beside its label) needs the label's height. */
+  onLabelLayout?: (event: LayoutChangeEvent) => void;
   /** The caller's ref to the TextInput; the field keeps its own too (the clear button refocuses). */
   ref?: React.Ref<TextInput>;
 }
@@ -103,6 +106,7 @@ export function Input({
   numeric = false,
   identifier = false,
   selectTextOnFocus = false,
+  onLabelLayout,
   ref: callerRef,
   value,
   onChangeText,
@@ -184,6 +188,7 @@ export function Input({
       {/* Label */}
       {label && (
         <Text
+          onLayout={onLabelLayout}
           style={[
             styles.label,
             isInvalid && styles.labelError,

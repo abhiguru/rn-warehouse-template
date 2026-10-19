@@ -1,10 +1,10 @@
 /**
  * The pure parts of the invoice items editor: field keys, the text a rate shows, what a group's
- * "(all lines)" fields show, what their − / + steppers do, and the list rows a group is drawn as: head,
+ * "(all lines)" fields show, what their − / + steppers do (and those beside a dispatch line's own figures), and the list rows a group is drawn as: head,
  * the shared figures (one part, side by side or stacked), total, the toggle and, only while the group
  * is open, column headings and one row per line.
  */
-import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
+import { formatIdentifier, localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 import { roundMoney } from '@/utils/invoiceCalculations';
 import { parseRateInput, RATE_MAX, type RateField } from '@/features/invoice/utils/amountInput';
 import { groupKeyOf, type InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
@@ -237,6 +237,11 @@ export interface ItemsActions {
    * the keyboard hiding does), then the stepped figure is applied as if it had been typed there and accepted.
    */
   step: (groupKey: string, field: RateField, direction: StepDirection) => void;
+  /**
+   * A + / − press beside a dispatch line's own figure: the same as `step`, but for that line's cell: the stepped figure is
+   * applied as if it had been typed in the cell and accepted (so the line keeps its own figure).
+   */
+  stepCell: (tempId: string, field: RateField, direction: StepDirection) => void;
   /** A stacked shared field reports how far below the top of its row it starts (null when the fields are side by side or it unmounts). */
   stackedOffset: (key: string, offset: number | null) => void;
   /** A stable ref callback for the input of a field. */
@@ -310,3 +315,23 @@ export function stepperState(field: RateField, view: SharedView, state: FieldSta
 /** A figure one step up or down, rounded to two decimals (as the fields keep them) and held in 0 to the field's maximum. */
 export const steppedValue = (field: RateField, from: number, direction: StepDirection): number =>
   Math.min(RATE_MAX[field], Math.max(0, roundMoney(from + direction * STEP[field])));
+
+/** What the + / − beside a dispatch line's figure steps from: the line's own rate, as the cell shows it ("Mixed" never applies). */
+export const lineView = (field: RateField, rate: number): SharedView => ({ text: rateText(field, rate), mixed: false, keepOwn: 0 });
+
+const STEP_NAME: Record<RateField, TranslationKey> = {
+  charge: 'invoice.items.stepNameCharge',
+  labour_rate: 'invoice.items.stepNameLabour',
+  tax: 'invoice.items.stepNameTax',
+};
+
+/** "Raise the charge by ₹0.25, dispatch I0042" / "Lower the tax by 1%, dispatch I0042": the spoken labels of a line's buttons. */
+export function lineStepLabels(field: RateField, dispatchNo: string): { increase: string; decrease: string } {
+  const amount = localizeDigits(String(STEP[field]));
+  const params = {
+    name: tr(STEP_NAME[field]),
+    amount: tr(field === 'tax' ? 'invoice.items.stepAmountTax' : 'invoice.items.stepAmountMoney', { amount }),
+    number: formatIdentifier(dispatchNo),
+  };
+  return { increase: tr('invoice.items.stepLineIncrease', params), decrease: tr('invoice.items.stepLineDecrease', params) };
+}

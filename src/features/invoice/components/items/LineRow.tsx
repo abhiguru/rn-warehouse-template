@@ -1,4 +1,9 @@
-/** One dispatch line of a group, as a row of the table: the cells of the TanStack columns (lineColumns.ts), Dispatch | Qty | Charge | (Labour | Tax) | Amount. */
+/**
+ * One dispatch line of a group, as a row of the table: the cells of the TanStack columns (lineColumns.ts), Dispatch | Charge | (Labour | Tax) | Amount.
+ * Qty is not a column: it is read under the dispatch number with the date and duration (`lineSubline`, as in the line card).
+ * Each editable cell has its + above − (LineStepper) at the right of the input, inside the column's width (itemsLayout.ts
+ * counts it), so the row is about two touch targets tall.
+ */
 import React from 'react';
 import { Text, View } from 'react-native';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
@@ -8,6 +13,7 @@ import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import type { LineColumn } from './lineColumns';
+import { LineStepper } from './LineStepper';
 import { cellKey, cellLabel, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
 
@@ -17,6 +23,10 @@ export const lineMeta = (item: InvoiceItemData, oneTime: boolean): string => {
   if (oneTime) return nb(`${date} · ${tr('invoice.items.oneTime')}`);
   return nb(`${date} · ${formatCount(Math.round(item.duration * 10) / 10, 'month')} · ${formatCount(item.no_of_days, 'day')}`);
 };
+
+/** "9 Oct · 1.6 months · 48 days · Qty 120": the read-only second line of a line, in the table's Dispatch column and in the card. */
+export const lineSubline = (item: InvoiceItemData, oneTime: boolean): string =>
+  nb(`${lineMeta(item, oneTime)} · ${tr('invoice.items.qtyOf', { qty: formatNumber(item.qty) })}`);
 
 interface Props {
   item: InvoiceItemData;
@@ -41,23 +51,27 @@ export const LineRow = React.memo(function LineRow({ item, columns, oneTime, las
     const key = cellKey(item.temp_id, field);
     const shownError = state?.shown ? state.error ?? undefined : undefined;
     return (
-      <EditableNumberCell
-        // The focus ring belongs to this line's cell: a recycled row gets a new cell, never a carried one.
-        key={key}
-        ref={actions.refFor(key)}
-        returnKeyType={key === lastKey ? 'done' : 'next'}
-        value={state?.text ?? rateText(field, item[field])}
-        onChangeText={(text) => actions.change(key, text)}
-        onHold={(held) => actions.hold(key, held)}
-        onStart={() => actions.start(key)}
-        onFocus={() => actions.focus(key)}
-        onBlur={() => actions.blur(key)}
-        onSubmitEditing={() => actions.submit(key)}
-        label={cellLabel(field, number, oneTime)}
-        error={shownError}
-        width={width}
-        testID={key}
-      />
+      // The key is on this wrapper: the cell and its pair belong to this line's field, so a recycled row gets new ones.
+      // The cell stretches to the column's height (its whole height is the touch area) and centres its input;
+      // the pair is beside it, never over it.
+      <View key={key} style={{ width, flexDirection: 'row', alignItems: 'stretch' }}>
+        <EditableNumberCell
+          // The focus ring belongs to this line's cell.
+          ref={actions.refFor(key)}
+          returnKeyType={key === lastKey ? 'done' : 'next'}
+          value={state?.text ?? rateText(field, item[field])}
+          onChangeText={(text) => actions.change(key, text)}
+          onHold={(held) => actions.hold(key, held)}
+          onStart={() => actions.start(key)}
+          onFocus={() => actions.focus(key)}
+          onBlur={() => actions.blur(key)}
+          onSubmitEditing={() => actions.submit(key)}
+          label={cellLabel(field, number, oneTime)}
+          error={shownError}
+          testID={key}
+        />
+        <LineStepper tempId={item.temp_id} dispatchNo={item.dispatch_no} field={field} rate={item[field]} state={state} actions={actions} />
+      </View>
     );
   };
   const errors = [charge, labour, tax].map((state) => (state?.shown ? state.error : null)).filter(Boolean);
@@ -70,11 +84,9 @@ export const LineRow = React.memo(function LineRow({ item, columns, oneTime, las
               return (
                 <View key={column.id} style={styles.grow}>
                   <Text style={styles.primaryStrong} numberOfLines={1}>{item.dispatch_no}</Text>
-                  <Text style={styles.secondary}>{lineMeta(item, oneTime)}</Text>
+                  <Text style={styles.secondary}>{lineSubline(item, oneTime)}</Text>
                 </View>
               );
-            case 'qty':
-              return <Text key={column.id} style={[styles.number, { width: column.width as number }]} numberOfLines={1}>{formatNumber(item.qty)}</Text>;
             case 'amount':
               return <Text key={column.id} style={[styles.numberStrong, { width: column.width as number }]} numberOfLines={1}>{formatInvoiceAmount(item.item_total)}</Text>;
             default:

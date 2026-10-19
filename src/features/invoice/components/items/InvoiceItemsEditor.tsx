@@ -7,7 +7,7 @@
  * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), the group total, and a toggle,
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
  * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: a table that
- * fits the screen (Dispatch | Qty | Charge ₹ | Amount, its columns described with the app's TanStack
+ * fits the screen (Dispatch | Charge ₹ | Amount, its columns described with the app's TanStack
  * column model, lineColumns.ts) with the Charge typed in its cell, or, from font scale 1.3 or when the
  * columns would crowd the first one, one small card per line. Where the lines differ in labour or tax
  * each line shows its own. Opening and closing has no animation: the rows are virtualized.
@@ -30,6 +30,9 @@
  *
  * A − / + press under a shared field (`actions.step`) leaves the focused field first, as the keyboard
  * hiding does, then applies the stepped figure through the same `commit` as typing; no keyboard opens.
+ * The + / − beside a dispatch line's own figure (`actions.stepCell`, LineStepper.tsx) do the same for that line's
+ * cell: the press is what typing and accepting the figure in the cell does, so the line keeps its own figure
+ * (`onItemUpdate`, which records the line's override). Both go through `stepKey`.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react';
 import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
@@ -44,7 +47,6 @@ import { iconSize } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import type { GroupRates, InvoiceItemData } from '@/types/invoice.types';
-import { formatNumber } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { parseRateInput } from '@/features/invoice/utils/amountInput';
 import {
@@ -65,6 +67,7 @@ import {
   fieldHeading,
   groupFieldKey,
   groupView,
+  lineView,
   linesDifferInLabourOrTax,
   parseKey,
   planRows,
@@ -83,6 +86,8 @@ import {
   type ItemsRow,
   type RateField,
   type RowPlan,
+  type SharedView,
+  type StepDirection,
 } from './itemsModel';
 import { makeItemsStyles } from './itemsStyles';
 import { useFieldWalk, useRefFactory } from './useFieldWalk';
@@ -246,14 +251,12 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         table,
         fontScale,
         {
-          qty: distinctTexts(layoutItems, (line) => line.qty, (v) => formatNumber(v)),
           charge: distinctTexts(layoutItems, (line) => line.charge, (v) => rateText('charge', v)),
           labour: distinctTexts(layoutItems, (line) => line.labour_rate, (v) => rateText('labour_rate', v)),
           tax: distinctTexts(layoutItems, (line) => line.tax, (v) => rateText('tax', v)),
           amount: distinctTexts(layoutItems, (line) => line.item_total, (v) => formatInvoiceAmount(v)),
         },
         {
-          qty: tr('invoice.lineItem.colQty'),
           charge: fieldHeading('charge'),
           labour: fieldHeading('labour_rate'),
           tax: fieldHeading('tax'),
@@ -491,6 +494,46 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       if (record.applied !== undefined) bulk(id, { [field]: record.applied });
     };
 
+    /**
+     * A + / − press for the field `key` (the "(all lines)" field of a group, or the cell of one line), stepping from `view`.
+     * A burst of presses holds the layout as typing does; it is looked at once, SETTLE_MS after the last press.
+     */
+    const stepKey = (key: string, field: RateField, direction: StepDirection, view: SharedView | undefined) => {
+      typing.current = true;
+      clearTimeout(settleTimer.current);
+      const { walk: fieldWalk } = latest.current;
+      if (!view) {
+        released();
+        return;
+      }
+      // Not while the field is "Mixed" or holds refused text (the buttons are disabled then too), or at an end.
+      const before = stepperState(field, view, fieldsRef.current[key]);
+      if (before.value === null || !(direction < 0 ? before.canDecrease : before.canIncrease)) {
+        released();
+        return;
+      }
+      // A field with the focus is left first, as the keyboard hiding does: its text is settled and its error shown.
+      // The keyboard is not opened for the press.
+      const focused = focusedKey.current;
+      if (focused) {
+        fieldWalk.blurKey(focused);
+        api.blur(focused);
+      }
+      const next = steppedValue(field, before.value, direction);
+      // The same path as an accepted entry in the field (`commit`): for a group field one rate for the group, lines with
+      // their own keep theirs; for a line's cell that line's own figure.
+      setFields((prev) => {
+        const state = prev[key];
+        if (!state || settle(field, state.text).error) return prev;
+        const rest = { ...prev };
+        delete rest[key];
+        return rest;
+      });
+      commit(key, next);
+      AccessibilityInfo.announceForAccessibility(stepDoneText(field, next, localizeDigits));
+      released();
+    };
+
     const api: ItemsActions = {
       focus: (key) => {
         typing.current = true;
@@ -569,42 +612,11 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         else stackedOffsets.set(key, offset);
       },
 
-      step: (groupKey, field, direction) => {
-        const key = groupFieldKey(groupKey, field);
-        // A burst of presses holds the layout as typing does; it is looked at once, SETTLE_MS after the last press.
-        typing.current = true;
-        clearTimeout(settleTimer.current);
-        const { views: viewsNow, walk: fieldWalk } = latest.current;
-        const view = viewsNow.get(groupKey)?.[field];
-        if (!view) {
-          released();
-          return;
-        }
-        // Not while the field is "Mixed" or holds refused text (the buttons are disabled then too), or at an end.
-        const before = stepperState(field, view, fieldsRef.current[key]);
-        if (before.value === null || !(direction < 0 ? before.canDecrease : before.canIncrease)) {
-          released();
-          return;
-        }
-        // A field with the focus is left first, as the keyboard hiding does: its text is settled and its error shown.
-        // The keyboard is not opened for the press.
-        const focused = focusedKey.current;
-        if (focused) {
-          fieldWalk.blurKey(focused);
-          api.blur(focused);
-        }
-        const next = steppedValue(field, before.value, direction);
-        // The same path as an accepted entry in the "(all lines)" field: one rate for the group, lines with their own keep theirs.
-        setFields((prev) => {
-          const state = prev[key];
-          if (!state || settle(field, state.text).error) return prev;
-          const rest = { ...prev };
-          delete rest[key];
-          return rest;
-        });
-        commit(key, next);
-        AccessibilityInfo.announceForAccessibility(stepDoneText(field, next, localizeDigits));
-        released();
+      step: (groupKey, field, direction) => stepKey(groupFieldKey(groupKey, field), field, direction, latest.current.views.get(groupKey)?.[field]),
+
+      stepCell: (tempId, field, direction) => {
+        const line = latest.current.itemsById.get(tempId);
+        stepKey(cellKey(tempId, field), field, direction, line ? lineView(field, line[field]) : undefined);
       },
 
       editPricing: (groupKey) => {

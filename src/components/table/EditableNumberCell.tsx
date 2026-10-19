@@ -68,7 +68,8 @@ const makeStyles = (t: ThemeTokens) => ({
   focused: { borderColor: t.border.fieldFocus, backgroundColor: t.surface.field },
   invalid: { borderColor: t.status.negative.border },
   disabled: { color: t.text.secondary },
-  grow: { flex: 1, minWidth: 0 },
+  // Centres the input when the parent stretches the cell taller than it (a row of the invoice items table), so the whole height is its touch area.
+  grow: { flex: 1, minWidth: 0, justifyContent: 'center' as const },
 });
 
 export interface EditableNumberCellProps

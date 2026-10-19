@@ -149,6 +149,9 @@ export const invoice = {
     stepAmountTax: '{{amount}}%',
     stepDecrease: 'Lower the {{name}} by {{amount}}, {{item}}',
     stepIncrease: 'Raise the {{name}} by {{amount}}, {{item}}',
+    // The + / − beside a dispatch line's own figure: name and amount as above, number is the dispatch number.
+    stepLineDecrease: 'Lower the {{name}} by {{amount}}, dispatch {{number}}',
+    stepLineIncrease: 'Raise the {{name}} by {{amount}}, dispatch {{number}}',
     // Announced after a press: the field's name, new value and unit ("Charge 5.25 rupees", "Tax 3.5 percent"; percent is unitTax).
     stepUnitMoney: 'rupees',
     stepDone: '{{field}} {{value}} {{unit}}',
@@ -362,7 +365,6 @@ export const invoice = {
   },
   lineItem: {
     qty: 'Qty {{qty}}',
-    colQty: 'Qty',
     hidesDispatchesHint: 'Hides the dispatches',
     showsDispatchesHint: 'Shows the dispatches',
     opensDispatchHint: 'Opens the dispatch',

@@ -1,7 +1,8 @@
 /**
  * The total row, the toggle that opens a group's dispatch lines, and the column headings (with the hint
  * under them) of an open group's card. The card's bottom edge is drawn by the last part: the toggle while
- * the group is closed, the last line while it is open.
+ * the group is closed, the last line while it is open. The headings of the editable columns leave room at the right for the
+ * + above − beside each line figure (LINE_STEPPER).
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -11,7 +12,7 @@ import { t as tr } from '@/i18n';
 import { iconSize } from '@/theme/tokens';
 import { formatCount, formatNumber } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { CELL_CHROME } from './itemsLayout';
+import { CELL_CHROME, LINE_STEPPER } from './itemsLayout';
 import type { LineColumn } from './lineColumns';
 import type { ItemsActions } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
@@ -33,7 +34,7 @@ export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, col
           ) : (
             <Text
               key={column.id}
-              style={[styles.headerNumber, { width: column.width, paddingRight: column.id === 'qty' || column.id === 'amount' ? 0 : CELL_CHROME / 2 }]}
+              style={[styles.headerNumber, { width: column.width, paddingRight: column.id === 'amount' ? 0 : CELL_CHROME / 2 + LINE_STEPPER }]}
               numberOfLines={1}
             >
               {column.header}

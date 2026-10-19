@@ -1,6 +1,6 @@
 /**
- * The column model of an open card's line table (style guide 13.7): Dispatch | Qty | Charge (₹) |
- * (Labour | Tax) | Amount, described with the app's TanStack setup (`createAppColumnHelper`, `useAppTable`).
+ * The column model of an open card's line table (style guide 13.7): Dispatch | Charge (₹) |
+ * (Labour | Tax) | Amount (Qty is read under the dispatch number), described with the app's TanStack setup (`createAppColumnHelper`, `useAppTable`).
  * TanStack decides the headings, the widths (column meta) and which cells a row has. The rows are not
  * drawn by `DataTable`: they are parts of the page's virtualized list (`LineRow`, `ColumnHeadings`), which
  * read the columns from here, so an open card of hundreds of lines still draws only the rows on screen.
@@ -11,7 +11,7 @@ import type { InvoiceItemData } from '@/types/invoice.types';
 import type { ItemsWidths } from './itemsLayout';
 import { fieldHeading } from './itemsModel';
 
-export type LineColumnId = 'dispatch' | 'qty' | 'charge' | 'labour_rate' | 'tax' | 'amount';
+export type LineColumnId = 'dispatch' | 'charge' | 'labour_rate' | 'tax' | 'amount';
 
 /** What a part of the list needs to know of one column. */
 export interface LineColumn {
@@ -28,7 +28,6 @@ const helper = createAppColumnHelper<InvoiceItemData>();
 export function lineColumnDefs(widths: ItemsWidths, perLine: boolean, oneTime: boolean) {
   const cols = [
     helper.display({ id: 'dispatch', header: tr('common.dispatch'), meta: { width: 'grow' } }),
-    helper.display({ id: 'qty', header: tr('invoice.lineItem.colQty'), meta: { width: widths.qty, numeric: true } }),
     helper.display({ id: 'charge', header: fieldHeading('charge'), meta: { width: widths.charge, numeric: true } }),
   ];
   if (perLine && !oneTime) {
