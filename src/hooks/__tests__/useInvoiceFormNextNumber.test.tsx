@@ -11,7 +11,7 @@ import invoiceFormReducer, { loadInvoiceEditData, loadInvoiceFormData, updateHea
 import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
 import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
-import { useInvoiceForm, type InvoiceFormMode, type UseInvoiceFormReturn } from '../useInvoiceForm';
+import { NUMBER_REQUEST_TIMEOUT_MS, useInvoiceForm, type InvoiceFormMode, type UseInvoiceFormReturn } from '../useInvoiceForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
 let mockStore: ReturnType<typeof makeStore>;
@@ -23,7 +23,10 @@ jest.mock('@/store/hooks', () => {
       useSyncExternalStore(mockStore.subscribe, () => selector(mockStore.getState())),
   };
 });
-jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  router: { replace: jest.fn(), push: jest.fn(), back: jest.fn(), navigate: jest.fn(), dismissTo: jest.fn() },
+  useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
+}));
 jest.mock('@/features/invoice/services/invoiceFormService', () => ({
   getNextInvoiceNumber: jest.fn(),
   loadInvoiceFormData: jest.fn(),
@@ -56,7 +59,7 @@ async function mount(mode: InvoiceFormMode = 'create', prepare?: (store: ReturnT
   mockStore = store;
   const latest: { current: UseInvoiceFormReturn | null } = { current: null };
   const Harness = () => {
-    latest.current = useInvoiceForm({ mode, invoiceIdParam: mode === 'edit' ? INVOICE : undefined });
+    latest.current = useInvoiceForm({ mode, step: 1 });
     return null;
   };
   let tree!: ReturnType<typeof create>;
@@ -292,17 +295,17 @@ describe('while the next number is on its way', () => {
     nextNumber.mockReturnValueOnce(forLastYear.promise as never);
     await pickDate('2026-03-31');
 
-    let went = true;
+    let went: string = '';
     await act(async () => { went = await form().navigateToStep(2); });
 
-    expect(went).toBe(false);
+    expect(went).toBe('busy');
     expect(showAlert).not.toHaveBeenCalled();
-    expect(router.push).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
 
-    // With the answer the form is checked as usual (here it still lacks a GRN, and says so).
+    // With the answer the form is checked as usual (here it still has no GRN, and says so).
     await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
     await act(async () => { went = await form().navigateToStep(2); });
-    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(went).toBe('noItems');
     await unmount();
   });
 
@@ -336,13 +339,16 @@ describe('while the next number is on its way', () => {
     await unmount();
   });
 
-  it('is over when the form is reset', async () => {
+  it('is over for the old form when the form is reset: its answer is dropped, and the reset itself asks for nothing', async () => {
     const first = deferred<ReturnType<typeof answer>>();
     nextNumber.mockReturnValueOnce(first.promise as never);
     const { header, form, unmount } = await mount();
     expect(form().isGettingNextNumber).toBe(true);
 
     await act(async () => { form().resetFormState(); });
+    // Every way out of a form resets it before the screen is gone: that must not ask the server (R2-03). The new
+    // form asks when step 1 next comes to the front ("Create another"; see InvoiceWizardBack).
+    expect(nextNumber).toHaveBeenCalledTimes(1);
     expect(form().isGettingNextNumber).toBe(false);
 
     await act(async () => { first.resolve(answer(55, '2026-27')); });
@@ -351,15 +357,42 @@ describe('while the next number is on its way', () => {
     await unmount();
   });
 
+  it('gives up on a request that has not answered after the timeout: the field is typed in, and Try again asks once more', async () => {
+    jest.useFakeTimers();
+    try {
+      nextNumber.mockReturnValueOnce(new Promise(() => {}) as never);
+      const { header, form, unmount } = await mount();
+      expect(form().isGettingNextNumber).toBe(true);
+
+      await act(async () => { jest.advanceTimersByTime(NUMBER_REQUEST_TIMEOUT_MS - 1); });
+      expect(form().isGettingNextNumber).toBe(true);
+      await act(async () => { jest.advanceTimersByTime(1); });
+
+      // Never a stuck wait: the button is free, the field is empty, and the person is told once.
+      expect(form().isGettingNextNumber).toBe(false);
+      expect(form().nextNumberFailed).toBe(true);
+      expect(header().inv_no).toBe(0);
+      expect(showAlert).toHaveBeenCalledWith("Couldn't get an invoice number", expect.any(String));
+
+      nextNumber.mockResolvedValueOnce(answer(77, '2026-27') as never);
+      await act(async () => { form().retryNextNumber(); });
+      expect(header().inv_no).toBe(77);
+      expect(form().nextNumberFailed).toBe(false);
+      await unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('Next on an emptied field asks for the number first instead of complaining about it', async () => {
     const { header, form, typeNumber, unmount } = await mount();
     await typeNumber(7301);
     await typeNumber(0);
 
-    let went = true;
+    let went: string = '';
     await act(async () => { went = await form().navigateToStep(2); });
 
-    expect(went).toBe(false);
+    expect(went).toBe('busy');
     expect(showAlert).not.toHaveBeenCalled();
     expect(nextNumber.mock.calls).toEqual([['2026-27'], ['2026-27']]);
     expect(header().inv_no).toBe(55);
@@ -473,7 +506,7 @@ describe('an invoice that is being edited', () => {
     await unmount();
   });
 
-  it('keeps its own number whatever the date becomes', async () => {
+  it('is asked for the next number of the other year when its date moves there, and gets its own back when the date returns', async () => {
     const { header, pickDate, unmount } = await mount('edit', (store) => {
       store.dispatch(loadInvoiceEditData({
         invoiceId: INVOICE,
@@ -485,8 +518,13 @@ describe('an invoice that is being edited', () => {
 
     await pickDate('2026-03-31');
 
-    expect(nextNumber).not.toHaveBeenCalled();
-    expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 12 });
+    expect(nextNumber.mock.calls).toEqual([['2025-26']]);
+    expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 1210 });
+
+    await pickDate('2026-10-05');
+    // Back in the year it was saved in: the saved number returns, nothing more is asked.
+    expect(nextNumber).toHaveBeenCalledTimes(1);
+    expect(header()).toMatchObject({ inv_fin_year: '2026-27', inv_no: 12 });
     await unmount();
   });
 });

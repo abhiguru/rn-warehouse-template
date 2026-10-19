@@ -18,6 +18,7 @@ let mockGettingNextNumber = false;
 let mockItems: unknown[] = [];
 const mockSuggestNumberIfEmpty = jest.fn(() => false);
 const mockNavigateToStep = jest.fn();
+const mockValidateField = jest.fn();
 jest.mock('@/hooks/useInvoiceForm', () => ({
   useInvoiceForm: () => ({
     header: {
@@ -30,6 +31,7 @@ jest.mock('@/hooks/useInvoiceForm', () => ({
     nextNumberFailed: mockNextNumberFailed,
     isGettingNextNumber: mockGettingNextNumber,
     suggestNumberIfEmpty: mockSuggestNumberIfEmpty,
+    validateField: mockValidateField,
     validationErrors: {},
     updateHeaderField: jest.fn(),
     updateHeaderFields: jest.fn(),
@@ -117,7 +119,7 @@ describe('while the next invoice number is being asked for', () => {
   const numberField = (tree: ReactTestRenderer) =>
     tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Invoice number')!;
   const next = (tree: ReactTestRenderer) =>
-    tree.root.find((node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Next: items' && 'onPress' in node.props);
+    tree.root.find((node) => typeof node.type !== 'string' && ['Next: items', 'Generating…'].includes(node.props.accessibilityLabel) && 'onPress' in node.props);
 
   it('the hint says so, the field is empty with a spinner, and can still be typed in', async () => {
     mockInvNo = 0;
@@ -133,7 +135,8 @@ describe('while the next invoice number is being asked for', () => {
     expect(numberField(tree).props.placeholder).toBe('Generating…');
     // The user can always type a number of their own instead of waiting.
     expect(numberField(tree).props.editable).toBe(true);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    // One spinner in the field and one on Next.
+    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(2);
     await act(async () => { tree.unmount(); });
   });
 
@@ -143,8 +146,11 @@ describe('while the next invoice number is being asked for', () => {
     mockItems = [{ temp_id: 't1' }];
     const tree = await render();
 
+    // Busy again (a spoken "busy" and a spinner), and it does not go on while the number is asked for.
     expect(next(tree).props.accessibilityState).toEqual({ disabled: true, busy: true });
+    expect(next(tree).props.accessibilityLabel).toBe('Generating…');
     expect(next(tree).props.disabled).toBe(true);
+    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(2);
     await act(async () => { tree.unmount(); });
   });
 
@@ -168,6 +174,17 @@ describe('while the next invoice number is being asked for', () => {
     await act(async () => { numberField(tree).props.onBlur(); });
 
     expect(mockSuggestNumberIfEmpty).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('leaving a number field that the form did not refill checks the field instead', async () => {
+    mockInvNo = 7301;
+    const tree = await render();
+
+    await act(async () => { numberField(tree).props.onBlur(); });
+
+    expect(mockSuggestNumberIfEmpty).toHaveBeenCalledTimes(1);
+    expect(mockValidateField).toHaveBeenCalledWith('inv_no');
     await act(async () => { tree.unmount(); });
   });
 });

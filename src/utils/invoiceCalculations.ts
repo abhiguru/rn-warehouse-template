@@ -273,105 +273,6 @@ export function calculateInvoiceBreakdown(
 }
 
 /**
- * Apply bulk pricing to items matching a group key (item_id + package_mark)
- */
-export interface BulkPricingUpdate {
-  updatedItems: InvoiceItemData[];
-  updatedCount: number;
-}
-
-export function applyBulkItemGroupPricing(
-  items: InvoiceItemData[],
-  itemId: string,
-  packageMark: string,
-  pricing: {
-    charge: number;
-    labour_rate: number;
-    tax: number;
-  },
-  itemOverrides: Record<string, string[]>
-): BulkPricingUpdate {
-  let updatedCount = 0;
-
-  const updatedItems = items.map((item) => {
-    // Check if item matches the group
-    if (item.item_id !== itemId || item.package_mark !== packageMark) {
-      return item;
-    }
-
-    updatedCount++;
-
-    // Get override list for this item (if any)
-    const overrides = itemOverrides[item.temp_id] || [];
-
-    // Apply bulk values only to non-overridden fields
-    const charge = overrides.includes('charge') ? item.charge : pricing.charge;
-    const labour_rate = overrides.includes('labour_rate') ? item.labour_rate : pricing.labour_rate;
-    const tax = overrides.includes('tax') ? item.tax : pricing.tax;
-
-    // Recalculate amounts
-    const amounts = calculateItemAmounts(
-      item.qty,
-      charge,
-      labour_rate,
-      tax,
-      item.duration,
-      item.one_time
-    );
-
-    return {
-      ...item,
-      charge,
-      labour_rate,
-      tax,
-      ...amounts,
-    };
-  });
-
-  return {
-    updatedItems,
-    updatedCount,
-  };
-}
-
-/**
- * Update item pricing with override tracking
- */
-export interface ItemPricingUpdate {
-  updatedItem: InvoiceItemData;
-  updatedEditedFields: Record<string, unknown>;
-}
-
-export function updateItemPricing(
-  item: InvoiceItemData,
-  pricing: {
-    charge?: number;
-    labour_rate?: number;
-    tax?: number;
-  },
-  currentEditedFields: Record<string, unknown> = {}
-): ItemPricingUpdate {
-  const updatedItem = applyPricingToItem(item, pricing);
-
-  // Track edited fields
-  const updatedEditedFields = { ...currentEditedFields };
-  if (pricing.charge !== undefined) {
-    updatedEditedFields.charge = pricing.charge;
-  }
-  if (pricing.labour_rate !== undefined) {
-    updatedEditedFields.labour_rate = pricing.labour_rate;
-  }
-  if (pricing.tax !== undefined) {
-    updatedEditedFields.tax = pricing.tax;
-  }
-
-  return {
-    updatedItem,
-    updatedEditedFields,
-  };
-}
-
-/**
  * Parse group key into item_id and package_mark
  * Supports both ::: delimiter (preferred) and _ delimiter (legacy)
  */
@@ -439,23 +340,6 @@ export function recalculateItemWithEdits(
     no_of_days,
     ...amounts,
   };
-}
-
-/**
- * Apply bulk pricing update to all items
- * Used by bulkUpdateItemPricing reducer
- */
-export function applyBulkPricingToAllItems(
-  items: InvoiceItemData[],
-  defaultValues: Partial<{
-    duration: number;
-    charge: number;
-    labour_rate: number;
-    tax: number;
-    no_of_days: number;
-  }>
-): InvoiceItemData[] {
-  return items.map((item) => recalculateItemWithEdits(item, defaultValues));
 }
 
 /**

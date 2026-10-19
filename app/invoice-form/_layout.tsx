@@ -8,7 +8,6 @@ export default function InvoiceFormLayout() {
   // Protect form routes - redirect if user cannot create
   useEffect(() => {
     if (!canCreate) {
-      if (__DEV__) console.log('[InvoiceFormLayout] User lacks create permission, redirecting');
       router.replace('/(tabs)/invoices');
     }
   }, [canCreate]);
@@ -21,6 +20,8 @@ export default function InvoiceFormLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+        // The steps are left by their own Back and Cancel, which ask first and keep the form in step.
+        gestureEnabled: false,
       }}
     >
       <Stack.Screen name="step1" />

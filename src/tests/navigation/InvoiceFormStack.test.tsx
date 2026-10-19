@@ -4,11 +4,11 @@
  *
  * Here the real expo-router stack runs (the in-memory route context of
  * expo-router's own testing library) with the real Invoices tab, the real
- * invoice-form layout and step 1, and the real useInvoiceForm on a real
- * invoice-form slice. The step 1 header is a stand-in that offers the "Discard"
- * of its question; step 2 is a stand-in with the two ways back the real step 2
- * has: its Back button (useInvoiceForm's navigateToStep(1)) and the Android Back
- * key (the real useBackHandler with the options of app/invoice-form/step2.tsx).
+ * invoice-form layout and steps 1 and 2, and the real useInvoiceForm on a real
+ * invoice-form slice. The step header is a stand-in that offers the "Discard"
+ * of its question; step 2 is the real one (its table left out) with its two ways
+ * back: the Back button (useInvoiceForm's navigateToStep(1)) and the Android Back
+ * key (the real useBackHandler).
  *
  * The cause found: every way back from step 2 to step 1 added a second step-1
  * entry ([step1, step2, step1] by the Back button; [step1, step1] by the Back
@@ -31,13 +31,12 @@ import { ExpoRoot } from 'expo-router/build/ExpoRoot';
 import { store as routerStore } from 'expo-router/build/global-state/router-store';
 import { router, Stack, Tabs } from 'expo-router';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
-import { useBackHandler } from '@/hooks/useBackHandler';
 import invoiceFormReducer, { setItems, updateHeader } from '@/store/slices/invoiceFormSlice';
 import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
-import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import InvoicesTab from '../../../app/(tabs)/invoices';
 import InvoiceFormLayout from '../../../app/invoice-form/_layout';
 import InvoiceFormStep1 from '../../../app/invoice-form/step1';
+import InvoiceFormStep2 from '../../../app/invoice-form/step2';
 import GRNFormStep2 from '../../../app/grn-form/step2';
 import DispatchFormStep2 from '../../../app/dispatch-form/step2';
 
@@ -79,6 +78,10 @@ jest.mock('@/features/dispatch/screens', () => ({ DispatchItemsStep: () => null 
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocomplete: () => null }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: () => null }));
+jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ role: 'staff' }) }));
+jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
+jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn(), listItemRates: jest.fn() }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 // The header's X asks "Discard this invoice?" (CreateFormBackInvoice.test.tsx);
 // this stand-in is that question answered with "Discard".
@@ -96,14 +99,6 @@ const NEXT = 'Next: items';
 const GRN = '11111111-2222-4333-8444-555555555555';
 const CUSTOMER = '22222222-3333-4444-8555-666666666666';
 const LINE = '33333333-4444-4555-8666-777777777777';
-
-/** Step 2 as far as leaving it goes. */
-function Step2() {
-  const { navigateToStep } = useInvoiceForm({ mode: 'create' });
-  // As app/invoice-form/step2.tsx has it.
-  useBackHandler({ currentStep: 2, totalSteps: 4, stepBasePath: '/invoice-form/step', exitRoute: '/invoices' });
-  return <Pressable testID="step2-back" onPress={() => { void navigateToStep(1); }}><Text>Back</Text></Pressable>;
-}
 
 /** A tab that opens a create form, and that form's step 1, which goes on to step 2. */
 const opener = (testID: string, href: '/grn-form/step1' | '/dispatch-form/step1') => () =>
@@ -130,7 +125,7 @@ beforeEach(async () => {
     '(tabs)/invoices': InvoicesTab,
     'invoice-form/_layout': InvoiceFormLayout,
     'invoice-form/step1': InvoiceFormStep1,
-    'invoice-form/step2': Step2,
+    'invoice-form/step2': InvoiceFormStep2,
     'invoice-form/step3': () => null,
     '(tabs)/grn': opener('create-grn', '/grn-form/step1'),
     'grn-form/_layout': () => <Stack screenOptions={{ headerShown: false }} />,
@@ -226,7 +221,7 @@ describe('Discard on step 1 of a new invoice', () => {
     await openNewInvoice();
     await tap(NEXT);
 
-    await tap('step2-back');
+    await tap('Back to details');
     expect(stack()).toEqual(['(tabs)', ['step1']]);
 
     await tap('discard');

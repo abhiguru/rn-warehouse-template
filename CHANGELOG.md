@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Dispatch and invoice review; invoice form
+
+No backend change. (An edit may already move an invoice into another financial year with another number:
+`update_invoice` sets `inv_fin_year` and `inv_no`, and migration 73 checks the number.)
+
+- **Device fixes (phone run P2).** A charge cell keeps its own text while it has the focus (typing "5" no longer shows "5.00"), and the focused field's entry is never dropped; closing the keyboard blurs the focused field on all three invoice steps (`useBlurOnKeyboardHide`); the Items list closes the keyboard on a drag, and a cell that unmounts gives up the focus; the Next key scrolls the next field into the upper part of the screen, above the keyboard; a dev-only log of the table rows' touch negotiation (`EXPO_PUBLIC_LOG_TABLE_RESPONDERS=1`) for the swipe that does not scroll over the table body.
+- **Invoice Review step on the review kit.** INVOICE DETAILS, ITEMS (a nested table of the item groups with a total row) and CHARGES (open first) in one folding card like GRN Review; one Total row; "How the total is calculated" is a dialog; "Set the final amount" is a tertiary button with a dialog (no second filled button); round up and down keep the typed discount and show two decimals; a refused discount never changes the total; the reasons turn red only after a refused save; the shared bottom bar on Details and Review; the invoice dialog and the error alert of a save open only after the confirm has finished closing (iOS).
+- **One set of steps for a new invoice and an edit.** Details, Items and Review are one screen each
+  (`src/features/invoice/screens`, with `mode`), driven by one hook, `useInvoiceForm({ mode, step })`. The route files
+  are one line each. The hook checks from the screen's own step, so Back from step 2 and then Next on step 1 checks
+  step 1 again. `app/invoice-form/step4.tsx`, the unused item card, the swipe-navigation helper (it showed field keys,
+  "Please fix: inv_no, gr_id") and the hook's old edit mode are gone, and the invoice code logs through `createLogger`.
+- **Saving.** A second tap while a save is being checked or sent does nothing. The question before it is busy until the
+  save is over, in both modes. An edit is checked as a new invoice is (the 8-digit cap only when its number changed).
+- **Leaving.** The swipe back is off in both invoice stacks. Back on step 1 of an edit asks "Discard changes to this
+  invoice?" when something changed. Cancel and "View invoice" after an edit return to the invoice's page; "Create
+  another invoice" leaves one step 1 in the stack, with a new number.
+- **Print and share.** A printed invoice is a toast on the screen the form returns to; a failed print is an alert.
+  Cancelling Print returns to the invoice dialog. A failure to share the PDF is shown inside that dialog.
+- **GRN.** Choosing another GRN asks first when rates, a discount or reasons would be lost (always in an edit) and
+  keeps the previous GRN and its lines when the load fails. The picker drops stale answers, lifts over the keyboard,
+  announces its count, and lists the invoice's own GRN first in an edit. A long GRN number wraps.
+- **Edit.** The form opens only after the invoice is loaded; a failed load is a full screen error with Try again and
+  Close. Moving the date into another financial year asks for that year's next number (moving back restores the
+  saved one). Messages of the fields show when a field is left and on Next, and go when it changes.
+- **Invoice → Items on the rate-box model.** Each item and mark is one card with its lines always shown as a table that fits the screen (Dispatch | Qty | Charge ₹ | Amount, Charge typed in its cell), rows for Labour, Tax and (2 or more lines) Charge "(all lines)" with "Mixed" and a note for lines that keep their own charge, cards from font scale 1.3 or when crowded, one virtualized keyboard-aware list, `WizardBottomBar`, and a tertiary "How pricing works" in place of the guide strip. There is no open/close of a group left to blank a card (checked in Jest only, with list rows that are reused; the phone run decides), the layout does not change while a field is focused, the field keeps its text as typed until it is left, the Android Back key leaves the field, and a refused figure never changes a total (the value from focus stays until the text is valid; the error shows on leaving the cell or on Next). `InvoiceItemsTable` and `RateInput` are gone; the pricing pencil is `usePricingPencil`. Gujarati: `invoice.items.*` (fixRates, hint, howPricingWorks, helpMessage, col*, *All, mixed, allDispatches, keepOwn*, oneTime, qtyOf, dispatchedOf, markA11y, totalA11y, groupCellA11y, unit*) are drafts for the owner's wording review.
+- **Shared Review sections.** The folding Review card of GRN is now `src/components/review/ReviewSections.tsx` (`ReviewCard`, `ReviewSection`, `useReviewSections`, `ReviewKeyValue`); GRN Review draws it with no visible change, except that its key-value rows stack label over value from font scale 1.5.
+- **Wizard bottom bar.** On Android the bar no longer adds the bottom inset twice (the root stack already pads by it); iOS is as before. From font scale 1.5 the Back and Next buttons stack, Next on top. Optional Back label and test ids.
+- **Step circles.** Each circle of the step header has a `touchTarget`-wide touch target; the circles stay 28 dp.
+- **Dispatch Review looks and works like GRN Review.** One folding card (DETAILS, PHOTOS on a new dispatch, ITEMS, one open at a time, ITEMS first) with a nested table of the lines (Item | GRN/Received | Qty, stacking at large text, a total row), the shared bottom bar, a busy confirm dialog, toasts instead of Snackbars (said after the dialog or step is gone), a share failure inside the success dialog, and, in an edit, the stock read once per GRN with a visible error and Try again. Gujarati: the new `dispatch.review.*` texts (address, totalItems, closedItems, closedNoPhotos, photosHeading, stockLeft, stockInStock, stockChecking, stockNotChecked, stockErrorMessage) are drafts for the owner's wording review.
+
 ## Unreleased — GRN tab and filters: design review fixes (2026-10-18)
 
 Fixes from the 2026-10-18 design review of the GRN tab and its filters, judged against `docs/STYLE_GUIDE.md`.

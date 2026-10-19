@@ -4,6 +4,7 @@ import { act, create } from 'react-test-renderer';
 import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
 import type { InvoiceHeaderData } from '@/types/invoice.types';
 
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/components/fiori', () => ({ KeyValueCell: () => null, InlineValidation: () => null }));

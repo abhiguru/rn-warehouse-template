@@ -361,15 +361,16 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
       <Stack.Screen name="invoice-details/[id]" options={{ headerShown: false }} />
 
       {/* Form screens */}
-      <Stack.Screen name="grn-form" options={{ headerShown: false }} />
+      {/* The forms are left by their own Cancel and Back, which ask first: no swipe back from the root route either. */}
+      <Stack.Screen name="grn-form" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen
         name="grn-edit"
-        options={{ title: translate('nav.screens.editGrn'), headerShown: false }}
+        options={{ title: translate('nav.screens.editGrn'), headerShown: false, gestureEnabled: false }}
       />
-      <Stack.Screen name="dispatch-form" options={{ headerShown: false }} />
-      <Stack.Screen name="dispatch-edit" options={{ headerShown: false }} />
-      <Stack.Screen name="invoice-form" options={{ headerShown: false }} />
-      <Stack.Screen name="invoice-edit" options={{ headerShown: false }} />
+      <Stack.Screen name="dispatch-form" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="dispatch-edit" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="invoice-form" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="invoice-edit" options={{ headerShown: false, gestureEnabled: false }} />
 
       {/* Other screens */}
       <Stack.Screen name="settings" options={{ headerShown: false }} />

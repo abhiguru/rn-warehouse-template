@@ -8,9 +8,8 @@
 import React from 'react';
 import { TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { configureStore } from '@reduxjs/toolkit';
-import invoiceFormReducer, { loadInvoiceEditData, resetForm, updateEditedItem } from '@/store/slices/invoiceFormSlice';
-import { showAlert } from '@/utils/alert';
+import { makeInvoiceStore, openForEdit, invoiceLine, IDS } from '@/tests/helpers/invoiceFixtures';
+import { updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { t } from '@/i18n';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
@@ -18,29 +17,23 @@ import InvoiceEditStep2 from '../../../app/invoice-edit/[id]/step2';
 import InvoiceEditStep3 from '../../../app/invoice-edit/[id]/step3';
 
 let mockRole = 'staff';
-const mockStore = configureStore({
-  reducer: {
-    invoiceForm: invoiceFormReducer,
-    theme: () => ({ preference: 'light', brand: 'orange' }),
-    auth: () => ({ userProfile: { role: 'staff' } }),
-  },
-});
-jest.mock('@/store/hooks', () => ({
-  useAppDispatch: () => mockStore.dispatch,
-  useAppSelector: (selector: (state: unknown) => unknown) =>
-    require('react').useSyncExternalStore(mockStore.subscribe, () => selector(mockStore.getState())),
-}));
+const mockStore = makeInvoiceStore({ role: 'staff' });
+jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').storeHooks(() => mockStore));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ role: mockRole }) }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), dismiss: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn(), back: jest.fn(), dismiss: jest.fn(), dismissTo: jest.fn(), navigate: jest.fn() },
+  useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
+}));
+jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-paper', () => ({ Snackbar: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   KeyboardAwareScrollView: 'KeyboardAwareScrollView',
   // The items step's table is a keyboard-aware FlashList.
   listenToKeyboardEvents: () => (component: unknown) => component,
 }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: 'InvoiceCalculationSummary' }));
@@ -48,65 +41,22 @@ jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ Invoice
 jest.mock('@/services/print-service', () => ({ printInvoiceRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 // The real service, so that the request the server would get can be read.
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 
 const FREE = 'aaaaaaaa-2222-4333-8444-555555555555';
 const PAID = 'bbbbbbbb-2222-4333-8444-555555555555';
-const line = (dispatchLine: string, charge: number): InvoiceItemData => ({
-  temp_id: `edit_${dispatchLine}_0`,
-  disp_trl_id: dispatchLine,
-  grn_item_id: 'g1',
-  item_id: 'i1',
-  item_name: 'Example Potatoes',
-  qty: 100,
-  grn_original_qty: 100,
-  package_mark: 'M1',
-  rack: '',
-  weight: 50,
-  dispatch_id: 'd1',
-  dispatch_no: 'I0001',
-  dispatch_date: '2026-10-01',
-  grn_id: '11111111-2222-4333-8444-555555555555',
-  grn_no: 'A0010',
-  grn_date: '2026-09-01',
-  duration: 1,
-  no_of_days: 30,
-  charge,
-  labour_rate: 2,
-  tax: 5,
-  amount: charge * 100,
-  labour_amount: 200,
-  tax_amount: 10,
-  item_total: charge * 100 + 210,
-});
+const line = (dispatchLine: string, charge: number): InvoiceItemData =>
+  invoiceLine({ temp_id: `edit_${dispatchLine}_0`, disp_trl_id: dispatchLine, charge }, dispatchLine === FREE ? 0 : 1);
 
 /** An invoice saved with one free and one paid line. */
 function loadInvoice(storedReason: string | undefined) {
-  mockStore.dispatch(resetForm());
-  mockStore.dispatch(
-    loadInvoiceEditData({
-      invoiceId: 'inv-42',
-      grId: '11111111-2222-4333-8444-555555555555',
-      header: {
-        inv_date: '2026-10-05',
-        inv_fin_year: '2026-27',
-        inv_no: 42,
-        customer_id: '22222222-3333-4444-8555-666666666666',
-        customer_name: 'Example Traders',
-        gr_id: '11111111-2222-4333-8444-555555555555',
-        gr_no: 'A0010',
-        one_time_charge: false,
-        discount: 0,
-        zero_charge_reason: storedReason,
-        labour: 400,
-        tax_amount: 45,
-        total: 945,
-      },
-      items: [line(FREE, 0), line(PAID, 5)],
-    })
-  );
+  openForEdit(mockStore, [line(FREE, 0), line(PAID, 5)], {
+    zero_charge_reason: storedReason,
+    labour: 400,
+    tax_amount: 45,
+    total: 945,
+  });
 }
 
 let rpc: jest.Mock;
@@ -116,6 +66,9 @@ async function render() {
   return tree;
 }
 const summary = (tree: ReactTestRenderer) => tree.root.findByType('InvoiceCalculationSummary' as unknown as React.ElementType);
+// The dialogs that are open (the stand-in keeps the props of ConfirmDialog).
+const shown = (tree: ReactTestRenderer) =>
+  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
 const pressUpdate = async (tree: ReactTestRenderer) => {
   const button = tree.root.find(
     (node) => node.props.accessibilityLabel === t('invoice.review.updateInvoice') && typeof node.props.onPress === 'function'
@@ -125,9 +78,9 @@ const pressUpdate = async (tree: ReactTestRenderer) => {
 /** Press Update and answer its question with "Update invoice"; the header that went to the server. */
 const update = async (tree: ReactTestRenderer) => {
   await pressUpdate(tree);
-  const [title, , buttons] = jest.mocked(showAlert).mock.calls[0];
-  expect(title).toBe(t('invoice.review.updateTitle', { number: '42' }));
-  await act(async () => { await buttons!.find((button) => button.text === t('invoice.review.updateInvoice'))!.onPress!(); });
+  const dialog = shown(tree)[0];
+  expect(dialog.props.title).toBe(t('invoice.review.updateTitle', { number: '42' }));
+  await act(async () => { await dialog.props.onConfirm(); });
   return rpc.mock.calls.find(([name]) => name === 'update_invoice')![1].p_invoice_data;
 };
 
@@ -163,11 +116,9 @@ describe('staff updating an invoice that has a zero-charge line', () => {
 
     await pressUpdate(tree);
 
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(showAlert).toHaveBeenCalledWith(
-      'Enter a reason for the zero charge',
-      'An item has a charge of 0. Enter the reason before updating the invoice.'
-    );
+    expect(shown(tree)).toHaveLength(1);
+    expect(shown(tree)[0].props.title).toBe('Enter a reason for the zero charge');
+    expect(shown(tree)[0].props.message).toBe('An item has a charge of 0. Enter the reason before updating the invoice.');
     expect(rpc).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
@@ -193,7 +144,7 @@ describe('staff updating an invoice that has a zero-charge line', () => {
 
     await pressUpdate(tree);
 
-    expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Enter a reason for the zero charge');
+    expect(shown(tree)[0].props.title).toBe('Enter a reason for the zero charge');
     expect(rpc).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
@@ -263,11 +214,11 @@ describe.each(['admin', 'supervisor'])('%s updating an invoice that has a zero-c
 describe.each(['staff', 'admin', 'supervisor'])('the question before the update, for %s', (role) => {
   const question = async (tree: ReactTestRenderer) => {
     await pressUpdate(tree);
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
-    expect(title).toBe('Update invoice 42?');
-    expect(buttons!.map((button) => button.text)).toEqual(['Cancel', 'Update invoice']);
-    return message as string;
+    expect(shown(tree)).toHaveLength(1);
+    const dialog = shown(tree)[0];
+    expect(dialog.props.title).toBe('Update invoice 42?');
+    expect([dialog.props.cancelText, dialog.props.confirmText]).toEqual(['Cancel', 'Update invoice']);
+    return dialog.props.message as string;
   };
 
   it('says that 1 item has a charge of 0', async () => {
@@ -291,7 +242,6 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before the update,
     expect((await question(tree)).split('\n').at(-1)).toBe('2 items have a charge of 0.');
     await act(async () => { tree.unmount(); });
 
-    jest.mocked(showAlert).mockClear();
     await act(async () => {
       mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 5 } }));
       mockStore.dispatch(updateEditedItem({ temp_id: `edit_${FREE}_0`, values: { charge: 3 } }));
@@ -307,7 +257,7 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before the update,
 // was free any more and the update went out without the reason.
 describe('changing a group rate on the items step of such an invoice', () => {
   const groupField = (tree: ReactTestRenderer, label: string) =>
-    tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === label)!;
+    tree.root.findAllByType(TextInput).find((node) => node.props.testID === label)!;
   const lines = () => mockStore.getState().invoiceForm.items.map((item) => [item.charge, item.labour_rate, item.tax]);
 
   it('the group tax leaves the free line free, and the update carries the charges and the reason as stored', async () => {
@@ -315,12 +265,12 @@ describe('changing a group rate on the items step of such an invoice', () => {
     let itemsStep!: ReactTestRenderer;
     await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
     // A free and a paid line: no average is shown as the group's charge.
-    expect(groupField(itemsStep, 'Storage charge for Example Potatoes').props).toMatchObject({ value: '', placeholder: 'Mixed' });
+    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '', placeholder: 'Mixed' });
 
-    await act(async () => { groupField(itemsStep, 'Tax percent for Example Potatoes').props.onChangeText('12'); });
+    await act(async () => { groupField(itemsStep, 'group|i1:::M1|tax').props.onChangeText('12'); });
 
     expect(lines()).toEqual([[0, 2, 12], [5, 2, 12]]);
-    expect(groupField(itemsStep, 'Storage charge for Example Potatoes').props).toMatchObject({ value: '', placeholder: 'Mixed' });
+    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '', placeholder: 'Mixed' });
     await act(async () => { itemsStep.unmount(); });
 
     const tree = await render();
@@ -336,7 +286,7 @@ describe('changing a group rate on the items step of such an invoice', () => {
     let itemsStep!: ReactTestRenderer;
     await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
 
-    await act(async () => { groupField(itemsStep, 'Storage charge for Example Potatoes').props.onChangeText('4'); });
+    await act(async () => { groupField(itemsStep, 'group|i1:::M1|charge').props.onChangeText('4'); });
 
     expect(lines()).toEqual([[4, 2, 5], [4, 2, 5]]);
     await act(async () => { itemsStep.unmount(); });

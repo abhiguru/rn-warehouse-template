@@ -53,9 +53,17 @@ export function parseRateInput(field: RateField, typed: string): ParsedAmount {
   return { text, value, error: null };
 }
 
+/** The largest discount, and surcharge (a negative discount), the save accepts (the invoice schema's limit). */
+export const DISCOUNT_LIMIT = 999999.99;
+
+/** A discount inside what the save accepts: at most the amount before discount, at most DISCOUNT_LIMIT, and no surcharge beyond it. */
+export const clampDiscount = (discount: number, base: number): number =>
+  Math.min(Math.max(discount, -DISCOUNT_LIMIT), Math.min(base, DISCOUNT_LIMIT));
+
 /**
- * The discount as typed. A negative discount is a surcharge and is allowed;
- * a discount above `maxDiscount` (the amount before the discount) is not.
+ * The discount as typed. A negative discount is a surcharge and is allowed. A discount above `maxDiscount` (the amount
+ * before the discount) is not, and neither is one beyond the save's own limit (999,999.99, in either direction):
+ * the field says so at once, not after the confirm.
  */
 export function parseDiscountInput(typed: string, maxDiscount: number, describeMax: (amount: number) => string): ParsedAmount {
   const text = normalizeDigits(typed).trim();
@@ -63,9 +71,31 @@ export function parseDiscountInput(typed: string, maxDiscount: number, describeM
   if (UNFINISHED.test(text)) return { text, value: null, error: null };
   if (!SIGNED.test(text)) return { text, value: null, error: t('invoice.summary.discountNotNumber') };
   const value = Number(text);
-  if (value > maxDiscount) {
-    return { text, value: null, error: t('invoice.summary.discountTooLarge', { amount: describeMax(maxDiscount) }) };
+  const max = Math.min(maxDiscount, DISCOUNT_LIMIT);
+  if (value > max) {
+    return { text, value: null, error: t('invoice.summary.discountTooLarge', { amount: describeMax(max) }) };
   }
+  if (value < -DISCOUNT_LIMIT) {
+    return { text, value: null, error: t('invoice.summary.surchargeTooLarge', { amount: describeMax(DISCOUNT_LIMIT) }) };
+  }
+  return { text, value, error: null };
+}
+
+/**
+ * The final amount of the invoice as typed in "Set the final amount": an unsigned number with up to two decimals, ૦-૯
+ * read as 0-9. Text such as "1,500" or "12abc" is refused with a message, never read as a part of it. The discount it
+ * gives (`base` less the final amount) must be one the save accepts.
+ */
+export function parseFinalAmountInput(typed: string, base: number, describe: (amount: number) => string): ParsedAmount {
+  const text = normalizeDigits(typed).trim();
+  if (text === '') return { text, value: null, error: t('invoice.summary.amountNotValidMessage') };
+  if (!UNSIGNED.test(text)) return { text, value: null, error: t('invoice.summary.finalAmountNotNumber') };
+  const value = Number(text);
+  if (value <= 0) return { text, value: null, error: t('invoice.summary.amountNotValidMessage') };
+  const lowest = Math.max(0.01, Math.round((base - DISCOUNT_LIMIT) * 100) / 100);
+  const highest = Math.round((base + DISCOUNT_LIMIT) * 100) / 100;
+  if (value < lowest) return { text, value: null, error: t('invoice.summary.finalAmountTooLow', { amount: describe(lowest) }) };
+  if (value > highest) return { text, value: null, error: t('invoice.summary.finalAmountTooHigh', { amount: describe(highest) }) };
   return { text, value, error: null };
 }
 

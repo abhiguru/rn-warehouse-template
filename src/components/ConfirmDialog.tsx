@@ -44,6 +44,8 @@ export interface ConfirmDialogProps {
   /** The action is running: spinner in the confirm button, both buttons disabled, Back and the scrim do nothing. */
   busy?: boolean;
   testID?: string;
+  /** The dialog has finished closing (iOS only; Android has no such event, watch `visible`). Open the next Modal from here. */
+  onDismissed?: () => void;
 }
 
 const ICON_CIRCLE = layout.avatar.lg - space.xs;
@@ -146,6 +148,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   dismissible = true,
   busy = false,
   testID,
+  onDismissed,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -168,6 +171,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       transparent
       animationType="fade"
       onRequestClose={busy ? () => {} : onCancel}
+      onDismiss={onDismissed}
       statusBarTranslucent
     >
       <View style={styles.overlay}>

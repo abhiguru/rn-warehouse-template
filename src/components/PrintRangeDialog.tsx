@@ -47,6 +47,12 @@ import type { DocumentEntity } from '@/i18n/entities';
 interface PrintRangeDialogProps {
   visible: boolean;
   onDismiss: () => void;
+  /**
+   * The dialog has finished closing (iOS: the Modal's `onDismiss`). Another Modal may be opened from here; on iOS one
+   * opened in the same render as this one closes is dropped. The Modal stays mounted for this: it is hidden by
+   * `visible`, not removed.
+   */
+  onDismissed?: () => void;
   onConfirm: (startNumber: string, endNumber: string) => Promise<void>;
   title: string;
   defaultNumber: string;
@@ -263,6 +269,7 @@ const makeStyles = (t: ThemeTokens) => ({
 export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   visible,
   onDismiss,
+  onDismissed,
   onConfirm,
   title,
   defaultNumber,
@@ -321,8 +328,6 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
     }
   };
 
-  if (!visible) return null;
-
   const lowerLabel = label.toLowerCase();
   const texts = entity
     ? {
@@ -346,10 +351,11 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   if (!printingAvailable)
     return (
       <Modal
-        visible
+        visible={visible}
         transparent
         animationType="fade"
         onRequestClose={onDismiss}
+        onDismiss={onDismissed}
       >
         <View style={styles.backdrop}>
           <Pressable
@@ -400,6 +406,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={onDismiss}
+      onDismiss={onDismissed}
     >
       <KeyboardAvoidingView style={styles.root} behavior="padding" keyboardVerticalOffset={-insets.bottom}>
         <View style={[styles.overlay, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>

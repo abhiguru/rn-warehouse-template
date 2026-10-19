@@ -22,6 +22,11 @@ const mockForm = {
   header: emptyHeader(),
   items: [] as unknown[],
   itemOverrides: {},
+  editedItems: {},
+  bulkPricing: {},
+  invoiceId: null,
+  isChanged: false,
+  savedGrId: null,
   isLoading: false,
   isLoadingItems: false,
   nextNumberFailed: false,
@@ -32,6 +37,8 @@ const mockForm = {
   applyGroupPricing: jest.fn(),
   loadGRNData: jest.fn(),
   clearFieldValidationError: jest.fn(),
+  validateField: jest.fn(),
+  suggestNumberIfEmpty: jest.fn(() => false),
   navigateToStep: jest.fn(),
   resetFormState: jest.fn(),
 };
@@ -59,8 +66,7 @@ jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () =
 jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({
   GRNAutocomplete: require('@/tests/helpers/backClosingSheet').flagSheet('grn'),
 }));
-jest.mock('@/features/invoice/components/InvoiceItemsTable', () => ({ InvoiceItemsTable: () => null }));
-jest.mock('@/features/invoice/components/InvoiceItemCard', () => ({ InvoiceItemCard: () => null }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: () => null }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
@@ -105,8 +111,10 @@ describe('Back on step 1 of a new invoice', () => {
     expect(await pressBack()).toBe(true);
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledWith('/invoices');
+    // Taken off the stack back to the tab: a replace left two (tabs) entries.
+    expect(router.dismissTo).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
+    expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });

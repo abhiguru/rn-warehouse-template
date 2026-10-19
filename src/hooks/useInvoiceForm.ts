@@ -1,43 +1,48 @@
 /**
  * useInvoiceForm Hook
  *
- * Custom hook that consolidates Invoice form logic from multiple screen components.
- * Handles form initialization, validation, navigation, pricing calculations, and data management.
+ * The logic of the invoice wizard, for a new invoice and for an edit, and for
+ * each of its three steps: `useInvoiceForm({ mode, step })`. The step is the
+ * calling screen's own (1-based); checks and navigation start from it, never
+ * from the slice's `currentStep`, which a focus effect keeps current.
+ *
+ * What a screen reads here is the store's: the form, the invoice number
+ * request (so a step 1 that is already open sees a new form begin), the
+ * validation errors. What lives in the hook is what belongs to one saving
+ * attempt (the lock against a second save).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
-import { router, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
-  setInvoiceId,
-  setSelectedGrId,
   updateHeader,
-  setItems,
-  updateItem,
   updateEditedItem,
-  bulkUpdateItemPricing,
   bulkUpdateItemGroupPricing,
   applySavedRates,
   updateDiscount,
-  recalculateTotals,
   setCurrentStep,
-  setIsLoading,
   setIsSaving,
   setIsLoadingItems,
   setValidationErrors,
+  setValidationError,
   clearValidationError,
-  clearAllValidationErrors,
   loadInvoiceFormData,
-  loadInvoiceEditData,
   resetForm,
+  numberRequested,
+  numberAnswered,
+  numberCancelled,
   selectInvoiceFormHeader,
   selectInvoiceFormItems,
   selectInvoiceFormEditedItems,
   selectInvoiceFormItemOverrides,
   selectInvoiceFormBulkPricing,
   selectInvoiceFormId,
-  selectSelectedGrId,
+  selectInvoiceNumberStatus,
+  selectInvoiceFormBaseline,
+  selectInvoiceFormChanged,
+  restoreSavedGrn,
 } from '@/store/slices/invoiceFormSlice';
 import type {
   InvoiceHeaderData,
@@ -48,7 +53,6 @@ import type {
 import {
   validateStep1,
   validateStep2,
-  validateStep3,
   validateFullInvoice,
   validateNewInvoiceStep1,
   validateNewInvoice,
@@ -56,23 +60,52 @@ import {
 import {
   getNextInvoiceNumber,
   loadInvoiceFormData as loadInvoiceFormDataService,
-  loadInvoiceData as loadInvoiceDataService,
   createInvoice,
   updateInvoice,
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
+import { transformFormDataToPayload } from '@/features/invoice/utils/invoicePayload';
 
 import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
 import { showAlert } from '@/utils/alert';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger } from '@/utils/logger';
 import { calculateFinancialYear } from '@/utils/invoiceCalculations';
+
+const log = createLogger('useInvoiceForm');
 
 export type InvoiceFormMode = 'create' | 'edit';
 
 export interface UseInvoiceFormOptions {
   mode: InvoiceFormMode;
-  invoiceIdParam?: string;
+  /** The step of the screen that calls the hook: 1 Details, 2 Items, 3 Review. */
+  step: number;
+}
+
+/** What `navigateToStep` did. `noItems`: no GRN is chosen yet; the screen says so. */
+export type NavigateResult = 'ok' | 'busy' | 'noItems' | 'invalid';
+
+export interface SubmitSuccess {
+  success: true;
+  invoiceId?: string;
+  invoiceNo?: number;
+  /** The total the server stored, or null when it could not be read back after the save. */
+  total: number | null;
+}
+export interface SubmitFailure {
+  success: false;
+  error?: string;
+}
+/** `busy`: a save is already on its way; this call did nothing. */
+export type SubmitResult = SubmitSuccess | SubmitFailure | 'busy';
+
+export interface StepCheck {
+  isValid: boolean;
+  errors: Record<string, string>;
+  /** `noItems`: step 1 has no lines; `zeroDuration`: step 2 has lines without a duration. */
+  problem?: 'noItems' | 'zeroDuration';
+  zeroDurationCount?: number;
 }
 
 export interface UseInvoiceFormReturn {
@@ -83,7 +116,6 @@ export interface UseInvoiceFormReturn {
   itemOverrides: Record<string, string[]>;
   bulkPricing: Record<string, GroupRates>;
   invoiceId: string | null;
-  selectedGrId: string | null;
   isLoading: boolean;
   nextNumberFailed: boolean;
   /** The next invoice number is being asked for: the field is empty and the form does not go on. */
@@ -92,11 +124,18 @@ export interface UseInvoiceFormReturn {
   isLoadingItems: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
+  /** Edit only: the form differs from the saved invoice. */
+  isChanged: boolean;
+  /** Rates typed on the lines, a discount or a reason: all of it is lost when the lines are replaced. */
+  hasLineEdits: boolean;
+  /** Edit only: the GRN the invoice was saved with. */
+  savedGrId: string | null;
+  /** Edit only: the GRN the invoice was saved with, as the picker lists it. */
+  savedGrn: { id: string; gr_no: string; customer_name: string } | null;
 
-  // Initialization
-  initializeForm: () => Promise<void>;
-  loadExistingInvoice: (id: string) => Promise<void>;
-  loadGRNData: (grId: string) => Promise<void>;
+  // GRN
+  /** Loads the lines of a GRN and puts them in the form; false (form unchanged, a message shown) when it fails. */
+  loadGRNData: (grId: string, grNo?: string) => Promise<boolean>;
 
   // Header actions
   updateHeaderField: (field: keyof InvoiceHeaderData, value: unknown) => void;
@@ -104,79 +143,112 @@ export interface UseInvoiceFormReturn {
   updateDiscountAmount: (discount: number) => void;
   /** Asks for the suggested number again when the field of a new invoice is empty. True when it asked. */
   suggestNumberIfEmpty: () => boolean;
+  /** Asks again after the request failed or timed out ("Try again" next to the number field). */
+  retryNextNumber: () => void;
+  /** Edit only: puts back the GRN the invoice was saved with, its lines, discount and reasons. */
+  restoreSavedLines: () => void;
 
   // Item actions
-  setFormItems: (items: InvoiceItemData[]) => void;
-  updateFormItem: (tempId: string, updates: Partial<InvoiceItemData>) => void;
   updateItemPricing: (tempId: string, values: Partial<EditedItemValues>) => void;
-
-  // Bulk pricing actions
-  applyBulkPricing: (values: Partial<EditedItemValues>) => void;
   /** Sets the given rates on the lines of a group; a rate left out is not touched. */
   applyGroupPricing: (groupKey: string, pricing: GroupRates) => void;
   /** Sets saved rates line by line; typed line rates are kept and no override mark is added. */
   applySavedRatesToLines: (rates: Array<{ temp_id: string; charge: number; labour_rate: number; tax: number }>) => void;
 
   // Validation
-  validateCurrentStep: (step: number) => Promise<{ isValid: boolean; errors: Record<string, string> }>;
+  validateCurrentStep: (step: number) => Promise<StepCheck>;
+  /** Checks one field of step 1 and shows (or clears) its message: called when the field is left. */
+  validateField: (field: string) => Promise<void>;
   clearFieldValidationError: (field: string) => void;
-  clearAllFormValidationErrors: () => void;
 
   // Navigation
-  navigateToStep: (step: number) => Promise<boolean>;
-  canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
+  navigateToStep: (step: number) => Promise<NavigateResult>;
 
   // Submission
-  /** `total` is the total the server stored, or null when it could not be read back after the save. */
-  submitForm: () => Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }>;
+  /** `onFailure` receives the message of a refused save instead of the alert (a screen that draws it once its dialog is closed). */
+  submitForm: (onFailure?: (title: string, message: string) => void) => Promise<SubmitResult>;
 
   // Reset
   resetFormState: () => void;
-
-  // Totals recalculation
-  recalculateFormTotals: () => void;
 }
 
-/**
- * Custom hook for Invoice form management
- *
- * Consolidates form logic from:
- * - invoice-form/step1.tsx through step4.tsx
- */
-export function useInvoiceForm({
-  mode,
-  invoiceIdParam,
-}: UseInvoiceFormOptions): UseInvoiceFormReturn {
-  const dispatch = useAppDispatch();
-  const invoiceFormState = useAppSelector((state) => state.invoiceForm);
+// Numbers the requests for the next invoice number. A request is wanted only while it is the latest.
+let numberRequestCounter = 0;
+let latestNumberRequest = 0;
 
-  // Selectors
+/** A request for the next number that has not answered after this long is treated as failed (the field is typed in). */
+export const NUMBER_REQUEST_TIMEOUT_MS = 15000;
+
+/** Rejects when `work` has not settled after `ms`. */
+const withTimeout = <T,>(work: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    work.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+
+/** The keys of a validation result that belong to the invoice number field. */
+const numberErrors = (errors: Record<string, string>): Record<string, string> => {
+  const found: Record<string, string> = {};
+  Object.entries(errors).forEach(([key, message]) => {
+    if (key === 'inv_no' || key.endsWith('.inv_no')) found[key] = message;
+  });
+  return found;
+};
+
+/** The key a field's message is shown under (the full invoice schema nests the header). */
+const withoutHeaderPrefix = (errors: Record<string, string>): Record<string, string> => {
+  const flat: Record<string, string> = {};
+  Object.entries(errors).forEach(([key, message]) => {
+    flat[key.startsWith('header.') ? key.slice('header.'.length) : key] = message;
+  });
+  return flat;
+};
+
+export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoiceFormReturn {
+  const dispatch = useAppDispatch();
+
   const header = useAppSelector(selectInvoiceFormHeader);
   const items = useAppSelector(selectInvoiceFormItems);
   const editedItems = useAppSelector(selectInvoiceFormEditedItems);
   const itemOverrides = useAppSelector(selectInvoiceFormItemOverrides);
   const bulkPricing = useAppSelector(selectInvoiceFormBulkPricing);
   const invoiceId = useAppSelector(selectInvoiceFormId);
-  const selectedGrId = useAppSelector(selectSelectedGrId);
+  const numberStatus = useAppSelector(selectInvoiceNumberStatus);
+  const baseline = useAppSelector(selectInvoiceFormBaseline);
+  const isChanged = useAppSelector(selectInvoiceFormChanged);
+  const validationErrors = useAppSelector((state) => state.invoiceForm.validationErrors);
+  const isLoading = useAppSelector((state) => state.invoiceForm.is_loading);
+  const isSaving = useAppSelector((state) => state.invoiceForm.is_saving);
+  const isLoadingItems = useAppSelector((state) => state.invoiceForm.is_loading_items);
 
   const isCreateMode = mode === 'create';
+  const hasLineEdits =
+    Object.keys(editedItems).length > 0 ||
+    Object.keys(bulkPricing).length > 0 ||
+    (header.discount || 0) !== 0 ||
+    !!header.discount_reason?.trim() ||
+    !!header.zero_charge_reason?.trim();
+  const savedGrn = useMemo(
+    () => (baseline ? { id: baseline.gr_id, gr_no: baseline.header.gr_no, customer_name: baseline.header.customer_name } : null),
+    [baseline]
+  );
+  const isGettingNextNumber = numberStatus === 'loading';
+  const nextNumberFailed = numberStatus === 'failed';
 
-  // Local state
-  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
-  // True when the server could not suggest the next invoice number, so the form asks for it to be typed.
-  const [nextNumberFailed, setNextNumberFailed] = useState(false);
-  // True while the next invoice number is being asked for. The field is empty for
-  // that time and the form does not go on to the next step.
-  const [isGettingNextNumber, setIsGettingNextNumber] = useState(false);
-
-  // Refs to prevent duplicate operations
-  const hasInitialized = useRef(false);
-  const hasGeneratedInvNo = useRef(false);
-  const isLoadingData = useRef(false);
-  // Counts the requests for the next invoice number; an answer is used only while its request is the latest.
-  const nextNumberRequest = useRef(0);
+  // A save is on its way (set before the first await, so a second tap finds it).
+  const saveLock = useRef(false);
   // True while navigateToStep checks the form before it moves to a step.
   const isNavigating = useRef(false);
+
+  // The slice keeps the step of the screen in front, for whoever reads it.
+  useFocusEffect(
+    useCallback(() => {
+      dispatch(setCurrentStep(step));
+    }, [dispatch, step])
+  );
 
   /**
    * Ask the server for the next invoice number of a financial year and put it
@@ -184,129 +256,93 @@ export function useInvoiceForm({
    * new invoice opens and again when its date moves to another financial year.
    *
    * The answer is dropped when it is no longer wanted: a later request has
-   * taken its place, the user typed a number meanwhile, or the form was reset.
+   * taken its place, the user typed a number meanwhile, or the form was reset
+   * (the slice ignores an answer whose request is not the latest).
    * When no number comes back the field is emptied, so that a number suggested
    * for another year does not stay, and the form asks for one to be typed.
    */
   const requestNextNumber = useCallback(async (finYear: string) => {
-    const request = ++nextNumberRequest.current;
-    setIsGettingNextNumber(true);
-    setNextNumberFailed(false);
-    const noNumber = () => {
-      setNextNumberFailed(true);
-      dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
-    };
+    const id = ++numberRequestCounter;
+    latestNumberRequest = id;
+    dispatch(numberRequested(id));
     try {
-      const result = await getNextInvoiceNumber(finYear);
-      // Whatever took this request's place has also ended its wait.
-      if (request !== nextNumberRequest.current) return;
-      setIsGettingNextNumber(false);
-      if (result.success && result.data) {
-        dispatch(updateHeader({ inv_no: result.data.next_invoice_number, inv_no_typed: false }));
-        // A message about a missing number (Next pressed too early) no longer applies.
-        dispatch(clearValidationError('inv_no'));
-        setLocalValidationErrors((prev) => {
-          if (!('inv_no' in prev)) return prev;
-          const next = { ...prev };
-          delete next.inv_no;
-          return next;
-        });
-      } else {
-        noNumber();
-      }
+      const result = await withTimeout(getNextInvoiceNumber(finYear), NUMBER_REQUEST_TIMEOUT_MS);
+      if (id !== latestNumberRequest) return;
+      const number = result.success && result.data ? result.data.next_invoice_number : null;
+      dispatch(numberAnswered({ id, number }));
     } catch (error) {
-      if (request !== nextNumberRequest.current) return;
-      setIsGettingNextNumber(false);
-      noNumber();
-      console.error('[useInvoiceForm] Failed to generate invoice number:', error);
+      if (id !== latestNumberRequest) return;
+      dispatch(numberAnswered({ id, number: null }));
+      log.error('Failed to generate invoice number:', error);
       showAlert(t('invoice.form.numberFailedTitle'), t('common.checkConnection'));
     }
   }, [dispatch]);
 
-  /**
-   * Initialize form for create mode
-   */
-  const initializeForm = useCallback(async () => {
-    if (!isCreateMode || hasInitialized.current) return;
-    hasInitialized.current = true;
+  // A request still on its way is no longer wanted.
+  const dropNumberRequest = useCallback(() => {
+    latestNumberRequest = ++numberRequestCounter;
+  }, []);
 
-    // Generate invoice number
-    if (!header.inv_no && !hasGeneratedInvNo.current) {
-      hasGeneratedInvNo.current = true;
-      await requestNextNumber(header.inv_fin_year);
-    }
-  }, [isCreateMode, header.inv_no, header.inv_fin_year, requestNextNumber]);
-
-  /**
-   * Load existing invoice data for edit mode
-   */
-  const loadExistingInvoiceRef = useRef<((id: string) => Promise<void>) | null>(null);
-  const loadExistingInvoice = useCallback(async (id: string) => {
-    if (isLoadingData.current) return;
-    isLoadingData.current = true;
-
-    dispatch(setIsLoading(true));
-    try {
-      const result = await loadInvoiceDataService(id);
-      if (result.success && result.data) {
-        // Ensure header has required fields for edit mode
-        const loadedHeader = result.data.header as InvoiceHeaderData;
-        dispatch(loadInvoiceEditData({
-          invoiceId: id,
-          header: loadedHeader,
-          items: result.data.items,
-          grId: loadedHeader.gr_id || '',
-        }));
-      } else {
-        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')), [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.retry'), onPress: () => { void loadExistingInvoiceRef.current?.(id); } },
-        ]);
-      }
-    } catch (error) {
-      console.error('[useInvoiceForm] Failed to load invoice:', error);
-      showAlert(t('invoice.edit.loadFailedTitle'), t('common.checkConnection'));
-    } finally {
-      dispatch(setIsLoading(false));
-      isLoadingData.current = false;
-    }
-  }, [dispatch]);
-
-  loadExistingInvoiceRef.current = loadExistingInvoice;
+  // A new invoice asks for its number when step 1 comes to the front: when the form opens, and when "Create another"
+  // goes back to step 1 (it reset the form from step 3, so step 1 was under it and finds a new form when it focuses).
+  // Never because the form was reset: every way out of a form resets it before the screen is gone (Cancel, View
+  // invoices, print done), and that must not ask the server for a number nobody will see.
+  const latestForm = useRef({ inv_no: header.inv_no, finYear: header.inv_fin_year, numberStatus });
+  latestForm.current = { inv_no: header.inv_no, finYear: header.inv_fin_year, numberStatus };
+  useFocusEffect(
+    useCallback(() => {
+      if (!isCreateMode || step !== 1) return;
+      const now = latestForm.current;
+      if (Number(now.inv_no) > 0 || now.numberStatus !== 'idle') return;
+      void requestNextNumber(now.finYear);
+      // Later asks: the field being left empty, the date moving to another financial year, and "Try again".
+    }, [isCreateMode, step, requestNextNumber])
+  );
 
   /**
-   * Load GRN data for invoice creation
+   * Load GRN data. The lines are read first and put in the form only when that
+   * worked: a failure leaves the invoice with the GRN and the lines it had, and
+   * says which GRN could not be loaded and which one stays.
    */
-  const loadGRNData = useCallback(async (grId: string) => {
+  const loadGRNData = useCallback(async (grId: string, grNo?: string): Promise<boolean> => {
     dispatch(setIsLoadingItems(true));
+    const previousGrNo = header.gr_no;
+    const failed = (reason: string) => {
+      const kept = header.gr_id && previousGrNo && grNo
+        ? `\n${t('invoice.form.grnLoadKept', { next: formatIdentifier(grNo), previous: formatIdentifier(previousGrNo) })}`
+        : '';
+      showAlert(t('invoice.form.grnLoadFailedTitle'), `${reason}${kept}`);
+    };
     try {
       const result = await loadInvoiceFormDataService(grId);
       if (result.success && result.data) {
+        const loaded = result.data.header;
         dispatch(loadInvoiceFormData({
-          header: result.data.header,
+          // An invoice being edited keeps everything of its header except the GRN and its customer.
+          header: isCreateMode
+            ? loaded
+            : {
+                customer_id: loaded.customer_id,
+                customer_name: loaded.customer_name,
+                gr_id: loaded.gr_id,
+                gr_no: loaded.gr_no,
+              },
           items: result.data.items,
           grId,
         }));
-      } else {
-        showAlert(t('invoice.form.grnLoadFailedTitle'), serverText(result.message, t('common.checkConnection')));
+        dispatch(clearValidationError('gr_id'));
+        return true;
       }
+      failed(serverText(result.message, t('common.checkConnection')));
+      return false;
     } catch (error) {
-      console.error('[useInvoiceForm] Failed to load GRN data:', error);
-      showAlert(t('invoice.form.grnLoadFailedTitle'), t('common.checkConnection'));
+      log.error('Failed to load GRN data:', error);
+      failed(t('common.checkConnection'));
+      return false;
     } finally {
       dispatch(setIsLoadingItems(false));
     }
-  }, [dispatch]);
-
-  // The screens read the local copy of the errors, so a changed field has to be cleared there too.
-  const clearLocalErrors = useCallback((fields: string[]) => {
-    setLocalValidationErrors((prev) => {
-      if (!fields.some((field) => field in prev)) return prev;
-      const next = { ...prev };
-      fields.forEach((field) => { delete next[field]; });
-      return next;
-    });
-  }, []);
+  }, [dispatch, isCreateMode, header.gr_id, header.gr_no]);
 
   // Header actions
   const updateHeaderFields = useCallback((updates: Partial<InvoiceHeaderData>) => {
@@ -316,29 +352,36 @@ export function useInvoiceForm({
       // by a suggestion. An emptied field holds no number to keep.
       changes.inv_no_typed = Number(changes.inv_no) > 0;
       // An answer still on its way is not put into a field the user is typing in.
-      nextNumberRequest.current += 1;
-      setIsGettingNextNumber(false);
+      dropNumberRequest();
+      dispatch(numberCancelled());
     }
     dispatch(updateHeader(changes));
+    // A changed field no longer has its message.
     Object.keys(updates).forEach((field) => {
       dispatch(clearValidationError(field));
     });
-    clearLocalErrors(Object.keys(updates));
 
-    // A new invoice whose date moved to another financial year: the suggested
-    // number belonged to the year before, so the next one of this year is asked for.
-    if (isCreateMode && changes.inv_date) {
+    // The date moved to another financial year: the number belonged to the year
+    // before, unless the user typed it.
+    if (changes.inv_date) {
       const finYear = calculateFinancialYear(changes.inv_date);
       const typed = 'inv_no' in changes ? changes.inv_no_typed : header.inv_no_typed;
       if (finYear !== header.inv_fin_year && !typed) {
-        // The number in the field was the next one of the year before. It leaves
-        // the field now, not when the answer arrives: until then it could be
-        // taken for this year's number, edited and saved.
-        dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
-        void requestNextNumber(finYear);
+        if (!isCreateMode && baseline && finYear === baseline.inv_fin_year) {
+          // Back in the year the invoice was saved in: its own number returns.
+          dropNumberRequest();
+          dispatch(numberCancelled());
+          dispatch(updateHeader({ inv_no: baseline.inv_no, inv_no_typed: false }));
+        } else {
+          // The number in the field was the next one of the year before. It leaves
+          // the field now, not when the answer arrives: until then it could be
+          // taken for this year's number, edited and saved.
+          dispatch(updateHeader({ inv_no: 0, inv_no_typed: false }));
+          void requestNextNumber(finYear);
+        }
       }
     }
-  }, [dispatch, clearLocalErrors, isCreateMode, header.inv_fin_year, header.inv_no_typed, requestNextNumber]);
+  }, [dispatch, dropNumberRequest, isCreateMode, baseline, header.inv_fin_year, header.inv_no_typed, requestNextNumber]);
 
   /**
    * A new invoice whose number field is empty gets the suggestion of its
@@ -355,6 +398,11 @@ export function useInvoiceForm({
     return true;
   }, [isCreateMode, isGettingNextNumber, nextNumberFailed, header.inv_no, header.inv_fin_year, requestNextNumber]);
 
+  const retryNextNumber = useCallback(() => {
+    if (!isCreateMode) return;
+    void requestNextNumber(header.inv_fin_year);
+  }, [isCreateMode, header.inv_fin_year, requestNextNumber]);
+
   const updateHeaderField = useCallback((field: keyof InvoiceHeaderData, value: unknown) => {
     updateHeaderFields({ [field]: value });
   }, [updateHeaderFields]);
@@ -364,21 +412,8 @@ export function useInvoiceForm({
   }, [dispatch]);
 
   // Item actions
-  const setFormItems = useCallback((itemsToSet: InvoiceItemData[]) => {
-    dispatch(setItems(itemsToSet));
-  }, [dispatch]);
-
-  const updateFormItem = useCallback((tempId: string, updates: Partial<InvoiceItemData>) => {
-    dispatch(updateItem({ temp_id: tempId, item: updates }));
-  }, [dispatch]);
-
   const updateItemPricing = useCallback((tempId: string, values: Partial<EditedItemValues>) => {
     dispatch(updateEditedItem({ temp_id: tempId, values }));
-  }, [dispatch]);
-
-  // Bulk pricing actions
-  const applyBulkPricing = useCallback((values: Partial<EditedItemValues>) => {
-    dispatch(bulkUpdateItemPricing(values));
   }, [dispatch]);
 
   const applyGroupPricing = useCallback((groupKey: string, pricing: GroupRates) => {
@@ -392,152 +427,160 @@ export function useInvoiceForm({
     [dispatch]
   );
 
-  // Totals recalculation
-  const recalculateFormTotals = useCallback(() => {
-    dispatch(recalculateTotals());
-  }, [dispatch]);
+  // The invoice number may differ from the saved one only within the server's range.
+  const numberChanged = !isCreateMode && baseline !== null && header.inv_no !== baseline.inv_no;
+
+  /** Step 1 (`details`) or the whole invoice (`full`), with the rules of a new invoice or of an edit. */
+  const runSchema = useCallback(async (kind: 'details' | 'full') => {
+    const data = { header, items };
+    if (isCreateMode) {
+      return kind === 'details' ? validateNewInvoiceStep1(header) : validateNewInvoice(data);
+    }
+    // An invoice saved before the 8-digit ceiling may keep a longer number; a changed number has the ceiling.
+    const result = await (kind === 'details' ? validateStep1(header) : validateFullInvoice(data));
+    if (!numberChanged) return result;
+    const capped = await (kind === 'details' ? validateNewInvoiceStep1(header) : validateNewInvoice(data));
+    const extra = numberErrors(capped.errors);
+    if (Object.keys(extra).length === 0 || Object.keys(numberErrors(result.errors)).length > 0) return result;
+    return { isValid: false, errors: { ...result.errors, ...extra } };
+  }, [header, items, isCreateMode, numberChanged]);
 
   /**
-   * Validate a specific step
+   * Validate a specific step (1 Details, 2 Items, 3 the whole invoice) and
+   * show the messages of the fields.
    */
-  const validateCurrentStep = useCallback(async (step: number): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
-    let result: { isValid: boolean; errors: Record<string, string> };
+  const validateCurrentStep = useCallback(async (checkedStep: number): Promise<StepCheck> => {
+    let result: StepCheck;
 
-    switch (step) {
-      // A new invoice's number also has the server's ceiling (backend migration 73).
+    switch (checkedStep) {
       case 1:
-        result = await (isCreateMode ? validateNewInvoiceStep1 : validateStep1)(header);
+        if (items.length === 0) {
+          // No GRN yet: the screen offers to select one.
+          return { isValid: false, errors: {}, problem: 'noItems' };
+        }
+        result = await runSchema('details');
         break;
-      case 2:
+      case 2: {
+        // A line without a duration would be charged for no time at all.
+        const zeroDurationCount = items.filter((item) => item.duration === 0).length;
+        if (zeroDurationCount > 0) {
+          return { isValid: false, errors: {}, problem: 'zeroDuration', zeroDurationCount };
+        }
         result = await validateStep2(items);
         break;
+      }
       case 3:
-        result = await (isCreateMode ? validateNewInvoice : validateStep3)({ header, items });
-        break;
-      case 4:
-        result = await (isCreateMode ? validateNewInvoice : validateFullInvoice)({ header, items });
+        result = await runSchema('full');
         break;
       default:
         result = { isValid: true, errors: {} };
     }
 
-    if (!result.isValid) {
-      setLocalValidationErrors(result.errors);
-      dispatch(setValidationErrors(result.errors));
-    } else {
-      setLocalValidationErrors({});
-      dispatch(setValidationErrors({}));
-    }
-
+    dispatch(setValidationErrors(withoutHeaderPrefix(result.errors)));
     return result;
-  }, [header, items, dispatch, isCreateMode]);
+  }, [items, runSchema, dispatch]);
+
+  const validateField = useCallback(async (field: string) => {
+    const result = await runSchema('details');
+    dispatch(setValidationError({ field, message: result.errors[field] ?? null }));
+  }, [runSchema, dispatch]);
 
   const clearFieldValidationError = useCallback((field: string) => {
-    setLocalValidationErrors((prev) => {
-      const updated = { ...prev };
-      delete updated[field];
-      return updated;
-    });
     dispatch(clearValidationError(field));
   }, [dispatch]);
 
-  const clearAllFormValidationErrors = useCallback(() => {
-    setLocalValidationErrors({});
-    dispatch(clearAllValidationErrors());
-  }, [dispatch]);
-
   /**
-   * Check if navigation to a target step is allowed
+   * Navigate to a specific step. Going on checks every step from this screen's
+   * own up to the one before the target; going back is always allowed.
    */
-  const canNavigateToStep = useCallback(async (targetStep: number, currentStep: number): Promise<boolean> => {
-    // Can always go back
-    if (targetStep < currentStep) return true;
-
-    // Validate all steps before target
-    for (let step = currentStep; step < targetStep; step++) {
-      const validation = await validateCurrentStep(step);
-      if (!validation.isValid) {
-        showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
-        return false;
-      }
-    }
-
-    return true;
-  }, [validateCurrentStep]);
-
-  /**
-   * Navigate to a specific step
-   */
-  const navigateToStep = useCallback(async (step: number): Promise<boolean> => {
-    if (step < 1 || step > 4) return false;
+  const navigateToStep = useCallback(async (target: number): Promise<NavigateResult> => {
+    if (target < 1 || target > 3) return 'invalid';
     // A second tap while the first is still being checked does nothing.
-    if (isNavigating.current) return false;
-    const currentStep = invoiceFormState.currentStep;
+    if (isNavigating.current) return 'busy';
     // Going on waits for the invoice number: while it is being asked for, and
     // when the field was emptied (it is then asked for first).
-    if (step > currentStep && (isGettingNextNumber || suggestNumberIfEmpty())) return false;
+    if (target > step && (isGettingNextNumber || suggestNumberIfEmpty())) return 'busy';
     isNavigating.current = true;
     try {
-      const canNavigate = await canNavigateToStep(step, currentStep);
-      if (!canNavigate) return false;
+      for (let checked = step; checked < target; checked++) {
+        const check = await validateCurrentStep(checked);
+        if (check.isValid) continue;
+        if (check.problem === 'noItems') return 'noItems';
+        if (check.problem === 'zeroDuration') {
+          showAlert(
+            t('invoice.items.checkPricesTitle'),
+            t('invoice.items.zeroDuration', { count: check.zeroDurationCount ?? 0 })
+          );
+          return 'invalid';
+        }
+        showAlert(
+          t(checked === 2 ? 'invoice.items.checkPricesTitle' : 'invoice.form.checkInvoiceTitle'),
+          describeValidationErrors(check.errors)
+        );
+        return 'invalid';
+      }
 
-      dispatch(setCurrentStep(step));
-
-      const route = `${isCreateMode ? '/invoice-form' : `/invoice-edit/${invoiceId}`}/step${step}` as Href;
-      if (step < currentStep) {
+      const route = `${isCreateMode ? '/invoice-form' : `/invoice-edit/${invoiceId}`}/step${target}` as Href;
+      if (target < step) {
         // Back to a step that is already in the stack: the steps above it are
         // taken off. A push here added a second entry of that step, and the
         // form's Discard then showed the one under it, emptied.
         router.dismissTo(route);
-      } else {
+      } else if (target > step) {
         // `navigate` does nothing when the step is already in front, so a tap
         // that lands after the step opened does not open it a second time.
         router.navigate(route);
       }
-      return true;
+      return 'ok';
     } finally {
       isNavigating.current = false;
     }
-  }, [invoiceFormState.currentStep, canNavigateToStep, isCreateMode, invoiceId, dispatch, isGettingNextNumber, suggestNumberIfEmpty]);
+  }, [step, validateCurrentStep, isCreateMode, invoiceId, isGettingNextNumber, suggestNumberIfEmpty]);
 
   /**
-   * Submit the form (create or update)
+   * Submit the form (create or update). The lock is taken before the first
+   * await, so a second tap while the first is still being checked or sent does
+   * nothing and gets 'busy'.
    */
-  const submitForm = useCallback(async (): Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }> => {
-    // Validate full invoice
-    const validation = await (isCreateMode ? validateNewInvoice : validateFullInvoice)({ header, items });
-    if (!validation.isValid) {
-      showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
-      return { success: false, error: t('errors.general.validationFailed') };
-    }
-
+  const submitForm = useCallback(async (onFailure?: (title: string, message: string) => void): Promise<SubmitResult> => {
+    const report = onFailure ?? showAlert;
+    // A failed update reads "update", as the button did.
+    const failedTitleKey = isCreateMode ? 'invoice.form.saveFailedTitle' : 'invoice.review.updateFailedTitle';
+    if (saveLock.current) return 'busy';
+    saveLock.current = true;
     dispatch(setIsSaving(true));
 
     try {
+      const validation = await runSchema('full');
+      if (!validation.isValid) {
+        report(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
+        return { success: false, error: t('errors.general.validationFailed') };
+      }
+
       // A new invoice: ask the server once more whether the GRN can still be
       // invoiced and has the same dispatch lines. An existing invoice holds
       // its GRN already, so the same question would always be refused.
       if (isCreateMode) {
         const check = await checkGrnStillInvoiceable(header.gr_id, items);
         if (!check.ok) {
-          showAlert(t('invoice.form.saveFailedTitle'), check.message);
+          report(t('invoice.form.saveFailedTitle'), check.message);
           return { success: false, error: check.message };
         }
       }
 
-      // Transform header to match CreateInvoicePayload format
-      // The service internally converts inv_fin_year from string to number
-      const payload = {
-        header: {
-          ...header,
-          inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10),
-        },
-        items,
-      };
-
-      const result = isCreateMode
-        ? await createInvoice(payload)
-        : await updateInvoice(invoiceId!, payload);
+      let result;
+      if (isCreateMode) {
+        // The service converts inv_fin_year from "2026-27" to the year it starts in.
+        result = await createInvoice({
+          header: {
+            ...header,
+            inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10),
+          },
+          items,
+        });
+      } else {
+        result = await updateInvoice(invoiceId!, transformFormDataToPayload(header, items));
+      }
 
       if (result.success) {
         return {
@@ -546,104 +589,75 @@ export function useInvoiceForm({
           invoiceNo: result.data?.invoice_no,
           total: result.data?.total ?? null,
         };
-      } else {
-        showAlert(t('invoice.form.saveFailedTitle'), serverText(result.message, t('common.checkConnection')));
-        return { success: false, error: result.message };
       }
+      report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')));
+      return { success: false, error: result.message };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[useInvoiceForm] Submit error:', error);
-      showAlert(t('invoice.form.saveFailedTitle'), t('common.checkConnection'));
+      log.error('Submit error:', error);
+      report(t(failedTitleKey), t('common.checkConnection'));
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));
+      saveLock.current = false;
     }
-  }, [header, items, invoiceId, isCreateMode, dispatch]);
+  }, [header, items, invoiceId, isCreateMode, dispatch, runSchema]);
+
+  const restoreSavedLines = useCallback(() => {
+    dispatch(restoreSavedGrn());
+    dispatch(clearValidationError('gr_id'));
+  }, [dispatch]);
 
   /**
    * Reset form to initial state
    */
   const resetFormState = useCallback(() => {
-    hasInitialized.current = false;
-    hasGeneratedInvNo.current = false;
-    isLoadingData.current = false;
     // An answer still on its way belongs to the form that is being thrown away.
-    nextNumberRequest.current += 1;
-    setIsGettingNextNumber(false);
-    setNextNumberFailed(false);
-    setLocalValidationErrors({});
+    dropNumberRequest();
     dispatch(resetForm());
-  }, [dispatch]);
-
-  // Auto-initialize for create mode
-  useEffect(() => {
-    if (isCreateMode && !hasInitialized.current) {
-      initializeForm();
-    }
-  }, [isCreateMode, initializeForm]);
-
-  // Load data for edit mode
-  useEffect(() => {
-    if (!isCreateMode && invoiceIdParam && invoiceId !== invoiceIdParam && !isLoadingData.current) {
-      loadExistingInvoice(invoiceIdParam);
-    }
-  }, [isCreateMode, invoiceIdParam, invoiceId, loadExistingInvoice]);
+  }, [dispatch, dropNumberRequest]);
 
   return {
-    // State
     header,
     items,
     editedItems,
     itemOverrides,
     bulkPricing,
     invoiceId,
-    selectedGrId,
-    isLoading: invoiceFormState.is_loading,
+    isLoading,
     nextNumberFailed,
     isGettingNextNumber,
-    isSaving: invoiceFormState.is_saving,
-    isLoadingItems: invoiceFormState.is_loading_items,
+    isSaving,
+    isLoadingItems,
     validationErrors,
     isCreateMode,
+    isChanged,
+    hasLineEdits,
+    savedGrId: baseline?.gr_id ?? null,
+    savedGrn,
 
-    // Initialization
-    initializeForm,
-    loadExistingInvoice,
     loadGRNData,
 
-    // Header actions
     updateHeaderField,
     updateHeaderFields,
     updateDiscountAmount,
     suggestNumberIfEmpty,
+    retryNextNumber,
+    restoreSavedLines,
 
-    // Item actions
-    setFormItems,
-    updateFormItem,
     updateItemPricing,
-
-    // Bulk pricing actions
-    applyBulkPricing,
     applyGroupPricing,
     applySavedRatesToLines,
 
-    // Validation
     validateCurrentStep,
+    validateField,
     clearFieldValidationError,
-    clearAllFormValidationErrors,
 
-    // Navigation
     navigateToStep,
-    canNavigateToStep,
 
-    // Submission
     submitForm,
 
-    // Reset
     resetFormState,
-
-    // Totals recalculation
-    recalculateFormTotals,
   };
 }
 

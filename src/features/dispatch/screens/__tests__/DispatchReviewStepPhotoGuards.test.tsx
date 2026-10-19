@@ -37,7 +37,6 @@ jest.mock('@/hooks/useDispatchForm', () => ({
 }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/SwipeableFormStep', () => ({ __esModule: true, default: 'SwipeableFormStep' }));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
@@ -46,7 +45,7 @@ jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGri
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({}) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   unpreparedDispatchPhotos: jest.requireActual('@/features/dispatch/services/dispatchImageService').unpreparedDispatchPhotos,
@@ -111,6 +110,7 @@ it('Continue without photos abandons the failed uploads and releases their files
   await pressCreate();
   await act(async () => { confirmDialogs()[0].props.onConfirm(); });
   await act(async () => { await Promise.resolve(); });
+  await act(async () => { confirmDialogs().forEach((candidate) => candidate.props.onDismissed?.()); });
   const dialog = confirmDialogs()[1];
   expect(dialog.props.visible).toBe(true);
   expect(releaseLocalPhotos).not.toHaveBeenCalled();

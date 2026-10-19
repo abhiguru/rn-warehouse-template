@@ -25,7 +25,10 @@ jest.mock('@/store/hooks', () => {
       useSyncExternalStore(mockStore.subscribe, () => selector(mockStore.getState())),
   };
 });
-jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
+  useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
+}));
 jest.mock('@/features/invoice/services/invoiceFormService', () => ({
   getNextInvoiceNumber: jest.fn(async () => ({ success: true, data: { next_invoice_no: 12 } })),
   loadInvoiceFormData: jest.fn(),
@@ -68,7 +71,7 @@ async function mount(mode: InvoiceFormMode) {
   mockStore = store;
   const latest: { current: UseInvoiceFormReturn | null } = { current: null };
   const Harness = () => {
-    latest.current = useInvoiceForm({ mode, invoiceIdParam: mode === 'edit' ? INVOICE : undefined });
+    latest.current = useInvoiceForm({ mode, step: 3 });
     return null;
   };
   let tree!: ReturnType<typeof create>;
@@ -78,7 +81,7 @@ async function mount(mode: InvoiceFormMode) {
 const submit = async (form: () => UseInvoiceFormReturn) => {
   let result!: Awaited<ReturnType<UseInvoiceFormReturn['submitForm']>>;
   await act(async () => { result = await form().submitForm(); });
-  return result;
+  return result as Exclude<typeof result, 'busy'>;
 };
 
 beforeEach(() => {

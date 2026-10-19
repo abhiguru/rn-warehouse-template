@@ -84,8 +84,7 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({
 }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/features/invoice/components/InvoiceItemsTable', () => ({ InvoiceItemsTable: 'InvoiceItemsTable' }));
-jest.mock('@/features/invoice/components/InvoiceItemCard', () => ({ InvoiceItemCard: 'InvoiceItemCard' }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: 'InvoiceItemsEditor' }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));

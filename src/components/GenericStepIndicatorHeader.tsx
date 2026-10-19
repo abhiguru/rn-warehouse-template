@@ -105,11 +105,13 @@ export interface FirstStepBack {
   hasData: boolean;
   /** Where Back goes when nothing was entered: the list the form was opened from. */
   exitRoute: string;
+  /** See useFirstStepBack: `dismissTo` leaves one entry of the list's tab. */
+  exitWith?: 'replace' | 'dismissTo';
 }
 
 /** Listens for the Back key while the header is given `backOnFirstStep`; draws nothing. */
-function FirstStepBackKey({ hasData, exitRoute, askToDiscard }: FirstStepBack & { askToDiscard: () => void }) {
-  useFirstStepBack({ hasData, exitRoute, askToDiscard });
+function FirstStepBackKey({ hasData, exitRoute, exitWith, askToDiscard }: FirstStepBack & { askToDiscard: () => void }) {
+  useFirstStepBack({ hasData, exitRoute, exitWith, askToDiscard });
   return null;
 }
 
@@ -119,7 +121,10 @@ function FirstStepBackKey({ hasData, exitRoute, askToDiscard }: FirstStepBack & 
 
 /** Step circle diameter (style guide §13.8). */
 const STEP_SIZE = 28;
-const CONNECTOR_WIDTH = 8;
+/** Each step circle's touch target is touchTarget wide: the circle plus half of the connector on each side. */
+const CONNECTOR_WIDTH = touchTarget - STEP_SIZE;
+/** The title wraps to this many lines before it is cut. */
+const TITLE_LINES = 2;
 const PROGRESS_HEIGHT = 4;
 const STEP_HIT_SLOP = {
   top: (touchTarget - STEP_SIZE) / 2,
@@ -328,7 +333,8 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
           <View style={styles.entityTextContainer}>
-            <Text style={styles.entityName} numberOfLines={1} accessibilityRole="header">
+            {/* Two lines: the wider step targets leave the title less room, and "Edit invoice" or a Gujarati title would be cut at 320 dp */}
+            <Text style={styles.entityName} numberOfLines={TITLE_LINES} accessibilityRole="header">
               {entityName}
             </Text>
             {entityId && (

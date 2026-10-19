@@ -5,7 +5,7 @@ import {
 import type { InvoiceItemData } from '@/types/invoice.types';
 import reducer, {
   loadInvoiceFormData, updateDiscount,
-  updateEditedItem, bulkUpdateItemPricing, bulkUpdateItemGroupPricing, recalculateTotals,
+  updateEditedItem, bulkUpdateItemGroupPricing,
 } from '@/store/slices/invoiceFormSlice';
 
 function line(id: string, qty: number, charge: number, labour: number, tax: number, duration = 1): InvoiceItemData {
@@ -113,12 +113,10 @@ describe('a one-time GRN', () => {
   });
 });
 
-it('uses the same header contract after individual, bulk and group edits', () => {
+it('uses the same header contract after individual and group edits', () => {
   for (const action of [
     updateEditedItem({ temp_id: 'first', values: { charge: 5 } }),
-    bulkUpdateItemPricing({ tax: 5 }),
     bulkUpdateItemGroupPricing({ group_key: 'item:::FIX', pricing: { charge: 5, labour_rate: 2, tax: 5 } }),
-    recalculateTotals(),
   ]) {
     expect(reducer(loaded(), action).header).toMatchObject({ labour: 20, tax_amount: 9, total: 179 });
   }

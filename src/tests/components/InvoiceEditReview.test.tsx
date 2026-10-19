@@ -3,31 +3,24 @@
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { configureStore } from '@reduxjs/toolkit';
-import invoiceFormReducer, { loadInvoiceEditData, resetForm } from '@/store/slices/invoiceFormSlice';
 import { updateInvoice } from '@/features/invoice/services/invoiceFormService';
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
-import type { InvoiceItemData } from '@/types/invoice.types';
+import { makeInvoiceStore, openForEdit, invoiceLine } from '@/tests/helpers/invoiceFixtures';
 import InvoiceEditStep3 from '../../../app/invoice-edit/[id]/step3';
 
-const mockStore = configureStore({
-  reducer: {
-    invoiceForm: invoiceFormReducer,
-    theme: () => ({ preference: 'light', brand: 'orange' }),
-    auth: () => ({ userProfile: { role: 'staff' } }),
-  },
-});
-jest.mock('@/store/hooks', () => ({
-  useAppDispatch: () => mockStore.dispatch,
-  useAppSelector: (selector: (state: unknown) => unknown) => selector(mockStore.getState()),
-}));
+const mockStore = makeInvoiceStore({ role: 'staff' });
+jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').storeHooks(() => mockStore));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ role: 'staff' }) }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), dismiss: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn(), back: jest.fn(), dismiss: jest.fn(), dismissTo: jest.fn(), navigate: jest.fn() },
+  useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
+}));
+jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-paper', () => ({ Snackbar: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
+jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 // Stand-ins that keep their props, so the test can read what they are given and call back.
@@ -43,58 +36,16 @@ jest.mock('@/features/invoice/services/invoiceFormService', () => ({
 }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 
-const line: InvoiceItemData = {
-  temp_id: 'edit_1_0',
-  disp_trl_id: 'aaaaaaaa-2222-4333-8444-555555555555',
-  grn_item_id: 'g1',
-  item_id: 'i1',
-  item_name: 'Example Potatoes',
-  qty: 100,
-  grn_original_qty: 100,
-  package_mark: 'M1',
-  rack: '',
-  weight: 50,
-  dispatch_id: 'd1',
-  dispatch_no: 'I0001',
-  dispatch_date: '2026-10-01',
-  grn_id: '11111111-2222-4333-8444-555555555555',
-  grn_no: 'A0010',
-  grn_date: '2026-09-01',
-  duration: 1,
-  no_of_days: 30,
-  charge: 5,
-  labour_rate: 2,
-  tax: 5,
-  amount: 500,
-  labour_amount: 200,
-  tax_amount: 35,
-  item_total: 735,
-};
+const line = invoiceLine({ qty: 100 }, 0);
 
 function loadInvoice() {
-  mockStore.dispatch(resetForm());
-  mockStore.dispatch(
-    loadInvoiceEditData({
-      invoiceId: 'inv-42',
-      grId: line.grn_id,
-      header: {
-        inv_date: '2026-10-05',
-        inv_fin_year: '2026-27',
-        inv_no: 42,
-        customer_id: '22222222-3333-4444-8555-666666666666',
-        customer_name: 'Example Traders',
-        gr_id: line.grn_id,
-        gr_no: 'A0010',
-        one_time_charge: false,
-        discount: 400,
-        discount_reason: 'Damaged bags',
-        labour: 200,
-        tax_amount: 35,
-        total: 335,
-      },
-      items: [line],
-    })
-  );
+  openForEdit(mockStore, [line], {
+    discount: 400,
+    discount_reason: 'Damaged bags',
+    labour: 200,
+    tax_amount: 35,
+    total: 335,
+  });
 }
 
 async function render() {
@@ -103,6 +54,9 @@ async function render() {
   return tree;
 }
 const standIn = (tree: ReactTestRenderer, name: string) => tree.root.findByType(name as unknown as React.ElementType);
+// The dialogs that are open (the stand-in keeps the props of ConfirmDialog).
+const shown = (tree: ReactTestRenderer) =>
+  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
 const pressUpdate = async (tree: ReactTestRenderer) => {
   const button = tree.root.find(
     (node) => node.props.accessibilityLabel === t('invoice.review.updateInvoice') && typeof node.props.onPress === 'function'
@@ -126,13 +80,14 @@ describe('a discount the field did not accept', () => {
 
     await pressUpdate(tree);
 
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
-    expect(title).toBe(t('invoice.review.discountCheckTitle'));
-    expect(message).toContain(rejected);
-    expect(message).toContain('₹400.00');
-    // No "Update invoice" button to press: the dialog only informs.
-    expect(buttons).toBeUndefined();
+    expect(shown(tree)).toHaveLength(1);
+    const dialog = shown(tree)[0];
+    expect(dialog.props.title).toBe(t('invoice.review.discountCheckTitle'));
+    expect(dialog.props.message).toContain(rejected);
+    expect(dialog.props.message).toContain('₹400.00');
+    // The dialog only informs: its one button closes it and nothing is saved.
+    expect(dialog.props.confirmText).toBe(t('common.close'));
+    await act(async () => { dialog.props.onConfirm(); });
     expect(updateInvoice).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
@@ -144,8 +99,9 @@ describe('a discount the field did not accept', () => {
 
     await pressUpdate(tree);
 
-    const [title] = jest.mocked(showAlert).mock.calls[0];
-    expect(title).toBe(t('invoice.review.updateTitle', { number: '42' }));
+    expect(shown(tree)).toHaveLength(1);
+    expect(shown(tree)[0].props.title).toBe(t('invoice.review.updateTitle', { number: '42' }));
+    expect(showAlert).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 });
@@ -153,9 +109,12 @@ describe('a discount the field did not accept', () => {
 describe('the total of an updated invoice', () => {
   const confirmUpdate = async (tree: ReactTestRenderer) => {
     await pressUpdate(tree);
-    const [, message, buttons] = jest.mocked(showAlert).mock.calls[0];
-    await act(async () => { await buttons!.find((button) => button.text === t('invoice.review.updateInvoice'))!.onPress!(); });
-    return message;
+    const dialog = shown(tree)[0];
+    expect(dialog.props.confirmText).toBe(t('invoice.review.updateInvoice'));
+    await act(async () => { await dialog.props.onConfirm(); });
+    // The invoice dialog opens once the question has finished closing.
+    await act(async () => { dialog.props.onDismissed(); });
+    return dialog.props.message as string;
   };
 
   it('is asked for as an estimate and shown as the server stored it', async () => {
@@ -168,7 +127,10 @@ describe('the total of an updated invoice', () => {
     expect(message).toContain('Estimated total ₹335.00');
     const dialog = standIn(tree, 'InvoiceSuccessDialog');
     expect(dialog.props.isVisible).toBe(true);
+    expect(dialog.props.isEditMode).toBe(true);
     expect(dialog.props.invoiceData).toMatchObject({ invoice_no: 42, total: 598, estimated_total: 335 });
+    // The question is closed once the save is over.
+    expect(shown(tree)).toHaveLength(0);
     await act(async () => { tree.unmount(); });
   });
 

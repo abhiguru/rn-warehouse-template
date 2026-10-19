@@ -5,6 +5,10 @@
  * state, match shown in bold) and §13.9 (bottom sheet on surface.sheet with
  * radius.sheet top corners, grab handle, shadow[4] over the scrim; Android
  * back closes it).
+ *
+ * The sheet holds a field, so it follows style guide §5.2: the Modal draws
+ * under the navigation bar and a KeyboardAvoidingView lifts the sheet over the
+ * keyboard, so the list is never covered by it.
  */
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
@@ -16,6 +20,7 @@ import {
   Pressable,
   TextInput,
   Keyboard,
+  KeyboardAvoidingView,
   StyleSheet,
   type StyleProp,
   type TextStyle,
@@ -37,12 +42,25 @@ import { InvoiceableGrn } from '@/types/invoice.types';
 import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormService';
 import { formatCount, formatDate, toDate } from '@/utils/formatters';
 import { normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { createLogger } from '@/utils/logger';
+
+const log = createLogger('GRNAutocomplete');
 
 interface GRNAutocompleteProps {
   isVisible: boolean;
   onClose: () => void;
   onSelect: (grn: InvoiceableGrn) => void;
-  currentValue?: InvoiceableGrn | null;
+  /** The GRN the form holds now: marked with a check where it is in the list. */
+  currentValue?: { id: string } | null;
+  /**
+   * Edit: the invoice's own GRN. It is invoiced already, so it is not among the
+   * GRNs that can be invoiced; it is listed first ("Current GRN" while it is the one chosen,
+   * "Saved GRN" after the invoice moved to another). Choosing it while it is the current one only
+   * closes the sheet; after a change it is selected, so that the form can go back to it.
+   */
+  pinnedGrn?: Pick<InvoiceableGrn, 'id' | 'gr_no' | 'customer_name'> | null;
+  /** The sheet has finished closing (iOS `onDismiss`): a question about the pick may open from here. */
+  onDismissed?: () => void;
 }
 
 const formatGrnDate = (value: string): string => (toDate(value) ? formatDate(value, 'short') : '');
@@ -238,11 +256,15 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
   onClose,
   onSelect,
   currentValue,
+  pinnedGrn,
+  onDismissed,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Counts the searches; an answer is used only while its search is the latest.
+  const searchRequest = useRef(0);
   const inputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [grns, setGrns] = useState<InvoiceableGrn[]>([]);
@@ -251,10 +273,13 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
 
   // Search GRNs function
   const performSearch = useCallback(async (query: string) => {
+    const request = ++searchRequest.current;
     setIsLoading(true);
     setHasError(false);
     try {
       const response = await getInvoiceableGrns(normalizeDigits(query.trim()) || undefined);
+      // A later search (or closing the sheet) has taken this one's place.
+      if (request !== searchRequest.current) return;
 
       if (response.success && response.data) {
         setGrns(response.data);
@@ -263,11 +288,19 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
         setHasError(!response.success);
       }
     } catch (error) {
-      console.error('[GRNAutocomplete] Search error:', error);
+      log.error('Search error:', error);
+      if (request !== searchRequest.current) return;
       setGrns([]);
       setHasError(true);
     } finally {
-      setIsLoading(false);
+      if (request === searchRequest.current) setIsLoading(false);
+    }
+  }, []);
+
+  const cancelPendingSearch = useCallback(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
     }
   }, []);
 
@@ -276,18 +309,24 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
     (text: string) => {
       setSearchQuery(text);
 
-      // Clear previous timeout
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
+      // The answer to an earlier query is not wanted any more.
+      searchRequest.current += 1;
+      cancelPendingSearch();
 
       // Set new timeout for debounced search
       searchTimeoutRef.current = setTimeout(() => {
         performSearch(text);
       }, 300); // 300ms debounce
     },
-    [performSearch]
+    [performSearch, cancelPendingSearch]
   );
+
+  // Clear the field: the full list returns, and a search still waiting to start is dropped.
+  const handleClear = useCallback(() => {
+    cancelPendingSearch();
+    setSearchQuery('');
+    void performSearch('');
+  }, [cancelPendingSearch, performSearch]);
 
   // Handle GRN selection
   const handleGRNSelect = useCallback(
@@ -304,12 +343,10 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
     Keyboard.dismiss();
     setSearchQuery('');
     setGrns([]);
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
+    searchRequest.current += 1;
+    cancelPendingSearch();
     onClose();
-  }, [onClose]);
+  }, [onClose, cancelPendingSearch]);
 
   // Load initial GRNs and auto-focus search input when modal opens
   useEffect(() => {
@@ -378,6 +415,38 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
 
   const renderSeparator = useCallback(() => <View style={styles.divider} />, [styles]);
 
+  // The invoice's own GRN (edit): listed first while it matches what is typed.
+  const pinnedMatches = (() => {
+    if (!pinnedGrn) return false;
+    const query = normalizeDigits(searchQuery.trim()).toLowerCase();
+    if (!query) return true;
+    return `${pinnedGrn.gr_no} ${pinnedGrn.customer_name}`.toLowerCase().includes(query);
+  })();
+  const pinnedIsCurrent = !!pinnedGrn && currentValue?.id === pinnedGrn.id;
+  const pinnedRow = pinnedGrn && pinnedMatches ? (
+    <View>
+      <Pressable
+        style={({ pressed }) => [styles.grnItem, pinnedIsCurrent && styles.grnItemSelected, pressed && styles.grnItemPressed]}
+        onPress={pinnedIsCurrent ? handleClose : () => handleGRNSelect(pinnedGrn as InvoiceableGrn)}
+        accessibilityRole="button"
+        accessibilityLabel={tr(pinnedIsCurrent ? 'invoice.grnPicker.currentGrnA11y' : 'invoice.grnPicker.savedGrnA11y', { number: formatIdentifier(pinnedGrn.gr_no) })}
+        accessibilityState={{ selected: pinnedIsCurrent }}
+        testID="grn-picker-current"
+      >
+        <Icon name="package-down" size={iconSize.lg} color={t.icon.secondary} />
+        <View style={styles.grnContent}>
+          <Text style={styles.grnNumber} numberOfLines={2}>
+            {tr('invoice.label.grnNumber', { number: formatIdentifier(pinnedGrn.gr_no) })}
+          </Text>
+          <Text style={styles.customerName} numberOfLines={2}>{pinnedGrn.customer_name}</Text>
+          <Text style={styles.metaText}>{tr(pinnedIsCurrent ? 'invoice.grnPicker.currentGrn' : 'invoice.grnPicker.savedGrn')}</Text>
+        </View>
+        {pinnedIsCurrent && <Icon name="check" size={iconSize.md} color={t.brand.tint} />}
+      </Pressable>
+      <View style={styles.divider} />
+    </View>
+  ) : null;
+
   // Render empty, loading and error states
   const renderEmptyState = useCallback(() => {
     if (isLoading) {
@@ -428,9 +497,11 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
       transparent={true}
       animationType="slide"
       onRequestClose={handleClose}
+      onDismiss={onDismissed}
       statusBarTranslucent={true}
+      navigationBarTranslucent
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding">
         {/* Backdrop */}
         <Pressable
           style={styles.backdrop}
@@ -479,10 +550,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
             />
             {searchQuery.length > 0 && (
               <Pressable
-                onPress={() => {
-                  setSearchQuery('');
-                  performSearch('');
-                }}
+                onPress={handleClear}
                 style={styles.clearButton}
                 accessibilityRole="button"
                 accessibilityLabel={tr('common.clearSearch')}
@@ -492,14 +560,16 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
             )}
           </View>
 
-          {/* Results Count */}
-          {grns.length > 0 && (
-            <View style={styles.resultsCount}>
-              <Text style={styles.resultsCountText}>
-                {formatCount(grns.length, 'GRN')}
-              </Text>
-            </View>
-          )}
+          {/* Results Count: a live region, so a screen reader hears the count change as the person types */}
+          <View accessibilityLiveRegion="polite" testID="grn-picker-count">
+            {grns.length > 0 && (
+              <View style={styles.resultsCount}>
+                <Text style={styles.resultsCountText}>
+                  {formatCount(grns.length, 'GRN')}
+                </Text>
+              </View>
+            )}
+          </View>
 
           {/* GRN List */}
           <FlatList
@@ -508,12 +578,13 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
             renderItem={renderGRNItem}
             ItemSeparatorComponent={renderSeparator}
             contentContainerStyle={styles.listContainer}
+            ListHeaderComponent={pinnedRow}
             ListEmptyComponent={renderEmptyState}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={true}
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

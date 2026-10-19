@@ -169,7 +169,7 @@ export interface UseDispatchFormReturn {
   canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
 
   // Submission
-  submitForm: (generateInvoice?: boolean) => Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }>;
+  submitForm: (generateInvoice?: boolean, onFailure?: (title: string, message: string) => void) => Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }>;
 
   // Reset
   resetFormState: () => void;
@@ -678,11 +678,13 @@ export function useDispatchForm({
   /**
    * Submit the form (create or update)
    */
-  const submitForm = useCallback(async (generateInvoice: boolean = false): Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }> => {
+  const submitForm = useCallback(async (generateInvoice: boolean = false, onFailure?: (title: string, message: string) => void): Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }> => {
+    // The caller may hold the error until a dialog still closing is gone (iOS shows no Modal over it)
+    const report = onFailure ?? showAlert;
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
-      showAlert(t('dispatch.validation.title'), validationSummary(validation.errors) || t('dispatch.validation.fillRequired'));
+      report(t('dispatch.validation.title'), validationSummary(validation.errors) || t('dispatch.validation.fillRequired'));
       return { success: false, error: t('dispatch.validation.failed') };
     }
 
@@ -708,13 +710,13 @@ export function useDispatchForm({
           failedPhotos: result.failed_photos ?? [],
         };
       } else {
-        showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed')));
+        report(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed')));
         return { success: false, error: result.error };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('dispatch.wizard.unknownError');
       console.error('[useDispatchForm] Submit error:', error);
-      showAlert(t('dispatch.wizard.errorTitle'), errorMessage);
+      report(t('dispatch.wizard.errorTitle'), errorMessage);
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

@@ -6,6 +6,9 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { serverText } from '@/utils/serverText';
+import { createLogger } from '@/utils/logger';
+
+const invoiceServiceLogger = createLogger('InvoiceService');
 
 // M1 Fix: DRY empty pagination response
 const EMPTY_INVOICE_PAGINATION = { total_count: 0, limit: PAGINATION.DEFAULT_LIMIT, offset: 0, has_more: false };
@@ -93,7 +96,7 @@ export interface GetInvoicesListParams {
 export const getInvoicesList = async (
   params: GetInvoicesListParams = {}
 ): Promise<InvoiceListResponse> => {
-  console.log('[InvoiceService] getInvoicesList called with params:', params);
+  invoiceServiceLogger.debug('getInvoicesList called');
   const startTime = Date.now();
 
   try {
@@ -114,9 +117,9 @@ export const getInvoicesList = async (
       p_customer_ids,
     } = params;
 
-    console.log('[InvoiceService] Getting authenticated client...');
+    invoiceServiceLogger.debug('Getting authenticated client...');
     const authenticatedClient = await getAuthenticatedClient();
-    console.log('[InvoiceService] Calling RPC get_invoices_list...');
+    invoiceServiceLogger.debug('Calling RPC get_invoices_list...');
 
     const { data, error } = await authenticatedClient.rpc('get_invoices_list', {
       p_limit,
@@ -136,7 +139,7 @@ export const getInvoicesList = async (
     });
 
     const duration = Date.now() - startTime;
-    console.log('[InvoiceService] RPC completed in', duration, 'ms', {
+    invoiceServiceLogger.debug('RPC completed in', duration, 'ms', {
       hasData: !!data,
       hasError: !!error,
       dataSuccess: data?.success,
@@ -145,7 +148,7 @@ export const getInvoicesList = async (
     });
 
     if (error) {
-      console.error('[InvoiceService] Failed to fetch invoice list:', error.message);
+      invoiceServiceLogger.error('Failed to fetch invoice list:', error.message);
       return {
         ...createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getInvoicesList'),
         data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: p_limit, offset: p_offset } }
@@ -173,7 +176,7 @@ export const getInvoicesList = async (
     };
 
   } catch (error) {
-    console.error('[InvoiceService] Exception:', error);
+    invoiceServiceLogger.error('Exception:', error);
     return {
       ...createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoicesList'),
       data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0 } }
@@ -554,16 +557,16 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
       };
     }
 
-    console.log('[InvoiceService] Fetching invoice details for ID:', invoiceId);
+    invoiceServiceLogger.debug('Fetching invoice details for ID:', invoiceId);
     const authenticatedClient = await getAuthenticatedClient();
-    console.log('[InvoiceService] Got authenticated client, calling get_invoice_data RPC...');
+    invoiceServiceLogger.debug('Got authenticated client, calling get_invoice_data RPC...');
 
     // Use get_invoice_data RPC which includes nested structure with dispatch details (disp_no, disp_date)
     const { data, error } = await authenticatedClient.rpc('get_invoice_data', {
       p_invoice_id: invoiceId
     });
 
-    console.log('[InvoiceService] RPC response:', {
+    invoiceServiceLogger.debug('RPC response:', {
       hasData: !!data,
       hasError: !!error,
       errorMsg: error?.message,
@@ -576,7 +579,7 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     });
 
     if (error) {
-      console.error('[InvoiceService] Failed to fetch invoice details:', error.message, error);
+      invoiceServiceLogger.error('Failed to fetch invoice details:', error.message);
       return createErrorResponse(error, t('errors.invoice.fetchDetailsFailed'), 'InvoiceService.getInvoiceDetails');
     }
 
@@ -602,7 +605,7 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
       message: t('errors.invoice.detailsFetched')
     };
   } catch (error) {
-    console.error('[InvoiceService] Exception:', error);
+    invoiceServiceLogger.error('Exception:', error);
     return createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoiceDetails');
   }
 };
@@ -781,33 +784,30 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       };
     }
 
-    console.log('[InvoiceService] Fetching invoice items for ID:', invoiceId);
+    invoiceServiceLogger.debug('Fetching invoice items for ID:', invoiceId);
     const authenticatedClient = await getAuthenticatedClient();
     const { data, error } = await authenticatedClient.rpc('get_invoice_items_detailed', {
       p_invoice_id: invoiceId
     });
 
-    console.log('[InvoiceService] Invoice items RPC response:', {
+    invoiceServiceLogger.debug('Invoice items RPC response:', {
       hasData: !!data,
       hasError: !!error,
       isArray: Array.isArray(data),
       dataSuccess: data?.success,
       dataError: data?.error,
       itemCount: Array.isArray(data) ? data.length : data?.data?.items?.length,
-      fullData: JSON.stringify(data).substring(0, 500)
     });
 
     if (error) {
-      console.error('[InvoiceService] Failed to fetch invoice items:', error.message);
+      invoiceServiceLogger.error('Failed to fetch invoice items:', error.message);
       return createErrorResponse(error, t('errors.invoice.fetchItemsFailed'), 'InvoiceService.getInvoiceItemsDetailed');
     }
 
     // Handle array response format (RPC returns items directly as array)
     if (Array.isArray(data)) {
-      console.log('[InvoiceService] Invoice items fetched successfully (array format):', {
+      invoiceServiceLogger.debug('Invoice items fetched successfully (array format):', {
         itemCount: data.length,
-        firstItemKeys: data.length > 0 ? Object.keys(data[0]) : [],
-        firstItem: data.length > 0 ? JSON.stringify(data[0]).substring(0, 1000) : 'empty'
       });
 
       const mappedItems: InvoiceItemDetailed[] = data.map(mapDetailedInvoiceItem);
@@ -831,7 +831,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
 
     // Handle object response format { success: true, data: { items: [...] } }
     if (!data || !data.success) {
-      console.warn('[InvoiceService] Invoice items not successful:', data?.error || data?.message);
+      invoiceServiceLogger.warn('Invoice items not successful:', data?.error || data?.message);
       return {
         success: false,
         message: serverText(data?.message, t('errors.invoice.noItemsFound')),
@@ -839,7 +839,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       };
     }
 
-    console.log('[InvoiceService] Invoice items fetched successfully:', {
+    invoiceServiceLogger.debug('Invoice items fetched successfully:', {
       itemCount: data.data?.items?.length,
       summary: data.data?.summary
     });
@@ -855,7 +855,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       message: t('errors.invoice.itemsFetched')
     };
   } catch (error) {
-    console.error('[InvoiceService] Invoice Items Exception:', error);
+    invoiceServiceLogger.error('Invoice Items Exception:', error);
     return createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoiceItemsDetailed');
   }
 };

@@ -5,7 +5,6 @@ import {
   InvoiceItemData,
   EditedItemValues,
   GroupRates,
-  SavedInvoiceData,
 } from '@/types/invoice.types';
 import {
   roundMoney,
@@ -13,7 +12,6 @@ import {
   calculateHeaderTotals,
   calculateItemAmounts,
   recalculateItemWithEdits,
-  applyBulkPricingToAllItems,
   applyBulkGroupPricing,
 } from '@/utils/invoiceCalculations';
 
@@ -39,19 +37,51 @@ const createInitialHeader = (): InvoiceHeaderData => {
   };
 };
 
-// #18 Fix: Snapshot type for rollback
-interface InvoiceFormSnapshot {
-  invoiceId: string | null;
-  selectedGrId: string | null;
+/**
+ * What the saved invoice looked like when it was opened for editing: the
+ * fingerprint of the fields the person can change, and the number and year it
+ * was saved with (a date moved back into that year gets the number back).
+ */
+export interface InvoiceBaseline {
+  fingerprint: string;
+  inv_no: number;
+  inv_fin_year: string;
+  gr_id: string;
+  /** The header and lines as loaded: choosing the invoice's own GRN again after a change brings them back. */
   header: InvoiceHeaderData;
   items: InvoiceItemData[];
-  editedItems: Record<string, Partial<EditedItemValues>>;
-  itemOverrides: Record<string, Array<'charge' | 'labour_rate' | 'tax'>>;
-  bulkPricing: Record<string, GroupRates>;
 }
 
-// Initial state
-const createInitialState = (): InvoiceFormState & { snapshot: InvoiceFormSnapshot | null } => ({
+/**
+ * The fields of an invoice that the person can change, as one string. The
+ * form is "changed" when this differs from the one taken when it was loaded.
+ */
+export const invoiceFingerprint = (header: InvoiceHeaderData, items: InvoiceItemData[]): string =>
+  JSON.stringify([
+    header.inv_no,
+    header.inv_date,
+    header.gr_id,
+    header.discount || 0,
+    (header.discount_reason || '').trim(),
+    (header.zero_charge_reason || '').trim(),
+    items.map((item) => [item.temp_id, item.charge, item.labour_rate, item.tax, item.duration, item.no_of_days]),
+  ]);
+
+/** The state of the invoice form's request for the next invoice number. */
+export type NumberStatus = 'idle' | 'loading' | 'failed';
+
+export type InvoiceFormSliceState = InvoiceFormState & {
+  /** Raised by every reset: a screen that sees it change knows a new form was opened. */
+  formSession: number;
+  numberStatus: NumberStatus;
+  /** The request whose answer is wanted; any other answer is stale. 0: none. */
+  numberRequestId: number;
+  /** Set when an invoice is loaded for editing; null in a new invoice. */
+  baseline: InvoiceBaseline | null;
+};
+
+// Initial state. The steps are 1-based: a new form is on step 1.
+const createInitialState = (formSession = 0): InvoiceFormSliceState => ({
   invoice_id: null,
   selected_gr_id: null,
   header: createInitialHeader(),
@@ -59,26 +89,25 @@ const createInitialState = (): InvoiceFormState & { snapshot: InvoiceFormSnapsho
   editedItems: {},
   itemOverrides: {},
   bulkPricing: {},
-  currentStep: 0,
+  currentStep: 1,
   is_loading: false,
   is_saving: false,
   is_loading_items: false,
   error: null,
   validationErrors: {},
-  // #18 Fix: Snapshot for optimistic update rollback
-  snapshot: null,
+  formSession,
+  numberStatus: 'idle',
+  numberRequestId: 0,
+  baseline: null,
 });
 
 const invoiceFormSlice = createSlice({
   name: 'invoiceForm',
-  initialState: createInitialState,
+  initialState: () => createInitialState(),
   reducers: {
     // ID management
     setInvoiceId: (state, action: PayloadAction<string | null>) => {
       state.invoice_id = action.payload;
-    },
-    setSelectedGrId: (state, action: PayloadAction<string | null>) => {
-      state.selected_gr_id = action.payload;
     },
 
     // Header management
@@ -98,16 +127,6 @@ const invoiceFormSlice = createSlice({
       state.items = action.payload;
       // Reset edited items when items are loaded
       state.editedItems = {};
-    },
-
-    updateItem: (
-      state,
-      action: PayloadAction<{ temp_id: string; item: Partial<InvoiceItemData> }>
-    ) => {
-      const index = state.items.findIndex((item) => item.temp_id === action.payload.temp_id);
-      if (index !== -1) {
-        state.items[index] = { ...state.items[index], ...action.payload.item };
-      }
     },
 
     // Edited items tracking (for user edits)
@@ -151,34 +170,6 @@ const invoiceFormSlice = createSlice({
       state.header.total = headerTotals.total;
     },
 
-    // Bulk update all item pricing (useful for applying defaults)
-    bulkUpdateItemPricing: (
-      state,
-      action: PayloadAction<Partial<EditedItemValues>>
-    ) => {
-      const defaultValues = action.payload;
-
-      // Apply bulk pricing using extracted function
-      state.items = applyBulkPricingToAllItems(state.items, defaultValues);
-
-      // Track as edited for each item
-      state.items.forEach((item) => {
-        if (!state.editedItems[item.temp_id]) {
-          state.editedItems[item.temp_id] = {};
-        }
-        state.editedItems[item.temp_id] = {
-          ...state.editedItems[item.temp_id],
-          ...defaultValues,
-        };
-      });
-
-      // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
-      state.header.labour = headerTotals.labour;
-      state.header.tax_amount = headerTotals.tax_amount;
-      state.header.total = headerTotals.total;
-    },
-
     // Update discount and recalculate total
     updateDiscount: (state, action: PayloadAction<number>) => {
       const discount = roundMoney(action.payload);
@@ -198,14 +189,6 @@ const invoiceFormSlice = createSlice({
       state.header.discount = discount;
       const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
       Object.assign(state.header, headerTotals);
-    },
-
-    // Recalculate all totals (called after any item changes)
-    recalculateTotals: (state) => {
-      const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
-      state.header.labour = headerTotals.labour;
-      state.header.tax_amount = headerTotals.tax_amount;
-      state.header.total = headerTotals.total;
     },
 
     // Set the rates a saved rate form gives to the lines it concerns. This is not a typed edit:
@@ -313,23 +296,16 @@ const invoiceFormSlice = createSlice({
       state.is_loading_items = action.payload;
     },
 
-    // Error handling
-    setError: (state, action: PayloadAction<string>) => {
-      state.error = action.payload;
-    },
-    clearError: (state) => {
-      state.error = null;
-    },
-
     // Validation
     setValidationErrors: (state, action: PayloadAction<Record<string, string>>) => {
       state.validationErrors = action.payload;
     },
+    setValidationError: (state, action: PayloadAction<{ field: string; message: string | null }>) => {
+      if (action.payload.message) state.validationErrors[action.payload.field] = action.payload.message;
+      else delete state.validationErrors[action.payload.field];
+    },
     clearValidationError: (state, action: PayloadAction<string>) => {
       delete state.validationErrors[action.payload];
-    },
-    clearAllValidationErrors: (state) => {
-      state.validationErrors = {};
     },
 
     // Bulk operations
@@ -346,16 +322,21 @@ const invoiceFormSlice = createSlice({
       const preservedInvNoTyped = state.header.inv_no_typed;
       const preservedInvDate = state.header.inv_date;
       const preservedInvFinYear = state.header.inv_fin_year;
-      const preservedDiscount = state.header.discount;
-      // What goes with the discount stays with it. Without these an invoice
-      // being edited would forget the discount it was saved with, ask for a
-      // reason although nothing changed, and show an empty reason field.
-      const preservedDiscountRecord = {
-        discount_reason: state.header.discount_reason,
-        saved_discount: state.header.saved_discount,
-        saved_discount_reason: state.header.saved_discount_reason,
-        discount_reason_edited: state.header.discount_reason_edited,
-      };
+      // An invoice (new, or an edit) moving to another GRN starts that GRN's invoice clean: the discount and the
+      // reasons were about the goods of the GRN before. (The first load of a new invoice has no GRN before.)
+      const anotherGrn = !!state.selected_gr_id && state.selected_gr_id !== action.payload.grId;
+      const preservedDiscount = anotherGrn ? 0 : state.header.discount;
+      // What goes with the discount stays with it (the same GRN loaded again): an invoice being edited
+      // would otherwise forget the discount it was saved with, ask for a reason although nothing
+      // changed, and show an empty reason field.
+      const preservedDiscountRecord = anotherGrn
+        ? {}
+        : {
+            discount_reason: state.header.discount_reason,
+            saved_discount: state.header.saved_discount,
+            saved_discount_reason: state.header.saved_discount_reason,
+            discount_reason_edited: state.header.discount_reason_edited,
+          };
       // The reason for a zero charge is about the goods of one GRN. It stays
       // with an invoice that is being edited (the stored reason, or the text
       // written in this edit) and when the same GRN is loaded again. In a new
@@ -446,53 +427,71 @@ const invoiceFormSlice = createSlice({
 
       // Clear validation errors
       state.validationErrors = {};
-    },
 
-    resetForm: () => {
-      return createInitialState();
-    },
-
-    // #18 Fix: Snapshot actions for optimistic update rollback
-    /**
-     * Save current form state before submission.
-     * Call this before starting any save/update operation.
-     */
-    saveSnapshot: (state) => {
-      state.snapshot = {
-        invoiceId: state.invoice_id,
-        selectedGrId: state.selected_gr_id,
-        header: JSON.parse(JSON.stringify(state.header)),
-        items: JSON.parse(JSON.stringify(state.items)),
-        editedItems: JSON.parse(JSON.stringify(state.editedItems)),
-        itemOverrides: JSON.parse(JSON.stringify(state.itemOverrides)),
-        bulkPricing: JSON.parse(JSON.stringify(state.bulkPricing)),
+      state.baseline = {
+        fingerprint: invoiceFingerprint(state.header, state.items),
+        inv_no: state.header.inv_no,
+        inv_fin_year: state.header.inv_fin_year,
+        gr_id: state.header.gr_id,
+        header: { ...state.header },
+        items: state.items.map((item) => ({ ...item })),
       };
     },
 
-    /**
-     * Rollback to saved snapshot if submission fails.
-     * Call this when save/update operation fails.
-     */
-    rollbackToSnapshot: (state) => {
-      if (state.snapshot) {
-        state.invoice_id = state.snapshot.invoiceId;
-        state.selected_gr_id = state.snapshot.selectedGrId;
-        state.header = state.snapshot.header;
-        state.items = state.snapshot.items;
-        state.editedItems = state.snapshot.editedItems;
-        state.itemOverrides = state.snapshot.itemOverrides;
-        state.bulkPricing = state.snapshot.bulkPricing;
-        state.snapshot = null;
-        state.is_saving = false;
-      }
+    // An edit that moved to another GRN goes back to the GRN it was saved with: the saved lines, discount and
+    // reasons return. The number, date and financial year the person set meanwhile are kept.
+    restoreSavedGrn: (state) => {
+      const saved = state.baseline;
+      if (!saved) return;
+      state.header = {
+        ...saved.header,
+        inv_no: state.header.inv_no,
+        inv_no_typed: state.header.inv_no_typed,
+        inv_date: state.header.inv_date,
+        inv_fin_year: state.header.inv_fin_year,
+      };
+      state.items = saved.items.map((item) => ({ ...item }));
+      state.selected_gr_id = saved.gr_id;
+      state.editedItems = {};
+      state.itemOverrides = {};
+      state.bulkPricing = {};
+      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },
 
-    /**
-     * Clear snapshot after successful submission.
-     * Call this when save/update operation succeeds.
-     */
-    clearSnapshot: (state) => {
-      state.snapshot = null;
+    // A new form. The session number goes up, so a screen that is already open
+    // (step 1 under "Create another") sees that a new form was started.
+    resetForm: (state) => {
+      return createInitialState(state.formSession + 1);
+    },
+
+    // The invoice number requests. An answer counts only while its request is the
+    // latest: typing a number, a reset or a newer request takes the place of it.
+    numberRequested: (state, action: PayloadAction<number>) => {
+      state.numberRequestId = action.payload;
+      state.numberStatus = 'loading';
+    },
+    numberAnswered: (state, action: PayloadAction<{ id: number; number: number | null }>) => {
+      if (action.payload.id !== state.numberRequestId) return;
+      state.numberRequestId = 0;
+      const { number } = action.payload;
+      if (number !== null && number > 0) {
+        state.header.inv_no = number;
+        state.header.inv_no_typed = false;
+        state.numberStatus = 'idle';
+        // A message about a missing number no longer applies.
+        delete state.validationErrors.inv_no;
+      } else {
+        // No number came: the field is emptied so that a number suggested for
+        // another year does not stay, and the form asks for one to be typed.
+        state.header.inv_no = 0;
+        state.header.inv_no_typed = false;
+        state.numberStatus = 'failed';
+      }
+    },
+    // The wait is over without an answer (a number was typed).
+    numberCancelled: (state) => {
+      state.numberRequestId = 0;
+      state.numberStatus = 'idle';
     },
   },
 });
@@ -500,168 +499,51 @@ const invoiceFormSlice = createSlice({
 // Export actions
 export const {
   setInvoiceId,
-  setSelectedGrId,
   updateHeader,
   setItems,
-  updateItem,
   updateEditedItem,
-  bulkUpdateItemPricing,
   bulkUpdateItemGroupPricing,
   applySavedRates,
   updateDiscount,
-  recalculateTotals,
   setCurrentStep,
   setIsLoading,
   setIsSaving,
   setIsLoadingItems,
-  setError,
-  clearError,
   setValidationErrors,
+  setValidationError,
   clearValidationError,
-  clearAllValidationErrors,
   loadInvoiceFormData,
   loadInvoiceEditData,
+  restoreSavedGrn,
   resetForm,
-  // #18 Fix: Snapshot actions for optimistic update rollback
-  saveSnapshot,
-  rollbackToSnapshot,
-  clearSnapshot,
+  numberRequested,
+  numberAnswered,
+  numberCancelled,
 } = invoiceFormSlice.actions;
 
 // ============================================================================
-// BASE SELECTORS
+// SELECTORS
 // ============================================================================
 
-export const selectInvoiceFormHeader = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.header;
-export const selectInvoiceFormItems = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.items;
-export const selectInvoiceFormEditedItems = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.editedItems;
-export const selectInvoiceFormItemOverrides = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.itemOverrides;
-export const selectInvoiceFormBulkPricing = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.bulkPricing;
-export const selectInvoiceFormStep = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.currentStep;
-export const selectInvoiceFormId = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.invoice_id;
-export const selectSelectedGrId = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.selected_gr_id;
-export const selectInvoiceFormValidationErrors = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.validationErrors;
-export const selectInvoiceFormIsLoading = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.is_loading;
-export const selectInvoiceFormIsSaving = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.is_saving;
-export const selectInvoiceFormIsLoadingItems = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.is_loading_items;
-export const selectInvoiceFormError = (state: { invoiceForm: InvoiceFormState }) =>
-  state.invoiceForm.error;
+type SliceRoot = { invoiceForm: InvoiceFormSliceState };
 
-// ============================================================================
-// MEMOIZED SELECTORS (2025 React Native best practice)
-// ============================================================================
+export const selectInvoiceFormHeader = (state: SliceRoot) => state.invoiceForm.header;
+export const selectInvoiceFormItems = (state: SliceRoot) => state.invoiceForm.items;
+export const selectInvoiceFormEditedItems = (state: SliceRoot) => state.invoiceForm.editedItems;
+export const selectInvoiceFormItemOverrides = (state: SliceRoot) => state.invoiceForm.itemOverrides;
+export const selectInvoiceFormBulkPricing = (state: SliceRoot) => state.invoiceForm.bulkPricing;
+export const selectInvoiceFormId = (state: SliceRoot) => state.invoiceForm.invoice_id;
+export const selectInvoiceFormSession = (state: SliceRoot) => state.invoiceForm.formSession;
+export const selectInvoiceNumberStatus = (state: SliceRoot) => state.invoiceForm.numberStatus;
+export const selectInvoiceFormBaseline = (state: SliceRoot) => state.invoiceForm.baseline;
 
 /**
- * Memoized selector for invoice totals - prevents re-renders when unrelated state changes
+ * Whether the invoice being edited differs from the saved one. False in a new
+ * invoice (it has no saved copy; the screens ask what was entered instead).
  */
-export const selectInvoiceFormTotals = createSelector(
-  [selectInvoiceFormItems, selectInvoiceFormHeader],
-  (items, header) => ({
-    subtotal: items.reduce((sum, item) => sum + (item.amount || 0), 0),
-    taxTotal: items.reduce((sum, item) => sum + (item.tax_amount || 0), 0),
-    labourTotal: items.reduce((sum, item) => sum + (item.labour_amount || 0), 0),
-    grandTotal: header.total || 0,
-    discount: header.discount || 0,
-    itemCount: items.length,
-  })
-);
-
-/**
- * Memoized selector for items grouped by GRN item
- */
-export const selectInvoiceItemsByGRNItem = createSelector(
-  [selectInvoiceFormItems],
-  (items) => {
-    const grouped = new Map<string, InvoiceItemData[]>();
-    items.forEach(item => {
-      const grnItemId = item.grn_item_id || 'unknown';
-      const existing = grouped.get(grnItemId);
-      if (existing) {
-        existing.push(item);
-      } else {
-        grouped.set(grnItemId, [item]);
-      }
-    });
-    return grouped;
-  }
-);
-
-/**
- * Memoized selector for unique GRN item names
- */
-export const selectInvoiceUniqueItemNames = createSelector(
-  [selectInvoiceFormItems],
-  (items) => {
-    const names = new Set(items.map(item => item.item_name).filter(Boolean));
-    return Array.from(names);
-  }
-);
-
-/**
- * Memoized selector for checking if form has items
- */
-export const selectInvoiceFormHasItems = createSelector(
-  [selectInvoiceFormItems],
-  (items) => items.length > 0
-);
-
-/**
- * Memoized selector for checking form validity
- */
-export const selectInvoiceFormIsValid = createSelector(
-  [selectInvoiceFormHeader, selectInvoiceFormItems, selectInvoiceFormValidationErrors],
-  (header, items, errors) => {
-    const hasRequiredHeader = !!(header.customer_id && header.gr_id && header.inv_no);
-    const hasItems = items.length > 0;
-    const hasNoErrors = Object.keys(errors).length === 0;
-    return hasRequiredHeader && hasItems && hasNoErrors;
-  }
-);
-
-/**
- * Memoized selector for bulk pricing overrides count
- */
-export const selectInvoiceOverrideCount = createSelector(
-  [selectInvoiceFormItemOverrides],
-  (overrides) => {
-    let count = 0;
-    Object.values(overrides).forEach(fields => {
-      count += fields.length;
-    });
-    return count;
-  }
-);
-
-/**
- * Memoized selector for items with edited values applied
- */
-export const selectInvoiceItemsWithEdits = createSelector(
-  [selectInvoiceFormItems, selectInvoiceFormEditedItems],
-  (items, editedItems) => {
-    return items.map(item => {
-      const edits = editedItems[item.temp_id];
-      if (!edits) return item;
-      return {
-        ...item,
-        charge: edits.charge ?? item.charge,
-        labour_rate: edits.labour_rate ?? item.labour_rate,
-        tax: edits.tax ?? item.tax,
-        duration: edits.duration ?? item.duration,
-      };
-    });
-  }
+export const selectInvoiceFormChanged = createSelector(
+  [selectInvoiceFormHeader, selectInvoiceFormItems, selectInvoiceFormBaseline],
+  (header, items, baseline) => baseline !== null && invoiceFingerprint(header, items) !== baseline.fingerprint
 );
 
 export default invoiceFormSlice.reducer;

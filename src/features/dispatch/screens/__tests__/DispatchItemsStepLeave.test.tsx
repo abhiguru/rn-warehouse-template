@@ -17,11 +17,11 @@
  * "Save this item?" question here, unlike the GRN step.
  */
 import React from 'react';
-import { StyleSheet, TextInput } from 'react-native';
+import { Platform, StyleSheet, TextInput } from 'react-native';
 import type { MutableRefObject } from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
-import { getTokens } from '@/theme/tokens';
+import { getTokens, space } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
@@ -86,7 +86,7 @@ jest.mock('expo-router', () => {
 jest.mock('@/features/dispatch/screens', () => ({
   DispatchItemsStep: jest.requireActual('@/features/dispatch/screens/DispatchItemsStep').DispatchItemsStep,
 }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: mockInsetBottom, left: 0, right: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 // Stand-ins that keep their props, so the test can press what they offer.
@@ -102,6 +102,7 @@ jest.mock('@/features/dispatch/components', () => ({
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
+let mockInsetBottom = 0;
 const DETAILS = 1;
 const REVIEW = 3;
 const tokens = getTokens('orange', 'light');
@@ -534,5 +535,39 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
     expect(discardQuestion(tree).props.visible).toBe(false);
     expectNewItemForm();
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('the bottom bar is the shared WizardBottomBar (R1-08)', () => {
+  const barStyle = () => {
+    const next = button(tree, 'Next, review dispatch');
+    // The bar is the nearest ancestor that holds both buttons.
+    let bar = next.parent!;
+    while (bar.findAll((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Back to dispatch details').length === 0) bar = bar.parent!;
+    return StyleSheet.flatten(bar.props.style) as { paddingBottom: number };
+  };
+  const setOS = (os: 'ios' | 'android') => jest.replaceProperty(Platform, 'OS', os);
+  afterEach(() => { mockInsetBottom = 0; });
+
+  it('Android: pads by space.md only, with a 34 dp navigation bar inset (the root stack already pads the screen)', async () => {
+    setOS('android');
+    mockInsetBottom = 34;
+    await mount(<DispatchItemsStep mode="create" />);
+    // The old bar here added the inset again: 34 + space.md.
+    expect(barStyle().paddingBottom).toBe(space.md);
+  });
+
+  it('iOS: adds the inset to space.md', async () => {
+    setOS('ios');
+    mockInsetBottom = 34;
+    await mount(<DispatchItemsStep mode="create" />);
+    expect(barStyle().paddingBottom).toBe(34 + space.md);
+  });
+
+  it('keeps its spoken labels, and shows "Back" and "Next"', async () => {
+    await mount(<DispatchItemsStep mode="create" />);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Back', 'Next']));
+    expect(button(tree, 'Back to dispatch details')).toBeTruthy();
+    expect(button(tree, 'Next, review dispatch')).toBeTruthy();
   });
 });

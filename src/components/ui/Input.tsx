@@ -213,9 +213,11 @@ export function Input({
           ]}
           placeholderTextColor={t.text.placeholder}
           accessibilityLabel={
-            label
+            // A label the caller gives for the screen reader (field, record, unit) wins over the visible one.
+            textInputProps.accessibilityLabel ??
+            (label
               ? required ? tr('components.input.requiredLabel', { label }) : label
-              : textInputProps.accessibilityLabel ?? textInputProps.placeholder
+              : textInputProps.placeholder)
           }
           accessibilityHint={
             textInputProps.accessibilityHint ??
