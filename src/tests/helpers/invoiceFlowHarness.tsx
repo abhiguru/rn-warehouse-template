@@ -153,8 +153,25 @@ export async function startFlowApp({ location, advance }: StartOptions): Promise
   await act(async () => { tree = create(<ExpoRoot context={context} location={location} />); });
   await act(async () => { await advance(); });
 
-  const settle = async () => { await act(async () => { await advance(); }); };
   const labelOf = (node: ReactTestInstance) => node.props.accessibilityLabel;
+  // The Items step draws each card's dispatch lines behind a "Show dispatch details" toggle, closed at first. The flows
+  // are about the figures in those lines, so they open every card as soon as it is on screen, as a user does (the
+  // toggle itself is tested with the editor).
+  const openClosedLines = async () => {
+    const closed = tree.root.findAll(
+      (node) =>
+        typeof node.type !== 'string' &&
+        typeof labelOf(node) === 'string' &&
+        labelOf(node).startsWith('Show dispatch details') &&
+        node.props.accessibilityState?.expanded === false &&
+        typeof node.props.onPress === 'function'
+    );
+    if (closed.length > 0) await act(async () => { closed.forEach((toggle) => toggle.props.onPress()); });
+  };
+  const settle = async () => {
+    await act(async () => { await advance(); });
+    await openClosedLines();
+  };
   const matches = (node: ReactTestInstance, id: Id) =>
     typeof id === 'string'
       ? node.props.testID === id || labelOf(node) === id
