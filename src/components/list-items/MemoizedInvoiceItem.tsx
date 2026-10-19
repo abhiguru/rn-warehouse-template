@@ -72,26 +72,23 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardPressed,
   },
   cardHeader: {
+    flexDirection: 'column' as const,
+  },
+  titleRow: {
     flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.md,
-  },
-  iconContainer: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
+    flexWrap: 'wrap' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: t.brand.subtle,
+    columnGap: space.md,
+    rowGap: space.xxs,
   },
-  cardInfo: {
-    flex: 1,
-  },
-  customerName: {
+  // Grows to push the total to the end; never cut: a number too long for the line wraps inside its own box.
+  invoiceTitle: {
     ...typography.headline,
     color: t.text.primary,
+    flexGrow: 1,
+    flexShrink: 1,
   },
-  invoiceNumber: {
+  customerName: {
     ...typography.subhead,
     color: t.text.secondary,
     marginTop: space.xxs,
@@ -100,7 +97,8 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     flexWrap: 'wrap' as const,
-    gap: space.xs,
+    columnGap: space.sm,
+    rowGap: space.xxs,
     marginTop: space.xs,
   },
   metaItem: {
@@ -118,6 +116,8 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.xs,
+    flexShrink: 0,
+    marginLeft: 'auto' as const,
   },
   amountValue: {
     ...typography.headline,
@@ -334,38 +334,32 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
       accessibilityHint={translate('lists.invoice.openHint')}
     >
       <View style={styles.cardHeader}>
-        {/* Object icon (§13.6), as on GRN and dispatch rows */}
-        <View style={styles.iconContainer}>
-          <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
-        </View>
-        <View style={styles.cardInfo}>
-          <HighlightedText style={styles.customerName} numberOfLines={2} text={translate('lists.invoice.cardTitle', { number: formatIdentifier(invoice.invoice_number) })} words={words} />
-          <HighlightedText style={styles.invoiceNumber} numberOfLines={2} text={customerName ?? ''} words={words} />
-          <View style={styles.metaRow}>
-            {/* Each fact keeps its icon and never shrinks: the row wraps between the date and the GRN, not inside one. */}
-            <View style={styles.metaItem}>
-              <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.metaText} {...singleLineText()}>{invoiceDate}</Text>
-              {/* In Gujarati the GRN wraps to its own line, where a trailing dot would dangle; its icon separates it. */}
-              {invoice.grn?.gr_no && getLanguage() === 'en' ? <Text style={styles.metaText}>·</Text> : null}
-            </View>
-            {invoice.grn?.gr_no ? (
-              <View style={styles.metaItem}>
-                <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-                <HighlightedText style={styles.metaText} text={translate('lists.card.grnRef', { number: formatIdentifier(invoice.grn.gr_no) })} words={words} />
-              </View>
-            ) : null}
+        {/* The number and the total share the first line; if they cannot, the total goes under the number at the end. */}
+        <View style={styles.titleRow}>
+          <HighlightedText style={styles.invoiceTitle} text={formatIdentifier(invoice.invoice_number)} words={words} />
+          <View style={styles.amountContainer}>
+            <Text style={styles.amountValue}>{totalText}</Text>
+            <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
           </View>
         </View>
-
-        <View style={styles.amountContainer}>
-          <Text style={styles.amountValue}>{totalText}</Text>
-          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+        <HighlightedText style={styles.customerName} numberOfLines={2} text={customerName ?? ''} words={words} />
+        <View style={styles.metaRow}>
+          {/* Each fact keeps its icon and never shrinks: the row wraps between the date and the GRN, not inside one. */}
+          <View style={styles.metaItem}>
+            <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.metaText} {...singleLineText()}>{invoiceDate}</Text>
+          </View>
+          {invoice.grn?.gr_no ? (
+            <View style={styles.metaItem}>
+              <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+              <HighlightedText style={styles.metaText} text={translate('lists.card.grnRef', { number: formatIdentifier(invoice.grn.gr_no) })} words={words} />
+            </View>
+          ) : null}
         </View>
       </View>
 
       {/* Key amounts: one row each, ending with the total */}
-      <AmountsTable lines={lines} totalText={total} />
+      <AmountsTable lines={lines} totalText={totalText} />
 
       {/* Financial year and origin */}
       <View style={styles.tagRow}>
