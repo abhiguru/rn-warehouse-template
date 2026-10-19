@@ -270,7 +270,7 @@ describe('changing a group rate on the items step of such an invoice', () => {
     await act(async () => { groupField(itemsStep, 'group|i1:::M1|tax').props.onChangeText('12'); });
 
     expect(lines()).toEqual([[0, 2, 12], [5, 2, 12]]);
-    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '2.50', placeholder: '0' });
+    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '2.50', placeholder: '2.50' });
     await act(async () => { itemsStep.unmount(); });
 
     const tree = await render();
