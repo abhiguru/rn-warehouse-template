@@ -54,7 +54,7 @@ export function settle(field: RateField, typed: string): { value: number | null;
 export interface SharedView {
   /** The rate the lines share (or the one applied to the group), as text; '' while the lines differ or are free. */
   text: string;
-  /** The lines differ: the placeholder says "Mixed" (Labour and Tax; Charge shows `average` instead). */
+  /** The lines differ: the placeholder says "Mixed" (Labour and Tax, also where a line has its own labour; Charge shows `average` instead). */
   mixed: boolean;
   /** Charge only: the lines differ, so `text` is their average charge weighted by bag-months (by bags for a one-time GRN). */
   average: boolean;
@@ -134,21 +134,13 @@ export function groupView(
   return view;
 }
 
-/** Whether the lines of a group differ in labour or tax: then each line shows its own. */
-export const linesDifferInLabourOrTax = (group: InvoiceItemGroup): boolean =>
-  group.allItems.some(
-    (line) =>
-      roundMoney(line.labour_rate) !== roundMoney(group.allItems[0].labour_rate) ||
-      roundMoney(line.tax) !== roundMoney(group.allItems[0].tax)
-  );
-
 export type SharedField = RateField;
 
 export type ItemsRow =
   | { type: 'head'; key: string; groupKey: string }
   | { type: 'cols'; key: string; groupKey: string }
-  | { type: 'line'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
-  | { type: 'card'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
+  | { type: 'line'; key: string; groupKey: string; tempId: string; last: boolean }
+  | { type: 'card'; key: string; groupKey: string; tempId: string; last: boolean }
   | { type: 'block'; key: string; groupKey: string; fields: SharedField[]; lines: number }
   | { type: 'total'; key: string; groupKey: string }
   | { type: 'toggle'; key: string; groupKey: string; open: boolean; lines: number };
@@ -166,18 +158,18 @@ export interface RowPlan {
 export interface GroupMode {
   /** The lines are cards (only while a screen reader is on); otherwise they are rows of the sideways table. */
   cards: boolean;
-  /** Labour and tax are the lines' own (editable cells or fields of each line), not "(all lines)" rows. */
-  perLine: boolean;
 }
 
-/** The shared fields a group shows: Charge for 2 or more lines, Labour (not one-time) and Tax while the lines share them. */
-export function sharedFieldsOf(lines: number, mode: GroupMode, oneTime: boolean): SharedField[] {
+/**
+ * The shared fields a group shows: Charge and Labour for 2 or more lines (not for a one-time GRN, which has no
+ * Labour; a single line has them in its own cells), Tax always (owner, 2026-10-19: it has no cell of its own).
+ * They show whatever the lines hold ("Mixed" where they differ).
+ */
+export function sharedFieldsOf(lines: number, oneTime: boolean): SharedField[] {
   const fields: SharedField[] = [];
   if (lines >= 2) fields.push('charge');
-  if (!mode.perLine) {
-    if (!oneTime) fields.push('labour_rate');
-    fields.push('tax');
-  }
+  if (lines >= 2 && !oneTime) fields.push('labour_rate');
+  fields.push('tax');
   return fields;
 }
 
@@ -209,9 +201,10 @@ export function planRows(
     const groupKey = groupKeyOf(group);
     const mode = modeOf(group);
     const isOpen = open.has(groupKey);
-    const lineFields: RateField[] = mode.perLine ? (oneTime ? ['charge', 'tax'] : ['charge', 'labour_rate', 'tax']) : ['charge'];
+    // The Next key walks a line's Charge, then its Labour (a one-time GRN has none), then the next line.
+    const lineFields: RateField[] = oneTime ? ['charge'] : ['charge', 'labour_rate'];
     add({ type: 'head', key: `head|${groupKey}`, groupKey });
-    const shared = sharedFieldsOf(group.allItems.length, mode, oneTime);
+    const shared = sharedFieldsOf(group.allItems.length, oneTime);
     if (shared.length > 0) {
       add({ type: 'block', key: `block|${groupKey}`, groupKey, fields: shared, lines: group.allItems.length }, shared.map((f) => groupFieldKey(groupKey, f)));
     }
@@ -228,8 +221,8 @@ export function planRows(
       const last = index === group.allItems.length - 1;
       add(
         mode.cards
-          ? { type: 'card', key: `card|${line.temp_id}`, groupKey, tempId: line.temp_id, perLine: mode.perLine, last }
-          : { type: 'line', key: `line|${line.temp_id}`, groupKey, tempId: line.temp_id, perLine: mode.perLine, last },
+          ? { type: 'card', key: `card|${line.temp_id}`, groupKey, tempId: line.temp_id, last }
+          : { type: 'line', key: `line|${line.temp_id}`, groupKey, tempId: line.temp_id, last },
         keys
       );
     });
@@ -316,12 +309,15 @@ export const cellLabel = (field: RateField, dispatchNo: string, oneTime: boolean
 export const groupCellLabel = (field: RateField, itemName: string, oneTime: boolean, average = false): string =>
   tr(average ? 'invoice.items.groupAverageA11y' : 'invoice.items.groupCellA11y', { field: tr(FIELD_NAME[field]), item: itemName, unit: unitOf(field, oneTime) });
 
-const KEEP_OWN: Record<RateField, TranslationKey> = {
+/** Tax has no cell of its own, so no line keeps its own tax and it has no note. */
+const KEEP_OWN: Partial<Record<RateField, TranslationKey>> = {
   charge: 'invoice.items.keepOwnCharge',
   labour_rate: 'invoice.items.keepOwnLabour',
-  tax: 'invoice.items.keepOwnTax',
 };
-export const keepOwnNote = (field: RateField, count: number): string => tr(KEEP_OWN[field], { count });
+export const keepOwnNote = (field: RateField, count: number): string | undefined => {
+  const key = KEEP_OWN[field];
+  return key ? tr(key, { count }) : undefined;
+};
 
 /** The note under a Charge that shows the average: "Average of 3 lines", then, when some lines keep their own charge, that note on a second line. */
 export const averageNote = (lines: number, keepOwn: number): string => {
@@ -365,10 +361,12 @@ export function stepperState(field: RateField, view: SharedView, state: FieldSta
   if (state) {
     const settled = settle(field, state.text);
     value = settled.error || settled.value === null ? null : settled.value;
+    // An emptied field over "Mixed" (or the average) has no figure: it is not 0 to step from.
+    if (state.text === '' && (view.mixed || view.average)) value = view.average ? view.stepFrom : null;
   } else if (view.average) value = view.stepFrom; // not the average: a press sets only the lines without their own charge
   else value = view.mixed ? null : roundMoney(Number(view.text) || 0);
-  // A press changes nothing when every line keeps its own charge.
-  if (value === null || (field === 'charge' && !view.applies)) return { value, canDecrease: false, canIncrease: false, aboveMax: false };
+  // A press changes nothing when every line keeps its own figure.
+  if (value === null || !view.applies) return { value, canDecrease: false, canIncrease: false, aboveMax: false };
   return { value, canDecrease: value > 0, canIncrease: value < RATE_MAX[field], aboveMax: value > RATE_MAX[field] };
 }
 

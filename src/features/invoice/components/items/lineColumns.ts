@@ -1,10 +1,11 @@
 /**
  * The column model of an open card's line table (style guide 13.7), which scrolls sideways (owner decision, 2026-10-19):
- * Dispatch (pinned) | Date | Months | Days | Qty | Charge (₹) | Labour (₹) | Tax (%) | Amount, described with the app's TanStack
+ * Dispatch (pinned) | Date | Months | Days | Qty | Charge (₹) | Labour (₹) | Amount (no Tax column), described with the app's TanStack
  * setup (`createAppColumnHelper`, `useAppTable`). TanStack decides the headings, the widths (column meta) and which
  * cells a row has; Labour is left out of a one-time GRN. The rows are not drawn by `DataTable`: they are parts of
  * the page's virtualized list (`LineRow`, `ColumnHeadings`), which read the columns from here, so an open card of
- * hundreds of lines still draws only the rows on screen. `lineColumnsOf` also places each scrolling column (its `x`
+ * hundreds of lines still draws only the rows on screen. Alignment (owner decision, 2026-10-19, this table only): Dispatch
+ * left, Date, Months, Days and Qty centred (headings too), the money columns (Charge, Labour, Amount) right. `lineColumnsOf` also places each scrolling column (its `x`
  * in the scrolling part), which the focus reveal and the clamp of the sideways scroll use.
  */
 import { createAppColumnHelper, type AppTable } from '@/components/table/appTable';
@@ -21,8 +22,8 @@ export interface LineColumn {
   header: string;
   /** The column's outer width in dp. */
   width: number;
-  /** Right-aligned figure (Months, Days, Qty, the three rates, Amount); Date, and Months of a one-time GRN ("One-time"), are left-aligned text. */
-  numeric: boolean;
+  /** Where the text sits in the column and its heading: Dispatch left, Date, Months, Days and Qty centre, Charge, Labour and Amount right. */
+  align: ColumnAlign;
   /** Left edge in the scrolling part (0 for the pinned Dispatch column, which is not in it). */
   x: number;
 }
@@ -34,23 +35,34 @@ export interface LineTable {
   content: number;
 }
 
+export type ColumnAlign = 'left' | 'center' | 'right';
+const ALIGN: Record<LineColumnId, ColumnAlign> = {
+  dispatch: 'left',
+  date: 'center',
+  duration: 'center',
+  days: 'center',
+  qty: 'center',
+  charge: 'right',
+  labour_rate: 'right',
+  amount: 'right',
+};
+
 const helper = createAppColumnHelper<InvoiceItemData>();
 
 /** The columns for the table; Labour is left out of a one-time GRN. */
 export function lineColumnDefs(widths: LineWidths, oneTime: boolean) {
-  const text = (id: LineColumnId, header: string) => helper.display({ id, header, meta: { width: widths[id] } });
-  const figure = (id: LineColumnId, header: string) => helper.display({ id, header, meta: { width: widths[id], numeric: true } });
+  // Alignment is `ALIGN`'s (read back by `lineColumnsOf`); the meta carries only the width.
+  const col = (id: LineColumnId, header: string) => helper.display({ id, header, meta: { width: widths[id] } });
   const cols = [
-    text('dispatch', tr('common.dispatch')),
-    text('date', tr('common.date')),
-    // A figure column (right-aligned, tabular) except for a one-time GRN, where the cell says "One-time" in words.
-    (oneTime ? text : figure)('duration', tr('invoice.items.colMonths')),
-    figure('days', tr('invoice.items.colDays')),
-    figure('qty', tr('invoice.items.colQty')),
-    figure('charge', fieldHeading('charge')),
+    col('dispatch', tr('common.dispatch')),
+    col('date', tr('common.date')),
+    col('duration', tr('invoice.items.colMonths')),
+    col('days', tr('invoice.items.colDays')),
+    col('qty', tr('invoice.items.colQty')),
+    col('charge', fieldHeading('charge')),
   ];
-  if (!oneTime) cols.push(figure('labour_rate', fieldHeading('labour_rate')));
-  cols.push(figure('tax', fieldHeading('tax')), figure('amount', tr('invoice.items.colAmount')));
+  if (!oneTime) cols.push(col('labour_rate', fieldHeading('labour_rate')));
+  cols.push(col('amount', tr('invoice.items.colAmount')));
   return helper.columns(cols);
 }
 
@@ -65,7 +77,7 @@ export function lineColumnsOf(table: AppTable<InvoiceItemData>): LineTable {
       id,
       header: typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id,
       width,
-      numeric: !!meta?.numeric,
+      align: ALIGN[id],
       x: id === 'dispatch' ? 0 : x,
     };
     if (id !== 'dispatch') x += width;
@@ -74,6 +86,6 @@ export function lineColumnsOf(table: AppTable<InvoiceItemData>): LineTable {
   return { pinned: all[0], scrolling: all.slice(1), content: x };
 }
 
-/** Space kept at the right of a column's text so the heading and the figures line up: a rate's cell has its ring and padding, Amount the room at the end of the table. */
+/** Space kept at the right of a right-aligned column's text so the heading and the figures line up: a rate's cell has its ring and padding, Amount the room at the end of the table. Centred columns keep none. */
 export const columnInset = (id: LineColumnId): number =>
-  id === 'charge' || id === 'labour_rate' || id === 'tax' ? CELL_CHROME / 2 : id === 'amount' ? END_GAP : 0;
+  id === 'charge' || id === 'labour_rate' ? CELL_CHROME / 2 : id === 'amount' ? END_GAP : 0;

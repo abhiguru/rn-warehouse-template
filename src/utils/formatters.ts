@@ -204,6 +204,18 @@ export const formatDate = (
   return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() }, format, indiaYear());
 };
 
+/**
+ * A date as day/month/year with two digits each, "01/06/23", in the language's digits. For the invoice items table only
+ * (owner, 2026-10-19), where a column of dates must line up and a month name would not; the app's other dates stay
+ * `formatDate`. Returns "—" when the date is missing or invalid.
+ */
+export const formatDateShort = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  const two = (n: number) => String(n).padStart(2, '0');
+  return localizeDigits(`${two(d.getDate())}/${two(d.getMonth() + 1)}/${two(d.getFullYear() % 100)}`);
+};
+
 /** Month titles (§12.3): "October 2026" (long, timelines), "Oct 2026" (short, report rows), "Oct" (narrow, chart axes). */
 export const formatMonth = (
   date: string | Date | null | undefined,

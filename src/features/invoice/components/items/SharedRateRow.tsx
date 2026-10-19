@@ -9,7 +9,7 @@
  * parts stand one under the other, each field full width with its buttons beneath it.
  *
  * A press goes through `actions.step`, which applies the stepped figure like an accepted entry in the field.
- * Both buttons are disabled while the field shows "Mixed" (Labour, Tax), while every line keeps its own charge (Charge shows the
+ * Both buttons are disabled while the field shows "Mixed" (Labour, Tax), while every line keeps its own figure (Charge shows the
  * weighted average of the lines instead of "Mixed", and steps from it), or holds text that is refused or unfinished, at 0 (−) and at the
  * field's maximum (+). The buttons are not in the Next key's field walk.
  */

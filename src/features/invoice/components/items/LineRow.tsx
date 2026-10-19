@@ -1,20 +1,20 @@
 /**
  * One dispatch line of a group, as a row of the line table (lineColumns.ts), which scrolls sideways: the pinned Dispatch cell
- * (the dispatch number) and, in a `SidewaysViewport` shared with the heading and the other rows of the card, Date | Months |
- * Days | Qty | Charge | Labour | Tax | Amount. Date, Months, Days, Qty and Amount are read-only. The Charge is typed in its cell
- * (`EditableNumberCell`); Labour and Tax are cells too only on a card whose lines differ in them (`perLine`), else read-only
- * figures, set from the card's "All dispatches" row. A line has no + / − (those are the "All dispatches" row's, and the line cards').
+ * (the dispatch number) and, in a `SidewaysViewport` shared with the heading and the other rows of the card, Date (01/06/23) |
+ * Months | Days | Qty | Charge | Labour | Amount. Date, Months, Days, Qty and Amount are read-only; Date, Months, Days and Qty are
+ * centred, Charge, Labour and Amount right-aligned. The Charge and the Labour (not in a one-time GRN) are typed in their cells
+ * (`EditableNumberCell`); a typed Labour is that line's own. There is no Tax column: tax is set in the card's "All dispatches" row. A line has no + / − (those are the "All dispatches" row's, and the line cards').
  * The row is a part of the page's virtualized list, so only the rows on screen are drawn, however many lines the card has.
  */
 import React from 'react';
 import { Text, View } from 'react-native';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
-import { formatIdentifier, localizeDigits } from '@/i18n';
+import { formatIdentifier } from '@/i18n';
 import { useTokens } from '@/hooks/useTheme';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { columnInset, type LineColumn, type LineTable } from './lineColumns';
-import { lineDate, lineDays, lineMonths, lineQty } from './lineText';
+import { lineDays, lineMonths, lineQty, lineTableDate } from './lineText';
 import { SidewaysViewport, type TableScroll } from './SidewaysViewport';
 import { cellKey, cellLabel, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
@@ -28,24 +28,20 @@ interface Props {
   table: LineTable;
   /** The card's sideways position, shared by its heading and rows. */
   scroll: TableScroll;
-  /** The lines differ in labour or tax: Labour and Tax are cells of the line; otherwise read-only figures. */
-  perLine: boolean;
   oneTime: boolean;
   /** The last part of the group's card: it draws the card's bottom edge. */
   last: boolean;
   charge?: FieldState;
   labour?: FieldState;
-  tax?: FieldState;
   /** The last field of the page: its keyboard key is "done", every other one's is "next". */
   lastKey?: string;
   actions: ItemsActions;
   styles: ItemsStyles;
 }
 
-export const LineRow = React.memo(function LineRow({ item, groupKey, table, scroll, perLine, oneTime, last, charge, labour, tax, lastKey, actions, styles }: Props) {
+export const LineRow = React.memo(function LineRow({ item, groupKey, table, scroll, oneTime, last, charge, labour, lastKey, actions, styles }: Props) {
   const t = useTokens();
   const number = formatIdentifier(item.dispatch_no);
-  const states = { charge, labour_rate: labour, tax };
   const cell = (column: LineColumn, field: RateField, state: FieldState | undefined) => {
     const key = cellKey(item.temp_id, field);
     const shownError = state?.shown ? state.error ?? undefined : undefined;
@@ -72,9 +68,15 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
       </View>
     );
   };
+  // A read-only figure: centred (Months, Days, Qty) or right-aligned with the inset that lines it up with the boxes (Amount).
   const figure = (column: LineColumn, text: string, strong = false) => (
     <View key={column.id} style={[styles.columnBox, { width: column.width }]}>
-      <Text style={[strong ? styles.numberStrong : styles.number, styles.figureText, { paddingRight: columnInset(column.id) }]} numberOfLines={1}>{text}</Text>
+      <Text
+        style={[strong ? styles.numberStrong : column.align === 'center' ? styles.numberCentre : styles.number, styles.figureText, { paddingRight: columnInset(column.id) }]}
+        numberOfLines={1}
+      >
+        {text}
+      </Text>
     </View>
   );
   const cells = table.scrolling.map((column) => {
@@ -82,14 +84,14 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
       case 'date':
         return (
           <View key={column.id} style={[styles.columnBox, { width: column.width }]}>
-            <Text style={styles.columnText} numberOfLines={1}>{lineDate(item)}</Text>
+            <Text style={[styles.columnCentre, styles.figureText]} numberOfLines={1}>{lineTableDate(item)}</Text>
           </View>
         );
       case 'duration':
         if (!oneTime) return figure(column, lineMonths(item, oneTime));
         return (
           <View key={column.id} style={[styles.columnBox, { width: column.width }]}>
-            <Text style={styles.columnText} numberOfLines={1}>{lineMonths(item, oneTime)}</Text>
+            <Text style={[styles.columnCentre, styles.figureText]} numberOfLines={1}>{lineMonths(item, oneTime)}</Text>
           </View>
         );
       case 'days':
@@ -101,13 +103,12 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
       case 'charge':
         return cell(column, 'charge', charge);
       case 'labour_rate':
-      case 'tax':
-        return perLine ? cell(column, column.id, states[column.id]) : figure(column, localizeDigits(rateText(column.id, item[column.id])));
+        return cell(column, 'labour_rate', labour);
       default:
         return null;
     }
   });
-  const errors = [charge, perLine ? labour : undefined, perLine ? tax : undefined].map((state) => (state?.shown ? state.error : null)).filter(Boolean);
+  const errors = [charge, oneTime ? undefined : labour].map((state) => (state?.shown ? state.error : null)).filter(Boolean);
   const body = (
     <>
       {/* Keyed by the card: a row the list recycles for another card gets that card's scroll. */}

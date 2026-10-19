@@ -7,6 +7,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { ONE_LINE } from '@/components/common/DetailTable';
 import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { iconSize } from '@/theme/tokens';
@@ -48,8 +49,9 @@ export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, tab
         {table.scrolling.map((column) => (
           <View key={column.id} style={[styles.headCell, { width: column.width, justifyContent: 'flex-end' }]}>
             <Text
-              style={[column.numeric ? styles.headerNumber : styles.headerText, { paddingRight: columnInset(column.id) }]}
-              numberOfLines={1}
+              style={[column.align === 'right' ? styles.headerNumber : column.align === 'center' ? styles.headerCentre : styles.headerText, { paddingRight: columnInset(column.id) }]}
+              // Months is sized to its figures, not its heading: the heading shrinks a little to stay on one line.
+              {...(column.id === 'duration' ? ONE_LINE : { numberOfLines: 1 })}
             >
               {column.header}
             </Text>

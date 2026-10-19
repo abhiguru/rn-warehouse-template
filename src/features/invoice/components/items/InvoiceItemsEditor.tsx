@@ -3,14 +3,14 @@
  * rate box of Item pricing.
  *
  * Each item + mark group is one card with its total in the heading. Under the heading come one part
- * for what all lines share (Charge for 2 or more lines, Labour and Tax: side by side in one row, each
+ * for what all lines share (Charge for 2 or more lines, Labour unless one-time, Tax: always shown, "Mixed" where the lines differ; side by side in one row, each
  * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), the group total, and a toggle,
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
  * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: one table that
  * scrolls sideways at every text size (owner decision, 2026-10-19): Dispatch (pinned) | Date | Months | Days | Qty |
- * Charge ₹ | Labour ₹ | Tax % | Amount, its columns described with the app's TanStack column model (lineColumns.ts) and
- * sized to their widest text once per layout (itemsLayout.ts), with the Charge typed in its cell; Labour and Tax are
- * cells too only where the lines differ in them, else read-only figures. The heading and all rows of one open card
+ * Charge ₹ | Labour ₹ | Amount (no Tax column), its columns described with the app's TanStack column model (lineColumns.ts) and
+ * sized to their widest text once per layout (itemsLayout.ts), with the Charge and the Labour (a line's own) typed in their cells, the
+ * Next key walking Charge, then Labour, line by line. The heading and all rows of one open card
  * share one sideways position (a Reanimated shared value per card, SidewaysViewport.tsx), and a cell that takes the
  * focus (tap or the Next key) is brought fully into view (`scrollToReveal` in `actions.focus`). Only while a screen reader is on is
  * each line a small card instead. Opening and closing has no animation: the rows are virtualized.
@@ -65,7 +65,7 @@ import { SharedBlock } from './SharedRateRow';
 import { ColumnHeadings, GroupToggle, GroupTotal } from './TableParts';
 import { lineColumnDefs, lineColumnsOf, type LineColumnId } from './lineColumns';
 import { itemsLayout, sameLayout, sharedSideBySide, type ItemsLayout } from './itemsLayout';
-import { countText, dateText, monthsText } from './lineText';
+import { countText, monthsText, tableDateText } from './lineText';
 import { makeTableScroll, scrollToReveal, type TableScroll } from './SidewaysViewport';
 import {
   cellKey,
@@ -73,14 +73,12 @@ import {
   groupFieldKey,
   groupView,
   lineView,
-  linesDifferInLabourOrTax,
   parseKey,
   planRows,
   samePlan,
   RATE_FIELDS,
   rateText,
   settle,
-  sharedFieldsOf,
   stepDoneText,
   stepDoneAverageText,
   stepperState,
@@ -152,6 +150,8 @@ interface FocusRecord {
   snapshot?: Array<{ temp_id: string; value: number }>;
   /** A group field: the rate that was applied to the group, if any (undoing the lines must not forget it). */
   applied?: number;
+  /** A group field: it showed "Mixed" (or Charge's average) when it gained focus, so emptying it means "no figure", not 0. */
+  mixed?: boolean;
   /** Something other than that value was handed to the form since. */
   sent: boolean;
 }
@@ -256,7 +256,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         table,
         {
           dispatch: distinctTexts(layoutItems, (line) => line.dispatch_no, (v) => v),
-          date: distinctTexts(layoutItems, (line) => line.dispatch_date, dateText),
+          date: distinctTexts(layoutItems, (line) => line.dispatch_date, tableDateText),
           duration: distinctTexts(layoutItems, (line) => line.duration, (v) => monthsText(v, oneTime)),
           days: distinctTexts(layoutItems, (line) => line.no_of_days, countText),
           qty: distinctTexts(layoutItems, (line) => line.qty, countText),
@@ -273,7 +273,6 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
           qty: tr('invoice.items.colQty'),
           charge: fieldHeading('charge'),
           labour: fieldHeading('labour_rate'),
-          tax: fieldHeading('tax'),
           amount: tr('invoice.items.colAmount'),
         },
         oneTime
@@ -301,27 +300,21 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
     };
   }, []);
 
-  // A group whose lines differ in labour or tax shows them line by line, and keeps doing so while
-  // it is on the screen: typing a line's labour equal to the others must not take the field away.
-  const perLineGroups = useRef(new Set<string>()).current;
   // The plan holds no figures, so while only a figure changes the earlier plan is kept: the list gets the
   // same data and does not lay its rows out again (the rows read their figures when they are drawn).
   const keptPlan = useRef<RowPlan | undefined>(undefined);
   const { plan, modes } = useMemo(() => {
     const byGroup = new Map<string, GroupMode>();
     const modeOf = (group: InvoiceItemGroup): GroupMode => {
-      const groupKey = groupKeyOf(group);
-      if (linesDifferInLabourOrTax(group)) perLineGroups.add(groupKey);
-      const perLine = perLineGroups.has(groupKey);
-      const mode = { perLine, cards: layout.cards };
-      byGroup.set(groupKey, mode);
+      const mode = { cards: layout.cards };
+      byGroup.set(groupKeyOf(group), mode);
       return mode;
     };
     const built = planRows(groups, modeOf, oneTime, openSet);
     const kept = keptPlan.current && samePlan(keptPlan.current, built) ? keptPlan.current : built;
     keptPlan.current = kept;
     return { plan: kept, modes: byGroup };
-  }, [groups, layout, oneTime, perLineGroups, openSet]);
+  }, [groups, layout, oneTime, openSet]);
 
   // The line table's columns: TanStack decides the headings, widths and which cells a row has; the rows
   // themselves are parts of this list, so only the rows on screen are drawn. `useAppTable` returns a new
@@ -388,8 +381,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   fieldsRef.current = fields;
   const focusRecords = useRef(new Map<string, FocusRecord>()).current;
 
-  // A field that is no longer in the invoice (its line or group left it, or an "(all lines)"
-  // row gave way to the lines' own) takes its text and error with it, so Next is never refused for
+  // A field that is no longer in the invoice (its line or group left it) takes its text and error with it, so Next is never refused for
   // a field nobody can reach. A closed group keeps its refused text.
   useEffect(() => {
     // Every field of the invoice counts as present, also those of a closed group's lines (not in `rowOf`).
@@ -485,6 +477,10 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
           ? { value: byId.get(id)?.[field] ?? 0, sent: false }
           : {
               value: 0,
+              mixed: (() => {
+                const shown = latest.current.views.get(id)?.[field];
+                return !!shown && (shown.mixed || shown.average);
+              })(),
               applied: latest.current.bulkPricing[id]?.[field],
               snapshot: (byKey.get(id)?.allItems ?? [])
                 .filter((line) => !(overrides[line.temp_id] ?? []).includes(field))
@@ -580,6 +576,16 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         const { field } = parseKey(key);
         const record = recordOf(key);
         const parsed = parseRateInput(field, typed);
+        if (record.mixed && parsed.text === '') {
+          // A shared field that showed "Mixed" (or the average) and is emptied again has no figure: the lines are put
+          // back and nothing is committed (an empty field would otherwise be 0 on every line without its own figure).
+          setFields((prev) => ({ ...prev, [key]: { text: '', error: null, shown: false } }));
+          if (record.sent) {
+            record.sent = false;
+            revert(key, record);
+          }
+          return;
+        }
         setFields((prev) => ({ ...prev, [key]: { text: parsed.text, error: parsed.error, shown: false } }));
         if (parsed.value !== null) {
           record.sent = true;
@@ -744,12 +750,10 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
               groupKey={row.groupKey}
               table={lineTable}
               scroll={scrollOf(row.groupKey)}
-              perLine={row.perLine}
               oneTime={oneTime}
               last={row.last}
               charge={fields[cellKey(line.temp_id, 'charge')]}
               labour={fields[cellKey(line.temp_id, 'labour_rate')]}
-              tax={fields[cellKey(line.temp_id, 'tax')]}
               lastKey={lastKey}
               actions={actions}
               styles={styles}
@@ -762,12 +766,10 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
           return (
             <LineCard
               item={line}
-              perLine={row.perLine}
               oneTime={oneTime}
               last={row.last}
               charge={fields[cellKey(line.temp_id, 'charge')]}
               labour={fields[cellKey(line.temp_id, 'labour_rate')]}
-              tax={fields[cellKey(line.temp_id, 'tax')]}
               lastKey={lastKey}
               inputWidths={layout.lineInputs}
               actions={actions}

@@ -168,7 +168,6 @@ export const invoice = {
     stepDoneAverage: 'Charge {{value}} rupees set on the lines without their own charge',
     keepOwnCharge: { one: '{{count}} line keeps its own charge', other: '{{count}} lines keep their own charge' },
     keepOwnLabour: { one: '{{count}} line keeps its own labour', other: '{{count}} lines keep their own labour' },
-    keepOwnTax: { one: '{{count}} line keeps its own tax', other: '{{count}} lines keep their own tax' },
     oneTime: 'One-time',
     qtyOf: 'Qty {{qty}}',
     dispatchedOf: '{{dispatched}} of {{received}} bags dispatched',

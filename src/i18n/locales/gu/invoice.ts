@@ -176,7 +176,6 @@ export const invoice: Translation<typeof source> = {
     stepDoneAverage: 'પોતાનું ભાડું ન હોય તેવી લાઇન પર ભાડું {{value}} રૂપિયા કર્યું',
     keepOwnCharge: { one: '{{count}} લાઇનનું ભાડું તેનું પોતાનું રહે છે', other: '{{count}} લાઇનનું ભાડું તેમનું પોતાનું રહે છે' },
     keepOwnLabour: { one: '{{count}} લાઇનની મજૂરી તેની પોતાની રહે છે', other: '{{count}} લાઇનની મજૂરી તેમની પોતાની રહે છે' },
-    keepOwnTax: { one: '{{count}} લાઇનનો ટેક્સ તેનો પોતાનો રહે છે', other: '{{count}} લાઇનનો ટેક્સ તેમનો પોતાનો રહે છે' },
     oneTime: 'એક વખત',
     qtyOf: 'નંગ {{qty}}',
     dispatchedOf: '{{received}} માંથી {{dispatched}} નંગ જાવક થયા',

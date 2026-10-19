@@ -1,6 +1,6 @@
 /**
  * One dispatch line as a small card, shown only while a screen reader (TalkBack) is on (the lines are otherwise the sideways-scrolling table, LineRow.tsx), in the style of the rate box's band cards.
- * Each editable figure is its label, then one row: a short input sized for the largest figure expected (itemsLayout's
+ * Each editable figure (Charge, and Labour except in a one-time GRN; there is no Tax here, tax is set in "All dispatches") is its label, then one row: a short input sized for the largest figure expected (itemsLayout's
  * `lineInputs`, no clear button) and, right after it, + then − side by side (LineStepper, inline). The rest of the row is empty.
  */
 import React, { useCallback, useState } from 'react';
@@ -13,19 +13,20 @@ import type { InvoiceItemData } from '@/types/invoice.types';
 import { RateInput } from './RateInput';
 import { LineStepper } from './LineStepper';
 import { lineSubline } from './lineText';
-import { cellKey, cellLabel, fieldHeading, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
+import { cellKey, cellLabel, fieldHeading, rateText, type FieldState, type ItemsActions } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
 import type { LineInputWidths } from './itemsLayout';
 
+/** The fields of a line card: tax has none (it is set in "All dispatches"). */
+type LineCardField = 'charge' | 'labour_rate';
+
 interface Props {
   item: InvoiceItemData;
-  perLine: boolean;
   oneTime: boolean;
   /** The last part of the group's card: it draws the card's bottom edge. */
   last: boolean;
   charge?: FieldState;
   labour?: FieldState;
-  tax?: FieldState;
   /** The last field of the page: its keyboard key is "done", every other one's is "next". */
   lastKey?: string;
   /** The widths of the short inputs (the step's layout). */
@@ -70,9 +71,9 @@ function FieldRow({ boxWidth, stepper, children }: { boxWidth: number; stepper: 
   );
 }
 
-export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, last, charge, labour, tax, lastKey, inputWidths, actions, styles }: Props) {
+export const LineCard = React.memo(function LineCard({ item, oneTime, last, charge, labour, lastKey, inputWidths, actions, styles }: Props) {
   const number = formatIdentifier(item.dispatch_no);
-  const field = (name: RateField, state: FieldState | undefined) => {
+  const field = (name: LineCardField, state: FieldState | undefined) => {
     const key = cellKey(item.temp_id, name);
     return (
       // The key is on this wrapper (line and field): a recycled row gets a new input, with no focus ring or clear icon carried over.
@@ -108,8 +109,8 @@ export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, l
       </FieldRow>
     );
   };
-  const names: RateField[] = perLine ? (oneTime ? ['charge', 'tax'] : ['charge', 'labour_rate', 'tax']) : ['charge'];
-  const states = { charge, labour_rate: labour, tax };
+  const names: LineCardField[] = oneTime ? ['charge'] : ['charge', 'labour_rate'];
+  const states = { charge, labour_rate: labour };
   const card = (
     <View style={styles.card} testID={`card-${item.temp_id}`}>
       <View style={styles.cardHead}>

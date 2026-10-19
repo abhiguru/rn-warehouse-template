@@ -40,6 +40,7 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     },
     headerText: { ...table.headerCell },
     headerNumber: { ...table.headerCell, textAlign: 'right' as const },
+    headerCentre: { ...table.headerCell, textAlign: 'center' as const },
     hint: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.xs },
     row: {
       flexDirection: 'row' as const,
@@ -58,7 +59,7 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       borderRightColor: t.table.divider,
     },
     columnBox: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingLeft: COL_GAP },
-    // The box of an editable cell starts after the gap before its column, so two boxes side by side do not touch.
+    // The box of an editable cell starts after the gap before its column (space.lg), so it never touches the figure before it or the box beside it.
     cellBox: { alignItems: 'stretch' as const },
     figureText: { flex: 1, minWidth: 0 },
     columnText: { ...typography.subhead, color: t.text.primary },
@@ -79,6 +80,8 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     primaryStrong: table.primaryStrong,
     secondary: table.secondary,
     number: table.number,
+    numberCentre: { ...table.number, textAlign: 'center' as const },
+    columnCentre: { ...typography.subhead, color: t.text.primary, textAlign: 'center' as const },
     numberStrong: table.numberStrong,
     label: { ...typography.subhead, color: t.text.primary, flex: 1, minWidth: 0 },
     note: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingBottom: space.xs },

@@ -1,11 +1,11 @@
 /**
  * The read-only texts of a dispatch line, shared by the sideways table (LineRow.tsx, and the widths in
  * itemsLayout.ts, which are sized to these same texts) and the line card (LineCard.tsx): date, duration,
- * days and quantity. Pure; the numbers are in the language's digits.
+ * days and quantity (the table writes the date as 01/06/23, the card as 9 Oct). Pure; the numbers are in the language's digits.
  */
 import { nb } from '@/components/common/DetailTable';
 import { t as tr } from '@/i18n';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, formatDateShort, formatNumber } from '@/utils/formatters';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 /** The dispatch date in the app's short date format ("9 Oct"), from the stored date. */
@@ -22,7 +22,11 @@ export const monthsText = (duration: number, oneTime: boolean): string =>
 /** A day or quantity count ("48", "120") in the language's digits. */
 export const countText = (value: number): string => formatNumber(value);
 
+/** The date column of the sideways table: "01/06/23" (`formatDateShort`); the line card keeps `dateText`. */
+export const tableDateText = (date: string): string => formatDateShort(date);
+
 export const lineDate = (item: InvoiceItemData): string => dateText(item.dispatch_date);
+export const lineTableDate = (item: InvoiceItemData): string => tableDateText(item.dispatch_date);
 export const lineDuration = (item: InvoiceItemData, oneTime: boolean): string => durationText(item.duration, oneTime);
 export const lineMonths = (item: InvoiceItemData, oneTime: boolean): string => monthsText(item.duration, oneTime);
 export const lineDays = (item: InvoiceItemData): string => countText(item.no_of_days);
