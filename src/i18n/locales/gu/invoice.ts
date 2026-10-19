@@ -148,7 +148,7 @@ export const invoice: Translation<typeof source> = {
     allDispatches: 'બધી જાવક',
     // Draft for the owner's wording review (tweak 2026-10-19, − / + under the (all lines) figures): stepNameCharge to stepUnitMoney, and stepLineDecrease, stepLineIncrease (+ / − beside a dispatch line's figure).
     // The − / + under an (all lines) figure: name is lowercase, amount is "₹0.25" or "1%" in the language's digits.
-    stepNameCharge: 'ભાડું',
+    stepNameCharge: 'ભાડાનો દર',
     stepNameLabour: 'મજૂરી',
     stepNameTax: 'ટેક્સ',
     stepAmountMoney: '₹{{amount}}',
@@ -166,7 +166,7 @@ export const invoice: Translation<typeof source> = {
     stepDone: '{{field}} {{value}} {{unit}}',
     // Under a Charge that shows the weighted average of its lines (bag-months; bags for a one-time GRN). Gujarati is a draft.
     averageNote: { one: '{{count}} લાઇનની સરેરાશ', other: '{{count}} લાઇનની સરેરાશ' },
-    stepDoneAverage: 'પોતાનું ભાડું ન હોય તેવી લાઇન પર ભાડું {{value}} રૂપિયા કર્યું',
+    stepDoneAverage: 'જે લાઇનનો પોતાનો ભાડાનો દર નથી તેમાં ભાડાનો દર {{value}} રૂપિયા કર્યો',
     keepOwnCharge: { one: '{{count}} લાઇનનું ભાડું તેનું પોતાનું રહે છે', other: '{{count}} લાઇનનું ભાડું તેમનું પોતાનું રહે છે' },
     keepOwnLabour: { one: '{{count}} લાઇનની મજૂરી તેની પોતાની રહે છે', other: '{{count}} લાઇનની મજૂરી તેમની પોતાની રહે છે' },
     oneTime: 'એક વખત',
@@ -369,8 +369,8 @@ export const invoice: Translation<typeof source> = {
     tax: 'ટેક્સ {{value}}%',
     baseAndTax: 'ટેક્સ પહેલાં {{base}} · ટેક્સ {{tax}}',
     groupRowLabel: '{{item}}{{details}}, {{bags}}, કુલ {{amount}}',
-    lineSpoken: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ચાર્જ {{charge}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
-    lineSpokenOneTime: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ચાર્જ {{charge}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
+    lineSpoken: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ભાડાનો દર {{charge}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
+    lineSpokenOneTime: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ભાડાનો દર {{charge}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
     totalLabel: 'કુલ: {{groups}}, {{lines}}, {{bags}}, {{amount}}',
     linesNote: 'દરેક લાઇનની રકમ ટેક્સ સાથે છે, ઇન્વૉઇસના રાઉન્ડિંગ અને છૂટ પહેલાં. ઇન્વૉઇસની કુલ રકમ હિસાબમાં છે.',
   },

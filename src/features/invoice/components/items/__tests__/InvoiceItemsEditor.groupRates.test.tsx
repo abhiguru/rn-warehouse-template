@@ -43,7 +43,7 @@ describe('a group whose lines differ', () => {
   it('shows the average for the charge that differs (not "Mixed"), and the shared labour and tax', async () => {
     const tree = await render(FREE_AND_PAID());
     // The average of 0 and 5, equal bag-months on both lines, is 2.50.
-    expect(inputOf(tree, `group|${GROUP}|charge`).props).toMatchObject({ value: '2.50', placeholder: '0' });
+    expect(inputOf(tree, `group|${GROUP}|charge`).props).toMatchObject({ value: '2.50', placeholder: '2.50' });
     expect(hasText(tree, 'Average of 2 lines')).toBe(true);
     expect(inputOf(tree, `group|${GROUP}|labour_rate`).props).toMatchObject({ value: '2.00', placeholder: '0' });
     expect(inputOf(tree, `group|${GROUP}|tax`).props).toMatchObject({ value: '5', placeholder: '0' });
@@ -82,12 +82,15 @@ describe('a group whose lines differ', () => {
     expect(hasText(tree, '2 lines keep their own charge')).toBe(true);
   });
 
-  it('keeps showing a group rate that was applied when one line is given its own charge afterwards', async () => {
+  it('shows the average once the group field is left, when one line is given its own charge after the group rate', async () => {
     const tree = await render(groupLines(3));
     await type(tree, `group|${GROUP}|charge`, '6');
     await type(tree, 'cell|edit_1_0|charge', '9');
     expect(lines().map((line) => line.charge)).toEqual([6, 9, 6]);
-    expect(inputOf(tree, `group|${GROUP}|charge`).props).toMatchObject({ value: '6', placeholder: '0' });
+    // The group field is left, as on a phone: it then shows the average of 6, 9 and 6 (equal bag-months), not the typed 6.
+    await act(async () => { inputOf(tree, `group|${GROUP}|charge`).props.onBlur({}); });
+    expect(inputOf(tree, `group|${GROUP}|charge`).props).toMatchObject({ value: '7.00', placeholder: '7.00' });
+    expect(hasText(tree, 'Average of 3 lines')).toBe(true);
     expect(hasText(tree, '1 line keeps its own charge')).toBe(true);
   });
 

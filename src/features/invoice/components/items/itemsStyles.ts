@@ -62,7 +62,6 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     // The box of an editable cell starts after the gap before its column (space.lg), so it never touches the figure before it or the box beside it.
     cellBox: { alignItems: 'stretch' as const },
     figureText: { flex: 1, minWidth: 0 },
-    columnText: { ...typography.subhead, color: t.text.primary },
     tableHeader: {
       flexDirection: 'row' as const,
       alignItems: 'flex-end' as const,
@@ -84,7 +83,6 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     columnCentre: { ...typography.subhead, color: t.text.primary, textAlign: 'center' as const },
     numberStrong: table.numberStrong,
     label: { ...typography.subhead, color: t.text.primary, flex: 1, minWidth: 0 },
-    note: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingBottom: space.xs },
     error: { ...typography.footnote, color: t.status.negative.text, paddingHorizontal: space.md, paddingBottom: space.xs },
     // Group head
     headRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.sm },

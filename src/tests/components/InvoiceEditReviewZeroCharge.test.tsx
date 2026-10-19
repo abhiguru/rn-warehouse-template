@@ -265,7 +265,7 @@ describe('changing a group rate on the items step of such an invoice', () => {
     let itemsStep!: ReactTestRenderer;
     await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
     // A free and a paid line: the group's charge shows their average (owner, 2026-10-19), which is never written to the lines.
-    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '2.50', placeholder: '0' });
+    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '2.50', placeholder: '2.50' });
 
     await act(async () => { groupField(itemsStep, 'group|i1:::M1|tax').props.onChangeText('12'); });
 

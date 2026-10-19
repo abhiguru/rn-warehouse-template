@@ -122,7 +122,7 @@ export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName,
                   onBlur={() => actions.blur(key)}
                   onSubmitEditing={() => actions.submit(key)}
                   blurOnSubmit={false}
-                  placeholder={view.mixed ? tr('invoice.items.mixed') : '0'}
+                  placeholder={view.average ? view.text : view.mixed ? tr('invoice.items.mixed') : '0'}
                   placeholderTextColor={t.text.placeholder}
                   helperText={view.average ? averageNote(lineCount, view.keepOwn) : view.keepOwn > 0 ? keepOwnNote(field, view.keepOwn) : undefined}
                   error={state?.shown ? state.error ?? undefined : undefined}

@@ -3,9 +3,10 @@
  * rates, opening to its dispatch lines; totals that add the rows; links; large text; states.
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { InvoiceLineItemsTab, type InvoiceLineItem } from '../InvoiceLineItemsTab';
 
 jest.mock('@/store/hooks', () => ({
@@ -60,6 +61,9 @@ afterEach(() => {
   mockFontScale = 1;
   mockWidth = 360;
   setLanguage('en');
+  resetScreenReaderKnown();
+  jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 const textOf = (node: ReactTestInstance): string =>
@@ -120,6 +124,46 @@ describe('invoice Items table', () => {
   it('does not link a line without a dispatch id', () => {
     render(<InvoiceLineItemsTab items={[line({ id: '09', dispatch_id: undefined })]} on_view_dispatch={jest.fn()} />);
     expect(byTestId('invoice-line-link-09').props.disabled).toBe(true);
+  });
+
+  it('shows the rate and labour of a lot only when every line of it agrees', () => {
+    const cheaper = line({ id: '02', charge: 8, charge_per_unit: 8, labour_rate: 2 });
+    render(<InvoiceLineItemsTab items={[cumin1, cheaper, pepper]} />);
+
+    // The two cumin lines differ in charge and labour: no Rate, no Labour (the first line's figures would be wrong).
+    expect(textOf(byTestId('invoice-group-row-lot-cumin'))).toBe('Cumin Seed|CS/1 · 50 kg each|Tax 5%|20|₹346.50');
+    // The pepper lot has one line: its rate shows.
+    expect(textOf(byTestId('invoice-group-row-lot-pepper'))).toBe('Black Pepper|25 kg each|Rate ₹12.00|5|₹90.00');
+  });
+
+  it('draws a long lot in steps until every line is there', () => {
+    jest.useFakeTimers();
+    const many = Array.from({ length: 130 }, (_, i) => line({ id: String(100 + i) }));
+    render(<InvoiceLineItemsTab items={many} />);
+
+    const count = () => tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.testID === 'string' && n.props.testID.startsWith('invoice-line-link-')).length;
+    expect(count()).toBe(40);
+    for (let i = 0; i < 4 && count() < 130; i += 1) act(() => { jest.advanceTimersByTime(50); });
+    expect(count()).toBe(130);
+  });
+
+  it('with a screen reader on, puts a Pressable link over each line that opens the dispatch', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    const onDispatch = jest.fn();
+    await act(async () => { tree = create(<InvoiceLineItemsTab items={[cumin1, cumin2]} on_view_dispatch={onDispatch} />); });
+
+    const overlay = byTestId('invoice-line-overlay-02');
+    expect(overlay.props.accessibilityRole).toBe('link');
+    expect(overlay.props.accessibilityLabel).toContain('BDG002');
+    // It takes touches (a view that ignores them gets no hover events on Android).
+    expect(overlay.props.pointerEvents).toBeUndefined();
+    act(() => overlay.props.onPress());
+    expect(onDispatch).toHaveBeenCalledWith('d-02');
+  });
+
+  it('has no overlay when no screen reader is on', () => {
+    render(<InvoiceLineItemsTab items={[cumin1, cumin2]} />);
+    expect(has('invoice-line-overlay-01')).toBe(false);
   });
 
   it('keeps two lots of one item apart and lines without a lot id each on their own', () => {

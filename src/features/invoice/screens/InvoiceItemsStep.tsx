@@ -83,7 +83,6 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       </Button>
     ),
     // `language` is not read inside: the texts are, and they follow it.
-     
     [language]
   );
 
@@ -153,7 +152,6 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       />
     ),
     // `language` is not read inside: the texts are, and they follow it.
-     
     [handleCancel, handleStepPress, invoiceNo, isEdit, language]
   );
   const bottomBar = useMemo(
@@ -167,7 +165,6 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
         nextLabel={tr('invoice.items.nextReview')}
       />
     ),
-     
     [handleBack, handleNext, language]
   );
   const closeHelp = useCallback(() => setHelpVisible(false), []);
@@ -201,7 +198,6 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
         />
       </>
     ),
-     
     [helpVisible, errorDialog, closeHelp, closeError, language]
   );
 

@@ -305,8 +305,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
         ? [{ id: 'tax', label: translate('invoice.label.tax'), value: formatInvoiceAmount(taxAmount), discount: false }]
         : []),
     ];
-    // The language changes the words.
-     
+    // `language` is a dependency only because the texts follow it; it is not read inside.
   }, [total, taxAmount, labour, discount, language]);
   const customerName = invoice.customer?.name || translate('lists.invoice.customerNotSet');
   const invoiceDate = formatDate(invoice.invoice_date, 'short');

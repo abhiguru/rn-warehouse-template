@@ -312,7 +312,7 @@ describe('R3a-6 and R3a-7: the applied group rate and the keep-own note', () => 
     const tree = await render(three());
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: 'edit_1_0', values: { charge: 9 } })); });
     expect(inputOf(tree, CHARGE_ALL).props.value).toBe('6.33');
-    expect(inputOf(tree, CHARGE_ALL).props.placeholder).toBe('0');
+    expect(inputOf(tree, CHARGE_ALL).props.placeholder).toBe('6.33');
     expect(hasText(tree, 'Average of 3 lines')).toBe(true);
     expect(hasText(tree, '1 line keeps its own charge')).toBe(true);
   });

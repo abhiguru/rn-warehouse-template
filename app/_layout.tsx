@@ -551,7 +551,7 @@ function BootstrapApp() {
     });
     const lifecycle = AppState.addEventListener('change', state => {
       // First, so a throwing listener cannot skip it. Runs on every change to active, including
-      // inactive -> active; that only costs one SecureStore read.
+      // inactive -> active; that only costs a fresh read of the stored session on the next request (3 to 5 SecureStore reads).
       if (state === 'active') invalidateStoredTokenCache();
       resume(state);
       // A central session whose store did not answer at start is read again now, and

@@ -53,7 +53,6 @@ export interface ReviewSectionProps {
    * body is costly to draw (the invoice Review's Items). An open section draws it at once.
    */
   deferBody?: boolean;
-  /** Called once, when a deferred body has been drawn (timing probe). */
   children: ReactNode;
 }
 

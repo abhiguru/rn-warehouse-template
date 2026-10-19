@@ -223,7 +223,6 @@ interface CustomerInvoiceRow {
   notes: string | null;
 }
 
-/** get_customer_invoice_summary returns a shorter row than the staff list; fill the list shape from it. */
 /** The list RPC returns NULL for an amount an invoice never had (every auto-generated invoice has no discount): 0, as on the details screen. */
 const withNumericAmounts = (invoice: Invoice): Invoice => ({
   ...invoice,
@@ -233,6 +232,7 @@ const withNumericAmounts = (invoice: Invoice): Invoice => ({
   discount: Number(invoice.discount) || 0,
 });
 
+/** get_customer_invoice_summary returns a shorter row than the staff list; fill the list shape from it. */
 const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, customerName: string): Invoice => {
   const [yearPart, numberPart] = String(row.invoice_number || '').split('-');
   return {

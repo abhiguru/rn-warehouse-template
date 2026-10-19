@@ -393,12 +393,12 @@ const STEP_NAME: Record<RateField, TranslationKey> = {
   tax: 'invoice.items.stepNameTax',
 };
 
-/** "Raise the charge by ₹0.25, dispatch I0042" / "Lower the tax by 1%, dispatch I0042": the spoken labels of a line's buttons. */
-export function lineStepLabels(field: RateField, dispatchNo: string, aboveMax = false): { increase: string; decrease: string } {
+/** "Raise the charge by ₹0.25, dispatch I0042" / "Lower the labour by ₹0.25, dispatch I0042" (a line has no Tax figure to step): the spoken labels of a line's buttons. */
+export function lineStepLabels(field: Exclude<RateField, 'tax'>, dispatchNo: string, aboveMax = false): { increase: string; decrease: string } {
   const amount = localizeDigits(String(STEP[field]));
   const params = {
     name: tr(STEP_NAME[field]),
-    amount: tr(field === 'tax' ? 'invoice.items.stepAmountTax' : 'invoice.items.stepAmountMoney', { amount }),
+    amount: tr('invoice.items.stepAmountMoney', { amount }),
     number: formatIdentifier(dispatchNo),
   };
   // Above the maximum, − lowers the figure to the maximum (say so, with the maximum), not by a step.

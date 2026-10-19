@@ -1,6 +1,6 @@
 /**
- * The + then − side by side beside a dispatch line's own figure in a line card (the cards shown while a screen reader is on; the sideways table has no steppers): the steps are 0.25 for
- * Charge and Labour and 1 for Tax. A press goes through `actions.stepCell`, which applies the stepped figure
+ * The + then − side by side beside a dispatch line's own figure in a line card (the cards shown while a screen reader is on; the sideways table has no steppers): the step is 0.25 for
+ * Charge and Labour (a line has no Tax figure). A press goes through `actions.stepCell`, which applies the stepped figure
  * like an accepted entry in that line's cell, so the line keeps its own figure. Both buttons are disabled while
  * the cell holds refused or unfinished text, − at 0 and + at the field's maximum. The buttons are not in the Next
  * key's field walk.
@@ -12,7 +12,7 @@ import { cellKey, lineStepLabels, lineView, stepperState, type FieldState, type 
 interface Props {
   tempId: string;
   dispatchNo: string;
-  field: RateField;
+  field: Exclude<RateField, 'tax'>;
   /** The line's stored rate for the field. */
   rate: number;
   /** What the cell holds while it differs from the stored rate (typed text). */
@@ -36,4 +36,3 @@ export const LineStepper = React.memo(function LineStepper({ tempId, dispatchNo,
     />
   );
 });
-
