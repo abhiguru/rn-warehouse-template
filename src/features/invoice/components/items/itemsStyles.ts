@@ -1,5 +1,6 @@
 import { TABLE_OUTLINE, makeTableStyles } from '@/components/common/DetailTable';
-import { fontWeight, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { COL_GAP } from './itemsLayout';
 
 /**
  * Styles of the parts one group's card is drawn in. The card is several list rows (head, shared rows,
@@ -37,7 +38,6 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       borderColor: t.table.outline,
       ...t.shadow[0],
     },
-    headerRow: { ...table.headerRow, alignItems: 'flex-end' as const },
     headerText: { ...table.headerCell },
     headerNumber: { ...table.headerCell, textAlign: 'right' as const },
     hint: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.xs },
@@ -49,6 +49,31 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       paddingHorizontal: space.md,
       paddingVertical: space.xs,
     },
+    // The line table (sideways scroll): the pinned Dispatch cell, then the scrolling viewport to the card's edge
+    tableRow: { flexDirection: 'row' as const, alignItems: 'stretch' as const, minHeight: touchTarget + 2 * space.xs, paddingLeft: space.md },
+    pinnedBox: {
+      justifyContent: 'center' as const,
+      paddingRight: space.sm,
+      borderRightWidth: TABLE_OUTLINE,
+      borderRightColor: t.table.divider,
+    },
+    columnBox: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingLeft: COL_GAP },
+    cellBox: { alignItems: 'stretch' as const },
+    figureText: { flex: 1, minWidth: 0 },
+    columnText: { ...typography.subhead, color: t.text.primary },
+    tableHeader: {
+      flexDirection: 'row' as const,
+      alignItems: 'flex-end' as const,
+      minHeight: layout.rowMinHeight,
+      paddingLeft: space.md,
+      paddingVertical: space.sm,
+      backgroundColor: t.table.headerFill,
+      borderBottomWidth: 1,
+      borderBottomColor: t.table.separator,
+    },
+    pinnedHead: { paddingRight: space.sm, borderRightWidth: TABLE_OUTLINE, borderRightColor: t.table.divider },
+    headCell: { paddingLeft: COL_GAP },
+    hintSecond: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.md, paddingBottom: space.xs },
     rowDivider: { borderBottomWidth: 1, borderBottomColor: t.table.divider },
     grow: { flex: 1, minWidth: 0 },
     primaryStrong: table.primaryStrong,

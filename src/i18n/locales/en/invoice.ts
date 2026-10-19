@@ -138,6 +138,11 @@ export const invoice = {
     colLabour: 'Labour (₹)',
     colTax: 'Tax (%)',
     colAmount: 'Amount',
+    colDuration: 'Duration',
+    colDays: 'Days',
+    colQty: 'Qty',
+    // Under the heading of the line table, which scrolls sideways (owner decision 2026-10-19).
+    swipeHint: 'Swipe the table sideways to see more',
     // Placeholder of an (all lines) field when the lines do not all have the same rate.
     mixed: 'Mixed',
     allDispatches: 'All dispatches',

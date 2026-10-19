@@ -7,9 +7,7 @@
  * `StepperButtons` is the same pair of buttons on their own, for a field that sits above them (the
  * invoice items step's "(all lines)" figures): each button is a full touch target wide and tall with the
  * 36 dp outlined button drawn inside it, so the whole target works on Android (a hit slop outside a
- * clipped parent does not). It holds no value; the caller steps it. `orientation="vertical"` stacks + above −
- * beside a field (the dispatch lines of the same step): each button is a `touchTarget` square with a 36 x 40 dp
- * box inside it, so the pair is `touchTarget` wide and two touch targets tall, the touch areas never overlapping.
+ * clipped parent does not). It holds no value; the caller steps it.
  * `orientation="inline"` is the same two squares side by side at a fixed size (`INLINE_PAIR_WIDTH` wide, one touch
  * target tall), + then −, for a pair that sits right after a short field instead of filling a column.
  */
@@ -29,10 +27,8 @@ import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 /** Visual size of the minus/plus buttons; the touch area is padded to touchTarget. */
 const BUTTON_SIZE = 36;
-/** The height of a button box in the vertical pair (inside its `touchTarget` square). */
-const VERTICAL_BOX_HEIGHT = 40;
-/** The width of the vertical pair: one touch target. */
-export const VERTICAL_PAIR_WIDTH = touchTarget;
+/** The height of a button box in the inline pair (inside its `touchTarget` square). */
+const INLINE_BOX_HEIGHT = 40;
 /** The width of the inline pair: two touch targets side by side. */
 export const INLINE_PAIR_WIDTH = 2 * touchTarget;
 const VALUE_MIN_WIDTH = 80;
@@ -404,22 +400,19 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.field,
     overflow: 'hidden' as const,
   },
-  pairColumn: {
-    width: touchTarget,
-  },
   pairRowInline: {
     flexDirection: 'row' as const,
     width: INLINE_PAIR_WIDTH,
   },
-  pairHitVertical: {
+  pairHitInline: {
     width: touchTarget,
     height: touchTarget,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
-  pairBoxVertical: {
+  pairBoxInline: {
     width: BUTTON_SIZE,
-    height: VERTICAL_BOX_HEIGHT,
+    height: INLINE_BOX_HEIGHT,
   },
   valueContainer: {
     minWidth: VALUE_MIN_WIDTH,
@@ -457,13 +450,13 @@ interface StepperButtonsProps {
   increaseLabel: string;
   testID?: string;
   /**
-   * 'horizontal' (default): the two buttons share a row's width. 'vertical': + above −, one touch target wide.
+   * 'horizontal' (default): the two buttons share a row's width.
    * 'inline': + then − side by side, each a `touchTarget` square (`INLINE_PAIR_WIDTH` in all).
    */
-  orientation?: 'horizontal' | 'vertical' | 'inline';
+  orientation?: 'horizontal' | 'inline';
 }
 
-/** The + then − of a stepper without a value between them (the GRN rate sheet's order). Horizontal: they share the width equally. Vertical: + above −, each a `touchTarget` square. Inline: + beside −, the same squares. */
+/** The + then − of a stepper without a value between them (the GRN rate sheet's order). Horizontal: they share the width equally. Inline: + beside −, the same squares. */
 export const StepperButtons: React.FC<StepperButtonsProps> = ({
   onDecrement,
   onIncrement,
@@ -476,12 +469,11 @@ export const StepperButtons: React.FC<StepperButtonsProps> = ({
 }) => {
   const t = useTokens();
   const inline = orientation === 'inline';
-  // The vertical and the inline pair use the same touch square and box.
-  const vertical = orientation === 'vertical' || inline;
+  // The inline pair uses a touch square and a box of its own (`pairHitInline`, `pairBoxInline`).
   const styles = useThemedStyles(makeStyles);
   const button = (name: 'minus' | 'plus', enabled: boolean, onPress: () => void, label: string, id?: string) => (
     <Pressable
-      style={vertical ? styles.pairHitVertical : styles.pairHit}
+      style={inline ? styles.pairHitInline : styles.pairHit}
       onPress={onPress}
       disabled={!enabled}
       accessibilityRole="button"
@@ -490,14 +482,14 @@ export const StepperButtons: React.FC<StepperButtonsProps> = ({
       testID={id}
     >
       {({ pressed }) => (
-        <View style={[styles.pairBox, vertical && styles.pairBoxVertical, pressed && styles.buttonPressed, !enabled && styles.buttonDisabled]}>
+        <View style={[styles.pairBox, inline && styles.pairBoxInline, pressed && styles.buttonPressed, !enabled && styles.buttonDisabled]}>
           <Icon name={name} size={iconSize.md} color={t.brand.tint} />
         </View>
       )}
     </Pressable>
   );
   return (
-    <View style={inline ? styles.pairRowInline : vertical ? styles.pairColumn : styles.pairRow} testID={testID}>
+    <View style={inline ? styles.pairRowInline : styles.pairRow} testID={testID}>
       {button('plus', canIncrement, onIncrement, increaseLabel, testID ? `${testID}-plus` : undefined)}
       {button('minus', canDecrement, onDecrement, decreaseLabel, testID ? `${testID}-minus` : undefined)}
     </View>

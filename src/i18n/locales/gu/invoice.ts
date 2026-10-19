@@ -144,6 +144,11 @@ export const invoice: Translation<typeof source> = {
     colLabour: 'મજૂરી (₹)',
     colTax: 'ટેક્સ (%)',
     colAmount: 'રકમ',
+    colDuration: 'મુદત',
+    colDays: 'દિવસ',
+    colQty: 'નંગ',
+    // Draft for the owner's wording review (tweak 2026-10-19): the line table scrolls sideways.
+    swipeHint: 'વધુ જોવા માટે ટેબલને બાજુમાં સરકાવો',
     // Placeholder of an (all lines) field when the lines do not all have the same rate.
     mixed: 'જુદા જુદા',
     allDispatches: 'બધી જાવક',

@@ -1,8 +1,8 @@
 /**
- * The total row, the toggle that opens a group's dispatch lines, and the column headings (with the hint
+ * The total row, the toggle that opens a group's dispatch lines, and the column headings (with the hints
  * under them) of an open group's card. The card's bottom edge is drawn by the last part: the toggle while
- * the group is closed, the last line while it is open. The headings of the editable columns leave room at the right for the
- * + above − beside each line figure (LINE_STEPPER).
+ * the group is closed, the last line while it is open. The heading row is the line table's: the pinned Dispatch
+ * heading and, in the card's shared `SidewaysViewport`, the other headings (swiping the heading moves the whole table).
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -12,37 +12,52 @@ import { t as tr } from '@/i18n';
 import { iconSize } from '@/theme/tokens';
 import { formatCount, formatNumber } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { CELL_CHROME, LINE_STEPPER } from './itemsLayout';
-import type { LineColumn } from './lineColumns';
+import { columnInset, type LineTable } from './lineColumns';
+import { SidewaysViewport, type TableScroll } from './SidewaysViewport';
 import type { ItemsActions } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
 
 interface ColumnsProps {
   groupKey: string;
   /** The columns of the line table (TanStack column model, lineColumns.ts). */
-  columns: readonly LineColumn[];
+  table: LineTable;
+  /** The card's sideways position, shared with its rows. */
+  scroll: TableScroll;
+  /** The columns are wider than the screen: the hint to swipe sideways is shown. */
+  sideways: boolean;
   styles: ItemsStyles;
 }
 
-export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, columns, styles }: ColumnsProps) {
+export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, table, scroll, sideways, styles }: ColumnsProps) {
+  const t = useTokens();
   return (
     <View style={styles.side} testID={`cols-${groupKey}`}>
-      <View style={styles.headerRow}>
-        {columns.map((column) =>
-          column.width === 'grow' ? (
-            <Text key={column.id} style={[styles.headerText, styles.grow]} numberOfLines={1}>{column.header}</Text>
-          ) : (
+      {/* Keyed by the card: a part the list recycles for another card gets that card's scroll. */}
+      <SidewaysViewport
+        key={groupKey}
+        scroll={scroll}
+        content={table.content}
+        fill={t.table.headerFill}
+        rowStyle={styles.tableHeader}
+        pinned={
+          <View style={[styles.pinnedHead, { width: table.pinned.width }]}>
+            <Text style={styles.headerText} numberOfLines={1}>{table.pinned.header}</Text>
+          </View>
+        }
+      >
+        {table.scrolling.map((column) => (
+          <View key={column.id} style={[styles.headCell, { width: column.width, justifyContent: 'flex-end' }]}>
             <Text
-              key={column.id}
-              style={[styles.headerNumber, { width: column.width, paddingRight: column.id === 'amount' ? 0 : CELL_CHROME / 2 + LINE_STEPPER }]}
+              style={[column.numeric ? styles.headerNumber : styles.headerText, { paddingRight: columnInset(column.id) }]}
               numberOfLines={1}
             >
               {column.header}
             </Text>
-          )
-        )}
-      </View>
+          </View>
+        ))}
+      </SidewaysViewport>
       <Text style={styles.hint}>{tr('invoice.items.hint')}</Text>
+      {sideways ? <Text style={styles.hintSecond}>{tr('invoice.items.swipeHint')}</Text> : null}
     </View>
   );
 });

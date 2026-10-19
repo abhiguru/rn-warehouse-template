@@ -6,11 +6,14 @@
  * for what all lines share (Charge for 2 or more lines, Labour and Tax: side by side in one row, each
  * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), the group total, and a toggle,
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
- * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: a table that
- * fits the screen (Dispatch | Charge ₹ | Amount, its columns described with the app's TanStack
- * column model, lineColumns.ts) with the Charge typed in its cell, or, from font scale 1.3 or when the
- * columns would crowd the first one, one small card per line. Where the lines differ in labour or tax
- * each line shows its own. Opening and closing has no animation: the rows are virtualized.
+ * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: one table that
+ * scrolls sideways at every text size (owner decision, 2026-10-19): Dispatch (pinned) | Date | Duration | Days | Qty |
+ * Charge ₹ | Labour ₹ | Tax % | Amount, its columns described with the app's TanStack column model (lineColumns.ts) and
+ * sized to their widest text once per layout (itemsLayout.ts), with the Charge typed in its cell; Labour and Tax are
+ * cells too only where the lines differ in them, else read-only figures. The heading and all rows of one open card
+ * share one sideways position (a Reanimated shared value per card, SidewaysViewport.tsx), and a cell that takes the
+ * focus (tap or the Next key) is brought fully into view (`scrollToReveal` in `actions.focus`). Only while a screen reader is on is
+ * each line a small card instead. Opening and closing has no animation: the rows are virtualized.
  *
  * The page is one keyboard-aware, virtualized FlashList. A card is drawn as several list rows
  * (head, shared part, total, toggle and, while open, column headings and one row per line; the last
@@ -24,18 +27,18 @@
  * no total ever shows a refused or partial value. The error shows when the field is left (also when
  * the keyboard hides, or when its group is closed), or when Next is pressed, which counts refused
  * text in every group, closed ones too; it opens the group of the first wrong field, scrolls to it and
- * focuses it. The field shows its text as typed while it has the focus. The layout (table or cards)
+ * focuses it. The field shows its text as typed while it has the focus. The layout (column widths)
  * is held while any field has the focus and looked at again a moment after it is left (so is the choice
  * between the shared row and the stack, which comes from the same held layout).
  *
  * A − / + press under a shared field (`actions.step`) leaves the focused field first, as the keyboard
  * hiding does, then applies the stepped figure through the same `commit` as typing; no keyboard opens.
- * The + / − beside a dispatch line's own figure (`actions.stepCell`, LineStepper.tsx) do the same for that line's
- * cell: the press is what typing and accepting the figure in the cell does, so the line keeps its own figure
+ * The + / − beside a line card's own figure (screen reader cards; `actions.stepCell`, LineStepper.tsx) do the same for that line's
+ * field: the press is what typing and accepting the figure in the field does, so the line keeps its own figure
  * (`onItemUpdate`, which records the line's override). Both go through `stepKey`.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTableLayout } from '@/components/common/DetailTable';
 import { useAppTable } from '@/components/table/appTable';
@@ -60,8 +63,10 @@ import { LineCard } from './LineCard';
 import { LineRow } from './LineRow';
 import { SharedBlock } from './SharedRateRow';
 import { ColumnHeadings, GroupToggle, GroupTotal } from './TableParts';
-import { lineColumnDefs, lineColumnsOf } from './lineColumns';
-import { groupIsCards, itemsLayout, sameLayout, sharedSideBySide, type ItemsLayout } from './itemsLayout';
+import { lineColumnDefs, lineColumnsOf, type LineColumnId } from './lineColumns';
+import { itemsLayout, sameLayout, sharedSideBySide, type ItemsLayout } from './itemsLayout';
+import { countText, dateText, durationText } from './lineText';
+import { makeTableScroll, scrollToReveal, type TableScroll } from './SidewaysViewport';
 import {
   cellKey,
   fieldHeading,
@@ -186,7 +191,6 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   const styles = useThemedStyles(makeItemsStyles);
   const t = useTokens();
   const table = useTableLayout();
-  const { fontScale } = useWindowDimensions();
   const language = getLanguage();
   const bulkPricing = useAppSelector(selectInvoiceFormBulkPricing);
 
@@ -249,31 +253,41 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
     () =>
       itemsLayout(
         table,
-        fontScale,
         {
+          dispatch: distinctTexts(layoutItems, (line) => line.dispatch_no, (v) => v),
+          date: distinctTexts(layoutItems, (line) => line.dispatch_date, dateText),
+          duration: distinctTexts(layoutItems, (line) => line.duration, (v) => durationText(v, oneTime)),
+          days: distinctTexts(layoutItems, (line) => line.no_of_days, countText),
+          qty: distinctTexts(layoutItems, (line) => line.qty, countText),
           charge: distinctTexts(layoutItems, (line) => line.charge, (v) => rateText('charge', v)),
           labour: distinctTexts(layoutItems, (line) => line.labour_rate, (v) => rateText('labour_rate', v)),
           tax: distinctTexts(layoutItems, (line) => line.tax, (v) => rateText('tax', v)),
           amount: distinctTexts(layoutItems, (line) => line.item_total, (v) => formatInvoiceAmount(v)),
         },
         {
+          dispatch: tr('common.dispatch'),
+          date: tr('common.date'),
+          duration: tr('invoice.items.colDuration'),
+          days: tr('invoice.items.colDays'),
+          qty: tr('invoice.items.colQty'),
           charge: fieldHeading('charge'),
           labour: fieldHeading('labour_rate'),
           tax: fieldHeading('tax'),
           amount: tr('invoice.items.colAmount'),
-        }
+        },
+        oneTime
       ),
-    [table, fontScale, layoutItems, language]
+    [table, layoutItems, language, oneTime]
   );
   const held = useRef(liveLayout);
   if (!sameLayout(held.current, liveLayout)) held.current = liveLayout;
-  // While a screen reader is on the lines are cards: TalkBack's explore-by-touch does not reach a table
-  // cell (its wrapper ignores touches, which Android's view group also applies to the hover events), while
-  // a card's input takes them. Like a change of text size, a switch while the step is open is not held.
+  // The lines are cards only while a screen reader is on (not for text size or width): TalkBack's explore-by-touch
+  // does not reach a table cell (its wrapper ignores touches, which Android's view group also applies to the hover events),
+  // while a card's input takes them. Like a change of text size, a switch while the step is open is not held.
   const screenReader = useScreenReader();
   const heldLayout = held.current;
   const layout = useMemo<ItemsLayout>(
-    () => (screenReader && !heldLayout.cards ? { ...heldLayout, cards: true, rateColumns: false } : heldLayout),
+    () => (screenReader && !heldLayout.cards ? { ...heldLayout, cards: true } : heldLayout),
     [screenReader, heldLayout]
   );
   const mounted = useRef(true);
@@ -298,7 +312,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       const groupKey = groupKeyOf(group);
       if (linesDifferInLabourOrTax(group)) perLineGroups.add(groupKey);
       const perLine = perLineGroups.has(groupKey);
-      const mode = { perLine, cards: groupIsCards(layout, perLine) };
+      const mode = { perLine, cards: layout.cards };
       byGroup.set(groupKey, mode);
       return mode;
     };
@@ -310,14 +324,26 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
 
   // The line table's columns: TanStack decides the headings, widths and which cells a row has; the rows
   // themselves are parts of this list, so only the rows on screen are drawn. `useAppTable` returns a new
-  // object on every render, so the memos below follow the column definitions only (useTable has already
-  // set the new columns on the table during this render, so reading them here is current).
-  const plainColumns = useMemo(() => lineColumnDefs(layout.widths, false, oneTime), [layout.widths, oneTime, language]);
-  const perLineColumns = useMemo(() => lineColumnDefs(layout.widths, true, oneTime), [layout.widths, oneTime, language]);
-  const plainTable = useAppTable({ data: NO_LINES, columns: plainColumns });
-  const perLineTable = useAppTable({ data: NO_LINES, columns: perLineColumns });
-  const plainCols = useMemo(() => lineColumnsOf(plainTable), [plainColumns]); // eslint-disable-line react-hooks/exhaustive-deps
-  const perLineCols = useMemo(() => lineColumnsOf(perLineTable), [perLineColumns]); // eslint-disable-line react-hooks/exhaustive-deps
+  // object on every render, so the memo below follows the column definitions only (useTable has already
+  // set the new columns on the table during this render, so reading them here is current). The widths come
+  // from the held layout, once per layout, not per row.
+  const lineDefs = useMemo(() => lineColumnDefs(layout.lines.widths, oneTime), [layout.lines.widths, oneTime, language]);
+  const lineTableModel = useAppTable({ data: NO_LINES, columns: lineDefs });
+  const lineTable = useMemo(() => lineColumnsOf(lineTableModel), [lineDefs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Each open card's sideways position, kept for the life of the editor (the heading and the rows of a card share it).
+  const scrolls = useRef(new Map<string, TableScroll>()).current;
+  const scrollOf = useCallback(
+    (groupKey: string): TableScroll => {
+      let scroll = scrolls.get(groupKey);
+      if (!scroll) {
+        scroll = makeTableScroll();
+        scrolls.set(groupKey, scroll);
+      }
+      return scroll;
+    },
+    [scrolls]
+  );
 
   // Each group's view is the same object while its figures are the same, so its rows are not drawn again.
   const viewCache = useRef(new Map<string, GroupView>());
@@ -392,8 +418,8 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   });
 
   // The latest props and state, for the actions below.
-  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk });
-  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk };
+  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk, lineTable, cards: layout.cards, scrollOf, viewport: layout.lines.viewport });
+  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk, lineTable, cards: layout.cards, scrollOf, viewport: layout.lines.viewport };
 
   // Next found a wrong field in a closed group and opened it: now its row is in the plan, scroll to it and focus it.
   useEffect(() => {
@@ -541,6 +567,12 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         clearTimeout(settleTimer.current);
         focusRecords.delete(key);
         recordOf(key);
+        // A cell of the sideways table that is partly out of sight (a tap, or the Next key) is brought fully into view.
+        const { kind, id, field } = parseKey(key);
+        const { groupOfLine: groupOf, lineTable: model, cards, scrollOf: scrollFor, viewport } = latest.current;
+        const groupKey = kind === 'cell' && !cards ? groupOf.get(id) : undefined;
+        const column = model.scrolling.find((c) => c.id === (field as LineColumnId));
+        if (groupKey && column) scrollToReveal(scrollFor(groupKey), model.content, column.x, column.width, viewport);
       },
 
       change: (key, typed) => {
@@ -701,14 +733,17 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
             />
           );
         case 'cols':
-          return <ColumnHeadings groupKey={row.groupKey} columns={row.perLine ? perLineCols : plainCols} styles={styles} />;
+          return <ColumnHeadings groupKey={row.groupKey} table={lineTable} scroll={scrollOf(row.groupKey)} sideways={layout.lines.sideways} styles={styles} />;
         case 'line': {
           const line = itemsById.get(row.tempId);
           if (!line) return null;
           return (
             <LineRow
               item={line}
-              columns={row.perLine ? perLineCols : plainCols}
+              groupKey={row.groupKey}
+              table={lineTable}
+              scroll={scrollOf(row.groupKey)}
+              perLine={row.perLine}
               oneTime={oneTime}
               last={row.last}
               charge={fields[cellKey(line.temp_id, 'charge')]}
@@ -767,7 +802,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         }
       }
     },
-    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, plainCols, perLineCols, refusedByGroup, openSet]
+    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, lineTable, scrollOf, refusedByGroup, openSet]
   );
 
   // FlashList spreads its style into an object: it takes one plain style, not an array.

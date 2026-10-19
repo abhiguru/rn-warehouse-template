@@ -1,8 +1,8 @@
 /**
  * The pure parts of the invoice items editor: field keys, the text a rate shows, what a group's
- * "(all lines)" fields show, what their − / + steppers do (and those beside a dispatch line's own figures), and the list rows a group is drawn as: head,
+ * "(all lines)" fields show, what their − / + steppers do (and those beside a line card's own figures), and the list rows a group is drawn as: head,
  * the shared figures (one part, side by side or stacked), total, the toggle and, only while the group
- * is open, column headings and one row per line.
+ * is open, the column headings of the sideways-scrolling line table and one row per line (a card per line while a screen reader is on).
  */
 import { formatIdentifier, localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 import { roundMoney } from '@/utils/invoiceCalculations';
@@ -102,7 +102,7 @@ export type SharedField = RateField;
 
 export type ItemsRow =
   | { type: 'head'; key: string; groupKey: string }
-  | { type: 'cols'; key: string; groupKey: string; perLine: boolean }
+  | { type: 'cols'; key: string; groupKey: string }
   | { type: 'line'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
   | { type: 'card'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
   | { type: 'block'; key: string; groupKey: string; fields: SharedField[]; lines: number }
@@ -120,9 +120,9 @@ export interface RowPlan {
 }
 
 export interface GroupMode {
-  /** The lines are cards. */
+  /** The lines are cards (only while a screen reader is on); otherwise they are rows of the sideways table. */
   cards: boolean;
-  /** Labour and tax are the lines' own (a column or a field of each line), not "(all lines)" rows. */
+  /** Labour and tax are the lines' own (editable cells or fields of each line), not "(all lines)" rows. */
   perLine: boolean;
 }
 
@@ -173,7 +173,7 @@ export function planRows(
     }
     add({ type: 'total', key: `total|${groupKey}`, groupKey });
     add({ type: 'toggle', key: `toggle|${groupKey}`, groupKey, open: isOpen, lines: group.allItems.length });
-    if (isOpen && !mode.cards) add({ type: 'cols', key: `cols|${groupKey}`, groupKey, perLine: mode.perLine });
+    if (isOpen && !mode.cards) add({ type: 'cols', key: `cols|${groupKey}`, groupKey });
     group.allItems.forEach((line: InvoiceItemData, index) => {
       const keys = lineFields.map((field) => cellKey(line.temp_id, field));
       if (!isOpen) {
@@ -238,7 +238,7 @@ export interface ItemsActions {
    */
   step: (groupKey: string, field: RateField, direction: StepDirection) => void;
   /**
-   * A + / − press beside a dispatch line's own figure: the same as `step`, but for that line's cell: the stepped figure is
+   * A + / − press beside a line card's own figure (screen reader cards): the same as `step`, but for that line's field: the stepped figure is
    * applied as if it had been typed in the cell and accepted (so the line keeps its own figure).
    */
   stepCell: (tempId: string, field: RateField, direction: StepDirection) => void;

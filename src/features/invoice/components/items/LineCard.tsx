@@ -1,5 +1,5 @@
 /**
- * One dispatch line as a small card (large text or a narrow screen), in the style of the rate box's band cards.
+ * One dispatch line as a small card, shown only while a screen reader (TalkBack) is on (the lines are otherwise the sideways-scrolling table, LineRow.tsx), in the style of the rate box's band cards.
  * Each editable figure is its label, then one row: a short input sized for the largest figure expected (itemsLayout's
  * `lineInputs`, no clear button) and, right after it, + then − side by side (LineStepper, inline). The rest of the row is empty.
  */
@@ -12,7 +12,7 @@ import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { RateInput } from './RateInput';
 import { LineStepper } from './LineStepper';
-import { lineSubline } from './LineRow';
+import { lineSubline } from './lineText';
 import { cellKey, cellLabel, fieldHeading, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
 import type { LineInputWidths } from './itemsLayout';
@@ -79,7 +79,7 @@ export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, l
       <FieldRow
         key={key}
         boxWidth={inputWidths[name]}
-        stepper={<LineStepper orientation="inline" tempId={item.temp_id} dispatchNo={item.dispatch_no} field={name} rate={item[name]} state={state} actions={actions} />}
+        stepper={<LineStepper tempId={item.temp_id} dispatchNo={item.dispatch_no} field={name} rate={item[name]} state={state} actions={actions} />}
       >
         {(onFieldLayout) => (
         <RateInput
