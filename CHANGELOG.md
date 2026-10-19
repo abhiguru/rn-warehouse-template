@@ -24,6 +24,20 @@ No backend change.
 - **Unused types removed:** the old `get_dispatch_list` row type `RpcDispatchListItem` and `RpcDispatchListResponse` in `rpc-canonical.types.ts`, with their exports and imports.
 - **Unused `getDispatchList` removed** (with `GetDispatchListParams`). The Dispatches list and search use `get_dispatch_list_with_items`; no app code names `get_dispatch_list` any more, so the backend can drop it.
 
+## Unreleased — Invoice Items: dispatch details behind a toggle
+
+Pairs with backend migration 100 (`get_invoice_detail` sends each line once, with only the keys the app reads, and
+`grn_pricing_mode`): merge and deploy the backend first. Without it the app falls back and asks
+`get_invoice_data` for the pricing mode, as before.
+
+- **Dispatch toggle.** On Invoice → "Step 2 of 3 · Items" each item and mark card shows its dispatch lines behind a
+  "Show dispatch details (N)" / "Hide dispatch details" toggle at the bottom of the card, closed by default (a group
+  of one line starts open; coming back from Review keeps the groups as they were). Next opens the group of the first
+  wrong figure, even a closed one. A closed group with refused text says "N figures to fix" under its toggle. The
+  line table's columns come from the TanStack setup (`lineColumns.ts`). Gujarati: `invoice.items.showLines`, `hideLines`,
+  `showLinesA11y`, `hideLinesA11y`, `linesToFix` are drafts for the owner's wording review.
+- **Edit form.** The edit path reads `grn_pricing_mode` from `get_invoice_detail`.
+
 ## Unreleased — Dispatch and invoice review; invoice form
 
 No backend change. (An edit may already move an invoice into another financial year with another number:

@@ -1,7 +1,7 @@
 /**
  * The pure parts of the invoice items editor: field keys, the text a rate shows, what a group's
- * "(all lines)" fields show, and the list rows a group is drawn as (head, column headings, one row
- * per line, shared rows, total).
+ * "(all lines)" fields show, and the list rows a group is drawn as: head, shared rows, total, the
+ * toggle and, only while the group is open, column headings and one row per line.
  */
 import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
 import { roundMoney } from '@/utils/invoiceCalculations';
@@ -102,16 +102,19 @@ export type SharedField = RateField;
 export type ItemsRow =
   | { type: 'head'; key: string; groupKey: string }
   | { type: 'cols'; key: string; groupKey: string; perLine: boolean }
-  | { type: 'line'; key: string; groupKey: string; tempId: string; perLine: boolean }
-  | { type: 'card'; key: string; groupKey: string; tempId: string; perLine: boolean }
+  | { type: 'line'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
+  | { type: 'card'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
   | { type: 'shared'; key: string; groupKey: string; field: SharedField; lines: number }
   | { type: 'block'; key: string; groupKey: string; fields: SharedField[]; lines: number }
-  | { type: 'total'; key: string; groupKey: string };
+  | { type: 'total'; key: string; groupKey: string }
+  | { type: 'toggle'; key: string; groupKey: string; open: boolean; lines: number };
 
 export interface RowPlan {
   rows: ItemsRow[];
-  /** The Next key walks the fields in this order. */
+  /** The Next key walks the fields in this order: the fields that are shown (those of a closed group's lines are not). */
   order: string[];
+  /** Every field of the invoice in page order, as if every group were open: Next counts refused text in closed groups too. */
+  allOrder: string[];
   /** The list row that holds a field. */
   rowOf: Map<string, number>;
 }
@@ -134,36 +137,35 @@ export function sharedFieldsOf(lines: number, mode: GroupMode, oneTime: boolean)
   return fields;
 }
 
+/**
+ * The rows of the page. A group is: head, the shared rows (or the block in cards mode), total, the toggle and,
+ * only when `open` has the group, the column headings (table mode) and one row per line, the last of which
+ * draws the card's bottom edge. A closed group has no line rows, so their fields are not in `order`/`rowOf`.
+ */
 export function planRows(
   groups: readonly InvoiceItemGroup[],
   modeOf: (group: InvoiceItemGroup) => GroupMode,
-  oneTime: boolean
+  oneTime: boolean,
+  open: ReadonlySet<string>
 ): RowPlan {
   const rows: ItemsRow[] = [];
   const order: string[] = [];
+  const allOrder: string[] = [];
   const rowOf = new Map<string, number>();
   const add = (row: ItemsRow, keys: string[] = []) => {
     keys.forEach((key) => {
       rowOf.set(key, rows.length);
       order.push(key);
+      allOrder.push(key);
     });
     rows.push(row);
   };
   groups.forEach((group) => {
     const groupKey = groupKeyOf(group);
     const mode = modeOf(group);
+    const isOpen = open.has(groupKey);
     const lineFields: RateField[] = mode.perLine ? (oneTime ? ['charge', 'tax'] : ['charge', 'labour_rate', 'tax']) : ['charge'];
     add({ type: 'head', key: `head|${groupKey}`, groupKey });
-    if (!mode.cards) add({ type: 'cols', key: `cols|${groupKey}`, groupKey, perLine: mode.perLine });
-    group.allItems.forEach((line: InvoiceItemData) => {
-      const keys = lineFields.map((field) => cellKey(line.temp_id, field));
-      add(
-        mode.cards
-          ? { type: 'card', key: `card|${line.temp_id}`, groupKey, tempId: line.temp_id, perLine: mode.perLine }
-          : { type: 'line', key: `line|${line.temp_id}`, groupKey, tempId: line.temp_id, perLine: mode.perLine },
-        keys
-      );
-    });
     const shared = sharedFieldsOf(group.allItems.length, mode, oneTime);
     if (mode.cards) {
       if (shared.length > 0) {
@@ -175,8 +177,25 @@ export function planRows(
       );
     }
     add({ type: 'total', key: `total|${groupKey}`, groupKey });
+    add({ type: 'toggle', key: `toggle|${groupKey}`, groupKey, open: isOpen, lines: group.allItems.length });
+    if (isOpen && !mode.cards) add({ type: 'cols', key: `cols|${groupKey}`, groupKey, perLine: mode.perLine });
+    group.allItems.forEach((line: InvoiceItemData, index) => {
+      const keys = lineFields.map((field) => cellKey(line.temp_id, field));
+      if (!isOpen) {
+        // Not shown, but still the invoice's: Next must find refused text here.
+        allOrder.push(...keys);
+        return;
+      }
+      const last = index === group.allItems.length - 1;
+      add(
+        mode.cards
+          ? { type: 'card', key: `card|${line.temp_id}`, groupKey, tempId: line.temp_id, perLine: mode.perLine, last }
+          : { type: 'line', key: `line|${line.temp_id}`, groupKey, tempId: line.temp_id, perLine: mode.perLine, last },
+        keys
+      );
+    });
   });
-  return { rows, order, rowOf };
+  return { rows, order, allOrder, rowOf };
 }
 
 /** The functions the rows call. One object for the life of the editor, so memoized rows keep their props. */
@@ -190,6 +209,8 @@ export interface ItemsActions {
   start: (key: string) => void;
   /** The keyboard's Next key. */
   submit: (key: string) => void;
+  /** The toggle of a group: opens or closes its dispatch lines (a focused cell of the group is left first). */
+  toggle: (groupKey: string) => void;
   editPricing: (groupKey: string) => void;
   /** A stable ref callback for the input of a field. */
   refFor: (key: string) => (node: import('react-native').TextInput | null) => void;

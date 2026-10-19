@@ -1,6 +1,8 @@
 /**
  * Invoice step 2, Items: the lines of the GRN grouped by item, with their
- * prices, as one card for each item and mark (InvoiceItemsEditor). One screen
+ * prices, as one card for each item and mark (InvoiceItemsEditor). The dispatch
+ * lines of a card are closed behind a toggle at its bottom; Next (checkAll) opens a
+ * closed card whose figure is wrong. One screen
  * for a new invoice and for an edit (`mode`); the logic is
  * useInvoiceForm({ mode, step: 2 }).
  *

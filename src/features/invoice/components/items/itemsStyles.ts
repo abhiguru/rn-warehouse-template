@@ -2,8 +2,9 @@ import { TABLE_OUTLINE, makeTableStyles } from '@/components/common/DetailTable'
 import { fontWeight, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 /**
- * Styles of the parts one group's card is drawn in. The card is several list rows (head, column
- * headings, lines, shared rows, total): `top`, `side` and `bottom` give them one outline. No part
+ * Styles of the parts one group's card is drawn in. The card is several list rows (head, shared rows,
+ * total, toggle and, while open, column headings and lines): `top`, `side` and `bottom` give them one
+ * outline; the last part draws `bottom`. No part
  * uses a negative margin, which a list measures wrongly.
  */
 export const makeItemsStyles = (t: ThemeTokens) => {
@@ -113,6 +114,20 @@ export const makeItemsStyles = (t: ThemeTokens) => {
       borderTopWidth: 1,
       borderTopColor: t.table.separator,
     },
+    // Toggle that opens a group's dispatch lines
+    toggleRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: space.sm,
+      minHeight: touchTarget,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      borderTopWidth: 1,
+      borderTopColor: t.table.separator,
+    },
+    toggleError: { ...typography.footnote, color: t.status.negative.text, paddingHorizontal: space.md, paddingBottom: space.sm },
+    togglePressed: { backgroundColor: t.brand.subtle },
+    toggleText: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flex: 1, minWidth: 0 },
     totalLabel: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
     totalValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
     // Page

@@ -161,6 +161,15 @@ export const invoice: Translation<typeof source> = {
     editPricingA11y: '{{item}} ના દરમાં ફેરફાર કરો',
     groupTotal: 'ગ્રુપનું કુલ · {{dispatches}}',
     groupTotalA11y: '{{dispatches}} માટે ગ્રુપનું કુલ, {{total}}',
+    // Draft for the owner's wording review (items toggle 2026-10-19): showLines to linesToFix; the count is in Gujarati digits.
+    showLines: 'જાવકની વિગતો બતાવો ({{lines}})',
+    hideLines: 'જાવકની વિગતો છુપાવો',
+    showLinesA11y: 'જાવકની વિગતો બતાવો, {{item}}, {{dispatches}}',
+    hideLinesA11y: 'જાવકની વિગતો છુપાવો, {{item}}, {{dispatches}}',
+    linesToFix: {
+      one: 'સુધારવાનો {{count}} આંકડો',
+      other: 'સુધારવાના {{count}} આંકડા',
+    },
     cellA11y: '{{field}}, જાવક {{number}}, {{unit}}',
     groupCellA11y: '{{field}}, {{item}}, બધી લાઇન, {{unit}}',
     unitCharge: 'નંગદીઠ રૂપિયા, દર મહિને',

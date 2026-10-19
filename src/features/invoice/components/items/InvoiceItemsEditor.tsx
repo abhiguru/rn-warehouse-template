@@ -2,22 +2,27 @@
  * The invoice's items step as an editable table (style guide 13.7, "Editable tables"), after the
  * rate box of Item pricing.
  *
- * Each item + mark group is one card with its total in the heading. Its lines are always shown, in
- * a table that fits the screen (Dispatch | Qty | Charge ₹ | Amount) with the Charge typed in its
- * cell, or, from font scale 1.3 or when the columns would crowd the first one, as one small card
- * per line. Under the lines come rows for what all lines share: Charge (2 or more lines), Labour
- * and Tax. Where the lines differ in labour or tax each line shows its own.
+ * Each item + mark group is one card with its total in the heading. Under the heading come rows for
+ * what all lines share (Charge for 2 or more lines, Labour and Tax), the group total, and a toggle,
+ * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
+ * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: a table that
+ * fits the screen (Dispatch | Qty | Charge ₹ | Amount, its columns described with the app's TanStack
+ * column model, lineColumns.ts) with the Charge typed in its cell, or, from font scale 1.3 or when the
+ * columns would crowd the first one, one small card per line. Where the lines differ in labour or tax
+ * each line shows its own. Opening and closing has no animation: the rows are virtualized.
  *
  * The page is one keyboard-aware, virtualized FlashList. A card is drawn as several list rows
- * (head, column headings, one row per line, shared rows, total), so a change that adds, removes or
- * resizes a part (table or cards, an error line, the "Mixed" note) changes the rows of that group
- * only, and every part keeps its own key.
+ * (head, shared rows, total, toggle and, while open, column headings and one row per line; the last
+ * part draws the card's bottom edge), so a change that adds, removes or resizes a part changes the
+ * rows of that group only, and every part keeps its own key. A closed group draws no line rows, so the
+ * Next key walks only the fields that are shown.
  *
  * What is typed: a valid number is applied at once, so the amounts follow the keys. Text that is
  * refused (out of range, more than 2 decimals, a minus sign, not a number) is kept in the field
  * but never counted: the value the field had when it gained focus is the one the form holds, so
  * no total ever shows a refused or partial value. The error shows when the field is left (also when
- * the keyboard hides), or when Next is pressed, which also scrolls to the first wrong field and
+ * the keyboard hides, or when its group is closed), or when Next is pressed, which counts refused
+ * text in every group, closed ones too; it opens the group of the first wrong field, scrolls to it and
  * focuses it. The field shows its text as typed while it has the focus. The layout (table or cards)
  * is held while any field has the focus and looked at again a moment after it is left.
  */
@@ -25,6 +30,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo
 import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTableLayout } from '@/components/common/DetailTable';
+import { useAppTable } from '@/components/table/appTable';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';
 import { useScreenReader } from '@/hooks/useScreenReader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -46,7 +52,8 @@ import { GroupHead } from './GroupHead';
 import { LineCard } from './LineCard';
 import { LineRow } from './LineRow';
 import { SharedBlock, SharedRateRow } from './SharedRateRow';
-import { ColumnHeadings, GroupTotal } from './TableParts';
+import { ColumnHeadings, GroupToggle, GroupTotal } from './TableParts';
+import { lineColumnDefs, lineColumnsOf } from './lineColumns';
 import { groupIsCards, itemsLayout, sameLayout, type ItemsLayout } from './itemsLayout';
 import {
   cellKey,
@@ -131,6 +138,8 @@ interface FocusRecord {
 const rowKey = (row: ItemsRow) => row.key;
 const rowType = (row: ItemsRow) => row.type;
 const EMPTY_MAP: Record<string, string[]> = {};
+/** The line tables' column model needs no rows: the rows are the list's own. */
+const NO_LINES: InvoiceItemData[] = [];
 /** How long after a field is left the layout may change again (a move to the next field comes sooner). */
 const SETTLE_MS = 150;
 /**
@@ -160,15 +169,35 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
     previous.current = { groups, totals };
   }, [groups, totals]);
 
-  const { groupsByKey, itemsById } = useMemo(() => {
+  const { groupsByKey, itemsById, groupOfLine } = useMemo(() => {
     const byKey = new Map<string, InvoiceItemGroup>();
     const byId = new Map<string, InvoiceItemData>();
+    const groupOf = new Map<string, string>();
     groups.forEach((group) => {
-      byKey.set(groupKeyOf(group), group);
-      group.allItems.forEach((line) => byId.set(line.temp_id, line));
+      const groupKey = groupKeyOf(group);
+      byKey.set(groupKey, group);
+      group.allItems.forEach((line) => {
+        byId.set(line.temp_id, line);
+        groupOf.set(line.temp_id, groupKey);
+      });
     });
-    return { groupsByKey: byKey, itemsById: byId };
+    return { groupsByKey: byKey, itemsById: byId, groupOfLine: groupOf };
   }, [groups]);
+
+  // Which groups show their dispatch lines. Every group starts closed when the step is first drawn (coming back from Review keeps them as they were), except a
+  // group of one line (it has no "(all lines)" Charge row, so its charge could not be changed otherwise).
+  // Only what the user toggled is kept; the rest follows the line count.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const openSet = useMemo(() => {
+    const set = new Set<string>();
+    groups.forEach((group) => {
+      const groupKey = groupKeyOf(group);
+      if (toggled[groupKey] ?? group.allItems.length === 1) set.add(groupKey);
+    });
+    return set;
+  }, [groups, toggled]);
+  // The field Next found wrong in a closed group: focused once that group's rows are in the list.
+  const focusAfterOpen = useRef<string | null>(null);
 
   // The layout (widths, table or cards) is worked out from a snapshot of the items that follows them
   // only while nothing is being touched or typed in. A key press that widens a figure would otherwise
@@ -241,8 +270,19 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
       byGroup.set(groupKey, mode);
       return mode;
     };
-    return { plan: planRows(groups, modeOf, oneTime), modes: byGroup };
-  }, [groups, layout, oneTime, perLineGroups]);
+    return { plan: planRows(groups, modeOf, oneTime, openSet), modes: byGroup };
+  }, [groups, layout, oneTime, perLineGroups, openSet]);
+
+  // The line table's columns: TanStack decides the headings, widths and which cells a row has; the rows
+  // themselves are parts of this list, so only the rows on screen are drawn. `useAppTable` returns a new
+  // object on every render, so the memos below follow the column definitions only (useTable has already
+  // set the new columns on the table during this render, so reading them here is current).
+  const plainColumns = useMemo(() => lineColumnDefs(layout.widths, false, oneTime), [layout.widths, oneTime, language]);
+  const perLineColumns = useMemo(() => lineColumnDefs(layout.widths, true, oneTime), [layout.widths, oneTime, language]);
+  const plainTable = useAppTable({ data: NO_LINES, columns: plainColumns });
+  const perLineTable = useAppTable({ data: NO_LINES, columns: perLineColumns });
+  const plainCols = useMemo(() => lineColumnsOf(plainTable), [plainColumns]); // eslint-disable-line react-hooks/exhaustive-deps
+  const perLineCols = useMemo(() => lineColumnsOf(perLineTable), [perLineColumns]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each group's view is the same object while its figures are the same, so its rows are not drawn again.
   const viewCache = useRef(new Map<string, GroupView>());
@@ -270,15 +310,28 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
 
   // The text and error of every field that differs from the stored rate.
   const [fields, setFields] = useState<Record<string, FieldState>>({});
+
+  // How many figures of each group's lines hold refused text; a closed group says so on its toggle.
+  const refusedByGroup = useMemo(() => {
+    const counts = new Map<string, number>();
+    Object.keys(fields).forEach((key) => {
+      if (!fields[key].error) return;
+      const parsed = parseKey(key);
+      const groupKey = parsed.kind === 'cell' ? groupOfLine.get(parsed.id) : undefined;
+      if (groupKey) counts.set(groupKey, (counts.get(groupKey) ?? 0) + 1);
+    });
+    return counts;
+  }, [fields, groupOfLine]);
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
   const focusRecords = useRef(new Map<string, FocusRecord>()).current;
 
-  // A field that is no longer on the screen (its line or group left the invoice, or an "(all lines)"
+  // A field that is no longer in the invoice (its line or group left it, or an "(all lines)"
   // row gave way to the lines' own) takes its text and error with it, so Next is never refused for
-  // a field nobody can see.
+  // a field nobody can reach. A closed group keeps its refused text.
   useEffect(() => {
-    const present = plan.rowOf;
+    // Every field of the invoice counts as present, also those of a closed group's lines (not in `rowOf`).
+    const present = new Set(plan.allOrder);
     setFields((prev) => {
       const keys = Object.keys(prev).filter((key) => !present.has(key));
       if (keys.length === 0) return prev;
@@ -299,8 +352,17 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
   });
 
   // The latest props and state, for the actions below.
-  const latest = useRef({ itemsById, groupsByKey, itemOverrides, bulkPricing, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk });
-  latest.current = { itemsById, groupsByKey, itemOverrides, bulkPricing, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk };
+  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk });
+  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk };
+
+  // Next found a wrong field in a closed group and opened it: now its row is in the plan, scroll to it and focus it.
+  useEffect(() => {
+    const key = focusAfterOpen.current;
+    if (key !== null && plan.rowOf.has(key)) {
+      focusAfterOpen.current = null;
+      latest.current.walk.focusKey(key);
+    }
+  }, [plan]);
 
   /**
    * The field is left, gone, or its press ended: the layout may change again a moment later, unless
@@ -392,7 +454,7 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
       if (record.applied !== undefined) bulk(id, { [field]: record.applied });
     };
 
-    return {
+    const api: ItemsActions = {
       focus: (key) => {
         typing.current = true;
         focusedKey.current = key;
@@ -447,6 +509,24 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
 
       submit: (key) => latest.current.walk.next(key),
 
+      toggle: (groupKey) => {
+        const { openSet: openNow, groupOfLine: groupOf, walk: fieldWalk } = latest.current;
+        const isOpen = openNow.has(groupKey);
+        if (isOpen) {
+          // Closing: a cell of this group with the focus is left first, like the keyboard hiding does, so its text
+          // is settled and its error shown before the cell goes.
+          const key = focusedKey.current;
+          if (key) {
+            const parsed = parseKey(key);
+            if (parsed.kind === 'cell' && groupOf.get(parsed.id) === groupKey) {
+              fieldWalk.blurKey(key);
+              api.blur(key);
+            }
+          }
+        }
+        setToggled((prev) => ({ ...prev, [groupKey]: !isOpen }));
+      },
+
       editPricing: (groupKey) => {
         const { onEditPricing: open, groupsByKey: byKey } = latest.current;
         const group = byKey.get(groupKey);
@@ -466,6 +546,7 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
 
       refFor,
     };
+    return api;
   }, [focusRecords, refFor, released]);
 
   useImperativeHandle(
@@ -473,11 +554,12 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
     () => ({
       checkAll: () => {
         const current = fieldsRef.current;
-        const order = latest.current.plan.order;
+        // Every field of the invoice counts, those of closed groups too; a refused text of a row that has gone cannot block Next.
+        const order = latest.current.plan.allOrder;
+        const place = new Map(order.map((key, index) => [key, index] as const));
         const wrong = Object.keys(current)
-          // Only fields on the screen count: a refused text of a row that has gone cannot block Next.
-          .filter((key) => order.includes(key) && settle(parseKey(key).field, current[key].text).error)
-          .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+          .filter((key) => place.has(key) && settle(parseKey(key).field, current[key].text).error)
+          .sort((a, b) => place.get(a)! - place.get(b)!);
         if (wrong.length === 0) return 0;
         setFields((prev) => {
           const next = { ...prev };
@@ -487,7 +569,18 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
           return next;
         });
         AccessibilityInfo.announceForAccessibility(tr('invoice.items.fixRates', { count: wrong.length }));
-        latest.current.walk.focusKey(wrong[0]);
+        const first = wrong[0];
+        if (latest.current.plan.rowOf.has(first)) {
+          latest.current.walk.focusKey(first);
+        } else {
+          // The first wrong field is in a closed group: open it; the effect above scrolls to the field and focuses it.
+          const parsed = parseKey(first);
+          const groupKey = parsed.kind === 'cell' ? latest.current.groupOfLine.get(parsed.id) : parsed.id;
+          if (groupKey) {
+            focusAfterOpen.current = first;
+            setToggled((prev) => ({ ...prev, [groupKey]: true }));
+          }
+        }
         return wrong.length;
       },
     }),
@@ -510,22 +603,22 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
               groupKey={row.groupKey}
               total={totals.get(row.groupKey) ?? 0}
               canEditPricing={canEditPricing}
-              showHint={mode.cards}
+              showHint={mode.cards || !openSet.has(row.groupKey)}
               actions={actions}
               styles={styles}
             />
           );
         case 'cols':
-          return <ColumnHeadings groupKey={row.groupKey} widths={layout.widths} perLine={row.perLine} oneTime={oneTime} styles={styles} />;
+          return <ColumnHeadings groupKey={row.groupKey} columns={row.perLine ? perLineCols : plainCols} styles={styles} />;
         case 'line': {
           const line = itemsById.get(row.tempId);
           if (!line) return null;
           return (
             <LineRow
               item={line}
-              widths={layout.widths}
-              perLine={row.perLine}
+              columns={row.perLine ? perLineCols : plainCols}
               oneTime={oneTime}
+              last={row.last}
               charge={fields[cellKey(line.temp_id, 'charge')]}
               labour={fields[cellKey(line.temp_id, 'labour_rate')]}
               tax={fields[cellKey(line.temp_id, 'tax')]}
@@ -543,6 +636,7 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
               item={line}
               perLine={row.perLine}
               oneTime={oneTime}
+              last={row.last}
               charge={fields[cellKey(line.temp_id, 'charge')]}
               labour={fields[cellKey(line.temp_id, 'labour_rate')]}
               tax={fields[cellKey(line.temp_id, 'tax')]}
@@ -589,9 +683,14 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
         }
         case 'total':
           return <GroupTotal groupKey={row.groupKey} lines={group.allItems.length} total={totals.get(row.groupKey) ?? 0} styles={styles} />;
+        case 'toggle': {
+          const mark = group.package_mark?.trim() ?? '';
+          const spokenItem = [group.item_name, mark ? tr('invoice.items.markA11y', { mark }) : null].filter(Boolean).join(', ');
+          return <GroupToggle groupKey={row.groupKey} spokenItem={spokenItem} lines={row.lines} open={row.open} refused={row.open ? 0 : refusedByGroup.get(row.groupKey) ?? 0} actions={actions} styles={styles} />;
+        }
       }
     },
-    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey]
+    [groupsByKey, modes, totals, canEditPricing, actions, styles, layout, oneTime, itemsById, fields, views, lastKey, plainCols, perLineCols, refusedByGroup, openSet]
   );
 
   // FlashList spreads its style into an object: it takes one plain style, not an array.

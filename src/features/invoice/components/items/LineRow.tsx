@@ -1,4 +1,4 @@
-/** One dispatch line of a group, as a row of the table: Dispatch | Qty | Charge | (Labour | Tax) | Amount. */
+/** One dispatch line of a group, as a row of the table: the cells of the TanStack columns (lineColumns.ts), Dispatch | Qty | Charge | (Labour | Tax) | Amount. */
 import React from 'react';
 import { Text, View } from 'react-native';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
@@ -7,7 +7,7 @@ import { formatIdentifier, t as tr } from '@/i18n';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
-import type { ItemsWidths } from './itemsLayout';
+import type { LineColumn } from './lineColumns';
 import { cellKey, cellLabel, rateText, type FieldState, type ItemsActions, type RateField } from './itemsModel';
 import type { ItemsStyles } from './itemsStyles';
 
@@ -20,9 +20,11 @@ export const lineMeta = (item: InvoiceItemData, oneTime: boolean): string => {
 
 interface Props {
   item: InvoiceItemData;
-  widths: ItemsWidths;
-  perLine: boolean;
+  /** The columns of the table: which cells the row has, in order, and their widths. */
+  columns: readonly LineColumn[];
   oneTime: boolean;
+  /** The last part of the group's card: it draws the card's bottom edge. */
+  last: boolean;
   charge?: FieldState;
   labour?: FieldState;
   tax?: FieldState;
@@ -32,8 +34,9 @@ interface Props {
   styles: ItemsStyles;
 }
 
-export const LineRow = React.memo(function LineRow({ item, widths, perLine, oneTime, charge, labour, tax, lastKey, actions, styles }: Props) {
+export const LineRow = React.memo(function LineRow({ item, columns, oneTime, last, charge, labour, tax, lastKey, actions, styles }: Props) {
   const number = formatIdentifier(item.dispatch_no);
+  const states = { charge, labour_rate: labour, tax };
   const cell = (field: RateField, state: FieldState | undefined, width: number) => {
     const key = cellKey(item.temp_id, field);
     const shownError = state?.shown ? state.error ?? undefined : undefined;
@@ -58,20 +61,35 @@ export const LineRow = React.memo(function LineRow({ item, widths, perLine, oneT
     );
   };
   const errors = [charge, labour, tax].map((state) => (state?.shown ? state.error : null)).filter(Boolean);
-  return (
-    <View style={[styles.side, styles.rowDivider]}>
+  const body = (
+    <>
       <View style={styles.row} testID={`line-${item.temp_id}`}>
-        <View style={styles.grow}>
-          <Text style={styles.primaryStrong} numberOfLines={1}>{item.dispatch_no}</Text>
-          <Text style={styles.secondary}>{lineMeta(item, oneTime)}</Text>
-        </View>
-        <Text style={[styles.number, { width: widths.qty }]} numberOfLines={1}>{formatNumber(item.qty)}</Text>
-        {cell('charge', charge, widths.charge)}
-        {perLine && !oneTime ? cell('labour_rate', labour, widths.labour) : null}
-        {perLine ? cell('tax', tax, widths.tax) : null}
-        <Text style={[styles.numberStrong, { width: widths.amount }]} numberOfLines={1}>{formatInvoiceAmount(item.item_total)}</Text>
+        {columns.map((column) => {
+          switch (column.id) {
+            case 'dispatch':
+              return (
+                <View key={column.id} style={styles.grow}>
+                  <Text style={styles.primaryStrong} numberOfLines={1}>{item.dispatch_no}</Text>
+                  <Text style={styles.secondary}>{lineMeta(item, oneTime)}</Text>
+                </View>
+              );
+            case 'qty':
+              return <Text key={column.id} style={[styles.number, { width: column.width as number }]} numberOfLines={1}>{formatNumber(item.qty)}</Text>;
+            case 'amount':
+              return <Text key={column.id} style={[styles.numberStrong, { width: column.width as number }]} numberOfLines={1}>{formatInvoiceAmount(item.item_total)}</Text>;
+            default:
+              return cell(column.id, states[column.id], column.width as number);
+          }
+        })}
       </View>
       {errors.length > 0 ? <Text style={styles.error} accessibilityRole="alert">{String(errors[0])}</Text> : null}
+    </>
+  );
+  return last ? (
+    <View style={styles.bottomGap}>
+      <View style={styles.bottom}>{body}</View>
     </View>
+  ) : (
+    <View style={[styles.side, styles.rowDivider]}>{body}</View>
   );
 });

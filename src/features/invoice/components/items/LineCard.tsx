@@ -15,6 +15,8 @@ interface Props {
   item: InvoiceItemData;
   perLine: boolean;
   oneTime: boolean;
+  /** The last part of the group's card: it draws the card's bottom edge. */
+  last: boolean;
   charge?: FieldState;
   labour?: FieldState;
   tax?: FieldState;
@@ -27,7 +29,7 @@ interface Props {
 /** The text input itself is at least a touch target tall (the field's frame alone is not what a finger meets). */
 const FIELD_INPUT = { minHeight: touchTarget };
 
-export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, charge, labour, tax, lastKey, actions, styles }: Props) {
+export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, last, charge, labour, tax, lastKey, actions, styles }: Props) {
   const number = formatIdentifier(item.dispatch_no);
   const field = (name: RateField, state: FieldState | undefined) => {
     const key = cellKey(item.temp_id, name);
@@ -56,16 +58,21 @@ export const LineCard = React.memo(function LineCard({ item, perLine, oneTime, c
   };
   const names: RateField[] = perLine ? (oneTime ? ['charge', 'tax'] : ['charge', 'labour_rate', 'tax']) : ['charge'];
   const states = { charge, labour_rate: labour, tax };
-  return (
-    <View style={[styles.side, styles.rowDivider]}>
-      <View style={styles.card} testID={`card-${item.temp_id}`}>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardTitle}>{tr('invoice.label.dispatchNumber', { number: formatIdentifier(item.dispatch_no) })}</Text>
-          <Text style={styles.totalValue} numberOfLines={1}>{formatInvoiceAmount(item.item_total)}</Text>
-        </View>
-        <Text style={styles.secondary}>{`${lineMeta(item, oneTime)} · ${tr('invoice.items.qtyOf', { qty: formatNumber(item.qty) })}`}</Text>
-        {names.map((name) => field(name, states[name]))}
+  const card = (
+    <View style={styles.card} testID={`card-${item.temp_id}`}>
+      <View style={styles.cardHead}>
+        <Text style={styles.cardTitle}>{tr('invoice.label.dispatchNumber', { number: formatIdentifier(item.dispatch_no) })}</Text>
+        <Text style={styles.totalValue} numberOfLines={1}>{formatInvoiceAmount(item.item_total)}</Text>
       </View>
+      <Text style={styles.secondary}>{`${lineMeta(item, oneTime)} · ${tr('invoice.items.qtyOf', { qty: formatNumber(item.qty) })}`}</Text>
+      {names.map((name) => field(name, states[name]))}
     </View>
+  );
+  return last ? (
+    <View style={styles.bottomGap}>
+      <View style={styles.bottom}>{card}</View>
+    </View>
+  ) : (
+    <View style={[styles.side, styles.rowDivider]}>{card}</View>
   );
 });

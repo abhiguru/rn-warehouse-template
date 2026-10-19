@@ -155,6 +155,16 @@ export const invoice = {
     editPricingA11y: 'Edit pricing for {{item}}',
     groupTotal: 'Group total · {{dispatches}}',
     groupTotalA11y: 'Group total for {{dispatches}}, {{total}}',
+    // Toggle at the bottom of a group's card (the count is formatted in the language's digits).
+    showLines: 'Show dispatch details ({{lines}})',
+    hideLines: 'Hide dispatch details',
+    showLinesA11y: 'Show dispatch details, {{item}}, {{dispatches}}',
+    hideLinesA11y: 'Hide dispatch details, {{item}}, {{dispatches}}',
+    // Under a closed toggle: figures typed in the group's lines that are refused.
+    linesToFix: {
+      one: '{{count}} figure to fix',
+      other: '{{count}} figures to fix',
+    },
     cellA11y: '{{field}}, dispatch {{number}}, {{unit}}',
     groupCellA11y: '{{field}}, {{item}}, all lines, {{unit}}',
     unitCharge: 'rupees per bag, per month',
