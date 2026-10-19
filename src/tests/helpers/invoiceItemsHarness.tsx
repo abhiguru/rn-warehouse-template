@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { TextInput } from 'react-native';
+import { act } from 'react-test-renderer';
 import type { ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applySavedRates, bulkUpdateItemGroupPricing, updateEditedItem } from '@/store/slices/invoiceFormSlice';
@@ -110,3 +111,20 @@ export const emitKeyboard = (calls: ReadonlyArray<readonly unknown[]>, event: st
 /** The text the editor holds for a line's charge entry (undefined: no entry, the stored figure shows). */
 export const chargeEntryOf = (tree: ReactTestRenderer, tempId: string): string | undefined =>
   tree.root.find((node) => typeof node.type !== 'string' && node.props.item?.temp_id === tempId && 'charge' in node.props && 'lastKey' in node.props).props.charge?.text;
+
+/**
+ * Opens every closed dispatch table, as a user taps "Show dispatch details" on each card. The editor starts
+ * with the cards of more than one line closed; most tests are about the table, so they open it first.
+ */
+export const openAllGroups = async (tree: ReactTestRenderer): Promise<void> => {
+  const toggles = tree.root.findAll(
+    (node) => typeof node.type !== 'string' && node.props.accessibilityState?.expanded === false && typeof node.props.onPress === 'function'
+  );
+  await act(async () => { toggles.forEach((toggle) => toggle.props.onPress()); });
+};
+
+/** The column widths the rows of the line table are drawn with (the pinned Dispatch column first), from the table the editor passes to its rows. */
+export const columnWidthsOf = (tree: ReactTestRenderer): number[] => {
+  const table = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.table?.scrolling !== undefined)[0].props.table;
+  return [table.pinned.width, ...table.scrolling.map((column: { width: number }) => column.width)];
+};

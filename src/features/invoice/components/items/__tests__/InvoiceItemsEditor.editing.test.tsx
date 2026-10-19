@@ -7,7 +7,7 @@ import { AccessibilityInfo } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n/language';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf, textsOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, inputOf, textsOf, track, unmountAll, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemsEditorHandle } from '../InvoiceItemsEditor';
 
 let mockStore: InvoiceStore;
@@ -33,6 +33,7 @@ async function render(lines = groupLines(2)) {
   const ref = React.createRef<InvoiceItemsEditorHandle>();
   let tree!: ReactTestRenderer;
   await act(async () => { tree = track(create(<ConnectedEditor editorRef={ref} />)); });
+  await openAllGroups(tree);
   return { tree, ref };
 }
 const change = async (tree: ReactTestRenderer, key: string, text: string) => {
@@ -100,19 +101,20 @@ describe('a refused value', () => {
     const { tree } = await render();
     const before = total();
     await focus(tree, CHARGE_1);
-    for (const typed of ['1', '10', '100', '1000', '10000', '100000']) {
+    for (const typed of ['1', '10', '100', '1000']) {
       await change(tree, CHARGE_1, typed);
     }
-    // 100000 is a valid charge: the amounts follow it while it is valid.
-    expect(lineCharge(0)).toBe(100000);
-    await change(tree, CHARGE_1, '1000000');
+    // 1000 is a valid charge: the amounts follow it while it is valid.
+    expect(lineCharge(0)).toBe(1000);
+    // A line's charge is limited to 9999.99 on entry (owner, 2026-10-19): "10000" is refused.
+    await change(tree, CHARGE_1, '10000');
 
     // Refused: the form holds the charge the cell had on focus, and no total shows the 100000 result.
     expect(lineCharge(0)).toBe(5);
     expect(total()).toBe(before);
     expect(lineTotal(tree)).not.toContain('₹1,00,00,000.00');
     expect(lineTotal(tree).filter((text) => text.length > 12)).toEqual([]);
-    expect(inputOf(tree, CHARGE_1).props.value).toBe('1000000');
+    expect(inputOf(tree, CHARGE_1).props.value).toBe('10000');
   });
 
   it('"101" in the group tax leaves every amount as it was', async () => {
@@ -148,12 +150,12 @@ describe('a refused value', () => {
     const { tree } = await render();
     await focus(tree, CHARGE_1);
     await change(tree, CHARGE_1, '1000000');
-    expect(textsOf(tree)).not.toContain('Enter a charge from 0 to 999999.');
+    expect(textsOf(tree)).not.toContain('Enter a charge from 0 to 9999.99.');
     expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBeUndefined();
 
     await blur(tree, CHARGE_1);
-    expect(textsOf(tree)).toContain('Enter a charge from 0 to 999999.');
-    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 999999.');
+    expect(textsOf(tree)).toContain('Enter a charge from 0 to 9999.99.');
+    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
     expect(inputOf(tree, CHARGE_1).props.value).toBe('1000000');
     expect(total()).toBe(mockStore.getState().invoiceForm.header.total);
   });
@@ -166,28 +168,33 @@ describe('a refused value', () => {
     await focus(tree, CHARGE_1);
     await change(tree, CHARGE_1, '100');
     await blur(tree, CHARGE_1);
-    expect(textsOf(tree)).not.toContain('Enter a charge from 0 to 999999.');
+    expect(textsOf(tree)).not.toContain('Enter a charge from 0 to 9999.99.');
     expect(inputOf(tree, CHARGE_1).props.value).toBe('100.00');
     expect(lineCharge(0)).toBe(100);
   });
 });
 
 describe('Next', () => {
-  it('walks the charge cells line by line, then the shared fields, then closes the keyboard', async () => {
+  it('walks the shared fields, then each line (Charge, Labour), then closes the keyboard', async () => {
     const { tree } = await render();
-    const keys = [CHARGE_2, 'group|i1:::M1|charge', 'group|i1:::M1|labour_rate', TAX_ALL];
+    const CHARGE_ALL = 'group|i1:::M1|charge';
+    const LABOUR_ALL = 'group|i1:::M1|labour_rate';
+    const LABOUR_1 = 'cell|edit_0_0|labour_rate';
+    const LABOUR_2 = 'cell|edit_1_0|labour_rate';
+    const keys = [LABOUR_ALL, TAX_ALL, CHARGE_1, LABOUR_1, CHARGE_2, LABOUR_2];
     const nodes = Object.fromEntries(keys.map((key) => [key, spyFocus(tree, key)]));
-    const focusOf = (key: string) => nodes[key].focus;
-    await act(async () => { inputOf(tree, CHARGE_1).props.onSubmitEditing(); });
-    expect(focusOf(CHARGE_2)).toHaveBeenCalledTimes(1);
-    await act(async () => { inputOf(tree, CHARGE_2).props.onSubmitEditing(); });
-    expect(focusOf('group|i1:::M1|charge')).toHaveBeenCalledTimes(1);
-    await act(async () => { inputOf(tree, 'group|i1:::M1|charge').props.onSubmitEditing(); });
-    expect(focusOf('group|i1:::M1|labour_rate')).toHaveBeenCalledTimes(1);
-    await act(async () => { inputOf(tree, 'group|i1:::M1|labour_rate').props.onSubmitEditing(); });
-    expect(focusOf(TAX_ALL)).toHaveBeenCalledTimes(1);
-    await act(async () => { inputOf(tree, TAX_ALL).props.onSubmitEditing(); });
-    expect(nodes[TAX_ALL].blur).toHaveBeenCalledTimes(1);
+    const next = async (from: string, to: string) => {
+      await act(async () => { inputOf(tree, from).props.onSubmitEditing(); });
+      expect(nodes[to].focus).toHaveBeenCalledTimes(1);
+    };
+    await next(CHARGE_ALL, LABOUR_ALL);
+    await next(LABOUR_ALL, TAX_ALL);
+    await next(TAX_ALL, CHARGE_1);
+    await next(CHARGE_1, LABOUR_1);
+    await next(LABOUR_1, CHARGE_2);
+    await next(CHARGE_2, LABOUR_2);
+    await act(async () => { inputOf(tree, LABOUR_2).props.onSubmitEditing(); });
+    expect(nodes[LABOUR_2].blur).toHaveBeenCalledTimes(1);
   });
 
   it('is refused while a figure holds refused text: it announces the count and focuses the first wrong cell', async () => {
@@ -208,8 +215,8 @@ describe('Next', () => {
     expect(second.focus).toHaveBeenCalledTimes(1);
     expect(third.focus).not.toHaveBeenCalled();
     // Both errors show now, without leaving either cell.
-    expect(inputOf(tree, CHARGE_2).props.accessibilityHint).toBe('Enter a charge from 0 to 999999.');
-    expect(inputOf(tree, 'cell|edit_2_0|charge').props.accessibilityHint).toBe('Enter a charge from 0 to 999999.');
+    expect(inputOf(tree, CHARGE_2).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
+    expect(inputOf(tree, 'cell|edit_2_0|charge').props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
   });
 
   it('is clear with nothing wrong: 0', async () => {

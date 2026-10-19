@@ -7,7 +7,7 @@ import React from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, track, unmountAll, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 
 let mockStore: InvoiceStore;
@@ -40,6 +40,7 @@ async function render(initiallyOn: boolean) {
   fillNewInvoice(mockStore, groupLines(2));
   let tree!: ReactTestRenderer;
   await act(async () => { tree = track(create(<ConnectedEditor />)); });
+  await openAllGroups(tree);
   return tree;
 }
 const isTable = (tree: ReactTestRenderer) => tree.root.findAll((node) => typeof node.props.testID === 'string' && node.props.testID.startsWith('line-')).length > 0;

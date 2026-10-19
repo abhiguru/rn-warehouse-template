@@ -1,9 +1,9 @@
 /** R3a-8: a key press draws again only what it changed: its own line and group, not every mounted row. */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { formatDate, formatWeightEach } from '@/utils/formatters';
+import { formatDateShort, formatWeightEach } from '@/utils/formatters';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, inputOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import { groupCellLabel } from '../itemsModel';
 import { updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -23,7 +23,7 @@ jest.mock('../itemsModel', () => {
 });
 jest.mock('@/utils/formatters', () => {
   const actual = jest.requireActual('@/utils/formatters');
-  return { ...actual, formatWeightEach: jest.fn(actual.formatWeightEach), formatDate: jest.fn(actual.formatDate) };
+  return { ...actual, formatWeightEach: jest.fn(actual.formatWeightEach), formatDateShort: jest.fn(actual.formatDateShort) };
 });
 
 /** Five groups of three lines; the lots of group g weigh 10 * (g + 1) kg, so a head tells its group. */
@@ -38,10 +38,11 @@ async function render() {
   fillNewInvoice(mockStore, fixture());
   let tree!: ReactTestRenderer;
   await act(async () => { tree = create(<ConnectedEditor />); });
+  await openAllGroups(tree);
   return tree;
 }
 const headsDrawn = () => new Set(jest.mocked(formatWeightEach).mock.calls.map(([weight]) => weight));
-const datesDrawn = () => jest.mocked(formatDate).mock.calls.map(([date]) => date);
+const datesDrawn = () => jest.mocked(formatDateShort).mock.calls.map(([date]) => date);
 
 describe('typing in one group', () => {
   it('a line charge draws that group\'s head and its own line again, not the other groups or lines', async () => {
@@ -49,7 +50,7 @@ describe('typing in one group', () => {
     const key = 'cell|edit_7_0|charge'; // group 2, the second line
     await act(async () => { inputOf(tree, key).props.onFocus({}); });
     jest.mocked(formatWeightEach).mockClear();
-    jest.mocked(formatDate).mockClear();
+    jest.mocked(formatDateShort).mockClear();
 
     await act(async () => { inputOf(tree, key).props.onChangeText('8'); });
 
@@ -62,21 +63,29 @@ describe('typing in one group', () => {
   it('a change that comes while no field has the focus (the layout is looked at again) draws the same: its line alone', async () => {
     await render();
     jest.mocked(formatWeightEach).mockClear();
-    jest.mocked(formatDate).mockClear();
-    await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: 'edit_7_0', values: { charge: 8 } })); });
+    jest.mocked(formatDateShort).mockClear();
+    // 4 gives the line a smaller amount than the widest one, so no column changes its width (a wider column redraws every row).
+    await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: 'edit_7_0', values: { charge: 4 } })); });
     expect(headsDrawn()).toEqual(new Set([30]));
-    expect(new Set(datesDrawn().map(String))).toEqual(new Set(['2026-10-03']));
-    expect(datesDrawn().length).toBeLessThanOrEqual(1);
+    // The layout looks at each distinct date once (five dates, one text each); a line drawn again adds its own date.
+    // Group 2's lines are dated 2026-10-03: only the typed line is drawn again, so that date is formatted twice, the others once.
+    const perDate = new Map<string, number>();
+    datesDrawn().forEach((date) => perDate.set(String(date), (perDate.get(String(date)) ?? 0) + 1));
+    expect(Object.fromEntries(perDate)).toEqual({ '2026-10-01': 1, '2026-10-02': 1, '2026-10-03': 2, '2026-10-04': 1, '2026-10-05': 1 });
   });
 
-  it('the "(all lines)" rows of the other groups, and of the same group whose figure did not change, are not drawn again', async () => {
+  it('the "All dispatches" block of the other groups is not drawn again (the block of the same group is, as one part)', async () => {
     const tree = await render();
     const key = 'cell|edit_7_0|charge';
     await act(async () => { inputOf(tree, key).props.onFocus({}); });
     jest.mocked(groupCellLabel).mockClear();
-    // the typed charge makes group 2's charge "Mixed" with a note; its labour and tax stay as they were
+    // the typed charge makes group 2's charge an average with a note; its block (Charge, Labour, Tax) is one part of the list
     await act(async () => { inputOf(tree, key).props.onChangeText('8'); });
-    expect(jest.mocked(groupCellLabel).mock.calls.map(([field, item]) => `${item}:${field}`)).toEqual(['Example Item 2:charge']);
+    expect(jest.mocked(groupCellLabel).mock.calls.map(([field, item]) => `${item}:${field}`)).toEqual([
+      'Example Item 2:charge',
+      'Example Item 2:labour_rate',
+      'Example Item 2:tax',
+    ]);
   });
 
   it('a group rate draws that group alone again', async () => {
@@ -84,7 +93,7 @@ describe('typing in one group', () => {
     const key = 'group|it4:::P4|charge';
     await act(async () => { inputOf(tree, key).props.onFocus({}); });
     jest.mocked(formatWeightEach).mockClear();
-    jest.mocked(formatDate).mockClear();
+    jest.mocked(formatDateShort).mockClear();
 
     await act(async () => { inputOf(tree, key).props.onChangeText('6'); });
 
@@ -98,7 +107,7 @@ describe('typing in one group', () => {
     await act(async () => { inputOf(tree, key).props.onFocus({}); });
     await act(async () => { inputOf(tree, key).props.onChangeText('1000000'); });
     jest.mocked(formatWeightEach).mockClear();
-    jest.mocked(formatDate).mockClear();
+    jest.mocked(formatDateShort).mockClear();
     await act(async () => { inputOf(tree, key).props.onBlur({}); });
     expect(headsDrawn().size).toBe(0);
     expect(datesDrawn().length).toBeLessThanOrEqual(1);

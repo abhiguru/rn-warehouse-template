@@ -3,7 +3,7 @@ import React from 'react';
 import { TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, groupLines, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, focusedIds, hasInput, inputOf, textsOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, focusedIds, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import type { ItemsRow } from '../itemsModel';
@@ -24,6 +24,7 @@ async function render(lines: InvoiceItemData[]) {
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
   await act(async () => { tree = create(<ConnectedEditor />); });
+  await openAllGroups(tree);
   return tree;
 }
 const rowsOf = (tree: ReactTestRenderer): ItemsRow[] => tree.root.findByType('FlashList' as never).props.data;
@@ -31,11 +32,11 @@ const chargeCells = (tree: ReactTestRenderer) =>
   tree.root.findAllByType(TextInput).filter((node) => /^cell\|.*\|charge$/.test(String(node.props.testID)));
 
 describe.each([[125], [300]])('a group of %d lines', (count) => {
-  it('is one row per line plus the head, the headings, the shared rows and the total, with no "Show more"', async () => {
+  it('is one row per line plus the head, the shared block, the toggle and the headings, with no "Show more"', async () => {
     const tree = await render(groupLines(count));
     const rows = rowsOf(tree);
     expect(rows.filter((row) => row.type === 'line')).toHaveLength(count);
-    expect(rows).toHaveLength(count + 1 + 1 + 3 + 1);
+    expect(rows).toHaveLength(count + 1 + 1 + 1 + 1);
     expect(textsOf(tree)).not.toContain('Show more');
   });
 
@@ -44,7 +45,7 @@ describe.each([[125], [300]])('a group of %d lines', (count) => {
     await act(async () => { setFlashListWindow(10, 18); });
     expect(chargeCells(tree).length).toBeLessThanOrEqual(8);
     expect(hasInput(tree, 'cell|' + `edit_${count - 1}_0` + '|charge')).toBe(false);
-    expect(hasInput(tree, 'cell|edit_9_0|charge')).toBe(true); // the line at row 10 (head and headings come first)
+    expect(hasInput(tree, 'cell|edit_9_0|charge')).toBe(true); // the line at row 10 (the head, the shared block, the toggle and the headings come first)
     expect(textsOf(tree)).not.toContain('Show more');
   });
 });
@@ -52,29 +53,31 @@ describe.each([[125], [300]])('a group of %d lines', (count) => {
 describe('Next', () => {
   it('scrolls to a cell the list has not drawn and focuses it as it mounts', async () => {
     const tree = await render(groupLines(300));
-    await act(async () => { setFlashListWindow(0, 6); });
-    // The last drawn line is the row at index 5: edit_3_0 (head and headings come first).
+    await act(async () => { setFlashListWindow(0, 8); });
+    // The last drawn line is the row at index 7: edit_3_0 (the head, the shared block, the toggle and the headings come first).
     expect(hasInput(tree, 'cell|edit_3_0|charge')).toBe(true);
     expect(hasInput(tree, 'cell|edit_4_0|charge')).toBe(false);
 
-    (inputOf(tree, 'cell|edit_3_0|charge').instance.focus as jest.Mock).mockClear();
-    await act(async () => { inputOf(tree, 'cell|edit_3_0|charge').props.onSubmitEditing(); });
+    // Next walks a line's Charge, then its Labour, then the next line's Charge.
+    const labour = 'cell|edit_3_0|labour_rate';
+    (inputOf(tree, labour).instance.focus as jest.Mock).mockClear();
+    await act(async () => { inputOf(tree, labour).props.onSubmitEditing(); });
 
     // The list moved to the next cell's row and that cell, and no other, took the focus.
     expect(hasInput(tree, 'cell|edit_4_0|charge')).toBe(true);
     expect(focusedIds(tree)).toEqual(['cell|edit_4_0|charge']);
   });
 
-  it('reaches a shared field far below the lines', async () => {
+  it('goes from the last shared field (Tax) to the first line, which the list has not drawn', async () => {
     const tree = await render(groupLines(300));
-    // The last four lines are drawn; the "(all lines)" rows and the total, below them, are not.
-    await act(async () => { setFlashListWindow(rowsOf(tree).length - 10, rowsOf(tree).length - 4); });
-    expect(hasInput(tree, 'cell|edit_299_0|charge')).toBe(true);
-    expect(hasInput(tree, 'group|i1:::M1|charge')).toBe(false);
-    (inputOf(tree, 'cell|edit_299_0|charge').instance.focus as jest.Mock).mockClear();
-    await act(async () => { inputOf(tree, 'cell|edit_299_0|charge').props.onSubmitEditing(); });
-    expect(hasInput(tree, 'group|i1:::M1|charge')).toBe(true);
-    expect(focusedIds(tree)).toEqual(['group|i1:::M1|charge']);
+    // Only the head, the shared block and the toggle are drawn; the first line is the row at index 4.
+    await act(async () => { setFlashListWindow(0, 3); });
+    expect(hasInput(tree, 'group|i1:::M1|tax')).toBe(true);
+    expect(hasInput(tree, 'cell|edit_0_0|charge')).toBe(false);
+    (inputOf(tree, 'group|i1:::M1|tax').instance.focus as jest.Mock).mockClear();
+    await act(async () => { inputOf(tree, 'group|i1:::M1|tax').props.onSubmitEditing(); });
+    expect(hasInput(tree, 'cell|edit_0_0|charge')).toBe(true);
+    expect(focusedIds(tree)).toEqual(['cell|edit_0_0|charge']);
   });
 });
 
@@ -84,8 +87,8 @@ describe('the edge-case GRNs', () => {
     const rows = rowsOf(tree);
     expect(rows.filter((row) => row.type === 'line')).toHaveLength(128);
     expect(rows.filter((row) => row.type === 'head')).toHaveLength(2);
-    expect(textsOf(tree)).toContain('Group total · 125 dispatches');
-    expect(textsOf(tree)).toContain('Group total · 3 dispatches');
+    expect(rows.filter((row) => row.groupKey === 'rai:::BULK-125' && row.type === 'line')).toHaveLength(125);
+    expect(textsOf(tree)).toContain('BULK-125');
   });
 
   it('WMIV0102: 12 groups, and two lots of one item and mark are one group', async () => {

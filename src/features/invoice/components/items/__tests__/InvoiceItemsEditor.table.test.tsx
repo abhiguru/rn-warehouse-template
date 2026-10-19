@@ -5,7 +5,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n/language';
 import { touchTarget } from '@/theme/tokens';
 import { makeInvoiceStore, fillNewInvoice, groupLines, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 
 let mockStore: InvoiceStore;
 let mockWidth = 411;
@@ -26,23 +26,21 @@ async function render(lines = groupLines(2), oneTime = false) {
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
   await act(async () => { tree = create(<ConnectedEditor oneTime={oneTime} />); });
+  await openAllGroups(tree);
   return tree;
 }
 
 describe('the table at 411 dp', () => {
-  it('has the columns Dispatch | Qty | Charge (₹) | Amount and the hint under them', async () => {
+  it('has the columns Dispatch | Date | Months | Days | Qty | Charge | Labour | Tax | Amount once the card is open', async () => {
     const texts = textsOf(await render());
-    expect(texts).toEqual(expect.arrayContaining(['Dispatch', 'Qty', 'Charge (₹)', 'Amount', 'Tap a figure to change it.']));
-    // Labour and Tax are rows while the lines share them, not columns.
-    expect(texts).not.toContain('Labour (₹)');
-    expect(texts).not.toContain('Tax (%)');
+    expect(texts).toEqual(expect.arrayContaining(['Dispatch', 'Date', 'Months', 'Days', 'Qty', 'Charge (₹)', 'Labour (₹)', 'Tax (%)', 'Amount']));
+    expect(texts).toContain('Swipe the table sideways to see more');
   });
 
-  it('writes the date and the duration under the dispatch number, read-only', async () => {
+  it('writes the date, the months and the days of a dispatch in their own columns, read-only', async () => {
     const texts = textsOf(await render());
     // fictional dispatch 2026-10-01, one month of 30 days
-    expect(texts.some((text) => text.includes('1 Oct') && text.includes('1 month') && text.includes('30 days'))).toBe(true);
-    expect(texts).toContain('I0001');
+    expect(texts).toEqual(expect.arrayContaining(['I0001', '01/10/26', '1', '30']));
   });
 
   it('gives a charge cell the rules of an editable figure', async () => {
@@ -69,21 +67,21 @@ describe('the table at 411 dp', () => {
     expect(textsOf(tree).filter((text) => /up to 2 decimals/.test(text))).toHaveLength(1);
   });
 
-  it('has the (all lines) rows for Charge, Labour and Tax of a group of two lines', async () => {
+  it('has the All dispatches row with Charge, Labour and Tax of a group of two lines', async () => {
     const tree = await render();
     const texts = textsOf(tree);
-    expect(texts).toEqual(expect.arrayContaining(['Charge (₹) (all lines)', 'Labour (₹) (all lines)', 'Tax (%) (all lines)']));
+    expect(texts).toContain('All dispatches');
     expect(inputOf(tree, 'group|i1:::M1|charge').props.value).toBe('5.00');
     expect(inputOf(tree, 'group|i1:::M1|labour_rate').props.value).toBe('2.00');
     expect(inputOf(tree, 'group|i1:::M1|tax').props.value).toBe('5');
     expect(inputOf(tree, 'group|i1:::M1|tax').props.accessibilityLabel).toBe('Tax, Example Potatoes, all lines, percent');
   });
 
-  it('shows each line total and the group total, in the heading and in the total row', async () => {
+  it('shows each line total in its row and the group total once, in the card head', async () => {
     const texts = textsOf(await render());
     expect(texts.filter((text) => text === '₹735.00')).toHaveLength(2);
-    expect(texts.filter((text) => text === '₹1,470.00')).toHaveLength(2);
-    expect(texts).toContain('Group total · 2 dispatches');
+    expect(texts.filter((text) => text === '₹1,470.00')).toHaveLength(1);
+    expect(texts).toContain('Total');
   });
 
   it('shows a total near the design edge on one line: ₹96,934.70', async () => {

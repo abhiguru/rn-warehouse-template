@@ -8,9 +8,10 @@ import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n/language';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, inputOf, textsOf, track, unmountAll, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import { applySavedRates, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { touchTarget } from '@/theme/tokens';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import type { InvoiceItemsEditorHandle } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
@@ -32,10 +33,21 @@ beforeEach(() => {
   announce.mockClear();
 });
 afterEach(() => {
+  readerSpies.splice(0).forEach((spy) => spy.mockRestore());
+  // React Native's own jest mock stays a mock after mockRestore: set it back to "off".
+  jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+  resetScreenReaderKnown();
   act(() => unmountAll());
   setLanguage('en');
   jest.useRealTimers();
 });
+
+/** The lines are cards only while a screen reader is on (TalkBack, VoiceOver): the test turns one on. */
+const readerSpies: jest.SpyInstance[] = [];
+const screenReaderOn = () => {
+  readerSpies.push(jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true));
+  readerSpies.push(jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation((() => ({ remove: () => {} })) as never));
+};
 
 const GROUP = 'i1:::M1';
 const CHARGE_1 = 'cell|edit_0_0|charge';
@@ -47,11 +59,14 @@ async function render(lines: InvoiceItemData[], editorRef?: React.Ref<InvoiceIte
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
   await act(async () => { tree = track(create(<ConnectedEditor editorRef={editorRef} />)); });
+  await openAllGroups(tree);
   return tree;
 }
 const focus = async (tree: ReactTestRenderer, key: string) => { await act(async () => { inputOf(tree, key).props.onFocus({}); }); };
 const blur = async (tree: ReactTestRenderer, key: string) => { await act(async () => { inputOf(tree, key).props.onBlur({}); }); };
 const change = async (tree: ReactTestRenderer, key: string, text: string) => { await act(async () => { inputOf(tree, key).props.onChangeText(text); }); };
+/** Some text of the tree contains this one (the average note and the keep-own note are one text, on two lines). */
+const hasText = (tree: ReactTestRenderer, part: string) => textsOf(tree).some((text) => text.includes(part));
 const state = () => mockStore.getState().invoiceForm;
 const byId = (tree: ReactTestRenderer, testID: string) => tree.root.findAll((node) => node.props.testID === testID);
 const isTable = (tree: ReactTestRenderer, id = 'edit_0_0') => byId(tree, `line-${id}`).length > 0 && byId(tree, `card-${id}`).length === 0;
@@ -79,7 +94,7 @@ describe('R3a-1: the layout never flips while a field is focused', () => {
     expect(state().items[0].charge).toBe(105);
   });
 
-  it('looks again a moment after the field is left, not while the focus moves to another field', async () => {
+  it('keeps the table at 393 dp however wide the total, also after the field is left (no switch to cards by width)', async () => {
     jest.useFakeTimers();
     mockWidth = 393;
     const tree = await render(edgeLines.nearEdge());
@@ -90,14 +105,13 @@ describe('R3a-1: the layout never flips while a field is focused', () => {
     await blur(tree, key);
     await act(async () => { jest.advanceTimersByTime(50); });
     expect(isTable(tree)).toBe(true);
-    // the focus moves on within the moment: still the table
     await focus(tree, tax);
     await act(async () => { jest.advanceTimersByTime(400); });
     expect(isTable(tree)).toBe(true);
-    // left for good: 393 dp is too narrow for the total ₹1,01,636, so the lines become cards
     await blur(tree, tax);
     await act(async () => { jest.advanceTimersByTime(400); });
-    expect(isCards(tree)).toBe(true);
+    expect(isTable(tree)).toBe(true);
+    expect(isCards(tree)).toBe(false);
     expect(inputOf(tree, key).props.value).toBe('105.00');
   });
 
@@ -158,7 +172,7 @@ describe('P2a-2: the field is left when the keyboard hides', () => {
     expect(second.blur).not.toHaveBeenCalled();
     // the blur reaches the field as the native event does
     await blur(tree, CHARGE_1);
-    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 999999.');
+    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
   });
 
   it('does nothing when no field has the focus (after it was left, or never entered)', async () => {
@@ -173,8 +187,10 @@ describe('P2a-2: the field is left when the keyboard hides', () => {
   });
 });
 
-describe('R3a-2: a field that left the screen takes its refused text with it', () => {
-  it('Next is not blocked by the "(all lines)" tax after the lines come to differ in tax', async () => {
+describe('R3a-2: "All dispatches" Tax stays on the screen, so its refused text counts for Next', () => {
+  // Before the 2026-10-19 tweaks the row went when the lines came to differ in tax, and took the refused text with it.
+  // Now "All dispatches" always shows Tax (the lines' own Tax column is read-only), so the field and its text stay.
+  it('Next counts the refused "(all lines)" tax after the lines come to differ in tax', async () => {
     const ref = React.createRef<InvoiceItemsEditorHandle>();
     const tree = await render(groupLines(2), ref);
     await focus(tree, TAX_ALL);
@@ -182,22 +198,24 @@ describe('R3a-2: a field that left the screen takes its refused text with it', (
     await blur(tree, TAX_ALL);
     expect(textsOf(tree)).toContain('Enter a tax from 0 to 100.');
 
-    // The saved rate comes back: line 1 has tax 12, so the lines show their own tax and the row goes.
+    // The saved rate comes back: line 1 has tax 12, so the lines differ. The Tax column of the lines is read-only
+    // (no input); the "(all lines)" field keeps the text typed in it.
     await act(async () => {
       mockStore.dispatch(applySavedRates([{ temp_id: 'edit_0_0', charge: 5, labour_rate: 2, tax: 12 }]));
     });
-    expect(hasInput(tree, TAX_ALL)).toBe(false);
-    expect(hasInput(tree, 'cell|edit_0_0|tax')).toBe(true);
+    expect(hasInput(tree, TAX_ALL)).toBe(true);
+    expect(hasInput(tree, 'cell|edit_0_0|tax')).toBe(false);
+    expect(inputOf(tree, TAX_ALL).props.value).toBe('101');
 
     let count = -1;
     await act(async () => { count = ref.current!.checkAll(); });
-    expect(count).toBe(0);
-    expect(announce).not.toHaveBeenCalled();
+    expect(count).toBe(1);
+    expect(announce).toHaveBeenCalledWith('Fix the highlighted figure, then continue.');
   });
 });
 
 describe('R3a-3 and P2a-4: card fields', () => {
-  beforeEach(() => { mockFontScale = 1.3; });
+  beforeEach(() => { screenReaderOn(); });
 
   it('keep the full spoken label: field, dispatch or item, and unit', async () => {
     const tree = await render(groupLines(2));
@@ -213,7 +231,7 @@ describe('R3a-3 and P2a-4: card fields', () => {
     await focus(tree, CHARGE_1);
     await change(tree, CHARGE_1, '1000000');
     await blur(tree, CHARGE_1);
-    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 999999.');
+    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
     expect(inputOf(tree, CHARGE_1).props.accessibilityLabel).toBe('Charge, dispatch I0001, rupees per bag, per month');
   });
 
@@ -236,23 +254,25 @@ describe('R3a-4: the keyboard key says what Next does', () => {
         .map((node) => [node.props.testID as string, node.props.returnKeyType as string])
     );
 
-  it('table: "next" on every field, "done" on the last field of the page', async () => {
+  it('table: "next" on every field, "done" on the last field of the page (the Labour of the last line)', async () => {
     const keys = returnKeys(await render(groupLines(2)));
-    expect(keys[CHARGE_1]).toBe('next');
-    expect(keys['cell|edit_1_0|charge']).toBe('next');
     expect(keys[CHARGE_ALL]).toBe('next');
     expect(keys[`group|${GROUP}|labour_rate`]).toBe('next');
-    expect(keys[TAX_ALL]).toBe('done');
+    expect(keys[TAX_ALL]).toBe('next');
+    expect(keys[CHARGE_1]).toBe('next');
+    expect(keys['cell|edit_0_0|labour_rate']).toBe('next');
+    expect(keys['cell|edit_1_0|charge']).toBe('next');
+    expect(keys['cell|edit_1_0|labour_rate']).toBe('done');
   });
 
-  it('cards: a line card is not the last field, the page ends in the tax of the last group', async () => {
-    mockFontScale = 1.3;
+  it('cards: the page ends in the last line card, which has no Tax field (Tax is set in All dispatches)', async () => {
+    screenReaderOn();
     const keys = returnKeys(await render(groupLines(2)));
-    expect(keys[CHARGE_1]).toBe('next');
-    expect(keys['cell|edit_1_0|charge']).toBe('next');
     expect(keys[CHARGE_ALL]).toBe('next');
-    expect(keys[`group|${GROUP}|labour_rate`]).toBe('next');
-    expect(keys[TAX_ALL]).toBe('done');
+    expect(keys[TAX_ALL]).toBe('next');
+    expect(keys[CHARGE_1]).toBe('next');
+    expect(Object.entries(keys).filter(([, key]) => key === 'done')).toHaveLength(1);
+    expect(keys['cell|edit_1_0|tax']).toBeUndefined();
   });
 
   it('one line, one-time pricing is not special: the only field left is "done"', async () => {
@@ -274,7 +294,7 @@ describe('R3a-6 and R3a-7: the applied group rate and the keep-own note', () => 
     await blur(tree, CHARGE_ALL);
     expect(state().items.map((line) => line.charge)).toEqual([6, 9, 6]);
     expect(state().bulkPricing[GROUP]).toEqual({ charge: 6 });
-    expect(textsOf(tree)).toContain('1 line keeps its own charge');
+    expect(hasText(tree, '1 line keeps its own charge')).toBe(true);
 
     await focus(tree, CHARGE_ALL);
     await change(tree, CHARGE_ALL, '1');
@@ -282,30 +302,43 @@ describe('R3a-6 and R3a-7: the applied group rate and the keep-own note', () => 
     expect(state().items.map((line) => line.charge)).toEqual([6, 9, 6]);
     expect(state().bulkPricing[GROUP]).toEqual({ charge: 6 });
     await blur(tree, CHARGE_ALL);
-    expect(textsOf(tree)).toContain('1 line keeps its own charge');
+    // The refused text's error takes the place of the note under the field.
+    expect(textsOf(tree)).toContain('Enter a charge from 0 to 9999.99.');
     expect(inputOf(tree, CHARGE_ALL).props.value).toBe('1000000');
   });
 
-  it('shows the note while the field says "Mixed": table', async () => {
+  // Charge shows the average of its lines, weighted by bag-months, instead of "Mixed" (owner, 2026-10-19).
+  it('shows the average and the note under it while the lines differ: table', async () => {
     const tree = await render(three());
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: 'edit_1_0', values: { charge: 9 } })); });
-    expect(inputOf(tree, CHARGE_ALL).props.placeholder).toBe('Mixed');
-    expect(textsOf(tree)).toContain('1 line keeps its own charge');
+    expect(inputOf(tree, CHARGE_ALL).props.value).toBe('6.33');
+    expect(inputOf(tree, CHARGE_ALL).props.placeholder).toBe('0');
+    expect(hasText(tree, 'Average of 3 lines')).toBe(true);
+    expect(hasText(tree, '1 line keeps its own charge')).toBe(true);
   });
 
-  it('shows the note while the field says "Mixed": cards', async () => {
-    mockFontScale = 1.3;
+  it('shows the average and the note under it while the lines differ: cards', async () => {
+    screenReaderOn();
     const tree = await render(three());
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: 'edit_1_0', values: { charge: 9 } })); });
-    expect(inputOf(tree, CHARGE_ALL).props.placeholder).toBe('Mixed');
+    expect(inputOf(tree, CHARGE_ALL).props.value).toBe('6.33');
     expect(inputOf(tree, CHARGE_ALL).props.accessibilityHint).toBeUndefined();
-    expect(textsOf(tree)).toContain('1 line keeps its own charge');
+    expect(hasText(tree, 'Average of 3 lines')).toBe(true);
+    expect(hasText(tree, '1 line keeps its own charge')).toBe(true);
   });
 
-  it('shows no note when no line was typed (lines that differ because of saved rates)', async () => {
+  it('shows no keep-own note when no line was typed (lines that differ because of saved rates)', async () => {
     const tree = await render([invoiceLine({ charge: 4 }, 0), invoiceLine({ charge: 5 }, 1)]);
-    expect(inputOf(tree, CHARGE_ALL).props.placeholder).toBe('Mixed');
+    expect(inputOf(tree, CHARGE_ALL).props.value).toBe('4.50');
+    expect(hasText(tree, 'Average of 2 lines')).toBe(true);
     expect(textsOf(tree).filter((text) => text.includes('keeps their own') || text.includes('keeps its own'))).toEqual([]);
+  });
+
+  it('says "Mixed" in Labour when the lines without their own figure differ', async () => {
+    const tree = await render([invoiceLine({ labour_rate: 1 }, 0), invoiceLine({ labour_rate: 2 }, 1)]);
+    const labour = `group|${GROUP}|labour_rate`;
+    expect(inputOf(tree, labour).props.placeholder).toBe('Mixed');
+    expect(inputOf(tree, labour).props.value).toBe('');
   });
 });
 

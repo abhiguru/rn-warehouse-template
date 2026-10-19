@@ -3,7 +3,7 @@ import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, type Mode } from '@/theme/tokens';
 import { makeInvoiceStore, fillNewInvoice, openForEdit, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf, textsOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 
 let mockStore: InvoiceStore;
 let mockFontScale = 1;
@@ -36,6 +36,7 @@ describe.each(BRANDS.flatMap((brand) => MODES.map((mode) => [brand, mode] as con
       else openForEdit(mockStore, groupLines(2));
       let tree!: ReactTestRenderer;
       await act(async () => { tree = create(<ConnectedEditor />); });
+      await openAllGroups(tree);
       const texts = textsOf(tree);
       expect(texts).toContain('₹735.00');
       expect(texts).toContain('₹1,470.00');

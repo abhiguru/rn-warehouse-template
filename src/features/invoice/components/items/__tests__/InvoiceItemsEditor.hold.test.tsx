@@ -6,7 +6,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, inputOf, track, unmountAll, openAllGroups, columnWidthsOf } from '@/tests/helpers/invoiceItemsHarness';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
 import { SCROLL_VIEW_POSITION } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -36,9 +36,10 @@ async function render(lines: InvoiceItemData[] = raiLines()) {
   fillNewInvoice(mockStore, lines);
   let tree!: ReactTestRenderer;
   await act(async () => { tree = track(create(<ConnectedEditor />)); });
+  await openAllGroups(tree);
   return tree;
 }
-const widthsOf = (tree: ReactTestRenderer) => tree.root.findAll((node) => node.props.widths !== undefined && typeof node.type !== 'string')[0].props.widths;
+const widthsOf = columnWidthsOf;
 const tapOf = (tree: ReactTestRenderer, key: string) =>
   tree.root.find((node) => node.props.testID === `${key}-tap` && typeof node.props.onPress === 'function');
 const cardsNow = (tree: ReactTestRenderer) => tree.root.findAll((node) => typeof node.props.testID === 'string' && node.props.testID.startsWith('line-')).length === 0;
@@ -54,18 +55,19 @@ describe('the layout while a cell is focused', () => {
       expect(widthsOf(tree)).toEqual(before);
       expect(cardsNow(tree)).toBe(false);
     }
-    // a refused or partial entry does not change it either, and the other cells keep their lines' figures
-    await act(async () => { inputOf(tree, CHARGE_1).props.onChangeText('999999'); });
+    // a charge is limited to 9999.99 on entry: 9999.99 is the largest that is accepted
+    await act(async () => { inputOf(tree, CHARGE_1).props.onChangeText('9999.99'); });
     expect(widthsOf(tree)).toEqual(before);
     await act(async () => { inputOf(tree, CHARGE_1).props.onBlur({}); });
     // not at once: a move to the next field would take the focus within the settle time
     expect(widthsOf(tree)).toEqual(before);
     await settle();
-    // the charge ₹999,999.00 does not fit a table at 411 dp: the lines are cards now
-    expect(cardsNow(tree)).toBe(true);
+    // the charge ₹9999.99 is wider than the Charge and Amount columns were: they widen, and the lines stay a table
+    expect(widthsOf(tree)).not.toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 
-  it('keeps the table while 99999 is typed (it would be cards), and turns into cards once the blur settles', async () => {
+  it('keeps the widths for a refused entry (99999), also once the blur has settled', async () => {
     const tree = await render();
     const before = widthsOf(tree);
     await act(async () => { inputOf(tree, CHARGE_1).props.onFocus({}); });
@@ -74,7 +76,9 @@ describe('the layout while a cell is focused', () => {
     expect(cardsNow(tree)).toBe(false);
     await act(async () => { inputOf(tree, CHARGE_1).props.onBlur({}); });
     await settle();
-    expect(cardsNow(tree)).toBe(true);
+    // refused: the form holds the charge the cell had on focus, so nothing is wider
+    expect(widthsOf(tree)).toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 
   it('is held from the touch down, before the focus arrives, and a swipe that never focuses lets it go', async () => {
@@ -82,11 +86,12 @@ describe('the layout while a cell is focused', () => {
     const before = widthsOf(tree);
     await act(async () => { tapOf(tree, CHARGE_2).props.onPressIn(); });
     // the figures change (another cell, the form) while the finger is down
-    await act(async () => { mockStore.dispatch({ type: 'invoiceForm/updateEditedItem', payload: { temp_id: 'edit_0_0', values: { charge: 123456 } } }); });
+    await act(async () => { mockStore.dispatch({ type: 'invoiceForm/updateEditedItem', payload: { temp_id: 'edit_0_0', values: { charge: 9999.99 } } }); });
     expect(widthsOf(tree)).toEqual(before);
     await act(async () => { tapOf(tree, CHARGE_2).props.onPressOut(); });
     await settle();
-    expect(cardsNow(tree)).toBe(true);
+    expect(widthsOf(tree)).not.toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
   });
 });
 
