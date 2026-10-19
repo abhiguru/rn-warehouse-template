@@ -28,36 +28,50 @@ interface ColumnsProps {
   styles: ItemsStyles;
 }
 
-export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, table, scroll, sideways, styles }: ColumnsProps) {
+interface HeadingRowProps {
+  groupKey: string;
+  table: LineTable;
+  scroll: TableScroll;
+  styles: ItemsStyles;
+}
+
+/** The heading row of the line table: the pinned Dispatch heading and the other headings in the card's shared viewport. */
+export const HeadingRow = React.memo(function HeadingRow({ groupKey, table, scroll, styles }: HeadingRowProps) {
   const t = useTokens();
   return (
+    // Keyed by the card: a part the list recycles for another card gets that card's scroll.
+    <SidewaysViewport
+      key={groupKey}
+      scroll={scroll}
+      content={table.content}
+      fill={t.table.headerFill}
+      rowStyle={styles.tableHeader}
+      pinned={
+        <View style={[styles.pinnedHead, { width: table.pinned.width }]}>
+          <Text style={styles.headerText} numberOfLines={1}>{table.pinned.header}</Text>
+        </View>
+      }
+    >
+      {table.scrolling.map((column) => (
+        <View key={column.id} style={[styles.headCell, { width: column.width, justifyContent: 'flex-end' }]}>
+          <Text
+            style={[column.align === 'right' ? styles.headerNumber : column.align === 'center' ? styles.headerCentre : styles.headerText, { paddingRight: columnInset(column.id) }]}
+            // Months is sized to its figures, not its heading: the heading shrinks a little to stay on one line.
+            // Labour is sized to its box, so its heading may wrap to two lines.
+            {...(column.id === 'duration' ? ONE_LINE : { numberOfLines: column.id === 'labour_rate' ? 2 : 1 })}
+          >
+            {column.header}
+          </Text>
+        </View>
+      ))}
+    </SidewaysViewport>
+  );
+});
+
+export const ColumnHeadings = React.memo(function ColumnHeadings({ groupKey, table, scroll, sideways, styles }: ColumnsProps) {
+  return (
     <View style={styles.side} testID={`cols-${groupKey}`}>
-      {/* Keyed by the card: a part the list recycles for another card gets that card's scroll. */}
-      <SidewaysViewport
-        key={groupKey}
-        scroll={scroll}
-        content={table.content}
-        fill={t.table.headerFill}
-        rowStyle={styles.tableHeader}
-        pinned={
-          <View style={[styles.pinnedHead, { width: table.pinned.width }]}>
-            <Text style={styles.headerText} numberOfLines={1}>{table.pinned.header}</Text>
-          </View>
-        }
-      >
-        {table.scrolling.map((column) => (
-          <View key={column.id} style={[styles.headCell, { width: column.width, justifyContent: 'flex-end' }]}>
-            <Text
-              style={[column.align === 'right' ? styles.headerNumber : column.align === 'center' ? styles.headerCentre : styles.headerText, { paddingRight: columnInset(column.id) }]}
-              // Months is sized to its figures, not its heading: the heading shrinks a little to stay on one line.
-              // Labour is sized to its box, so its heading may wrap to two lines.
-              {...(column.id === 'duration' ? ONE_LINE : { numberOfLines: column.id === 'labour_rate' ? 2 : 1 })}
-            >
-              {column.header}
-            </Text>
-          </View>
-        ))}
-      </SidewaysViewport>
+      <HeadingRow groupKey={groupKey} table={table} scroll={scroll} styles={styles} />
       {sideways ? <Text style={styles.hint}>{tr('invoice.items.swipeHint')}</Text> : null}
     </View>
   );
