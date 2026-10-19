@@ -750,7 +750,8 @@ export const loadInvoiceData = async (
 
     // Convert items data - backend now returns all needed fields
     // Available: id, disp_trl_id, item_name, qty, dispatch_no, dispatch_date,
-    //            duration, no_of_days, charge, tax, labour_rate
+    //            duration, no_of_days, charge, tax, labour_rate, and from migration 109
+    //            item_id, dispatch_id, rack
 
     const formattedItems: InvoiceItemData[] = items.map((item: any, index: number) => {
       const charge = item.charge || 0;

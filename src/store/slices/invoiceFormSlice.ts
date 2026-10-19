@@ -57,7 +57,8 @@ const plainLines = (items: InvoiceItemData[]): InvoiceItemData[] =>
 export const savedLineOverrides = (items: readonly InvoiceItemData[]): Record<string, string[]> => {
   const sets = new Map<string, InvoiceItemData[]>();
   items.forEach((line) => {
-    // Edited lines have no item_id yet, so the item name stands in for it.
+    // From backend migration 109 the edited lines carry item_id; the item name stays as a fallback
+    // for facilities without migration 109.
     const key = `${invoiceGroupKey(line)}|${line.item_id || line.item_name}|${Number(line.weight) || 0}`;
     const set = sets.get(key);
     if (set) set.push(line);
