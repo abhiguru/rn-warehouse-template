@@ -8,6 +8,7 @@ import { AccessibilityInfo } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { ConnectedEditor, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 
 let mockStore: InvoiceStore;
 jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').storeHooks(() => mockStore));
@@ -22,6 +23,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 let changed: ((on: boolean) => void) | undefined;
 const remove = jest.fn();
 afterEach(() => {
+  resetScreenReaderKnown();
   act(() => unmountAll());
   jest.restoreAllMocks();
   changed = undefined;

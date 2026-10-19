@@ -219,13 +219,14 @@ export const InvoiceItemsEditor = forwardRef<InvoiceItemsEditorHandle, Props>(fu
     [screenReader, heldLayout]
   );
   const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Set again here: StrictMode mounts, cleans up and mounts again.
+    mounted.current = true;
+    return () => {
       mounted.current = false;
       clearTimeout(settleTimer.current);
-    },
-    []
-  );
+    };
+  }, []);
 
   // A group whose lines differ in labour or tax shows them line by line, and keeps doing so while
   // it is on the screen: typing a line's labour equal to the others must not take the field away.

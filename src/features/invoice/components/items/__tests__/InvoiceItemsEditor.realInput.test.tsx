@@ -7,8 +7,9 @@
  * between the keys.
  */
 import React from 'react';
-import { Keyboard, TextInput } from 'react-native';
+import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { ConnectedEditor, chargeEntryOf, emitKeyboard, hostBlur, hostFocus, hostInputOf, hostKey, textsOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -19,24 +20,30 @@ jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').stor
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ listenToKeyboardEvents: () => (component: unknown) => component }));
+let mockWidth = 411;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
-  default: () => ({ width: 411, height: 800, scale: 3, fontScale: 1 }),
+  default: () => ({ width: mockWidth, height: 800, scale: 3, fontScale: 1 }),
 }));
 
 let keyboardCalls: ReadonlyArray<readonly unknown[]> = [];
+let events = 0;
 beforeEach(() => {
+  events = 0;
+  mockWidth = 411;
   jest.useFakeTimers();
   const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation(() => ({ remove: jest.fn() }) as never);
   keyboardCalls = listen.mock.calls;
 });
 afterEach(() => {
+  resetScreenReaderKnown();
   act(() => unmountAll());
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
 const CHARGE_1 = 'cell|edit_0_0|charge';
+const CHARGE_2 = 'cell|edit_1_0|charge';
 /** The fictional Rai group of the phone run: four lines of one item and mark. */
 const raiLines = (): InvoiceItemData[] => groupLines(4, { item_id: 'rai', item_name: 'Example Rai', package_mark: 'BULK-4', qty: 12, weight: 25 });
 
@@ -52,12 +59,12 @@ const cardsNow = (tree: ReactTestRenderer) => tree.root.findAll((node) => typeof
 const pause = async (ms = 400) => { await act(async () => { jest.advanceTimersByTime(ms); }); };
 const lineTotals = (tree: ReactTestRenderer) => textsOf(tree).filter((text) => /^₹[\d,]+\.\d\d$/.test(text));
 
-/** Types the texts one key at a time, as the device does: a rising event count and a pause after each key. */
+/** Types the texts one key at a time, as the device does: a rising event count (across calls) and a pause after each key. */
 async function type(tree: ReactTestRenderer, key: string, texts: string[], seen?: (text: string) => void) {
-  let count = 0;
   for (const text of texts) {
-    count += 1;
-    await act(async () => { hostKey(tree, key, text, count); });
+    // the count keeps rising across calls, as the native input's does
+    events += 1;
+    await act(async () => { hostKey(tree, key, text, events); });
     await pause();
     seen?.(text);
   }
@@ -126,5 +133,71 @@ describe('a cell typed in with the real TextInput', () => {
     expect(focused.blur).not.toHaveBeenCalled();
     await act(async () => { emitKeyboard(keyboardCalls, 'keyboardDidHide'); });
     expect(focused.blur).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the table in the gap between one field\'s blur and the next field\'s focus event (Next, focus arriving 400 ms late)', async () => {
+    const tree = await render(raiLines());
+    const before = widthsOf(tree);
+    // the input object of line 2, which react-native hands to the editor: the one it records as focused
+    await act(async () => { hostFocus(tree, CHARGE_2); });
+    const second = TextInput.State.currentlyFocusedInput() as unknown as { focus: () => void };
+    await act(async () => { hostBlur(tree, CHARGE_2); });
+    await pause();
+    // react-native records the focus at once; the focus event of the host input comes later
+    second.focus = () => require('react-native/Libraries/Components/TextInput/TextInputState').default.focusInput(second);
+    await act(async () => { hostFocus(tree, CHARGE_1); });
+    await type(tree, CHARGE_1, ['9', '99', '999', '9999', '99999', '999999']);
+    await act(async () => { hostInputOf(tree, CHARGE_1).props.onSubmitEditing({ nativeEvent: { text: '999999' } }); });
+    await act(async () => { hostBlur(tree, CHARGE_1); });
+    await pause(400);
+    expect(widthsOf(tree)).toEqual(before);
+    expect(cardsNow(tree)).toBe(false);
+    await act(async () => { hostFocus(tree, CHARGE_2); });
+    await act(async () => { hostBlur(tree, CHARGE_2); });
+    await pause(400);
+    expect(cardsNow(tree)).toBe(true);
+  });
+});
+
+describe('a focused field drawn again by another component', () => {
+  const setCharge = async (id: string, charge: number) => {
+    await act(async () => { mockStore.dispatch({ type: 'invoiceForm/updateEditedItem', payload: { temp_id: id, values: { charge } } }); });
+    await pause();
+  };
+  const redraw = async (tree: ReactTestRenderer) => { await act(async () => { tree.update(<ConnectedEditor />); }); };
+
+  it('lets the layout follow the figures again after a width change while a cell is focused (411, 320, 411 dp)', async () => {
+    const tree = await render(raiLines());
+    await act(async () => { hostFocus(tree, CHARGE_1); });
+    await type(tree, CHARGE_1, ['7']);
+    mockWidth = 320;
+    await redraw(tree);
+    expect(cardsNow(tree)).toBe(true);
+    mockWidth = 411;
+    await redraw(tree);
+    await pause();
+    expect(cardsNow(tree)).toBe(false);
+    // the field is gone with its focus: the hold has ended, and a charge that does not fit a table makes cards
+    await setCharge('edit_1_0', 999999);
+    expect(cardsNow(tree)).toBe(true);
+  });
+
+  it('lets the layout follow the figures again after the screen reader is switched on and off while a cell is focused', async () => {
+    let changed: ((on: boolean) => void) | undefined;
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((name: string, handler: (on: boolean) => void) => {
+      if (name === 'screenReaderChanged') changed = handler;
+      return { remove: jest.fn() };
+    }) as never);
+    const tree = await render(raiLines());
+    await act(async () => { hostFocus(tree, CHARGE_1); });
+    await type(tree, CHARGE_1, ['7']);
+    await act(async () => { changed!(true); });
+    expect(cardsNow(tree)).toBe(true);
+    await act(async () => { changed!(false); });
+    await pause();
+    expect(cardsNow(tree)).toBe(false);
+    await setCharge('edit_1_0', 999999);
+    expect(cardsNow(tree)).toBe(true);
   });
 });

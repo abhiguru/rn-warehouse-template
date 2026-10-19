@@ -82,12 +82,12 @@ export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk 
 
 /**
  * A stable ref callback per field key. `onGone` is called when a field's ref was released and not set
- * again by the end of the commit: react-native's text input releases the ref and sets it again on every
+ * again by the end of the commit, or set again as another input: react-native's text input releases the ref and sets it again on every
  * key it reports, and that is not the field going away.
  */
 export function useRefFactory(register: FieldWalk['register'], onGone: (key: string) => void) {
   const cache = useRef(new Map<string, (node: TextInput | null) => void>()).current;
-  const live = useRef(new Set<string>()).current;
+  const nodeOf = useRef(new Map<string, TextInput>()).current;
   const callbacks = useRef({ register, onGone });
   callbacks.current = { register, onGone };
   return useCallback(
@@ -97,19 +97,22 @@ export function useRefFactory(register: FieldWalk['register'], onGone: (key: str
         ref = (node) => {
           callbacks.current.register(key, node);
           if (node) {
-            live.add(key);
+            nodeOf.set(key, node);
             return;
           }
-          live.delete(key);
-          // After the commit: a re-set of the same key by then means the field is still there.
+          const released = nodeOf.get(key);
+          nodeOf.delete(key);
+          // After the commit: the same input set again is the native input's per-key release, still the
+          // field; a different input under the key is a field drawn again by another component (a cell
+          // that became a card), and the old one is gone with its focus.
           Promise.resolve().then(() => {
-            if (!live.has(key)) callbacks.current.onGone(key);
+            if (nodeOf.get(key) !== released) callbacks.current.onGone(key);
           });
         };
         cache.set(key, ref);
       }
       return ref;
     },
-    [cache, live]
+    [cache, nodeOf]
   );
 }

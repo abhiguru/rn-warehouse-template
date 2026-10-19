@@ -83,6 +83,21 @@ describe('a ref released while the field is typed in', () => {
   });
 });
 
+describe('under StrictMode (effects run twice)', () => {
+  it('still drops a valid entry of a field that is gone and has no focus', async () => {
+    mockStore = makeInvoiceStore();
+    fillNewInvoice(mockStore, groupLines(2));
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = track(create(<React.StrictMode><ConnectedEditor /></React.StrictMode>)); });
+    await focus(tree, CHARGE_1);
+    await change(tree, CHARGE_1, '5');
+    await focus(tree, CHARGE_2);
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBe('5');
+    await act(async () => { (cellOf(tree, CHARGE_1).props.ref as (node: null) => void)(null); });
+    expect(chargeEntryOf(tree, 'edit_0_0')).toBeUndefined();
+  });
+});
+
 describe('the keyboard\'s Next key scrolls the next field above the keyboard', () => {
   it('asks the list for the target row with the upper-part view position, on every step', async () => {
     const tree = await render(groupLines(2));
