@@ -2,8 +2,9 @@
  * The invoice's items step as an editable table (style guide 13.7, "Editable tables"), after the
  * rate box of Item pricing.
  *
- * Each item + mark group is one card with its total in the heading. Under the heading come rows for
- * what all lines share (Charge for 2 or more lines, Labour and Tax), the group total, and a toggle,
+ * Each item + mark group is one card with its total in the heading. Under the heading come one part
+ * for what all lines share (Charge for 2 or more lines, Labour and Tax: side by side in one row, each
+ * with − / + under it, or stacked when the columns would not fit; SharedRateRow.tsx), the group total, and a toggle,
  * "Show dispatch details (N)". The dispatch lines are closed by default (a group of one line starts
  * open, since it has no "(all lines)" Charge row) and open at the bottom of the card: a table that
  * fits the screen (Dispatch | Qty | Charge ₹ | Amount, its columns described with the app's TanStack
@@ -12,7 +13,7 @@
  * each line shows its own. Opening and closing has no animation: the rows are virtualized.
  *
  * The page is one keyboard-aware, virtualized FlashList. A card is drawn as several list rows
- * (head, shared rows, total, toggle and, while open, column headings and one row per line; the last
+ * (head, shared part, total, toggle and, while open, column headings and one row per line; the last
  * part draws the card's bottom edge), so a change that adds, removes or resizes a part changes the
  * rows of that group only, and every part keeps its own key. A closed group draws no line rows, so the
  * Next key walks only the fields that are shown.
@@ -24,7 +25,11 @@
  * the keyboard hides, or when its group is closed), or when Next is pressed, which counts refused
  * text in every group, closed ones too; it opens the group of the first wrong field, scrolls to it and
  * focuses it. The field shows its text as typed while it has the focus. The layout (table or cards)
- * is held while any field has the focus and looked at again a moment after it is left.
+ * is held while any field has the focus and looked at again a moment after it is left (so is the choice
+ * between the shared row and the stack, which comes from the same held layout).
+ *
+ * A − / + press under a shared field (`actions.step`) leaves the focused field first, as the keyboard
+ * hiding does, then applies the stepped figure through the same `commit` as typing; no keyboard opens.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react';
 import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
@@ -34,7 +39,7 @@ import { useAppTable } from '@/components/table/appTable';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';
 import { useScreenReader } from '@/hooks/useScreenReader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { getLanguage, t as tr } from '@/i18n';
+import { getLanguage, localizeDigits, t as tr } from '@/i18n';
 import { iconSize } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
@@ -51,10 +56,10 @@ import {
 import { GroupHead } from './GroupHead';
 import { LineCard } from './LineCard';
 import { LineRow } from './LineRow';
-import { SharedBlock, SharedRateRow } from './SharedRateRow';
+import { SharedBlock } from './SharedRateRow';
 import { ColumnHeadings, GroupToggle, GroupTotal } from './TableParts';
 import { lineColumnDefs, lineColumnsOf } from './lineColumns';
-import { groupIsCards, itemsLayout, sameLayout, type ItemsLayout } from './itemsLayout';
+import { groupIsCards, itemsLayout, sameLayout, sharedSideBySide, type ItemsLayout } from './itemsLayout';
 import {
   cellKey,
   fieldHeading,
@@ -68,6 +73,9 @@ import {
   rateText,
   settle,
   sharedFieldsOf,
+  stepDoneText,
+  stepperState,
+  steppedValue,
   type FieldState,
   type GroupMode,
   type GroupView,
@@ -159,6 +167,12 @@ const SETTLE_MS = 150;
  * top, so it is above the keyboard, which covers the lower part of the screen.
  */
 export const SCROLL_VIEW_POSITION = 0.15;
+
+/** "Potatoes, mark A12": the item with its mark, as a screen reader says it. */
+const spokenItemOf = (group: InvoiceItemGroup): string => {
+  const mark = group.package_mark?.trim() ?? '';
+  return [group.item_name, mark ? tr('invoice.items.markA11y', { mark }) : null].filter(Boolean).join(', ');
+};
 
 export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
   { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, ListHeaderComponent, style, contentContainerStyle },
@@ -360,18 +374,23 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
     Array.from(focusRecords.keys()).filter((key) => !present.has(key)).forEach((key) => focusRecords.delete(key));
   }, [plan, focusRecords]);
 
-  const listRef = useRef<{ scrollToIndex: (params: { index: number; animated?: boolean; viewPosition?: number }) => Promise<void> | void } | null>(null);
+  const listRef = useRef<{ scrollToIndex: (params: { index: number; animated?: boolean; viewPosition?: number; viewOffset?: number }) => Promise<void> | void } | null>(null);
+  // Where a stacked "(all lines)" field starts below the top of its row (set by the block while the fields are stacked,
+  // removed when they are side by side): all three fields of a block share one row index, and the keyboard covers
+  // the lower part of the screen, so the walk scrolls further down the row for a field below the first.
+  const stackedOffsets = useRef(new Map<string, number>()).current;
   const walk = useFieldWalk({
     order: plan.order,
     rowOf: plan.rowOf,
-    scrollToRow: (index) => {
-      listRef.current?.scrollToIndex({ index, animated: false, viewPosition: SCROLL_VIEW_POSITION });
+    scrollToRow: (index, key) => {
+      const offset = key === undefined ? 0 : stackedOffsets.get(key) ?? 0;
+      listRef.current?.scrollToIndex({ index, animated: false, viewPosition: SCROLL_VIEW_POSITION, ...(offset > 0 ? { viewOffset: -offset } : {}) });
     },
   });
 
   // The latest props and state, for the actions below.
-  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk });
-  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk };
+  const latest = useRef({ openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk });
+  latest.current = { openSet, groupOfLine, itemsById, groupsByKey, itemOverrides, bulkPricing, views, onItemUpdate, onBulkEdit, onRestoreRates, onEditPricing, plan, walk };
 
   // Next found a wrong field in a closed group and opened it: now its row is in the plan, scroll to it and focus it.
   useEffect(() => {
@@ -545,6 +564,49 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         setToggled((prev) => ({ ...prev, [groupKey]: !isOpen }));
       },
 
+      stackedOffset: (key, offset) => {
+        if (offset === null) stackedOffsets.delete(key);
+        else stackedOffsets.set(key, offset);
+      },
+
+      step: (groupKey, field, direction) => {
+        const key = groupFieldKey(groupKey, field);
+        // A burst of presses holds the layout as typing does; it is looked at once, SETTLE_MS after the last press.
+        typing.current = true;
+        clearTimeout(settleTimer.current);
+        const { views: viewsNow, walk: fieldWalk } = latest.current;
+        const view = viewsNow.get(groupKey)?.[field];
+        if (!view) {
+          released();
+          return;
+        }
+        // Not while the field is "Mixed" or holds refused text (the buttons are disabled then too), or at an end.
+        const before = stepperState(field, view, fieldsRef.current[key]);
+        if (before.value === null || !(direction < 0 ? before.canDecrease : before.canIncrease)) {
+          released();
+          return;
+        }
+        // A field with the focus is left first, as the keyboard hiding does: its text is settled and its error shown.
+        // The keyboard is not opened for the press.
+        const focused = focusedKey.current;
+        if (focused) {
+          fieldWalk.blurKey(focused);
+          api.blur(focused);
+        }
+        const next = steppedValue(field, before.value, direction);
+        // The same path as an accepted entry in the "(all lines)" field: one rate for the group, lines with their own keep theirs.
+        setFields((prev) => {
+          const state = prev[key];
+          if (!state || settle(field, state.text).error) return prev;
+          const rest = { ...prev };
+          delete rest[key];
+          return rest;
+        });
+        commit(key, next);
+        AccessibilityInfo.announceForAccessibility(stepDoneText(field, next, localizeDigits));
+        released();
+      },
+
       editPricing: (groupKey) => {
         const { onEditPricing: open, groupsByKey: byKey } = latest.current;
         const group = byKey.get(groupKey);
@@ -664,22 +726,6 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
             />
           );
         }
-        case 'shared':
-          return (
-            <SharedRateRow
-              groupKey={row.groupKey}
-              itemName={group.item_name}
-              field={row.field}
-              lines={row.lines}
-              oneTime={oneTime}
-              view={views.get(row.groupKey)![row.field]}
-              state={fields[groupFieldKey(row.groupKey, row.field)]}
-              lastKey={lastKey}
-              widths={layout.widths}
-              actions={actions}
-              styles={styles}
-            />
-          );
         case 'block': {
           const stateOf = (field: RateField): FieldState | undefined => fields[groupFieldKey(row.groupKey, field)];
           return (
@@ -687,12 +733,14 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
               groupKey={row.groupKey}
               itemName={group.item_name}
               fields={row.fields}
-              lines={row.lines}
+              spokenItem={spokenItemOf(group)}
               oneTime={oneTime}
               views={views.get(row.groupKey)!}
               charge={stateOf('charge')}
               labour={stateOf('labour_rate')}
               tax={stateOf('tax')}
+              heading={row.lines >= 2 ? tr('invoice.items.allDispatches') : null}
+              sideBySide={sharedSideBySide(layout, row.fields.length)}
               lastKey={lastKey}
               actions={actions}
               styles={styles}
@@ -702,9 +750,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         case 'total':
           return <GroupTotal groupKey={row.groupKey} lines={group.allItems.length} total={totals.get(row.groupKey) ?? 0} styles={styles} />;
         case 'toggle': {
-          const mark = group.package_mark?.trim() ?? '';
-          const spokenItem = [group.item_name, mark ? tr('invoice.items.markA11y', { mark }) : null].filter(Boolean).join(', ');
-          return <GroupToggle groupKey={row.groupKey} spokenItem={spokenItem} lines={row.lines} open={row.open} refused={row.open ? 0 : refusedByGroup.get(row.groupKey) ?? 0} actions={actions} styles={styles} />;
+          return <GroupToggle groupKey={row.groupKey} spokenItem={spokenItemOf(group)} lines={row.lines} open={row.open} refused={row.open ? 0 : refusedByGroup.get(row.groupKey) ?? 0} actions={actions} styles={styles} />;
         }
       }
     },

@@ -3,6 +3,11 @@
  *
  * Minus and plus buttons outlined in border.button with brand.tint icons; the
  * value in body with tabular numbers; the buttons disable at min and max.
+ *
+ * `StepperButtons` is the same pair of buttons on their own, for a field that sits above them (the
+ * invoice items step's "(all lines)" figures): each button is a full touch target wide and tall with the
+ * 36 dp outlined button drawn inside it, so the whole target works on Android (a hit slop outside a
+ * clipped parent does not). It holds no value; the caller steps it.
  */
 import React, { useState, useRef } from 'react';
 import {
@@ -369,6 +374,26 @@ const makeStyles = (t: ThemeTokens) => ({
   buttonDisabled: {
     opacity: t.interaction.disabledOpacity,
   },
+  pairRow: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+  },
+  pairHit: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+  },
+  pairBox: {
+    height: BUTTON_SIZE,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.field,
+    overflow: 'hidden' as const,
+  },
   valueContainer: {
     minWidth: VALUE_MIN_WIDTH,
     height: BUTTON_SIZE,
@@ -394,5 +419,53 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
 });
+
+interface StepperButtonsProps {
+  onDecrement: () => void;
+  onIncrement: () => void;
+  canDecrement: boolean;
+  canIncrement: boolean;
+  /** Spoken labels, complete ("Decrease charge by ₹0.25, Potatoes"). */
+  decreaseLabel: string;
+  increaseLabel: string;
+  testID?: string;
+}
+
+/** The + then − of a stepper without a value between them (the GRN rate sheet's order; they share the width equally). */
+export const StepperButtons: React.FC<StepperButtonsProps> = ({
+  onDecrement,
+  onIncrement,
+  canDecrement,
+  canIncrement,
+  decreaseLabel,
+  increaseLabel,
+  testID,
+}) => {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const button = (name: 'minus' | 'plus', enabled: boolean, onPress: () => void, label: string, id?: string) => (
+    <Pressable
+      style={styles.pairHit}
+      onPress={onPress}
+      disabled={!enabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !enabled }}
+      testID={id}
+    >
+      {({ pressed }) => (
+        <View style={[styles.pairBox, pressed && styles.buttonPressed, !enabled && styles.buttonDisabled]}>
+          <Icon name={name} size={iconSize.md} color={t.brand.tint} />
+        </View>
+      )}
+    </Pressable>
+  );
+  return (
+    <View style={styles.pairRow} testID={testID}>
+      {button('plus', canIncrement, onIncrement, increaseLabel, testID ? `${testID}-plus` : undefined)}
+      {button('minus', canDecrement, onDecrement, decreaseLabel, testID ? `${testID}-minus` : undefined)}
+    </View>
+  );
+};
 
 export default StepperInput;

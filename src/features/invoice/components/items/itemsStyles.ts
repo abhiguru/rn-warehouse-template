@@ -101,6 +101,12 @@ export const makeItemsStyles = (t: ThemeTokens) => {
     cardTitle: { ...typography.headline, color: t.text.primary, flex: 1, minWidth: 0 },
     block: { paddingHorizontal: space.md, paddingVertical: space.md, gap: space.xs, backgroundColor: t.table.insetFill },
     blockTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary },
+    // The "(all lines)" figures: columns of one row, or stacked
+    sharedRow: { flexDirection: 'row' as const, alignItems: 'stretch' as const, gap: space.sm },
+    sharedColumn: { flex: 1, minWidth: 0, justifyContent: 'space-between' as const },
+    sharedStack: { gap: space.sm },
+    sharedStackItem: {},
+    sharedButtons: { paddingTop: space.xs },
     prefix: { ...typography.body, color: t.text.secondary },
     // Total
     totalRow: {

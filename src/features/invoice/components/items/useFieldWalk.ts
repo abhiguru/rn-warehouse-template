@@ -24,7 +24,8 @@ export interface FieldWalk {
 interface Options {
   order: readonly string[];
   rowOf: ReadonlyMap<string, number>;
-  scrollToRow: (row: number) => void;
+  /** `key` is the field the row is scrolled for, so a row that holds several fields can be scrolled to the one wanted. */
+  scrollToRow: (row: number, key?: string) => void;
 }
 
 export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk {
@@ -38,7 +39,7 @@ export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk 
       const row = latest.current.rowOf.get(key);
       // Every step asks for the row to be scrolled up into the visible part, also when it is drawn: the
       // keyboard covers the lower part of the screen, and a field the list did not move would stay under it.
-      if (row !== undefined) latest.current.scrollToRow(row);
+      if (row !== undefined) latest.current.scrollToRow(row, key);
       // Looked up after the scroll: the list may have drawn the row in the meantime.
       const node = nodes.get(key);
       if (node) {
@@ -64,7 +65,7 @@ export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk 
       focusKey,
       scrollTo: (key) => {
         const row = latest.current.rowOf.get(key);
-        if (row !== undefined) latest.current.scrollToRow(row);
+        if (row !== undefined) latest.current.scrollToRow(row, key);
       },
       anyFocused: () => Array.from(nodes.values()).some((node) => node.isFocused?.()),
       blurKey: (key) => {

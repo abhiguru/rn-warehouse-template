@@ -144,12 +144,21 @@ export const invoice: Translation<typeof source> = {
     colLabour: 'મજૂરી (₹)',
     colTax: 'ટેક્સ (%)',
     colAmount: 'રકમ',
-    chargeAll: 'ભાડું (₹) (બધી લાઇન)',
-    labourAll: 'મજૂરી (₹) (બધી લાઇન)',
-    taxAll: 'ટેક્સ (%) (બધી લાઇન)',
     // Placeholder of an (all lines) field when the lines do not all have the same rate.
     mixed: 'જુદા જુદા',
     allDispatches: 'બધી જાવક',
+    // Draft for the owner's wording review (tweak 2026-10-19, − / + under the (all lines) figures): stepNameCharge to stepUnitMoney.
+    // The − / + under an (all lines) figure: name is lowercase, amount is "₹0.25" or "1%" in the language's digits.
+    stepNameCharge: 'ભાડું',
+    stepNameLabour: 'મજૂરી',
+    stepNameTax: 'ટેક્સ',
+    stepAmountMoney: '₹{{amount}}',
+    stepAmountTax: '{{amount}}%',
+    stepDecrease: '{{item}}: {{name}} {{amount}} ઘટાડો',
+    stepIncrease: '{{item}}: {{name}} {{amount}} વધારો',
+    // Announced after a press: the field's new value.
+    stepUnitMoney: 'રૂપિયા',
+    stepDone: '{{field}} {{value}} {{unit}}',
     keepOwnCharge: { one: '{{count}} લાઇનનું ભાડું તેનું પોતાનું રહે છે', other: '{{count}} લાઇનનું ભાડું તેમનું પોતાનું રહે છે' },
     keepOwnLabour: { one: '{{count}} લાઇનની મજૂરી તેની પોતાની રહે છે', other: '{{count}} લાઇનની મજૂરી તેમની પોતાની રહે છે' },
     keepOwnTax: { one: '{{count}} લાઇનનો ટેક્સ તેનો પોતાનો રહે છે', other: '{{count}} લાઇનનો ટેક્સ તેમનો પોતાનો રહે છે' },

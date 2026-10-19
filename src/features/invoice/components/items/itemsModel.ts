@@ -1,11 +1,12 @@
 /**
  * The pure parts of the invoice items editor: field keys, the text a rate shows, what a group's
- * "(all lines)" fields show, and the list rows a group is drawn as: head, shared rows, total, the
- * toggle and, only while the group is open, column headings and one row per line.
+ * "(all lines)" fields show, what their − / + steppers do, and the list rows a group is drawn as: head,
+ * the shared figures (one part, side by side or stacked), total, the toggle and, only while the group
+ * is open, column headings and one row per line.
  */
 import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
 import { roundMoney } from '@/utils/invoiceCalculations';
-import { parseRateInput, type RateField } from '@/features/invoice/utils/amountInput';
+import { parseRateInput, RATE_MAX, type RateField } from '@/features/invoice/utils/amountInput';
 import { groupKeyOf, type InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
 import type { GroupRates, InvoiceItemData } from '@/types/invoice.types';
 
@@ -104,7 +105,6 @@ export type ItemsRow =
   | { type: 'cols'; key: string; groupKey: string; perLine: boolean }
   | { type: 'line'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
   | { type: 'card'; key: string; groupKey: string; tempId: string; perLine: boolean; last: boolean }
-  | { type: 'shared'; key: string; groupKey: string; field: SharedField; lines: number }
   | { type: 'block'; key: string; groupKey: string; fields: SharedField[]; lines: number }
   | { type: 'total'; key: string; groupKey: string }
   | { type: 'toggle'; key: string; groupKey: string; open: boolean; lines: number };
@@ -138,7 +138,8 @@ export function sharedFieldsOf(lines: number, mode: GroupMode, oneTime: boolean)
 }
 
 /**
- * The rows of the page. A group is: head, the shared rows (or the block in cards mode), total, the toggle and,
+ * The rows of the page. A group is: head, the shared block (the "(all lines)" figures in one part, in both
+ * modes; the field walk keeps their order), total, the toggle and,
  * only when `open` has the group, the column headings (table mode) and one row per line, the last of which
  * draws the card's bottom edge. A closed group has no line rows, so their fields are not in `order`/`rowOf`.
  */
@@ -167,14 +168,8 @@ export function planRows(
     const lineFields: RateField[] = mode.perLine ? (oneTime ? ['charge', 'tax'] : ['charge', 'labour_rate', 'tax']) : ['charge'];
     add({ type: 'head', key: `head|${groupKey}`, groupKey });
     const shared = sharedFieldsOf(group.allItems.length, mode, oneTime);
-    if (mode.cards) {
-      if (shared.length > 0) {
-        add({ type: 'block', key: `block|${groupKey}`, groupKey, fields: shared, lines: group.allItems.length }, shared.map((f) => groupFieldKey(groupKey, f)));
-      }
-    } else {
-      shared.forEach((field) =>
-        add({ type: 'shared', key: `shared|${groupKey}|${field}`, groupKey, field, lines: group.allItems.length }, [groupFieldKey(groupKey, field)])
-      );
+    if (shared.length > 0) {
+      add({ type: 'block', key: `block|${groupKey}`, groupKey, fields: shared, lines: group.allItems.length }, shared.map((f) => groupFieldKey(groupKey, f)));
     }
     add({ type: 'total', key: `total|${groupKey}`, groupKey });
     add({ type: 'toggle', key: `toggle|${groupKey}`, groupKey, open: isOpen, lines: group.allItems.length });
@@ -237,6 +232,13 @@ export interface ItemsActions {
   /** The toggle of a group: opens or closes its dispatch lines (a focused cell of the group is left first). */
   toggle: (groupKey: string) => void;
   editPricing: (groupKey: string) => void;
+  /**
+   * A − / + press under an "(all lines)" field: the field it belongs to is settled first (a focused field is left, as
+   * the keyboard hiding does), then the stepped figure is applied as if it had been typed there and accepted.
+   */
+  step: (groupKey: string, field: RateField, direction: StepDirection) => void;
+  /** A stacked shared field reports how far below the top of its row it starts (null when the fields are side by side or it unmounts). */
+  stackedOffset: (key: string, offset: number | null) => void;
   /** A stable ref callback for the input of a field. */
   refFor: (key: string) => (node: import('react-native').TextInput | null) => void;
 }
@@ -265,17 +267,46 @@ export const cellLabel = (field: RateField, dispatchNo: string, oneTime: boolean
 export const groupCellLabel = (field: RateField, itemName: string, oneTime: boolean): string =>
   tr('invoice.items.groupCellA11y', { field: tr(FIELD_NAME[field]), item: itemName, unit: unitOf(field, oneTime) });
 
-const ALL_LINES: Record<RateField, TranslationKey> = {
-  charge: 'invoice.items.chargeAll',
-  labour_rate: 'invoice.items.labourAll',
-  tax: 'invoice.items.taxAll',
-};
-/** The visible label of a shared row: "Labour (₹) (all lines)", or the plain heading for a group of one line. */
-export const sharedLabel = (field: RateField, lines: number): string => (lines >= 2 ? tr(ALL_LINES[field]) : fieldHeading(field));
-
 const KEEP_OWN: Record<RateField, TranslationKey> = {
   charge: 'invoice.items.keepOwnCharge',
   labour_rate: 'invoice.items.keepOwnLabour',
   tax: 'invoice.items.keepOwnTax',
 };
 export const keepOwnNote = (field: RateField, count: number): string => tr(KEEP_OWN[field], { count });
+
+/** What is announced after a press: "Charge 5.25 rupees", "Tax 3.5 percent" (the field's name and unit in words, digits of the language). */
+export const stepDoneText = (field: RateField, value: number, localize: (text: string) => string): string =>
+  tr('invoice.items.stepDone', {
+    field: tr(FIELD_NAME[field]),
+    value: localize(rateText(field, value)),
+    unit: tr(field === 'tax' ? 'invoice.items.unitTax' : 'invoice.items.stepUnitMoney'),
+  });
+
+/** The amount a − / + press changes a shared figure by: 0.25 rupees for charge and labour, 1 percent for tax. */
+export const STEP: Record<RateField, number> = { charge: 0.25, labour_rate: 0.25, tax: 1 };
+export type StepDirection = -1 | 1;
+
+/** What the − / + under a shared field can do now. `value` is null while there is no single figure to step from. */
+export interface StepperState {
+  value: number | null;
+  canDecrease: boolean;
+  canIncrease: boolean;
+}
+
+/**
+ * The figure the steppers step from, and which of them work. None does while the lines differ ("Mixed", no single figure),
+ * or while the field holds text that is refused or unfinished. Text that is a number in range is applied already, so it is the figure.
+ */
+export function stepperState(field: RateField, view: SharedView, state: FieldState | undefined): StepperState {
+  let value: number | null;
+  if (state) {
+    const settled = settle(field, state.text);
+    value = settled.error || settled.value === null ? null : settled.value;
+  } else value = view.mixed ? null : roundMoney(Number(view.text) || 0);
+  if (value === null) return { value, canDecrease: false, canIncrease: false };
+  return { value, canDecrease: value > 0, canIncrease: value < RATE_MAX[field] };
+}
+
+/** A figure one step up or down, rounded to two decimals (as the fields keep them) and held in 0 to the field's maximum. */
+export const steppedValue = (field: RateField, from: number, direction: StepDirection): number =>
+  Math.min(RATE_MAX[field], Math.max(0, roundMoney(from + direction * STEP[field])));

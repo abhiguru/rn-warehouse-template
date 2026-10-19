@@ -138,12 +138,20 @@ export const invoice = {
     colLabour: 'Labour (₹)',
     colTax: 'Tax (%)',
     colAmount: 'Amount',
-    chargeAll: 'Charge (₹) (all lines)',
-    labourAll: 'Labour (₹) (all lines)',
-    taxAll: 'Tax (%) (all lines)',
     // Placeholder of an (all lines) field when the lines do not all have the same rate.
     mixed: 'Mixed',
     allDispatches: 'All dispatches',
+    // The − / + under an (all lines) figure: name is lowercase, amount is "₹0.25" or "1%" in the language's digits.
+    stepNameCharge: 'charge',
+    stepNameLabour: 'labour',
+    stepNameTax: 'tax',
+    stepAmountMoney: '₹{{amount}}',
+    stepAmountTax: '{{amount}}%',
+    stepDecrease: 'Lower the {{name}} by {{amount}}, {{item}}',
+    stepIncrease: 'Raise the {{name}} by {{amount}}, {{item}}',
+    // Announced after a press: the field's name, new value and unit ("Charge 5.25 rupees", "Tax 3.5 percent"; percent is unitTax).
+    stepUnitMoney: 'rupees',
+    stepDone: '{{field}} {{value}} {{unit}}',
     keepOwnCharge: { one: '{{count}} line keeps its own charge', other: '{{count}} lines keep their own charge' },
     keepOwnLabour: { one: '{{count}} line keeps its own labour', other: '{{count}} lines keep their own labour' },
     keepOwnTax: { one: '{{count}} line keeps its own tax', other: '{{count}} lines keep their own tax' },
