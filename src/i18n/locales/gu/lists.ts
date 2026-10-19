@@ -105,7 +105,6 @@ export const lists: Translation<typeof source> = {
     openHint: 'ઇન્વૉઇસ ખોલે છે',
     netBeforeTax: 'ટેક્સ પહેલાંની રકમ',
     tax: 'ટેક્સ',
-    labour: 'મજૂરી',
     financialYear: 'નાણાકીય વર્ષ {{year}}',
     create: 'ઇન્વૉઇસ બનાવો',
     loadingMore: 'વધુ ઇન્વૉઇસ લોડ થઈ રહ્યાં છે…',

@@ -66,6 +66,8 @@ export interface DataTableProps<TData extends RowData> {
   style?: StyleProp<ViewStyle>;
   /** Every heading on one line; default: in a nested table. A column's `meta.headerOneLine` wins. */
   headerOneLine?: boolean;
+  /** No heading row (nested only): a two-column list of label and amount whose labels need no heading (the Invoices list card). */
+  hideHeader?: boolean;
   flatListProps?: Partial<FlatListProps<AppRow<TData>>>;
 }
 
@@ -140,6 +142,7 @@ export function DataTable<TData extends RowData>({
   testID,
   style,
   headerOneLine,
+  hideHeader,
   flatListProps,
 }: DataTableProps<TData>) {
   const styles = useThemedStyles(makeTableStyles);
@@ -152,7 +155,7 @@ export function DataTable<TData extends RowData>({
   const interactive = !!renderDetail || !!onRowPress;
   const showChevron = !nested && (chevronColumn ?? rows.some(r => r.getCanExpand()));
 
-  const header = table.getHeaderGroups().map(group => (
+  const header = hideHeader ? null : table.getHeaderGroups().map(group => (
     <View key={group.id} style={nested ? styles.nestedHeader : styles.headerRow}>
       {showChevron ? <RowChevron expandable={false} expanded={false} /> : null}
       {group.headers.map(h => {
@@ -272,7 +275,7 @@ export function DataTable<TData extends RowData>({
 
   if (nested) {
     return (
-      <View style={styles.nested} testID={testID}>
+      <View style={[styles.nested, style]} testID={testID}>
         {header}
         {rows.map(renderRow)}
         {footer}

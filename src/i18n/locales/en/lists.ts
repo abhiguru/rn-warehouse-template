@@ -101,7 +101,6 @@ export const lists = {
     openHint: 'Opens the invoice',
     netBeforeTax: 'Net before tax',
     tax: 'Tax',
-    labour: 'Labour',
     financialYear: 'FY {{year}}',
     create: 'Create invoice',
     loadingMore: 'Loading more invoices…',
