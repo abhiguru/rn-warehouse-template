@@ -125,10 +125,44 @@ it('saves the values loaded for the route id onto that id', async () => {
 });
 
 it('offers Try again when the customer cannot be loaded', async () => {
-  jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: '' } as never);
+  jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: '', error: 'Network request failed' } as never);
   const screen = await mount();
   expect(input(screen, NAME)).toBeUndefined();
   const retry = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Try again')[0];
   await act(async () => { retry.props.onPress(); });
   expect(valueOf(screen, NAME)).toBe('24 Seven Foods');
+});
+
+const button = (screen: ReactTestRenderer, label: string) =>
+  screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label)[0];
+
+it('says the customer is gone, with Back and no Try again, when the load is refused as not found', async () => {
+  jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: 'x', error: 'NOT_FOUND' } as never);
+  const screen = await mount();
+  expect(JSON.stringify(screen.toJSON())).toContain('Customer not found');
+  expect(button(screen, 'Try again')).toBeUndefined();
+  expect(button(screen, 'Back')).toBeDefined();
+});
+
+it('after a save that timed out, a stale answer says the last save may have gone through', async () => {
+  jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: { ...c1, updated_at: 't1' } } as never);
+  jest.mocked(customerService.updateCustomer)
+    .mockResolvedValueOnce({ success: false, message: 'timed out', error: 'Request timed out' } as never)
+    .mockResolvedValueOnce({ success: false, message: '', code: 'STALE_CUSTOMER' } as never);
+  const screen = await mount();
+  await act(async () => { input(screen, NAME)?.props.onChangeText('24 Seven Foods X'); });
+  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  const calls = jest.mocked(showAlert).mock.calls;
+  expect(calls[calls.length - 1][1]).toBe('Your last save may have gone through. Reload to see this customer as it is now.');
+});
+
+it('a stale answer without an earlier timeout still says someone else changed the customer', async () => {
+  jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: { ...c1, updated_at: 't1' } } as never);
+  jest.mocked(customerService.updateCustomer).mockResolvedValueOnce({ success: false, message: '', code: 'STALE_CUSTOMER' } as never);
+  const screen = await mount();
+  await act(async () => { input(screen, NAME)?.props.onChangeText('24 Seven Foods X'); });
+  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  const calls = jest.mocked(showAlert).mock.calls;
+  expect(calls[calls.length - 1][1]).toBe('Someone else changed this customer. Reload to see their changes.');
 });

@@ -79,3 +79,34 @@ it('lists everything again when the clear button empties the box (A3)', async ()
   expect(input(tree).props.value).toBe('');
   expect(listData(tree)).toEqual(['a', 'b', 'c']);
 });
+
+it('keeps the clear button while a search is running, and announces a failed search once (review fixes)', async () => {
+  const { AccessibilityInfo } = require('react-native');
+  const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+  let reject!: (e: Error) => void;
+  const searchFn = jest.fn(() => new Promise<Row[]>((_, r) => { reject = r; }));
+  let tree!: ReturnType<typeof create>;
+  await act(async () => {
+    tree = create(
+      <SearchableBottomSheet<Row>
+        isVisible
+        onClose={jest.fn()}
+        onSelect={jest.fn()}
+        title="Choose"
+        searchFn={searchFn as never}
+        renderItem={() => <></>}
+        keyExtractor={i => i.id}
+        minQueryLength={0}
+      />
+    );
+  });
+  await act(async () => { input(tree).props.onChangeText('gu'); });
+  const clearButtons = () => tree.root.findAll(n => n.props.accessibilityLabel === 'Clear search' && typeof n.props.onPress === 'function');
+  // The search is still pending after the debounce: the x is there while the spinner shows.
+  await act(async () => { await new Promise(r => setTimeout(r, 400)); });
+  expect(searchFn).toHaveBeenCalled();
+  expect(clearButtons().length).toBeGreaterThan(0);
+  await act(async () => { reject(new Error('boom')); await Promise.resolve(); });
+  expect(announce).not.toHaveBeenCalled();
+  announce.mockRestore();
+});

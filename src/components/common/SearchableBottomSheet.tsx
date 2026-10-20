@@ -41,7 +41,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   BackHandler,
-  AccessibilityInfo,
   ListRenderItem,
 } from 'react-native';
 import {
@@ -241,9 +240,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
   const handleSearchStart = useCallback(() => setSearchFailed(false), []);
   const failedText = searchErrorText ?? tr('components.searchSheet.searchFailed');
   const handleSearchError = useCallback(() => {
+    // The failure text is a polite live region: it is announced once, there.
     setSearchFailed(true);
-    AccessibilityInfo.announceForAccessibility(failedText);
-  }, [failedText]);
+  }, []);
 
   // Search state via hook
   const {
@@ -555,7 +554,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
               style={styles.loader}
             />
           )}
-          {searchQuery.length > 0 && !isLoading && (
+          {searchQuery.length > 0 && (
             <Pressable
               style={styles.clearButton}
               onPress={() => {

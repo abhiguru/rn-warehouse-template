@@ -37,7 +37,7 @@ import { formatMobile as formatMobileDisplay, nationalMobileDigits } from '@/uti
 import { groupMobileDigits } from '@/utils/mobileGrouping';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { serverText, transportText } from '@/utils/serverText';
+import { isStatementTimeout, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 import {
   formatGST,
   formatMobile,
@@ -126,9 +126,12 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
     ]);
   }, []);
 
+  /** The last Edit save ended in a timeout (it may have been saved): a following STALE_CUSTOMER is then probably our own save. */
+  const lastSaveTimedOut = useRef(false);
+
   /** Say why a save was refused: under the field when the server names one, else in a dialog. */
   const showRefusal = useCallback(
-    (result: CustomerServiceResponse) => {
+    (result: CustomerServiceResponse, afterTimeout = false) => {
       if (result.code === 'DUPLICATE_MOBILE') {
         const name = result.details?.name;
         refuseField('mobile', name ? tr('customers.save.duplicateMobileNamed', { name }) : tr('customers.save.duplicateMobile'));
@@ -151,7 +154,8 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
         return;
       }
       if (result.code === 'STALE_CUSTOMER') {
-        showAlert(tr('customers.save.staleTitle'), tr('customers.save.staleMessage'), [
+        // A save that timed out may have gone through: the retry then meets its own change, not someone else's.
+        showAlert(tr('customers.save.staleTitle'), tr(afterTimeout ? 'customers.save.staleAfterTimeout' : 'customers.save.staleMessage'), [
           { text: tr('common.cancel'), style: 'cancel' },
           {
             text: tr('customers.save.reload'),
@@ -226,8 +230,10 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
           };
           result = await customerService.createCustomer(params);
         }
+        const afterTimeout = lastSaveTimedOut.current;
+        lastSaveTimedOut.current = !!customerId && !result.success && isTimeoutError(result) && !isStatementTimeout(result, result.code);
         if (!result.success) {
-          showRefusal(result);
+          showRefusal(result, afterTimeout);
           return;
         }
         if (customerId) {
@@ -242,6 +248,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
           });
         }
       } catch (error) {
+        lastSaveTimedOut.current = !!customerId && isTimeoutError(error) && !isStatementTimeout(error);
         // A lost connection or a timeout says so (a timed-out save may have gone through); anything else is the general text.
         showAlert(tr('customers.save.errorTitle'), transportText(error, { write: true, form: true }) ?? tr('customers.save.saveFailed'));
       } finally {
@@ -359,7 +366,9 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
 
   const title = tr(isCreate ? 'customers.form.addTitle' : 'customers.form.editTitle');
   // Always our own sentence ("Couldn't open this customer..."), never the database's.
-  const loadFailedText = tr('customers.page.loadFailed');
+  // A lost connection or a timeout can be tried again; anything else (the customer is gone) cannot.
+  const loadIsTransient = !editor.failure || isTimeoutError(editor.failure) || transportText(editor.failure) !== undefined;
+  const loadFailedText = loadIsTransient ? tr('customers.page.loadFailed') : tr('errors.customer.notFound');
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -389,9 +398,15 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
         <View style={styles.state} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
           <Text style={styles.stateText}>{loadFailedText}</Text>
-          <Button type="secondary" leftIcon="refresh" onPress={editor.retry}>
-            {tr('common.retry')}
-          </Button>
+          {loadIsTransient ? (
+            <Button type="secondary" leftIcon="refresh" onPress={editor.retry}>
+              {tr('common.retry')}
+            </Button>
+          ) : (
+            <Button type="secondary" leftIcon="arrow-left" onPress={() => (router.canGoBack() ? router.back() : router.replace('/customers'))}>
+              {tr('common.back')}
+            </Button>
+          )}
         </View>
       )}
 

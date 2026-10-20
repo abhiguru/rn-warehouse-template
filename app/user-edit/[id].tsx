@@ -254,15 +254,19 @@ export default function UserEditScreen() {
     customerName?: string
   ) => {
     const code = response.code;
+    // A connection failure says so at once; the reload runs behind the alert.
+    const connectionFailure = code === 'NETWORK' || code === 'TIMEOUT' || code === 'TIMEOUT_NOT_SAVED';
+    if (connectionFailure) {
+      showAlert(title, tr(code === 'NETWORK' ? 'errors.parsed.network' : code === 'TIMEOUT' ? 'errors.parsed.timeoutWriteForm' : 'errors.parsed.timeoutNotSaved'));
+      void reloadUser();
+      return;
+    }
     const reloaded = await reloadUser();
     const name = user?.name || tr('users.thisUser');
     const supervisor = normalizeRole(userProfile?.role) === 'supervisor';
     let message: string;
     let leave = false;
-    if (code === 'NETWORK') message = tr('errors.parsed.network');
-    else if (code === 'TIMEOUT') message = tr('errors.parsed.timeoutWriteForm');
-    else if (code === 'TIMEOUT_NOT_SAVED') message = tr('errors.parsed.timeoutNotSaved');
-    else if (code === 'SELF_EDIT_FORBIDDEN') {
+    if (code === 'SELF_EDIT_FORBIDDEN') {
       message = tr(kind === 'role' ? 'users.edit.ownRole' : kind === 'status' ? 'users.edit.ownStatus' : 'users.edit.ownAssignments');
     } else if (code === 'CANNOT_MODIFY_ADMIN') message = tr('users.edit.administratorNow', { name });
     else if (code === 'CANNOT_PROMOTE_TO_ADMIN') message = tr('users.rolePicker.adminOnly');

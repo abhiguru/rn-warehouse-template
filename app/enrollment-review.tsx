@@ -44,6 +44,7 @@ import { getAppErrorCode } from '@/utils/appError';
 import { formatDate, formatMobile, nationalMobileDigits } from '@/utils/formatters';
 import { transportText } from '@/utils/serverText';
 import { showToast } from '@/utils/toast';
+import { publishUserListChange } from '@/utils/userListSync';
 import { t as tr, type TranslationKey } from '@/i18n';
 
 type ChosenCustomer = { id: string; name: string };
@@ -272,6 +273,8 @@ export default function EnrollmentReviewScreen() {
               ? tr(approveAs === 'customer' ? 'auth.review.approvedCustomer' : approveAs === 'staff' ? 'auth.review.approvedStaff' : 'auth.review.approvedSupervisor', { name })
               : tr('auth.review.rejectedNotice', { name });
             showToast(done);
+            // The Users list underneath keeps its rows: tell it this person's status changed.
+            publishUserListChange({ kind: 'refresh' });
             setPending(list => list.filter(item => item.id !== profile.id));
             setSelectedUser(null);
             setChosen([]);

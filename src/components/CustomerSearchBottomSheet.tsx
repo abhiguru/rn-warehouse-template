@@ -22,7 +22,6 @@ import {
   Platform,
   ActivityIndicator,
   BackHandler,
-  AccessibilityInfo,
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps, BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -96,6 +95,8 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         const [isSearching, setIsSearching] = useState(false);
         const [searchFailed, setSearchFailed] = useState(false);
         const [retryCount, setRetryCount] = useState(0);
+        // Only the newest search may set results or a failure.
+        const latestSearch = useRef(0);
         const [isOpen, setIsOpen] = useState(false);
 
         const t = useTokens();
@@ -139,21 +140,26 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                 setIsSearching(true);
                 setSearchFailed(false);
                 const timeoutId = setTimeout(async () => {
+                    const search = ++latestSearch.current;
                     try {
                         const results = await searchService.searchCustomersOrThrow(normalizeDigits(searchQuery));
+                        if (search !== latestSearch.current) return;
                         setSearchResults(results || []);
                     } catch (error) {
+                        if (search !== latestSearch.current) return;
                         console.error('[CustomerSearchBottomSheet] Search error:', error);
                         setSearchResults([]);
+                        // The failure text below is a polite live region: it is announced once, there.
                         setSearchFailed(true);
-                        AccessibilityInfo.announceForAccessibility(tr('customers.search.failed'));
                     } finally {
-                        setIsSearching(false);
+                        if (search === latestSearch.current) setIsSearching(false);
                     }
                 }, 300);
                 return () => clearTimeout(timeoutId);
             } else {
+                latestSearch.current += 1;
                 setSearchResults([]);
+                setSearchFailed(false);
                 setIsSearching(false);
             }
         }, [searchQuery, retryCount]);
@@ -275,7 +281,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                     accessibilityLabel={tr('customers.search.searchingLabel')}
                                 />
                             )}
-                            {searchQuery.length > 0 && !isSearching && (
+                            {searchQuery.length > 0 && (
                                 <Pressable
                                     onPress={() => setSearchQuery('')}
                                     style={styles.clearButton}

@@ -86,3 +86,20 @@ describe('Bundle fix F36: a second tap while a confirmation is open', () => {
     expect(showAlert).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('Users list after a decision (review fix)', () => {
+  it('tells the Users list to load again once a decision is saved', async () => {
+    const { subscribeUserListChanges } = require('@/utils/userListSync');
+    const seen: unknown[] = [];
+    const stop = subscribeUserListChanges((change: unknown) => seen.push(change));
+    const screen = await mount();
+    await choosePerson(screen);
+    await act(async () => { buttonInBar(screen, 'Reject request').props.onPress(); });
+    const confirm = lastAlert().buttons.find(b => b.onPress && b.text !== 'Cancel');
+    expect(seen).toEqual([]);
+    await act(async () => { confirm?.onPress?.(); });
+    stop();
+    expect(reviewEnrollment).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([{ kind: 'refresh' }]);
+  });
+});

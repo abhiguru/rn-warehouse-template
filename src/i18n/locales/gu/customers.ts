@@ -137,6 +137,7 @@ export const customers: Translation<typeof source> = {
     duplicateMobileNamed: '{{name}} આ મોબાઇલ નંબર પહેલેથી વાપરે છે. અલગ નંબર વાપરો.',
     staleTitle: 'વેપારીની વિગતો બદલાઈ છે',
     staleMessage: 'બીજા કોઈએ આ વેપારીની વિગતો બદલી છે. તેમના ફેરફાર જોવા ફરી લોડ કરો.',
+    staleAfterTimeout: 'તમારો છેલ્લો સેવ કદાચ થઈ ગયો હશે. આ વેપારી હવે જેવા છે તેવા જોવા ફરી લોડ કરો.',
     reload: 'ફરી લોડ કરો',
   },
   validation: {

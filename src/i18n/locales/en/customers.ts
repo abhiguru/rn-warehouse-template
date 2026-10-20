@@ -130,6 +130,7 @@ export const customers = {
     duplicateMobileNamed: '{{name}} already uses this mobile number. Use a different number.',
     staleTitle: 'Customer changed',
     staleMessage: 'Someone else changed this customer. Reload to see their changes.',
+    staleAfterTimeout: 'Your last save may have gone through. Reload to see this customer as it is now.',
     reload: 'Reload',
   },
   validation: {
