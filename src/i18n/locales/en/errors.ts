@@ -529,4 +529,19 @@ export const errors = {
   unsaved: {
     confirmBack: 'You have unsaved changes. Are you sure you want to go back?',
   },
+  // What the server's refusals (reason constants, src/utils/serverRefusal.ts) say in the areas' own files; this is the one shared question.
+  refusal: {
+    stale: {
+      title: 'Someone else changed this {{what}}',
+      what: {
+        dispatch: 'dispatch',
+        grn: 'GRN',
+        invoice: 'invoice',
+        orderLine: 'order line',
+      },
+      message: 'Open it again to see the latest. What you typed stays on this screen until you leave it.',
+      keep: 'Keep editing',
+      reload: 'Open it again',
+    },
+  },
 };

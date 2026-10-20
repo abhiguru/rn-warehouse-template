@@ -13,6 +13,7 @@ import { createEmptyListResponse } from '../types/service.types';
 import { getAppErrorCode } from './appError';
 import { t, type TranslationKey } from '@/i18n';
 import { expiredSessionText, isLostAnswer, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
+import { refusalOf } from '@/utils/serverRefusal';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -607,6 +608,17 @@ export interface RPCResult<T> {
    * before the request left the phone, SQLSTATE 57014). Callers read this flag and never classify the text again.
    */
   lostAnswer?: boolean;
+  /**
+   * The rule that refused, when the server's body names one (`reason`, wave B: STALE_RECORD, LOT_INVOICED and the
+   * others in src/utils/serverRefusal.ts). A screen switches on this and never reads the English `message`. Absent
+   * for a refusal without one and for an old server.
+   */
+  reason?: string;
+  /**
+   * The values that go with `reason`: every other top-level key of the server's body except success, error, message,
+   * error_code and reason (a line id, an invoice number, a date). Present exactly when `reason` is.
+   */
+  fields?: Record<string, unknown>;
 }
 
 /**
@@ -712,8 +724,11 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     const dataObj = data as Record<string, unknown>;
     if (validateSuccess && typeof dataObj === 'object' && 'success' in dataObj && dataObj.success === false) {
       handleGlobalAuthError(dataObj);
+      // The reason and its fields, when the server named one (a refusal of wave B and later).
+      const refusal = refusalOf(dataObj);
       return {
         success: false,
+        ...(refusal ? { reason: refusal.reason, fields: refusal.fields } : {}),
         message: serverText(dataObj.message ?? dataObj.error, errorMessage || t('errors.general.operationFailed'), {
           code: typeof dataObj.error_code === 'string' ? dataObj.error_code : undefined,
           ...wording,

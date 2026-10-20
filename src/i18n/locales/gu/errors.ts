@@ -536,4 +536,20 @@ export const errors: Translation<typeof source> = {
   unsaved: {
     confirmBack: 'તમારા ફેરફાર સાચવ્યા નથી. પાછા જવું છે?',
   },
+  refusal: {
+    stale: {
+      // Draft for the owner's wording review (2026-10-20): the record was changed by someone else after this screen read it.
+      // The title is built around ફેરફાર (masculine), so it needs no agreement with the record's name.
+      title: '{{what}}માં બીજા કોઈએ ફેરફાર કર્યો છે',
+      what: {
+        dispatch: 'જાવક',
+        grn: 'આવક પાવતી',
+        invoice: 'ઇન્વૉઇસ',
+        orderLine: 'ઑર્ડરની લાઇન',
+      },
+      message: 'નવી વિગત જોવા માટે તેને ફરી ખોલો. તમે જે લખ્યું છે તે આ સ્ક્રીન છોડો ત્યાં સુધી અહીં જ રહેશે.',
+      keep: 'ફેરફાર ચાલુ રાખો',
+      reload: 'ફરી ખોલો',
+    },
+  },
 };
