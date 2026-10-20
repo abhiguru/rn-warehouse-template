@@ -77,7 +77,8 @@ const nonEmpty = (value: unknown): string | undefined =>
  * The refusal an RPC answer carries, or undefined when it carries none. The answer may be:
  * - the body the server sent (`success === false` and a string `reason`; the fields are the other keys);
  * - an `RPCResult` from `executeRPC` (`success === false`, `reason` and a `fields` object, which is where
- *   executeRPC put them; a body's own `fields` is an array, as in LOT_INVOICED, and stays one of the fields);
+ *   executeRPC put them, and no `error_code`; a body's own `fields` is an array, as in LOT_INVOICED, and stays one of
+ *   the fields, and a body carrying `error_code` is read as a body even when its `fields` is an object);
  * - a service result that already holds one (`success === false` and a `refusal`).
  */
 export function refusalOf(answer: unknown): ServerRefusal | undefined {
@@ -86,7 +87,9 @@ export function refusalOf(answer: unknown): ServerRefusal | undefined {
 
   const reason = nonEmpty(body.reason);
   if (reason !== undefined) {
-    if (isRecord(body.fields)) {
+    // A server body always carries `error_code`, an RPCResult never does (executeRPC keeps it as `errorCode`): so a body
+    // that has a `fields` object of its own is never taken for an RPCResult.
+    if (isRecord(body.fields) && body.error_code === undefined) {
       // An RPCResult: executeRPC already sorted the body into `reason` and `fields`.
       const text = nonEmpty(body.serverMessage);
       return { reason, fields: body.fields, ...(text !== undefined ? { text } : {}) };

@@ -34,7 +34,8 @@ export function askStaleRecord(what: StaleRecordKind): Promise<StaleRecordChoice
     t('errors.refusal.stale.message'),
     [
       { text: t('errors.refusal.stale.keep'), style: 'cancel', value: 'keep' },
-      { text: t('errors.refusal.stale.reload'), value: 'reload' },
+      // Destructive: it replaces the form with the record as it is now, so what was typed is lost (style guide 13.9).
+      { text: t('errors.refusal.stale.reload'), style: 'destructive', value: 'reload' },
     ],
     'keep'
   );

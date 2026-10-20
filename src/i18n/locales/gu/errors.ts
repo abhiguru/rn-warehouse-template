@@ -540,7 +540,7 @@ export const errors: Translation<typeof source> = {
     stale: {
       // Draft for the owner's wording review (2026-10-20): the record was changed by someone else after this screen read it.
       // The title is built around ફેરફાર (masculine), so it needs no agreement with the record's name.
-      title: '{{what}}માં બીજા કોઈએ ફેરફાર કર્યો છે',
+      title: 'આ {{what}}માં બીજા કોઈએ ફેરફાર કર્યો છે',
       what: {
         dispatch: 'જાવક',
         grn: 'આવક પાવતી',
