@@ -229,6 +229,7 @@ export class OrderService {
       message: result.success ? t('errors.order.itemAdded') : result.message,
       data: result.data,
       error: result.error,
+      serverMessage: result.serverMessage,
     };
   }
 
@@ -280,6 +281,7 @@ export class OrderService {
       message: result.success ? t('errors.order.quantityUpdated') : result.message,
       data: result.data,
       error: result.error,
+      serverMessage: result.serverMessage,
     };
   }
 
@@ -313,6 +315,7 @@ export class OrderService {
       success: result.success,
       message: result.success ? t('errors.order.itemRemoved') : result.message,
       error: result.error,
+      serverMessage: result.serverMessage,
     };
   }
 

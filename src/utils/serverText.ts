@@ -18,7 +18,8 @@ const REASONS: [RegExp, TranslationKey][] = [
   // Business state (server migrations 80, 82 and 83). Both are also worded in English (see APP_WORDED).
   [/^this business is deactivated\. activate it in customers to receive new goods\.?$/, 'errors.parsed.businessDeactivated'],
   [/^business is not active\.?$/, 'errors.parsed.businessNotActive'],
-  [/session expired|not authenticated|authentication required|active account required|invalid refresh token/, 'errors.code.sessionExpired'],
+  // An access token the server found expired (PostgREST: 401 "JWT expired", PGRST301 / PGRST303; the edge functions' own sentence).
+  [/session expired|not authenticated|authentication required|active account required|invalid refresh token|jwt expired|invalid or expired access token/, 'errors.code.sessionExpired'],
   [
     /access denied|permission|only admins?\b|only administrators|only supervisors|supervisors cannot|staff access required|administrator required|you cannot change your own|self_edit_forbidden|cannot_modify_admin|cannot_promote_to_admin/,
     'errors.parsed.noPermission',
@@ -98,9 +99,27 @@ function unwrapDatabaseError(text: string): string {
   return wrapped ? wrapped[1] : text;
 }
 
+/**
+ * The name the PostgREST client puts before the text of an error that was thrown inside fetch:
+ * "TimeoutError: Request timeout", "TypeError: Network request failed", "AppError: <the app's own
+ * sentence, in the language it was made in>". The name is a class name, never something to show.
+ */
+const NAME_PREFIX = /^\s*([A-Z][A-Za-z]*(?:Error|Exception)|Error):\s*/;
+
+/** The text without such class names in front of it; a text that has none comes back as it was. */
+export function stripErrorPrefix(text: string): string {
+  let rest = text;
+  for (let i = 0; i < 3; i += 1) {
+    const found = NAME_PREFIX.exec(rest);
+    if (!found) break;
+    rest = rest.slice(found[0].length);
+  }
+  return rest;
+}
+
 /** The reason a server text names, in the app's language; undefined when it names none the app knows. */
 export function serverReason(text: string): string | undefined {
-  const lower = unwrapDatabaseError(text).trim().toLowerCase();
+  const lower = unwrapDatabaseError(stripErrorPrefix(text)).trim().toLowerCase();
   const match = REASONS.find(([pattern]) => pattern.test(lower));
   return match ? t(match[1]) : undefined;
 }
@@ -111,13 +130,19 @@ export function serverReason(text: string): string | undefined {
 //
 //   isNetworkError(err)   no answer could be had: no connection, a dropped or aborted request
 //   isTimeoutError(err)   the app (or the server) gave up waiting
+//   requestMayHaveBeenSent(err)
+//                         the failure came after the request went out, so a write may have been applied
+//   isSessionExpiredError(err)
+//                         the server found the access token expired (PGRST301 / PGRST303, "JWT expired")
 //   errorCodeOf(err)      the code: Postgres SQLState, PostgREST code, or the server's own
 //                         (PERMISSION_DENIED ...); undefined when there is none
 //   transportText(err)    the app's sentence for a network failure or timeout; undefined for any other error
 //
 // `err` is whatever failed: an Error, a Supabase error object, a service result
-// ({ error, errorCode }) or the server's text. Nothing here reads translated
-// text, only the app's error codes and the English text of the system and the server.
+// ({ error, errorCode }) or the server's text. A failure is told by the app's error
+// codes, by the error's class name ("TimeoutError"; the PostgREST client keeps it as
+// the first word of the text) and by the app's own sentences, never by the words of a
+// translation; only the English text of the system and the server is matched by words.
 // -----------------------------------------------------------------------------
 
 /** The text inside an error: a string as it is, an object's `message` (or `error`). */
@@ -149,7 +174,17 @@ function textsOf(error: unknown): string[] {
  * here: Postgres says "current transaction is aborted" for a statement that failed.)
  */
 const NETWORK_TEXT =
-  /network request failed|network connection|network error|networkerror|failed to fetch|fetch failed|load failed|no internet|internet is not reachable|connection (error|failed|lost|refused|reset)|econn(refused|reset|aborted)|enotfound|socket/i;
+  /network request failed|network connection|network error|networkerror|failed to fetch|fetch failed|load failed|no internet|internet is not reachable|connection (error|failed|lost|refused|reset)|econn(refused|reset|aborted)|enotfound|socket|unable to resolve host|network is unreachable|appears to be offline|hostname could not be found|could not connect to the server|no route to host|host unreachable|ehostunreach|sslhandshake|certpathvalidator|trust anchor|invalid response was received from the upstream server|upstream server is timing out|upstream request timeout/i;
+
+/**
+ * What the system says when a request never left the device: the host name could not be looked up,
+ * nothing was listening, there is no route, or the connection could not be opened in time
+ * ("fetch failed: Unable to resolve host ..." from expo/fetch on Android), and what the app's own
+ * raise before a request says (no usable session, a changed session, a server switch). The words
+ * the app puts in a sentence of its own ("No internet connection") are in here as well.
+ */
+const NOT_SENT_TEXT =
+  /unable to resolve host|no address associated|unknownhost|enotfound|econnrefused|connection refused|failed to connect to|network is unreachable|enetunreach|connect(ion)? timed out|connect timeout|connect etimedout|appears to be offline|hostname could not be found|could not connect to the server|no route to host|host unreachable|ehostunreach|sslhandshake|certpathvalidator|trust anchor|no internet|internet is not reachable|session refresh unavailable|session changed|identity verification|server switch|sign in required/i;
 
 /**
  * A proxy's own answer reached the app instead of the server's: an HTML error page, or
@@ -157,6 +192,8 @@ const NETWORK_TEXT =
  */
 const PROXY_TEXT = /^\s*</;
 const PROXY_CODE_TEXT = /^error code:\s*\d+/i;
+/** Cloudflare's own errors 1000-1999 (tunnel down, origin DNS ...): the facility's server was not reached. */
+const PROXY_NOT_REACHED_TEXT = /^error code:\s*1\d{3}\b/i;
 
 /** What the app and the server say when they stop waiting ("time outside" is not one). */
 const TIMEOUT_TEXT = /\btimed out\b|\btime ?out\b|\betimedout\b/i;
@@ -178,21 +215,118 @@ export function errorCodeOf(error: unknown): string | undefined {
   return /^[A-Z][A-Z0-9_]{2,}$/.test(text) ? text : undefined;
 }
 
-/** True when the request got no answer: no connection, a dropped or aborted request. */
+/**
+ * A gateway's own answer (Kong's JSON 502 "An invalid response was received from the upstream server",
+ * 504 "The upstream server is timing out"): an error object that carries the HTTP status (`status`, as
+ * the PostgREST client's answer has it) of 502 or more and none of PostgREST's own codes (PGRST...).
+ * The request reached the gateway and the server did not answer it, so a write may have been applied.
+ */
+function isGatewayAnswer(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { status } = error as { status?: unknown };
+  if (typeof status !== 'number' || status < 502) return false;
+  return !/^PGRST/i.test(errorCodeOf(error) ?? '');
+}
+
+/** True when the request got no answer: no connection, a dropped or aborted request, a gateway that gave up. */
 export function isNetworkError(error: unknown): boolean {
   if (getAppErrorCode(error) === 'NETWORK') return true;
   if (isTimeoutError(error)) return false;
   if (errorCodeOf(error) === 'NETWORK') return true;
+  if (isGatewayAnswer(error)) return true;
   return textsOf(error).some(text => NETWORK_TEXT.test(text) || PROXY_TEXT.test(text) || PROXY_CODE_TEXT.test(text.trim()));
 }
+
+/** True when an error, or a text that starts with the name of one, is of the named class ("TimeoutError"). */
+function hasErrorName(error: unknown, name: string): boolean {
+  if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === name) return true;
+  return textsOf(error).some(text => NAME_PREFIX.exec(text)?.[1] === name);
+}
+
+/**
+ * The app's own sentences for a request it stopped waiting for. A timeout thrown inside the gated
+ * fetch comes back from the PostgREST client as "AppError: <the sentence>" with its code lost; in
+ * Gujarati the sentence has none of the English words, so it is told by being the app's own.
+ */
+const APP_TIMEOUT_TEXT: TranslationKey[] = [
+  'errors.network.requestTimedOut',
+  'errors.network.authTimedOut',
+  'errors.network.rpcTimedOut30',
+  'errors.code.timeout',
+  'errors.category.timeout',
+];
 
 /** True when the app or the server stopped waiting (TimeoutError, 57014, "timed out"). */
 export function isTimeoutError(error: unknown): boolean {
   if (getAppErrorCode(error) === 'TIMEOUT') return true;
-  if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'TimeoutError') return true;
+  // The name of the error class is not translated; the PostgREST client keeps it as the first word of the text.
+  if (hasErrorName(error, 'TimeoutError')) return true;
   const code = errorCodeOf(error);
   if (code === 'TIMEOUT' || code === '57014' || code === 'ETIMEDOUT') return true;
-  return textsOf(error).some(text => TIMEOUT_TEXT.test(text));
+  const texts = textsOf(error);
+  if (texts.some(text => APP_TIMEOUT_TEXT.some(key => stripErrorPrefix(text).trim() === t(key)))) return true;
+  return texts.some(text => TIMEOUT_TEXT.test(text));
+}
+
+/**
+ * True when a network failure or a timeout came before the request left the device, so nothing
+ * can have been saved:
+ *  - the app raised it itself, without asking (an AppError with code NETWORK from the offline
+ *    check or from a session that could not be renewed, or the gate's "Session changed");
+ *  - the system could not open the connection (host not found, refused, no route, connect timeout).
+ * Everything else after the request was handed over is "after": a dropped or reset connection, a
+ * proxy's error page, a timeout. The server may have applied the write.
+ */
+function failedBeforeSending(error: unknown): boolean {
+  const appCode = getAppErrorCode(error);
+  if (appCode) return appCode !== 'TIMEOUT';
+  // A gateway answered 502 or more: the request had been handed over.
+  if (isGatewayAnswer(error)) return false;
+  const texts = textsOf(error);
+  if (texts.some(text => NOT_SENT_TEXT.test(text) || PROXY_NOT_REACHED_TEXT.test(text.trim()))) return true;
+  if (isTimeoutError(error)) return false;
+  // A network failure with none of the system's words for a lost connection and no proxy page is a
+  // sentence of the app's own ("No internet connection", with the code NETWORK): it never asked.
+  return !texts.some(text => NETWORK_TEXT.test(text) || PROXY_TEXT.test(text) || PROXY_CODE_TEXT.test(text.trim()));
+}
+
+/**
+ * True when a write that failed this way may have been applied: the failure is a timeout or a
+ * network failure that came after the request went out (see failedBeforeSending). False for a
+ * failure before sending, for a statement timeout (the server rolled it back) and for any answer.
+ */
+export function requestMayHaveBeenSent(error: unknown, code?: string): boolean {
+  if (isStatementTimeout(error, code)) return false;
+  if (!isTimeoutError(error) && !isNetworkError(error)) return false;
+  return !failedBeforeSending(error);
+}
+
+/**
+ * True when the server found the access token expired (PostgREST PGRST301 / PGRST303, or the text
+ * "JWT expired" of a 401). The person is told their login has expired.
+ */
+export function isSessionExpiredError(error: unknown, code?: string): boolean {
+  const found = code ?? errorCodeOf(error);
+  if (found === 'PGRST301' || found === 'PGRST303') return true;
+  return textsOf(error).some(text => /^jwt expired$/i.test(stripErrorPrefix(text).trim()));
+}
+
+/**
+ * The sentence for an expired access token, or undefined when the error is not one.
+ *
+ * The app renews the session by itself, but a request that was refused for an expired token is not sent
+ * again. For a change (`write` or `delete`) that was refused with PGRST303 or the bare text "JWT expired"
+ * the session is already renewed, so the person is told to press the button again. PGRST301 and a read
+ * keep the "session expired, sign in again" text; a session that could not be renewed at all ends in the
+ * sign-in screen, not here.
+ */
+export function expiredSessionText(error: unknown, options: ServerTextOptions = {}): string | undefined {
+  if (!isSessionExpiredError(error, options.code)) return undefined;
+  const code = options.code ?? errorCodeOf(error);
+  if ((options.write || options.delete) && code !== 'PGRST301') {
+    return t(options.delete ? 'errors.code.signInRenewedDelete' : 'errors.code.signInRenewed');
+  }
+  return t('errors.code.sessionExpired');
 }
 
 /** True for SQLSTATE 57014: the server cancelled the statement, which rolled back. Nothing was saved. */
@@ -202,8 +336,9 @@ export function isStatementTimeout(error: unknown, code?: string): boolean {
 
 export interface ServerTextOptions {
   /**
-   * The request changes data. A timeout then says it may have been saved; for a
-   * read it is only a network failure.
+   * The request changes data. A timeout, and any other network failure that came after the request
+   * went out, then says it may have been saved; for a read, and for a failure before the request
+   * left the device (offline, no session), it is only a network failure ("Check your connection").
    */
   write?: boolean;
   /**
@@ -218,8 +353,8 @@ export interface ServerTextOptions {
    */
   photo?: boolean;
   /**
-   * With `write`: the request deletes something. A timeout then says it may have been deleted, not saved
-   * (`form` still picks the detail-screen wording; `photo` wins over this).
+   * The request deletes something (it counts as a `write`). A timeout then says it may have been deleted,
+   * not saved (`form` still picks the detail-screen wording; `photo` wins over this).
    */
   delete?: boolean;
   /** The failure's code, when the text passed in does not carry it. */
@@ -244,12 +379,10 @@ function timeoutWriteKey(options: ServerTextOptions): TranslationKey {
 /** The app's sentence for a network failure or a timeout; undefined for any other error. */
 export function transportText(error: unknown, options: ServerTextOptions = {}): string | undefined {
   if (isStatementTimeout(error, options.code)) return t('errors.parsed.timeoutNotSaved');
-  if (isTimeoutError(error)) {
-    if (!options.write) return t('errors.parsed.network');
-    return t(timeoutWriteKey(options));
-  }
-  if (isNetworkError(error)) return t('errors.parsed.network');
-  return undefined;
+  if (!isTimeoutError(error) && !isNetworkError(error)) return undefined;
+  // A write that failed after the request went out may have been applied: the person is told to check.
+  if ((options.write || options.delete) && requestMayHaveBeenSent(error, options.code)) return t(timeoutWriteKey(options));
+  return t('errors.parsed.network');
 }
 
 /**
@@ -266,6 +399,7 @@ const REASON_BY_CODE: Record<string, TranslationKey> = {
   CANNOT_MODIFY_ADMIN: 'errors.parsed.noPermission',
   CANNOT_PROMOTE_TO_ADMIN: 'errors.parsed.noPermission',
   PGRST301: 'errors.code.sessionExpired',
+  PGRST303: 'errors.code.sessionExpired',
   SESSION_EXPIRED: 'errors.code.sessionExpired',
   NOT_AUTHENTICATED: 'errors.code.sessionExpired',
   INSUFFICIENT_STOCK: 'errors.code.insufficientStock',
@@ -303,31 +437,40 @@ function looksLikeDeveloperText(text: string): boolean {
  *
  * @param text the server's own text, if it sent one; an Error or error object is read too
  * @param fallback the app's message for this action, already translated
- * @param options `write` for a request that changes data (`form` too on a form screen, `photo` for a photo upload or removal); `code` when the text does not carry it
+ * @param options `write` for a request that changes data (`form` too on a form screen, `photo` for a photo upload or removal, `delete` for a delete); `code` when the text does not carry it
+ *
+ * A class name in front of the text ("AppError: ...", "Error: ...") is never shown.
  */
 export function serverText(text: unknown, fallback: string, options: ServerTextOptions = {}): string {
   const transport = transportText(text, options);
   if (transport) return transport;
+  const expired = expiredSessionText(text, options);
+  if (expired) return expired;
   const raw = textOf(text);
+  // The same text without the class name the PostgREST client puts in front of a thrown error's message.
+  const bare = raw === undefined ? undefined : stripErrorPrefix(raw);
   // A shared service may have worded the timeout for the other kind of screen: this screen says it its own way.
-  if (options.write && TIMEOUT_WRITE_KEYS.some(key => raw?.trim() === t(key))) {
+  if ((options.write || options.delete) && TIMEOUT_WRITE_KEYS.some(key => bare?.trim() === t(key))) {
     return t(timeoutWriteKey(options));
   }
-  if (raw === undefined || raw.trim() === '') return fallback;
+  if (raw === undefined || bare === undefined || raw.trim() === '') return fallback;
+  // The message of an AppError is written for people, in the app's language (see appError.ts); only its class name is dropped.
+  if (/^\s*AppError:/.test(raw) && bare.trim() !== '') return bare;
   // English keeps the server's wording; text the app wrote in Gujarati is already right.
-  if (writtenInGujarati(raw)) return raw;
+  if (writtenInGujarati(bare)) return bare;
   // The app's own English sentences that pass through twice (a service result shown by a screen) stay as they are.
-  if (APP_OWN_TEXT.some(key => raw.trim() === t(key))) return raw;
+  if (APP_OWN_TEXT.some(key => bare.trim() === t(key))) return bare;
   const code = options.code ?? errorCodeOf(text);
   const byCode = code ? REASON_BY_CODE[code] : undefined;
   if (byCode) return t(byCode);
   if (getLanguage() === 'en') {
     const unwrapped = unwrapDatabaseError(raw);
-    const lower = unwrapped.trim().toLowerCase();
+    const lower = stripErrorPrefix(unwrapped).trim().toLowerCase();
     const worded = REASONS.find(([pattern, key]) => APP_WORDED.includes(key) && pattern.test(lower));
     if (worded) return t(worded[1]);
+    // The developer test looks at the whole text, class name included: "TypeError: ..." is not for people.
     if (looksLikeDeveloperText(unwrapped)) return serverReason(unwrapped) ?? fallback;
-    return unwrapped || fallback;
+    return stripErrorPrefix(unwrapped) || fallback;
   }
   return serverReason(raw) ?? fallback;
 }
@@ -344,5 +487,5 @@ export function failureText(rawError: unknown, ownMessage: unknown, fallback: st
   if (transport) return transport;
   const reason = typeof rawError === 'string' ? serverReason(rawError) : undefined;
   if (reason) return reason;
-  return typeof ownMessage === 'string' && ownMessage.trim() !== '' ? ownMessage : fallback;
+  return typeof ownMessage === 'string' && stripErrorPrefix(ownMessage).trim() !== '' ? stripErrorPrefix(ownMessage) : fallback;
 }

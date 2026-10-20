@@ -74,7 +74,17 @@ it('an auth refusal that forced a sign-out during the call: still REFUSED, not d
 });
 
 it('no answer from the server: UNKNOWN, deletion not known', async () => {
+  // The request went out and the connection broke: the account may be gone.
   deletion.mockResolvedValue({ success: false, message: 'x', error: 'Network request failed', outcome: 'unknown' });
+  expect(await run(makeStore())).toEqual({
+    code: 'UNKNOWN',
+    serverDeleted: null,
+    message: 'No answer from the server. It may have been deleted. Go back to the list and check before trying again.',
+  });
+});
+
+it('a request that was never sent: UNKNOWN, and the text says to check the connection', async () => {
+  deletion.mockResolvedValue({ success: false, message: 'x', error: 'Network request failed: session refresh unavailable', outcome: 'unknown' });
   expect(await run(makeStore())).toEqual({ code: 'UNKNOWN', serverDeleted: null, message: 'Check your connection and try again.' });
 });
 

@@ -9,14 +9,14 @@ import { RefreshControl } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import type { Order, OrderItem } from '@/types/order.types';
 
 // The card is a counting stand-in with the same shallow React.memo as the real one.
 type CardProps = {
   item: OrderItem;
   onQuantityChange: (itemId: string, quantity: number) => Promise<boolean> | boolean | void;
-  onRemove: (itemId: string) => void;
+  onRemove: (itemId: string) => Promise<boolean> | boolean | void;
 };
 const mockCards = { renders: 0, props: new Map<string, CardProps>() };
 jest.mock('../OrderItemCard', () => {
@@ -45,7 +45,7 @@ jest.mock('@/services/order-service', () => ({
   },
 }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn() } }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn(), askAlert: jest.fn() }));
 jest.mock('../RecentDispatchesSection', () => ({ __esModule: true, default: () => null }));
 jest.mock('../CustomerOrderSummary', () => ({ __esModule: true, default: () => null }));
 jest.mock('../ItemCatalogBrowser', () => ({ __esModule: true, default: () => null }));
@@ -93,6 +93,7 @@ beforeEach(() => {
   service.updateOrderItemQuantity.mockReset().mockResolvedValue({ success: true } as never);
   service.removeItemFromOrder.mockReset().mockResolvedValue({ success: true } as never);
   jest.mocked(showAlert).mockReset();
+  jest.mocked(askAlert).mockReset();
 });
 
 async function open() {
@@ -170,12 +171,13 @@ it('keeps one pair of card callbacks for every line and sends a change for the c
   expect(saved).toBe(true);
   expect(service.updateOrderItemQuantity).toHaveBeenCalledWith('line-5', 'order-fictional-1', 5);
 
-  // Removing asks first, names the line, then removes that line.
-  await act(async () => { first.onRemove(first.item.id); });
-  const [title, , buttons] = jest.mocked(showAlert).mock.calls[0];
+  // Removing asks first, names the line, then removes that line, and answers true.
+  jest.mocked(askAlert).mockResolvedValueOnce('remove' as never);
+  let removed: unknown;
+  await act(async () => { removed = await first.onRemove(first.item.id); });
+  const [title] = jest.mocked(askAlert).mock.calls[0];
   expect(title).toContain('Fictional Lot 5');
-  const remove = (buttons as Array<{ style?: string; onPress?: () => Promise<void> }>).find(b => b.style === 'destructive')!;
-  await act(async () => { await remove.onPress?.(); });
+  expect(removed).toBe(true);
   expect(service.removeItemFromOrder).toHaveBeenCalledWith('line-5', 'order-fictional-1');
   await act(async () => { renderer.unmount(); });
 });

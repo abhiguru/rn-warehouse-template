@@ -47,11 +47,16 @@ export function subscribeAlertQueue(fn: () => void): () => void {
   };
 }
 
-/** Called by AlertHost when a dialog is closed; only the one on screen, and only once (a double press is ignored). */
-export function closeAlert(id: number): void {
-  if (queue[0]?.id !== id) return;
+/**
+ * Called by AlertHost when a dialog is closed; only the one on screen, and only once (a double press is ignored).
+ * Returns true when this call closed it, false when it did nothing: the caller runs the pressed button's handler
+ * only on true, so a second press of the same dialog never runs it again.
+ */
+export function closeAlert(id: number): boolean {
+  if (queue[0]?.id !== id) return false;
   queue = queue.slice(1);
   notifyQueue();
+  return true;
 }
 
 /**
@@ -88,6 +93,16 @@ export function registerAlertHost(fn: Listener = () => undefined): () => void {
   };
 }
 
+/** True when a queued dialog has the same title, message and button texts (in the same order). */
+function sameDialog(request: AlertRequest, title: string, message: string | undefined, buttons: AlertButton[]): boolean {
+  return (
+    request.title === title &&
+    request.message === message &&
+    request.buttons.length === buttons.length &&
+    request.buttons.every((button, index) => button.text === buttons[index].text)
+  );
+}
+
 export function showAlert(
   title: string,
   message?: string,
@@ -103,11 +118,19 @@ export function showAlert(
     (Alert.alert as (...a: unknown[]) => void)(...args);
     return;
   }
+  const shownButtons = buttons && buttons.length > 0 ? buttons : [{ text: t('common.ok') }];
+  // The same dialog, with the same words on its buttons, is already waiting or on screen (a double tap queues
+  // the question twice): the second one is dropped. A dropped question is answered as dismissed, so the
+  // caller that waits for it carries on as if the person had said no.
+  if (queue.some(waiting => sameDialog(waiting, title, message, shownButtons))) {
+    if (asked) options?.onDismiss?.();
+    return;
+  }
   const request: AlertRequest = {
     id: nextId++,
     title,
     message,
-    buttons: buttons && buttons.length > 0 ? buttons : [{ text: t('common.ok') }],
+    buttons: shownButtons,
     options,
     asked: asked || undefined,
   };

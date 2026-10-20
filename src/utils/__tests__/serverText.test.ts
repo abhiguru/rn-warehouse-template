@@ -1,7 +1,19 @@
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
 import { TimeoutError } from '../rpcClient';
-import { errorCodeOf, failureText, isNetworkError, isTimeoutError, serverReason, serverText, transportText } from '../serverText';
+import { AppError } from '../appError';
+import {
+  errorCodeOf,
+  failureText,
+  isNetworkError,
+  isSessionExpiredError,
+  isTimeoutError,
+  requestMayHaveBeenSent,
+  serverReason,
+  serverText,
+  stripErrorPrefix,
+  transportText,
+} from '../serverText';
 
 afterEach(() => setLanguage('en'));
 
@@ -256,7 +268,8 @@ describe('failures that are not a server sentence (English)', () => {
     const timeout = new TimeoutError('Load timed out', 30000);
     expect(serverText(timeout, 'x', { form: true })).toBe(t('errors.parsed.network'));
     expect(serverText(timeout, 'x', { photo: true })).toBe(t('errors.parsed.network'));
-    expect(serverText('Network request failed', 'x', { write: true, form: true, photo: true })).toBe(t('errors.parsed.network'));
+    // Nothing was sent: the app's own refusal to ask (no session that could be renewed) is only a connection failure.
+    expect(serverText('Network request failed: session refresh unavailable', 'x', { write: true, form: true, photo: true })).toBe(t('errors.parsed.network'));
     expect(serverText({ message: 'canceling statement due to statement timeout', code: '57014' }, 'x', { write: true, form: true })).toBe(
       t('errors.parsed.timeoutNotSaved'),
     );
@@ -340,5 +353,159 @@ describe('failures that are not a server sentence (English)', () => {
       expect(serverText(raw, 'Could not save')).toBe('Could not save');
     }
     expect(serverText('permission denied for function get_grn', 'x')).toBe(t('errors.parsed.noPermission'));
+  });
+});
+
+// Review 2026-10-20 (I5, G13): a write that failed after the request went out may have been applied.
+describe('a failed write: before or after the request was sent', () => {
+  const FORM = { write: true, form: true } as const;
+  const MAYBE_SAVED = () => t('errors.parsed.timeoutWriteForm');
+
+  it.each([
+    ['expo/fetch on Android: the connection dropped', { message: 'Error: fetch failed: Software caused connection abort', code: '' }],
+    ['expo/fetch on Android: the connection was reset', 'Error: fetch failed: unexpected end of stream on https://example.test/...'],
+    ['react-native fetch', new TypeError('Network request failed')],
+    ['the browser fetch', new TypeError('Failed to fetch')],
+    ['a socket error', new Error('read ECONNRESET')],
+    ['a gateway page', '<html><body>502 Bad Gateway</body></html>'],
+    ['a proxy status', 'error code: 524'],
+    ['a gateway\'s JSON 502', { message: 'An invalid response was received from the upstream server', code: '' }],
+    ['a gateway\'s JSON 504', 'The upstream server is timing out'],
+    ['an answer with the HTTP status 502 and no PostgREST code', { message: 'unexpected', status: 502, code: '' }],
+    ['the 60 s limit of the gated fetch', { message: 'TimeoutError: Request timeout', code: '' }],
+    ['the 60 s limit as an error object', new TimeoutError('Save timed out after 60 seconds', 60000)],
+  ])('%s: may have been saved', (_name, failure) => {
+    expect(requestMayHaveBeenSent(failure)).toBe(true);
+    expect(serverText(failure, 'x', FORM)).toBe(MAYBE_SAVED());
+    expect(transportText(failure, FORM)).toBe(MAYBE_SAVED());
+    // A read has nothing that could have been saved.
+    expect(serverText(failure, 'x')).toBe(t('errors.parsed.network'));
+  });
+
+  it.each([
+    ['no session that could be renewed', new AppError('NETWORK', 'Network request failed: session refresh unavailable')],
+    ['the offline check', new AppError('NETWORK', t('errors.network.noInternet'))],
+    ['the app text with the code NETWORK', { message: t('errors.network.noInternet'), error: t('errors.network.noInternet'), errorCode: 'NETWORK' }],
+    ['the name could not be looked up', { message: 'Error: fetch failed: Unable to resolve host "example.test": No address associated with hostname', code: '' }],
+    ['the connection was refused', 'Error: fetch failed: Failed to connect to example.test/203.0.113.7 (port 443)'],
+    ['the connection could not be opened in time', 'Error: fetch failed: connect timed out'],
+    ['no route', new Error('Network is unreachable')],
+    ['a tunnel that is down (Cloudflare 1033)', 'error code: 1033'],
+    ['iOS: offline', 'Error: fetch failed: The Internet connection appears to be offline.'],
+    ['iOS: host not found', 'TypeError: Network request failed: A server with the specified hostname could not be found.'],
+    ['iOS: could not connect', 'Error: fetch failed: Could not connect to the server.'],
+    ['Android: the certificate is not trusted', 'Error: fetch failed: javax.net.ssl.SSLHandshakeException: java.security.cert.CertPathValidatorException: Trust anchor for certification path not found.'],
+  ])('%s: nothing was sent, check the connection', (_name, failure) => {
+    expect(isNetworkError(failure) || isTimeoutError(failure)).toBe(true);
+    expect(requestMayHaveBeenSent(failure)).toBe(false);
+    expect(serverText(failure, 'x', FORM)).toBe(t('errors.parsed.network'));
+    expect(serverText(failure, 'x', { write: true })).toBe(t('errors.parsed.network'));
+  });
+
+  it('is no failure to word when the server answered', () => {
+    expect(requestMayHaveBeenSent({ message: 'Item belongs to another customer', code: '42501' })).toBe(false);
+    expect(requestMayHaveBeenSent({ message: 'canceling statement due to statement timeout', code: '57014' })).toBe(false);
+    expect(requestMayHaveBeenSent(undefined)).toBe(false);
+    expect(serverText({ message: 'Item belongs to another customer', code: '42501' }, 'x', FORM)).toBe('Item belongs to another customer');
+  });
+
+  it('words the failure the same way from a service result that kept the raw text', () => {
+    const result = { success: false, message: 'Failed to save', error: 'Error: fetch failed: Connection reset by peer', errorCode: 'NETWORK' };
+    expect(serverText(result, 'x', FORM)).toBe(MAYBE_SAVED());
+    expect(serverText(result, 'x', { write: true })).toBe(t('errors.parsed.timeoutWrite'));
+  });
+
+  it('says it in Gujarati too', () => {
+    setLanguage('gu');
+    expect(serverText('Error: fetch failed: Connection reset by peer', 'x', FORM)).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(t('errors.parsed.timeoutWriteForm')).toMatch(/[઀-૿]/);
+    expect(serverText(new AppError('NETWORK', 'Network request failed: session refresh unavailable'), 'x', FORM)).toBe(t('errors.parsed.network'));
+  });
+
+  it('a delete that failed after sending says it may have been deleted (detail wording through executeRPC options)', () => {
+    const failure = 'Error: fetch failed: Connection reset by peer';
+    expect(serverText(failure, 'x', { delete: true, form: true })).toBe(t('errors.parsed.timeoutDeleteForm'));
+    expect(serverText(failure, 'x', { delete: true })).toBe(t('errors.parsed.timeoutDelete'));
+    expect(serverText('Network request failed: session refresh unavailable', 'x', { delete: true, form: true })).toBe(t('errors.parsed.network'));
+    expect(t('errors.parsed.timeoutDeleteForm')).toBe(
+      'No answer from the server. It may have been deleted. Go back to the list and check before trying again.'
+    );
+  });
+});
+
+describe('a timeout is told by the error, not by English words (G13)', () => {
+  beforeEach(() => setLanguage('gu'));
+
+  it('reads the class name the PostgREST client puts in front of the message', () => {
+    // A timeout thrown inside fetch: the message is translated, the class name is not.
+    const failure = { message: 'TimeoutError: સમય પૂરો થયો', details: '', hint: '', code: '' };
+    expect(isTimeoutError(failure)).toBe(true);
+    expect(serverText(failure, 'x', { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+  });
+
+  it("reads the app's own timeout sentence behind the name 'AppError'", () => {
+    for (const key of ['errors.network.requestTimedOut', 'errors.network.authTimedOut', 'errors.code.timeout'] as const) {
+      const failure = { message: `AppError: ${t(key)}`, code: '' };
+      expect(isTimeoutError(failure)).toBe(true);
+      expect(serverText(failure, 'x', { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+      expect(serverText(failure, 'x')).toBe(t('errors.parsed.network'));
+    }
+  });
+
+  it('reads a timeout error that carries the code of the app', () => {
+    expect(isTimeoutError(new AppError('TIMEOUT', 'સમય પૂરો થયો'))).toBe(true);
+    expect(isTimeoutError({ message: 'x', error: 'x', errorCode: 'TIMEOUT' })).toBe(true);
+  });
+
+  it('is not fooled by a text that only looks like a name', () => {
+    expect(isTimeoutError('Error creating GRN: weight must be positive')).toBe(false);
+    expect(isTimeoutError({ message: 'AppError: સર્વર સાથે કામ થઈ શક્યું નથી' })).toBe(false);
+  });
+});
+
+describe('a class name is never shown', () => {
+  it('is stripped from the front of a text, once or several times', () => {
+    expect(stripErrorPrefix('AppError: Something')).toBe('Something');
+    expect(stripErrorPrefix('Error: TypeError: Something')).toBe('Something');
+    expect(stripErrorPrefix('Something')).toBe('Something');
+    expect(stripErrorPrefix('Error creating GRN: x')).toBe('Error creating GRN: x');
+  });
+
+  it('is dropped from an AppError message in both languages', () => {
+    expect(serverText({ message: 'AppError: Your session has changed.' }, 'x')).toBe('Your session has changed.');
+    setLanguage('gu');
+    expect(serverText({ message: 'AppError: સર્વર સાથે કામ થઈ શક્યું નથી' }, 'x')).toBe('સર્વર સાથે કામ થઈ શક્યું નથી');
+    expect(serverText({ message: 'AppError: OTP મોકલી શકાયો નથી' }, 'x')).toBe('OTP મોકલી શકાયો નથી');
+    expect(failureText('x', 'AppError: સર્વર સાથે કામ થઈ શક્યું નથી', 'fallback')).toBe('સર્વર સાથે કામ થઈ શક્યું નથી');
+  });
+
+  it('is dropped from a plain "Error: " sentence of the server, but a class name still marks developer text', () => {
+    expect(serverText('Error: Quantity must be greater than zero', 'x')).toBe('Quantity must be greater than zero');
+    expect(serverText('TypeError: Quantity must be greater than zero', 'Could not save')).toBe('Could not save');
+  });
+});
+
+describe('an expired sign-in (contract item 9)', () => {
+  it.each([
+    [{ message: 'JWT expired', code: 'PGRST301' }],
+    [{ message: 'JWT expired', code: 'PGRST303' }],
+    [{ message: 'JWT expired', code: '' }],
+    ['JWT expired'],
+  ])('%j reads as an expired sign-in', failure => {
+    expect(isSessionExpiredError(failure)).toBe(true);
+    for (const language of ['en', 'gu'] as const) {
+      setLanguage(language);
+      // A read, or a change refused with PGRST301: sign in again.
+      expect(serverText(failure, 'x')).toBe(t('errors.code.sessionExpired'));
+      // A change that was refused for an expired token (the session is renewed, the change was not sent again): press the button again.
+      const rejected = typeof failure === 'object' && failure.code === 'PGRST301';
+      expect(serverText(failure, 'x', { write: true, form: true })).toBe(t(rejected ? 'errors.code.sessionExpired' : 'errors.code.signInRenewed'));
+      expect(serverText(failure, 'x', { delete: true })).toBe(t(rejected ? 'errors.code.sessionExpired' : 'errors.code.signInRenewedDelete'));
+    }
+  });
+
+  it('is not claimed by another failure', () => {
+    expect(isSessionExpiredError({ message: 'permission denied for function f', code: '42501' })).toBe(false);
+    expect(isSessionExpiredError(undefined)).toBe(false);
   });
 });

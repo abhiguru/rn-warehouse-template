@@ -6,6 +6,7 @@
 import { Alert } from 'react-native';
 import {
   askAlert,
+  closeAlert,
   dropAlertsWithHandlers,
   getAlertQueue,
   registerAlertHost,
@@ -91,5 +92,81 @@ describe('dropAlertsWithHandlers and askAlert', () => {
     } finally {
       unregister();
     }
+  });
+});
+
+// Review 2026-10-20 (contract item 10): a double tap must not queue the same question twice.
+describe('a dialog identical to one already waiting', () => {
+  let shown: AlertRequest[];
+  let unregister: () => void;
+  beforeEach(() => {
+    shown = [];
+    unregister = registerAlertHost(request => shown.push(request));
+  });
+  afterEach(() => unregister());
+
+  const DELETE = [{ text: 'Cancel', style: 'cancel' as const }, { text: 'Delete', style: 'destructive' as const }];
+
+  it('is dropped: a double tap queues the question once', () => {
+    showAlert('Delete invoice 7?', 'It will be removed.', DELETE);
+    // The same words on the title, the message and the buttons; the handler is not compared.
+    showAlert('Delete invoice 7?', 'It will be removed.', [DELETE[0], { ...DELETE[1], onPress: jest.fn() }]);
+    expect(getAlertQueue()).toHaveLength(1);
+    expect(shown).toHaveLength(1);
+  });
+
+  it('is dropped also behind a different dialog that waits first', () => {
+    showAlert('Saved');
+    showAlert('Delete invoice 7?', undefined, DELETE);
+    showAlert('Delete invoice 7?', undefined, DELETE);
+    expect(getAlertQueue().map(request => request.title)).toEqual(['Saved', 'Delete invoice 7?']);
+  });
+
+  it('is kept when the title, the message or a button text differs', () => {
+    showAlert('Delete invoice 7?', 'It will be removed.', DELETE);
+    showAlert('Delete invoice 8?', 'It will be removed.', DELETE);
+    showAlert('Delete invoice 7?', 'It will be kept.', DELETE);
+    showAlert('Delete invoice 7?', 'It will be removed.', [DELETE[0], { text: 'Delete it' }]);
+    showAlert('Delete invoice 7?', 'It will be removed.', [DELETE[1]]);
+    expect(getAlertQueue()).toHaveLength(5);
+  });
+
+  it('is shown again once the first one has been closed', () => {
+    showAlert('Delete invoice 7?', undefined, DELETE);
+    expect(closeAlert(getAlertQueue()[0].id)).toBe(true);
+    showAlert('Delete invoice 7?', undefined, DELETE);
+    expect(getAlertQueue()).toHaveLength(1);
+    expect(shown).toHaveLength(2);
+  });
+
+  it('a dropped question is answered as dismissed, and the first one keeps its answer', async () => {
+    const first = askAlert('Remove Potato?', undefined, CHOICES, 'closed');
+    const second = askAlert('Remove Potato?', undefined, CHOICES, 'closed');
+    await expect(second).resolves.toBe('closed');
+    expect(getAlertQueue()).toHaveLength(1);
+    shown[0].buttons[1].onPress?.();
+    await expect(first).resolves.toBe('yes');
+  });
+});
+
+describe('closeAlert', () => {
+  let unregister: () => void;
+  beforeEach(() => { unregister = registerAlertHost(); });
+  afterEach(() => unregister());
+
+  it('says whether this call closed the dialog: the second call for the same dialog does nothing', () => {
+    showAlert('Title');
+    const { id } = getAlertQueue()[0];
+    expect(closeAlert(id)).toBe(true);
+    expect(closeAlert(id)).toBe(false);
+    expect(getAlertQueue()).toHaveLength(0);
+  });
+
+  it('closes only the dialog on screen', () => {
+    showAlert('First');
+    showAlert('Second');
+    const [, second] = getAlertQueue();
+    expect(closeAlert(second.id)).toBe(false);
+    expect(getAlertQueue()).toHaveLength(2);
   });
 });

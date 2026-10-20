@@ -114,8 +114,18 @@ describe('CR-25: a decision that was saved is never reported as not saved', () =
     expect(lastAlert().message).toBe('This person is already approved.');
   });
 
-  it('a lost connection still says Check your connection', async () => {
+  it('a connection lost after the request went out says the decision may have been saved', async () => {
     jest.mocked(reviewEnrollment).mockRejectedValue(new Error('Network request failed'));
+    const screen = await mount();
+    await choosePerson(screen);
+    await act(async () => { radio(screen, 'Staff').props.onPress(); });
+    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await act(async () => { lastAlert().buttons[1].onPress?.(); });
+    expect(lastAlert().message).toBe('No answer from the server. It may have been saved. Go back to the list and check before trying again.');
+  });
+
+  it('a request that was never sent (no session that could be renewed) still says Check your connection', async () => {
+    jest.mocked(reviewEnrollment).mockRejectedValue(new AppError('NETWORK', 'Network request failed: session refresh unavailable'));
     const screen = await mount();
     await choosePerson(screen);
     await act(async () => { radio(screen, 'Staff').props.onPress(); });

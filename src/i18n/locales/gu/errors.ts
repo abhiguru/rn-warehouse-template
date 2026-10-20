@@ -25,7 +25,6 @@ export const errors: Translation<typeof source> = {
     operationCompleted: 'કામ પૂરું થયું',
     backendReturnedError: 'સર્વરે ભૂલ જણાવી',
     rpcReturnedError: 'સર્વરે ભૂલ જણાવી',
-    executeFailed: '{{name}} ચલાવી શકાયું નથી',
     accessDenied: 'તમને આની પરવાનગી નથી',
     queryTooShort: 'શોધવા માટે વધુ અક્ષરો લખો',
     invalidResponseFormat: 'સર્વરનો જવાબ સમજી શકાયો નથી',
@@ -52,6 +51,9 @@ export const errors: Translation<typeof source> = {
     unauthorized: 'તમને આ કામ કરવાની પરવાનગી નથી. લૉગિન કરો.',
     forbidden: 'તમને આ જોવાની પરવાનગી નથી.',
     sessionExpired: 'તમારા લૉગિનનો સમય પૂરો થયો છે. ફરી લૉગિન કરો.',
+    // Draft for the owner's wording review (2026-10-20): a change refused for an expired token; the session is renewed already.
+    signInRenewed: 'તમારું લૉગિન નવું કર્યું છે. ફરી "સાચવો" દબાવો.',
+    signInRenewedDelete: 'તમારું લૉગિન નવું કર્યું છે. ફરી "ડિલીટ કરો" દબાવો.',
     validationError: 'આપેલી માહિતી બરાબર નથી. તપાસીને ફરી પ્રયાસ કરો.',
     invalidInput: 'લખેલી માહિતી બરાબર નથી. તમારી માહિતી તપાસો.',
     databaseError: 'સર્વરના ડેટામાં ભૂલ આવી. થોડી વાર પછી ફરી પ્રયાસ કરો.',

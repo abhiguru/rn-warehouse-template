@@ -105,6 +105,8 @@ export interface OrderServiceResponse<T = any> {
   message: string;
   data?: T;
   error?: string;
+  /** The server's own sentence for a refusal, in English as it sent it (see RPCResult.serverMessage). */
+  serverMessage?: string;
   metadata?: {
     total_count?: number;
     current_count?: number;

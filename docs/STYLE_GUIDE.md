@@ -1124,7 +1124,7 @@ More header rules:
 
 More rules:
 
-- **Alerts.** Every alert uses `showAlert` (`src/utils/alert.ts`), which takes the same arguments as `Alert.alert` and is drawn by `AlertHost` as a themed dialog: cancel is a secondary button, destructive uses the destructive fill, the last default button is the primary action; two buttons sit side by side and three or more stack. The lint guard rejects `Alert.alert`.
+- **Alerts.** Every alert uses `showAlert` (`src/utils/alert.ts`), which takes the same arguments as `Alert.alert` and is drawn by `AlertHost` as a themed dialog: cancel is a secondary button, destructive uses the destructive fill, the last default button is the primary action; two buttons sit side by side and three or more stack. A dialog with the same title, message and button texts as one already waiting or on screen is not queued again (a double tap), a second press of a dialog that is closing runs no handler, and a dialog takes no press in its first 250 ms (so a double tap on one confirmation does not answer the next). The lint guard rejects `Alert.alert`.
 - **Snackbar text** is a `Text` child in `subhead` with `text.inverse` (Paper's Snackbar does not take a text colour).
 - **Full-screen states** have one primary action only when the user can do something (maintenance has none).
 - **Offline banner.** It is mounted once in `app/_layout.tsx`, above the navigation stack, and pushes content down. While it shows, the screens below get a zero top inset, because the banner already pads for the status bar.

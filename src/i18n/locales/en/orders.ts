@@ -24,6 +24,9 @@ export const orders = {
     removeMessageNoName: 'this item will be taken off this order.',
     removeItem: 'Remove item',
     couldNotRemoveTitle: "Couldn't remove the item",
+    // A line that is no longer on the order when it is changed or removed (taken off or dispatched by someone else).
+    lineGoneTitle: 'This item is no longer on the order',
+    lineGoneMessage: 'Someone else removed it, or it was dispatched. The order is shown again as it is now.',
     emptyTitle: 'No items in this order',
     emptyMessage: "Items you add from this customer's stock appear here.",
     labelDetail: '{{label}}, {{detail}}',
@@ -106,6 +109,12 @@ export const orders = {
     reasonBelowDispatched: '{{bags}} already dispatched. Choose that many or more.',
     reasonOrderClosed: 'This order is closed. Go back and open it again.',
     reasonNotSaved: 'Not saved. Check your connection and try again.',
+    // The request went out and no answer came: the lot may be on the order already.
+    reasonMaybeSaved: 'No answer from the server. It may have been saved. Check the order.',
+    // The same for a lot that was being taken off the order.
+    reasonMaybeRemoved: 'No answer from the server. It may have been removed. Check the order.',
+    // The line the lot was saved on is no longer on the order.
+    reasonLineGone: 'This item is no longer on the order.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
     reasonChangedMeanwhile: 'Changed by someone else: now {{bags}} in the order. Tap Add again to make it {{chosen}}.',
     reasonRemovedMeanwhile: 'Removed by someone else. Tap Add again to add {{chosen}}.',

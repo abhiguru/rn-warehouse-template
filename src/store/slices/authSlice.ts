@@ -457,7 +457,7 @@ export const deleteAccount = createAsyncThunk<void, void, { rejectValue: DeleteA
       return rejectWithValue({
         code: unknown ? 'UNKNOWN' : 'REFUSED',
         serverDeleted: unknown ? null : false,
-        message: sessionChanged ? t('errors.auth.sessionChanged') : serverText(result.error, t('errors.user.deleteAccountFailed'), { write: true }),
+        message: sessionChanged ? t('errors.auth.sessionChanged') : serverText(result.error, t('errors.user.deleteAccountFailed'), { write: true, delete: true, form: true }),
       });
     }
     if (sessionChanged)

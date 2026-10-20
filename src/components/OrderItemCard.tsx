@@ -34,8 +34,13 @@ interface OrderItemCardProps {
    * stored the quantity.
    */
   onQuantityChange: (itemId: string, newQuantity: number, orderId?: string) => Promise<boolean> | boolean | void;
-  /** Called with this card's line id. */
-  onRemove: (itemId: string) => void;
+  /**
+   * Called with this card's line id. Resolves true when the line was removed (or was already gone), false when
+   * the person said no or the removal was refused, and 'unknown' when no answer came and the line may be gone.
+   * While it runs the card's buttons are off, and no change of the quantity is sent; after 'unknown' the quantity
+   * that was waiting is dropped too (a change of a line that may be gone), and the card shows the stored one.
+   */
+  onRemove: (itemId: string) => Promise<boolean | 'unknown'> | boolean | 'unknown' | void;
 }
 
 const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
@@ -51,6 +56,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const [isPending, setIsPending] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [flashRed, setFlashRed] = useState(false);
+  // The question "Remove …?" is open, or the removal is running: the card's buttons are off.
+  const [isRemoving, setIsRemoving] = useState(false);
 
   // Animation for red flash
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -93,8 +100,22 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const orderIdRef = useRef(item.order_id);
   orderIdRef.current = item.order_id;
 
-  // Track if item is being removed (to skip force-save on unmount)
-  const isRemovingRef = useRef(false);
+  // A "Remove …?" question is open or a removal is running for this line. Nothing is written for the line
+  // meanwhile (no change of the quantity could be applied to a line that is going), and when the person does
+  // not remove it the flag is lowered again (see handleRemove).
+  const removalRef = useRef(false);
+  // The change waiting to be saved came due while the removal was open: it is sent when the line stays.
+  const deferredSaveRef = useRef(false);
+  // The removal answered "gone" and the card waits for the read that takes it off the screen. If the line comes
+  // back changed instead (a read that still has it), the buttons come back on (see the effect on `item`).
+  const lineGoneRef = useRef(false);
+
+  useEffect(() => {
+    if (!lineGoneRef.current) return;
+    lineGoneRef.current = false;
+    removalRef.current = false;
+    setIsRemoving(false);
+  }, [item]);
 
   // Async saves finish after unmount when the list refreshes.
   const isMountedRef = useRef(true);
@@ -105,17 +126,51 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
-        // Force save if there's a pending update (but not if being removed)
+        // Force save if there's a pending update, but not while a removal is asked or running: that one covers the line.
         const currentLocalQty = localQuantityRef.current;
         const lastSavedQty = lastSavedQuantityRef.current;
-        if (currentLocalQty !== lastSavedQty && !isRemovingRef.current) {
+        if (currentLocalQty !== lastSavedQty && !removalRef.current) {
           if (__DEV__) console.log(`[OrderItemCard] Force saving on unmount: ${lastSavedQty} → ${currentLocalQty}`);
           void onQuantityChangeRef.current(itemIdRef.current, currentLocalQty, orderIdRef.current || undefined);
         }
       }
     };
   }, []); // Empty dependency array - only run on mount/unmount
-  
+
+  // Sends the quantity to the server, unless it is the one the server has.
+  const saveQuantity = useCallback(async (newQuantity: number) => {
+    // Only send update if quantity actually changed from last saved value
+    if (newQuantity === lastSavedQuantityRef.current) {
+      if (isMountedRef.current) setIsPending(false);
+      return;
+    }
+    if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
+    let saved: boolean;
+    try {
+      saved = (await onQuantityChange(itemIdRef.current, newQuantity, orderIdRef.current || undefined)) !== false;
+    } catch {
+      saved = false;
+    }
+    if (!isMountedRef.current) return;
+    // A newer edit started while this one was saving; it owns the indicator.
+    const superseded = debounceTimerRef.current !== null;
+    if (saved) {
+      lastSavedQuantityRef.current = newQuantity;
+    } else if (!superseded) {
+      // The server refused the change: show the stored quantity again.
+      setLocalQuantity(lastSavedQuantityRef.current);
+      triggerStockError();
+    }
+    if (superseded) return;
+    setIsPending(false);
+    if (saved) {
+      setShowSaved(true);
+      setTimeout(() => {
+        if (isMountedRef.current) setShowSaved(false);
+      }, 2000); // Show "Saved" for 2 seconds
+    }
+  }, [onQuantityChange, triggerStockError]);
+
   // Debounced quantity update
   const debouncedQuantityUpdate = useCallback((newQuantity: number) => {
     // Clear existing timer
@@ -127,44 +182,62 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     setIsPending(true);
     
     // Set new timer
-    debounceTimerRef.current = setTimeout(async () => {
+    debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
-      // Only send update if quantity actually changed from last saved value
-      if (newQuantity === lastSavedQuantityRef.current) {
-        if (isMountedRef.current) setIsPending(false);
+      // The question "Remove …?" is open: nothing is sent now. If the line stays, the quantity shown is sent then.
+      if (removalRef.current) {
+        deferredSaveRef.current = true;
         return;
       }
-      if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
-      let saved: boolean;
-      try {
-        saved = (await onQuantityChange(itemIdRef.current, newQuantity, orderIdRef.current || undefined)) !== false;
-      } catch {
-        saved = false;
-      }
-      if (!isMountedRef.current) return;
-      // A newer edit started while this one was saving; it owns the indicator.
-      const superseded = debounceTimerRef.current !== null;
-      if (saved) {
-        lastSavedQuantityRef.current = newQuantity;
-      } else if (!superseded) {
-        // The server refused the change: show the stored quantity again.
-        setLocalQuantity(lastSavedQuantityRef.current);
-        triggerStockError();
-      }
-      if (superseded) return;
-      setIsPending(false);
-      if (saved) {
-        setShowSaved(true);
-        setTimeout(() => {
-          if (isMountedRef.current) setShowSaved(false);
-        }, 2000); // Show "Saved" for 2 seconds
-      }
+      void saveQuantity(newQuantity);
     }, 2000); // 2 second delay
-  }, [onQuantityChange, triggerStockError]);
-  
-  const handleRemove = () => onRemove(item.id);
+  }, [saveQuantity]);
+
+  // Asks the parent to remove the line. Only one question or removal at a time; while it runs the buttons are
+  // off. The change waiting to be saved is not dropped: if the line is not removed (Cancel, or the removal
+  // failed) the flag goes down and that change is saved, so the card shows what the server has.
+  const handleRemove = async () => {
+    if (removalRef.current) return;
+    removalRef.current = true;
+    setIsRemoving(true);
+    let outcome: boolean | 'unknown' = false;
+    try {
+      const answer = await onRemove(item.id);
+      outcome = answer === true || answer === 'unknown' ? answer : false;
+    } catch {
+      outcome = false;
+    }
+    if (outcome === true || outcome === 'unknown') {
+      // A change that was still waiting has nothing left to change (the line is gone), or must not be sent (the
+      // line may be gone and the removal got no answer).
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      deferredSaveRef.current = false;
+      if (isMountedRef.current) setIsPending(false);
+    }
+    if (outcome === true) {
+      // The line is gone: this card goes with the next read of the order and stays off until then.
+      lineGoneRef.current = true;
+      return;
+    }
+    removalRef.current = false;
+    if (!isMountedRef.current) return;
+    setIsRemoving(false);
+    if (outcome === 'unknown') {
+      // The card shows the stored quantity until the read that follows says more.
+      setLocalQuantity(lastSavedQuantityRef.current);
+      return;
+    }
+    if (deferredSaveRef.current) {
+      deferredSaveRef.current = false;
+      void saveQuantity(localQuantityRef.current);
+    }
+  };
 
   const handleQuantityDecrease = (amount: number = 1) => {
+    if (removalRef.current) return;
     if (localQuantity > amount) {
       const newQuantity = localQuantity - amount;
       setLocalQuantity(newQuantity);
@@ -174,26 +247,16 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       setLocalQuantity(1);
       debouncedQuantityUpdate(1);
     } else if (localQuantity === 1 && amount === 1) {
-      // At quantity 1, tapping minus removes the item from order
-      // Clear any pending debounce and mark as removing to prevent force-save on unmount
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      isRemovingRef.current = true;
-      handleRemove();
+      // At quantity 1, tapping minus asks to remove the item from the order
+      void handleRemove();
     } else if (localQuantity <= amount && amount > 1) {
-      // If trying to decrease by 10 and quantity is <= 10, remove the item
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      isRemovingRef.current = true;
-      handleRemove();
+      // If trying to decrease by 10 and quantity is <= 10, ask to remove the item
+      void handleRemove();
     }
   };
 
   const handleQuantityIncrease = (amount: number = 1) => {
+    if (removalRef.current) return;
     if (!item.grn_item) return;
 
     const currentStock = item.grn_item.current_stock;
@@ -271,9 +334,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       <View style={styles.quantitySection}>
         {/* -10 Button */}
         <Pressable
-          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed]}
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
           onPress={() => handleQuantityDecrease(10)}
+          disabled={isRemoving}
           accessibilityRole="button"
+          accessibilityState={{ disabled: isRemoving }}
           accessibilityLabel={tr('orders.item.removeAmount', { amount: 10, name: itemName })}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('−10')}</Text>
@@ -281,9 +346,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         <View style={styles.quantityContainer}>
           <Pressable
-            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed]}
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
             onPress={() => handleQuantityDecrease(1)}
+            disabled={isRemoving}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isRemoving }}
             accessibilityLabel={localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 })}
           >
             <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
@@ -325,9 +392,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
 
           <Pressable
-            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed]}
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
             onPress={() => handleQuantityIncrease(1)}
+            disabled={isRemoving}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isRemoving }}
             accessibilityLabel={tr('orders.item.increase', { name: itemName, amount: 1 })}
           >
             <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
@@ -336,9 +405,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {/* +10 Button */}
         <Pressable
-          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed]}
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
           onPress={() => handleQuantityIncrease(10)}
+          disabled={isRemoving}
           accessibilityRole="button"
+          accessibilityState={{ disabled: isRemoving }}
           accessibilityLabel={tr('orders.item.addAmount', { amount: 10, name: itemName })}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('+10')}</Text>
@@ -346,9 +417,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {/* Remove Button: secondary negative, last in the row */}
         <Pressable
-          onPress={handleRemove}
-          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
+          onPress={() => void handleRemove()}
+          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed, isRemoving && styles.controlOff]}
+          disabled={isRemoving}
           accessibilityRole="button"
+          accessibilityState={{ disabled: isRemoving }}
           accessibilityLabel={tr('orders.item.removeFromOrder', { name: itemName })}
         >
           <Icon name="trash-can-outline" size={iconSize.md} color={t.status.negative.text} />
@@ -527,6 +600,10 @@ const makeStyles = (t: ThemeTokens) => ({
   pendingIndicator: {
     position: 'absolute' as const,
     right: -space.xxl,
+  },
+  // A button while the line is being removed
+  controlOff: {
+    opacity: t.interaction.disabledOpacity,
   },
   // Delete button - secondary negative style
   removeButton: {

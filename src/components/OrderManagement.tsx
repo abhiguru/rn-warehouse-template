@@ -38,15 +38,30 @@ import CustomerOrderSummary from './CustomerOrderSummary';
 import RecentDispatchesSection from './RecentDispatchesSection';
 import { searchService, SearchResult } from '@/services/search-service';
 
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
-import { cartFailureReason, isAlreadyRemoved, isBusinessInactive, isConnectionFailure } from '@/features/orders/cartFailureReason';
+import {
+  accessRefusalText,
+  cartFailureReason,
+  isAlreadyRemoved,
+  isBusinessInactive,
+  isConnectionFailure,
+  isCustomerAccessDenied,
+  mayHaveBeenSaved,
+} from '@/features/orders/cartFailureReason';
 import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
 
 const NO_LINES: OrderItem[] = [];
 const isOpenLine = (item: OrderItem) => (item.item_status || '').toLowerCase() !== 'fulfilled';
+
+/**
+ * True when a read of the order, made after a failed call, no longer has the open line: it is gone for certain.
+ * False when the line is still there, or when the read gave no answer (null) or no lines to look at.
+ */
+const isLineMissing = (read: Order | null, lineId: string): boolean =>
+  read !== null && Array.isArray(read.items) && !read.items.some(line => line.id === lineId && isOpenLine(line));
 
 /** Plain JSON values (server answers) compared by content. */
 function sameValue(a: unknown, b: unknown): boolean {
@@ -277,10 +292,12 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const refreshApplied = useRef(0);
   const refreshesRunning = useRef(0);
 
-  // Handle refresh. Stable, so the line cards keep their props while it runs.
-  const onRefresh = useCallback(async (showSpinner: boolean = true) => {
+  // Reads the order again. Stable, so the line cards keep their props while it runs. Resolves the order that was
+  // read, also when a newer read has been applied meanwhile (it still says what the order held after the call that
+  // asked for it); null when nothing was read (no order, a failed read, the screen has moved on).
+  const rereadOrder = useCallback(async (showSpinner: boolean = true): Promise<Order | null> => {
     const current = orderRef.current;
-    if (!current) return;
+    if (!current) return null;
 
     const sessionGeneration = getSessionGeneration();
     refreshStarted.current += 1;
@@ -290,22 +307,33 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     if (showSpinner !== false) setRefreshing(true);
     try {
       const result = await OrderService.getOrderWithItems(current.id);
-      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return;
-      if (sequence < refreshApplied.current) return;
-      if (result.success && result.data) {
-        const next = result.data;
-        refreshApplied.current = sequence;
-        setOrder(previous => keepUnchanged(previous, next));
-      }
+      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return null;
+      if (!result.success || !result.data) return null;
+      const next = result.data;
+      if (sequence < refreshApplied.current) return next;
+      refreshApplied.current = sequence;
+      setOrder(previous => keepUnchanged(previous, next));
+      return next;
     } catch (error) {
       console.error('[OrderManagement] Refresh error:', error);
+      return null;
     } finally {
       refreshesRunning.current -= 1;
       if (refreshesRunning.current === 0) setRefreshing(false);
     }
   }, []);
 
+  // Handle refresh (pull to refresh, the timed read, after a save).
+  const onRefresh = useCallback(async (showSpinner: boolean = true): Promise<void> => {
+    await rereadOrder(showSpinner);
+  }, [rereadOrder]);
+
   useOrderLiveUpdates(() => onRefresh(false), !!order);
+
+  // The lines this screen is taking off the order, or has taken off (from the question "Remove ...?" on). A save of such a
+  // line that finds it gone is the screen's own doing: nobody is told "someone else removed it". A removal that is
+  // not made (Cancel, or refused) takes the line out again.
+  const ownRemovals = useRef(new Set<string>());
 
   // Handle quantity update for one line, by its id; one function for every card.
   // Resolves true only when the server stored the quantity.
@@ -313,6 +341,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // write goes to even when the editor has moved on to another business meanwhile (a quantity
   // still waiting to be saved when the card goes away is saved to its own order, never to the
   // new one). Without it, the order shown now.
+  //
+  // A failed save is followed by a silent read of the order, so the card shows what is stored now
+  // (a change that timed out may have been applied; a line may have been taken off meanwhile).
   const handleQuantityUpdate = useCallback(async (itemId: string, newQuantity: number, lineOrderId?: string): Promise<boolean> => {
     const orderId = lineOrderId || orderRef.current?.id;
     if (!orderId) return false;
@@ -329,47 +360,100 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         if (activeOrderId.current === orderId) await onRefresh();
         return true;
       }
-      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), serverText(result.message, tr('common.checkConnection'), { write: true }));
+      // The order is read again behind the alert, so the card shows what is stored now.
+      const read = activeOrderId.current === orderId ? rereadOrder(false) : Promise.resolve<Order | null>(null);
+      // "Order item not found": taken off the order, or used up by a dispatch, since this screen read it. A customer
+      // login on an older facility is answered "Customer access denied" for such a line, and also for a real
+      // refusal: only the read that no longer has the line says which.
+      const gone = isAlreadyRemoved(result) || (isCustomerAccessDenied(result) && isLineMissing(await read, itemId));
+      if (gone) {
+        // Not while this screen is taking the line off the order itself: that is why the save found no line.
+        if (!ownRemovals.current.has(itemId)) showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+      } else {
+        showAlert(
+          tr('orders.manage.couldNotChangeQuantityTitle'),
+          accessRefusalText(result) ?? serverText(result.message, tr('common.checkConnection'), { write: true })
+        );
+      }
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
       showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('common.checkConnection'));
       return false;
     }
-  }, [onRefresh]);
+  }, [onRefresh, rereadOrder]);
 
-  // Handle removal of one line, by its id; one function for every card.
-  const handleRemoveItem = useCallback((itemId: string) => {
+  // Handle removal of one line, by its id; one function for every card. Asks first, then removes.
+  // Resolves true when the line is gone (removed, or already gone), false when it stays (the person said no, or
+  // the removal was refused), and 'unknown' when no answer came and the line may be gone. The card keeps its
+  // buttons off while this runs and, on false or 'unknown', takes them back (and on 'unknown' sends no change
+  // of the quantity that was waiting).
+  const handleRemoveItem = useCallback(async (itemId: string): Promise<boolean | 'unknown'> => {
     const current = orderRef.current;
     const item = current?.items?.find(line => line.id === itemId);
-    if (!current || !item) return;
+    if (!current || !item) return false;
 
     const itemName = item.grn_item?.name;
-    showAlert(
+    // From the question on, a save of this line that finds it gone is not news (see ownRemovals).
+    ownRemovals.current.add(itemId);
+    const answer = await askAlert<'cancel' | 'remove'>(
       itemName ? tr('orders.manage.removeTitle', { name: itemName }) : tr('orders.manage.removeTitleNoName'),
       itemName ? tr('orders.manage.removeMessage', { name: itemName }) : tr('orders.manage.removeMessageNoName'),
       [
-        { text: tr('common.cancel'), style: 'cancel' },
-        {
-          text: tr('orders.manage.removeItem'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await OrderService.removeItemFromOrder(item.id, current.id);
-              if (result.success) {
-                await onRefresh();
-              } else {
-                showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection'), { write: true }));
-              }
-            } catch (error) {
-              console.error('[OrderManagement] Remove item error:', error);
-              showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('common.checkConnection'));
-            }
-          }
-        }
-      ]
+        { text: tr('common.cancel'), style: 'cancel', value: 'cancel' },
+        { text: tr('orders.manage.removeItem'), style: 'destructive', value: 'remove' },
+      ],
+      'cancel'
     );
-  }, [onRefresh]);
+    if (answer !== 'remove') {
+      ownRemovals.current.delete(itemId);
+      return false;
+    }
+
+    try {
+      const result = await OrderService.removeItemFromOrder(item.id, current.id);
+      if (result.success) {
+        const read = await rereadOrder();
+        // The line is off the order but the read that should show it failed: take it off the screen here, so the
+        // card does not wait for a read that may not come.
+        if (read === null && activeOrderId.current === current.id) {
+          setOrder(previous =>
+            previous && previous.id === current.id && previous.items
+              ? { ...previous, items: previous.items.filter(line => line.id !== itemId) }
+              : previous
+          );
+        }
+        return true;
+      }
+      if (isAlreadyRemoved(result)) {
+        // Off the order already, which is what was asked for; the person is told why nothing was removed now.
+        showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+        void rereadOrder(false);
+        return true;
+      }
+      if (isCustomerAccessDenied(result)) {
+        // A customer login on an older facility is answered "access denied" for a line that is gone, and also for a
+        // real refusal: only the read that no longer has the line says which.
+        if (isLineMissing(await rereadOrder(false), itemId)) {
+          showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+          return true;
+        }
+        showAlert(tr('orders.manage.couldNotRemoveTitle'), accessRefusalText(result) ?? tr('common.checkConnection'));
+        ownRemovals.current.delete(itemId);
+        return false;
+      }
+      showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection'), { write: true, delete: true }));
+      void rereadOrder(false);
+      // No answer after the request went out: the line may be gone, and a save for it would find nothing.
+      if (mayHaveBeenSaved(result)) return 'unknown';
+      ownRemovals.current.delete(itemId);
+      return false;
+    } catch (error) {
+      console.error('[OrderManagement] Remove item error:', error);
+      showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('common.checkConnection'));
+      return 'unknown';
+    }
+  }, [rereadOrder]);
 
   // True while the phone reports no network at all (aeroplane mode, no Wi-Fi and
   // no mobile data). "Connected, but the internet is not reachable" does not
@@ -451,9 +535,23 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             ? await OrderService.updateOrderItemQuantity(line.id, current.id, change.quantity)
             : await OrderService.addItemToOrder(current.id, change.grnItemId, change.quantity);
           if (!result.success) console.error('[OrderManagement] Item not saved:', result.message, result.error);
+          // A change of a line that is gone is read as removed by someone else, and the lot goes back to "not in
+          // the order". "Order item not found" says so for certain. A customer login on an older facility is answered
+          // "Customer access denied" for such a line, and also for a real refusal: only a read of the order that no
+          // longer has the line says which, and without one the sentence is a refusal (a permission text).
+          let lineConfirmedGone = false;
+          if (!result.success && line && isCustomerAccessDenied(result)) {
+            lineConfirmedGone = isLineMissing(await rereadOrder(false), line.id);
+          }
+          const lineGone = !result.success && !!line && (isAlreadyRemoved(result) || lineConfirmedGone);
           results.set(change.grnItemId, result.success
             ? { grnItemId: change.grnItemId, ok: true }
-            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+            : {
+                grnItemId: change.grnItemId,
+                ok: false,
+                reason: cartFailureReason(result, line ? { lineKnown: true, lineConfirmedGone, chosen: change.quantity } : undefined),
+                ...(lineGone ? { savedQuantity: 0 } : {}),
+              });
           if (!result.success && isConnectionFailure(result)) {
             noAnswer = true;
             break;
@@ -466,12 +564,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           anyCall = true;
           // A removal that reaches here has an open line: with none, the saved quantity is 0, answered above.
           const result = await OrderService.removeItemFromOrder(line!.id, current.id);
-          // "Order item not found": someone else removed it first, which is what was asked for.
+          // "Order item not found": someone else removed it first, which is what was asked for. "Customer access
+          // denied" (a customer login on an older facility) is not counted: it may be a real refusal, and the lot
+          // is then shown with the permission text.
           const removed = result.success || isAlreadyRemoved(result);
           if (!removed) console.error('[OrderManagement] Item not removed:', result.message, result.error);
           results.set(change.grnItemId, removed
             ? { grnItemId: change.grnItemId, ok: true }
-            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result, { removal: true }) });
           if (!removed && isConnectionFailure(result)) {
             noAnswer = true;
             break;
@@ -501,7 +601,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     }
 
     return changes.map(change => results.get(change.grnItemId) ?? notSaved(change.grnItemId));
-  }, [onRefresh]);
+  }, [onRefresh, rereadOrder]);
 
 
   // The open lines, kept while the order's lines are unchanged.

@@ -29,7 +29,8 @@ export const grn: Translation<typeof source> = {
     numberTaken: 'આવક પાવતી {{number}} પહેલેથી છે. બીજો નંબર લખો.',
     numberTakenFor: 'આવક પાવતી {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
     nextNumberFailed: 'આગળનો આવક પાવતી નંબર મળી શક્યો નથી',
-    requestFailed: 'સર્વર સાથે કામ થઈ શક્યું નથી',
+    // Draft for the owner's wording review (2026-10-20): a save that failed with no usable reason.
+    requestFailed: 'ફેરફાર સાચવી શકાયા નથી. ફરી પ્રયાસ કરો.',
     creationFailed: 'આવક પાવતી બની શકી નથી',
     createFailed: 'આવક પાવતી બની શકી નથી',
     updateRejected: 'આવક પાવતી સાચવી શકાઈ નથી',

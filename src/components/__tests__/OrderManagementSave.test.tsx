@@ -100,6 +100,9 @@ const refusal = (message: string, error: unknown = 'API_ERROR') => ({ success: f
 const failedWith = (error: string) => ({ success: false, message: "Couldn't save the item.", error }) as never;
 const timedOut = failedWith('TimeoutError: Request timeout');
 const NOT_SAVED = 'Not saved. Check your connection and try again.';
+// A call that went out and got no answer (a timeout, a dropped connection): the lot may be on the order already.
+const MAYBE_SAVED = 'No answer from the server. It may have been saved. Check the order.';
+const MAYBE_REMOVED = 'No answer from the server. It may have been removed. Check the order.';
 
 const service = jest.mocked(OrderService);
 let server: Order;
@@ -377,13 +380,15 @@ describe('a call without an answer ends the save', () => {
     { grnItemId: 'lot-two', quantity: 1 },
     { grnItemId: 'lot-open', quantity: 7 },
   ];
-  const noneSaved = CHANGES.map(change => ({ grnItemId: change.grnItemId, ok: false, reason: NOT_SAVED }));
+  // The lot whose call got no answer says what may have happened to it; the lots that were never sent are not saved.
+  const noneSaved = (firstReason: string) =>
+    CHANGES.map(change => ({ grnItemId: change.grnItemId, ok: false, reason: change.grnItemId === 'lot-one' ? firstReason : NOT_SAVED }));
 
   it.each([
-    ['timed out', timedOut],
-    ['could not be sent', failedWith('TypeError: Network request failed')],
-    ['could not renew the session for want of a connection', failedWith('Network request failed: session refresh unavailable')],
-  ])('a call that %s: nothing more is sent, every lot left comes back not saved, and the order is read again', async (_name, failure) => {
+    ['timed out (it had gone out)', timedOut, MAYBE_SAVED],
+    ['broke the connection after it had gone out', failedWith('TypeError: Network request failed'), MAYBE_SAVED],
+    ['could not renew the session for want of a connection (nothing was sent)', failedWith('Network request failed: session refresh unavailable'), NOT_SAVED],
+  ])('a call that %s: nothing more is sent, every lot left comes back not saved, and the order is read again', async (_name, failure, firstReason) => {
     await openPicker();
     service.addItemToOrder.mockResolvedValueOnce(failure);
     const reads = service.getOrderWithItems.mock.calls.length;
@@ -394,7 +399,7 @@ describe('a call without an answer ends the save', () => {
     expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-one', 1]]);
     expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
     expect(service.removeItemFromOrder).not.toHaveBeenCalled();
-    expect(results).toEqual(noneSaved);
+    expect(results).toEqual(noneSaved(firstReason));
     expect(progress.mock.calls).toEqual([[1, 4]]);
     // The one call may have been applied: the order is read again, once.
     expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
@@ -411,12 +416,12 @@ describe('a call without an answer ends the save', () => {
       { grnItemId: 'lot-kept', ok: false, reason: NOT_SAVED },
       { grnItemId: 'lot-one', ok: true },
       { grnItemId: 'lot-two', ok: true },
-      { grnItemId: 'lot-open', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-open', ok: false, reason: MAYBE_SAVED },
     ]);
 
     service.removeItemFromOrder.mockReset().mockResolvedValueOnce(timedOut);
     expect(await send([{ grnItemId: 'lot-kept', quantity: 0 }, { grnItemId: 'lot-open', quantity: 0 }])).toEqual([
-      { grnItemId: 'lot-kept', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-kept', ok: false, reason: MAYBE_REMOVED },
       { grnItemId: 'lot-open', ok: false, reason: NOT_SAVED },
     ]);
     expect(service.removeItemFromOrder).toHaveBeenCalledTimes(1);
@@ -443,9 +448,9 @@ describe('a call without an answer ends the save', () => {
     service.addItemToOrder.mockResolvedValue(timedOut);
     const reads = service.getOrderWithItems.mock.calls.length;
     service.getOrderWithItems.mockResolvedValueOnce({ success: false, message: '', error: 'TimeoutError: Request timeout' } as never);
-    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: NOT_SAVED }]);
+    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: MAYBE_SAVED }]);
     service.getOrderWithItems.mockRejectedValueOnce(new Error('fictional failure'));
-    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: NOT_SAVED }]);
+    expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: MAYBE_SAVED }]);
     expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 2);
     // The editor still has its order: the next save is sent.
     service.addItemToOrder.mockResolvedValue(saved);
@@ -479,7 +484,7 @@ it('finds a lot saved on the next Add when the write that timed out was in fact 
   });
   const reads = service.getOrderWithItems.mock.calls.length;
 
-  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
+  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: false, reason: MAYBE_SAVED }]);
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
   // The picker is told the lot is in the order now.
   expect(mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity])).toContainEqual(['lot-new', 3]);
@@ -496,7 +501,10 @@ it('sends a change again as an add once the line someone else removed is known t
   server.items = server.items!.filter(item => item.grn_item_id !== 'lot-open');
   service.updateOrderItemQuantity.mockResolvedValueOnce(refusal('Order item not found'));
 
-  expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([{ grnItemId: 'lot-open', ok: false, reason: NOT_SAVED }]);
+  // The server's "Order item not found" is told at once as "removed by someone else", and the lot is back to "not in the order".
+  expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([
+    { grnItemId: 'lot-open', ok: false, reason: 'Removed by someone else. Tap Add again to add 8 bags.', savedQuantity: 0 },
+  ]);
   // The read has shown the line is gone: the picker expected 5, so this is a change it has not seen.
   expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([
     { grnItemId: 'lot-open', ok: false, reason: 'Removed by someone else. Tap Add again to add 8 bags.', savedQuantity: 0 },
@@ -515,9 +523,9 @@ describe('the read after the save', () => {
   const orderRead = () => ({ success: true, data: copy(server) }) as never;
 
   it.each([
-    ['timed out', () => service.addItemToOrder.mockResolvedValueOnce(timedOut)],
-    ['threw', () => service.addItemToOrder.mockRejectedValueOnce(new Error('fictional failure'))],
-  ])('is started and not waited for when the first call %s: the save answers while the read is out', async (_name, fail) => {
+    ['timed out', () => service.addItemToOrder.mockResolvedValueOnce(timedOut), MAYBE_SAVED],
+    ['threw', () => service.addItemToOrder.mockRejectedValueOnce(new Error('fictional failure')), NOT_SAVED],
+  ])('is started and not waited for when the first call %s: the save answers while the read is out', async (_name, fail, firstReason) => {
     await openPicker();
     fail();
     const reads = service.getOrderWithItems.mock.calls.length;
@@ -526,7 +534,7 @@ describe('the read after the save', () => {
     const save = await start(TWO);
 
     expect(save.results).toEqual([
-      { grnItemId: 'lot-one', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-one', ok: false, reason: firstReason },
       { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED },
     ]);
     expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
@@ -593,7 +601,7 @@ describe('the read after the save', () => {
     service.getOrderWithItems.mockImplementationOnce(() => read.promise);
 
     const save = await start([{ grnItemId: 'lot-new', quantity: 3 }]);
-    expect(save.results).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
+    expect(save.results).toEqual([{ grnItemId: 'lot-new', ok: false, reason: MAYBE_SAVED }]);
     // The read is still out: the picker has not been told of the lot.
     expect(mockPicker.props!.currentOrderItems.map(item => item.grnItemId)).not.toContain('lot-new');
 

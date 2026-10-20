@@ -28,7 +28,7 @@ export const grn = {
     numberTaken: 'GRN {{number}} already exists. Enter a different number.',
     numberTakenFor: 'GRN {{number}} already exists ({{customer}}). Enter a different number.',
     nextNumberFailed: 'Failed to get next GRN number',
-    requestFailed: 'RPC call failed',
+    requestFailed: 'Unable to save changes. Please try again.',
     creationFailed: 'GRN creation failed',
     createFailed: 'Failed to create GRN',
     updateRejected: 'GRN update failed',

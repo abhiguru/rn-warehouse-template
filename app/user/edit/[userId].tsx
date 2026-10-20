@@ -55,7 +55,7 @@ import { formatCount, formatMobile } from '@/utils/formatters';
 import { roleLabel } from '@/utils/roleLabel';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
-import { errorCodeOf, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
+import { errorCodeOf, isNetworkError, requestMayHaveBeenSent, serverText, transportText } from '@/utils/serverText';
 
 const log = createLogger('ownProfileEdit');
 
@@ -186,19 +186,21 @@ const UserEditScreen: React.FC = () => {
           leaveWithoutAsking(() => router.back());
           showToast(tr('users.selfEdit.savedTitle'));
         } else {
-          // No connection: say so in words about the name. A timeout keeps the shared "may have been saved" text.
-          const text = isNetworkError(result)
+          // The request never left (no connection): say so in words about the name. Once it had gone out, a timeout
+          // or a connection that dropped keeps the shared "may have been saved" text.
+          const text = isNetworkError(result) && !requestMayHaveBeenSent(result)
             ? tr('users.selfEdit.saveOffline')
-            : isTimeoutError(result)
-              ? transportText(result, { write: true, form: true })
-              : serverText(result.message, tr('users.edit.tryAgainSoon'), { write: true, form: true, code: errorCodeOf(result) });
+            : transportText(result, { write: true, form: true }) ??
+              serverText(result.message, tr('users.edit.tryAgainSoon'), { write: true, form: true, code: errorCodeOf(result) });
           showAlert(tr('users.selfEdit.couldNotSaveTitle'), text);
         }
       } catch (error) {
         log.error('Save error', loggableError(error));
         showAlert(
           tr('users.selfEdit.couldNotSaveTitle'),
-          isNetworkError(error) ? tr('users.selfEdit.saveOffline') : tr('common.checkConnection')
+          isNetworkError(error) && !requestMayHaveBeenSent(error)
+            ? tr('users.selfEdit.saveOffline')
+            : transportText(error, { write: true, form: true }) ?? tr('users.edit.tryAgainSoon')
         );
       }
     });

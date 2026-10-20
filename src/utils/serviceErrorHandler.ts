@@ -12,7 +12,7 @@ import type { ServiceResponse, ServiceListResponse } from '../types/service.type
 import { createEmptyListResponse } from '../types/service.types';
 import { getAppErrorCode } from './appError';
 import { t, type TranslationKey } from '@/i18n';
-import { isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
+import { expiredSessionText, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -216,7 +216,7 @@ export function categorizeError(error: unknown): CategorizedError {
 
     if ('code' in errorObj) {
       const code = String(errorObj.code);
-      if (code === 'PGRST301' || code === '42501') {
+      if (code === 'PGRST301' || code === 'PGRST303' || code === '42501') {
         category = 'auth';
         httpStatus = 401;
         shouldLogout = true;
@@ -370,6 +370,10 @@ export function isOfflineFailure(error: unknown): boolean {
   )
     return false;
   if (categorized.category === 'network' || categorized.category === 'timeout') return true;
+  // A timeout is told by the error's class name, its code or the app's own sentence, not by English
+  // words: the PostgREST client turns a timeout thrown inside fetch into "TimeoutError: <message>" or
+  // "AppError: <the app's sentence>", which in Gujarati holds no English word at all.
+  if (isTimeoutError(error)) return true;
   // PostgREST reports a failed fetch as an error object whose message carries
   // the transport failure ("TypeError: Network request failed", status 0).
   // Classify that message with the same keyword tables as an Error instance.
@@ -569,8 +573,18 @@ export interface ExecuteRPCOptions<TRaw, TResult = TRaw> {
   validateSuccess?: boolean;
   /** Whether to log RPC call timing (default: false) */
   logTiming?: boolean;
-  /** The call changes data: a timeout then says the change may have been saved (see serverText). */
+  /**
+   * The call changes data: a timeout, or any other network failure after the request went out, then
+   * says the change may have been saved (see serverText); a failure before sending (offline, no
+   * session) says to check the connection.
+   */
   write?: boolean;
+  /**
+   * The call deletes something (counts as `write`). A timeout or a failure after sending then reads
+   * "No answer from the server. It may have been deleted. Go back to the list and check before trying
+   * again." (the detail screen's wording: a delete is made from the record's own screen).
+   */
+  delete?: boolean;
 }
 
 export interface RPCResult<T> {
@@ -579,6 +593,13 @@ export interface RPCResult<T> {
   data?: T;
   error?: string;
   errorCode?: string;
+  /**
+   * The server's own sentence for a refusal, as it sent it (English), when it sent one: `message` is the
+   * app's text in the app's language and, in Gujarati, holds none of the server's words. A caller that
+   * has to tell one refusal from another ("Order item not found") reads this, never `message`.
+   * Absent for a failure that is not the server's answer (no connection, a timeout).
+   */
+  serverMessage?: string;
 }
 
 /**
@@ -604,7 +625,10 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     validateSuccess = true,
     logTiming = false,
     write = false,
+    delete: deleting = false,
   } = options;
+  // What serverText and transportText are told: a delete is a write, worded for a record's own screen.
+  const wording = { write: write || deleting, ...(deleting ? { delete: true, form: true } : {}) };
 
   const startTime = logTiming ? Date.now() : 0;
 
@@ -613,7 +637,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     const client = await getClient();
 
     // Make RPC call
-    const { data, error } = await client.rpc(rpcName, params);
+    const { data, error, status } = await client.rpc(rpcName, params);
 
     if (logTiming) {
       const duration = Date.now() - startTime;
@@ -622,7 +646,13 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
     // Handle Supabase error
     if (error) {
-      const supabaseError = error as { message?: string; code?: string; details?: string };
+      // The HTTP status goes with the error, so a gateway's 502 / 504 is told from the server's own refusals.
+      const supabaseError = (typeof status === 'number' ? { ...error, status } : error) as {
+        message?: string;
+        code?: string;
+        details?: string;
+        status?: number;
+      };
       logger.error(`[${context}] RPC error:`, {
         rpcName,
         message: supabaseError.message,
@@ -636,10 +666,14 @@ export async function executeRPC<TRaw, TResult = TRaw>(
       return {
         success: false,
         message:
-          transportText(supabaseError, { write }) ??
-          (errorMessage || serverText(supabaseError.message, t('errors.general.executeFailed', { name: rpcName }), { code: supabaseError.code, write })),
+          transportText(supabaseError, wording) ??
+          // An expired sign-in (PGRST301 / PGRST303, "JWT expired") is said as that, also over the caller's own message.
+          // A change that was refused for it is not sent again: the person is told to press the button again.
+          expiredSessionText(supabaseError, wording) ??
+          (errorMessage || serverText(supabaseError.message, t('errors.general.somethingWrongRetry'), { code: supabaseError.code, ...wording })),
         error: supabaseError.message || 'RPC_ERROR',
         errorCode: supabaseError.code || transportCode(supabaseError),
+        ...(supabaseError.message && !transportCode(supabaseError) ? { serverMessage: supabaseError.message } : {}),
       };
     }
 
@@ -660,10 +694,12 @@ export async function executeRPC<TRaw, TResult = TRaw>(
         success: false,
         message: serverText(dataObj.message ?? dataObj.error, errorMessage || t('errors.general.operationFailed'), {
           code: typeof dataObj.error_code === 'string' ? dataObj.error_code : undefined,
-          write,
+          ...wording,
         }),
         error: (dataObj.error as string) || 'API_ERROR',
         ...(typeof dataObj.error_code === 'string' ? { errorCode: dataObj.error_code } : {}),
+        // What serverText was given: the server's sentence before it is turned into the app's text.
+        ...(typeof (dataObj.message ?? dataObj.error) === 'string' ? { serverMessage: (dataObj.message ?? dataObj.error) as string } : {}),
       };
     }
 
@@ -690,7 +726,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
     return {
       success: false,
-      message: transportText(error, { write }) ?? (errorMessage || categorized.userMessage),
+      message: transportText(error, wording) ?? (errorMessage || categorized.userMessage),
       error: categorized.message,
       errorCode: transportCode(error) ?? categorized.code,
     };

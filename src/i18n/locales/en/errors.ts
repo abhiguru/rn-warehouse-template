@@ -22,7 +22,6 @@ export const errors = {
     operationCompleted: 'Operation completed successfully',
     backendReturnedError: 'Backend returned error',
     rpcReturnedError: 'RPC function returned error',
-    executeFailed: 'Failed to execute {{name}}',
     accessDenied: 'Access denied',
     queryTooShort: 'Query too short',
     invalidResponseFormat: 'Invalid response format',
@@ -49,6 +48,9 @@ export const errors = {
     unauthorized: 'You are not authorized to perform this action. Please sign in.',
     forbidden: 'You do not have permission to access this resource.',
     sessionExpired: 'Your session has expired. Please sign in again.',
+    // A change refused for an expired token: the session is renewed already, the change was not sent again.
+    signInRenewed: 'Your sign-in was renewed. Tap Save again.',
+    signInRenewedDelete: 'Your sign-in was renewed. Tap Delete again.',
     validationError: 'The information provided is invalid. Please check and try again.',
     invalidInput: 'Invalid input provided. Please check your data.',
     databaseError: 'A database error occurred. Please try again later.',

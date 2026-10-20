@@ -221,7 +221,8 @@ it('closes on the next Add when the save that timed out was in fact applied', as
   // The picker stays open with the lot and its reason, and the order was read again.
   expect(onClose).not.toHaveBeenCalled();
   expect(service.addItemToOrder.mock.calls).toEqual([['order-fictional-1', 'lot-a', 1]]);
-  expect(textOf(node('catalog-reason-lot-a'))).toBe('Not saved. Check your connection and try again.');
+  // The request went out and no answer came: the lot may be on the order, and the picker says to check it.
+  expect(textOf(node('catalog-reason-lot-a'))).toBe('No answer from the server. It may have been saved. Check the order.');
   expect(addButtonText()).toBe('Add (1)');
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
   expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
