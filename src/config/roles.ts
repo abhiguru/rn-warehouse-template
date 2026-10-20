@@ -135,6 +135,21 @@ export interface UserActionTarget {
   active?: boolean | null;
   /** The target's access request, where the server gives it. Not known counts as approved. */
   enrollmentStatus?: string | null;
+  /** The person deleted their own account (backend migration 113). */
+  deleted?: boolean | null;
+}
+
+/**
+ * What the user's page is about: a deleted account, an access request nobody has reviewed,
+ * a rejected one, or an ordinary user. The first three have no role, status or customer controls.
+ */
+export type UserPageKind = 'deleted' | 'pending' | 'rejected' | 'normal';
+
+export function userPageKind(target: Pick<UserActionTarget, 'deleted' | 'enrollmentStatus'>): UserPageKind {
+  if (target.deleted) return 'deleted';
+  if (target.enrollmentStatus === 'pending') return 'pending';
+  if (target.enrollmentStatus === 'rejected') return 'rejected';
+  return 'normal';
 }
 
 export interface UserManagementActions {
@@ -146,13 +161,18 @@ export interface UserManagementActions {
   assignableRoles: RoleName[];
   /** A supervisor is offered nothing because the target's access is not approved. */
   needsAdministrator: boolean;
+  /** Customer assignments belong to the Customer role only; for any other role the section says so. */
+  assignmentsApply: boolean;
+  /** The caller could change the assignments, but the Customer is deactivated: activate them first. */
+  assignmentsNeedActivation: boolean;
 }
 
 /**
- * What the caller may do to one user. The server's rules (migrations 44, 45 and 47): nobody
- * changes the own role or status; an administrator may change anyone else, and the own
- * customer assignments; a supervisor may change users who are not administrators, never
- * anything on the own profile, and can never grant the administrator role.
+ * What the caller may do to one user. The server's rules (migrations 44, 45, 47 and 113): nobody
+ * changes the own role or status; an administrator may change anyone else; a supervisor may change
+ * users who are not administrators, never anything on the own profile, and can never grant the
+ * administrator role. Customer assignments are for the Customer role, and of an active Customer.
+ * A deleted account, and an access request that is pending or rejected, are not edited here.
  *
  * Giving access is an administrator's decision: a supervisor deactivates a user but does
  * not activate one, and is offered nothing on a user whose access is not approved. The
@@ -163,17 +183,34 @@ export function userManagementActions(
   caller: { id: string | null | undefined; role: string | null | undefined },
   target: UserActionTarget
 ): UserManagementActions {
-  const none: UserManagementActions = { canEdit: false, canChangeAssignments: false, assignableRoles: [], needsAdministrator: false };
+  const none: UserManagementActions = {
+    canEdit: false,
+    canChangeAssignments: false,
+    assignableRoles: [],
+    needsAdministrator: false,
+    assignmentsApply: normalizeRole(target.role) === 'customer',
+    assignmentsNeedActivation: false,
+  };
   const callerRole = normalizeRole(caller.role);
   if (!isManager(callerRole) || !caller.id || !target.id) return none;
+  if (userPageKind(target) !== 'normal') return none;
   const self = caller.id === target.id;
+  // Assignments: the Customer role only, and an active Customer (the server refuses the rest).
+  const assignable = (allowed: boolean): Pick<UserManagementActions, 'canChangeAssignments' | 'assignmentsNeedActivation'> => {
+    const applies = none.assignmentsApply;
+    const active = target.active !== false;
+    return {
+      canChangeAssignments: allowed && applies && active,
+      assignmentsNeedActivation: allowed && applies && !active,
+    };
+  };
   if (callerRole === 'admin') {
     return self
-      ? { ...none, canChangeAssignments: true }
-      : { ...none, canEdit: true, canChangeAssignments: true, assignableRoles: ['customer', 'staff', 'supervisor', 'admin'] };
+      ? { ...none, ...assignable(true) }
+      : { ...none, ...assignable(true), canEdit: true, assignableRoles: ['customer', 'staff', 'supervisor', 'admin'] };
   }
   if (self || normalizeRole(target.role) === 'admin') return none;
   const approved = target.active !== false && (!target.enrollmentStatus || target.enrollmentStatus === 'approved');
   if (!approved) return { ...none, needsAdministrator: true };
-  return { ...none, canEdit: true, canChangeAssignments: true, assignableRoles: ['customer', 'staff', 'supervisor'] };
+  return { ...none, ...assignable(true), canEdit: true, assignableRoles: ['customer', 'staff', 'supervisor'] };
 }

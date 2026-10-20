@@ -23,9 +23,9 @@ import {
   UpdateUserStatusResponse,
   UserDetailsCustomer,
 } from '@/types/user.types';
-import { executeRPC } from '@/utils/serviceErrorHandler';
+import { executeRPC, type RPCResult } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 
 // User ids and error codes only: names and mobile numbers stay out of the device log.
@@ -48,6 +48,9 @@ interface RpcUserRow {
   updated_at?: string;
   assigned_customers_count?: number;
   is_service_account?: boolean;
+  enrollment_status?: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
 }
 
 /** Raw customer assignment from RPC responses */
@@ -58,6 +61,7 @@ interface RpcCustomerAssignment {
   customer_city?: string | null;
   assigned_at?: string;
   assigned_by_name?: string | null;
+  customer_active?: boolean;
 }
 
 // =============================================================================
@@ -84,7 +88,44 @@ const enrollmentRefusal = (code: unknown): string | null =>
     ? t('errors.user.enrollmentNotApproved')
     : code === 'ENROLLMENT_PENDING'
       ? t('errors.user.enrollmentPending')
-      : null;
+      : code === 'ENROLLMENT_REJECTED'
+        ? t('errors.user.enrollmentRejected')
+        : null;
+
+/**
+ * Why a call failed, as the screens read it: 'NETWORK' or 'TIMEOUT' when no answer arrived,
+ * otherwise the server's `error_code` (PERMISSION_DENIED, NOT_FOUND, SELF_EDIT_FORBIDDEN ...).
+ * 'TIMEOUT_NOT_SAVED' is a statement the server cancelled (57014): it rolled back, nothing was saved.
+ * 'NO_ACCESS' is the caller losing the right to manage users: the server words that as
+ * "Staff access required", "Active account required" or "Administrator required".
+ */
+export type UserFailureCode = string;
+
+const NO_ACCESS_TEXT = /\b(staff access|active account|administrator) required\b/i;
+
+const failureCode = (source: unknown, code?: unknown, message?: unknown): UserFailureCode | undefined => {
+  // 57014: the server cancelled the statement and rolled it back, so nothing was saved.
+  if (isStatementTimeout(source)) return 'TIMEOUT_NOT_SAVED';
+  if (isTimeoutError(source)) return 'TIMEOUT';
+  if (isNetworkError(source)) return 'NETWORK';
+  const text = typeof message === 'string' ? message : typeof source === 'string' ? source : '';
+  if ((typeof code !== 'string' || code === 'INTERNAL_ERROR' || code === 'PERMISSION_DENIED') && NO_ACCESS_TEXT.test(text)) {
+    return 'NO_ACCESS';
+  }
+  return typeof code === 'string' && code !== '' ? code : undefined;
+};
+
+/** The failure of an assign or remove: the server raises `CODE: text`, so the code is the prefix. */
+const assignmentFailure = (result: RPCResult<boolean>): { success: false; error?: string; code?: UserFailureCode } => {
+  const raw = result.error ?? '';
+  const prefix = /^([A-Z][A-Z0-9_]{2,}):/.exec(raw)?.[1];
+  const transport = failureCode({ errorCode: result.errorCode, message: raw });
+  return {
+    success: false,
+    error: result.error,
+    code: transport === 'NETWORK' || transport === 'TIMEOUT' || transport === 'TIMEOUT_NOT_SAVED' ? transport : (!prefix || prefix === 'PERMISSION_DENIED') && NO_ACCESS_TEXT.test(raw) ? 'NO_ACCESS' : prefix ?? (result.errorCode === '42501' ? 'PERMISSION_DENIED' : undefined),
+  };
+};
 
 class AdminUserService {
   // ===========================================================================
@@ -99,7 +140,7 @@ class AdminUserService {
     filters: UserFilters = {},
     limit: number = 20,
     offset: number = 0
-  ): Promise<{ success: boolean; data?: UserListResponse; error?: string }> {
+  ): Promise<{ success: boolean; data?: UserListResponse; error?: string; code?: UserFailureCode }> {
     try {
 
       const client = await getAuthenticatedClient();
@@ -116,6 +157,7 @@ class AdminUserService {
         return {
           success: false,
           error: serverText(error, t('errors.user.fetchListFailed')),
+          code: failureCode(error, (error as { code?: unknown }).code, (error as { message?: unknown }).message),
         };
       }
 
@@ -132,6 +174,7 @@ class AdminUserService {
               limit,
               offset,
               has_more: false,
+              total_with_deleted: 0,
             },
           },
         };
@@ -143,6 +186,7 @@ class AdminUserService {
         return {
           success: false,
           error: serverText(responseData.message || responseData.error, t('errors.user.fetchListFailed')),
+          code: failureCode(null, refusalCode(responseData), responseData.message),
         };
       }
 
@@ -159,6 +203,9 @@ class AdminUserService {
         updated_at: user.updated_at,
         assigned_customers_count: user.assigned_customers_count || 0,
         is_service_account: user.is_service_account ?? false,
+        enrollment_status: user.enrollment_status === 'pending' || user.enrollment_status === 'rejected' ? user.enrollment_status : null,
+        is_deleted: user.is_deleted ?? false,
+        deleted_at: user.deleted_at ?? null,
       }));
 
       return {
@@ -170,6 +217,7 @@ class AdminUserService {
             limit,
             offset,
             has_more: false,
+            total_with_deleted: users.length,
           },
         },
       };
@@ -178,6 +226,7 @@ class AdminUserService {
       return {
         success: false,
         error: serverText(error, t('errors.general.unknown')),
+        code: failureCode(error),
       };
     }
   }
@@ -191,7 +240,7 @@ class AdminUserService {
    */
   async getUserDetails(
     userId: string
-  ): Promise<{ success: boolean; data?: UserDetails; error?: string }> {
+  ): Promise<{ success: boolean; data?: UserDetails; error?: string; code?: UserFailureCode }> {
     try {
 
       const client = await getAuthenticatedClient();
@@ -204,16 +253,26 @@ class AdminUserService {
         return {
           success: false,
           error: serverText(error, t('errors.user.fetchDetailsFailed')),
+          code: failureCode(error, (error as { code?: unknown }).code, (error as { message?: unknown }).message),
         };
       }
 
       // Handle response
       const responseData = Array.isArray(data) ? data[0] : data;
 
+      if (responseData && responseData.success === false) {
+        return {
+          success: false,
+          error: serverText(responseData.message || responseData.error, t('errors.user.fetchDetailsFailed')),
+          code: failureCode(null, refusalCode(responseData), responseData.message),
+        };
+      }
+
       if (!responseData || !responseData.user) {
         return {
           success: false,
           error: t('errors.user.notFound'),
+          code: 'NOT_FOUND',
         };
       }
 
@@ -227,6 +286,7 @@ class AdminUserService {
         customer_city: c.customer_city || null,
         assigned_at: c.assigned_at,
         assigned_by_name: c.assigned_by_name || null,
+        customer_active: c.customer_active ?? true,
       }));
 
       return {
@@ -243,6 +303,9 @@ class AdminUserService {
           updated_at: user.updated_at,
           assigned_customers_count: assignedCustomers.length,
           is_service_account: user.is_service_account ?? false,
+          enrollment_status: user.enrollment_status === 'pending' || user.enrollment_status === 'rejected' ? user.enrollment_status : null,
+          is_deleted: user.is_deleted ?? false,
+          deleted_at: user.deleted_at ?? null,
           assigned_customers: assignedCustomers,
         },
       };
@@ -251,6 +314,7 @@ class AdminUserService {
       return {
         success: false,
         error: serverText(error, t('errors.general.unknown')),
+        code: failureCode(error),
       };
     }
   }
@@ -266,7 +330,7 @@ class AdminUserService {
   async updateUserRole(
     userId: string,
     newRole: UserRole
-  ): Promise<{ success: boolean; data?: UpdateUserRoleResponse; error?: string }> {
+  ): Promise<{ success: boolean; data?: UpdateUserRoleResponse; error?: string; code?: UserFailureCode }> {
     try {
 
       const client = await getAuthenticatedClient();
@@ -280,6 +344,7 @@ class AdminUserService {
         return {
           success: false,
           error: serverText(error, t('errors.user.updateUserRoleFailed'), { write: true }),
+          code: failureCode(error, (error as { code?: unknown }).code, (error as { message?: unknown }).message),
         };
       }
 
@@ -290,11 +355,12 @@ class AdminUserService {
         return {
           success: false,
           // The server names this refusal by a code, not a sentence (migration 44).
-          error: responseData?.error === LAST_ADMIN
+          error: refusalCode(responseData) === LAST_ADMIN
             ? t('errors.user.lastAdminRole')
             : refusalCode(responseData) === SERVICE_ACCOUNT_READ_ONLY
               ? t('users.edit.serviceAccountReadOnly')
-              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateRoleFailed'), { write: true }),
+              : enrollmentRefusal(refusalCode(responseData)) ?? serverText(responseData?.message || responseData?.error, t('errors.user.updateRoleFailed'), { write: true }),
+          code: failureCode(null, refusalCode(responseData), responseData?.message),
         };
       }
 
@@ -305,6 +371,7 @@ class AdminUserService {
           user_id: responseData.user_id,
           old_role: responseData.old_role as UserRole,
           new_role: responseData.new_role as UserRole,
+          removed_customer_count: Number(responseData.removed_customer_count) || 0,
         },
       };
     } catch (error) {
@@ -312,6 +379,7 @@ class AdminUserService {
       return {
         success: false,
         error: serverText(error, t('errors.general.unknown'), { write: true }),
+        code: failureCode(error),
       };
     }
   }
@@ -328,7 +396,7 @@ class AdminUserService {
   async updateUserStatus(
     userId: string,
     active: boolean
-  ): Promise<{ success: boolean; data?: UpdateUserStatusResponse; error?: string }> {
+  ): Promise<{ success: boolean; data?: UpdateUserStatusResponse; error?: string; code?: UserFailureCode }> {
     try {
 
       const client = await getAuthenticatedClient();
@@ -342,6 +410,7 @@ class AdminUserService {
         return {
           success: false,
           error: serverText(error, t('errors.user.updateUserStatusFailed'), { write: true }),
+          code: failureCode(error, (error as { code?: unknown }).code, (error as { message?: unknown }).message),
         };
       }
 
@@ -351,11 +420,12 @@ class AdminUserService {
       if (!responseData || !responseData.success) {
         return {
           success: false,
-          error: responseData?.error === LAST_ADMIN
+          error: refusalCode(responseData) === LAST_ADMIN
             ? t('errors.user.lastAdminDeactivate')
             : refusalCode(responseData) === SERVICE_ACCOUNT_READ_ONLY
               ? t('users.edit.serviceAccountReadOnly')
-              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateStatusFailed'), { write: true }),
+              : enrollmentRefusal(refusalCode(responseData)) ?? serverText(responseData?.message || responseData?.error, t('errors.user.updateStatusFailed'), { write: true }),
+          code: failureCode(null, refusalCode(responseData), responseData?.message),
         };
       }
 
@@ -372,6 +442,53 @@ class AdminUserService {
       return {
         success: false,
         error: serverText(error, t('errors.general.unknown'), { write: true }),
+        code: failureCode(error),
+      };
+    }
+  }
+
+  // ===========================================================================
+  // REVIEW A REJECTED REQUEST AGAIN
+  // ===========================================================================
+
+  /**
+   * Put a rejected access request back in Access requests as a Customer request (admin only).
+   * Refusals: PERMISSION_DENIED, INVALID_INPUT, NOT_FOUND, ACCOUNT_DELETED,
+   * SERVICE_ACCOUNT_READ_ONLY, NOT_REJECTED (someone already reviewed it).
+   */
+  async reviewEnrollmentAgain(
+    userId: string
+  ): Promise<{ success: boolean; error?: string; code?: UserFailureCode }> {
+    try {
+      const client = await getAuthenticatedClient();
+      const { data, error } = await client.rpc('review_enrollment_again', { p_user_id: userId });
+
+      if (error) {
+        log.error('reviewEnrollmentAgain error', loggableError(error));
+        const rpcCode = (error as { code?: unknown }).code;
+        return {
+          success: false,
+          error: serverText(error, t('errors.user.updateStatusFailed'), { write: true }),
+          // 42501: the server raises it for a caller who is not an administrator.
+          code: failureCode(error, rpcCode === '42501' ? 'PERMISSION_DENIED' : rpcCode, (error as { message?: unknown }).message),
+        };
+      }
+
+      const responseData = Array.isArray(data) ? data[0] : data;
+      if (!responseData || !responseData.success) {
+        return {
+          success: false,
+          error: serverText(responseData?.message || responseData?.error, t('errors.user.updateStatusFailed'), { write: true }),
+          code: failureCode(null, refusalCode(responseData), responseData?.message),
+        };
+      }
+      return { success: true };
+    } catch (error) {
+      log.error('Exception in reviewEnrollmentAgain', loggableError(error));
+      return {
+        success: false,
+        error: serverText(error, t('errors.general.unknown'), { write: true }),
+        code: failureCode(error),
       };
     }
   }
@@ -389,7 +506,7 @@ class AdminUserService {
     userMobile: string,
     customerId: string,
     comment?: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; code?: UserFailureCode }> {
 
     const result = await executeRPC<boolean>(
       getAuthenticatedClient,
@@ -408,10 +525,7 @@ class AdminUserService {
       }
     );
 
-    return {
-      success: result.success && !!result.data,
-      error: result.error,
-    };
+    return result.success && !!result.data ? { success: true } : assignmentFailure(result);
   }
 
   /**
@@ -422,7 +536,7 @@ class AdminUserService {
   async removeCustomerAssignment(
     userMobile: string,
     customerId: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; code?: UserFailureCode }> {
 
     const result = await executeRPC<boolean>(
       getAuthenticatedClient,
@@ -440,10 +554,7 @@ class AdminUserService {
       }
     );
 
-    return {
-      success: result.success && !!result.data,
-      error: result.error,
-    };
+    return result.success && !!result.data ? { success: true } : assignmentFailure(result);
   }
 }
 

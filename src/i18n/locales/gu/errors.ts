@@ -449,6 +449,8 @@ export const errors: Translation<typeof source> = {
     lastAdminRole: 'આ છેલ્લા સક્રિય એડમિન છે, તેમનો હોદ્દો બદલી શકાતો નથી. પહેલાં બીજા કોઈ યુઝરને એડમિન બનાવો.',
     enrollmentNotApproved: 'આ યુઝરને મંજૂરી નથી. ફક્ત એડમિન જ આ યુઝરમાં ફેરફાર કરી શકે છે અથવા ફરી મંજૂરી આપી શકે છે.',
     enrollmentPending: 'મંજૂરીની આ વિનંતી હજુ તપાસાઈ નથી. એડમિન તેને મંજૂર કરે પછી જ હોદ્દો બદલી શકાશે.',
+    // Draft for the owner's wording review (Users review 2026-10-20).
+    enrollmentRejected: 'મંજૂરીની આ અરજી નામંજૂર થઈ છે. હોદ્દો બદલતા પહેલાં એડમિને તેને ફરી તપાસવી પડશે.',
     deleteAccountUnexpected: 'એકાઉન્ટ ડિલીટ કરતી વખતે અણધારી ભૂલ આવી',
     retrieved: 'યુઝરની વિગતો લોડ થઈ',
     updated: 'યુઝરની વિગતો સાચવી',

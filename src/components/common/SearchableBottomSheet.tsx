@@ -119,6 +119,12 @@ export interface SearchableBottomSheetProps<T> {
    * `searchFn` that returns [] on failure shows the empty result.
    */
   searchErrorText?: string;
+  /** Optional: stay open after an item is picked, so several can be picked one after another (default: closes). */
+  keepOpenOnSelect?: boolean;
+  /** Optional: the most results listed. Ask `searchFn` for one more: the sheet lists `resultLimit` and, with `limitText`, says so under them only when that extra one came back. */
+  resultLimit?: number;
+  /** Optional: the line shown under the results when there are more than `resultLimit`. */
+  limitText?: string;
 }
 
 // ============================================================================
@@ -200,6 +206,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
   emptySubText: emptySubTextProp,
   emptyAction,
   searchErrorText,
+  keepOpenOnSelect = false,
+  resultLimit,
+  limitText,
 }: SearchableBottomSheetProps<T>): ReactElement {
   const placeholder = placeholderProp ?? tr('common.search');
   const emptyInitialText = emptyInitialTextProp ?? tr('components.searchSheet.emptyInitial');
@@ -303,9 +312,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
         saveToRecent(item);
       }
       onSelect(item);
-      sheet.dismiss();
+      if (!keepOpenOnSelect) sheet.dismiss();
     },
-    [onSelect, recentItemsKey, saveToRecent]
+    [onSelect, recentItemsKey, saveToRecent, keepOpenOnSelect]
   );
 
   // Render recent items section
@@ -561,13 +570,18 @@ export function SearchableBottomSheet<T extends { id: string }>({
 
         {/* Results List */}
         <BottomSheetFlatList
-          data={results}
+          data={resultLimit ? results.slice(0, resultLimit) : results}
           renderItem={wrappedRenderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={[styles.listContent, { paddingBottom: space.xl + insets.bottom }]}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={ListEmptyComponent}
+          ListFooterComponent={
+            resultLimit && limitText && results.length > resultLimit ? (
+              <Text style={[dynamicStyles.emptySubText, { paddingTop: space.md }]} accessibilityLiveRegion="polite">{limitText}</Text>
+            ) : null
+          }
           ItemSeparatorComponent={() => <View style={dynamicStyles.separator} />}
         />
       </View>

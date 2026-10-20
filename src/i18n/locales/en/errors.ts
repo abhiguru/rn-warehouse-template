@@ -444,6 +444,7 @@ export const errors = {
     lastAdminRole: 'This is the last active administrator and cannot be given another role. Make another user an administrator first.',
     enrollmentNotApproved: "This user's access is not approved. Only an administrator can change this user or give access back.",
     enrollmentPending: 'This access request has not been reviewed yet. An administrator has to approve it before the role can be changed.',
+    enrollmentRejected: 'This access request was rejected. An administrator has to review it again before the role can be changed.',
     deleteAccountUnexpected: 'An unexpected error occurred while deleting account',
     retrieved: 'User retrieved successfully',
     updated: 'User updated successfully',

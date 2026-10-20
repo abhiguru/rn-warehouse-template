@@ -150,7 +150,7 @@ export const auth = {
     },
     approveMessageSupervisor: "They can sign in and run the warehouse with every customer's orders, GRNs, dispatches and invoices, and manage users who are not administrators.",
     approveMessageWarehouse: "They can sign in and work with every customer's orders, GRNs, dispatches and invoices.",
-    rejectMessage: "{{name}} can't sign in to this facility. To let them in later, an administrator has to activate them in Users.",
+    rejectMessage: "{{name}} can't sign in to this facility. To let them in later, an administrator opens them in Users and taps Review again.",
     rejectAction: 'Reject request',
     couldNotSaveTitle: "Couldn't save the decision",
     customerAdded: '{{name}} added.',

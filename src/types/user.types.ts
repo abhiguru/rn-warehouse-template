@@ -88,6 +88,11 @@ export interface UserListItem {
    * Users lists it apart from people, and its role and status cannot be changed in the app.
    */
   is_service_account?: boolean;
+  /** Access request: 'pending' (not reviewed), 'rejected', or null (approved or never asked). */
+  enrollment_status?: 'pending' | 'rejected' | null;
+  /** The person deleted their own account (backend migration 113). Their mobile is blank. */
+  is_deleted?: boolean;
+  deleted_at?: string | null;
 }
 
 export interface UserDetailsCustomer {
@@ -97,6 +102,8 @@ export interface UserDetailsCustomer {
   customer_city: string | null;
   assigned_at: string;
   assigned_by_name: string | null;
+  /** False when the business is deactivated. Not known counts as active. */
+  customer_active?: boolean;
 }
 
 export interface UserDetails extends UserListItem {
@@ -114,6 +121,8 @@ export interface UserListPagination {
   limit: number;
   offset: number;
   has_more: boolean;
+  /** Rows including deleted accounts, which the list shows after the live ones. `total_count` counts live accounts only. */
+  total_with_deleted?: number;
 }
 
 export interface UserListResponse {
@@ -131,6 +140,8 @@ export interface UpdateUserRoleResponse {
   user_id: string;
   old_role: UserRole;
   new_role: UserRole;
+  /** Customer assignments removed because the new role is not Customer. */
+  removed_customer_count: number;
 }
 
 export interface UpdateUserStatusResponse {
