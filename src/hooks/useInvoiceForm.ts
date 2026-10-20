@@ -12,7 +12,7 @@
  * attempt (the lock against a second save).
  */
 
-import { useCallback, useContext, useMemo, useRef } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
@@ -43,6 +43,7 @@ import {
   restoreSavedGrn,
 } from '@/store/slices/invoiceFormSlice';
 import type {
+  CreateInvoicePayload,
   InvoiceHeaderData,
   InvoiceItemData,
   EditedItemValues,
@@ -60,9 +61,12 @@ import {
   loadInvoiceFormData as loadInvoiceFormDataService,
   createInvoice,
   updateInvoice,
+  invoiceFromStoredAnswer,
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 import { transformFormDataToPayload } from '@/features/invoice/utils/invoicePayload';
+import { newInvoiceRequestKey } from '@/features/invoice/utils/requestKey';
+import { sendUntilAnswered } from '@/features/invoice/utils/lostAnswerSubmit';
 import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
 
 import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
@@ -99,6 +103,8 @@ export interface SubmitFailure {
   numberTaken?: boolean;
   /** The GRN's dispatch lines changed since the form read them: the lines can be loaded again. */
   reloadLines?: boolean;
+  /** The person left the form while the server was being asked about a lost answer: nothing is told. */
+  left?: boolean;
 }
 
 /** What a screen may add to the way it tells a refused save (the button or the step it offers with the message). */
@@ -180,6 +186,14 @@ export interface UseInvoiceFormReturn {
   // Submission
   /** `onFailure` receives the message of a refused save instead of the alert (a screen that draws it once its dialog is closed). */
   submitForm: (onFailure?: (title: string, message: string, info?: SubmitFailureInfo) => void) => Promise<SubmitResult>;
+  /**
+   * The save's answer was lost (owner rule D22): the server is being asked whether it was saved, and the screen is
+   * locked until that is known (no edits, no Save or Update, no way to another step; only the close button, with the
+   * warning that the invoice may have been saved).
+   */
+  lostAnswer: boolean;
+  /** The person chose to leave while the answer is lost: stops asking, sends nothing more. */
+  leaveAfterLostAnswer: () => void;
 
   // Reset
   resetFormState: () => void;
@@ -291,6 +305,15 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   );
   const isGettingNextNumber = numberStatus === 'loading';
   const nextNumberFailed = numberStatus === 'failed';
+
+  // An answer is lost (D22): held here, in the hook of the screen that saves. The controller ends the asking when the
+  // person leaves the form (or the screen goes), so nothing is sent from a form that is gone.
+  const [lostAnswer, setLostAnswer] = useState(false);
+  const saveAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => saveAbort.current?.abort(), []);
+  const leaveAfterLostAnswer = useCallback(() => {
+    saveAbort.current?.abort();
+  }, []);
 
   // A save is on its way (set before the first await, so a second tap finds it).
   const saveLock = useRef(false);
@@ -675,19 +698,28 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         }
       }
 
-      let result;
-      if (isCreateMode) {
-        // The service converts inv_fin_year from "2026-27" to the year it starts in.
-        result = await createInvoice({
-          header: {
-            ...header,
-            inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10),
-          },
-          items,
-        });
-      } else {
-        result = await updateInvoice(invoiceId!, transformFormDataToPayload(header, items));
-      }
+      // One request code for this save, made now and kept until its outcome is known (D22). Every send of this save,
+      // the first and any send after a lost answer, is the identical request: the same payload and the same code.
+      const requestKey = newInvoiceRequestKey(isCreateMode ? 'create' : 'update');
+      const payload: CreateInvoicePayload = isCreateMode
+        ? {
+            // The service converts inv_fin_year from "2026-27" to the year it starts in.
+            header: { ...header, inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10) },
+            items,
+          }
+        : transformFormDataToPayload(header, items);
+      const controller = new AbortController();
+      saveAbort.current = controller;
+      const outcome = await sendUntilAnswered({
+        send: () => (isCreateMode ? createInvoice(payload, requestKey) : updateInvoice(invoiceId!, payload, requestKey)),
+        requestKey,
+        fromStored: (stored) => invoiceFromStoredAnswer(isCreateMode ? null : invoiceId!, payload, stored),
+        signal: controller.signal,
+        onLocked: setLostAnswer,
+      });
+      // The person left the form while the server was asked: there is nobody to tell.
+      if (outcome === 'left') return { success: false, left: true };
+      const result = outcome;
 
       if (result.success) {
         return {
@@ -703,7 +735,9 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         report(t('invoice.form.numberTakenTitle'), message, { numberTaken: true });
         return { success: false, error: message, numberTaken: true };
       }
-      report(t(failedTitleKey), serverText(result.message, t('common.checkConnection'), { write: true, form: true }));
+      // A refusal, or a failure before the request was sent. A lost answer is asked about above (D22), so the
+      // old "it may have been saved, check the list" wording is not used for Save invoice and Update invoice.
+      report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')));
       return { success: false, error: result.message };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -711,6 +745,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       report(t(failedTitleKey), t('common.checkConnection'));
       return { success: false, error: errorMessage };
     } finally {
+      saveAbort.current = null;
       dispatch(setIsSaving(false));
       saveLock.current = false;
     }
@@ -768,6 +803,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     navigateToStep,
 
     submitForm,
+    lostAnswer,
+    leaveAfterLostAnswer,
 
     resetFormState,
   };

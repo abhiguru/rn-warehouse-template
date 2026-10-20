@@ -39,6 +39,8 @@ export const invoice = {
     discardNewTitle: 'Discard this invoice?',
     discardEditMessage: 'Your changes to this invoice will be lost.',
     discardNewMessage: 'The details you entered for this invoice will be lost.',
+    // The close button's question while the server is asked about a save or delete whose answer was lost (D22).
+    lostLeaveTitle: 'Leave without an answer?',
   },
   // Opening an invoice to edit it
   edit: {

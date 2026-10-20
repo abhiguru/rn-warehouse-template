@@ -244,4 +244,9 @@ export interface CreateInvoiceResponse {
   message?: string;
   /** The save was refused because the invoice number is taken (the number that was refused). */
   numberTaken?: { number: number };
+  /**
+   * The request may have reached the server, but no answer came back (owner rule D22). `sentAt` is when it was sent
+   * (ms since 1970): the caller waits for the connection and for the server, then asks what became of the request.
+   */
+  lostAnswer?: { sentAt: number };
 }

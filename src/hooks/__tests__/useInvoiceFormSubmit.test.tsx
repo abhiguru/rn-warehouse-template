@@ -140,7 +140,11 @@ describe('saving an existing invoice', () => {
     const result = await submit(form);
 
     expect(checkGrnStillInvoiceable).not.toHaveBeenCalled();
-    expect(updateInvoice).toHaveBeenCalledWith(INVOICE, expect.objectContaining({ items: [expect.objectContaining({ disp_trl_id: 'd1' })] }));
+    expect(updateInvoice).toHaveBeenCalledWith(
+      INVOICE,
+      expect.objectContaining({ items: [expect.objectContaining({ disp_trl_id: 'd1' })] }),
+      expect.stringMatching(/^warehouse-invoice-update-/)
+    );
     expect(result.success).toBe(true);
     await unmount();
   });

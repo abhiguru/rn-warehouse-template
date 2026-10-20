@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform, BackHandler } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
@@ -18,8 +18,9 @@ import {
   InvoiceItemDetailed,
   InvoiceItemsSummary,
   deleteInvoice,
-  confirmInvoiceDeleted,
 } from '@/services/invoice-service';
+import { resolveLostInvoiceDelete } from '@/features/invoice/services/invoiceDeleteCheck';
+import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
 import { generateInvoicePDF } from '@/services/pdf-service';
 import { printInvoiceRange } from '@/services/print-service';
@@ -116,6 +117,34 @@ function InvoiceDetailScreen() {
   // A delete is on its way, from the first Delete press to its result. A ref, set before the next render, so a double
   // tap on Delete cannot queue a second question, and Edit cannot open over the delete (I7).
   const deleteLock = useRef(false);
+  // The delete's answer was lost (owner rule D22): the page is locked while the server is asked whether the invoice
+  // is gone. The controller ends the asking when the person leaves, so a delete is never sent from a page that is gone.
+  const [lostDelete, setLostDelete] = useState(false);
+  const deleteAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => deleteAbort.current?.abort(), []);
+  // The one way off the page while the answer is lost: the header's Back and the Android Back key ask first, with the
+  // warning that the invoice may have been deleted. Leaving stops the asking, and no delete is sent after that.
+  const askLeaveLostDelete = useCallback(() => {
+    showAlert(tr('invoice.steps.lostLeaveTitle'), tr('errors.lostAnswer.leaveWarning'), [
+      { text: tr('common.cancel'), style: 'cancel' },
+      {
+        text: tr('common.goBack'),
+        style: 'destructive',
+        onPress: () => {
+          deleteAbort.current?.abort();
+          router.back();
+        },
+      },
+    ]);
+  }, []);
+  useEffect(() => {
+    if (!lostDelete || Platform.OS !== 'android') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      askLeaveLostDelete();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [lostDelete, askLeaveLostDelete]);
   // The server says the invoice is not there any more: it was deleted (J5).
   const [gone, setGone] = useState(false);
   // The invoice was on this page before. A first load that finds nothing is "not found", not "deleted" (J5).
@@ -257,26 +286,39 @@ function InvoiceDetailScreen() {
       if (started) return;
       started = true;
       setIsDeleting(true);
+      const controller = new AbortController();
+      deleteAbort.current = controller;
       try {
-        const result = await deleteInvoice(invoiceId);
+        let result = await deleteInvoice(invoiceId);
+
+        // No answer came, and the request may have reached the server (D22): the page is locked, the app waits for the
+        // connection and for the server, and reads the invoice. Gone: it was deleted, as the person wanted. Still
+        // there: the delete is sent once more, and its answer is handled as any answer (a lost one goes round again).
+        while (result.lostAnswer) {
+          setLostDelete(true);
+          const state = await resolveLostInvoiceDelete(invoiceId, result.sentAt ?? Date.now(), controller.signal);
+          if (state === 'left') return;
+          if (state === 'gone') {
+            reportDeleted();
+            return;
+          }
+          result = await deleteInvoice(invoiceId);
+          if (controller.signal.aborted) return;
+        }
 
         // Done, or the server says the invoice is not there: someone else deleted it, and the person is told it is gone.
         if (result.success || result.notFound) {
           reportDeleted();
           return;
         }
-        // No answer came (a timeout or a dropped connection): the delete may have gone through. Ask the server, so the
-        // person is told "deleted" and not "failed" for an invoice that is gone (I6).
-        if (result.noAnswer && (await confirmInvoiceDeleted(invoiceId))) {
-          reportDeleted();
-          return;
-        }
-        // The worded message: a refusal in the app's words, or "may have been deleted. Go back to the list and check".
+        // The worded message: a refusal in the app's words, or the connection failing before the request was sent.
         showAlert(tr('invoice.details.deleteFailedTitle'), result.message || getUserFriendlyError('invoice', 'delete'));
       } catch (error) {
         console.error('[InvoiceDetailScreen] Delete error:', error);
         showAlert(tr('invoice.details.deleteFailedTitle'), getUserFriendlyError('invoice', 'delete'));
       } finally {
+        deleteAbort.current = null;
+        setLostDelete(false);
         setIsDeleting(false);
         deleteLock.current = false;
       }
@@ -454,9 +496,11 @@ function InvoiceDetailScreen() {
           headerStyle: styles.navBar,
           headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
+          // No swipe back while the answer of a delete is lost (D22): Back asks first.
+          gestureEnabled: !lostDelete,
           // Custom back button to ensure it always works
           headerLeft: () => (
-            <HeaderBackButton />
+            <HeaderBackButton onPress={lostDelete ? askLeaveLostDelete : undefined} />
           ),
           headerTitle: () => (
             <View
@@ -477,7 +521,12 @@ function InvoiceDetailScreen() {
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
+      {/* The answer of a delete is lost (D22): what is being done, and nothing on the page can be pressed meanwhile. */}
+      {lostDelete && <LostAnswerNotice deleting />}
+      <View
+        style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
+        pointerEvents={lostDelete ? 'none' : 'auto'}
+      >
         {/* Hero header */}
         <InvoiceHeroHeader
           invoice_number={invoice.invoice_number || 0}

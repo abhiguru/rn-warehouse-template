@@ -23,6 +23,8 @@ export interface InvoiceStepIndicatorProps {
   currentStep: number;
   completedSteps: number[];
   onCancel: () => void;
+  /** The question the close button asks; "Discard this invoice?" (or the edit's) by default. */
+  cancelTitle?: string;
   cancelMessage?: string;
   onStepPress?: (stepNumber: number) => void;
   /** First step of a new invoice: what the Android Back key does (see GenericStepIndicatorHeader). */
@@ -36,6 +38,7 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
   currentStep,
   completedSteps,
   onCancel,
+  cancelTitle,
   cancelMessage,
   onStepPress,
   backOnFirstStep,
@@ -55,7 +58,7 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
       mode={isEditMode ? 'edit' : 'create'}
       entityName={isEditMode ? t('invoice.steps.editInvoice') : t('common.invoice')}
       entityId={displayInvoiceNo}
-      cancelTitle={isEditMode ? t('invoice.steps.discardEditTitle') : t('invoice.steps.discardNewTitle')}
+      cancelTitle={cancelTitle ?? (isEditMode ? t('invoice.steps.discardEditTitle') : t('invoice.steps.discardNewTitle'))}
       cancelMessage={
         cancelMessage ??
         (isEditMode

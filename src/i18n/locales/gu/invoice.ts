@@ -42,6 +42,8 @@ export const invoice: Translation<typeof source> = {
     discardNewTitle: 'આ ઇન્વૉઇસ છોડી દેવું છે?',
     discardEditMessage: 'આ ઇન્વૉઇસમાં કરેલા ફેરફાર જતા રહેશે.',
     discardNewMessage: 'આ ઇન્વૉઇસ માટે લખેલી વિગતો જતી રહેશે.',
+    // The close button's question while the server is asked about a save or delete whose answer was lost (D22).
+    lostLeaveTitle: 'જવાબ મળ્યા વગર બહાર નીકળવું છે?',
   },
   // Opening an invoice to edit it
   edit: {

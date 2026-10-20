@@ -6,6 +6,7 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { isNetworkError, isStatementTimeout, isTimeoutError, serverReason, serverText } from '@/utils/serverText';
+import { isLostAnswer } from '@/utils/lostAnswer';
 import { createLogger } from '@/utils/logger';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
@@ -906,25 +907,33 @@ export interface DeleteInvoiceResponse {
   };
   gr_id?: string;
   error?: string;
-  /** The request got no answer (a timeout, a dropped connection): the invoice may be deleted already. */
-  noAnswer?: boolean;
+  /**
+   * The request may have reached the server, but no answer came back (owner rule D22): the invoice may be deleted
+   * already. `sentAt` is when it was sent (ms since 1970). No worded message goes with it: the caller waits for the
+   * connection, reads the invoice, and sends the delete again only if the invoice is still there.
+   */
+  lostAnswer?: boolean;
+  sentAt?: number;
   /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
   notFound?: boolean;
 }
 
 /**
- * After a delete that got no answer: asks the server whether the invoice is gone. When it is, the delete went through,
- * so an open report is told as after any delete (I6). False when the invoice is still there or the question failed.
+ * Asks the server whether an invoice is still there (a lost delete, owner rule D22). `gone`: the server says "Invoice
+ * not found", so the delete went through, and an open report is told as after any delete (I6). `there`: the invoice
+ * was read. `unknown`: the question itself got no usable answer (no connection, an error): ask again later.
  */
-export const confirmInvoiceDeleted = async (invoiceId: string): Promise<boolean> => {
+export const invoiceDeleteState = async (invoiceId: string): Promise<'gone' | 'there' | 'unknown'> => {
   const check = await getInvoiceDetails(invoiceId).catch(() => null);
-  if (!check?.notFound) return false;
+  if (check?.success && check.data) return 'there';
+  if (!check?.notFound) return 'unknown';
   void invalidateReportQueries();
-  return true;
+  return 'gone';
 };
 
 // M3 Fix: Using executeRPC wrapper
 export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceResponse> => {
+  const sentAt = Date.now();
   const result = await executeRPC<{
     message: string;
     invoice_info: DeleteInvoiceResponse['invoice_info'];
@@ -945,13 +954,17 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
       void invalidateReportQueries();
       return { success: false, message: result.message, error: result.error, notFound: true };
     }
-    // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
-    // Gujarati. A request that got no answer keeps executeRPC's words ("may have been deleted"): the delete may have
-    // gone through, and a server sentence would hide that (I6).
+    // The request may have reached the server and no answer came: the invoice may be gone already. Nothing is worded
+    // for the person; the caller waits, reads the invoice, and sends the delete again only if it is still there (D22).
     // (Not the server's own statement timeout, 57014: it rolled back, so nothing was deleted.)
-    const noAnswer = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
-    const refusal = noAnswer ? undefined : serverReason(result.error ?? '');
-    return { success: false, message: refusal ?? result.message, error: result.error, ...(noAnswer ? { noAnswer: true } : {}) };
+    if (isLostAnswer(result)) {
+      return { success: false, error: result.error, lostAnswer: true, sentAt };
+    }
+    // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
+    // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
+    const transportFailure = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
+    const refusal = transportFailure ? undefined : serverReason(result.error ?? '');
+    return { success: false, message: refusal ?? result.message, error: result.error };
   }
 
   // A report left open under the invoice must not keep listing it (SR-10, as for every other write).

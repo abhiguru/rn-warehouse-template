@@ -9,7 +9,7 @@
  * dialog, because a message under it would be hidden by it.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -31,6 +31,7 @@ import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSe
 import { InvoiceReviewItemsTable } from '@/features/invoice/components/review/InvoiceReviewItemsTable';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
+import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printInvoiceRange } from '@/services/print-service';
 import { generateInvoicePDF } from '@/services/pdf-service';
@@ -82,6 +83,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     loadGRNData,
     navigateToStep,
     submitForm,
+    lostAnswer,
+    leaveAfterLostAnswer,
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.REVIEW });
 
@@ -106,17 +109,14 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   const successClosed = useAfterClosed(showSuccessDialog);
   const printClosed = useAfterClosed(showPrintDialog);
   const errorClosed = useAfterClosed(errorDialog.visible);
+  // The answer of the save is lost (D22): the question that sent it closes, and the screen shows what is being done
+  // about it (the strip under the header). The result is told when the server has answered.
+  useEffect(() => {
+    if (lostAnswer) setShowConfirmSubmitDialog(false);
+  }, [lostAnswer]);
   // A refused save moves focus to the first field that needs fixing, once its message has been closed.
   const [focusRequest, setFocusRequest] = useState(0);
   const focusAfterError = useRef(false);
-
-  // The steps of this form, for the Android Back key: Back goes to the step before.
-  useBackHandler({
-    currentStep: STEP_NUMBERS.REVIEW,
-    totalSteps: 3,
-    stepBasePath: isEdit ? `/invoice-edit/${invoiceId}/step` : '/invoice-form/step',
-    exitRoute: '/invoices',
-  });
 
   const [discountError, setDiscountError] = useState<string | null>(null);
   // Set by a refused save: the reasons that are still needed are drawn red (they are only asked for before that).
@@ -162,9 +162,36 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     router.dismissTo('/(tabs)/invoices');
   };
 
+  // Leaving while the answer of the save is lost (D22): the server is not asked any more and nothing is sent. The
+  // person was warned that the invoice may have been saved.
   const handleCancel = () => {
+    if (lostAnswer) leaveAfterLostAnswer();
     leaveForm();
   };
+
+  // The Android Back key while the answer is lost: the form is not left by a step, and Back asks whether to leave at
+  // all (the close button asks the same, in the header), with the warning that the invoice may have been saved.
+  const askLeaveWithoutAnswer = () => {
+    showAlert(tr('invoice.steps.lostLeaveTitle'), tr('errors.lostAnswer.leaveWarning'), [
+      { text: tr('common.keepEditing'), style: 'cancel' },
+      { text: tr('common.discard'), style: 'destructive', onPress: handleCancel },
+    ]);
+  };
+
+  // The steps of this form, for the Android Back key: Back goes to the step before. While the server is asked about a
+  // lost answer (D22) Back asks whether to leave instead.
+  useBackHandler({
+    currentStep: STEP_NUMBERS.REVIEW,
+    totalSteps: 3,
+    stepBasePath: isEdit ? `/invoice-edit/${invoiceId}/step` : '/invoice-form/step',
+    exitRoute: '/invoices',
+    onBackPress: lostAnswer
+      ? () => {
+          askLeaveWithoutAnswer();
+          return true;
+        }
+      : undefined,
+  });
 
   const handleBack = async () => {
     await navigateToStep(STEP_NUMBERS.ITEMS);
@@ -256,6 +283,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       });
     });
     if (result === 'busy') return;
+    // The person left the form while the server was asked about a lost answer: nothing is told.
+    if (!result.success && result.left) return;
 
     if (result.success) {
       // Prepare saved invoice data for dialog
@@ -394,10 +423,15 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         currentStep={STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
-        onStepPress={handleStepPress}
+        // The close button is the one way out while the answer is lost, and it warns that the invoice may be saved.
+        cancelTitle={lostAnswer ? tr('invoice.steps.lostLeaveTitle') : undefined}
+        cancelMessage={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
+        // The step circles go nowhere while the answer is lost.
+        onStepPress={lostAnswer ? undefined : handleStepPress}
         invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
         isEditMode={isEdit}
       />
+      {lostAnswer && <LostAnswerNotice />}
 
       <KeyboardAwareScrollView
         style={styles.scrollView}
@@ -413,7 +447,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             id="details"
             testIDPrefix="invoice-review"
             title={tr('invoice.review.invoiceDetails')}
-            onEdit={() => handleStepPress(STEP_NUMBERS.HEADER)}
+            onEdit={lostAnswer ? undefined : () => handleStepPress(STEP_NUMBERS.HEADER)}
             editLabel={tr('invoice.review.editDetailsA11y')}
             closedLine={[
               header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
@@ -440,7 +474,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             testIDPrefix="invoice-review"
             title={tr('common.items')}
             count={groupCount}
-            onEdit={() => handleStepPress(STEP_NUMBERS.ITEMS)}
+            onEdit={lostAnswer ? undefined : () => handleStepPress(STEP_NUMBERS.ITEMS)}
             editLabel={tr('invoice.review.editItemsA11y')}
             closedLine={formatCount(totalQty, 'bag')}
             open={openSection === 'items'}
@@ -471,6 +505,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
               zeroChargeReasonRequired={zeroChargeReasonRequired}
               showErrors={showErrors}
               focusRequest={focusRequest}
+              locked={lostAnswer}
             />
           </ReviewSection>
         </ReviewCard>
@@ -481,9 +516,12 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         currentStep={STEP_NUMBERS.REVIEW}
         totalSteps={3}
         onPrevious={handleBack}
+        // No way to another step while the answer of the save is lost (D22), and no second Save or Update.
+        showPrevious={!lostAnswer}
         previousAccessibilityLabel={tr('invoice.review.backToItems')}
         onNext={handleSubmit}
         nextLabel={saveLabel}
+        nextDisabled={lostAnswer}
         isLoading={isSaving}
         loadingLabel={tr('common.saving')}
       />

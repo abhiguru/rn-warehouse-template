@@ -44,6 +44,11 @@ interface InvoiceCalculationSummaryProps {
    * (the discount field when its text was refused, then the reasons) and is announced (§11.3).
    */
   focusRequest?: number;
+  /**
+   * The step is locked while the server is asked about a save whose answer was lost (owner rule D22): nothing here can
+   * be changed. The figures stay readable.
+   */
+  locked?: boolean;
 }
 
 /** Visual size of the round up/down buttons; hitSlop pads them to the touch target. */
@@ -273,6 +278,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   zeroChargeReasonRequired = false,
   showErrors = false,
   focusRequest = 0,
+  locked = false,
 }: InvoiceCalculationSummaryProps) {
   const styles = useThemedStyles(makeStyles);
   const { stacked } = useTableLayout();
@@ -435,8 +441,10 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             <Pressable
               style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
               onPress={handleRoundDown}
+              disabled={locked}
               hitSlop={ROUND_BUTTON_SLOP}
               accessibilityRole="button"
+              accessibilityState={{ disabled: locked }}
               accessibilityLabel={tr('invoice.summary.roundDownA11y')}
               testID="invoice-summary-round-down"
             >
@@ -445,8 +453,10 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             <Pressable
               style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
               onPress={handleRoundUp}
+              disabled={locked}
               hitSlop={ROUND_BUTTON_SLOP}
               accessibilityRole="button"
+              accessibilityState={{ disabled: locked }}
               accessibilityLabel={tr('invoice.summary.roundUpA11y')}
               testID="invoice-summary-round-up"
             >
@@ -462,6 +472,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             accessibilityLabel={tr('invoice.summary.discountA11y')}
             value={localizeDigits(discountText)}
             onChangeText={handleDiscountChange}
+            editable={!locked}
             onFocus={handleDiscountFocus}
             onBlur={handleDiscountBlur}
             selectTextOnFocus
@@ -478,7 +489,9 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
         <Pressable
           style={({ pressed }) => [styles.tertiary, pressed && styles.tertiaryPressed]}
           onPress={() => setFinalAmountOpen(true)}
+          disabled={locked}
           accessibilityRole="button"
+          accessibilityState={{ disabled: locked }}
           accessibilityLabel={tr('invoice.summary.calculatorA11y')}
           testID="invoice-summary-final-amount"
         >
@@ -499,7 +512,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             accessibilityLabel={tr('invoice.label.discountReason')}
             value={reasonLocked ? header.saved_discount_reason || '' : header.discount_reason || ''}
             onChangeText={onDiscountReasonChange}
-            editable={!reasonLocked}
+            editable={!reasonLocked && !locked}
             placeholder={reasonLocked ? undefined : tr('invoice.summary.discountReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}
             maxLength={500}
@@ -524,6 +537,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             accessibilityLabel={tr('invoice.label.zeroChargeReason')}
             value={header.zero_charge_reason || ''}
             onChangeText={onZeroChargeReasonChange}
+            editable={!locked}
             placeholder={tr('invoice.summary.zeroChargeReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}
             maxLength={500}

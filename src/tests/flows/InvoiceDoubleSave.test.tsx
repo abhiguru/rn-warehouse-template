@@ -139,9 +139,11 @@ describe.each(MODES)('$mode', ({ button, rpcName, title, reach }) => {
     expect(app.successDialog()).toBeDefined();
   });
 
-  it('a request that fails frees the question: the person can answer it again, and the second try is the second request', async () => {
+  // A refusal is an answer: the question is free again. (A request that gets no answer at all is a lost answer: the form
+  // locks and asks the server before anything is sent again, owner rule D22.)
+  it('a request that is refused frees the question: the person can answer it again, and the second try is the second request', async () => {
     await reach();
-    server.fail(rpcName, 'Network request failed');
+    server.fail(rpcName, 'Invoice line tax must be between 0 and 100');
     await app.tap(button);
     await app.tapDialog(button);
 
