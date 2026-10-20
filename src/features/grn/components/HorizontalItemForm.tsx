@@ -21,7 +21,7 @@ import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
-import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
+import { normalizeDigits, t as tr, localizeDigits, identifierInput } from '@/i18n';
 
 // The five fields of the row, in the order they are drawn, each with its width.
 const FIELD_WIDTHS = {
@@ -143,6 +143,16 @@ interface HorizontalItemFormProps {
     onViewAll?: () => void;
     isQtyLocked?: boolean;
     onQtyLockedPress?: () => void;
+    /**
+     * The item, and with it the packing, can't be changed: the line was dispatched or is on an invoice, or (for a new
+     * line) the GRN is invoiced and takes no new line. The field is read-only; a tap on it calls `onItemLockedPress`,
+     * which says why (backend migration 121, owner decisions D2 and D9).
+     */
+    isItemLocked?: boolean;
+    onItemLockedPress?: () => void;
+    /** The weight can't be changed: the line is on an invoice. A tap on it calls `onWeightLockedPress`. */
+    isWeightLocked?: boolean;
+    onWeightLockedPress?: () => void;
     isValid: boolean;
     isEditing: boolean;
     editingItemNumber: number;
@@ -160,6 +170,10 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             onViewAll,
             isQtyLocked,
             onQtyLockedPress,
+            isItemLocked,
+            onItemLockedPress,
+            isWeightLocked,
+            onWeightLockedPress,
             isValid,
             isEditing,
             editingItemNumber,
@@ -379,7 +393,33 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <View style={styles.labelRow}>
                             <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.item')}<Text style={styles.required}> *</Text></Text>
+                            {isItemLocked && (
+                                <Icon
+                                    name="lock-outline"
+                                    size={iconSize.sm}
+                                    color={t.icon.secondary}
+                                    accessibilityLabel={tr('grn.item.itemLocked')}
+                                />
+                            )}
                         </View>
+                        {isItemLocked ? (
+                            // Read-only: the item is not searched and the packing it brings stays as it is. A tap says why.
+                            <Pressable
+                                testID="grn-item-locked"
+                                style={[styles.input, styles.inputReadOnly, styles.lockedItem]}
+                                onPress={() => onItemLockedPress?.()}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${tr('common.item')}, ${currentItem.item_name || tr('grn.item.searchPlaceholder')}`}
+                                accessibilityHint={tr('grn.item.lockedHint')}
+                            >
+                                <Text
+                                    style={currentItem.item_name ? styles.lockedItemText : styles.lockedItemPlaceholder}
+                                    numberOfLines={2}
+                                >
+                                    {currentItem.item_name || tr('grn.item.searchPlaceholder')}
+                                </Text>
+                            </Pressable>
+                        ) : (
                         <RemoteAutocompleteInput<{ id: string; name: string; packaging?: string }>
                             value={currentItem.item_name}
                             placeholder={tr('grn.item.searchPlaceholder')}
@@ -414,6 +454,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             keyExtractor={(item) => item.id}
                             zIndex={3000}
                         />
+                        )}
                         {renderError(currentItem.errors.item_table_id)}
                     </View>
 
@@ -486,20 +527,36 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.weight }]}>
                         <View style={styles.labelRow}>
                             <Text style={styles.label}>{tr('common.weightEach')}</Text>
+                            {isWeightLocked && (
+                                <Icon
+                                    name="lock-outline"
+                                    size={iconSize.sm}
+                                    color={t.icon.secondary}
+                                    accessibilityLabel={tr('grn.item.weightLocked')}
+                                />
+                            )}
                         </View>
                         <View
                             style={[
                                 styles.input,
                                 styles.suffixField,
-                                borderOf('weight', currentItem.errors.weight),
+                                isWeightLocked ? styles.inputReadOnly : borderOf('weight', currentItem.errors.weight),
                             ]}
                         >
                             <TextInput
                                 ref={weightInputRef}
                                 accessibilityLabel={tr('grn.item.weightInputLabel')}
+                                accessibilityHint={isWeightLocked ? tr('grn.item.lockedHint') : undefined}
                                 style={[styles.suffixInput, styles.numericInput]}
                                 value={localizeDigits(currentItem.weight ?? '')}
-                                onChangeText={(text) => onFieldChange('weight', normalizeDigits(text))}
+                                editable={!isWeightLocked}
+                                onChangeText={(text) => {
+                                    if (isWeightLocked) {
+                                        onWeightLockedPress?.();
+                                        return;
+                                    }
+                                    onFieldChange('weight', normalizeDigits(text));
+                                }}
                                 placeholder={formatNumber(0)}
                                 placeholderTextColor={t.text.placeholder}
                                 keyboardType="numeric"
@@ -507,13 +564,28 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 onSubmitEditing={() => focusNext('weight')}
                                 blurOnSubmit={false}
                                 onFocus={() => {
+                                    if (isWeightLocked) {
+                                        onWeightLockedPress?.();
+                                        Keyboard.dismiss();
+                                        return;
+                                    }
                                     setFocusedField('weight');
                                     scrollToField(scrollOffsetOf('weight'));
                                 }}
                                 onBlur={() => setFocusedField(null)}
-                                selectTextOnFocus
+                                selectTextOnFocus={!isWeightLocked}
                             />
                             <Text style={styles.suffix} importantForAccessibility="no">{tr('grn.item.weightUnit')}</Text>
+                            {isWeightLocked && (
+                                // A non-editable Android field never gets focus, so a tap on this overlay says why (as the quantity does).
+                                <Pressable
+                                    testID="grn-weight-locked-overlay"
+                                    style={StyleSheet.absoluteFill}
+                                    onPress={() => onWeightLockedPress?.()}
+                                    accessible={false}
+                                    importantForAccessibility="no"
+                                />
+                            )}
                         </View>
                         {renderError(currentItem.errors.weight)}
                     </View>
@@ -532,8 +604,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             ref={rackInputRef}
                             accessibilityLabel={tr('common.rack')}
                             style={[styles.input, borderOf('rack', currentItem.errors.rack)]}
-                            value={rackText}
-                            onChangeText={handleRackTextChange}
+                            // A rack is stored with 0-9: a digit typed as ૦-૯ is stored as 0-9 (owner decision D15); a stored rack is shown as it is.
+                            {...identifierInput(rackText, handleRackTextChange)}
                             placeholder={tr('grn.form.forExample', { example: '20B-20C' })}
                             placeholderTextColor={t.text.placeholder}
                             returnKeyType="next"
@@ -594,8 +666,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             ref={packageMarkInputRef}
                             accessibilityLabel={tr('grn.item.mark')}
                             style={[styles.input, borderOf('package_mark', currentItem.errors.package_mark)]}
-                            value={currentItem.package_mark}
-                            onChangeText={(text) => onFieldChange('package_mark', text)}
+                            // As the rack: typed ૦-૯ are stored as 0-9 (owner decision D15).
+                            {...identifierInput(currentItem.package_mark, (text) => onFieldChange('package_mark', text))}
                             placeholder={tr('grn.form.forExample', { example: 'MARK001' })}
                             placeholderTextColor={t.text.placeholder}
                             returnKeyType="done"
@@ -779,6 +851,19 @@ const makeStyles = (t: ThemeTokens) => ({
     suffixField: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
+    },
+    // The item of a locked line: a read-only field in the width of the picker it replaces.
+    lockedItem: {
+        justifyContent: 'center' as const,
+        paddingVertical: space.sm,
+    },
+    lockedItemText: {
+        ...typography.body,
+        color: t.text.primary,
+    },
+    lockedItemPlaceholder: {
+        ...typography.body,
+        color: t.text.placeholder,
     },
     suffixInput: {
         ...typography.body,

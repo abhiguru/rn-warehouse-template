@@ -114,6 +114,9 @@ export const grn = {
     quantityLocked: 'Quantity locked',
     quantityInputLabel: 'Receipt item quantity',
     quantityLockedHint: 'Locked because this item has dispatches',
+    itemLocked: 'Item locked',
+    weightLocked: 'Weight locked',
+    lockedHint: 'Locked. Tap to see why.',
     weightInputLabel: 'Weight each, in kilograms',
     weightUnit: 'kg',
     floor: 'Floor',
@@ -477,7 +480,7 @@ export const grn = {
   validation: {
     numberMax: 'GRN number must be at most 8 characters',
     numberNoSpaces: 'GRN number cannot contain spaces',
-    registrationMax: 'Registration must be at most 12 characters',
+    registrationMax: 'Registration must be at most 20 characters',
     dateRequired: 'Date is required',
     dateFuture: 'Cannot select a future date',
     senderRequired: 'Sender name is required',
@@ -509,13 +512,35 @@ export const grn = {
     itemInvalid: 'Invalid item selection',
     itemSelectRequired: 'Please select an item from the catalog',
     itemNameRequired: 'Item name is required',
-    itemNameMax: 'Item name must be at most 30 characters',
-    packagingMax: 'Packaging must be at most 20 characters',
+    itemNameMax: 'Item name must be at most 80 characters',
+    packagingMax: 'Packaging must be at most 40 characters',
     rackMax: 'Rack must be at most 30 characters',
     packageMarkMax: 'Package mark must be at most 60 characters',
     itemsMin: 'At least one item is required',
     itemsRequired: 'Items are required',
     failed: 'Validation failed',
+    // A GRN is not dated after its first dispatch (owner decision D3, wave B).
+    dateAfterDispatch: "GRN {{grn}} can't be dated after its first dispatch, on {{date}}.",
+  },
+
+  // What the server refuses when a GRN is edited, in the app's words (wave B, owner decisions D1 to D24). Written from
+  // the refusal's reason and fields, never from the server's English.
+  refusal: {
+    // Read-only fields of a saved GRN
+    numberLocked: "The number can't be changed. To correct it, delete this GRN and enter it again.",
+    dateInvoiced: 'This GRN is invoiced. Delete or edit the invoice first.',
+    // Lines that are locked or can't be removed
+    lockedTitle: "This can't be changed",
+    lineTitle: "Item {{position}} can't be saved",
+    removeTitle: "This line can't be removed",
+    lotDispatched: "{{item}} has been dispatched. Its item and packing can't be changed.",
+    lotInvoiced: "{{item}} is on invoice {{invoice}}. Item, packing and weight can't be changed. Delete or edit the invoice first.",
+    invoicedNoNewLot: "GRN {{grn}} is on invoice {{invoice}}. A line can't be added. Delete the invoice first.",
+    lineOnOrder: "{{item}} is on {{customer}}'s order. Remove it from the order first.",
+    lineDispatchedBefore: "{{item}} was dispatched before, so this line can't be removed.",
+    // Rates
+    ratesNeedManager: 'Ask a manager to make this change. It would remove a rate that was set for this GRN.',
+    ratesWouldDrop: 'This change removes the rate set for this GRN. Set a new rate in Rates.',
   },
 
   // GRN details screen

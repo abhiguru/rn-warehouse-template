@@ -62,6 +62,8 @@ import {
   selectGRNFormId,
   selectGRNTempId,
   selectGRNTakenNumberError,
+  selectGRNFirstDispatchDate,
+  selectGRNLoadedDate,
   setTakenNumberError,
   setGrNoTyped,
   GRNHeaderData,
@@ -74,6 +76,7 @@ import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 import { currentGrnFormSession, nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
 
 import { showAlert } from '@/utils/alert';
+import { toCalendarDay, formatDate } from '@/utils/formatters';
 import { t, formatIdentifier } from '@/i18n';
 import { documentNumberState } from '@/utils/documentNumberCheck';
 /** Plain-language list of validation messages for an alert (never raw field keys). */
@@ -174,6 +177,11 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   // is set. It lives in the form slice: a screen's own copy was lost when step 1 was left
   // and reopened, and the taken number then passed until save_grn refused it.
   const takenNumberError = useAppSelector(selectGRNTakenNumberError);
+
+  // Edit only (get_grn_edit_state, backend migration 121): the GRN may not be dated after its first dispatch. The
+  // server refuses only a date that was changed, so a date that was already later when the GRN was opened is left alone.
+  const firstDispatchDate = useAppSelector(selectGRNFirstDispatchDate);
+  const loadedDate = useAppSelector(selectGRNLoadedDate);
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
@@ -427,6 +435,20 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       result = { isValid: false, errors: { ...result.errors, gr_no: takenNumberError } };
     }
 
+    // A GRN is not dated after its first dispatch (owner decision D3): a changed date later than that day is refused.
+    if (step === 1 && !isCreateMode && firstDispatchDate && header.date && !result.errors.date) {
+      const day = toCalendarDay(header.date);
+      if (day > firstDispatchDate && (!loadedDate || day !== toCalendarDay(loadedDate))) {
+        result = {
+          isValid: false,
+          errors: {
+            ...result.errors,
+            date: t('grn.validation.dateAfterDispatch', { grn: formatIdentifier(header.gr_no), date: formatDate(firstDispatchDate) }),
+          },
+        };
+      }
+    }
+
     if (!result.isValid) {
       setLocalValidationErrors(result.errors);
       dispatch(setValidationErrors(result.errors));
@@ -436,7 +458,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     return result;
-  }, [header, items, dispatch, takenNumberError]);
+  }, [header, items, dispatch, takenNumberError, isCreateMode, firstDispatchDate, loadedDate]);
 
   const clearFieldError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {

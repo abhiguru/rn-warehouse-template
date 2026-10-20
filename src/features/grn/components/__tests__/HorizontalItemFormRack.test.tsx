@@ -8,6 +8,7 @@
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { normalizeDigits } from '@/i18n';
 import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
 
 jest.mock('@/store/hooks', () => ({
@@ -237,23 +238,26 @@ describe('GRN item form rack', () => {
   describe('typed key by key', () => {
     const TYPED = ['R5/F2/C21', 'R5/F2/C2', 'A/1/2', 'C3', '20B/F1', 'X/C4', 'F1/C4', 'BASE/C7/9', 'ચેમ્બર ૩', 'રેક ૫/F2/C2૧'];
 
-    it.each(TYPED)('%p is kept exactly as typed, at every key, and chooses no chip', (text) => {
+    // A digit typed as ૦-૯ is stored as 0-9 (owner decision D15): "ચેમ્બર ૩" is stored as "ચેમ્બર 3". Every other
+    // character is kept exactly as typed.
+    it.each(TYPED)('%p is kept as typed (digits as 0-9), at every key, and chooses no chip', (text) => {
       const { tree, onRack } = render(item(''));
       const keys = Array.from(text);
 
       keys.forEach((key, index) => {
         type(tree, `${rackInput(tree).props.value}${key}`);
-        const soFar = keys.slice(0, index + 1).join('');
+        const soFar = normalizeDigits(keys.slice(0, index + 1).join(''));
         expect(rackInput(tree).props.value).toBe(soFar);
         expect(onRack).toHaveBeenLastCalledWith(soFar.trim() === '' ? '' : soFar);
         expect(selectedChips(tree)).toEqual([]);
       });
-      expect(preview(tree)).toContain(text);
+      expect(preview(tree)).toContain(normalizeDigits(text));
     });
 
-    it.each(TYPED)('%p: the chips add their part after it and take it off again, and the text stays', (text) => {
+    it.each(TYPED)('%p: the chips add their part after it and take it off again, and the text stays', (typed) => {
+      const text = normalizeDigits(typed);
       const { tree, onRack } = render(item(''));
-      typeKeys(tree, text);
+      typeKeys(tree, typed);
 
       tap(tree, 'Floor F1');
       expect(onRack).toHaveBeenLastCalledWith(`${text}/F1`);

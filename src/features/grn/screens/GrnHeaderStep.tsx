@@ -17,7 +17,12 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
-import { selectGRNFormItems, selectGRNFormChanged } from '@/store/slices/grnFormSlice';
+import {
+  selectGRNFormItems,
+  selectGRNFormChanged,
+  selectGRNInvoice,
+  selectGRNFirstDispatchDate,
+} from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
@@ -60,6 +65,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const items = useAppSelector(selectGRNFormItems);
   // An edited GRN: the form differs from the GRN as it was loaded (always false for a new GRN).
   const editChanged = useAppSelector(selectGRNFormChanged);
+  // Edit only (get_grn_edit_state, backend migration 121). The date of a GRN that is on an invoice is locked (D23), and
+  // a GRN is not dated after its first dispatch (D3). Both are null on a server that does not have the function.
+  const editInvoice = useAppSelector(selectGRNInvoice);
+  const firstDispatchDate = useAppSelector(selectGRNFirstDispatchDate);
+  const dateLocked = !isCreateMode && editInvoice !== null;
 
   // Local UI state (not form data)
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -114,6 +124,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   };
 
   const openDatePicker = () => {
+    if (dateLocked) return;
     setShowDatePicker(true);
   };
 
@@ -275,16 +286,23 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                   style={[
                     styles.input,
                     styles.rowInput,
-                    focusedField === 'gr_no' && styles.inputFocused,
+                    !isCreateMode && styles.inputReadOnly,
+                    isCreateMode && focusedField === 'gr_no' && styles.inputFocused,
                     validationErrors.gr_no ? styles.inputError : null,
                   ]}
                 >
-                  <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
+                  <Icon name={isCreateMode ? 'package-down' : 'lock-outline'} size={iconSize.md} color={t.icon.secondary} />
                   <TextInput
                     style={styles.grNoTextInput}
                     accessibilityLabel={tr('grn.header.receiptNumberLabel')}
+                    accessibilityHint={isCreateMode ? undefined : tr('grn.refusal.numberLocked')}
                     value={header.gr_no}
-                    onChangeText={(text) => handleGrNoChange(normalizeDigits(text).toUpperCase())}
+                    // The number of a saved GRN is read-only (owner decision D6): a wrong one is corrected by deleting the GRN and entering it again.
+                    editable={isCreateMode}
+                    onChangeText={(text) => {
+                      if (!isCreateMode) return;
+                      handleGrNoChange(normalizeDigits(text).toUpperCase());
+                    }}
                     placeholder={tr('grn.header.numberPlaceholder')}
                     placeholderTextColor={t.text.placeholder}
                     autoCapitalize="characters"
@@ -295,6 +313,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 </View>
               )}
               {renderError(validationErrors.gr_no)}
+              {!isCreateMode ? <Text style={styles.lockHint}>{tr('grn.refusal.numberLocked')}</Text> : null}
             </View>
 
             <View style={[styles.formField, styles.dateField]}>
@@ -303,18 +322,22 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 style={({ pressed }) => [
                   styles.input,
                   styles.rowInput,
-                  pressed && styles.inputPressed,
+                  dateLocked && styles.inputReadOnly,
+                  pressed && !dateLocked && styles.inputPressed,
                   validationErrors.date ? styles.inputError : null,
                 ]}
                 onPress={openDatePicker}
+                disabled={dateLocked}
                 accessibilityRole="button"
+                accessibilityState={{ disabled: dateLocked }}
                 accessibilityLabel={tr('grn.header.dateLabel', { date: formatHeaderDate(header.date) })}
-                accessibilityHint={tr('grn.header.dateHint')}
+                accessibilityHint={dateLocked ? tr('grn.refusal.dateInvoiced') : tr('grn.header.dateHint')}
               >
-                <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Icon name={dateLocked ? 'lock-outline' : 'calendar-outline'} size={iconSize.md} color={t.icon.secondary} />
                 <Text style={styles.valueText}>{formatHeaderDate(header.date)}</Text>
               </Pressable>
               {renderError(validationErrors.date)}
+              {dateLocked ? <Text style={styles.lockHint}>{tr('grn.refusal.dateInvoiced')}</Text> : null}
             </View>
           </View>
 
@@ -354,7 +377,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               getSuggestion={getTopVehicleSuggestion}
               suggestionContext={header.customer_id}
               placeholder={tr('grn.form.forExample', { example: 'GJ01AB1234' })}
-              maxLength={12}
+              maxLength={20}
               autoCapitalize="characters"
               icon="car"
               isFocused={focusedField === 'registration'}
@@ -469,7 +492,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         date={header.date ? new Date(header.date) : new Date()}
         onConfirm={handleDateConfirm}
         onChange={handleDateConfirm}
-        validRange={{ endDate: new Date() }}
+        validRange={{ endDate: latestPickableDate(isCreateMode ? null : firstDispatchDate) }}
         label={tr('grn.header.selectDate')}
       />
 
@@ -497,6 +520,18 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
       />
     </View>
   );
+}
+
+/**
+ * The latest day the date picker offers: today, or for an edited GRN the day of its first dispatch when that is
+ * earlier (a GRN is not dated after its first dispatch, owner decision D3).
+ */
+function latestPickableDate(firstDispatchDate: string | null): Date {
+  const today = new Date();
+  const [year, month, day] = (firstDispatchDate ?? '').split('-').map(Number);
+  if (!year || !month || !day) return today;
+  const firstDispatch = new Date(year, month - 1, day, 23, 59, 59);
+  return firstDispatch < today ? firstDispatch : today;
 }
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */
@@ -539,6 +574,9 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: touchTarget,
   },
   inputPressed: { backgroundColor: t.surface.cardPressed },
+  // A field that can't be changed (the number of a saved GRN, the date of an invoiced one): the read-only look of the guide.
+  inputReadOnly: { backgroundColor: t.surface.fieldReadOnly, borderWidth: 0, paddingHorizontal: space.md + 1 },
+  lockHint: { ...typography.footnote, color: t.text.secondary, marginTop: space.xs },
   inputFocused: { borderColor: t.border.fieldFocus, borderWidth: 2 },
   inputError: { borderColor: t.status.negative.border, borderWidth: 2 },
   textArea: { minHeight: 88, maxHeight: 176, textAlignVertical: 'top' as const },

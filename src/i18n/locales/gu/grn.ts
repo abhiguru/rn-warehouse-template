@@ -112,6 +112,12 @@ export const grn: Translation<typeof source> = {
     quantityLocked: 'નંગ લૉક છે',
     quantityInputLabel: 'આઇટમના નંગ',
     quantityLockedHint: 'આ આઇટમની જાવક થઈ હોવાથી લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    itemLocked: 'આઇટમ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    weightLocked: 'વજન લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    lockedHint: 'લૉક છે. કારણ જોવા ટૅપ કરો.',
     weightInputLabel: 'દરેકનું વજન, કિલોમાં',
     weightUnit: 'કિલો',
     floor: 'માળ',
@@ -477,7 +483,7 @@ export const grn: Translation<typeof source> = {
   validation: {
     numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૮ અક્ષરનો હોઈ શકે',
     numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
-    registrationMax: 'વાહન નંબર વધુમાં વધુ ૧૨ અક્ષરનો હોઈ શકે',
+    registrationMax: 'વાહન નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',
     dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
     senderRequired: 'મોકલનારનું નામ જરૂરી છે',
@@ -509,13 +515,31 @@ export const grn: Translation<typeof source> = {
     itemInvalid: 'આઇટમની પસંદગી બરાબર નથી',
     itemSelectRequired: 'યાદીમાંથી આઇટમ પસંદ કરો',
     itemNameRequired: 'આઇટમનું નામ જરૂરી છે',
-    itemNameMax: 'આઇટમનું નામ વધુમાં વધુ ૩૦ અક્ષરનું હોઈ શકે',
-    packagingMax: 'પેકિંગ વધુમાં વધુ ૨૦ અક્ષરનું હોઈ શકે',
+    itemNameMax: 'આઇટમનું નામ વધુમાં વધુ ૮૦ અક્ષરનું હોઈ શકે',
+    packagingMax: 'પેકિંગ વધુમાં વધુ ૪૦ અક્ષરનું હોઈ શકે',
     rackMax: 'રેક વધુમાં વધુ ૩૦ અક્ષરની હોઈ શકે',
     packageMarkMax: 'માર્કો વધુમાં વધુ ૬૦ અક્ષરનો હોઈ શકે',
     itemsMin: 'ઓછામાં ઓછી એક આઇટમ જરૂરી છે',
     itemsRequired: 'આઇટમ જરૂરી છે',
     failed: 'વિગતો ચકાસી શકાઈ નથી',
+    // Draft for the owner's wording review (2026-10-20).
+    dateAfterDispatch: 'આવક પાવતી {{grn}} ની તારીખ તેની પહેલી જાવક, {{date}}, પછીની રાખી શકાતી નથી.',
+  },
+
+  // Draft for the owner's wording review (2026-10-20): every text of this group.
+  refusal: {
+    numberLocked: 'નંબર બદલી શકાતો નથી. સુધારવા માટે આ આવક પાવતી કાઢી નાખીને ફરી દાખલ કરો.',
+    dateInvoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ બનેલું છે. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    lockedTitle: 'આ બદલી શકાતું નથી',
+    lineTitle: 'આઇટમ {{position}} સાચવી શકાતી નથી',
+    removeTitle: 'આ જથ્થો કાઢી શકાતો નથી',
+    lotDispatched: '{{item}} ની જાવક થઈ ગઈ છે. તેની આઇટમ અને પેકિંગ બદલી શકાતા નથી.',
+    lotInvoiced: '{{item}} ઇન્વૉઇસ {{invoice}} માં છે. આઇટમ, પેકિંગ અને વજન બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    invoicedNoNewLot: 'આવક પાવતી {{grn}} ઇન્વૉઇસ {{invoice}} માં છે. નવો જથ્થો ઉમેરી શકાતો નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો.',
+    lineOnOrder: '{{item}} {{customer}} ના ઑર્ડરમાં છે. પહેલાં તેને ઑર્ડરમાંથી કાઢી નાખો.',
+    lineDispatchedBefore: '{{item}} ની પહેલાં જાવક થઈ હતી, તેથી આ જથ્થો કાઢી શકાતો નથી.',
+    ratesNeedManager: 'આ ફેરફાર એડમિન અથવા સુપરવાઇઝર પાસે કરાવો. તેનાથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે.',
+    ratesWouldDrop: 'આ ફેરફારથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે. દર ટૅબમાં નવો દર નક્કી કરો.',
   },
 
   details: {

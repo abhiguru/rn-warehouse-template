@@ -69,13 +69,9 @@ export default function GRNEditLayout() {
       if (request !== loadRequest.current) return;
 
       if (result.success && result.data) {
-        dispatch(loadGRNData({
-          header: result.data.header,
-          items: result.data.items,
-          grnId: id,
-          grnRates: result.data.grnRates,
-          grnInvoiced: result.data.grnInvoiced,
-        }));
+        // The header, lines and rates, and what get_grn_edit_state said (the version token, the invoice, the first
+        // dispatch day, the locks of the lines; none of them on an older server).
+        dispatch(loadGRNData({ ...result.data, grnId: id }));
         setPhase('ready');
       } else {
         // Nothing is put in the form: a GRN that was read only in part must not be opened for saving.

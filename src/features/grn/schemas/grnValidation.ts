@@ -16,9 +16,10 @@ export const step1Schema = yup.object().shape({
     .max(8, msg('grn.validation.numberMax'))
     .matches(/^\S*$/, msg('grn.validation.numberNoSpaces')),
 
+  // The column holds 20 characters (owner decision D13: the form matches the catalogue and the columns).
   registration: yup
     .string()
-    .max(12, msg('grn.validation.registrationMax')),
+    .max(20, msg('grn.validation.registrationMax')),
 
   // "Today" is worked out when the form is checked. A limit fixed when this
   // file is loaded would reject today's receipts once the app has been open
@@ -176,11 +177,11 @@ export const itemSchema = yup.object().shape({
   item_name: yup
     .string()
     .required(msg('grn.validation.itemNameRequired'))
-    .max(30, msg('grn.validation.itemNameMax')),
+    .max(80, msg('grn.validation.itemNameMax')),
 
   packaging: yup
     .string()
-    .max(20, msg('grn.validation.packagingMax')),
+    .max(40, msg('grn.validation.packagingMax')),
 
   qty: receiptQuantitySchema,
 

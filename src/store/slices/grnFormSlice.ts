@@ -38,6 +38,35 @@ export interface GRNHeaderData {
   gr_images: GRNImageData[];
 }
 
+/**
+ * What locks a saved line, as `get_grn_edit_state` says it when the GRN is opened for editing (backend migration 121).
+ * A line has none on a server that does not have that function (the app then falls back on its older rules).
+ */
+export interface GRNLineLocks {
+  /** Dispatch lines point at this lot: its item and packing are locked. */
+  dispatched: boolean;
+  /** The bags dispatched from the lot. */
+  dispatchedQty: number;
+  /** A dispatch line or a stock movement exists for the lot: the line can't be removed. */
+  hasHistory: boolean;
+  /** The lot is on a live invoice: item, packing and weight are locked. */
+  invoiced: boolean;
+  /** The number of that invoice, as the app writes invoice numbers. */
+  invoiceNo?: string;
+  /** The lot is on a customer's order: the line can't be removed. */
+  onOrder: boolean;
+  /** The customer whose order it is (the GRN's customer). */
+  customerName?: string;
+}
+
+/** The live invoice of the GRN being edited (`get_grn_edit_state`). */
+export interface GRNInvoiceRef {
+  id: string;
+  /** The invoice number, as the app writes invoice numbers. */
+  invNo: string;
+  finYear?: string;
+}
+
 // Item data structure
 export interface GRNItemData {
   grn_trl_id: string; // ID of the GRN item record in goodsreceived_trl table
@@ -50,6 +79,8 @@ export interface GRNItemData {
   rack: string;
   package_mark: string;
   trl_images: GRNImageData[]; // Multiple images per item (changed from single trl_image)
+  /** Edit only: what locks this saved line (see GRNLineLocks). Never sent to the server. */
+  locks?: GRNLineLocks;
 }
 
 /**
@@ -89,6 +120,17 @@ interface GRNFormState {
   // The edit form as it was loaded (a signature of what a save would change): Back on the first step asks before
   // it throws away edits only when the form differs from this. Null for a new GRN.
   loadedSignature: string | null;
+
+  // Edit only, from get_grn_edit_state (backend migration 121), read before the rows so that a change made in between
+  // makes the token older, never newer. All null on a server that does not have it (the app then sends no token).
+  // `loadedUpdatedAt` is the GRN's version token: Save sends it back as `p_expected_updated_at`.
+  loadedUpdatedAt: string | null;
+  // The GRN's live invoice: its date and a new line are locked while it exists.
+  invoice: GRNInvoiceRef | null;
+  // The day (YYYY-MM-DD) of the earliest dispatch from any lot: the GRN may not be dated after it.
+  firstDispatchDate: string | null;
+  // The GRN's date as it was loaded: a date that was already after the first dispatch is refused only when it is changed.
+  loadedDate: string | null;
 
   // Form data
   header: GRNHeaderData;
@@ -134,6 +176,10 @@ const createInitialState = (): GRNFormState => ({
   submissionNonce: null,
   grNoTyped: false,
   loadedSignature: null,
+  loadedUpdatedAt: null,
+  invoice: null,
+  firstDispatchDate: null,
+  loadedDate: null,
   header: {
     gr_no: '',
     registration: '',
@@ -464,11 +510,33 @@ const grnFormSlice = createSlice({
       state.grNoTyped = action.payload;
     },
 
+    /** A refusal said the first dispatch is on another day than the form knew: the picker and the check follow it. */
+    setFirstDispatchDate: (state, action: PayloadAction<string | null>) => {
+      state.firstDispatchDate = action.payload;
+    },
+
     // Bulk operations
-    loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string; grnRates?: GrnRate[]; grnInvoiced?: boolean }>) => {
+    loadGRNData: (
+      state,
+      action: PayloadAction<{
+        header: GRNHeaderData;
+        items: GRNItemData[];
+        grnId: string;
+        grnRates?: GrnRate[];
+        grnInvoiced?: boolean;
+        // From get_grn_edit_state; absent on an older server.
+        updatedAt?: string | null;
+        invoice?: GRNInvoiceRef | null;
+        firstDispatchDate?: string | null;
+      }>
+    ) => {
       state.header = action.payload.header;
       state.items = action.payload.items;
       state.grnId = action.payload.grnId;
+      state.loadedUpdatedAt = action.payload.updatedAt ?? null;
+      state.invoice = action.payload.invoice ?? null;
+      state.firstDispatchDate = action.payload.firstDispatchDate ?? null;
+      state.loadedDate = action.payload.header.date ?? null;
       state.grnRates = action.payload.grnRates ?? [];
       state.rateChanges = [];
       state.removedGrnRates = [];
@@ -553,6 +621,7 @@ export const {
   setTakenNumberError,
   setSubmissionNonce,
   setGrNoTyped,
+  setFirstDispatchDate,
   setGrnRates,
   setRateChanges,
   setRemovedGrnRates,
@@ -576,6 +645,10 @@ export const selectGRNRates = (state: { grnForm: GRNFormState }) => state.grnFor
 export const selectGRNRateChanges = (state: { grnForm: GRNFormState }) => state.grnForm.rateChanges ?? EMPTY_CHANGES;
 export const selectGRNRemovedRates = (state: { grnForm: GRNFormState }) => state.grnForm.removedGrnRates ?? EMPTY_RATES;
 export const selectGRNInvoiced = (state: { grnForm: GRNFormState }) => state.grnForm.grnInvoiced === true;
+export const selectGRNLoadedUpdatedAt = (state: { grnForm: GRNFormState }) => state.grnForm.loadedUpdatedAt ?? null;
+export const selectGRNInvoice = (state: { grnForm: GRNFormState }) => state.grnForm.invoice ?? null;
+export const selectGRNFirstDispatchDate = (state: { grnForm: GRNFormState }) => state.grnForm.firstDispatchDate ?? null;
+export const selectGRNLoadedDate = (state: { grnForm: GRNFormState }) => state.grnForm.loadedDate ?? null;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;

@@ -31,7 +31,10 @@ import {
   selectGRNRates,
   selectGRNRateChanges,
   selectGRNInvoiced,
+  selectGRNLoadedUpdatedAt,
   selectGRNRemovedRates,
+  loadGRNData as loadGRNFormData,
+  setFirstDispatchDate,
   setGrnRates,
   setRateChanges,
   setRemovedGrnRates,
@@ -41,7 +44,16 @@ import {
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
-import { createGRN, updateGRN, getNextGRNNumber, type GRNLostAnswer, type GRNPhotoSaveReport } from '@/features/grn/services/grnFormService';
+import {
+  createGRN,
+  updateGRN,
+  getNextGRNNumber,
+  loadGRNData as loadGRNDataService,
+  type GRNLostAnswer,
+  type GRNPhotoSaveReport,
+} from '@/features/grn/services/grnFormService';
+import { REFUSAL, refusalString, type ServerRefusal } from '@/utils/serverRefusal';
+import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
 import { checkSubmission } from '@/utils/lostAnswer';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
@@ -155,6 +167,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
+  // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
+  // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
+  const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -316,8 +331,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const editStep = (step: 1 | 2) => ({ pathname: step === 1 ? ('/grn-edit/[id]/step1' as const) : ('/grn-edit/[id]/step2' as const), params: { id } });
 
-  const handlePrevious = () => {
-    if (isSubmittingState) return;
+  /** Back to the Items step. The callers that may run while a save is being settled check the lock themselves. */
+  const goToItemsStep = () => {
     dispatch(setCurrentStep(2));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -327,8 +342,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     router.back();
   };
 
-  const handleNavigateToHeader = () => {
-    if (isSubmittingState) return;
+  /** Back to the details step. */
+  const goToDetailsStep = () => {
     dispatch(setCurrentStep(1));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -338,6 +353,16 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     requestAnimationFrame(() => {
       router.back();
     });
+  };
+
+  const handlePrevious = () => {
+    if (isSubmittingState) return;
+    goToItemsStep();
+  };
+
+  const handleNavigateToHeader = () => {
+    if (isSubmittingState) return;
+    goToDetailsStep();
   };
 
   // The Back key goes to step 2 as Previous does; on the normal way in, the stack already does that. While a save
@@ -752,6 +777,95 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
+  /**
+   * The edit form is replaced by what the server holds now (the person chose "Open it again" after a stale save): the
+   * GRN is read again, forced, the form's photo files and everything typed in it go, and the details step opens.
+   * A read that fails changes nothing and says so.
+   */
+  const reopenFromServer = async (editedGrnId: string, formLeft: () => boolean) => {
+    const reloaded = await loadGRNDataService(editedGrnId);
+    if (formLeft()) return;
+    if (!reloaded.success || !reloaded.data) {
+      showAlert(tr('errors.grn.form.loadFailedTitle'), serverText(reloaded.error, tr('common.checkConnection')));
+      return;
+    }
+    resetFormState();
+    dispatch(loadGRNFormData({ ...reloaded.data, grnId: editedGrnId }));
+    goToDetailsStep();
+  };
+
+  /**
+   * update_grn refused the save by one of the rules of backend migration 121. The text is the app's own, written from
+   * the reason and its fields (never the server's English), and the person is sent where it can be put right: the
+   * details step for the number and the date, the items step for a line, Rates for a rate that would go. Nothing was saved.
+   */
+  const handleUpdateRefusal = async (refusal: ServerRefusal, editedGrnId: string, formLeft: () => boolean) => {
+    const lineId = refusalString(refusal, 'line_id');
+    const lineIndex = lineId ? items.findIndex((item) => item.grn_trl_id === lineId) : -1;
+    const itemName = refusalString(refusal, 'item_name') ?? (lineIndex >= 0 ? items[lineIndex].item_name : '');
+    const grNo = refusalString(refusal, 'gr_no') ?? header.gr_no;
+    const invoiceNo = refusalString(refusal, 'invoice_no') ?? '';
+    const lineTitle = lineIndex >= 0 ? tr('grn.refusal.lineTitle', { position: lineIndex + 1 }) : saveFailedTitle();
+    const ok = (onPress?: () => void) => [{ text: tr('common.ok'), onPress }];
+
+    switch (refusal.reason) {
+      case REFUSAL.STALE_RECORD: {
+        // 'keep' leaves the form as it is; 'reload' replaces it with the GRN as it is now.
+        const choice = await askStaleRecord('grn');
+        if (choice === 'reload' && !formLeft()) await reopenFromServer(editedGrnId, formLeft);
+        return;
+      }
+      case REFUSAL.LOT_INVOICED:
+        showAlert(lineTitle, tr('grn.refusal.lotInvoiced', { item: itemName, invoice: formatIdentifier(invoiceNo) }), ok(goToItemsStep));
+        return;
+      case REFUSAL.LOT_DISPATCHED:
+        showAlert(lineTitle, tr('grn.refusal.lotDispatched', { item: itemName }), ok(goToItemsStep));
+        return;
+      case REFUSAL.GRN_INVOICED:
+        showAlert(saveFailedTitle(), tr('grn.refusal.invoicedNoNewLot', { grn: formatIdentifier(grNo), invoice: formatIdentifier(invoiceNo) }), ok(goToItemsStep));
+        return;
+      case REFUSAL.GRN_DATE_AFTER_DISPATCH: {
+        // The first dispatch is on this day: the details step's picker and check follow it.
+        const firstDispatch = refusalString(refusal, 'first_dispatch_date')?.slice(0, 10);
+        if (firstDispatch) dispatch(setFirstDispatchDate(firstDispatch));
+        showAlert(
+          saveFailedTitle(),
+          tr('grn.validation.dateAfterDispatch', { grn: formatIdentifier(grNo), date: firstDispatch ? formatDate(firstDispatch) : '' }),
+          ok(goToDetailsStep)
+        );
+        return;
+      }
+      case REFUSAL.GRN_DATE_LOCKED:
+        showAlert(saveFailedTitle(), tr('grn.refusal.dateInvoiced'), ok(goToDetailsStep));
+        return;
+      case REFUSAL.GRN_NUMBER_LOCKED:
+        showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));
+        return;
+      case REFUSAL.RATES_NEED_MANAGER:
+        // A staff edit that would remove a rate set for this GRN: stays here, the form is kept.
+        showAlert(saveFailedTitle(), tr('grn.refusal.ratesNeedManager'));
+        return;
+      case REFUSAL.RATES_WOULD_DROP:
+        // A weight or pricing-mode edit would drop a rate set for this GRN: Rates is where a new one is set.
+        void stored.refresh();
+        showAlert(tr('grn.review.ratesRefusedTitle'), tr('grn.refusal.ratesWouldDrop'));
+        scrollToRates();
+        return;
+      case REFUSAL.LINE_ON_ORDER:
+        showAlert(
+          tr('grn.refusal.removeTitle'),
+          tr('grn.refusal.lineOnOrder', { item: itemName, customer: refusalString(refusal, 'customer_name') ?? header.customer_name })
+        );
+        return;
+      case REFUSAL.LINE_DISPATCHED_BEFORE:
+        showAlert(tr('grn.refusal.removeTitle'), tr('grn.refusal.lineDispatchedBefore', { item: itemName }));
+        return;
+      default:
+        // A rule this app does not know yet: the server's own sentence, as before.
+        showAlert(saveFailedTitle(), serverText(refusal.text, connectionHint(), { write: true, form: true }));
+    }
+  };
+
   const performUpdate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
     // The GRN being edited is the route's; the form's id is only what was loaded last. If they differ the form
@@ -795,6 +909,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           trl_images: item.trl_images || [],
         })),
         rates: ratesToSave(),
+        // The version the form was read at: part of the request, so a resend after a lost answer is byte for byte the same.
+        expectedUpdatedAt: loadedUpdatedAt,
       };
 
       const result = await sendUntilAnswered(
@@ -858,7 +974,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       } else {
         triggerError();
         const errorMessage = serverText(result.error, connectionHint(), { write: true, form: true });
-        if (result.rateError) {
+        if (result.refusal) {
+          await handleUpdateRefusal(result.refusal, editedGrnId, formLeft);
+        } else if (result.rateError) {
           showRateRefusal(result.rateError, result.error);
         } else if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
           showAlert(stockProtectedTitle(), stockProtectedMessage());

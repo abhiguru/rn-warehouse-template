@@ -1,6 +1,13 @@
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
-import { GRNHeaderData, GRNItemData, GRNImageData, RemovedGRNImage } from '@/store/slices/grnFormSlice';
+import {
+  GRNHeaderData,
+  GRNItemData,
+  GRNImageData,
+  GRNInvoiceRef,
+  GRNLineLocks,
+  RemovedGRNImage,
+} from '@/store/slices/grnFormSlice';
 import {
   collectDeferredGRNPhotos,
   deleteGRNImage,
@@ -14,7 +21,8 @@ import { isTemporaryGRNImageId } from './imageId';
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
+import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -84,6 +92,13 @@ interface UpdateGRNPayload {
   })[];
   /** `p_rates` (migration 86): the rates saved with the GRN. Absent: the old call, no rate check. */
   rates?: RatesPayloadEntry[];
+  /**
+   * The GRN's version token as the form read it (`get_grn_edit_state`, backend migration 121), sent unchanged as
+   * `p_expected_updated_at`: the server refuses the save (STALE_RECORD) when someone else changed the GRN since. It is
+   * part of the request body, so it is part of what the request code hashes, and a resend repeats it byte for byte.
+   * Absent (an older server, or the state could not be read): no token is sent and nothing is checked.
+   */
+  expectedUpdatedAt?: string | null;
 }
 
 /**
@@ -309,6 +324,18 @@ class NumberTakenRefusal extends Error {
   constructor(public readonly number: string, message: string) {
     super(message);
     this.name = 'NumberTakenRefusal';
+  }
+}
+
+/**
+ * save_grn / update_grn refused the request by one of the rules of backend migration 121 (a `reason` and its fields,
+ * see utils/serverRefusal). The screen words it itself from the reason; `message` is only the server's own sentence
+ * (or the app's fallback) for a screen that does not know the reason.
+ */
+class ServerRefusalError extends Error {
+  constructor(public readonly refusal: ServerRefusal, message: string) {
+    super(message);
+    this.name = 'ServerRefusalError';
   }
 }
 
@@ -633,6 +660,8 @@ const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
     p_images: rpcImages,
     // Part of what the idempotency key hashes: the same form with other rates is another save.
     ...(payload.rates ? { p_rates: payload.rates } : {}),
+    // The version the form was read at; part of the body, so the same form at the same version keeps its key.
+    ...(payload.expectedUpdatedAt ? { p_expected_updated_at: payload.expectedUpdatedAt } : {}),
   };
 
   return { normalizedItems, rpcImages, rpcRequest };
@@ -704,11 +733,19 @@ export const updateGRN = async (
       } else {
         let sentRequest: typeof rpcRequest = rpcRequest;
         ({ data: answer, error, status } = await send(sentRequest));
+        if (error && isUnknownFunctionSignature(error) && 'p_expected_updated_at' in sentRequest) {
+          // A server without migration 121 knows no p_expected_updated_at: the call is sent again without it, and
+          // with it goes the check (there is none on that server). Everything else in the request stays.
+          log.warn('update_grn does not take a version token on this server; sent without it');
+          const { p_expected_updated_at: _noToken, ...withoutToken } = sentRequest as typeof rpcRequest & { p_expected_updated_at?: unknown };
+          sentRequest = withoutToken as typeof rpcRequest;
+          ({ data: answer, error, status } = await send(sentRequest));
+        }
         if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
           // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
           // has a stored rate, so the call as it was before rates loses nothing (and its key is the old key).
           log.warn('update_grn does not take p_rates on this server; sent without it');
-          const { p_rates: _noRates, ...rest } = rpcRequest as typeof rpcRequest & { p_rates?: unknown };
+          const { p_rates: _noRates, ...rest } = sentRequest as typeof rpcRequest & { p_rates?: unknown };
           sentRequest = rest as typeof rpcRequest;
           ({ data: answer, error, status } = await send(sentRequest));
         }
@@ -753,6 +790,13 @@ export const updateGRN = async (
       // Handle stock protection from RPC response
       if (rpcResult?.error_code === 'STOCK_PROTECTED') {
         throw new Error(`Stock Protection: ${rpcResult.message}`);
+      }
+      // A refusal by one of the rules of migration 121 (stale version, a locked line, a rate that would go ...): the
+      // screen reads its `reason` and words it itself. It was sent AFTER the request code was looked up, so the answer
+      // to a resend of one's own lost save is never STALE_RECORD.
+      const refusal = refusalOf(rpcResult);
+      if (refusal) {
+        throw new ServerRefusalError(refusal, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true, form: true }));
       }
       if (isRateRefusalCode(rpcResult?.error_code)) {
         throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true, form: true }), rpcResult?.data);
@@ -823,6 +867,8 @@ export const updateGRN = async (
         id: rpcResult.gr_id || grnId,
         message: rpcResult.message,
         stats: rpcResult.stats as GRNUpdateStats | undefined,
+        // The GRN's new version token (backend migration 121); absent on an older server.
+        updatedAt: typeof rpcResult.grn?.updated_at === 'string' ? (rpcResult.grn.updated_at as string) : undefined,
         photos,
       },
     };
@@ -846,10 +892,77 @@ export const updateGRN = async (
       error: errorMessage,
       lostAnswer,
       rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
+      refusal: error instanceof ServerRefusalError ? error.refusal : undefined,
     };
   } finally {
     finishMutation?.();
   }
+};
+
+/**
+ * What `get_grn_edit_state` (backend migration 121) says about the GRN being opened for editing: its version token,
+ * its live invoice, the day of its first dispatch and, per line, what locks it. Read FIRST, before any row, so a
+ * change made while the rows are read makes the token older and never newer.
+ */
+export interface GRNEditState {
+  updatedAt: string | null;
+  invoice: GRNInvoiceRef | null;
+  firstDispatchDate: string | null;
+  /** The locks of each saved line, by the line's id. */
+  lines: Map<string, GRNLineLocks>;
+}
+
+const textOrUndefined = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value : typeof value === 'number' ? String(value) : undefined;
+
+/** The edit state of a GRN, or null when this server does not have the function (the form then opens as it did before). */
+const readGrnEditState = async (
+  authenticatedClient: Awaited<ReturnType<typeof getAuthenticatedClient>>,
+  grnId: string
+): Promise<GRNEditState | null> => {
+  const { data: answer, error } = (await authenticatedClient.rpc('get_grn_edit_state', { p_grn_id: grnId })) as { data: any; error: any };
+  if (error) {
+    // PGRST202: a server without migration 121. No locks and no version token; the server's own checks still apply.
+    if (isUnknownFunctionSignature(error)) {
+      log.warn('get_grn_edit_state is not on this server; the GRN opens without locks and without a version token');
+      return null;
+    }
+    log.error('Failed to read the edit state of the GRN', loggableError(error));
+    throw error;
+  }
+  if (!answer || answer.success !== true) {
+    log.error('The edit state of the GRN was not returned');
+    throw new Error(serverText(answer?.message ?? answer?.error, t('grn.form.loadFailed')));
+  }
+  const data = answer.data && typeof answer.data === 'object' ? answer.data : {};
+  const invoice =
+    data.invoice && typeof data.invoice === 'object' && data.invoice.id
+      ? {
+          id: String(data.invoice.id),
+          invNo: formatIdentifier(textOrUndefined(data.invoice.inv_no) ?? ''),
+          finYear: textOrUndefined(data.invoice.inv_fin_year),
+        }
+      : null;
+  const lines = new Map<string, GRNLineLocks>();
+  for (const line of Array.isArray(data.lines) ? data.lines : []) {
+    if (!line || typeof line.id !== 'string') continue;
+    const dispatchedQty = Number(line.dispatched_qty);
+    lines.set(line.id, {
+      dispatched: Number.isFinite(dispatchedQty) && dispatchedQty > 0,
+      dispatchedQty: Number.isFinite(dispatchedQty) ? dispatchedQty : 0,
+      hasHistory: line.has_history === true,
+      invoiced: line.on_invoice === true,
+      invoiceNo: textOrUndefined(line.invoice_no),
+      onOrder: line.on_order === true,
+      customerName: textOrUndefined(line.order_customer_name),
+    });
+  }
+  return {
+    updatedAt: typeof data.updated_at === 'string' && data.updated_at !== '' ? data.updated_at : null,
+    invoice,
+    firstDispatchDate: typeof data.first_dispatch_date === 'string' && data.first_dispatch_date !== '' ? data.first_dispatch_date.slice(0, 10) : null,
+    lines,
+  };
 };
 
 // Load GRN data for editing
@@ -858,6 +971,9 @@ export const loadGRNData = async (grnId: string) => {
 
     // Use authenticated client to ensure RLS policies are satisfied
     const authenticatedClient = await getAuthenticatedClient();
+
+    // The version token and the locks come first (see readGrnEditState). Null on a server that does not have it.
+    const editState = await readGrnEditState(authenticatedClient, grnId);
 
     // ✅ FETCH FRESH DATA: Always get latest data from database without any caching
     const { data: headerData, error: headerError } = await authenticatedClient
@@ -1037,6 +1153,7 @@ export const loadGRNData = async (grnId: string) => {
         rack: item.rack || '',
         package_mark: item.package_mark || '',
         trl_images, // ✅ Now an array of images
+        ...(editState?.lines.has(item.id) ? { locks: editState.lines.get(item.id) } : {}),
       };
     });
 
@@ -1061,7 +1178,16 @@ export const loadGRNData = async (grnId: string) => {
 
     return {
       success: true,
-      data: { header, items, grnRates, grnInvoiced },
+      data: {
+        header,
+        items,
+        grnRates,
+        grnInvoiced,
+        // From get_grn_edit_state; absent on an older server.
+        ...(editState
+          ? { updatedAt: editState.updatedAt, invoice: editState.invoice, firstDispatchDate: editState.firstDispatchDate }
+          : {}),
+      },
     };
   } catch (error) {
     log.error('Error loading GRN', loggableError(error));
