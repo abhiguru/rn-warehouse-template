@@ -55,6 +55,7 @@ export const common = {
   unknown: 'Unknown',
   active: 'Active',
   inactive: 'Inactive',
+  deactivated: 'Deactivated',
   pending: 'Pending',
   on: 'On',
   off: 'Off',

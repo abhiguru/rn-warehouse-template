@@ -5,15 +5,10 @@ export const filters = {
     package: 'Package',
     bagsOnLine: 'Bags on a line',
     financialYear: 'Financial year',
-    priceType: 'Price type',
-    effectiveDate: 'Effective date',
-    includeExpired: 'Include expired',
     withItems: 'With items',
   },
   option: {
     allYears: 'All years',
-    oneTime: 'One-time',
-    monthly: 'Monthly',
   },
   unit: {
     kg: 'kg',

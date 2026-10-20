@@ -1,9 +1,10 @@
 /**
  * Changes (price history): who added, changed or deleted which item price, and when. Read-only,
  * for administrators and supervisors (backend migration 48, get_item_price_history).
- * Opened from Item pricing (all changes) or from an item or customer rate page (that item's
- * changes: params item_id, customer_id, item_name). Newest first, 50 at a time. Rows written by
- * one save are one card.
+ * Opened from the Pricing tab of an item (that item's changes) or from a customer's rate page (that
+ * customer's changes for the item): params item_id, customer_id, item_name. One of item_id and
+ * customer_id is needed; without both nothing is requested (there is no all-items view). Newest
+ * first, 50 at a time. Rows written by one save are one card.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
@@ -45,7 +46,7 @@ const ItemPriceHistoryScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   // The route guard keeps other roles out; this stops the request for a role the server refuses.
-  const allowed = canOpenScreen(role, 'itemPriceHistory');
+  const allowed = canOpenScreen(role, 'itemPriceHistory') && Boolean(itemId || customerId);
 
   const [entries, setEntries] = useState<ItemPriceHistoryEntry[]>([]);
   const [nextOffset, setNextOffset] = useState(0);

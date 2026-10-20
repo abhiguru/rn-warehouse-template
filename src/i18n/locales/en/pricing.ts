@@ -10,49 +10,26 @@ export const pricing = {
   kg: 'kg',
   weightBand: '{{min}}–{{max}} kg',
   list: {
-    title: 'Item pricing',
-    search: 'Search items',
-    status: 'Monthly rent per bag, for lots received on {{date}}.',
-    statusOneTime: 'One-time rent per bag, for lots received on {{date}}.',
-    statusAll: 'Rent per bag, for lots received on {{date}}.',
     changeDate: 'Change date',
     backToToday: 'Back to today',
-    filterType: 'Type',
-    allChanges: 'All rate changes',
-    addRate: 'Add a weight band to an item',
-    addPickTitle: 'Choose an item',
-    addNone: 'There are no active items to add a rate for.',
     loadingLabel: 'Loading rates',
     loadErrorTitle: "Couldn't load rates",
     loadErrorText: 'Check your connection and try again.',
     refreshFailed: "Couldn't refresh. Showing rates from {{time}}.",
-    lastUpdated: 'Last updated {{time}}',
-    emptyTitle: 'No items yet',
-    emptyText: 'Add items in Settings, Items, then give each a rate.',
-    emptyAction: 'Open Items',
-    noMatchSearch: 'No items match "{{search}}".',
-    noMatchFilters: 'No items match these filters.',
-    clearAll: 'Clear search and filters',
     tryAgain: 'Try again',
     tryAgainInAMoment: 'Try again in a moment.',
   },
   row: {
-    bands: '{{count}} weight bands',
     labour: 'Labour {{amount}}',
     tax: 'Tax {{percent}}%',
-    oneTime: 'One-time',
     a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, labour {{labour}} per bag, tax {{percent}}%',
     a11yOneTime: '{{item}}, {{amount}} {{unit}}, {{band}}, tax {{percent}}%',
-    a11yNoRate: '{{item}}, no rate today',
-    customerA11y: '{{customer}}, {{amount}} {{unit}}, {{band}}, since {{date}}',
   },
   otherDay: {
     strip: "You're looking at rates for lots received on {{date}}. Go back to today to change rates.",
   },
   tag: {
-    customerRates: { one: '{{count}} customer rate', other: '{{count}} customer rates' },
     newRate: 'New rate from {{date}}',
-    noRate: 'No rate today',
     ended: 'Ended',
     rateEnds: 'Rate ends {{date}}',
   },
@@ -67,8 +44,6 @@ export const pricing = {
   },
   item: {
     status: 'Rates for lots received on {{date}}',
-    default: 'Default rate',
-    defaultNote: 'All customers pay this unless they have their own rate.',
     labour: 'Labour',
     labourValue: '{{amount}} per bag, charged once at dispatch',
     // Short values of the GRN rate cards (For GRNs only, Your rate).
@@ -81,32 +56,18 @@ export const pricing = {
     range: 'Lots received {{from}} – {{to}}',
     upcoming: 'From {{date}}: {{amount}} {{unit}}',
     stops: 'This rate stops after {{date}}.',
-    noDefault: "No default rate today. Invoices can't price {{item}} for lots received today.",
     onlyUpcoming: 'No default rate until {{date}}.',
-    defaultEnded: 'The default rate ended on {{date}}.',
     overlap: 'Two rates cover {{band}} on this day. Invoices use {{amount}} (the narrower band, then the newer start). Change the figures in the box to fix it.',
-    grnOnlyRow: 'For GRN {{number}} only · {{customer}} · {{date}}',
-    grnOnlyGrn: 'GRN {{number}}',
-    grnOnlyFailed: "Couldn't load the rates set for single GRNs.",
-    noCustomerRates: 'No customer has their own rate for this item.',
-    customerLine: '{{band}} · since {{date}}',
     showOld: { one: 'Show {{count}} old rate', other: 'Show {{count}} old rates' },
     hideOld: 'Hide old rates',
     oldRate: '{{amount}} {{unit}} · {{range}}',
-    oldRateCustomer: '{{customer}}: {{amount}} {{unit}} · {{range}}',
     oldStillUsed: 'Still used for lots received {{from}} – {{to}} that are not invoiced yet.',
-    rule: "Invoices use the rate in force on the day the goods were received. A customer's own rate comes before the default rate.",
     howLink: 'How an invoice picks a rate',
     offlineChange: 'Connect to change rates.',
     notFound: 'This item is no longer active.',
     back: 'Back',
     // The item page after the rate box (2026-10-16): one line each for what moved to its own screen.
     otherDayLink: 'See rates on another day',
-    customerRatesLink: 'Customer rates for this item ({{count}})',
-    grnRatesLink: 'Rates typed on single GRNs ({{count}})',
-  },
-  customersList: {
-    title: 'Customer rates',
   },
   // The Pricing tab of a customer (Customers -> a customer -> Pricing).
   customerTab: {
@@ -118,10 +79,6 @@ export const pricing = {
     footer: 'All other items are charged at the default rate.',
     empty: '{{customer}} has no rates of their own yet.',
     since: 'since {{date}}',
-  },
-  grnList: {
-    title: 'Rates typed on single GRNs',
-    empty: 'No GRN has a rate of its own for this item.',
   },
   // The rate box: the band table that is edited in place.
   box: {
@@ -153,13 +110,42 @@ export const pricing = {
     correct: 'Correct this rate',
     stop: 'Stop this rate',
     addCustomer: 'Add customer rate',
-    addDefault: 'Add default rate',
     addOneTime: 'Add one-time rate',
     addMonthly: 'Add monthly rate',
     editUpcoming: 'Edit new rate',
     cancelUpcoming: 'Cancel new rate',
     undoStop: 'Undo stop',
     changes: 'Changes',
+    // The Pricing tab of an item: the buttons of an upcoming period.
+    changeUpcoming: 'Change',
+    cancelPeriod: 'Cancel',
+  },
+  // The status of a period on the Pricing tab of an item (In force and Ended use pricing.item.inForce and pricing.tag.ended).
+  period: {
+    upcoming: 'Upcoming',
+  },
+  // The Pricing tab of an item (Items -> an item -> Pricing).
+  itemTab: {
+    sectionMonthly: 'Monthly rates',
+    sectionOneTime: 'One-time rates',
+    addRate: 'Add rate',
+    // What a screen reader says for the buttons of the tab (the visible words are short).
+    rateTypeLabel: 'Rate type',
+    addMonthlyA11y: 'Add monthly rate',
+    addOneTimeA11y: 'Add one-time rate',
+    changeA11y: 'Change the rate from {{date}}',
+    cancelA11y: 'Cancel the rate from {{date}}',
+    correctA11y: 'Correct the rate from {{date}}',
+    stopA11y: 'Stop the rate from {{date}}',
+    emptyMonthly: 'This item has no monthly rate.',
+    emptyOneTime: 'This item has no one-time rate.',
+  },
+  // The full-screen form of the item's default rate (a new rate, a correction, a change of an upcoming rate).
+  rateForm: {
+    kickerAdd: 'Add rate · {{type}}',
+    kickerCorrect: 'Correct rate · {{type}}',
+    kickerUpcoming: 'Change upcoming rate · {{type}}',
+    discardTitle: 'Discard this rate?',
   },
   cancel: {
     title: 'Cancel the rate from {{date}}?',
@@ -188,10 +174,6 @@ export const pricing = {
     // Tags on the tiers of an item's default monthly rate.
     tagStandard: 'Standard',
     tagThisItem: 'This item',
-    // The strip on Item pricing while some item has no rate at all.
-    setupStrip: 'Set the standard rate so every item has a rate.',
-    setupAction: 'Set standard rate',
-    setupAskAdmin: 'Ask an administrator or supervisor to set the standard rate.',
     error: {
       managerOnly: 'Only an administrator or supervisor can set the standard rate.',
       unconfirmed: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.",

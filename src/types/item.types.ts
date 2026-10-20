@@ -121,6 +121,8 @@ export interface ItemPagination {
 export interface ItemFilters {
   search?: string;
   active?: boolean | null; // null = all, true = active only, false = inactive only
+  /** Only the active items with no default rate in force today (a manager's filter, worked out on the phone from the rates). */
+  noRate?: boolean;
   sortBy?: ItemSortField;
   sortOrder?: 'asc' | 'desc';
 }
@@ -136,6 +138,7 @@ export type ItemSortField = 'name' | 'created_at' | 'packaging';
 export const DEFAULT_ITEM_FILTERS: ItemFilters = {
   search: '',
   active: null, // Show all items (active + inactive) so admins can reactivate
+  noRate: false,
   sortBy: 'name',
   sortOrder: 'asc',
 };

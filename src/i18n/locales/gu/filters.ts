@@ -7,15 +7,10 @@ export const filters: Translation<typeof source> = {
     package: 'માર્કો',
     bagsOnLine: 'એક લાઇનના નંગ',
     financialYear: 'નાણાકીય વર્ષ',
-    priceType: 'દરનો પ્રકાર',
-    effectiveDate: 'લાગુ થવાની તારીખ',
-    includeExpired: 'સમાપ્ત થયેલા દર પણ',
     withItems: 'આઇટમ સાથે',
   },
   option: {
     allYears: 'બધાં વર્ષ',
-    oneTime: 'એક વખત',
-    monthly: 'માસિક',
   },
   unit: {
     kg: 'કિલો',

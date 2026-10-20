@@ -58,6 +58,7 @@ export const common: Translation<typeof source> = {
   unknown: 'અજ્ઞાત',
   active: 'સક્રિય',
   inactive: 'નિષ્ક્રિય',
+  deactivated: 'નિષ્ક્રિય',
   pending: 'બાકી',
   on: 'ચાલુ',
   off: 'બંધ',

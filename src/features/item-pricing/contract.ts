@@ -16,8 +16,6 @@ export type EditorParams = {
   price_type?: PriceType;
   /** 'correct' and 'upcoming': the start (YYYY-MM-DD) of the rate being corrected or edited. 'change'/'add'/'addCustomer': a start to preselect. */
   starts_on?: string;
-  /** '1': the form opens with one empty band added after the last (the Add button of the Item pricing list). */
-  add_band?: '1';
 };
 
 /** The stop screen. price_type and the scope decide what stops; the last day is chosen on the screen. */
@@ -29,17 +27,16 @@ export type StopParams = {
   price_type: PriceType;
 };
 
-/** The item page. `on` opens it on another day (read-only); `addBand` opens the default box with one more empty band. */
-export const itemRatesPath = (itemId: string, on?: string, addBand?: boolean) =>
+/** The item page (Items -> an item), on its Overview tab. */
+export const itemPagePath = (itemId: string) => ({ pathname: '/item/[id]', params: { id: itemId } }) as const;
+/** The item page on its Pricing tab: the way into the rates of an item. */
+export const itemRatesPath = (itemId: string) => ({ pathname: '/item/[id]', params: { id: itemId, tab: 'pricing' } }) as const;
+/** The full-screen form of the item's default rate: a new rate, a correction of the rate in force, or a change of an upcoming one. */
+export const rateFormPath = (p: { itemId: string; mode: 'add' | 'correct' | 'upcoming'; priceType: PriceType; startsOn?: string }) =>
   ({
-    pathname: '/item-rates/[itemId]',
-    params: { itemId, ...(on ? { on } : {}), ...(addBand ? { add_band: '1' } : {}) },
+    pathname: '/item-rates/[itemId]/rate',
+    params: { itemId: p.itemId, mode: p.mode, price_type: p.priceType, ...(p.startsOn ? { starts_on: p.startsOn } : {}) },
   }) as const;
-/** The customers who have their own rate for the item (`on`: the day the item page was looking at). */
-export const customerListPath = (itemId: string, on?: string) =>
-  ({ pathname: '/item-rates/[itemId]/customers', params: on ? { itemId, on } : { itemId } }) as const;
-/** The rates typed on single GRNs for the item. */
-export const grnListPath = (itemId: string) => ({ pathname: '/item-rates/[itemId]/grns', params: { itemId } }) as const;
 /** The Pricing tab of a customer, on the box of one item when `itemId` is given. */
 export const customerPricingPath = (customerId: string, itemId?: string) =>
   ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
@@ -62,7 +59,8 @@ export const customerRateAddPath = (itemId: string, customerId: string, customer
     params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}) },
   }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
-export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string } = {}) =>
+/** The changes of one item or of one customer's rate for an item. */
+export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string }) =>
   ({ pathname: '/item-price-history', params: p }) as const;
 
 // A save in the editor, the stop screen or a delete tells the pages that show rates to refetch that item.

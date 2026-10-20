@@ -11,8 +11,6 @@ export const settings: Translation<typeof source> = {
     enrollmentReviewSubtitle: 'આ કોલ્ડ સ્ટોરેજ વાપરવા અરજી કરનાર લોકોને મંજૂરી આપો',
     itemsSubtitle: 'તમે સાચવો છો તે ઉપજ, જેમ કે બટાકા કે લસણ',
     usersSubtitle: 'લૉગિન કરી શકે તેવા લોકો, તેમનો હોદ્દો અને વેપારી',
-    itemPricing: 'આઇટમના દર',
-    itemPricingSubtitle: 'દર જુઓ અને બદલો',
     standardRate: 'પ્રમાણભૂત દર',
     standardRateSubtitle: 'નવી આઇટમને મળતો દર',
     sensors: 'તાપમાન અને ભેજ',

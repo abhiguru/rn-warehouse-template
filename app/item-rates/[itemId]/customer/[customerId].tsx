@@ -187,7 +187,7 @@ export default function CustomerRatePage() {
               />
             </View>
 
-            {rights.canSeeOldRates ? <OldRatesSection rows={ended} showCustomer={false} /> : null}
+            {rights.canSeeOldRates ? <OldRatesSection rows={ended} /> : null}
 
             {/* Another day: behind a link; read-only */}
             {dayOpen ? (

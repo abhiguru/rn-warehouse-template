@@ -44,6 +44,8 @@ export interface SegmentedControlOption {
 export interface SegmentedControlProps {
   /** Form cell label */
   label?: string;
+  /** What a screen reader says for the group when there is no visible label. */
+  accessibilityLabel?: string;
   /** Currently selected value */
   value: string;
   /** Callback when selection changes */
@@ -64,6 +66,7 @@ export interface SegmentedControlProps {
 
 export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   label,
+  accessibilityLabel,
   value,
   onValueChange,
   options,
@@ -98,7 +101,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
         style,
       ]}
       accessibilityRole="radiogroup"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
     >
       {label && (
         <Text

@@ -3,7 +3,9 @@
  *
  * Single-page form for editing existing items.
  * Loads item data by ID and allows updating.
- * Fields: name (required), packaging, description, active toggle
+ * Fields: name (required), packaging, description. Whether the item is active, and deleting it, are on the item
+ * page (app/item/[id].tsx); this form sends the active state it loaded, because update_item has p_active DEFAULT true
+ * and would otherwise activate a deactivated item.
  *
  * Based on SAP Fiori for iOS Design Guidelines
  */
@@ -16,9 +18,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ActivityIndicator,
-  Switch,
   TextInput,
   type TextInputProps,
 } from 'react-native';
@@ -30,7 +30,6 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
-import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { matchingPackaging, normalizePackaging, usePackagingWords } from '@/features/items/packagingSuggestions';
 import { showToast } from '@/utils/toast';
 import {
@@ -154,8 +153,7 @@ const ItemEditScreen: React.FC = () => {
       // Both sides trimmed: an item stored as "Garlic " is not changed by opening it (CR-27).
       formData.name.trim() !== (originalItem.name || '').trim() ||
       formData.packaging.trim() !== (originalItem.packaging || '').trim() ||
-      formData.description.trim() !== (originalItem.description || '').trim() ||
-      formData.active !== originalItem.active
+      formData.description.trim() !== (originalItem.description || '').trim()
     );
   }, [formData, originalItem]);
 
@@ -208,27 +206,6 @@ const ItemEditScreen: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  };
-
-  // Deleting asks first (it takes the item's prices with it); an item in use can be deactivated instead.
-  const handleDelete = () => {
-    if (!originalItem) return;
-    deleteItemFlow(
-      { id: originalItem.id, name: originalItem.name },
-      {
-        onDeleted: () => leaveWithoutAsking(() => router.back()),
-        onDeactivate: async () => {
-          const result = await itemService.toggleItemActive(originalItem.id, false);
-          if (result.success) {
-            setOriginalItem({ ...originalItem, active: false });
-            setFormData((prev) => ({ ...prev, active: false }));
-            showToast(tr('items.form.deactivatedToast', { name: originalItem.name }));
-          } else {
-            showAlert(tr('items.list.couldNotDeactivateTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
-          }
-        },
-      }
-    );
   };
 
   // The header is the same while the item loads, so Back is always there.
@@ -310,36 +287,6 @@ const ItemEditScreen: React.FC = () => {
               maxLength={40}
               error={errors.description}
             />
-          </View>
-
-          {/* Active Toggle */}
-          <Pressable
-            style={styles.switchRow}
-            onPress={() => handleFieldChange('active', !formData.active)}
-            accessibilityRole="switch"
-            accessibilityLabel={tr('common.active')}
-            accessibilityHint={tr('items.form.activeHint')}
-            accessibilityState={{ checked: formData.active }}
-          >
-            <View style={styles.switchLabel}>
-              <Text style={styles.switchTitle}>{tr('common.active')}</Text>
-              <Text style={styles.switchDescription}>{tr('items.form.activeDescription')}</Text>
-            </View>
-            <Switch
-              value={formData.active}
-              onValueChange={(value) => handleFieldChange('active', value)}
-              trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
-              thumbColor={t.control.thumb}
-              ios_backgroundColor={t.control.trackOff}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-            />
-          </Pressable>
-
-          <View style={styles.deleteRow}>
-            <Button type="tertiary" variant="negative" leftIcon="trash-can-outline" onPress={handleDelete} disabled={saving}>
-              {tr('items.delete.deleteItem')}
-            </Button>
           </View>
         </ScrollView>
 
@@ -453,10 +400,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.card,
     ...t.shadow[3],
   },
-  deleteRow: {
-    marginTop: space.xxl,
-    alignItems: 'center' as const,
-  },
   keyboardView: {
     flex: 1,
   },
@@ -527,29 +470,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     color: t.text.secondary,
     fontVariant: ['tabular-nums' as const],
-  },
-  switchRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    minHeight: layout.rowMinHeight,
-    borderRadius: radius.card,
-    padding: space.lg,
-    backgroundColor: t.surface.card,
-    ...t.shadow[2],
-  },
-  switchLabel: {
-    flex: 1,
-    marginRight: space.lg,
-  },
-  switchTitle: {
-    ...typography.body,
-    color: t.text.primary,
-  },
-  switchDescription: {
-    ...typography.footnote,
-    marginTop: space.xxs,
-    color: t.text.secondary,
   },
 });
 

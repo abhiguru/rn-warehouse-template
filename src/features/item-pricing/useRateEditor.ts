@@ -16,7 +16,6 @@ import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/it
 import { showToast } from '@/utils/toast';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
 import {
-  appendEmptyBand,
   copyTiersFrom,
   fieldOrder,
   hasChanges,
@@ -50,7 +49,7 @@ export interface UseRateEditorArgs {
   mode: EditorMode;
   /**
    * The other editor params it needs: `starts_on` for
-   * 'correct' and 'upcoming'; `add_band: '1'` for one more empty band. `item_id`, `item_name`,
+   * 'correct' and 'upcoming'. `item_id`, `item_name`,
    * `customer_id`, `customer_name`, `price_type` and `mode` come from the other args.
    */
   params?: Partial<EditorParams>;
@@ -73,7 +72,7 @@ export interface UseRateEditor {
   /** A draft is open for the current `rows`. */
   ready: boolean;
   draft: Draft | undefined;
-  /** The draft as it opened (before the empty band of `add_band`): `dirty` compares with it. */
+  /** The draft as it opened: `dirty` compares with it. */
   initial: Draft | undefined;
   ctx: EditorContext | undefined;
   /** Field errors by key (`startsOn`, `labour`, `tax`, `firstFrom`, `bands`, `band.N.upTo|from|rent|labour|tax`). */
@@ -142,9 +141,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       price_type: priceType,
     } as EditorParams;
     const opened = initialDraft({ mode, params: openParams, rows, role, today: todayNow(), earliest: getRateStartFloor() });
-    // The Add button of the list asks for one more empty band; `initial` stays without it, so leaving untouched asks first.
-    const draft = params?.add_band === '1' ? appendEmptyBand(opened.draft) : opened.draft;
-    setCore({ rows, draft, initial: opened.draft, ctx: opened.context });
+    setCore({ rows, draft: opened.draft, initial: opened.draft, ctx: opened.context });
     // The draft is rebuilt from the server: it no longer holds another item's copied bands, nor the errors of the last
     // one. The strip stays: a refused save (STALE_RATES) reads the rows again and the message is for the new draft.
     setCopiedFrom(null);

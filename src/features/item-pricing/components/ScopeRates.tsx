@@ -1,8 +1,9 @@
 /**
- * The rates of one scope (the default rate, or one customer's own) of one item, as the item page and the customer's
- * Pricing tab show them: a rate box per price type that is in force, edited in place; under it the strips for a rate
- * that has not begun and one that stops, and the buttons Correct this rate and Stop this rate. Where there is no
- * rate yet, the strip that says so and the button that reveals an empty box.
+ * One customer's own rates for one item, as the customer-rate page (Customers -> a customer -> Pricing -> an item)
+ * shows them: a rate box per price type that is in force, edited in place; under it the strips for a rate that has
+ * not begun and one that stops, and the buttons Correct this rate and Stop this rate. Where the customer has no rate
+ * yet, the strip that says so and the button that opens the full-screen form. (The item's default rate is on the
+ * item page's Pricing tab, ItemPricingTab.)
  *
  * Writable only for a manager looking at today; any other day (or role) gets the read-only RateCard.
  *
@@ -18,7 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
-import type { ItemStoragePrice, PriceType, StandardTier } from '@/types/item-pricing.types';
+import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { customerRateAddPath, type EditorMode } from '../contract';
 import { router } from 'expo-router';
 import { lotsRule, summaryLines } from '../editModel';
@@ -27,7 +28,6 @@ import { applicableRate, type ScopeView } from '../rateModel';
 import type { RateRights } from '../rateRights';
 import { bandText, dateText, money, rentRange, unitText } from '../rateText';
 import { planScope } from '../scopePlan';
-import { tierTags, type TierTag } from '../standardRate';
 import { useRateActions, type RateScope } from '../useRateActions';
 import { useRateEditor, type EditorView } from '../useRateEditor';
 import { RateCard, inForceText } from './RateCard';
@@ -40,10 +40,10 @@ export type { RateSaveBarState } from './ScopeSaveBar';
 
 export interface ScopeRatesProps {
   item: { id: string; name: string };
-  /** The customer whose own rate this is; null for the item's default rate. */
-  customerId: string | null;
+  /** The customer whose own rate this is. */
+  customerId: string;
   customerName?: string;
-  /** Every row of the item, whichever scope: the scope is picked here, and a new customer rate is seeded from the default. */
+  /** Every row of the item, whichever customer: the customer's are picked here, and the default rate is shown beside them. */
   rows: ItemStoragePrice[];
   /** The day the page looks at, and today. Boxes are drawn only when they are the same day. */
   day: string;
@@ -51,8 +51,6 @@ export interface ScopeRatesProps {
   rights: RateRights;
   offline: boolean;
   role: string | null | undefined;
-  /** The facility's standard tiers: the bands of the default monthly rate are tagged Standard or This item. */
-  standardTiers?: StandardTier[] | null;
   /** The page's cell registry (useEditorFields), for the Next key and for scrolling a cell above the keyboard. */
   fields?: FieldRegistry;
   /** The page's scroll view (useEditorFields gives `scrollToTop` and `scrollToError`). */
@@ -65,8 +63,6 @@ export interface ScopeRatesProps {
   onBar: (bar: RateSaveBarState | null) => void;
   /** Something in a box is changed and not saved. */
   onDirty: (dirty: boolean) => void;
-  /** Open the first box with one more empty band (`add_band` of the item page's link). */
-  addBand?: boolean;
   /** Open the box for a new rate at once when the scope has no rate (the customer's "+ Add item"): no extra band. */
   openAdd?: boolean;
 }
@@ -85,7 +81,7 @@ interface BoxReport {
 
 interface Shared {
   item: { id: string; name: string };
-  customerId: string | null;
+  customerId: string;
   customerName?: string;
   rows: ItemStoragePrice[];
   role: string | null | undefined;
@@ -103,8 +99,6 @@ interface BoxProps {
   mode: EditorMode;
   priceType?: PriceType;
   startsOn?: string;
-  addBand?: boolean;
-  tags?: TierTag[] | null;
   /** Since when the rate in the box is in force. */
   caption?: string;
   locked: boolean;
@@ -127,7 +121,7 @@ const makeStyles = (th: ThemeTokens) => ({
   add: { alignSelf: 'flex-start' as const, marginHorizontal: layout.marginCompact },
 });
 
-function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
+function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
   const styles = useThemedStyles(makeStyles);
   const adding = mode === 'add' || mode === 'addCustomer';
   const [saved, setSaved] = useState(false);
@@ -140,10 +134,10 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
 
   const editor = useRateEditor({
     item: shared.item,
-    customer: shared.customerId ? { id: shared.customerId, name: shared.customerName } : null,
+    customer: { id: shared.customerId, name: shared.customerName },
     priceType,
     mode,
-    params: { ...(startsOn ? { starts_on: startsOn } : {}), ...(addBand ? { add_band: '1' as const } : {}) },
+    params: startsOn ? { starts_on: startsOn } : {},
     rows: shared.rows,
     refreshRows: shared.refreshRows,
     role: shared.role,
@@ -250,7 +244,6 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
             fields={scopeFields(shared.fields, id)}
             oneTime={priceType === 'one_time'}
             caption={caption}
-            tags={tags}
             locked={locked}
             testID={`rate-box-${id}`}
           />
@@ -301,14 +294,12 @@ export function ScopeRates({
   rights,
   offline,
   role,
-  standardTiers,
   fields,
   view,
   onOrder,
   refreshRows,
   onBar,
   onDirty,
-  addBand,
   openAdd,
 }: ScopeRatesProps) {
   const styles = useThemedStyles(makeStyles);
@@ -316,15 +307,12 @@ export function ScopeRates({
   const { rows, signature } = useStableRows(allRows);
   const scopeRows = useMemo(() => rows.filter(r => (r.customer_id ?? null) === customerId), [rows, customerId]);
   const plan = useMemo(() => planScope(scopeRows, day), [scopeRows, day]);
-  const defaultPlan = useMemo(
-    () => (customerId ? planScope(rows.filter(r => r.customer_id === null), day) : null),
-    [rows, day, customerId],
-  );
+  const defaultPlan = useMemo(() => planScope(rows.filter(r => r.customer_id === null), day), [rows, day]);
   const writable = rights.canWrite && day === today;
 
   const [modes, setModes] = useState<Partial<Record<PriceType, PlanMode>>>({});
   const [adding, setAdding] = useState<{ priceType?: PriceType; nonce: number } | null>(
-    () => ((addBand || openAdd) && writable && plan.plans.length === 0 ? { nonce: 0 } : null),
+    () => (openAdd && writable && plan.plans.length === 0 ? { nonce: 0 } : null),
   );
   const [reports, setReports] = useState<Record<string, BoxReport>>({});
   // A save is done; the rows that come back close the correction or the new rate that was saved.
@@ -399,9 +387,7 @@ export function ScopeRates({
 
   const hasMonthly = plan.plans.some(p => p.priceType === 'monthly');
   const hasOneTime = plan.plans.some(p => p.priceType === 'one_time');
-  const addMode: EditorMode = customerId ? 'addCustomer' : 'add';
-  // The deep link's empty band goes to the first box on the page.
-  const bandFor = (index: number) => Boolean(addBand) && index === 0;
+  const addMode: EditorMode = 'addCustomer';
   const startAdding = (priceType?: PriceType) => setAdding(current => ({ priceType, nonce: (current?.nonce ?? 0) + 1 }));
 
   const addBox = adding ? (
@@ -410,7 +396,6 @@ export function ScopeRates({
       id="add"
       mode={addMode}
       priceType={adding.priceType}
-      addBand={bandFor(plan.plans.length)}
       locked={activeId !== undefined && activeId !== 'add'}
       shared={shared}
       report={report}
@@ -423,27 +408,17 @@ export function ScopeRates({
   // ---- nothing in force or coming ----
   const noRate = plan.plans.length === 0 ? (
     <View style={styles.strip}>
-      {customerId ? (
-        <RateStrip variant="warning" message={t('pricing.customerRate.noneNow', { customer: customerName || '—' })} testID="no-own-rate" />
-      ) : (
-        <RateStrip
-          variant="critical"
-          message={plan.endedOnly && plan.lastEnded
-            ? t('pricing.item.defaultEnded', { date: dateText(plan.lastEnded) })
-            : t('pricing.item.noDefault', { item: item.name })}
-          testID="no-default"
-        />
-      )}
+      <RateStrip variant="warning" message={t('pricing.customerRate.noneNow', { customer: customerName || '—' })} testID="no-own-rate" />
       {writable && !adding ? (
         <Button
           type="primary"
           size="fullWidth"
           disabled={offline}
           // A customer's first rate for the item is added on the full-screen form (owner, 2026-10-17).
-          onPress={() => (customerId ? router.push(customerRateAddPath(item.id, customerId, customerName || undefined)) : startAdding(undefined))}
-          testID={customerId ? 'add-customer-rate' : 'add-default'}
+          onPress={() => router.push(customerRateAddPath(item.id, customerId, customerName || undefined))}
+          testID="add-customer-rate"
         >
-          {customerId ? t('pricing.action.addCustomer') : t('pricing.action.addDefault')}
+          {t('pricing.action.addCustomer')}
         </Button>
       ) : null}
       {offline && writable ? <Text style={styles.note}>{t('pricing.item.offlineChange')}</Text> : null}
@@ -453,13 +428,12 @@ export function ScopeRates({
   return (
     <View style={styles.scope} testID="scope-rates">
       {noRate}
-      {plan.plans.map(({ priceType, view: scopeView }, index) => {
+      {plan.plans.map(({ priceType, view: scopeView }) => {
         const bands = scopeView.inForce;
         const hasRate = bands.length > 0;
         const upcoming = scopeView.upcoming;
         const stopsAfter = scopeView.stopsAfter;
-        const tags: TierTag[] | null = !customerId && priceType === 'monthly' ? tierTags(bands, standardTiers) : null;
-        const defaultBands = defaultPlan?.plans.find(p => p.priceType === priceType)?.view.inForce ?? [];
+        const defaultBands = defaultPlan.plans.find(p => p.priceType === priceType)?.view.inForce ?? [];
 
         if (!writable) {
           return (
@@ -483,7 +457,6 @@ export function ScopeRates({
                 upcoming={upcoming}
                 stopsAfter={stopsAfter}
                 overlap={Boolean(scopeView.overlap)}
-                tags={tags}
                 day={day}
               />
             </View>
@@ -492,7 +465,7 @@ export function ScopeRates({
 
         const current = mode(priceType);
         const showBox = hasRate || current.mode === 'upcoming';
-                const overlapRate = scopeView.overlap && hasRate
+        const overlapRate = scopeView.overlap && hasRate
           ? applicableRate(bands, { customer_id: bands[0].customer_id, weight: bands[0].weight_max, price_type: priceType, day })
           : undefined;
         const upcomingAmount = upcoming ? rentRange(Math.min(...upcoming.rows.map(r => r.unit_price)), Math.max(...upcoming.rows.map(r => r.unit_price))) : '';
@@ -527,8 +500,6 @@ export function ScopeRates({
                 mode={current.mode}
                 priceType={priceType}
                 startsOn={current.startsOn}
-                addBand={bandFor(index) && current.mode === 'change'}
-                tags={tags}
                 caption={hasRate && current.mode !== 'upcoming' ? inForceText(bands) : undefined}
                 locked={activeId !== undefined && activeId !== priceType}
                 shared={shared}

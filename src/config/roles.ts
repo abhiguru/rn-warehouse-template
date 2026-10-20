@@ -108,7 +108,7 @@ export function canOpenScreen(
  * row of a capability the facility does not have (`capabilities`, as for canOpenScreen) is
  * left out.
  */
-export type SettingsFeature = 'customers' | 'enrollmentReview' | 'items' | 'users' | 'itemPricing' | 'standardRate' | 'sensors';
+export type SettingsFeature = 'customers' | 'enrollmentReview' | 'items' | 'users' | 'standardRate' | 'sensors';
 
 export function settingsFeatureRows(
   role: string | null | undefined,
@@ -119,7 +119,6 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'enrollmentReview')) rows.push('enrollmentReview');
   if (canOpenScreen(role, 'masterData')) rows.push('items');
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
-  if (canOpenScreen(role, 'itemPricing')) rows.push('itemPricing');
   if (canOpenScreen(role, 'standardRate')) rows.push('standardRate');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;

@@ -304,7 +304,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                   accessibilityLabel={label}
                   accessibilityHint={
                     managerTarget === 'item'
-                      ? t('grn.rates.opensItemPricing')
+                      ? t('grn.rates.opensPricingTab')
                       : managerTarget === 'customer'
                         ? t('grn.rates.opensCustomerPricing', { customer: customerName ?? t('common.customer') })
                         : managerTarget === 'grn'

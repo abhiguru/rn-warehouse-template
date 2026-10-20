@@ -64,25 +64,6 @@ export interface ItemPricingListResponse {
   error?: string;
 }
 
-/** A rate for one GRN only, as get_item_grn_rates (backend migration 86) returns it. */
-export interface ItemGrnRate {
-  id: string;
-  gr_id: string;
-  gr_no: string;
-  grn_date: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  price_type: PriceType;
-  weight_min: number;
-  weight_max: number;
-  unit_price: number;
-  labour_rate: number;
-  tax_percent: number;
-  /** The GRN is invoiced: the invoice keeps its own figures, so the rate is no longer used. */
-  archived: boolean;
-  created_at: string;
-}
-
 export interface CreateItemPricingPayload {
   item_id: string;
   customer_id?: string | null;
@@ -263,6 +244,8 @@ export interface ActiveItem {
   id: string;
   name: string;
   packaging: string | null;
+  /** Shown in the Items list rows (the No rate filter lists these items from the rates cache). */
+  description?: string | null;
 }
 
 // The facility's standard rate (backend migration 85): monthly tiers by weight that a new item gets.

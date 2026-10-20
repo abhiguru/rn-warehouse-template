@@ -10,22 +10,16 @@ import { StatusTag } from '@/components/ui/StatusTag';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, typography, radius, type ThemeTokens } from '@/theme/tokens';
-import type { ItemGrnRate, ItemStoragePrice } from '@/types/item-pricing.types';
-import { grnOnlyFigures, grnOnlyLine } from '../grnOnlyText';
+import type { ItemStoragePrice } from '@/types/item-pricing.types';
 import { dateText, rangeText, rentRange, unitText } from '../rateText';
 
 export interface OldRatesSectionProps {
   /** Rows whose last day is before the day shown (any scope). */
   rows: ItemStoragePrice[];
-  /** Name the customer on each old rate (item page); off on a customer's own page. */
-  showCustomer?: boolean;
-  /** Rates for one GRN only whose GRN is invoiced (archived), listed with the old rates. */
-  archivedGrnRates?: ItemGrnRate[];
 }
 
 interface OldRate {
   key: string;
-  customer: string | null;
   priceType: ItemStoragePrice['price_type'];
   from: string;
   to: string;
@@ -43,7 +37,7 @@ export function groupOldRates(rows: ItemStoragePrice[]): OldRate[] {
       g.min = Math.min(g.min, r.unit_price);
       g.max = Math.max(g.max, r.unit_price);
     } else {
-      groups.set(key, { key, customer: r.customer_id ? r.customer_name ?? '' : null, priceType: r.price_type, from: r.effective_from, to: r.effective_to, min: r.unit_price, max: r.unit_price });
+      groups.set(key, { key, priceType: r.price_type, from: r.effective_from, to: r.effective_to, min: r.unit_price, max: r.unit_price });
     }
   }
   return [...groups.values()].sort((a, b) => b.to.localeCompare(a.to) || b.from.localeCompare(a.from));
@@ -57,11 +51,11 @@ const makeStyles = (th: ThemeTokens) => ({
   rows: { gap: space.md },
 });
 
-export function OldRatesSection({ rows, showCustomer = true, archivedGrnRates = [] }: OldRatesSectionProps) {
+export function OldRatesSection({ rows }: OldRatesSectionProps) {
   const styles = useThemedStyles(makeStyles);
   const [open, setOpen] = useState(false);
   const groups = useMemo(() => groupOldRates(rows), [rows]);
-  const total = groups.length + archivedGrnRates.length;
+  const total = groups.length;
   if (total === 0) return null;
   return (
     <View style={styles.wrap}>
@@ -73,9 +67,7 @@ export function OldRatesSection({ rows, showCustomer = true, archivedGrnRates = 
           {groups.map(g => {
             const amount = rentRange(g.min, g.max);
             const range = rangeText(g.from, g.to);
-            const line = g.customer !== null && showCustomer
-              ? t('pricing.item.oldRateCustomer', { customer: g.customer, amount, unit: unitText(g.priceType), range })
-              : t('pricing.item.oldRate', { amount, unit: unitText(g.priceType), range });
+            const line = t('pricing.item.oldRate', { amount, unit: unitText(g.priceType), range });
             return (
               <View key={g.key} style={styles.rows}>
                 <Text style={styles.rate}>{line}</Text>
@@ -84,13 +76,6 @@ export function OldRatesSection({ rows, showCustomer = true, archivedGrnRates = 
               </View>
             );
           })}
-          {archivedGrnRates.map(rate => (
-            <View key={rate.id} style={styles.rows} testID={`old-grn-rate-${rate.id}`}>
-              <Text style={styles.rate}>{grnOnlyLine(rate)}</Text>
-              <Text style={styles.note}>{grnOnlyFigures(rate)}</Text>
-              <StatusTag status="neutral" icon={null} label={t('grn.details.ratesArchived')} />
-            </View>
-          ))}
         </View>
       ) : null}
     </View>
