@@ -18,7 +18,8 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() }, useIsFocused: () => true, useFocusEffect: require('./focusHarness').useFocusEffect }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => false }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null }));

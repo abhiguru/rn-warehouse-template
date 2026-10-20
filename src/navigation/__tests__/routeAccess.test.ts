@@ -30,7 +30,6 @@ describe('signed out', () => {
     [['customers']],
     [['users']],
     [['user-edit', 'user-1']],
-    [['item-pricing']],
     [['item-price-history']],
     [['standard-rate']],
     [['sensors']],
@@ -90,7 +89,6 @@ describe('signed in', () => {
     ['reports/item-stock-summary', 'allow', 'allow', 'allow', 'allow'],
     ['reports/operations-dashboard', 'allow', 'allow', 'home', 'home'],
     // Item pricing is for administrators and supervisors (owner, 2026-10-16).
-    ['item-pricing', 'allow', 'allow', 'home', 'home'],
     ['item-rates', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]/customer/[customerId]', 'allow', 'allow', 'home', 'home'],
@@ -150,7 +148,7 @@ describe('by facility capability', () => {
   });
 
   it('a capability gates only its own routes', () => {
-    expect(decideRoute('item-pricing', withCapabilities('supervisor', OFF))).toBe('allow');
+    expect(decideRoute('item-rates', withCapabilities('supervisor', OFF))).toBe('allow');
     expect(decideRoute('users', withCapabilities('admin', OFF))).toBe('allow');
     expect(decideRoute('settings', withCapabilities('staff', OFF))).toBe('allow');
   });

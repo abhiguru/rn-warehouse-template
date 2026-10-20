@@ -31,7 +31,8 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() }, useIsFocused: () => true, useFocusEffect: require('./focusHarness').useFocusEffect }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => false }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null }));
@@ -137,8 +138,8 @@ describe('Settings order', () => {
   });
 
   it.each([
-    ['admin', 7],
-    ['supervisor', 6],
+    ['admin', 6],
+    ['supervisor', 5],
     ['staff', 1],
     ['customer', 0],
   ])('keeps the tool rows of the role (%s: %d)', async (role, count) => {
@@ -153,14 +154,10 @@ describe('Settings order', () => {
     expect(byTestId('settings-section-tools').length > 0).toBe(count > 0);
   });
 
-  it.each([
-    ['staff', false],
-    ['supervisor', true],
-    ['admin', true],
-  ])('offers Item pricing to %s: %s (administrators and supervisors only)', async (role, offered) => {
+  it.each(['staff', 'supervisor', 'admin'])('has no Item pricing row for %s (the screen was removed from Settings)', async (role) => {
     signedInAs(role);
     await render();
-    expect(byTestId('settings-feature-itemPricing').length > 0).toBe(offered);
+    expect(byTestId('settings-feature-itemPricing')).toHaveLength(0);
   });
 });
 

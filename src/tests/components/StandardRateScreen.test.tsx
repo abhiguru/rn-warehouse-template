@@ -13,6 +13,7 @@ import { clearStandardRateCache, rememberStandardRate } from '@/features/item-pr
 import { setLanguage } from '@/i18n';
 import { inputsWithLabel, textsOf } from '@/tests/helpers/rateEditorFixtures';
 import { showToast } from '@/utils/toast';
+import { askAlert } from '@/utils/alert';
 import StandardRateScreen from '../../../app/standard-rate';
 
 let mockOffline = false;
@@ -35,6 +36,9 @@ jest.mock('@/hooks/useLeaveGuard', () => ({
 }));
 jest.mock('@/services/item-pricing-service', () => ({ getStandardRate: jest.fn(), setStandardRate: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+// Save first asks how many items would get the rate; the dialog answers "Save and give it" unless a test says otherwise.
+jest.mock('@/utils/alert', () => ({ askAlert: jest.fn() }));
+const RENT_ERROR = 'Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.';
 
 const tier = (min: number, max: number, rent: number, labour = 1, tax = 5) => ({ weight_min: min, weight_max: max, unit_price: rent, labour_rate: labour, tax_percent: tax });
 const FOUR = [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)];
@@ -63,6 +67,7 @@ beforeEach(() => {
   clearStandardRateCache();
   mockOffline = false;
   mockGuard = { hasChanges: false };
+  jest.mocked(askAlert).mockResolvedValue(true as never);
 });
 afterEach(() => {
   setLanguage('en');
@@ -94,7 +99,7 @@ describe('Standard rate', () => {
     const t = await open();
     await act(async () => { saveButton(t).props.onPress(); });
     expect(setStandardRate).not.toHaveBeenCalled();
-    expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBe('Enter a rent of 0 or more.');
+    expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBe(RENT_ERROR);
     expect(inputsWithLabel(t, 'Labour per bag')[3].props.error).toBe('Enter a labour rate of 0 or more.');
     expect(inputsWithLabel(t, 'Tax')[2].props.error).toBe('Enter a tax rate from 0 to 100.');
   });
@@ -105,7 +110,11 @@ describe('Standard rate', () => {
     expect(mockGuard.hasChanges).toBe(true);
     jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: FOUR.map(x => ({ ...x, labour_rate: 1 })), itemsPriced: 55 });
     await act(async () => { saveButton(t).props.onPress(); });
-    expect(setStandardRate).toHaveBeenCalledWith([tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)]);
+    // A dry run first (writes nothing), then the real save, both with the version the form was built from.
+    expect(setStandardRate).toHaveBeenCalledTimes(2);
+    expect(setStandardRate).toHaveBeenNthCalledWith(1, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity', dryRun: true });
+    expect(setStandardRate).toHaveBeenNthCalledWith(2, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity' });
+    expect(askAlert).toHaveBeenCalledWith('Give this rate to 55 items that have never had a rate?', 'They are charged it for lots received from their first GRN.', expect.any(Array), false);
     expect(showToast).toHaveBeenCalledWith('Standard rate saved. 55 items got it.');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
@@ -211,7 +220,9 @@ describe('Standard rate', () => {
     const t = await open(FOUR);
     jest.mocked(setStandardRate).mockResolvedValue({ success: false, errorCode: 'UNKNOWN', message: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.", outcomeUnknown: true });
     await act(async () => { saveButton(t).props.onPress(); });
-    expect(t.root.find(n => n.props.testID === 'standard-error' && n.props.message).props.message).toMatch(/couldn't confirm/);
+    // The strip is the "Reload" one: nothing may be saved again until the screen has read the rate anew.
+    expect(t.root.find(n => n.props.testID === 'standard-unconfirmed' && n.props.message).props.message).toMatch(/couldn't confirm/);
+    expect(saveButton(t).props.disabled).toBe(true);
     act(() => t.unmount());
     jest.mocked(getStandardRate).mockReturnValue(new Promise(() => {}));
     await act(async () => { tree = create(<StandardRateScreen />); });
@@ -244,7 +255,7 @@ describe('Standard rate', () => {
     await act(async () => { saveButton(t).props.onPress(); });
     expect(setStandardRate).not.toHaveBeenCalled();
     expect(inputsWithLabel(t, 'Tax')[0].props.error).toBe('Enter a tax rate from 0 to 100.');
-    expect(inputsWithLabel(t, 'Rent per bag, per month')[1].props.error).toBe('Enter a rent of 0 or more.');
+    expect(inputsWithLabel(t, 'Rent per bag, per month')[1].props.error).toBe(RENT_ERROR);
     expect(inputsWithLabel(t, 'Up to')[2].props.error).toBe('Must be more than 20 kg; this band starts at 21 kg.');
   });
 
@@ -255,6 +266,35 @@ describe('Standard rate', () => {
     expect(inputsWithLabel(t, 'Up to')[1].props.error).toBe('Check the weights.');
   });
 
+  it('says "Back" to the give-the-rate question: the dry run was the only call and nothing is saved', async () => {
+    const t = await open(FOUR);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: FOUR, itemsPriced: 3 });
+    jest.mocked(askAlert).mockResolvedValue(false as never);
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(setStandardRate).mock.calls[0][1]).toEqual({ expectedUpdatedAt: null, dryRun: true });
+    expect(askAlert).toHaveBeenCalledWith('Give this rate to 3 items that have never had a rate?', expect.any(String), expect.any(Array), false);
+    expect(showToast).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  it('does not ask when no item would get the rate: the real save follows the dry run at once', async () => {
+    const t = await open(FOUR);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: FOUR, itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(askAlert).not.toHaveBeenCalled();
+    expect(setStandardRate).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a stale answer as the Reload strip and saves nothing', async () => {
+    const t = await open(FOUR);
+    jest.mocked(setStandardRate).mockResolvedValue({ success: false, errorCode: 'STALE_STANDARD_RATE', message: 'x' });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).toHaveBeenCalledTimes(1);
+    expect(t.root.findAll(n => n.props.testID === 'standard-stale' && n.props.message).length).toBeGreaterThan(0);
+    expect(textsOf(t)).toContain('Someone else changed the standard rate. Reload to see their changes.');
+  });
+
   it('shows the figures in Gujarati digits and still sends 0-9', async () => {
     setLanguage('gu');
     const t = await open([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)]);
@@ -263,7 +303,7 @@ describe('Standard rate', () => {
     expect(shown.some(v => /[0-9]/.test(String(v)))).toBe(false);
     jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
     await act(async () => { saveButton(t).props.onPress(); });
-    expect(setStandardRate).toHaveBeenCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)]);
+    expect(setStandardRate).toHaveBeenLastCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)], { expectedUpdatedAt: null });
   });
 
   // Review A5: an error above the fold scrolls to the field by its place in the content, not its place on the window.

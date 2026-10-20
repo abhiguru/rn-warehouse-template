@@ -15,7 +15,7 @@ describe('customers in Gujarati', () => {
   });
   it('names the duplicate customer and the mobile number it has', () => {
     expect(t('customers.form.duplicateTitle', { name: 'પટેલ ટ્રેડર્સ' }, 'gu')).toBe('પટેલ ટ્રેડર્સ પહેલેથી છે');
-    expect(t('customers.form.duplicateMessage', { mobile: '+91 99999 00308' }, 'gu')).toContain('+91 99999 00308');
+    expect(t('customers.form.duplicateNameMessage', { mobile: '+91 99999 00308' }, 'gu')).toContain('+91 99999 00308');
   });
   it('does not tell a screen-reader user to swipe', () => {
     expect(t('customers.list.rowHint', undefined, 'gu')).toBe('વેપારી ખોલે છે.');

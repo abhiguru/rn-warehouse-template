@@ -17,7 +17,7 @@ jest.mock('expo-router', () => ({
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/services/customer-service', () => ({
-  customerService: { getCustomerList: jest.fn(), inactivateCustomer: jest.fn(), restoreCustomer: jest.fn() },
+  customerService: { getCustomerList: jest.fn(), getCustomerCounts: jest.fn(async () => null), inactivateCustomer: jest.fn(), restoreCustomer: jest.fn() },
 }));
 
 const rows = [

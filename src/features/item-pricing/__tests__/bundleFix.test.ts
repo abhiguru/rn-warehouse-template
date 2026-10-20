@@ -22,7 +22,7 @@ import {
 } from '../editModel';
 import { laterDialogText, plannedOnDay } from '../laterRates';
 import { cancelMessage } from '../cancelText';
-import { scopeView, itemSummary } from '../rateModel';
+import { scopeView } from '../rateModel';
 import { percentRange, todayDay } from '../rateText';
 import { groupChanges } from '../utils/priceHistory';
 
@@ -240,10 +240,10 @@ describe('F26: Edit new rate for a planned rate that is gone', () => {
 
 describe('F27: bands that differ in tax', () => {
   const rows = [row(null, 0, 50, 3, '2025-01-01', null, 'monthly', 1.5, 0), row(null, 51, 100, 4, '2025-01-01', null, 'monthly', 1.5, 5)];
-  it('the list figures carry the range', () => {
-    const summary = itemSummary({ item: { id: ITEM, name: 'Review Onion', packaging: null }, rows }, TODAY);
-    expect([summary.tax, summary.taxMax]).toEqual([0, 5]);
-    expect(percentRange(summary.tax as number, summary.taxMax as number)).toBe('0–5');
+  it('the rate card carries the range of the bands in force', () => {
+    const taxes = scopeView(rows, TODAY).inForce.map(b => b.tax_percent);
+    expect([Math.min(...taxes), Math.max(...taxes)]).toEqual([0, 5]);
+    expect(percentRange(Math.min(...taxes), Math.max(...taxes))).toBe('0–5');
   });
   it('the rows in force still come from the scope view', () => {
     expect(scopeView(rows, TODAY).inForce).toHaveLength(2);

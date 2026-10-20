@@ -242,6 +242,40 @@ describe('failures that are not a server sentence (English)', () => {
     expect(transportText(new Error('Plain failure'))).toBeUndefined();
   });
 
+  it('a timeout on a form says to go back to the list; on a photo change to check the photos (photo wins over form)', () => {
+    const timeout = new TimeoutError('Save timed out after 30 seconds', 30000);
+    expect(serverText(timeout, 'x', { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(serverText(timeout, 'x', { write: true, photo: true })).toBe(t('errors.parsed.timeoutWritePhoto'));
+    expect(serverText(timeout, 'x', { write: true, form: true, photo: true })).toBe(t('errors.parsed.timeoutWritePhoto'));
+    expect(transportText(timeout, { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(t('errors.parsed.timeoutWriteForm')).not.toBe(t('errors.parsed.timeoutWrite'));
+    expect(t('errors.parsed.timeoutWritePhoto')).not.toBe(t('errors.parsed.timeoutWrite'));
+  });
+
+  it('form and photo change nothing for a read, a network failure or a statement timeout', () => {
+    const timeout = new TimeoutError('Load timed out', 30000);
+    expect(serverText(timeout, 'x', { form: true })).toBe(t('errors.parsed.network'));
+    expect(serverText(timeout, 'x', { photo: true })).toBe(t('errors.parsed.network'));
+    expect(serverText('Network request failed', 'x', { write: true, form: true, photo: true })).toBe(t('errors.parsed.network'));
+    expect(serverText({ message: 'canceling statement due to statement timeout', code: '57014' }, 'x', { write: true, form: true })).toBe(
+      t('errors.parsed.timeoutNotSaved'),
+    );
+  });
+
+  it('swaps a timeout sentence a shared service worded for the other kind of screen', () => {
+    const list = t('errors.parsed.timeoutWrite');
+    const form = t('errors.parsed.timeoutWriteForm');
+    const photo = t('errors.parsed.timeoutWritePhoto');
+    expect(serverText(list, 'x', { write: true, form: true })).toBe(form);
+    expect(serverText(form, 'x', { write: true })).toBe(list);
+    expect(serverText(list, 'x', { write: true, photo: true })).toBe(photo);
+    expect(serverText(photo, 'x', { write: true, form: true })).toBe(form);
+    expect(serverText({ message: form }, 'x', { write: true })).toBe(list);
+    // Without write the sentence is not swapped: it is the app's own text and passes through.
+    expect(serverText(form, 'x')).toBe(form);
+    expect(serverText(list, 'x', { write: true })).toBe(list);
+  });
+
   it('words a code, from the object or from the text', () => {
     // 42501 is not worded by code: the server's own sentences for it keep their meaning
     expect(serverText({ message: 'Item belongs to another customer', code: '42501' }, 'x')).toBe('Item belongs to another customer');
@@ -273,7 +307,7 @@ describe('failures that are not a server sentence (English)', () => {
   });
 
   it('keeps the app\'s own sentence when it passes through twice', () => {
-    expect(serverText(t('errors.general.businessRuleViolation'), 'x')).toBe(t('errors.general.businessRuleViolation'));
+    expect(serverText(t('errors.code.businessRuleViolation'), 'x')).toBe(t('errors.code.businessRuleViolation'));
   });
 
   it('never shows JavaScript engine text', () => {

@@ -16,7 +16,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/services/customer-service', () => ({
-  customerService: { getCustomerList: jest.fn(), inactivateCustomer: jest.fn(), restoreCustomer: jest.fn() },
+  customerService: { getCustomerList: jest.fn(), getCustomerCounts: jest.fn(async () => null), inactivateCustomer: jest.fn(), restoreCustomer: jest.fn() },
 }));
 
 const rows = [
@@ -125,4 +125,20 @@ it('keeps today\'s error state when the first load fails and there are no rows',
   const screen = await mount();
   expect(text(screen)).toContain("Couldn't load customers");
   expect(text(screen)).not.toContain("Couldn't refresh customers");
+});
+
+it('shows "5 customers · 1 deactivated" from the head counts, and the Deactivated chip lists only the deactivated rows', async () => {
+  const withInactive = rows.map(row => (row.id === 'c3' ? { ...row, active: false } : row));
+  jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: withInactive, pagination: { total_count: 5 } } as never);
+  jest.mocked(customerService.getCustomerCounts).mockResolvedValueOnce({ active: 4, inactive: 1 });
+  const screen = await mount();
+  expect(text(screen)).toContain('5 customers · 1 deactivated');
+  expect(rowNames(screen)).toHaveLength(5);
+
+  const chip = screen.root.findAll(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Deactivated' && typeof node.props.onPress === 'function')[0];
+  await act(async () => { chip.props.onPress(); });
+  expect(rowNames(screen)).toEqual(['ACME FOODS']);
+  // With the filter on, the count line is the rows shown.
+  expect(text(screen)).toContain('1 customer');
+  expect(text(screen)).not.toContain('deactivated');
 });

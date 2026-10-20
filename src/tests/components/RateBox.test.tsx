@@ -21,8 +21,11 @@ jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }
 jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), listItemRates: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 let sheetProps: { visible?: boolean; itemId?: string; priceType?: string; onPick?: (item: { id: string; name: string }, rows: unknown[]) => void } | null = null;
+// Replacing typed bands asks first; the answer is set per test (true = "Replace").
+const mockConfirmReplace = jest.fn();
 jest.mock('@/features/item-pricing/components/CopyTiersSheet', () => ({
   CopyTiersSheet: (props: typeof sheetProps) => { sheetProps = props; return null; },
+  confirmReplaceBands: (name: string) => mockConfirmReplace(name),
 }));
 
 let editor!: UseRateEditor;
@@ -54,6 +57,7 @@ const WINDOW = Dimensions.get('window');
 beforeEach(() => {
   mockOffline = false;
   sheetProps = null;
+  mockConfirmReplace.mockResolvedValue(true);
   Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } });
 });
 afterEach(() => {
@@ -146,16 +150,31 @@ describe('a new rate', () => {
     expect(tree!.root.findAll(n => n.props.visible === true && typeof n.props.onPick === 'function')).toHaveLength(0);
   });
 
-  it('a second copy replaces the first and the note names the new item', async () => {
+  it('a second copy asks before it replaces the first, and the note names the new item', async () => {
     const empty: never[] = [];
     await mount({ mode: 'add', rows: empty, priceType: undefined, item: { id: 'new-item', name: 'Review Onion Red Small' } });
     const open = async () => { await act(async () => { copyButton().props.onPress(); }); };
     await open();
     await act(async () => { sheetProps!.onPick!({ id: 'garlic', name: 'Review Garlic Desi' }, garlicRows()); });
+    // The first copy replaced untouched bands: no question.
+    expect(mockConfirmReplace).not.toHaveBeenCalled();
     await open();
     await act(async () => { sheetProps!.onPick!({ id: 'ginger', name: 'Review Ginger Fresh' }, gingerRows()); });
+    expect(mockConfirmReplace).toHaveBeenCalledWith('Review Ginger Fresh');
     expect(editor.draft!.bands.map(b => b.upTo)).toEqual(['100']);
     expect(texts().filter(x => x.startsWith('Weight bands copied from'))).toEqual(['Weight bands copied from Review Ginger Fresh. Change what is different.']);
+  });
+
+  it('answering Cancel to the question keeps the bands that were copied first', async () => {
+    const empty: never[] = [];
+    await mount({ mode: 'add', rows: empty, priceType: undefined, item: { id: 'new-item', name: 'Review Onion Red Small' } });
+    await act(async () => { copyButton().props.onPress(); });
+    await act(async () => { sheetProps!.onPick!({ id: 'garlic', name: 'Review Garlic Desi' }, garlicRows()); });
+    mockConfirmReplace.mockResolvedValue(false);
+    await act(async () => { copyButton().props.onPress(); });
+    await act(async () => { sheetProps!.onPick!({ id: 'ginger', name: 'Review Ginger Fresh' }, gingerRows()); });
+    expect(editor.draft!.bands.map(b => b.upTo)).toEqual(['40', '100']);
+    expect(texts()).toContain('Weight bands copied from Review Garlic Desi. Change what is different.');
   });
 
   it('Copy bands is off while offline', async () => {

@@ -46,7 +46,9 @@ const shownText = (screen: ReactTestRenderer) =>
 const byLabel = (screen: ReactTestRenderer, label: string) =>
   screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
 const choosePerson = async (screen: ReactTestRenderer) => {
-  await act(async () => { byLabel(screen, 'Test Farmer, +91 90000 00011').props.onPress(); });
+  // The row's label is "Name, mobile, Asked on <date>".
+  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
+  await act(async () => { row.props.onPress(); });
 };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
@@ -56,6 +58,8 @@ const lastAlert = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Choosing a person looks for the customer with their own mobile (a suggestion); none here.
+  jest.mocked(customerService.searchCustomers).mockResolvedValue([]);
   jest.mocked(listPendingEnrollments).mockResolvedValue([person]);
   jest.mocked(hasEnrollmentCustomers).mockResolvedValue(true);
   jest.mocked(reviewEnrollment).mockResolvedValue(undefined);
@@ -139,7 +143,7 @@ describe('Approve as', () => {
     const screen = await mount();
     await choosePerson(screen);
     await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { byLabel(screen, 'Other Farmer, +91 90000 00012').props.onPress(); });
+    await act(async () => { screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Other Farmer, +91 90000 00012'))[0].props.onPress(); });
     expect(radio(screen, 'Customer').props.accessibilityState).toEqual(expect.objectContaining({ checked: true }));
   });
 });

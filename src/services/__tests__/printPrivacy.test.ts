@@ -15,7 +15,7 @@ jest.mock('@/config/supabaseConfig', () => ({
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn() }));
 
 const token = 'fictional-access-credential-SENTINEL';
-const marker = 'FICTIONAL_PRIVATE_PRINT_SENTINEL';
+const marker = 'Fictional private print sentinel';
 const originalFetch = global.fetch;
 let logs: jest.SpyInstance[];
 // Join the raw console arguments so the logger's pretty-printed JSON keeps its quotes.

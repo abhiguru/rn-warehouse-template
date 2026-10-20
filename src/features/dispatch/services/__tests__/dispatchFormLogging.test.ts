@@ -10,7 +10,7 @@ jest.mock('@/utils/submissionIdempotency', () => ({ submissionIdempotencyKey: as
 jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn(), createErrorResponse: jest.fn() }));
 jest.mock('../dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 
-const marker = 'FICTIONAL_PRIVATE_DISPATCH_SENTINEL';
+const marker = 'Fictional private dispatch sentinel';
 const payload = {
   header: { disp_no: 'FXF901', disp_date: '2026-10-01', registration: 'TEST FIXTURE', customer_name: marker, customer_mobile: marker, note: marker },
   items: [{ grnItems_id: 'fictional-lot', disp_quantity: 2 }],

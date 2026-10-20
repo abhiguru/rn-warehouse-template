@@ -7,7 +7,7 @@ import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-let mockState = { theme: { preference: 'light', brand: 'orange' } };
+let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'staff', name: 'Dev Staff' } } };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -18,6 +18,7 @@ jest.mock('expo-router', () => ({
   useIsFocused: () => true,
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({
   itemService: {
@@ -26,11 +27,12 @@ jest.mock('@/services/item-service', () => ({
     createItem: jest.fn(),
     updateItem: jest.fn(),
     deleteItem: jest.fn(),
+    getItemUsage: jest.fn(),
     toggleItemActive: jest.fn(),
   },
 }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 
 let tree: ReactTestRenderer | undefined;
@@ -63,10 +65,28 @@ const renderItems = async () => {
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  // Not in use when counted; the delete itself is refused (a GRN saved in between) in the tests below.
+  jest.mocked(itemService.getItemUsage).mockResolvedValue({
+    success: true, message: '', data: { item_id: 'i2', name: 'Garlic', active: true, in_use: false, grn_lines: 0, order_lines: 0, grn_rates: 0, price_rows: 0, rate_count: 0 },
+  } as never);
   jest.mocked(getItemStoragePrices).mockResolvedValue({ success: true, data: [], pagination: { total_count: 0, limit: 1, offset: 0, has_more: false } } as never);
 });
 
 describe('delete an item that is in use', () => {
+  it('says where it is used before asking, without a delete question, and offers to deactivate', async () => {
+    await renderItems();
+    jest.mocked(itemService.getItemUsage).mockResolvedValue({
+      success: true, message: '', data: { item_id: 'i2', name: 'Garlic', active: true, in_use: true, grn_lines: 12, order_lines: 3, grn_rates: 0, price_rows: 0, rate_count: 0 },
+    } as never);
+    await act(async () => { rowFor('Garlic').props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
+    const { title, message, buttons } = lastAlert();
+    expect(title).toBe("Can't delete Garlic");
+    expect(message).toContain('• 12 GRN lines');
+    expect(message).toContain('• 3 order lines');
+    expect(buttons.map(b => b.text)).toEqual(['Cancel', 'Deactivate item']);
+    expect(itemService.deleteItem).not.toHaveBeenCalled();
+  });
+
   it('lists the GRN lines and order lines and offers to deactivate', async () => {
     await renderItems();
     jest.mocked(itemService.deleteItem).mockResolvedValue({
@@ -80,7 +100,7 @@ describe('delete an item that is in use', () => {
     await act(async () => { lastAlert().buttons.find(b => b.text === 'Delete item')!.onPress!(); });
 
     const { title, message, buttons } = lastAlert();
-    expect(title).toBe("Can't delete this item");
+    expect(title).toBe("Can't delete Garlic");
     expect(message).toContain('• 12 GRN lines');
     expect(message).toContain('• 3 order lines');
     expect(buttons.map(b => b.text)).toEqual(['Cancel', 'Deactivate item']);

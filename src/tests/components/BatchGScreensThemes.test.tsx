@@ -148,8 +148,8 @@ import ItemsScreen from '../../../app/items';
 import ItemFormScreen from '../../../app/item-form';
 import UsersScreen from '../../../app/users';
 import ItemEditScreen from '../../../app/item-edit/[id]';
-import ItemPricingScreen from '../../../app/item-pricing';
-import ItemRatesPageScreen from '../../../app/item-rates/[itemId]';
+import ItemPageScreen from '../../../app/item/[id]';
+import ItemRateFormScreen from '../../../app/item-rates/[itemId]/rate';
 import RateStopScreen from '../../../app/item-rates/stop';
 import CustomerRatePageScreen from '../../../app/item-rates/[itemId]/customer/[customerId]';
 import UserEditScreen from '../../../app/user-edit/[id]';
@@ -174,8 +174,8 @@ const SCREENS: Array<[string, () => React.ReactElement, string | ((t: ReturnType
   ['users', () => <UsersScreen />, t => t.background.base],
   ['user edit', () => <UserEditScreen />, t => t.background.base],
   ['item edit', () => <ItemEditScreen />, t => t.background.base],
-  ['item pricing', () => <ItemPricingScreen />, t => t.background.base],
-  ['item rates page', () => <ItemRatesPageScreen />, t => t.background.base],
+  ['item page', () => <ItemPageScreen />, t => t.background.base],
+  ['item rate form', () => <ItemRateFormScreen />, t => t.background.base],
   ['customer rate page', () => <CustomerRatePageScreen />, t => t.background.base],
   ['rate stop', () => <RateStopScreen />, t => t.background.base],
   ['own profile edit', () => <OwnProfileEditScreen />, t => t.background.base],
@@ -272,11 +272,11 @@ describe('what each role is offered', () => {
   // The Sensors row also needs the facility's `sensors` capability (its public config).
   const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
   it.each([
-    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
-    ['supervisor', true, ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
+    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'sensors']],
+    ['supervisor', true, ['customers', 'items', 'users', 'standardRate', 'sensors']],
     ['staff', true, ['sensors']],
     ['customer', true, []],
-    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
+    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'standardRate']],
     ['staff', false, []],
   ])('Settings feature rows for %s, sensors capability %s: %j', async (role, sensors, rows) => {
     signedInAs(role);
@@ -294,12 +294,14 @@ describe('what each role is offered', () => {
 
   it.each([
     // caller, caller id, target role, target id, role and status open, assignments open
-    ['admin', 'u1', 'staff', 'u3', true, true],
-    ['admin', 'u1', 'admin', 'u9', true, true],
-    ['admin', 'u1', 'admin', 'u1', false, true],
-    ['supervisor', 'u1', 'staff', 'u3', true, true],
+    // (customer assignments belong to the Customer role only; any other role gets a note instead)
+    ['admin', 'u1', 'staff', 'u3', true, false],
+    ['admin', 'u1', 'admin', 'u9', true, false],
+    ['admin', 'u1', 'admin', 'u1', false, false],
+    ['admin', 'u1', 'customer', 'u3', true, true],
+    ['supervisor', 'u1', 'staff', 'u3', true, false],
     ['supervisor', 'u1', 'customer', 'u3', true, true],
-    ['supervisor', 'u1', 'supervisor', 'u4', true, true],
+    ['supervisor', 'u1', 'supervisor', 'u4', true, false],
     // The server refuses a supervisor on an administrator and on the own profile.
     ['supervisor', 'u1', 'admin', 'u9', false, false],
     ['supervisor', 'u1', 'supervisor', 'u1', false, false],
@@ -324,6 +326,10 @@ describe('what each role is offered', () => {
     expect(statusSwitch.props.disabled).toBe(!canEdit);
     expect(byLabel('Assign customer').length > 0).toBe(canAssign);
     expect(byLabel('Remove Patel Traders').length > 0).toBe(canAssign);
+    if (targetRole !== 'customer') {
+      const all = tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+      expect(all).toContain('Staff see every active customer. Customer assignments apply only to the Customer role.');
+    }
     await act(async () => { tree.unmount(); });
   });
 });

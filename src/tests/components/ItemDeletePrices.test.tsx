@@ -7,7 +7,7 @@ import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-let mockState = { theme: { preference: 'light', brand: 'orange' } };
+let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'staff', name: 'Dev Staff' } } };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -18,6 +18,7 @@ jest.mock('expo-router', () => ({
   useIsFocused: () => true,
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({
   itemService: {
@@ -26,11 +27,12 @@ jest.mock('@/services/item-service', () => ({
     createItem: jest.fn(),
     updateItem: jest.fn(),
     deleteItem: jest.fn(),
+    getItemUsage: jest.fn(),
     toggleItemActive: jest.fn(),
   },
 }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/alert', () => require('@/tests/helpers/alertMock').alertModuleMock(jest.fn()));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 
 let tree: ReactTestRenderer | undefined;
@@ -69,53 +71,57 @@ beforeEach(() => {
 const askDelete = async (name: string) => {
   await act(async () => { rowFor(name).props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
 };
-const row = (customer: string | null, type: string, from: string, band: number) =>
-  ({ id: `${customer}-${type}-${from}-${band}`, item_id: 'i2', customer_id: customer, price_type: type, effective_from: from, weight_min: band, weight_max: band + 10 });
-const rows = (data: unknown[]) => jest.mocked(getItemStoragePrices).mockResolvedValue({ success: true, data, pagination: { total_count: data.length, limit: 200, offset: 0, has_more: false } } as never);
-/** n separate rates: one single-band default rate per start date. */
-const rates = (n: number) => rows(Array.from({ length: n }, (_, i) => row(null, 'one_time', `2026-0${i + 1}-01`, 0)));
+/** What get_item_usage answers for Garlic: not in use, with this many rates (the server counts them as the pricing screens do). */
+const usage = (rateCount: number) => jest.mocked(itemService.getItemUsage).mockResolvedValue({
+  success: true, message: '',
+  data: { item_id: 'i2', name: 'Garlic', active: true, in_use: false, grn_lines: 0, order_lines: 0, grn_rates: 0, price_rows: 7, rate_count: rateCount },
+} as never);
 
 describe('delete question', () => {
-  it('counts rates, not band rows: 7 rows of 3 rates say "3 rates"', async () => {
+  it('counts rates as the server says, not rows: 7 price rows of 3 rates say "3 rates"', async () => {
     await renderItems();
-    rows([
-      // A 3-band default rate, a 3-band old rate and a 1-band customer rate: 7 rows.
-      row(null, 'one_time', '2026-05-01', 0), row(null, 'one_time', '2026-05-01', 10), row(null, 'one_time', '2026-05-01', 20),
-      row(null, 'one_time', '2026-01-01', 0), row(null, 'one_time', '2026-01-01', 10), row(null, 'one_time', '2026-01-01', 20),
-      row('c1', 'one_time', '2026-03-01', 0),
-    ]);
+    usage(3);
     await askDelete('Garlic');
-    expect(getItemStoragePrices).toHaveBeenCalledWith({ p_filters: { item_ids: ['i2'], include_expired: true }, p_limit: 200, p_offset: 0 });
+    expect(itemService.getItemUsage).toHaveBeenCalledWith('i2');
     expect(lastAlert().title).toBe('Delete Garlic?');
     expect(lastAlert().message).toBe("Its 3 rates are deleted too. This can't be undone.");
   });
 
   it('says "rate" for one', async () => {
     await renderItems();
-    rates(1);
+    usage(1);
     await askDelete('Garlic');
     expect(lastAlert().message).toBe("Its 1 rate is deleted too. This can't be undone.");
   });
 
   it('keeps the plain question when the item has no rates', async () => {
     await renderItems();
-    rates(0);
+    usage(0);
     await askDelete('Garlic');
     expect(lastAlert().message).toBe('The item will be removed from your catalogue.');
   });
 
-  it('still warns when the lookup fails', async () => {
+  it('still warns when the server cannot count them (an older server)', async () => {
     await renderItems();
-    jest.mocked(getItemStoragePrices).mockRejectedValue(new Error('offline'));
+    jest.mocked(itemService.getItemUsage).mockResolvedValue({ success: false, message: 'x', code: 'SERVER_NEEDS_UPDATE' } as never);
     await askDelete('Garlic');
     expect(lastAlert().message).toBe("Any rates it has are deleted too. This can't be undone.");
+  });
+
+  it('asks nothing when the lookup fails; it says so', async () => {
+    await renderItems();
+    jest.mocked(itemService.getItemUsage).mockRejectedValue(new Error('offline'));
+    await askDelete('Garlic');
+    expect(lastAlert().title).toBe("Couldn't delete the item");
+    expect(lastAlert().message).toBe('Check your connection and try again.');
+    expect(itemService.deleteItem).not.toHaveBeenCalled();
   });
 });
 
 describe('after a delete', () => {
   it('removes the row and shows a toast, not a dialog that needs OK', async () => {
     await renderItems();
-    rates(0);
+    usage(0);
     jest.mocked(itemService.deleteItem).mockResolvedValue({ success: true, message: 'ok' } as never);
     await askDelete('Garlic');
     const asked = jest.mocked(showAlert).mock.calls.length;

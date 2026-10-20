@@ -7,7 +7,7 @@ import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-let mockState = { theme: { preference: 'light', brand: 'orange' } };
+let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'staff', name: 'Dev Staff' } } };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -19,6 +19,7 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'i2' }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({
   itemService: {
@@ -72,7 +73,7 @@ describe('item row hint', () => {
   it('only says what a tap does, and keeps the two actions', async () => {
     await renderItems();
     const row = rowFor('Dry Red Chillies');
-    expect(row.props.accessibilityHint).toBe('Opens the item for editing.');
+    expect(row.props.accessibilityHint).toBe('Opens the item.');
     expect(row.props.accessibilityHint).not.toContain('Swipe');
     expect(row.props.accessibilityActions).toEqual([
       { name: 'toggleActive', label: 'Deactivate' },

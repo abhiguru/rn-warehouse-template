@@ -25,11 +25,12 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSele
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Riverside', companyName: 'Riverside Cold Storage' }),
+  onOperatorServerChange: () => () => undefined,
 }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn(), getSessionIdentity: jest.fn(async () => null) }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ logout: { fulfilled: { type: 'auth/logout/fulfilled' } }, forceLogoutOnInvalidToken: jest.fn() }));
-jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }), useIsOffline: () => false }));
 jest.mock('@/services/sensor-service', () => ({ getSnapshot: jest.fn(), getDevice: jest.fn() }));
 jest.mock('@/services/sensor-history-service', () => ({ getSensorHistory: jest.fn() }));
 jest.mock('@/utils/logger', () => {

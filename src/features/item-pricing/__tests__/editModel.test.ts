@@ -239,7 +239,7 @@ describe('validate', () => {
   it('rejects a rent with three decimals or letters', () => {
     const { draft, context } = ctxFor(cuminRows, CUMIN);
     const bad = { ...startingOn(draft, '2027-01-01'), bands: [{ upTo: '100', rent: '12.345' }] };
-    expect(validate(bad, context).errors['band.0.rent']).toBe('Enter a rent of 0 or more.');
+    expect(validate(bad, context).errors['band.0.rent']).toBe('Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.');
   });
 
   it('with no rate to copy, tax is empty and required', () => {

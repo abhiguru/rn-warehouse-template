@@ -52,7 +52,6 @@ jest.mock('@/services/item-pricing-service', () => ({
 }));
 
 import ItemPriceHistoryScreen from '../../../app/item-price-history';
-import ItemPricingScreen from '../../../app/item-pricing';
 import { getItemPriceHistory } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 
@@ -187,7 +186,8 @@ beforeEach(() => {
   mockPush.mockReset();
   jest.mocked(showAlert).mockReset();
   signedInAs('supervisor');
-  mockParams = {};
+  // The screen needs an item or a customer (there is no all-items view): most tests read one item's changes.
+  mockParams = { item_id: 'item-all' };
 });
 afterEach(() => setLanguage('en'));
 
@@ -204,8 +204,9 @@ describe('price history entries', () => {
     history.mockResolvedValue(page([UPDATE, INSERT, DELETE, TRUNCATE]));
     const tree = await render(<ItemPriceHistoryScreen />);
     expect(history).toHaveBeenCalledTimes(1);
-    expect(history).toHaveBeenCalledWith({ limit: 50, offset: 0 });
-    expect(shown(tree)).toContain('Price history');
+    expect(history).toHaveBeenCalledWith({ limit: 50, offset: 0, itemId: 'item-all' });
+    // The entries name the item, so the title is that item's Changes.
+    expect(shown(tree)).toContain('Changes: Example Chillies');
     expect(cardIds(tree)).toEqual(['14', '13', '12', '11']);
     await unmount(tree);
   });
@@ -374,7 +375,7 @@ describe('price history entries', () => {
     setLanguage('gu');
     history.mockResolvedValue(page([UPDATE, TRUNCATE]));
     const tree = await render(<ItemPriceHistoryScreen />);
-    expect(shown(tree)).toContain('દરનો ઇતિહાસ');
+    expect(shown(tree)).toContain('ફેરફારો: Example Chillies');
     expect(card(tree, 14)).toEqual([
       'દર બદલાયો',
       'Example Chillies',
@@ -411,7 +412,7 @@ describe('price history states', () => {
     expect(shown(tree)).not.toContain('No price changes yet');
     await act(async () => { button(tree, 'Try again').props.onPress(); });
     expect(history).toHaveBeenCalledTimes(2);
-    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 0 });
+    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 0, itemId: 'item-all' });
     expect(shown(tree)).not.toContain("Couldn't load the price history");
     expect(cardIds(tree)).toEqual(['14']);
     await unmount(tree);
@@ -427,7 +428,7 @@ describe('price history states', () => {
 
     await act(async () => { tree.root.findByType(FlatList).props.onEndReached(); });
     expect(history).toHaveBeenCalledTimes(2);
-    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 50 });
+    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 50, itemId: 'item-all' });
     expect(cardIds(tree)).toEqual(['14', '13', '12', '11']);
 
     // The last page said there is no more.
@@ -457,7 +458,7 @@ describe('price history states', () => {
     await act(async () => { tree.root.findByType(FlatList).props.onEndReached(); });
     expect(history).toHaveBeenCalledTimes(2);
     await act(async () => { button(tree, 'Try again').props.onPress(); });
-    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 50 });
+    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 50, itemId: 'item-all' });
     expect(cardIds(tree)).toEqual(['14', '13']);
     expect(shown(tree)).not.toContain("Couldn't load more price changes.");
     await unmount(tree);
@@ -471,11 +472,14 @@ describe('price history states', () => {
     const tree = await render(<ItemPriceHistoryScreen />);
     const refresh = () => tree.root.findByType(FlatList).props.refreshControl.props.onRefresh();
     await act(async () => { refresh(); });
-    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 0 });
+    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 0, itemId: 'item-all' });
     expect(cardIds(tree)).toEqual(['14', '13']);
     await act(async () => { refresh(); });
     expect(cardIds(tree)).toEqual(['14', '13']);
-    expect(showAlert).toHaveBeenCalledWith("Couldn't load the price history", 'Try again in a moment.');
+    // A failed refresh is a strip above the entries that stay, not a dialog.
+    expect(showAlert).not.toHaveBeenCalled();
+    const strip = tree.root.findAll((node) => node.props.testID === 'history-refresh-error' && node.props.message)[0];
+    expect(strip.props.message).toBe("Couldn't refresh. These are the changes loaded earlier. Try again in a moment.");
     await unmount(tree);
   });
 
@@ -505,7 +509,7 @@ describe('price history states', () => {
 
     history.mockImplementation(async (params) => page([DELETE], { total: 900, offset: params?.offset ?? 0, has_more: false }));
     await act(async () => { button(tree, 'Load more changes').props.onPress(); });
-    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 250 });
+    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 250, itemId: 'item-all' });
     expect(cardIds(tree)).toEqual(['14', '13', '12']);
     expect(button(tree, 'Load more changes')).toBeUndefined();
     await unmount(tree);
@@ -525,7 +529,7 @@ describe('price history states', () => {
 
     await act(async () => { tree.root.findByType(FlatList).props.refreshControl.props.onRefresh(); });
     expect(history).toHaveBeenCalledTimes(3);
-    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 0 });
+    expect(history).toHaveBeenLastCalledWith({ limit: 50, offset: 0, itemId: 'item-all' });
     expect(tree.root.findByType(FlatList).props.refreshControl.props.refreshing).toBe(true);
     expect(shown(tree)).not.toContain('Loading more…');
 
@@ -625,49 +629,24 @@ describe.each(BRANDS.flatMap((brand) => MODES.map((mode) => [brand, mode] as con
   });
 });
 
-// The list reads the rates through useItemRates and the connection through useIsOffline: neither is
-// what this block is about.
-jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
-jest.mock('@/features/item-pricing/useItemRates', () => ({
-  useItemRates: () => ({
-    items: [{ id: 'i1', name: 'Potato', packaging: 'Bag' }],
-    rates: [],
-    status: 'ready',
-    refreshing: false,
-    lastUpdated: 1,
-    refreshError: false,
-    error: null,
-    refresh: jest.fn(),
-    itemRates: () => undefined,
-  }),
-}));
+// "All rate changes" was a button on the old Item pricing list, which is gone: the history opens from an item's
+// Pricing tab ("Changes", an item's page) and from a customer's rate page, both of which pass the item.
 
-describe('All rate changes on Item pricing', () => {
-  it.each(['admin', 'supervisor'])('is offered to a %s and opens the price history', async (role) => {
-    signedInAs(role);
-    const tree = await render(<ItemPricingScreen />);
-    const open = button(tree, 'All rate changes');
-    expect(open).toBeDefined();
-    await act(async () => { open.props.onPress(); });
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/item-price-history', params: {} });
+describe('Changes need an item or a customer', () => {
+  it('without either nothing is requested: there is no all-items view', async () => {
+    mockParams = {};
+    history.mockResolvedValue(page([UPDATE]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(history).not.toHaveBeenCalled();
+    expect(cardIds(tree)).toEqual([]);
     await unmount(tree);
   });
 
-  it('is not offered while the profile is not loaded yet', async () => {
-    signedInAs(null);
-    const tree = await render(<ItemPricingScreen />);
-    expect(button(tree, 'All rate changes')).toBeUndefined();
-    expect(mockPush).not.toHaveBeenCalled();
-    await unmount(tree);
-  });
-
-  it('is not offered to staff, who still get the list but no Add button', async () => {
-    signedInAs('staff');
-    const tree = await render(<ItemPricingScreen />);
-    expect(button(tree, 'All rate changes')).toBeUndefined();
-    expect(button(tree, 'Add price')).toBeUndefined();
-    expect(shown(tree)).toContain('Item pricing');
-    expect(shown(tree)).toContain('Potato');
+  it('a customer\'s changes for an item name both in the title', async () => {
+    mockParams = { item_id: 'item-cumin', customer_id: 'customer-1', item_name: 'Review Cumin Bold', customer_name: 'Review Orchard B' };
+    history.mockResolvedValue(page([UPDATE]));
+    const tree = await render(<ItemPriceHistoryScreen />);
+    expect(shown(tree)).toContain('Changes · Review Orchard B · Review Cumin Bold');
     await unmount(tree);
   });
 });

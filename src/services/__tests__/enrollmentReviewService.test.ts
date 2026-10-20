@@ -45,7 +45,7 @@ it('requires an assignment and passes the selected customer IDs to admin review'
 
 it('rejects an unsuccessful review response and sends no assignments with rejection', async () => {
   rpc.mockResolvedValueOnce({ data: { success: false }, error: null });
-  await expect(reviewEnrollment('user-1', 'approved', ['customer-1'])).rejects.toThrow('not accepted');
+  await expect(reviewEnrollment('user-1', 'approved', ['customer-1'])).rejects.toThrow('did not accept');
   rpc.mockResolvedValueOnce({ data: { success: true, data: { status: 'rejected' } }, error: null });
   await reviewEnrollment('user-1', 'rejected', ['customer-1']);
   expect(rpc).toHaveBeenLastCalledWith('operator_review_enrollment', {

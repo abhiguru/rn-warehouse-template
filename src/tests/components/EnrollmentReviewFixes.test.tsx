@@ -46,7 +46,9 @@ const shownText = (screen: ReactTestRenderer) =>
 const byLabel = (screen: ReactTestRenderer, label: string) =>
   screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
 const choosePerson = async (screen: ReactTestRenderer) => {
-  await act(async () => { byLabel(screen, 'Test Farmer, +91 90000 00011').props.onPress(); });
+  // The row's label is "Name, mobile, Asked on <date>".
+  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
+  await act(async () => { row.props.onPress(); });
 };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
@@ -56,6 +58,8 @@ const lastAlert = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Choosing a person looks for the customer with their own mobile (a suggestion); none here.
+  jest.mocked(customerService.searchCustomers).mockResolvedValue([]);
   jest.mocked(listPendingEnrollments).mockResolvedValue([person]);
   jest.mocked(hasEnrollmentCustomers).mockResolvedValue(true);
   jest.mocked(reviewEnrollment).mockResolvedValue(undefined);
@@ -66,6 +70,8 @@ afterEach(async () => {
 });
 const buttonInBar = (screen: ReactTestRenderer, label: string) =>
   screen.root.findByProps({ testID: 'decision-bar' }).findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === label))[0];
+const personRow = (screen: ReactTestRenderer) =>
+  screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
 const radio = (screen: ReactTestRenderer, label: string) =>
   screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label)[0];
 
@@ -76,12 +82,25 @@ describe('CR-25: a decision that was saved is never reported as not saved', () =
     await choosePerson(screen);
     await act(async () => { radio(screen, 'Staff').props.onPress(); });
     await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
-    jest.mocked(listPendingEnrollments).mockRejectedValue(new Error('timeout'));
+    jest.mocked(listPendingEnrollments).mockRejectedValue(new Error('Unexpected list answer'));
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(reviewEnrollment).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledTimes(1); // only the confirmation question
     expect(shownText(screen)).toContain("Couldn't load access requests.");
-    expect(byLabel(screen, 'Test Farmer, +91 90000 00011')).toBeUndefined();
+    expect(personRow(screen)).toBeUndefined();
+  });
+
+  it('a reload that times out after approving says Check your connection (a read), no Couldn\'t save alert', async () => {
+    const screen = await mount();
+    await choosePerson(screen);
+    await act(async () => { radio(screen, 'Staff').props.onPress(); });
+    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    jest.mocked(listPendingEnrollments).mockRejectedValue(new Error('Request timed out'));
+    await act(async () => { lastAlert().buttons[1].onPress?.(); });
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(shownText(screen)).toContain('Check your connection and try again.');
+    expect(shownText(screen)).not.toContain("Couldn't load access requests.");
+    expect(personRow(screen)).toBeUndefined();
   });
 
   it('a refusal by the server shows its reason instead of Check your connection', async () => {

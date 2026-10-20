@@ -55,7 +55,7 @@ beforeEach(() => {
   jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: customer } as never);
   jest.mocked(useItemRates).mockReturnValue({
     items: ITEMS, rates: F1, status: 'ready', refreshing: false, lastUpdated: Date.now(), refreshError: false, error: null,
-    refresh: jest.fn().mockResolvedValue(undefined), itemRates: jest.fn(),
+    refresh: jest.fn().mockResolvedValue(undefined), refreshIfStale: jest.fn().mockResolvedValue(undefined), itemRates: jest.fn(),
   });
 });
 afterEach(() => {
@@ -104,7 +104,7 @@ it('item=onion also opens the onion box once, and not again after leaving the ta
   expect(router.push).toHaveBeenCalledTimes(1);
   expect(router.push).toHaveBeenCalledWith({
     pathname: '/item-rates/[itemId]/customer/[customerId]',
-    params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
+    params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
   });
   await act(async () => { tab('Overview').props.onPress(); });
   await act(async () => { tab('Pricing').props.onPress(); });

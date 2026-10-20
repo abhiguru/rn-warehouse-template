@@ -3,7 +3,7 @@ import { Text } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { listActiveItems, listAllRates, listItemRates } from '@/services/item-pricing-service';
 import { notifyRatesChanged } from '../contract';
-import { clearItemRatesCache, useItemRates, useItemRatesFor, type UseItemRatesResult, type UseItemRatesForResult } from '../useItemRates';
+import { clearItemRatesCache, RATES_STALE_MS, useItemRates, useItemRatesFor, type UseItemRatesResult, type UseItemRatesForResult } from '../useItemRates';
 import { F1, ITEMS } from '@/tests/helpers/ratesFixtures';
 
 jest.mock('@/services/item-pricing-service', () => ({
@@ -62,11 +62,26 @@ describe('useItemRates', () => {
     act(() => view.unmount());
   });
 
-  it('a second mount with a primed cache is ready before the refetch resolves (P-16)', async () => {
+  it('a second mount with a fresh cache is ready at once and does not read again (P-16)', async () => {
     const first = wrap(<ListProbe />);
     await waitFor(() => expect(latest.status).toBe('ready'));
     act(() => first.unmount());
 
+    const second = wrap(<ListProbe />);
+    expect(latest.status).toBe('ready');
+    expect(latest.items).toHaveLength(ITEMS.length);
+    await flush();
+    expect(listAllRates).toHaveBeenCalledTimes(1);
+    act(() => second.unmount());
+  });
+
+  it('a second mount with a stale cache is ready before the refetch resolves (P-16)', async () => {
+    const first = wrap(<ListProbe />);
+    await waitFor(() => expect(latest.status).toBe('ready'));
+    act(() => first.unmount());
+
+    const realNow = Date.now();
+    const spy = jest.spyOn(Date, 'now').mockReturnValue(realNow + RATES_STALE_MS + 1000);
     const slow = deferred<typeof F1>();
     jest.mocked(listAllRates).mockReturnValue(slow.promise);
     const second = wrap(<ListProbe />);
@@ -75,6 +90,7 @@ describe('useItemRates', () => {
     expect(listAllRates).toHaveBeenCalledTimes(2);
     await act(async () => { slow.resolve(F1); });
     act(() => second.unmount());
+    spy.mockRestore();
   });
 
   it('a failed first load is an error, not an empty list (P-15)', async () => {

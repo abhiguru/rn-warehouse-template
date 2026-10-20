@@ -4,7 +4,11 @@
  * closed without one, and it answers once.
  */
 import { Alert } from 'react-native';
-import { askAlert, registerAlertHost, type AlertRequest } from '../alert';
+import { askAlert, registerAlertHost, resetAlertQueueForTests, type AlertRequest } from '../alert';
+
+// Dialogs waiting in the queue are kept for a host that is mounted again, so each test starts empty.
+beforeEach(() => resetAlertQueueForTests());
+afterEach(() => resetAlertQueueForTests());
 
 const CHOICES = [
   { text: 'Cancel', style: 'cancel' as const, value: 'no' },

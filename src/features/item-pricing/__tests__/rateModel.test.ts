@@ -1,5 +1,5 @@
 import { todayDay } from '../rateText';
-import { applicableRate, groupByItem, rateState, scopeKey, scopeView } from '../rateModel';
+import { applicableRate, rateState, scopeKey, scopeView } from '../rateModel';
 import { F1, ITEMS, ORCHARD_B, TODAY, row } from '@/tests/helpers/ratesFixtures';
 
 const rowsOf = (itemId: string) => F1.filter(r => r.item_id === itemId);
@@ -124,12 +124,5 @@ describe('rateModel', () => {
   it('keys a scope by item, customer and type', () => {
     expect(scopeKey(rowsOf('cumin')[0])).toBe('cumin|default|monthly');
     expect(scopeKey(rowsOf('onion')[1])).toBe('onion|orchard-b|monthly');
-  });
-
-  it('groups rows by active item in the items order, and drops rows of inactive items', () => {
-    const groups = groupByItem([...F1, row({ item_id: 'gone', weight_min: 0, weight_max: 1, unit_price: 1, effective_from: '2025-01-01' })], ITEMS);
-    expect(groups.map(g => g.item.name)).toEqual(ITEMS.map(i => i.name));
-    expect(groups.find(g => g.item.id === 'onion-small')?.rows).toEqual([]);
-    expect(groups.find(g => g.item.id === 'garlic')?.rows).toHaveLength(2);
   });
 });

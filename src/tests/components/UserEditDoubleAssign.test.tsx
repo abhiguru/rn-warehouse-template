@@ -17,6 +17,7 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   Stack: { Screen: () => null },
   useIsFocused: () => true,
+  useFocusEffect: require('./focusHarness').useFocusEffect,
   useLocalSearchParams: () => ({ id: 'u2' }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');

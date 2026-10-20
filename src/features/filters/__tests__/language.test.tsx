@@ -12,7 +12,7 @@ import { pickerText } from '../components/editors/OptionPicker';
 import { FilterBar } from '../components/FilterBar';
 import { searchWords } from '../components/HighlightedText';
 import { filteredEmptyProps } from '../components/FilteredListHeader';
-import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS, ITEM_PRICING_FILTERS, ORDER_FILTERS } from '../configs';
+import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS, ORDER_FILTERS } from '../configs';
 import { DATE_PRESETS } from '../datePresets';
 import { currentSort, describeDateRange, describeSort, describeValue, financialYearLabel, readSearch, SORT_DIRECTIONS, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterListDefinition, FilterValues, PickerField } from '../types';
@@ -47,7 +47,6 @@ describe('a language switch at run time', () => {
     expect(field(GRN_FILTERS, 'package').label).toBe('માર્કો');
     expect(field(DISPATCH_FILTERS, 'bags').label).toBe('એક લાઇનના નંગ');
     expect(field(INVOICE_FILTERS, 'year').label).toBe('નાણાકીય વર્ષ');
-    expect(field(ITEM_PRICING_FILTERS, 'expired').label).toBe('સમાપ્ત થયેલા દર પણ');
     expect(field(ORDER_FILTERS, 'withItems').label).toBe('આઇટમ સાથે');
     setLanguage('en');
     expect(field(GRN_FILTERS, 'date').label).toBe('Date');

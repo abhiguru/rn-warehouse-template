@@ -57,7 +57,7 @@ describe('validation', () => {
 
   it('refuses an empty name, minutes outside 5 to 1440, and a text that is not a temperature', () => {
     expect(validateForm(form({ name: '   ' })).name).toBe('Enter a name.');
-    expect(validateForm(form({ minutes: '4' })).minutes).toBe('Enter a whole number from 5 to 1440.');
+    expect(validateForm(form({ minutes: '4' })).minutes).toBe('Enter a whole number from 5 to 1,440.');
     expect(validateForm(form({ minutes: '1441' })).minutes).toBeDefined();
     expect(validateForm(form({ minutes: '5' })).minutes).toBeUndefined();
     expect(validateForm(form({ minutes: '1440' })).minutes).toBeUndefined();

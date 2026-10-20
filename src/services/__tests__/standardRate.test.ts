@@ -52,8 +52,15 @@ describe('setStandardRate', () => {
 
   it('sends p_tiers and returns the tiers saved and how many items got them', async () => {
     rpc.mockResolvedValue({ data: { success: true, data: { tiers, items_priced: 55 } }, error: null });
-    expect(await setStandardRate(tiers)).toEqual({ success: true, tiers, itemsPriced: 55 });
+    expect(await setStandardRate(tiers)).toEqual({ success: true, tiers, itemsPriced: 55, updatedAt: null, dryRun: false });
     expect(rpc).toHaveBeenCalledWith('set_standard_rate', { p_tiers: tiers });
+  });
+
+  it('sends the version it was built from and the dry-run flag, and returns the new version exactly as written', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { tiers, items_priced: 3, updated_at: '2026-10-20T10:11:12.123456+00:00' } }, error: null });
+    const result = await setStandardRate(tiers, { expectedUpdatedAt: '-infinity', dryRun: true });
+    expect(rpc).toHaveBeenCalledWith('set_standard_rate', { p_tiers: tiers, p_expected_updated_at: '-infinity', p_dry_run: true });
+    expect(result).toMatchObject({ success: true, itemsPriced: 3, updatedAt: '2026-10-20T10:11:12.123456+00:00', dryRun: true });
   });
 
   it.each([
@@ -63,6 +70,7 @@ describe('setStandardRate', () => {
     ['BANDS_OVERLAP', 'pricing.error.bandsOverlap'],
     ['BANDS_GAP', 'pricing.error.bandsGap'],
     ['STANDARD_RATE_MANAGER_ONLY', 'pricing.standard.error.managerOnly'],
+    ['STALE_STANDARD_RATE', 'pricing.standard.error.stale'],
   ])('shows the app\'s own text for %s, never the server\'s', async (code, key) => {
     rpc.mockResolvedValue(refused(code, {}));
     const result = await setStandardRate(tiers);
@@ -79,7 +87,7 @@ describe('setStandardRate', () => {
 
   it('says a server without migration 85 needs an update', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.set_standard_rate' } });
-    expect(await setStandardRate(tiers)).toEqual({ success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') });
+    expect(await setStandardRate(tiers)).toEqual({ success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.standard.error.serverNeedsUpdateSave') });
   });
 
   it('says the save may have gone through when the answer never came', async () => {

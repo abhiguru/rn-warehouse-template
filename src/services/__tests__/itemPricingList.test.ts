@@ -98,23 +98,44 @@ describe('listAllRates and listItemRates', () => {
 });
 
 describe('listActiveItems', () => {
-  it('reads the active items by name', async () => {
-    const order = jest.fn().mockResolvedValue({ data: [{ id: 'i1', name: 'Ajwain Bold', packaging: 'Bag' }], error: null });
-    const eq = jest.fn(() => ({ order }));
+  /** A client whose items read ends in `range`, which answers each page in turn. */
+  const clientWith = (range: jest.Mock) => {
+    const order2 = jest.fn(() => ({ range }));
+    const order1 = jest.fn(() => ({ order: order2 }));
+    const eq = jest.fn(() => ({ order: order1 }));
     const select = jest.fn(() => ({ eq }));
     const from = jest.fn(() => ({ select }));
     jest.mocked(getAuthenticatedClient).mockResolvedValue({ from } as never);
+    return { from, select, eq, order1, order2 };
+  };
+
+  it('reads the active items by name, then id, from the first row', async () => {
+    const range = jest.fn().mockResolvedValue({ data: [{ id: 'i1', name: 'Ajwain Bold', packaging: 'Bag' }], error: null });
+    const { from, select, eq, order1, order2 } = clientWith(range);
     const items = await listActiveItems();
     expect(from).toHaveBeenCalledWith('items');
-    expect(select).toHaveBeenCalledWith('id, name, packaging');
+    expect(select).toHaveBeenCalledWith('id, name, packaging, description');
     expect(eq).toHaveBeenCalledWith('active', true);
-    expect(order).toHaveBeenCalledWith('name');
-    expect(items).toEqual([{ id: 'i1', name: 'Ajwain Bold', packaging: 'Bag' }]);
+    expect(order1).toHaveBeenCalledWith('name');
+    expect(order2).toHaveBeenCalledWith('id');
+    expect(range).toHaveBeenCalledWith(0, 499);
+    expect(items).toEqual([{ id: 'i1', name: 'Ajwain Bold', packaging: 'Bag', description: null }]);
+  });
+
+  it('reads the next page while a page comes back full, so no item is cut', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => ({ id: `i${i}`, name: `Item ${i}`, packaging: null }));
+    const range = jest.fn()
+      .mockResolvedValueOnce({ data: full, error: null })
+      .mockResolvedValueOnce({ data: [{ id: 'last', name: 'Zira', packaging: 'Bag', description: 'Whole' }], error: null });
+    clientWith(range);
+    const items = await listActiveItems();
+    expect(range.mock.calls).toEqual([[0, 499], [500, 999]]);
+    expect(items).toHaveLength(501);
+    expect(items[500]).toEqual({ id: 'last', name: 'Zira', packaging: 'Bag', description: 'Whole' });
   });
 
   it('throws when the read fails', async () => {
-    const order = jest.fn().mockResolvedValue({ data: null, error: { message: 'x' } });
-    jest.mocked(getAuthenticatedClient).mockResolvedValue({ from: () => ({ select: () => ({ eq: () => ({ order }) }) }) } as never);
+    clientWith(jest.fn().mockResolvedValue({ data: null, error: { message: 'x' } }));
     await expect(listActiveItems()).rejects.toThrow();
   });
 });

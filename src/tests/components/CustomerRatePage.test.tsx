@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import CustomerRatePage from '../../../app/item-rates/[itemId]/customer/[customerId]';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { replaceItemRates } from '@/services/item-pricing-service';
+import { customerService } from '@/services/customer-service';
 import { RatesOnBar } from '@/features/item-pricing/components/RatesOnBar';
 import { F1, ITEMS } from '@/tests/helpers/ratesFixtures';
 
@@ -19,7 +20,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: mockRole } } }),
 }));
-let mockParams: Record<string, string> = { itemId: 'onion', customerId: 'orchard-b' };
+let mockParams: Record<string, string> = { itemId: 'onion', customerId: 'orchard-b', deactivated: '0' };
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   useLocalSearchParams: () => mockParams,
@@ -39,6 +40,7 @@ jest.mock('@/features/item-pricing/contract', () => ({ ...jest.requireActual('@/
 jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), undoRateChange: jest.fn() }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn().mockResolvedValue([]) } }));
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
+jest.mock('@/services/customer-service', () => ({ customerService: { getCustomerById: jest.fn() } }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, default: () => null, DateTimePickerAndroid: { open: jest.fn() } }));
@@ -62,8 +64,15 @@ const type = async (id: string, text: string) => { await act(async () => { cell(
 const chip = (label: string) =>
   tree.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
 
+// Discard asks "Discard changes?" when figures were typed; this answers it.
+const confirmDiscard = async () => {
+  const dialog = tree.root.findAll(n => n.props.testID === 'discard-rate-dialog' && typeof n.props.onConfirm === 'function').find(n => n.props.visible);
+  expect(dialog?.props.title).toBe('Discard changes?');
+  await act(async () => { dialog!.props.onConfirm(); });
+};
+
 let tree: ReactTestRenderer;
-async function open(role: string, d = data(), params: Record<string, string> = { itemId: 'onion', customerId: 'orchard-b' }) {
+async function open(role: string, d = data(), params: Record<string, string> = { itemId: 'onion', customerId: 'orchard-b', deactivated: '0' }) {
   mockRole = role;
   mockParams = params;
   jest.mocked(useItemRatesFor).mockReturnValue(d);
@@ -78,7 +87,7 @@ beforeEach(() => {
   mockGuard = { hasChanges: false };
 });
 afterEach(() => {
-  mockParams = { itemId: 'onion', customerId: 'orchard-b' };
+  mockParams = { itemId: 'onion', customerId: 'orchard-b', deactivated: '0' };
   act(() => tree.unmount());
   Dimensions.set({ window: WINDOW });
   jest.useRealTimers();
@@ -125,6 +134,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     await open('admin');
     await type('band-0-rent', '3.25');
     await act(async () => { byId('save-bar-discard')[0].props.onPress(); });
+    await confirmDiscard();
     expect(cell('band-0-rent').props.value).toBe('3.00');
     expect(host('save-bar')).toHaveLength(0);
     expect(mockGuard.hasChanges).toBe(false);
@@ -157,7 +167,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     press('customer-changes');
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-price-history',
-      params: { item_id: 'onion', customer_id: 'orchard-b', item_name: 'Review Onion Red' },
+      params: { item_id: 'onion', customer_id: 'orchard-b', item_name: 'Review Onion Red', customer_name: 'Review Orchard B' },
     });
   });
 
@@ -170,7 +180,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
 
 describe('a customer with no own rate for the item', () => {
   const noOwn = () => data(F1.filter(r => r.item_id === 'onion' && r.customer_id === null));
-  const params = { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' };
+  const params = { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' };
 
   it('says invoices use the default rate and offers Add customer rate, which opens the full-screen Add customer rate form', async () => {
     await open('admin', noOwn(), params);
@@ -251,7 +261,7 @@ describe('the day control is behind a link', () => {
   });
 
   it('the `on` param opens the controls on that day, so the page is never silently read-only', async () => {
-    await open('admin', data(), { itemId: 'onion', customerId: 'orchard-b', on: '2026-06-01' });
+    await open('admin', data(), { itemId: 'onion', customerId: 'orchard-b', deactivated: '0', on: '2026-06-01' });
     expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
     expect(shown()).toContain('Rates for lots received on 1 Jun 2026');
     expect(byId('other-day-back').length).toBeGreaterThan(0);
@@ -262,6 +272,7 @@ describe('the day control is behind a link', () => {
     await type('band-0-rent', '3.25');
     expect(byId('other-day-link')).toHaveLength(0);
     await act(async () => { byId('save-bar-discard')[0].props.onPress(); });
+    await confirmDiscard();
     expect(byId('other-day-link').length).toBeGreaterThan(0);
   });
 });
@@ -283,5 +294,35 @@ describe('loading, error and not found', () => {
   it('an item that is no longer active says so', async () => {
     await open('admin', { ...data(), itemRates: undefined, notFound: true });
     expect(host('item-not-found').length).toBeGreaterThan(0);
+  });
+});
+
+describe('a deactivated customer', () => {
+  const link = { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' };
+
+  it('the link says deactivated=1: the rate is shown read only with the warning, no box and no write button', async () => {
+    await open('admin', data(), { ...link, deactivated: '1' });
+    expect(customerService.getCustomerById).not.toHaveBeenCalled();
+    expect(shown()).toContain('This customer is deactivated. Activate them to change their rates.');
+    expect(host('rate-box-monthly')).toHaveLength(0);
+    expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
+    for (const id of ['rate-correct', 'rate-stop', 'add-customer-rate', 'add-other-type']) expect(byId(id)).toHaveLength(0);
+  });
+
+  it('the link says nothing: the customer is read, and while that is unknown the rate is read only', async () => {
+    let release!: (v: unknown) => void;
+    jest.mocked(customerService.getCustomerById).mockReturnValue(new Promise(r => { release = r; }) as never);
+    await open('admin', data(), link);
+    expect(customerService.getCustomerById).toHaveBeenCalledWith('orchard-b');
+    expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
+    await act(async () => { release({ success: true, data: { active: true } }); });
+    expect(cell('band-0-rent').props.value).toBe('3.00');
+  });
+
+  it('the customer cannot be read: the rate stays read only', async () => {
+    jest.mocked(customerService.getCustomerById).mockRejectedValue(new Error('down'));
+    await open('admin', data(), link);
+    expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
+    expect(byId('rate-correct')).toHaveLength(0);
   });
 });

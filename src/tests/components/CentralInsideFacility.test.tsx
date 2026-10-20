@@ -31,7 +31,8 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), dismissTo: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), dismissTo: jest.fn() }, useIsFocused: () => true, useFocusEffect: require('./focusHarness').useFocusEffect }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
 jest.mock('@/config/operatorServer', () => ({
@@ -155,7 +156,7 @@ describe.each([
     await render(element());
     await press(LEAVE_ROW);
     await act(async () => { await confirmButton('Leave').props.onPress(); });
-    expect(alerts()[0]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
+    expect(alerts()[0]).toEqual(['Operation in progress', 'A save is still being sent. Wait a few seconds, then try again.']);
   });
 
   it('"Sign out of this phone" ends the association sign-in too, with the wording that says so', async () => {
@@ -219,7 +220,7 @@ describe('deletion in Settings with central login on', () => {
     jest.mocked(deleteFacilityAccount).mockResolvedValue('busy');
     await render(<SettingsScreen />);
     await deleteWith(DELETE_ROW, '9000000001');
-    expect(alerts()[0]).toEqual(['Operation in progress', 'Finish the current operation before switching facilities.']);
+    expect(alerts()[0]).toEqual(['Operation in progress', 'A save is still being sent. Wait a few seconds, then try again.']);
   });
 });
 

@@ -7,7 +7,7 @@ import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-let mockState = { theme: { preference: 'light', brand: 'orange' } };
+let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'staff', name: 'Dev Staff' } } };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -18,6 +18,7 @@ jest.mock('expo-router', () => ({
   useIsFocused: () => true,
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({
   itemService: {

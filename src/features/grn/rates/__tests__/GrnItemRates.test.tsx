@@ -126,7 +126,7 @@ describe('GrnItemRates', () => {
     lot({ grn_item_id: 'e', item_id: 'ajwain', item_name: 'Fictional Ajwain', ...noRate }),
   ];
 
-  it.each(['admin', 'supervisor'])('a %s taps an item rate to the item\'s page, today\'s rates (no day), and a customer rate to the customer\'s Pricing tab on that item', async role => {
+  it.each(['admin', 'supervisor'])('a %s taps an item rate to the item\'s Pricing tab (no day), and a customer rate to the customer\'s Pricing tab on that item', async role => {
     const { router } = require('expo-router');
     mockRole = role;
     read.mockResolvedValue(answer(rowsBySource));
@@ -134,12 +134,12 @@ describe('GrnItemRates', () => {
     // 'item', 'customer' and 'grn' rows are links: 'invoice' and no-rate rows are plain rows.
     expect(links()).toHaveLength(3);
     expect(links().map(n => n.props.accessibilityHint)).toEqual([
-      'Opens the item in Item pricing.',
+      "Opens the item's Pricing tab.",
       "Opens Fictional Traders's own rate.",
       'Opens Edit GRN at its Rates, where this rate is changed.',
     ]);
     act(() => links()[0].props.onPress());
-    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item-rates/[itemId]', params: { itemId: 'gur' } });
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/item/[id]', params: { id: 'gur', tab: 'pricing' } });
     expect(router.push.mock.calls[router.push.mock.calls.length - 1][0].params).not.toHaveProperty('on');
     act(() => links()[1].props.onPress());
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/customer/[id]', params: { id: 'cust-1', tab: 'pricing', item: 'rice' } });
@@ -157,13 +157,13 @@ describe('GrnItemRates', () => {
   it('a customer rate is not a link while the GRN\'s customer is unknown', async () => {
     read.mockResolvedValue(answer(rowsBySource));
     await mount(<GrnItemRates grnId="g1" />);
-    expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.']);
+    expect(links().map(n => n.props.accessibilityHint)).toEqual(["Opens the item's Pricing tab."]);
   });
 
   it('a rate typed on this GRN is not a link for a manager who may not edit the GRN', async () => {
     read.mockResolvedValue(answer(rowsBySource));
     await mount(<GrnItemRates grnId="g1" customerId="cust-1" customerName="Fictional Traders" />);
-    expect(links().map(n => n.props.accessibilityHint)).toEqual(['Opens the item in Item pricing.', "Opens Fictional Traders's own rate."]);
+    expect(links().map(n => n.props.accessibilityHint)).toEqual(["Opens the item's Pricing tab.", "Opens Fictional Traders's own rate."]);
   });
 
   it('staff never get the GRN-rate link, even when they may edit the GRN', async () => {

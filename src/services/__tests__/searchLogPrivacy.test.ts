@@ -97,7 +97,7 @@ describe('customer service', () => {
 
   test('a refused search prints the error code only', async () => {
     rpcAnswers({ data: null, error: { code: '42501', message: 'server said Kalpesh Vaghasiya is not yours', details: customer.mobile } });
-    expect(await customerService.searchCustomers('Kalpesh')).toEqual([]);
+    await expect(customerService.searchCustomers('Kalpesh')).rejects.toBeTruthy();
     expectNothingPrivateWritten();
     expect(written.join('\n')).toContain('42501');
   });

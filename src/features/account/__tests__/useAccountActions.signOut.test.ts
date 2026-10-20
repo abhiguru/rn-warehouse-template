@@ -15,7 +15,8 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({ auth: { userProfile: { id: 'p1', name: 'Asha Fictional', role: 'staff', mobile: '919000000001' } } }),
 }));
-jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() }, useIsFocused: () => true }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
 jest.mock('@/config/operatorServer', () => ({

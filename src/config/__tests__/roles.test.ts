@@ -133,8 +133,8 @@ describe('report routing', () => {
 
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'sensors']],
+    ['supervisor', ['customers', 'items', 'users', 'standardRate', 'sensors']],
     ['staff', ['sensors']],
     ['customer', []],
     [undefined, []],
@@ -143,8 +143,8 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate']],
+    ['supervisor', ['customers', 'items', 'users', 'standardRate']],
     ['staff', []],
     ['customer', []],
   ])('%s at a facility without sensors sees %j', (role, rows) => {
@@ -187,7 +187,15 @@ describe('user management actions', () => {
           { id: 'caller', role: callerRole },
           { id: self ? 'caller' : 'target', role: targetRole, active }
         );
-        expect(actions).toEqual({ canEdit, canChangeAssignments, assignableRoles: roles, needsAdministrator: false });
+        // Assignments belong to the Customer role only (migration 113).
+        expect(actions).toEqual({
+          canEdit,
+          canChangeAssignments: canChangeAssignments && targetRole === 'customer',
+          assignableRoles: roles,
+          needsAdministrator: false,
+          assignmentsApply: targetRole === 'customer',
+          assignmentsNeedActivation: false,
+        });
       }
     }
   );
@@ -200,26 +208,29 @@ describe('user management actions', () => {
 
     it.each(['customer', 'staff', 'supervisor'])('a supervisor is offered nothing on an inactive %s, and is told to ask an administrator', (targetRole) => {
       expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: targetRole, active: false }))
-        .toEqual({ ...NOTHING, needsAdministrator: true });
+        .toMatchObject({ ...NOTHING, needsAdministrator: true });
     });
 
     it('a supervisor is offered nothing on an active user whose access is not approved', () => {
-      for (const enrollmentStatus of ['pending', 'rejected', 'disabled']) {
+      // A pending or rejected request has its own page with no controls (userPageKind), so nothing is offered and nothing is asked of an administrator.
+      for (const enrollmentStatus of ['pending', 'rejected']) {
         expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus }))
-          .toEqual({ ...NOTHING, needsAdministrator: true });
+          .toMatchObject({ ...NOTHING, needsAdministrator: false });
       }
+      expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus: 'disabled' }))
+        .toMatchObject({ ...NOTHING, needsAdministrator: true });
       expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus: 'approved' }).canEdit)
         .toBe(true);
     });
 
     it('an inactive administrator is still simply out of a supervisor\'s reach', () => {
       expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'admin', active: false }))
-        .toEqual({ ...NOTHING, needsAdministrator: false });
+        .toMatchObject({ ...NOTHING, needsAdministrator: false });
     });
 
     it.each(['customer', 'staff', 'supervisor', 'admin'])('an administrator can still activate an inactive %s', (targetRole) => {
       expect(userManagementActions({ id: 'caller', role: 'admin' }, { id: 'target', role: targetRole, active: false }))
-        .toEqual({ canEdit: true, canChangeAssignments: true, assignableRoles: ALL, needsAdministrator: false });
+        .toMatchObject({ canEdit: true, canChangeAssignments: false, assignmentsNeedActivation: targetRole === 'customer', assignableRoles: ALL, needsAdministrator: false });
     });
   });
 

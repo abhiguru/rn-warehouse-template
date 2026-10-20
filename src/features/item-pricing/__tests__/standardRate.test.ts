@@ -77,7 +77,11 @@ describe('the checks', () => {
     expect(validateStandard(d, ctx).errors['band.1.upTo']).toBeDefined();
     d = setUpTo(filled(), 0, '10.5');
     expect(validateStandard(d, ctx).errors['band.0.upTo']).toBe('Enter whole kilograms, for example 40.');
+    // A third decimal is not taken as it is typed; a stored one still fails the check.
     d = setBandField(filled(), 0, 'rent', '3.005');
+    expect(d.bands[0].rent).toBe(filled().bands[0].rent);
+    expect(d.bands[0].rentRefused).toBe(true);
+    d = { ...filled(), bands: filled().bands.map((b, i) => (i === 0 ? { ...b, rent: '3.005' } : b)) };
     expect(validateStandard(d, ctx).errors['band.0.rent']).toBeDefined();
     d = setBandField(filled(), 2, 'tax', '100.5');
     expect(validateStandard(d, ctx).errors['band.2.tax']).toBe('Enter a tax rate from 0 to 100.');

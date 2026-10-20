@@ -48,6 +48,7 @@ jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+  onOperatorServerChange: () => () => undefined,
 }));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({
   useRoleBasedAccess: () => ({
@@ -110,7 +111,7 @@ jest.mock('@/services/sensor-service', () => ({
   getDevice: jest.fn(() => Promise.resolve({ success: true, data: { device: { ...mockDevice, first_reading_at: mockDevice.earliest_reading_at, hub: null } } })),
 }));
 // The sensor screens re-read on a timer; no test here reaches a facility.
-jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }), useIsOffline: () => false }));
 
 jest.mock('@/services/sensor-history-service', () => {
   const actual = jest.requireActual('@/services/sensor-history-service');
@@ -371,7 +372,7 @@ describe('sensor row status', () => {
   it('shows the most severe of health, connection and battery', () => {
     const now = Date.now();
     const fine = { ...mockDevice, battery_low: false };
-    expect(rowStatus({ ...fine, health_status: 'healthy' }, now)).toEqual({ kind: 'positive', label: 'Healthy' });
+    expect(rowStatus({ ...fine, health_status: 'healthy' }, now)).toEqual({ kind: 'positive', label: 'Sensor OK' });
     expect(rowStatus(fine, now)).toEqual({ kind: 'critical', label: 'Warning' });
     expect(rowStatus({ ...fine, health_status: 'critical' }, now)).toEqual({ kind: 'negative', label: 'Critical' });
     expect(rowStatus({ ...fine, health_status: 'healthy', connectivity_status: 'OFFLINE' }, now).label).toBe('Offline');
@@ -467,9 +468,9 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
       expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background])
     );
     const all = texts(tree);
-    // The battery is low: the row's tag is the more severe of "Warning" and "Battery low", the
+    // The battery is low: the row's tag says so instead of a bare "Warning", the
     // strip over the list names it, and the figures count it.
-    expect(all).toEqual(expect.arrayContaining(['Temperature and humidity', 'Chamber 2 sensor', 'Warning', '−18.5°C', '85%', '1 low battery', 'Battery low']));
+    expect(all).toEqual(expect.arrayContaining(['Temperature and humidity', 'Chamber 2 sensor', '−18.5°C', '85%', '1 low battery', 'Battery low']));
     act(() => tree.unmount());
   });
 
@@ -479,7 +480,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
       await Promise.resolve();
     });
     const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Chamber 2 sensor', 'Warning', 'Online', 'Historical trend']));
+    expect(all).toEqual(expect.arrayContaining(['Chamber 2 sensor', 'Battery low', 'Online', 'Historical trend']));
     expect(all).toContain('All readings, last 7 days');
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     act(() => tree.unmount());

@@ -33,19 +33,19 @@ describe.each(['en', 'gu'] as const)('enrollment refusals in %s', language => {
   it('update_user_status: a supervisor cannot give access back', async () => {
     rpc.mockResolvedValue(NOT_APPROVED);
     const result = await adminUserService.updateUserStatus(USER, true);
-    expect(result).toEqual({ success: false, error: t('errors.user.enrollmentNotApproved', undefined, language) });
+    expect(result).toEqual({ success: false, code: 'ENROLLMENT_NOT_APPROVED', error: t('errors.user.enrollmentNotApproved', undefined, language) });
   });
 
   it('update_user_role: a supervisor cannot change a user whose access is not approved', async () => {
     rpc.mockResolvedValue(NOT_APPROVED);
     const result = await adminUserService.updateUserRole(USER, 'staff');
-    expect(result).toEqual({ success: false, error: t('errors.user.enrollmentNotApproved', undefined, language) });
+    expect(result).toEqual({ success: false, code: 'ENROLLMENT_NOT_APPROVED', error: t('errors.user.enrollmentNotApproved', undefined, language) });
   });
 
   it('update_user_role: a pending access request is reviewed first', async () => {
     rpc.mockResolvedValue(PENDING);
     const result = await adminUserService.updateUserRole(USER, 'staff');
-    expect(result).toEqual({ success: false, error: t('errors.user.enrollmentPending', undefined, language) });
+    expect(result).toEqual({ success: false, code: 'ENROLLMENT_PENDING', error: t('errors.user.enrollmentPending', undefined, language) });
   });
 });
 

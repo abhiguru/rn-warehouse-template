@@ -25,6 +25,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/services/item-service', () => ({
   itemService: { getItemList: jest.fn(), getItemById: jest.fn(), createItem: jest.fn(), updateItem: jest.fn(), toggleItemActive: jest.fn(), deleteItem: jest.fn() },

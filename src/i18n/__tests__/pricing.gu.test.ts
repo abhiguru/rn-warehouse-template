@@ -20,13 +20,12 @@ describe('pricing in Gujarati', () => {
     expect(t('pricing.item.taxValue', { percent: localizeDigits('5', 'gu') }, 'gu')).toBe('ભાડું અને મજૂરી પર ૫%');
   });
   it('keeps the owner\'s word મૂળ દર for the default rate, once, with no extra tag (P-19)', () => {
-    expect(t('pricing.item.default', undefined, 'gu')).toBe('મૂળ દર');
-    expect(t('pricing.action.addDefault', undefined, 'gu')).toBe('મૂળ દર ઉમેરો');
+    expect(t('pricing.history.defaultPrice', undefined, 'gu')).toBe('મૂળ દર');
+    expect(t('pricing.customerRate.defaultIs', { unit: '₹', amount: '૫' }, 'gu')).toBe('મૂળ દર: ₹ ૫');
+    expect(t('pricing.itemTab.addRate', undefined, 'gu')).toBe('દર ઉમેરો');
     expect(t('pricing.customerRate.title', { customer: 'ફિક્શનલ' }, 'gu')).toBe('ફિક્શનલ નો પોતાનો દર');
   });
-  it('counts customer rates and old rates', () => {
-    expect(t('pricing.tag.customerRates', { count: 1 }, 'gu')).toBe('૧ વેપારીનો દર');
-    expect(t('pricing.tag.customerRates', { count: 3 }, 'gu')).toBe('૩ વેપારીના દર');
+  it('counts old rates', () => {
     expect(t('pricing.item.showOld', { count: 1 }, 'gu')).toBe('૧ જૂનો દર બતાવો');
     expect(t('pricing.item.showOld', { count: 2 }, 'gu')).toBe('૨ જૂના દર બતાવો');
   });
@@ -49,12 +48,12 @@ describe('pricing in Gujarati', () => {
     expect(weightBandLabel(0, 50)).toBe('૦–૫૦ કિલો');
     expect(priceTypeLabel('one_time')).toBe('એક વખત');
   });
-  it('words the standard rate, its tags and its strip in Gujarati, with the owner\'s દર for a rate', () => {
+  it('words the standard rate, its tags and its messages in Gujarati, with the owner\'s દર for a rate', () => {
     expect(t('pricing.standard.title', undefined, 'gu')).toBe('પ્રમાણભૂત દર');
     expect(t('pricing.standard.tagStandard', undefined, 'gu')).toBe('પ્રમાણભૂત');
     expect(t('pricing.standard.tagThisItem', undefined, 'gu')).toBe('આ આઇટમનો');
-    expect(t('pricing.standard.setupStrip', undefined, 'gu')).toBe('દરેક આઇટમનો દર હોય તે માટે પ્રમાણભૂત દર નક્કી કરો.');
-    expect(t('pricing.standard.setupAskAdmin', undefined, 'gu')).toBe('પ્રમાણભૂત દર નક્કી કરવા એડમિન અથવા સુપરવાઇઝરને કહો.');
+    expect(t('pricing.standard.giveMessage', undefined, 'gu')).toBe('તેમના પહેલા GRN થી આવેલા જથ્થા પર તે લાગશે.');
+    expect(t('pricing.standard.error.stale', undefined, 'gu')).toBe('બીજા કોઈએ પ્રમાણભૂત દર બદલ્યો છે. તેમના ફેરફાર જોવા ફરી લોડ કરો.');
   });
   it('counts the items that got the standard rate', () => {
     expect(t('pricing.standard.itemsGotIt', { count: 55 })).toBe('55 items got it.');
@@ -67,8 +66,8 @@ describe('pricing in Gujarati', () => {
     expect(t('pricing.list.needRate' as never)).toBe('pricing.list.needRate');
     expect(t('pricing.list.filterNeedsRate' as never)).toBe('pricing.list.filterNeedsRate');
   });
-  it('names the Add button and the copy-from-item texts in Gujarati', () => {
-    expect(t('pricing.list.addRate', undefined, 'gu')).toBe('આઇટમમાં વજન મર્યાદા ઉમેરો');
+  it('names the Add rate button and the copy-from-item texts in Gujarati', () => {
+    expect(t('pricing.itemTab.addRate', undefined, 'gu')).toBe('દર ઉમેરો');
     expect(t('pricing.edit.copyTiers', undefined, 'gu')).toBe('બીજી આઇટમની વજન મર્યાદાઓ લો…');
     expect(t('pricing.edit.copiedFromItem', { item: 'ફિક્શનલ' }, 'gu')).toBe('ફિક્શનલ ની વજન મર્યાદાઓ લીધી છે. જે અલગ હોય તે બદલો.');
   });

@@ -17,6 +17,7 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/services/customer-service', () => ({
   customerService: {
     getCustomerList: jest.fn(),
+    getCustomerCounts: jest.fn(async () => null),
     toggleCustomerActive: jest.fn(),
     inactivateCustomer: jest.fn(),
     restoreCustomer: jest.fn(),
