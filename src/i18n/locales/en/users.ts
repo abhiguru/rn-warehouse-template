@@ -135,6 +135,7 @@ export const users = {
     couldNotLoadTitle: "Couldn't load the profile",
     nameRequired: 'Enter your name.',
     savedTitle: 'Name saved.',
+    saveOffline: "Couldn't save your name. Check your connection and try again.",
     couldNotSaveTitle: "Couldn't save your profile",
     notFound: "Couldn't find this user",
     saveLabel: 'Save name',

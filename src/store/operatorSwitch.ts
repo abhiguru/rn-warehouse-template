@@ -151,8 +151,10 @@ export async function leaveFacility(dispatch: Dispatch, options: LeaveFacilityOp
     if (options.session) options.session.generation = getSessionGeneration();
     await ending.unwrap();
     if (await getPendingEnrollmentToken()) {
-      if (previous && !options.localOnly) await signOutPendingEnrollment();
+      // Offline the sign-out forgets the token and then throws: what counts is that it is gone.
+      if (previous && !options.localOnly) await signOutPendingEnrollment().catch(() => {});
       else await clearPendingEnrollment();
+      if (await getPendingEnrollmentToken()) throw new Error('pending enrollment not cleared');
     }
     await clearSessionScopedState(dispatch as (action: UnknownAction) => unknown);
     await ConfigService.clearCache();

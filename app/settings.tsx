@@ -128,7 +128,12 @@ const SettingsScreen: React.FC = () => {
   const activeServer = getActiveOperatorServer();
   const serverName = activeServer ? activeServer.companyName || activeServer.displayName : '';
 
+  // With central login the card also names the facility the person is in: "Admin · North Cold Store".
   const roleLabel = roleName(userProfile?.role);
+  const roleLine =
+    account.mode !== 'legacy' && account.facilityName
+      ? t('settings.profileRoleAtFacility', { role: roleLabel, facility: account.facilityName })
+      : roleLabel;
   const profileName = userProfile?.name || t('users.fallbackName');
   const themeLabel = t(THEME_OPTIONS.find(option => option.value === themePreference)?.label ?? 'settings.appearance.system');
   const languageLabel = languageOptions.find(option => option.value === languagePreference)?.label ?? t('settings.language.system');
@@ -156,13 +161,13 @@ const SettingsScreen: React.FC = () => {
           style={({ pressed }) => [styles.profileCard, pressed && styles.rowPressed]}
           onPress={() => router.push('/profile')}
           accessibilityRole="button"
-          accessibilityLabel={`${profileName}, ${roleLabel}`}
+          accessibilityLabel={`${profileName}, ${roleLabel}${account.mode !== 'legacy' && account.facilityName ? `, ${account.facilityName}` : ''}`}
           accessibilityHint={t('settings.profileHint')}
         >
           <Avatar name={profileName} id={userProfile?.id} size="lg" />
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{profileName}</Text>
-            <Text style={styles.profileRole}>{roleLabel}</Text>
+            <Text style={styles.profileRole}>{roleLine}</Text>
           </View>
           <Icon name="chevron-right" size={iconSize.md} color={tokens.icon.secondary} />
         </Pressable>
@@ -239,8 +244,9 @@ const SettingsScreen: React.FC = () => {
               testID="account-delete"
               icon="trash-can-outline"
               label={account.deletion.label}
-              subtitle={account.deletion.subtitle}
+              subtitle={account.deletion.checking ? t('common.checking') : account.deletion.subtitle}
               onPress={account.deletion.open}
+              busy={account.deletion.checking}
               showChevron={false}
               destructive
               last

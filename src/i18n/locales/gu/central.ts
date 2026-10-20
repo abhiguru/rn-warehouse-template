@@ -82,6 +82,8 @@ export const central: Translation<typeof source> = {
     deleteMessage:
       'ઍસોસિએશનનું તમારું લૉગિન અને તમારું નામ ડિલીટ થશે, અને તમે દરેક ફોનમાંથી લૉગઆઉટ થશો. આ પાછું લાવી શકાશે નહીં.\n\nકોલ્ડ સ્ટોરેજના રેકોર્ડ તે કોલ્ડ સ્ટોરેજ પાસે જ રહે છે. તે કઢાવવા માટે દરેક કોલ્ડ સ્ટોરેજને કહો.',
     deleteFailedTitle: 'એકાઉન્ટ ડિલીટ કરી શકાયું નથી',
+    // Draft for the owner's wording review (Settings, Profile and Account review, 2026-10-20).
+    deleteUnknownTitle: '{{facility}}એ જવાબ આપ્યો નહીં',
     // Draft for the owner's wording review (M06).
     signOutAll: 'બધા ફોનમાંથી લૉગઆઉટ કરો',
     signOutAllSubtitle: 'આ ફોન સહિત બધા ફોનમાંથી ઍસોસિએશનનું તમારું લૉગિન બંધ કરે છે',
@@ -105,6 +107,12 @@ export const central: Translation<typeof source> = {
     confirmMessage:
       'સાચવ્યા વગરના ફૉર્મ જતા રહેશે. ઍસોસિએશનમાં તમારું લૉગિન ચાલુ રહેશે અને તમે આ કોલ્ડ સ્ટોરેજ મારાં કોલ્ડ સ્ટોરેજમાંથી ફરી ખોલી શકો છો.',
     confirmAction: 'નીકળો',
+    // Draft for the owner's wording review (Settings, Profile and Account review, 2026-10-20).
+    saveInFlight: 'એક ફેરફાર હજુ સચવાઈ રહ્યો છે. થોડી સેકન્ડ રાહ જુઓ, પછી ફરી પ્રયાસ કરો.',
+    thisFacility: 'આ કોલ્ડ સ્ટોરેજ',
+    leftTitle: '{{facility}}માંથી નીકળી ગયા',
+    signedOutTitle: 'લૉગઆઉટ થયું',
+    cleanupFailed: '{{facility}}નો કેટલોક ડેટા આ ફોનમાંથી કાઢી શકાયો નથી. બીજું કોઈ વાપરે તે પહેલાં ઍપ ફરી શરૂ કરો.',
   },
   phoneSignOut: {
     action: 'આ ફોનમાંથી લૉગઆઉટ કરો',

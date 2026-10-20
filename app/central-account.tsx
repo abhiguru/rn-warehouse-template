@@ -15,8 +15,12 @@ import { useAppDispatch } from '@/store/hooks';
 import { deleteAccountEverywhere, signOutAllDevices } from '@/store/centralSignOut';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
+import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { updateCentralName } from '@/config/centralSession';
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { formatMobile } from '@/utils/formatters';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
@@ -36,10 +40,14 @@ export default function CentralAccountScreen() {
   const styles = useThemedStyles(makeStyles);
   const [name, setName] = useState(user?.name ?? '');
   const [nameError, setNameError] = useState<string | undefined>();
-  const [saving, setSaving] = useState(false);
+  // The name as last saved (or opened with): Back asks before a typed change is dropped.
+  const [savedName, setSavedName] = useState(user?.name ?? '');
+  // One save at a time: a second tap before the next draw sends nothing.
+  const { run: runSave, busy: saving } = useSingleFlight();
   const [deleting, setDeleting] = useState(false);
   const [signingOutAll, setSigningOutAll] = useState(false);
   const busy = saving || deleting || signingOutAll;
+  useLeaveGuard({ hasChanges: name.trim() !== savedName.trim() });
 
   const saveName = async () => {
     if (busy) return;
@@ -48,18 +56,16 @@ export default function CentralAccountScreen() {
       return;
     }
     setNameError(undefined);
-    setSaving(true);
-    try {
+    await runSave(async () => {
       const result = await updateCentralName(name);
       if (result.ok) {
         setName(result.user.name ?? '');
-        showAlert(tr('central.account.savedTitle'));
+        setSavedName(result.user.name ?? '');
+        showToast(tr('users.selfEdit.savedTitle'));
       } else {
         showAlert(tr('central.account.saveFailedTitle'), result.message);
       }
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   const deleteAccount = async () => {
@@ -70,7 +76,7 @@ export default function CentralAccountScreen() {
       if (!result.ok)
         showAlert(
           tr('central.account.deleteFailedTitle'),
-          result.reason === 'central' ? result.failure.message : tr('central.switch.busyMessage')
+          result.reason === 'central' ? result.failure.message : tr('central.leave.saveInFlight')
         );
     } finally {
       setDeleting(false);
@@ -86,18 +92,20 @@ export default function CentralAccountScreen() {
 
   const signOutAll = async () => {
     setSigningOutAll(true);
+    // Named before the call: the facility is no longer open when it ends.
+    const facility = currentFacilityLabel();
     try {
       // On success the central session is gone and the route guard shows central sign-in.
       const result = await signOutAllDevices(dispatch);
       if (result.ok) {
-        if (result.facilityCleanup === 'failed') showAlert(tr('central.switch.failedTitle'), tr('common.checkConnection'));
+        if (result.facilityCleanup === 'failed') showFacilityCleanupFailed(tr('central.leave.signedOutTitle'), facility);
       } else if (result.reason === 'central') {
         showAlert(tr('central.account.signOutAllFailedTitle'), result.failure.message);
       } else if (result.reason === 'local_clear_failed') {
         // Ended at the service, but this phone's secure storage kept its copy: same words as "Sign out".
         showAlert(tr('auth.signOut.couldNotTitle'), tr('central.signOut.notCleared'));
       } else {
-        showAlert(tr('central.account.signOutAllFailedTitle'), tr('central.switch.busyMessage'));
+        showAlert(tr('central.account.signOutAllFailedTitle'), tr('central.leave.saveInFlight'));
       }
     } finally {
       setSigningOutAll(false);

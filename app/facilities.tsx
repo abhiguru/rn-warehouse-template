@@ -46,6 +46,7 @@ export const FACILITY_STATUS_VIEW: Record<FacilityStatus, { kind: StatusKind; la
  */
 const FAILED_TITLES: Partial<Record<OpenFailureReason, TranslationKey>> = {
   account_deletion: 'central.account.deleteFailedTitle',
+  account_deletion_unknown: 'central.account.deleteUnknownTitle',
   ...EARLIER_SESSION_TITLES,
 };
 
@@ -118,7 +119,7 @@ export default function FacilitiesScreen() {
       ]);
     } else if (result.kind === 'failed') {
       const title = FAILED_TITLES[result.reason];
-      showAlert(title ? tr(title) : tr('central.open.failedTitle', { facility: name }), result.message);
+      showAlert(title ? tr(title, { facility: name }) : tr('central.open.failedTitle', { facility: name }), result.message);
     }
   }, [outcome]);
 

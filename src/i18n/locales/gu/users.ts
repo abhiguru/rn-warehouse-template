@@ -131,6 +131,8 @@ export const users: Translation<typeof source> = {
     couldNotLoadTitle: 'પ્રોફાઇલ લોડ કરી શકાઈ નથી',
     nameRequired: 'તમારું નામ લખો.',
     savedTitle: 'નામ સચવાયું.',
+    // Draft for the owner's wording review (Settings, Profile and Account review, 2026-10-20).
+    saveOffline: 'તમારું નામ સાચવી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     couldNotSaveTitle: 'તમારી પ્રોફાઇલ સાચવી શકાઈ નથી',
     notFound: 'આ યુઝર મળ્યો નથી',
     saveLabel: 'નામ સાચવો',

@@ -17,8 +17,9 @@
  * Deleting the account is here too: in a central build it deletes the account
  * at the facility that is open only, and both steps of the dialog say so.
  */
-import { useRef, useState } from 'react';
-import { router } from 'expo-router';
+import { AccessibilityInfo } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { router, useIsFocused } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { deleteAccount as deleteAccountThunk, isDeleteAccountRejection, logout } from '@/store/slices/authSlice';
 import { leaveFacility } from '@/store/operatorSwitch';
@@ -27,8 +28,10 @@ import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { adminUserService } from '@/services/admin-user-service';
 import { useCentralState } from '@/hooks/useCentralState';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { normalizeDigits, t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import type { ConfirmDialogProps } from '@/components/ConfirmDialog';
 import type { ConfirmInputDialogProps } from '@/components/ConfirmInputDialog';
 
@@ -63,10 +66,26 @@ export interface AccountDeletion {
    * so in an alert and the warning stays closed. The check runs in the background; the caller waits for nothing.
    */
   open: () => void;
+  /**
+   * True while the only-administrator check runs: the Settings row shows a spinner and "Checking…",
+   * is announced as busy and ignores taps. A result that arrives after Settings was left is dropped.
+   */
+  checking: boolean;
   /** Props for one ConfirmInputDialog: the warning step, then the step with the mobile number. */
   dialog: ConfirmInputDialogProps;
   /** The final step: checks the number and deletes. */
   deleteAccount: () => Promise<void>;
+}
+
+/** The facility the phone has open now, in words for a message; "this facility" when none is open. */
+export function currentFacilityLabel(): string {
+  const server = getActiveOperatorServer();
+  return server ? server.companyName || server.displayName || server.origin : t('central.leave.thisFacility');
+}
+
+/** The server part succeeded, but the facility's data could not all be removed from this phone. */
+export function showFacilityCleanupFailed(title: string, facility: string): void {
+  showAlert(title, t('central.leave.cleanupFailed', { facility }));
 }
 
 /**
@@ -75,21 +94,27 @@ export interface AccountDeletion {
  * phone could not do it all.
  */
 export async function signOutPhoneWithMessages(dispatch: Dispatch): Promise<CentralEndOutcome> {
+  // Named before the call: the facility is no longer open when it ends.
+  const facility = currentFacilityLabel();
   const result = await signOutEverywhere(dispatch);
   if (result.ok && result.facilityCleanup === 'failed')
-    showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
+    showFacilityCleanupFailed(t('central.leave.signedOutTitle'), facility);
   else if (!result.ok)
     showAlert(
       t('auth.signOut.couldNotTitle'),
-      result.reason === 'local_clear_failed' ? t('central.signOut.notCleared') : t('central.switch.busyMessage')
+      result.reason === 'local_clear_failed' ? t('central.signOut.notCleared') : t('central.leave.saveInFlight')
     );
   return result;
 }
 
-/** Tells the person why leaving the facility did not happen. True when it did. */
-function reportLeave(outcome: 'left' | 'busy' | 'failed' | 'reported'): boolean {
-  if (outcome === 'busy') showAlert(t('auth.server.busyTitle'), t('central.switch.busyMessage'));
-  else if (outcome === 'failed') showAlert(t('central.switch.failedTitle'), t('common.checkConnection'));
+/**
+ * Tells the person why leaving the facility did not happen. True when it did.
+ * `failed` means the server part is done and the phone's own clean-up failed, so it says that, not "check your connection".
+ * `title` replaces "Left <facility>" (Sign out says "Signed out", deleting the account says it was deleted).
+ */
+function reportLeave(outcome: 'left' | 'busy' | 'failed' | 'reported', facility: string, title?: string): boolean {
+  if (outcome === 'busy') showAlert(t('auth.server.busyTitle'), t('central.leave.saveInFlight'));
+  else if (outcome === 'failed') showFacilityCleanupFailed(title ?? t('central.leave.leftTitle', { facility }), facility);
   return outcome === 'left';
 }
 
@@ -108,6 +133,19 @@ export function useAccountActions(): {
   const mode: AccountMode = !centralLogin ? 'legacy' : central.status === 'signedIn' ? 'central' : 'centralSignedOut';
   const server = centralLogin ? getActiveOperatorServer() : null;
   const facilityName = server ? server.companyName || server.displayName || server.origin : '';
+
+  const offline = useIsOffline();
+  // Whether Settings is still the screen on show: an answer that arrives later opens no dialog elsewhere.
+  const focused = useIsFocused();
+  const focusedRef = useRef(focused);
+  focusedRef.current = focused;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [pending, setPending] = useState<AccountActionId | null>(null);
   const [busy, setBusy] = useState(false);
@@ -147,6 +185,8 @@ export function useAccountActions(): {
       : [signOutAction];
 
   const request = (id: AccountActionId) => {
+    // The only-administrator check is running on the Delete row: the other rows wait for it too.
+    if (checkingAdmins.current) return;
     if (actions.some(action => action.id === id)) setPending(id);
   };
   const close = () => setPending(null);
@@ -162,9 +202,11 @@ export function useAccountActions(): {
       } else if (id === 'leaveFacility' || mode !== 'legacy') {
         // Leaving the facility: the route guard shows My facilities, or the
         // association's sign-in when that has ended. No screen is pushed here.
+        const facility = facilityName || currentFacilityLabel();
         const outcome = await leaveFacility(dispatch);
         close();
-        reportLeave(outcome);
+        // Sign out (no central sign-in) says "Signed out"; leaving the facility says "Left <facility>".
+        reportLeave(outcome, facility, id === 'leaveFacility' ? undefined : t('central.leave.signedOutTitle'));
       } else {
         try {
           const outcome = await dispatch(logout()).unwrap();
@@ -238,6 +280,7 @@ export function useAccountActions(): {
 
   // A second tap on Delete account while the administrator count is being read does nothing.
   const checkingAdmins = useRef(false);
+  const [checking, setChecking] = useState(false);
   /** True only when the server says this is the one active administrator; a failed lookup says false (the server still refuses). */
   const isOnlyAdministrator = async (): Promise<boolean> => {
     try {
@@ -271,6 +314,12 @@ export function useAccountActions(): {
       return;
     }
 
+    // Offline nothing is sent: the dialog says so where it shows its other errors.
+    if (offline) {
+      setDeleteError(t('settings.deleteAccount.offline'));
+      return;
+    }
+
     deleting.current = true;
     setDeletingAccount(true);
     setDeleteError(null);
@@ -281,16 +330,27 @@ export function useAccountActions(): {
         const outcome = await deleteFacilityAccount(dispatch);
         setDeleteStep(null);
         // 'reported': the failure was published on My facilities, where the person now is.
-        reportLeave(outcome);
+        const where = facilityName || t('central.leave.thisFacility');
+        const deletedText = t('settings.deleteAccount.deleted', { facility: where });
+        if (outcome === 'busy_deleted' || outcome === 'busy_unknown') {
+          // The account's fate is the title; the body says why the person is still inside.
+          showAlert(
+            outcome === 'busy_deleted' ? deletedText : t('settings.deleteAccount.noAnswer', { facility: where }),
+            t('central.leave.saveInFlight')
+          );
+        } else if (reportLeave(outcome, where, deletedText)) showToast(deletedText);
         return;
       }
       await dispatch(deleteAccountThunk()).unwrap();
       setDeleteStep(null);
       router.replace('/login');
+      showToast(t('settings.deleteAccount.deletedNoName'));
     } catch (error) {
       setDeleteError(
         isDeleteAccountRejection(error)
-          ? error.message
+          ? error.serverDeleted === null
+            ? t('settings.deleteAccount.noAnswerNoName')
+            : error.message
           : typeof error === 'string'
             ? error
             : t('settings.deleteAccount.failed')
@@ -359,9 +419,13 @@ export function useAccountActions(): {
       if (userProfile?.role !== 'admin') return showWarning();
       if (checkingAdmins.current) return;
       checkingAdmins.current = true;
+      AccessibilityInfo.announceForAccessibility(t('common.checking'));
       // The last administrator cannot be deleted: say so before the two steps, not after the number.
+      setChecking(true);
       void isOnlyAdministrator()
         .then(only => {
+          // Settings was left while the check ran: no dialog on another screen.
+          if (!mounted.current || !focusedRef.current) return;
           if (!only) return showWarning();
           showAlert(t('settings.deleteAccount.onlyAdminTitle'), t('settings.deleteAccount.onlyAdminMessage'), [
             { text: t('common.cancel'), style: 'cancel' },
@@ -370,8 +434,10 @@ export function useAccountActions(): {
         })
         .finally(() => {
           checkingAdmins.current = false;
+          if (mounted.current) setChecking(false);
         });
     },
+    checking,
     dialog: deletionDialog,
     deleteAccount: confirmDeleteAccount,
   };

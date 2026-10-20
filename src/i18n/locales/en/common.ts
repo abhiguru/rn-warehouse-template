@@ -94,6 +94,7 @@ export const common = {
   // Messages
   couldNotLoad: "Couldn't load this. Check your connection and try again.",
   checkConnection: 'Check your connection and try again.',
+  checking: 'Checking…',
   somethingWentWrong: 'Something went wrong. Try again.',
   noInternet: 'No internet connection',
   discardChangesTitle: 'Discard changes?',

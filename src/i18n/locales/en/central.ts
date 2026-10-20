@@ -94,6 +94,7 @@ export const central = {
     deleteMessage:
       'Your association sign-in and your name are deleted, and you are signed out on every phone. This cannot be undone.\n\nRecords at a cold storage are kept by that cold storage. Ask each one to remove them.',
     deleteFailedTitle: "Couldn't delete the account",
+    deleteUnknownTitle: 'No answer from {{facility}}',
     // "Sign out on all phones" (central service 0.4.0 and later); the dialog says that a cold
     // storage already open on another phone stays open there until the person signs out there.
     signOutAll: 'Sign out on all phones',
@@ -120,6 +121,11 @@ export const central = {
     confirmMessage:
       'Unsaved forms are discarded. You stay signed in to the association and can open this facility again from My facilities.',
     confirmAction: 'Leave',
+    saveInFlight: 'A save is still being sent. Wait a few seconds, then try again.',
+    thisFacility: 'this facility',
+    leftTitle: 'Left {{facility}}',
+    signedOutTitle: 'Signed out',
+    cleanupFailed: "Some of {{facility}}'s data couldn't be removed from this phone. Restart the app before someone else uses it.",
   },
   // Inside a facility: end the association sign-in and the facility on this phone.
   // The dialog's message is signOut.confirmMessage.
