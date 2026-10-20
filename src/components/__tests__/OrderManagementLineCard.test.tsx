@@ -35,6 +35,11 @@ jest.mock('../OrderItemCard', () => ({
 }));
 jest.mock('../ItemCatalogBrowser', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => undefined }));
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 // The 10 s wait of a lost answer belongs to lostAnswer.ts; here it ends at once (a test that wants to see the wait replaces it).
 jest.mock('@/utils/lostAnswer', () => ({
   ...jest.requireActual('@/utils/lostAnswer'),
@@ -196,9 +201,10 @@ describe('a change of the quantity of a line', () => {
 });
 
 describe('the removal of a line', () => {
-  const remove = (card: CardProps) => {
+  const remove = async (card: CardProps) => {
     let answer!: boolean | 'unknown';
-    return act(async () => { answer = await card.onRemove(LINE); }).then(() => answer);
+    await act(async () => { answer = await card.onRemove(LINE); });
+    return answer;
   };
 
   it('asks first; Cancel removes nothing and answers false', async () => {

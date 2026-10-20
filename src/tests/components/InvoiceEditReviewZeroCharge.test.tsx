@@ -229,7 +229,7 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before the update,
     const message = await question(tree);
 
     expect(message.split('\n').slice(-2)).toEqual(['', '1 item has a charge of 0.']);
-    expect(message.startsWith('Example Traders\nEstimated total ')).toBe(true);
+    expect(message.startsWith('Example Traders\nTotal ')).toBe(true);
     expect(rpc).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });

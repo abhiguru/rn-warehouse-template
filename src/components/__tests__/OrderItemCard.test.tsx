@@ -279,3 +279,62 @@ describe('the weight of the lot', () => {
     await act(async () => { tree.unmount(); });
   });
 });
+
+// Owner decision D17: a line that asks for more than the lot has says so, + and +10 are off, and − lowers it to the stock.
+describe('a line above its stock', () => {
+  const over: OrderItem = { ...item, requested_quantity: 12 };
+  const noStock: OrderItem = { ...item, requested_quantity: 5, grn_item: { ...item.grn_item!, current_stock: 0 } };
+  const mount = async (line: OrderItem, onQuantityChange: jest.Mock, onRemove: jest.Mock = jest.fn()) => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<OrderItemCard item={line} onQuantityChange={onQuantityChange} onRemove={onRemove} />); });
+    return tree;
+  };
+  const warning = (tree: ReturnType<typeof create>) =>
+    tree.root.findAll(node => node.props.testID === 'order-line-over-stock' && typeof node.type === 'string');
+
+  it('shows the warning with the stock, and turns + and +10 off', async () => {
+    const tree = await mount(over, jest.fn(() => Promise.resolve(true)));
+    expect(warning(tree)).toHaveLength(1);
+    expect(texts(tree)).toContain('Only 10 in stock. Lower it to 10 or less, or remove it.');
+    expect(byLabel(tree, 'Increase Fictional Onions by 1').props.disabled).toBe(true);
+    expect(byLabel(tree, 'Add 10 to Fictional Onions').props.disabled).toBe(true);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('shows no warning, and leaves + on, for a line within its stock', async () => {
+    const tree = await mount(item, jest.fn(() => Promise.resolve(true)));
+    expect(warning(tree)).toHaveLength(0);
+    expect(texts(tree).some(text => text.includes('in stock. Lower it'))).toBe(false);
+    expect(byLabel(tree, 'Increase Fictional Onions by 1').props.disabled).toBe(false);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('names what − and −10 do in their spoken labels: lower to the stock', async () => {
+    const tree = await mount(over, jest.fn(() => Promise.resolve(true)));
+    expect(byLabel(tree, 'Lower Fictional Onions to 10')).toBeDefined();
+    expect(byLabel(tree, 'Decrease Fictional Onions by 1')).toBeUndefined();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('− lowers 12 to the stock 10 (not to 11), and that is what is saved', async () => {
+    const onQuantityChange = jest.fn(() => Promise.resolve(true));
+    const tree = await mount(over, onQuantityChange);
+    await act(async () => { press(tree, 'Lower Fictional Onions to 10'); });
+    expect(texts(tree)).toContain('10');
+    expect(warning(tree)).toHaveLength(0);
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    expect(onQuantityChange).toHaveBeenCalledWith('line-1', 10, 'order-1');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('with no stock left, − asks to remove the line instead of lowering it', async () => {
+    const onQuantityChange = jest.fn(() => Promise.resolve(true));
+    const onRemove = jest.fn(() => new Promise<boolean>(() => undefined));
+    const tree = await mount(noStock, onQuantityChange, onRemove);
+    expect(byLabel(tree, 'Remove Fictional Onions from order')).toBeDefined();
+    await act(async () => { press(tree, 'Remove Fictional Onions from order'); });
+    expect(onRemove).toHaveBeenCalledWith('line-1', expect.any(Function));
+    expect(onQuantityChange).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+});

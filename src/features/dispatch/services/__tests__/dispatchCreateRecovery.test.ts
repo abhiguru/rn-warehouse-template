@@ -27,14 +27,19 @@ const mockCheckSubmission = jest.fn();
 jest.mock(
   '@/utils/lostAnswer',
   () => ({
+    ...jest.requireActual('@/utils/lostAnswer'),
     // A network failure or a timeout after the request went out; an answer with a code (57014 included) is not one.
     // (`isUnsettledFailure`, which the service takes from serverText, is the real one.)
     isLostAnswer: (error: { message?: string; code?: string }) => !error.code && /Network request failed|TimeoutError|dropped/i.test(error.message ?? ''),
     checkSubmission: (...args: unknown[]) => mockCheckSubmission(...args),
     waitForServer: jest.fn(async () => {}),
-  }),
-  { virtual: true }
+  })
 );
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 
 const header = {
   disp_no: 'I0042',
@@ -64,6 +69,7 @@ function server(createAnswer: unknown) {
 beforeEach(() => {
   mockRpc.mockReset();
   mockCheckSubmission.mockReset();
+  jest.requireMock('../dispatchImageService').uploadDeferredDispatchImages.mockClear();
   jest.mocked(submissionIdempotencyKey).mockClear();
   for (const method of ['log', 'warn', 'error'] as const) jest.spyOn(console, method).mockImplementation(() => {});
 });

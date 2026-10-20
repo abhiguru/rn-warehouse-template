@@ -50,6 +50,11 @@ const mockLive: { refresh?: () => Promise<void> | void } = {};
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({
   useOrderLiveUpdates: (refresh: () => Promise<void> | void) => { mockLive.refresh = refresh; },
 }));
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 // The 10 s wait of a lost answer belongs to lostAnswer.ts; here it ends at once (a test that wants to see the wait replaces it).
 jest.mock('@/utils/lostAnswer', () => ({
   ...jest.requireActual('@/utils/lostAnswer'),

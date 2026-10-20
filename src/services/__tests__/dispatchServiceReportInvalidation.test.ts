@@ -15,11 +15,16 @@ const mockWaitForServer = jest.fn(async (..._args: unknown[]) => {});
 jest.mock(
   '@/utils/lostAnswer',
   () => ({
+    ...jest.requireActual('@/utils/lostAnswer'),
     waitForServer: (...args: unknown[]) => mockWaitForServer(...args),
     checkSubmission: jest.fn(),
-  }),
-  { virtual: true }
+  })
 );
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 
 const invalidate = jest.mocked(invalidateReportQueries);
 const rpc = jest.fn();

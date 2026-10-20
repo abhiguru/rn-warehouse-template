@@ -173,6 +173,7 @@ describe('executeRPC wording of a failed call', () => {
       const rejected = await call(failing('JWT expired', 'PGRST301'), { write: true, errorMessage: 'Failed to update' });
       expect(rejected.message).toBe(t('errors.code.sessionExpired'));
     }
+    setLanguage('en');
     expect(t('errors.code.signInRenewed')).toBe('Your sign-in was renewed. Tap Save again.');
   });
 

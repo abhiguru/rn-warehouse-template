@@ -66,7 +66,7 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: () => null }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn() }));
-jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn() }));
+jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(), withoutStoredNumberError: (result: unknown) => result }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));

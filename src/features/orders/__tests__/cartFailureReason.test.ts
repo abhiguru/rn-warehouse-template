@@ -134,7 +134,7 @@ describe('a line that is gone (review 2026-10-20, A12)', () => {
 describe('a call that may have been applied (review 2026-10-20, A13)', () => {
   it.each(['en', 'gu'] as const)('a removal that got no answer says it is checking whether it was deleted, in %s', language => {
     setLanguage(language);
-    const timedOut = { message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout' };
+    const timedOut = { message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout', lostAnswer: true };
     expect(cartFailureReason(timedOut, { removal: true })).toBe(
       language === 'en' ? 'No answer from the server. Checking whether it was deleted…' : 'સર્વરનો જવાબ મળ્યો નથી. કાઢી નંખાયું છે કે નહીં તે તપાસી રહ્યા છીએ…'
     );

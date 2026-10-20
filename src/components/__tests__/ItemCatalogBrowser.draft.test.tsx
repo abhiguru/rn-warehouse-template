@@ -215,9 +215,15 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     await open([saved('lot-b', 2)]);
     await choose('Fictional potatoes');
     await leaveBy(way);
-    expect(alertTexts(jest.mocked(showAlert))).toEqual([['Discard selections?', 'Changes to 1 lot have not been saved.']]);
+    expect(alertTexts(jest.mocked(showAlert))).toEqual([
+      ['Add these changes to the order?', 'Changes to 1 lot have not been saved.\n\n• Fictional potatoes · mark FX · GRN FXG001 · 50 kg each — add 1 bag'],
+    ]);
     const buttons = jest.mocked(showAlert).mock.calls[0][2]!;
-    expect(buttons.map(button => [button.text, button.style])).toEqual([['Keep editing', 'cancel'], ['Discard selections', 'destructive']]);
+    expect(buttons.map(button => [button.text, button.style])).toEqual([
+      ['Add to order', undefined],
+      ['Keep editing', 'cancel'],
+      ['Discard selections', 'destructive'],
+    ]);
     expect(onClose).not.toHaveBeenCalled();
 
     const presented = mockSheet.present.mock.calls.length;
@@ -241,13 +247,30 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     await choose('Fictional potatoes');
     await choose('Fictional onions');
     await leaveBy(way);
-    expect(alertTexts(jest.mocked(showAlert))).toEqual([['Discard selections?', 'Changes to 2 lots have not been saved.']]);
+    expect(alertTexts(jest.mocked(showAlert))).toEqual([
+      [
+        'Add these changes to the order?',
+        'Changes to 2 lots have not been saved.\n\n' +
+          '• Fictional potatoes · mark FX · GRN FXG001 · 50 kg each — add 1 bag\n' +
+          '• Fictional onions · mark FX · GRN FXG001 · 50 kg each — add 1 bag',
+      ],
+    ]);
     await answer('Discard selections');
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAddItems).not.toHaveBeenCalled();
     // The library reporting its own dismissal afterwards does not close a second time.
     await act(async () => { mockSheet.props.onDismiss?.(); });
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Add to order" sends the listed changes once, and the picker closes when all are saved', async () => {
+    await open([]);
+    await choose('Fictional potatoes');
+    await leaveBy(way);
+    await answer('Add to order');
+    expect(onAddItems).toHaveBeenCalledTimes(1);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0 }]);
     expect(showAlert).toHaveBeenCalledTimes(1);
   });
 

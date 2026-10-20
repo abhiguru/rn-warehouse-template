@@ -118,6 +118,8 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     expect(host('save-bar').length).toBeGreaterThan(0);
     expect(shown()).toContain('Starts on');
     expect(mockGuard.hasChanges).toBe(true);
+    // The day choice is folded behind the "Starts on" line (RateStartLine): open it first.
+    await press('rate-box-monthly-starts-toggle');
     await act(async () => { chip('Today').props.onPress(); });
     await act(async () => { byId('save-bar-save')[0].props.onPress(); });
     expect(replaceItemRates).toHaveBeenCalledTimes(1);

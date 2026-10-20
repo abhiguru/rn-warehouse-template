@@ -81,7 +81,7 @@ jest.mock('@/utils/alert', () => ({
   askAlert: jest.fn((title: string, message: string | undefined, choices: Array<{ value: unknown }>, dismissed: unknown) =>
     new Promise((resolve) => { mockAsked.push({ title, message, ok: choices[0].value, dismissed, resolve }); })),
 }));
-jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })) }));
+jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })), withoutStoredNumberError: (result: unknown) => result }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));

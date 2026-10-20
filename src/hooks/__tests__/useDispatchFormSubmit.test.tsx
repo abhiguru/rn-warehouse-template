@@ -15,6 +15,8 @@ import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import dispatchFormReducer, {
   loadDispatchData,
+  loadFromOrder,
+  updateItem,
   markDispNoTyped,
   refreshDefaultDate,
   resetForm,
@@ -23,6 +25,7 @@ import dispatchFormReducer, {
 } from '@/store/slices/dispatchFormSlice';
 import { createEmptyDispatchHeader, type DispatchItemData } from '@/types/dispatch.types';
 import { createDispatch, getNextDispatchNumber, updateDispatch } from '@/features/dispatch/services/dispatchFormService';
+import { OrderService } from '@/services/order-service';
 import { showAlert } from '@/utils/alert';
 import { toLocalISODate } from '@/utils/formatters';
 import { useDispatchForm, type DispatchFormMode, type UseDispatchFormReturn } from '../useDispatchForm';
@@ -46,6 +49,7 @@ jest.mock('@/features/dispatch/services/dispatchFormService', () => ({
   createDispatch: jest.fn(),
   updateDispatch: jest.fn(),
 }));
+jest.mock('@/services/order-service', () => ({ OrderService: { getOrderWithItems: jest.fn() } }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/localPhotoFiles', () => ({
   LOCAL_PHOTO_OWNERS: { camera: 'camera', grnForm: 'grn-form', dispatchForm: 'dispatch-form' },
@@ -530,6 +534,102 @@ describe('an edit goes by the dispatch of its route', () => {
     await act(async () => { went = await form().navigateToStep(2); });
     expect(went).toBe(false);
     expect(router.replace).not.toHaveBeenCalled();
+    await unmount();
+  });
+});
+
+// Wave B, D5: the order the new dispatch was made from changed after the form opened. The server refuses with
+// ORDER_CHANGED; the order is read again and merged into the form; the person is told and creates it again.
+describe('a new dispatch from an order that changed (ORDER_CHANGED)', () => {
+  const ORDER = 'oooooooo-2222-4333-8444-555555555555';
+  const orderRefusal = { success: false, error: 'The order changed', refusal: { reason: 'ORDER_CHANGED', fields: { source_order_id: ORDER }, text: 'The order changed' } } as never;
+  /** The order as the server holds it now: one lot, which asks for `requested` bags and has `stock`. */
+  const orderNow = (requested: number, stock = 90, updatedAt = '2026-10-20T12:00:00Z') => ({
+    success: true,
+    message: '',
+    data: {
+      id: ORDER,
+      customer_id: header.customer_id,
+      customer: { name: 'Fictional Traders' },
+      created_at: '',
+      updated_at: updatedAt,
+      items: [
+        {
+          id: 'order-line-1', order_id: ORDER, grn_item_id: line.grnItems_id, requested_quantity: requested, created_at: '',
+          grn_item: { id: line.grnItems_item_id, gr_id: line.grns_id, grn_number: 'A0010', name: 'Example Potatoes', current_stock: stock, original_quantity: 100, weight: 50 },
+        },
+      ],
+    },
+  }) as never;
+  /** A form made from the order, which asked for 10 bags of the lot then. */
+  const fromOrder = (store: ReturnType<typeof makeStore>) =>
+    store.dispatch(loadFromOrder({
+      header: { ...header, source_order_id: ORDER, source_order_updated_at: '2026-10-20T09:00:00Z' },
+      items: [line],
+      source_order_id: ORDER,
+      orderLots: { [line.grnItems_id]: { requested: 10, defaultQuantity: 10 } },
+    }));
+
+  it('reads the order again, merges it into the form and tells the screen to check the quantities', async () => {
+    const store = makeStore();
+    fromOrder(store);
+    jest.mocked(OrderService.getOrderWithItems).mockResolvedValue(orderNow(25));
+    create_.mockResolvedValue(orderRefusal);
+    const { form, unmount } = await mount('create', store);
+
+    const result = await submit(form);
+
+    expect(OrderService.getOrderWithItems).toHaveBeenCalledWith(ORDER);
+    expect(result).toEqual({ success: false, orderChanged: { empty: false } });
+    const state = store.getState().dispatchForm;
+    // The quantity was still the one the form was given: it takes the order's new one, and the form's own line stays.
+    expect(state.items.map((item) => [item.grnItems_id, item.disp_quantity, item.unique_id])).toEqual([[line.grnItems_id, 25, 'line-1']]);
+    expect(state.orderLots).toEqual({ [line.grnItems_id]: { requested: 25, defaultQuantity: 25 } });
+    expect(state.header.source_order_updated_at).toBe('2026-10-20T12:00:00Z');
+    expect(create_).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('keeps a quantity the person typed, cut to the stock now', async () => {
+    const store = makeStore();
+    fromOrder(store);
+    store.dispatch(updateItem({ uniqueId: 'line-1', updates: { disp_quantity: 60 } }));
+    expect(store.getState().dispatchForm.items[0].disp_quantity).toBe(60);
+    jest.mocked(OrderService.getOrderWithItems).mockResolvedValue(orderNow(25, 40));
+    create_.mockResolvedValue(orderRefusal);
+    const { form, unmount } = await mount('create', store);
+
+    await submit(form);
+
+    expect(store.getState().dispatchForm.items[0].disp_quantity).toBe(40);
+    await unmount();
+  });
+
+  it('an order with no lot left leaves the form without lines: empty', async () => {
+    const store = makeStore();
+    fromOrder(store);
+    jest.mocked(OrderService.getOrderWithItems).mockResolvedValue({ ...(orderNow(25) as object), data: { ...((orderNow(25) as unknown as { data: object }).data), items: [] } } as never);
+    create_.mockResolvedValue(orderRefusal);
+    const { form, unmount } = await mount('create', store);
+
+    expect(await submit(form)).toEqual({ success: false, orderChanged: { empty: true } });
+    expect(store.getState().dispatchForm.items).toEqual([]);
+    await unmount();
+  });
+
+  it('when the order cannot be read, the form is left as it is and the person is told', async () => {
+    const store = makeStore();
+    fromOrder(store);
+    jest.mocked(OrderService.getOrderWithItems).mockRejectedValue(new Error('Network request failed'));
+    create_.mockResolvedValue(orderRefusal);
+    const { form, unmount } = await mount('create', store);
+
+    const result = await submit(form);
+
+    expect(result.success).toBe(false);
+    expect(result).not.toHaveProperty('orderChanged');
+    expect(store.getState().dispatchForm.items[0].disp_quantity).toBe(10);
+    expect(showAlert).toHaveBeenCalledTimes(1);
     await unmount();
   });
 });

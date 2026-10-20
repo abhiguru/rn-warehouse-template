@@ -81,7 +81,7 @@ jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(
 // What unpreparedGRNPhotos answers for real forms is tested with the service (grnPhotoSaving.test.ts).
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
-jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })) }));
+jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })), withoutStoredNumberError: (result: unknown) => result }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -429,7 +429,7 @@ describe('GRN review step photos', () => {
       await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
       let ended!: Promise<void>;
       await act(async () => { ended = saveDialog(tree).props.onConfirm(); });
-      return ended;
+      return { ended }; // wrapped: an async function would otherwise wait for the pending save
     }
 
     it('locks the form, says what is checked, and asks the server about that request code and time', async () => {
@@ -437,12 +437,16 @@ describe('GRN review step photos', () => {
       (updateGRN as jest.Mock).mockResolvedValueOnce(lost);
       (checkSubmission as jest.Mock).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
       const tree = await render('edit');
-      const ended = await startSave(tree);
+      const { ended } = await startSave(tree);
 
       expect(checkSubmission).toHaveBeenCalledWith(LOST.key, LOST.sentAt, expect.any(AbortSignal));
       expect(noticeText(tree)).toContain('Checking whether it was saved');
       expect(noticeText(tree)).not.toContain('Waiting for the connection');
       // Nothing can be changed or left: no edit, no Previous, no step circle, no Back; the X alone leaves, with its warning.
+      // The store is mocked here: the form's isSaving, which the save sets with setIsSaving(true), is set by hand.
+      expect(mockDispatch).toHaveBeenCalledWith(setIsSaving(true));
+      mockForm.isSaving = true;
+      await act(async () => { tree.update(<GrnReviewStep mode="edit" />); });
       const header = one(tree, 'GRNStepIndicator');
       expect(header.props.disabled).toBe(true);
       expect(header.props.leaveWarning).toContain('It may have been saved');
@@ -549,7 +553,7 @@ describe('GRN review step photos', () => {
         return new Promise((_resolve, reject) => abort.addEventListener('abort', () => reject(new Error('aborted'))));
       });
       const tree = await render('edit');
-      const ended = await startSave(tree);
+      const { ended } = await startSave(tree);
 
       await act(async () => { one(tree, 'GRNStepIndicator').props.onCancel(); await ended; });
 

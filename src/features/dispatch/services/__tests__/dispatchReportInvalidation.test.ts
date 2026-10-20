@@ -17,7 +17,13 @@ jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn() }));
 jest.mock('../dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 jest.mock('expo-crypto', () => ({ randomUUID: () => 'fictional-uuid' }));
 // A failure before the request was sent is not a lost answer (the helper itself is tested in src/utils/__tests__).
-jest.mock('@/utils/lostAnswer', () => ({ isLostAnswer: () => false, checkSubmission: jest.fn(), waitForServer: jest.fn() }), { virtual: true });
+jest.mock('@/utils/lostAnswer', () => ({ ...jest.requireActual('@/utils/lostAnswer'), isLostAnswer: () => false, checkSubmission: jest.fn(), waitForServer: jest.fn() }));
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
+
 
 const invalidate = jest.mocked(invalidateReportQueries);
 const payload = {
