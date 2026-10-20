@@ -4,13 +4,15 @@
  * Single-page form for editing existing items.
  * Loads item data by ID and allows updating.
  * Fields: name (required), packaging, description. Whether the item is active, and deleting it, are on the item
- * page (app/item/[id].tsx); this form sends the active state it loaded, because update_item has p_active DEFAULT true
- * and would otherwise activate a deactivated item.
+ * page (app/item/[id].tsx); this form does not send p_active at all, so the server keeps the item's active state
+ * (update_item, backend Items screens 2026-10-20). It always sends the packaging and the description it shows,
+ * because update_item clears what is not sent. A failed read of the item keeps the screen with Try again; only
+ * a real "not found" says the item may have been deleted.
  *
  * Based on SAP Fiori for iOS Design Guidelines
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,6 +22,7 @@ import {
   Platform,
   ActivityIndicator,
   TextInput,
+  AccessibilityInfo,
   type TextInputProps,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -47,6 +50,10 @@ import type { ItemFormData, ItemValidationErrors, Item } from '@/types/item.type
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
+/** The order the fields are on the screen: the first wrong one gets focus. */
+const FIELD_ORDER: (keyof ItemValidationErrors)[] = ['name', 'packaging', 'description'];
+
 const ItemEditScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -57,6 +64,12 @@ const ItemEditScreen: React.FC = () => {
   // Loading states
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // The read of the item failed (no connection, a timeout): the screen stays, with Try again.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // The server answered and there is no such item (someone deleted it).
+  const [notFound, setNotFound] = useState(false);
+  const offline = useIsOffline();
+  const inputs = useRef<Partial<Record<keyof ItemValidationErrors, TextInput | null>>>({});
 
   // Original item data for comparison
   const [originalItem, setOriginalItem] = useState<Item | null>(null);
@@ -81,6 +94,8 @@ const ItemEditScreen: React.FC = () => {
   const loadItemData = async () => {
     try {
       setLoading(true);
+      setLoadFailed(false);
+      setNotFound(false);
       const result = await itemService.getItemById(id!);
 
       if (result.success && result.data) {
@@ -92,17 +107,16 @@ const ItemEditScreen: React.FC = () => {
           description: item.description || '',
           active: item.active ?? true,
         });
+      } else if (result.code === 'NOT_FOUND') {
+        // The server answered: there is no such item. The page says so, with Go back.
+        setNotFound(true);
       } else {
         console.error('[ItemEdit] Failed to load item:', result.message);
-        showAlert(tr('items.form.notFoundTitle'), tr('items.form.notFoundMessage'), [
-          { text: tr('common.ok'), onPress: () => router.back() },
-        ]);
+        setLoadFailed(true);
       }
     } catch (err) {
       console.error('[ItemEdit] Load error:', err);
-      showAlert(tr('items.form.couldNotLoadTitle'), tr('common.checkConnection'), [
-        { text: tr('common.ok'), onPress: () => router.back() },
-      ]);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -121,7 +135,7 @@ const ItemEditScreen: React.FC = () => {
   );
 
   // Validation
-  const validateForm = useCallback((): boolean => {
+  const validateForm = useCallback((): number => {
     const newErrors: ItemValidationErrors = {};
 
     // Name validation
@@ -142,7 +156,13 @@ const ItemEditScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // The first wrong field gets focus, and the number to fix is announced.
+    const wrong = FIELD_ORDER.filter((field) => newErrors[field]);
+    if (wrong.length > 0) {
+      inputs.current[wrong[0]]?.focus();
+      AccessibilityInfo.announceForAccessibility(tr('items.form.fixFields', { count: wrong.length }));
+    }
+    return wrong.length;
   }, [formData]);
 
   // Check if form has changes
@@ -161,11 +181,15 @@ const ItemEditScreen: React.FC = () => {
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: hasChanges(),
     message: tr('items.form.discardMessage'),
+    // Back waits for a save that is running, instead of asking to discard what is being saved.
+    blocked: saving,
   });
 
   // Handle save
   const handleSave = async () => {
-    if (!validateForm()) {
+    // Taken first: a second tap while the first is sending does nothing.
+    if (saving) return;
+    if (validateForm() > 0) {
       return;
     }
 
@@ -175,34 +199,39 @@ const ItemEditScreen: React.FC = () => {
       return;
     }
 
+    // Nothing is sent from a phone that is offline.
+    if (offline) {
+      showAlert(tr('items.form.couldNotSaveTitle'), tr('items.offline.connectToSave'));
+      return;
+    }
+
     setSaving(true);
     try {
+      // No p_active: the server keeps it. Packaging and description are always sent (an empty one clears it).
       const result = await itemService.updateItem({
         p_item_id: id!,
         p_name: formData.name.trim(),
-        p_packaging: normalizePackaging(formData.packaging, groups) || undefined,
-        p_description: formData.description.trim() || undefined,
-        p_active: formData.active,
+        p_packaging: normalizePackaging(formData.packaging, groups),
+        p_description: formData.description.trim(),
       });
 
       if (result.success) {
         leaveWithoutAsking(() => router.back());
         showToast(tr('items.form.savedToast', { name: formData.name.trim() }));
+      } else if (result.code === 'DUPLICATE_NAME') {
+        setErrors({ name: tr('items.form.duplicateName') });
+        inputs.current.name?.focus();
+      } else if (result.code === 'NOT_FOUND') {
+        // Someone deleted the item while this form was open: back to the Items list, which drops the row.
+        showAlert(tr('items.form.couldNotSaveTitle'), tr('items.form.someoneDeleted'), [
+          { text: tr('common.goBack'), onPress: () => leaveWithoutAsking(() => router.dismissTo('/items')) },
+        ]);
       } else {
-        // Check for duplicate name error
-        if (
-          result.message?.toLowerCase().includes('duplicate') ||
-          result.message?.toLowerCase().includes('unique') ||
-          result.message?.toLowerCase().includes('already exists')
-        ) {
-          setErrors({ name: tr('items.form.duplicateName') });
-        } else {
-          showAlert(tr('items.form.couldNotSaveTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment'), { write: true }));
-        }
+        showAlert(tr('items.form.couldNotSaveTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true }));
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);
-      showAlert(tr('items.form.couldNotSaveTitle'), tr('common.checkConnection'));
+      showAlert(tr('items.form.couldNotSaveTitle'), serverText(err, tr('common.checkConnection'), { write: true }));
     } finally {
       setSaving(false);
     }
@@ -220,6 +249,36 @@ const ItemEditScreen: React.FC = () => {
       <View style={styles.headerSide} />
     </View>
   );
+
+  if (notFound && !loading) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.flex, styles.loadingContainer]} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={[styles.loadingText, styles.loadFailedText]}>{tr('items.form.notFoundSentence')}</Text>
+          <Button type="secondary" onPress={() => router.dismissTo('/items')}>
+            {tr('common.goBack')}
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  if (loadFailed && !loading) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.flex, styles.loadingContainer]} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={[styles.loadingText, styles.loadFailedText]}>{tr('items.page.loadFailed')}</Text>
+          <Button type="secondary" leftIcon="refresh" onPress={() => void loadItemData()}>
+            {tr('common.retry')}
+          </Button>
+        </View>
+      </View>
+    );
+  }
 
   if (loading || !originalItem) {
     return (
@@ -262,6 +321,7 @@ const ItemEditScreen: React.FC = () => {
               maxLength={80}
               error={errors.name}
               autoCapitalize="words"
+              inputRef={(node) => (inputs.current.name = node)}
             />
             <ItemTextField
               label={tr('common.packaging')}
@@ -270,6 +330,7 @@ const ItemEditScreen: React.FC = () => {
               placeholder={tr('items.form.packagingPlaceholder')}
               maxLength={40}
               error={errors.packaging}
+              inputRef={(node) => (inputs.current.packaging = node)}
             />
             {suggestions.length > 0 && (
               <ChoiceChips
@@ -286,6 +347,7 @@ const ItemEditScreen: React.FC = () => {
               placeholder={tr('items.form.descriptionPlaceholder')}
               maxLength={40}
               error={errors.description}
+              inputRef={(node) => (inputs.current.description = node)}
             />
           </View>
         </ScrollView>
@@ -307,10 +369,11 @@ type ItemTextFieldProps = Omit<TextInputProps, 'style'> & {
   error?: string;
   maxLength: number;
   value: string;
+  inputRef?: (node: TextInput | null) => void;
 };
 
 /** Labelled text field with focus, error and character count (style guide §13.2). */
-function ItemTextField({ label, required, error, maxLength, value, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
+function ItemTextField({ label, required, error, maxLength, value, inputRef, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const [focused, setFocused] = useState(false);
@@ -322,6 +385,7 @@ function ItemTextField({ label, required, error, maxLength, value, onFocus, onBl
       </Text>
       <TextInput
         {...inputProps}
+        ref={inputRef}
         value={value}
         maxLength={maxLength}
         placeholderTextColor={t.text.placeholder}
@@ -372,6 +436,11 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     marginTop: space.lg,
     color: t.text.secondary,
+  },
+  loadFailedText: {
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    paddingHorizontal: layout.marginCompact,
   },
   header: {
     flexDirection: 'row' as const,

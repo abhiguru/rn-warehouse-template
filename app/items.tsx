@@ -13,6 +13,11 @@
  * from the cached active items (useItemRates) that the cached rates say have no rate,
  * and the search is applied to them here. The cache is read again on focus only when
  * it is older than a few minutes, on pull to refresh, and after a deactivate or delete.
+ *
+ * Coming back to the list (Back from an item, Edit, or Add) does not read the list again from the first row:
+ * the item that was opened is read alone and its row is changed in place (or dropped when it is gone), so the
+ * rows loaded further down and the scroll position stay. Only Add reads the list again, to show the new item.
+ * The search is screen state: it starts empty each time Items is opened from Settings and stays while an item is open.
  */
 
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
@@ -54,12 +59,15 @@ import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
 import { formatCount, formatTime } from '@/utils/formatters';
 import { deleteItemFlow } from '@/features/items/deleteItemFlow';
+import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
+import { LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { itemPagePath } from '@/features/item-pricing/contract';
 import { itemIdsWithoutRate } from '@/features/item-pricing/noRate';
 import { todayDay } from '@/features/item-pricing/rateText';
 import { RateStrip } from '@/features/item-pricing/components/RateStrip';
 import type { ActiveItem } from '@/types/item-pricing.types';
-import { reloadItemRatesCache, useItemRates } from '@/features/item-pricing/useItemRates';
+import { itemRatesLoadedAt, reloadItemRatesCache, useItemRates } from '@/features/item-pricing/useItemRates';
 import { canOpenScreen } from '@/config/roles';
 import { useAppSelector } from '@/store/hooks';
 import { t as tr } from '@/i18n';
@@ -83,6 +91,8 @@ interface ListState {
   loadedAt: Date | null;
   /** A reload failed while rows were on screen: they are older than they look. */
   refreshFailed: boolean;
+  /** The next page failed to load; the rows on screen stay. */
+  loadMoreFailed: boolean;
 }
 
 /** The cached active items that match the search text (name, packaging or description), as list rows. */
@@ -118,7 +128,24 @@ export default function ItemsScreen() {
     loadedSearch: '',
     loadedAt: null,
     refreshFailed: false,
+    loadMoreFailed: false,
   });
+  const offline = useIsOffline();
+  // The row of this item is read again when the list comes back into focus; Add reads the whole list again.
+  const openedItemId = useRef<string | null>(null);
+  const reloadOnFocus = useRef(false);
+  // When the item was opened: a rates read after that was done by the item page, and is not repeated here.
+  const openedAt = useRef(0);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  // The row being deleted, from the tap until Cancel or the server's answer: it is dimmed and takes no other action.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // The same, as refs: a second tap in the same moment finds the first one already taken (state is not yet updated).
+  const deletingRef = useRef(false);
+  const togglingRef = useRef(new Set<string>());
+  // The ready cache items and when they were read, for the comparison on return from an item.
+  const rateItemsRef = useRef<ActiveItem[]>([]);
+  rateItemsRef.current = rateItems;
   // Counts the loads from the first row: an answer for an older search is ignored.
   const requestRef = useRef(0);
 
@@ -131,9 +158,9 @@ export default function ItemsScreen() {
       const request = offset === 0 ? ++requestRef.current : requestRef.current;
       const search = filters.search ?? '';
       if (offset === 0) {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
+        setState((prev) => ({ ...prev, loading: true, error: null, loadMoreFailed: false }));
       } else {
-        setState((prev) => ({ ...prev, loadingMore: true }));
+        setState((prev) => ({ ...prev, loadingMore: true, loadMoreFailed: false }));
       }
 
       const fail = (message: string) => {
@@ -141,7 +168,7 @@ export default function ItemsScreen() {
           // Rows for the same search stay, marked as older; rows for another search would mislead.
           const keepRows = offset === 0 ? prev.data.length > 0 && prev.loadedSearch === search : true;
           if (keepRows && prev.data.length > 0) {
-            return { ...prev, loading: false, loadingMore: false, refreshFailed: offset === 0 };
+            return { ...prev, loading: false, loadingMore: false, refreshFailed: offset === 0, loadMoreFailed: offset > 0 };
           }
           return { ...prev, data: [], totalCount: 0, loading: false, loadingMore: false, error: message };
         });
@@ -154,7 +181,8 @@ export default function ItemsScreen() {
         if (response.success) {
           setState((prev) => ({
             ...prev,
-            data: offset === 0 ? response.data : [...prev.data, ...response.data],
+            // The next page starts at the rows held; a row that moved into it (a change elsewhere) is not shown twice.
+            data: offset === 0 ? response.data : [...prev.data, ...response.data.filter((row) => !prev.data.some((held) => held.id === row.id))],
             totalCount: response.pagination?.total_count || 0,
             offset,
             loading: false,
@@ -179,14 +207,62 @@ export default function ItemsScreen() {
   // EFFECTS
   // ===========================================================================
 
-  // Load items on initial mount and when screen is focused
+  // The item that was opened is read alone and its row is changed in place: name, packaging, description and
+  // active state. A name that has changed is also changed in the cached items the No rate list is built from.
+  const refreshOpenedItem = useCallback(
+    async (itemId: string) => {
+      let result;
+      try {
+        result = await itemService.getItemById(itemId);
+      } catch {
+        return;
+      }
+      if (result.success && result.data) {
+        const fresh = result.data;
+        // Compared with the cached active items, which the No rate list is built from (the plain list may not hold the item).
+        const cached = rateItemsRef.current.find((row) => row.id === itemId);
+        setState((prev) => ({
+          ...prev,
+          data: prev.data.map((row) =>
+            row.id === itemId
+              ? { ...row, name: fresh.name, packaging: fresh.packaging ?? undefined, description: fresh.description ?? undefined, active: fresh.active ?? true }
+              : row
+          ),
+        }));
+        // The cached active items carry the name; they follow a rename or an activate / deactivate. Not read again
+        // when the item page already did (its own change) after this item was opened.
+        const active = fresh.active ?? true;
+        const differs = cached ? !active || cached.name !== fresh.name : active;
+        if (canSeeRates && differs && itemRatesLoadedAt() < openedAt.current) void reloadItemRatesCache();
+      } else if (result.code === 'NOT_FOUND') {
+        // Deleted (here or by someone else): the row goes.
+        setState((prev) =>
+          prev.data.some((row) => row.id === itemId)
+            ? { ...prev, data: prev.data.filter((row) => row.id !== itemId), totalCount: Math.max(0, prev.totalCount - 1) }
+            : prev
+        );
+        if (canSeeRates) void reloadItemRatesCache();
+      }
+      // A failed read leaves the row as it is; pull to refresh reads the list again.
+    },
+    [canSeeRates]
+  );
+
+  // Load items on initial mount; when the screen comes back into focus only the opened item's row is read.
   useEffect(() => {
-    if (isFocused) {
+    if (!isFocused) return;
+    const current = stateRef.current;
+    const neverLoaded = current.loadedAt === null || !!current.error;
+    if (neverLoaded || reloadOnFocus.current) {
+      reloadOnFocus.current = false;
       // The No rate list comes from the cached items, not from get_items.
-      if (!state.filters.noRate) fetchItems(state.filters, 0);
-      // Saves in the app merge into the rates held; read them all again only when they are old.
-      if (canSeeRates) void refreshRatesIfStale();
+      if (!current.filters.noRate) fetchItems(current.filters, 0);
+    } else if (openedItemId.current) {
+      void refreshOpenedItem(openedItemId.current);
     }
+    openedItemId.current = null;
+    // Saves in the app merge into the rates held; read them all again only when they are old.
+    if (canSeeRates) void refreshRatesIfStale();
   }, [isFocused]);
 
   // The active items with no default rate today, from the rates the phone holds.
@@ -227,13 +303,15 @@ export default function ItemsScreen() {
 
   const handleEndReached = useCallback(() => {
     const hasMore =
-      !state.filters.noRate && state.totalCount > state.data.length && !state.loadingMore && !state.loading;
+      !state.filters.noRate && state.totalCount > state.data.length && !state.loadingMore && !state.loading && !state.loadMoreFailed;
     if (hasMore) {
-      fetchItems(state.filters, state.offset + 20);
+      fetchItems(state.filters, state.data.length);
     }
   }, [state, fetchItems]);
 
   const handleOpenItem = useCallback((itemId: string) => {
+    openedItemId.current = itemId;
+    openedAt.current = Date.now();
     router.push(itemPagePath(itemId));
   }, []);
 
@@ -249,11 +327,22 @@ export default function ItemsScreen() {
   );
 
   const handleToggleActive = useCallback(
-    async (itemId: string, currentActive: boolean) => {
+    async (item: ItemListItem, currentActive: boolean) => {
+      const itemId = item.id;
+      const failTitle = currentActive ? tr('items.list.couldNotDeactivateTitle') : tr('items.list.couldNotActivateTitle');
+      if (offline) {
+        showAlert(failTitle, tr('items.offline.connectToSave'), [{ text: tr('common.ok') }]);
+        return;
+      }
+      // One change per item at a time (a ref: a second tap in the same moment finds it taken).
+      if (togglingRef.current.has(itemId)) return;
+      togglingRef.current.add(itemId);
       try {
         const result = await itemService.toggleItemActive(itemId, !currentActive);
 
         if (result.success) {
+          if (currentActive) showDeactivatedToast(item.name);
+          else showActivatedToast(item.name, result.rateSource);
           // Update local state to reflect the change
           setState((prev) => ({
             ...prev,
@@ -265,27 +354,35 @@ export default function ItemsScreen() {
           }));
           // The strip's count and the cached items follow the change.
           if (canSeeRates) void reloadItemRatesCache();
+        } else if (result.code === 'NOT_FOUND') {
+          // Deleted by someone else: the row goes.
+          showAlert(failTitle, tr('items.form.someoneDeleted'), [{ text: tr('common.ok') }]);
+          setState((prev) => ({ ...prev, data: prev.data.filter((row) => row.id !== itemId), totalCount: Math.max(0, prev.totalCount - 1) }));
+          if (canSeeRates) void reloadItemRatesCache();
         } else {
           // Show error to user
-          showAlert(
-            currentActive ? tr('items.list.couldNotDeactivateTitle') : tr('items.list.couldNotActivateTitle'),
-            serverText(result.message, tr('items.list.tryAgainInAMoment'), { write: true }),
-            [{ text: tr('common.ok') }]
-          );
+          showAlert(failTitle, serverText(result, tr('items.list.tryAgainInAMoment'), { write: true }), [{ text: tr('common.ok') }]);
         }
       } catch (error) {
         console.error('[Items] Toggle active error:', error);
         showAlert(tr('items.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
+      } finally {
+        togglingRef.current.delete(itemId);
       }
     },
-    [canSeeRates]
+    [canSeeRates, offline]
   );
 
   // Deactivating asks first (like customers); activating again happens straight away.
   const handleToggleActiveRequest = useCallback(
     (item: ItemListItem) => {
       if (!item.active) {
-        handleToggleActive(item.id, false);
+        void handleToggleActive(item, false);
+        return;
+      }
+      // Offline: say so now, not after a question that could only end in that message.
+      if (offline) {
+        showAlert(tr('items.list.couldNotDeactivateTitle'), tr('items.offline.connectToSave'), [{ text: tr('common.ok') }]);
         return;
       }
       showAlert(tr('items.list.deactivateConfirmTitle', { name: item.name }), tr('items.list.deactivateConfirmMessage'), [
@@ -293,31 +390,44 @@ export default function ItemsScreen() {
         {
           text: tr('items.list.deactivateItem'),
           style: 'destructive',
-          onPress: () => handleToggleActive(item.id, true),
+          onPress: () => void handleToggleActive(item, true),
         },
       ]);
     },
-    [handleToggleActive]
+    [handleToggleActive, offline]
   );
 
   const handleAddItem = useCallback(() => {
+    // The new item shows in the list when the form closes: the list is read again from the first row.
+    reloadOnFocus.current = true;
     router.push('/item-form');
   }, []);
 
   const handleDeleteItem = useCallback(
-    (item: ItemListItem) =>
-      deleteItemFlow(item, {
-        onDeleted: () => {
-          setState((prev) => ({
-            ...prev,
-            data: prev.data.filter((i) => i.id !== item.id),
-            totalCount: prev.totalCount - 1,
-          }));
-          if (canSeeRates) void reloadItemRatesCache();
-        },
-        onDeactivate: () => handleToggleActive(item.id, true),
-      }),
-    [handleToggleActive, canSeeRates]
+    async (item: ItemListItem) => {
+      // One delete at a time; the row is dimmed from the tap until the person cancels or the server has answered.
+      if (deletingRef.current) return;
+      deletingRef.current = true;
+      setDeletingId(item.id);
+      try {
+        await deleteItemFlow(item, {
+          onDeleted: () => {
+            setState((prev) => ({
+              ...prev,
+              data: prev.data.filter((i) => i.id !== item.id),
+              totalCount: Math.max(0, prev.totalCount - 1),
+            }));
+            if (canSeeRates) void reloadItemRatesCache();
+          },
+          onDeactivate: () => handleToggleActive(item, true),
+          offline,
+        });
+      } finally {
+        deletingRef.current = false;
+        setDeletingId(null);
+      }
+    },
+    [handleToggleActive, canSeeRates, offline]
   );
 
   // ===========================================================================
@@ -329,12 +439,13 @@ export default function ItemsScreen() {
       <FioriItemCard
         item={item}
         noRate={canSeeRates && item.active && noRateIds.has(item.id)}
+        busy={deletingId === item.id}
         onPress={() => handleOpenItem(item.id)}
         onToggleActive={() => handleToggleActiveRequest(item)}
         onDelete={() => handleDeleteItem(item)}
       />
     ),
-    [handleOpenItem, handleToggleActiveRequest, handleDeleteItem, canSeeRates, noRateIds]
+    [handleOpenItem, handleToggleActiveRequest, handleDeleteItem, canSeeRates, noRateIds, deletingId]
   );
 
   const keyExtractor = useCallback((item: ItemListItem) => item.id, []);
@@ -462,6 +573,16 @@ export default function ItemsScreen() {
   }, [listLoading, state.error, state.filters, noRateFilter, ratesStatus, refreshRates, setNoRateFilter, fetchItems, handleAddItem, handleSearch, styles, t]);
 
   const renderFooter = useCallback(() => {
+    if (state.loadMoreFailed && !state.loadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={tr('items.list.loadMoreFailed')}
+          retryLabel={tr('items.list.retryMore')}
+          onRetry={() => fetchItems(state.filters, state.data.length)}
+          testID="items-load-more-error"
+        />
+      );
+    }
     if (!state.loadingMore) return null;
 
     return (
@@ -470,7 +591,7 @@ export default function ItemsScreen() {
         <Text style={styles.footerText}>{tr('common.loadingMore')}</Text>
       </View>
     );
-  }, [state.loadingMore, styles, t]);
+  }, [state.loadingMore, state.loadMoreFailed, state.filters, state.data.length, fetchItems, styles, t]);
 
   return (
     <>
@@ -575,12 +696,14 @@ interface FioriItemCardProps {
   item: ItemListItem;
   /** An active item with no default rate in force today (a role that may see pricing). */
   noRate: boolean;
+  /** Delete is under way (counting, asking or sending): the row is dimmed and its actions do nothing. */
+  busy?: boolean;
   onPress: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
 }
 
-function FioriItemCard({ item, noRate, onPress, onToggleActive, onDelete }: FioriItemCardProps) {
+function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, onDelete }: FioriItemCardProps) {
   const swipeableRef = useRef<Swipeable | null>(null);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -591,12 +714,12 @@ function FioriItemCard({ item, noRate, onPress, onToggleActive, onDelete }: Fior
 
   const handleDelete = () => {
     swipeableRef.current?.close();
-    onDelete();
+    if (!busy) onDelete();
   };
 
   const handleToggle = () => {
     swipeableRef.current?.close();
-    onToggleActive();
+    if (!busy) onToggleActive();
   };
 
   const renderRightActions = () => (
@@ -644,9 +767,11 @@ function FioriItemCard({ item, noRate, onPress, onToggleActive, onDelete }: Fior
       rightThreshold={40}
     >
       <Pressable
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed, busy && styles.cardBusy]}
         onPress={onPress}
+        disabled={busy}
         accessibilityRole="button"
+        accessibilityState={{ busy }}
         accessibilityLabel={rowLabel}
         accessibilityHint={item.active ? tr('items.list.rowHintDeactivate') : tr('items.list.rowHintActivate')}
         accessibilityActions={[
@@ -654,6 +779,7 @@ function FioriItemCard({ item, noRate, onPress, onToggleActive, onDelete }: Fior
           { name: 'delete', label: tr('common.delete') },
         ]}
         onAccessibilityAction={(event) => {
+          if (busy) return;
           if (event.nativeEvent.actionName === 'toggleActive') onToggleActive();
           if (event.nativeEvent.actionName === 'delete') onDelete();
         }}
@@ -752,6 +878,10 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: layout.objectCellMinHeight,
     backgroundColor: t.surface.card,
     ...t.shadow[2],
+  },
+  // While Delete counts where the item is used (the row is not tappable).
+  cardBusy: {
+    opacity: 0.5,
   },
   cardPressed: {
     backgroundColor: t.surface.cardPressed,

@@ -18,6 +18,8 @@ import { ItemTabNavigator, type ItemTabKey } from '@/components/item-details/Ite
 import { ItemPricingTab } from '@/features/item-pricing/components/ItemPricingTab';
 import { reloadItemRatesCache } from '@/features/item-pricing/useItemRates';
 import { deleteItemFlow } from '@/features/items/deleteItemFlow';
+import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -43,10 +45,15 @@ export default function ItemPage() {
   const [chosenTab, setActiveTab] = useState<ItemTabKey>(requestedTab === 'pricing' ? 'pricing' : 'overview');
   const activeTab: ItemTabKey = canSeePricing ? chosenTab : 'overview';
   const [item, setItem] = useState<Item | null>(null);
+  // The read failed (no connection, a timeout): the screen can try again.
   const [failed, setFailed] = useState(false);
+  // The server answered and there is no such item (someone deleted it).
+  const [notFound, setNotFound] = useState(false);
+  const offline = useIsOffline();
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const currentId = useRef(id);
+  const deleting = useRef(false);
   currentId.current = id;
 
   useEffect(() => {
@@ -64,6 +71,12 @@ export default function ItemPage() {
       if (result.success && result.data) {
         setItem(result.data);
         setFailed(false);
+        setNotFound(false);
+      } else if ('code' in result && result.code === 'NOT_FOUND') {
+        // Gone: the page says so instead of offering to try again.
+        setItem(null);
+        setFailed(false);
+        setNotFound(true);
       } else {
         setFailed(true);
       }
@@ -79,19 +92,25 @@ export default function ItemPage() {
   const setActive = useCallback(
     async (active: boolean) => {
       if (!shown) return;
+      const failTitle = tr(active ? 'items.list.couldNotActivateTitle' : 'items.list.couldNotDeactivateTitle');
+      if (offline) {
+        showAlert(failTitle, tr('items.offline.connectToSave'), [{ text: tr('common.ok') }]);
+        return;
+      }
       setBusy(true);
       try {
         const result = await itemService.toggleItemActive(shown.id, active);
         if (result.success) {
           setItem({ ...shown, active });
+          if (active) showActivatedToast(shown.name, result.rateSource);
+          else showDeactivatedToast(shown.name);
           // The rates held list active items only: read them again so the Items list and the strip follow.
           void reloadItemRatesCache();
+        } else if (result.code === 'NOT_FOUND') {
+          setItem(null);
+          setNotFound(true);
         } else {
-          showAlert(
-            tr(active ? 'items.list.couldNotActivateTitle' : 'items.list.couldNotDeactivateTitle'),
-            serverText(result.message, tr('items.list.tryAgainInAMoment')),
-            [{ text: tr('common.ok') }]
-          );
+          showAlert(failTitle, serverText(result, tr('items.list.tryAgainInAMoment'), { write: true }), [{ text: tr('common.ok') }]);
         }
       } catch {
         showAlert(tr('items.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
@@ -99,7 +118,7 @@ export default function ItemPage() {
         setBusy(false);
       }
     },
-    [shown]
+    [shown, offline]
   );
 
   // Deactivating asks first (like customers); activating again happens straight away.
@@ -109,24 +128,37 @@ export default function ItemPage() {
       void setActive(true);
       return;
     }
+    // Offline: say so now, not after a question that could only end in that message.
+    if (offline) {
+      showAlert(tr('items.list.couldNotDeactivateTitle'), tr('items.offline.connectToSave'), [{ text: tr('common.ok') }]);
+      return;
+    }
     showAlert(tr('items.list.deactivateConfirmTitle', { name: shown.name }), tr('items.list.deactivateConfirmMessage'), [
       { text: tr('common.cancel'), style: 'cancel' },
       { text: tr('items.list.deactivateItem'), style: 'destructive', onPress: () => void setActive(false) },
     ]);
-  }, [shown, setActive]);
+  }, [shown, setActive, offline]);
 
   // Deleting asks first (it takes the item's rates with it); an item in use can be deactivated instead.
   const onDelete = useCallback(() => {
-    if (!shown) return;
+    // A ref, not the state: a second tap in the same moment must find the first one already taken.
+    if (!shown || deleting.current) return;
+    deleting.current = true;
+    // Busy from the tap until the person cancels or the server has answered the delete.
+    setBusy(true);
     void deleteItemFlow(
-      { id: shown.id, name: shown.name },
+      { id: shown.id, name: shown.name, active: shown.active },
       {
         // The item is gone: back to the Items list.
         onDeleted: () => router.dismissTo('/items'),
-        onDeactivate: () => void setActive(false),
+        onDeactivate: () => setActive(false),
+        offline,
       }
-    );
-  }, [shown, setActive]);
+    ).finally(() => {
+      deleting.current = false;
+      setBusy(false);
+    });
+  }, [shown, setActive, offline]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -145,11 +177,21 @@ export default function ItemPage() {
         </View>
       </View>
 
-      {!shown && !failed && (
+      {!shown && !failed && !notFound && (
         <View style={styles.state} accessibilityRole="progressbar" accessibilityLabel={tr('items.form.loadingLabel')}>
           <SkeletonBox width="100%" height={touchTarget * 2} />
           <SkeletonBox width="100%" height={touchTarget} />
           <SkeletonBox width="100%" height={touchTarget} />
+        </View>
+      )}
+
+      {!shown && notFound && (
+        <View style={styles.state} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.stateText}>{tr('items.form.notFoundSentence')}</Text>
+          <Button type="secondary" onPress={() => router.back()}>
+            {tr('common.goBack')}
+          </Button>
         </View>
       )}
 

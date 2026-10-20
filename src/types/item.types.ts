@@ -90,6 +90,8 @@ export interface ItemServiceResponse<T = Item> {
   error?: string;
   /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */
   code?: string;
+  /** update_item: 'standard' when activating gave the item the standard rate (backend Items screens 2026-10-20). */
+  rateSource?: string;
 }
 
 /**
@@ -190,12 +192,34 @@ export interface GetItemsParams {
 export interface DeleteItemResponse {
   success: boolean;
   message: string;
+  /** The server's error_code on a refusal (NOT_FOUND when the item no longer exists). */
+  code?: string;
+  /** The server's own text on a refusal, before translation (an older server has no code, only text). */
+  serverMessage?: string;
   references?: {
     /** Where the server found the item (delete_item_safe): GRN lines, order lines and prices. */
     grn_items_count: number;
     order_items_count: number;
+    /** Rates set on single GRNs (grn_rates); the server also refuses on these. */
+    grn_rates_count?: number;
     pricing_count: number;
   };
+}
+
+/** Where an item is used (get_item_usage, administrators and supervisors). */
+export interface ItemUsage {
+  item_id: string;
+  name: string;
+  active: boolean;
+  grn_lines: number;
+  order_lines: number;
+  /** Rates set on single GRNs. */
+  grn_rates: number;
+  price_rows: number;
+  /** The item's rates as the Item pricing screens count them. */
+  rate_count: number;
+  in_use: boolean;
+  can_delete: boolean;
 }
 
 // =============================================================================

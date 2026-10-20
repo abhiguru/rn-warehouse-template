@@ -82,6 +82,11 @@ export function reloadItemRatesCache(): Promise<void> {
   return key ? loadAllFor(key).catch(() => { /* the screens keep the older data */ }) : Promise.resolve();
 }
 
+/** When the whole cache was last read (ms since the epoch); 0 when nothing is held. */
+export function itemRatesLoadedAt(): number {
+  return snapshot?.loadedAt ?? 0;
+}
+
 const currentKey = (userId: string | undefined): string =>
   `${getActiveOperatorServer()?.instanceId ?? 'none'}|${userId ?? 'none'}`;
 

@@ -199,7 +199,7 @@ export const getItemStoragePrices = async (
  * cache"; the database itself says 42883 "function ... does not exist". Trying again cannot
  * help until the facility's server is updated.
  */
-function isMissingFunction(
+export function isMissingFunction(
   error: { code?: unknown; message?: unknown } | null | undefined,
   name: string
 ): boolean {

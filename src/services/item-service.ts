@@ -22,11 +22,13 @@ import {
   CreateItemParams,
   UpdateItemParams,
   DeleteItemResponse,
+  ItemUsage,
   DEFAULT_ITEM_FILTERS,
 } from '@/types/item.types';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { isMissingFunction } from '@/services/item-pricing-service';
+import { errorCodeOf, serverText } from '@/utils/serverText';
 
 // =============================================================================
 // RAW RPC RESPONSE TYPES
@@ -255,9 +257,10 @@ class ItemService {
       if (error) {
         handleGlobalAuthError(error);
         console.error('[ItemService] Get by ID error:', error);
+        // A failed read (no connection, a timeout, no permission) is not "not found": the code tells them apart.
         return {
           success: false,
-          message: serverText(error, t('errors.item.notFound')),
+          message: serverText(error, t('errors.item.fetchFailed')),
           error: error.message,
           code: error.code,
         };
@@ -268,6 +271,7 @@ class ItemService {
           success: false,
           message: t('errors.item.notFound'),
           error: 'NOT_FOUND',
+          code: 'NOT_FOUND',
         };
       }
 
@@ -282,6 +286,7 @@ class ItemService {
           success: false,
           message: serverText(data.message, t('errors.item.notFound')),
           error: 'NOT_FOUND',
+          code: 'NOT_FOUND',
         };
       } else if (data.item) {
         itemData = data.item;
@@ -296,6 +301,7 @@ class ItemService {
           success: false,
           message: t('errors.item.notFound'),
           error: 'NOT_FOUND',
+          code: 'NOT_FOUND',
         };
       }
 
@@ -320,8 +326,50 @@ class ItemService {
         success: false,
         message: serverText(error, t('errors.item.fetchFailed')),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
+        // A thrown failure carries its own code (network, timeout); the text rules read the rest.
+        code: errorCodeOf(error),
       };
     }
+  }
+
+  // ===========================================================================
+  // USAGE
+  // ===========================================================================
+
+  /**
+   * Where an item is used, read before Delete is offered (get_item_usage, administrators and
+   * supervisors). A refusal carries the server's error_code in `code` (NOT_FOUND when the item is gone);
+   * a failed read carries the transport code, so the caller can tell the two apart.
+   */
+  async getItemUsage(itemId: string): Promise<ItemServiceResponse<ItemUsage>> {
+    const result = await executeRPC<{ success: boolean; data?: ItemUsage | null; error_code?: string; error?: string; message?: string }>(
+      getAuthenticatedClient,
+      'get_item_usage',
+      { p_item_id: itemId },
+      {
+        context: 'ItemService.getItemUsage',
+        errorMessage: t('errors.item.fetchFailed'),
+        unwrapNested: false,
+        validateSuccess: false,
+      }
+    );
+    if (!result.success || !result.data) {
+      // A server without migration 114 has no get_item_usage: the caller falls back to asking first.
+      if (isMissingFunction({ code: result.errorCode, message: result.error }, 'get_item_usage')) {
+        return { success: false, message: result.message, error: result.error, code: 'SERVER_NEEDS_UPDATE' };
+      }
+      return { success: false, message: result.message, error: result.error, code: result.errorCode };
+    }
+    const rpcData = result.data;
+    if (!rpcData.success || !rpcData.data) {
+      return {
+        success: false,
+        message: serverText(rpcData.message ?? rpcData.error, t('errors.item.fetchFailed'), { code: rpcData.error_code }),
+        error: rpcData.error,
+        code: rpcData.error_code,
+      };
+    }
+    return { success: true, message: '', data: rpcData.data };
   }
 
   // ===========================================================================
@@ -348,6 +396,8 @@ class ItemService {
       /** The item and `rate_source` (backend migration 85). */
       data?: { id?: string; rate_source?: unknown } | null;
       error?: string;
+      /** DUPLICATE_NAME, INVALID_INPUT or PERMISSION_DENIED (backend, Items screens 2026-10-20). */
+      error_code?: string;
     }
 
     const result = await executeRPC<CreateItemRpcResponse>(
@@ -381,8 +431,9 @@ class ItemService {
       console.error('[ItemService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: serverText(rpcData.message, t('errors.item.createFailed')),
+        message: serverText(rpcData.message, t('errors.item.createFailed'), { code: rpcData.error_code }),
         error: serverText(rpcData.error, t('errors.general.unknown')),
+        code: rpcData.error_code,
       };
     }
 
@@ -423,6 +474,10 @@ class ItemService {
       success: boolean;
       message?: string;
       error?: string;
+      /** DUPLICATE_NAME, NOT_FOUND, INVALID_INPUT or PERMISSION_DENIED. */
+      error_code?: string;
+      /** `rate_source: 'standard'` when an inactive item turned active and got the standard rate. */
+      data?: { rate_source?: unknown } | null;
     }
 
     const result = await executeRPC<UpdateItemRpcResponse>(
@@ -452,15 +507,18 @@ class ItemService {
       console.error('[ItemService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: serverText(rpcData.message, t('errors.item.updateFailed')),
+        message: serverText(rpcData.message, t('errors.item.updateFailed'), { code: rpcData.error_code }),
         error: serverText(rpcData.error, t('errors.general.unknown')),
+        code: rpcData.error_code,
       };
     }
 
     console.log('[ItemService] Item updated via RPC');
+    const rateSource = rpcData.data?.rate_source;
     return {
       success: true,
       message: serverText(rpcData.message, t('errors.item.updated')),
+      ...(typeof rateSource === 'string' ? { rateSource } : {}),
     };
   }
 
@@ -487,10 +545,13 @@ class ItemService {
     interface DeleteItemRpcResponse {
       success: boolean;
       message?: string;
+      /** NOT_FOUND when the item no longer exists (backend Items screens 2026-10-20). */
+      error_code?: string;
       references?: {
         /** Where the server found the item (delete_item_safe): GRN lines, order lines and prices. */
         grn_items_count: number;
         order_items_count: number;
+        grn_rates_count?: number;
         pricing_count: number;
       };
     }
@@ -520,8 +581,10 @@ class ItemService {
     if (rpcData.success === false) {
       return {
         success: false,
-        message: serverText(rpcData.message, t('errors.item.cannotDelete')),
+        message: serverText(rpcData.message, t('errors.item.cannotDelete'), { code: rpcData.error_code }),
         references: rpcData.references,
+        code: rpcData.error_code,
+        serverMessage: typeof rpcData.message === 'string' ? rpcData.message : undefined,
       };
     }
 
@@ -546,11 +609,8 @@ class ItemService {
       // First get the current item to preserve other fields
       const currentItem = await this.getItemById(itemId);
       if (!currentItem.success || !currentItem.data) {
-        return {
-          success: false,
-          message: t('errors.item.notFound'),
-          error: 'NOT_FOUND',
-        };
+        // The read's own failure, so a lost connection is not reported as "not found".
+        return currentItem.success ? { success: false, message: t('errors.item.notFound'), error: 'NOT_FOUND', code: 'NOT_FOUND' } : currentItem;
       }
 
       // Update with new active status
@@ -586,5 +646,6 @@ export const {
   createItem,
   updateItem,
   deleteItem,
+  getItemUsage,
   toggleItemActive,
 } = itemService;
