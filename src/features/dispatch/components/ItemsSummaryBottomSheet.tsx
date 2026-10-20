@@ -13,7 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import type { DispatchItemData } from '@/types/dispatch.types';
+import type { DispatchItemData, OrderLotAsk } from '@/types/dispatch.types';
 import {
   ItemsSummaryBottomSheet as GenericItemsSummaryBottomSheet,
   TotalBadge,
@@ -28,6 +28,8 @@ interface DispatchItemsSummaryBottomSheetProps {
   onDeleteItem: (unique_id: string) => void;
   onEditItem?: (item: DispatchItemData) => void;
   editingItemId?: string;
+  /** New dispatch from an order: lot id -> what the order asks of the lot; a line on such a lot says "Order asks for N bags". */
+  orderLots?: Record<string, OrderLotAsk>;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -136,24 +138,29 @@ const DispatchItemCard: React.FC<{
   index: number;
   isLast: boolean;
   isEditing: boolean;
-}> = ({ item, index, isLast, isEditing }) => {
+  /** "Order asks for 40 bags"; undefined when the line's lot is not on the order the form was made from. */
+  orderAsks?: string;
+}> = ({ item, index, isLast, isEditing, orderAsks }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const bags = formatCount(item.disp_quantity, 'bag');
   // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
   const weightEach = formatWeightEach(item.grnItems_weight);
-  const hasDetails = !!item.grnItems_package_mark || !!item.grnItems_rack || weightEach !== null;
+  const hasDetails = !!item.grnItems_package_mark || !!item.grnItems_rack || weightEach !== null || !!orderAsks;
 
   return (
     <View
       style={[styles.itemCard, isLast && styles.lastItem, isEditing && styles.itemCardEditing]}
       accessible
-      accessibilityLabel={tr(isEditing ? 'dispatch.summarySheet.rowLabelEditing' : 'dispatch.summarySheet.rowLabel', {
-        index: index + 1,
-        item: item.grnItems_item_name,
-        grn: formatIdentifier(item.grns_gr_no),
-        bags,
-      })}
+      accessibilityLabel={[
+        tr(isEditing ? 'dispatch.summarySheet.rowLabelEditing' : 'dispatch.summarySheet.rowLabel', {
+          index: index + 1,
+          item: item.grnItems_item_name,
+          grn: formatIdentifier(item.grns_gr_no),
+          bags,
+        }),
+        orderAsks,
+      ].filter(Boolean).join(', ')}
     >
       <View style={styles.itemHeader}>
         <View style={[styles.itemNumberBadge, isEditing && styles.itemNumberBadgeEditing]}>
@@ -208,6 +215,12 @@ const DispatchItemCard: React.FC<{
               <Text style={styles.detailText}>{weightEach}</Text>
             </View>
           )}
+          {orderAsks ? (
+            <View style={styles.detailRow}>
+              <Icon name="clipboard-text-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText}>{orderAsks}</Text>
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -221,6 +234,7 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
   onDeleteItem,
   onEditItem,
   editingItemId,
+  orderLots,
 }) => {
   const t = useTokens();
 
@@ -263,9 +277,10 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
         index={index}
         isLast={index === items.length - 1}
         isEditing={isEditing}
+        orderAsks={orderLots?.[item.grnItems_id] ? tr('dispatch.items.orderAsks', { bags: formatCount(orderLots[item.grnItems_id].requested, 'bag') }) : undefined}
       />
     ),
-    [items.length]
+    [items.length, orderLots]
   );
 
   return (

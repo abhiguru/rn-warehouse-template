@@ -38,7 +38,9 @@ export const step1Schema = yup.object().shape({
       const date = new Date(value);
       return !isNaN(date.getTime());
     })
-    .test('not-future', dateFutureMessage, (value) => {
+    .test('not-future', dateFutureMessage, function (value) {
+      // An edit that leaves the day as it was read is not judged by this rule (owner decision D25): `dateRuleScope`.
+      if (this.options.context?.checkFuture === false) return true;
       if (!value) return true;
       const date = new Date(value);
       const today = new Date();
@@ -242,18 +244,60 @@ export const validateDispatchDateVsGRNDates = (
   return { isValid: true };
 };
 
+/**
+ * What the two date rules (not in the future; not before the GRN date of a line) are applied to.
+ *
+ * A new dispatch is judged as a whole. An edit is judged only where it changed something (owner decision D25, the same
+ * as the server's): when the person changed the calendar day, the future rule and every line count; when the day is the
+ * one that was read, the future rule is not run and only the lines whose lot the edit added (a lot the dispatch did not
+ * hold when it was read: not in `heldBags`) are checked against the day. A dispatch whose old date no longer fits the
+ * rules (saved before they were enforced, or on an invoice, which locks its date) can therefore still be saved.
+ */
+export interface DateRuleScope<Line> {
+  /** False when the future rule is not run. */
+  checkFuture: boolean;
+  /** The lines whose GRN date the dispatch date is checked against. */
+  lines: Line[];
+}
+
+export function dateRuleScope<Line extends { grnItems_id: string }>(args: {
+  /** An edit of a saved dispatch (false: a new dispatch). */
+  isEdit: boolean;
+  /** The dispatch date in the form. */
+  dispDate: string;
+  /** The dispatch date as it was read; null or absent when the form read none. */
+  loadedDispDate: string | null | undefined;
+  /** Lot id -> the bags the dispatch held on it when it was read. */
+  heldBags: Record<string, number> | null | undefined;
+  lines: Line[];
+}): DateRuleScope<Line> {
+  const { isEdit, dispDate, loadedDispDate, heldBags, lines } = args;
+  if (!isEdit || !loadedDispDate) return { checkFuture: true, lines };
+  if (toCalendarDay(dispDate) !== toCalendarDay(loadedDispDate)) return { checkFuture: true, lines };
+  const held = heldBags ?? {};
+  return { checkFuture: false, lines: lines.filter((line) => !(line.grnItems_id in held)) };
+}
+
 // ============================================================================
 // VALIDATION HELPER FUNCTIONS
 // ============================================================================
+
+/** What the date rules apply to (`dateRuleScope`); absent: everything. */
+export interface DateRuleOptions {
+  checkFuture?: boolean;
+  /** The lines the dispatch date is checked against the GRN dates of; absent: every line. */
+  grnDateLines?: Array<{ grns_date: string; grns_gr_no: string }>;
+}
 
 /**
  * Validate Step 1 data (header)
  */
 export const validateStep1 = async (
-  data: any
+  data: any,
+  options?: DateRuleOptions
 ): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
   try {
-    await step1Schema.validate(data, { abortEarly: false });
+    await step1Schema.validate(data, { abortEarly: false, context: { checkFuture: options?.checkFuture !== false } });
     return { isValid: true, errors: {} };
   } catch (error) {
     if (error instanceof yup.ValidationError) {
@@ -306,10 +350,13 @@ export const validateStep2 = async (
 /**
  * Validate Step 3 data (complete form with cross-validation)
  */
-export const validateStep3 = async (data: {
-  header: any;
-  items: any[];
-}): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
+export const validateStep3 = async (
+  data: {
+    header: any;
+    items: any[];
+  },
+  options?: DateRuleOptions
+): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
   console.log('[validateStep3] Validating complete form');
   console.log('[validateStep3] 🔍 header.disp_date:', data.header?.disp_date, 'type:', typeof data.header?.disp_date);
   console.log('[validateStep3] 🔍 Items count:', data.items?.length);
@@ -317,14 +364,14 @@ export const validateStep3 = async (data: {
   try {
     // First, run schema validation
     console.log('[validateStep3] 🔍 Running step3Schema.validate...');
-    await step3Schema.validate(data, { abortEarly: false });
+    await step3Schema.validate(data, { abortEarly: false, context: { checkFuture: options?.checkFuture !== false } });
     console.log('[validateStep3] ✅ Schema validation passed');
 
     // Then, run cross-validation for dispatch date vs GRN dates
     console.log('[validateStep3] 🔍 Running date cross-validation...');
     const dateValidation = validateDispatchDateVsGRNDates(
       data.header.disp_date,
-      data.items
+      options?.grnDateLines ?? data.items
     );
 
     if (!dateValidation.isValid) {

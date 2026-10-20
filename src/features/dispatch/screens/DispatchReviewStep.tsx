@@ -89,6 +89,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         images,
         isSaving,
         isCheckingAnswer,
+        isReloading,
         isCreateMode,
         addImageToForm,
         updateImageUploadProgress: updateImageProgress,
@@ -334,7 +335,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             if (result.stale) {
                 afterDialog.current = () => {
                     void (async () => {
-                        if ((await askStaleRecord('dispatch')) === 'reload') await reloadDispatch();
+                        // The dispatch was read again: the stock of its lots is read again too (the lines may be other lots now).
+                        if ((await askStaleRecord('dispatch')) === 'reload' && (await reloadDispatch())) stock.retry();
                     })();
                 };
             }
@@ -506,7 +508,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowPrintDialog(true);
     };
 
-    const isBusy = isSaving || isSubmitting || isRetryingPhotos || isCheckingAnswer;
+    const isBusy = isSaving || isSubmitting || isRetryingPhotos || isCheckingAnswer || isReloading === true;
+    // While the dispatch is read again ("Open it again") nothing can be saved or changed: what is read replaces the form.
+    const stepsLocked = isCheckingAnswer || isReloading === true;
 
     // ========================================================================
     // THE ITEMS TABLE (Item | GRN/Received | Qty)
@@ -597,7 +601,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     };
 
     const submitLabel = isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
-    const submitBusyLabel = isCreateMode ? tr('dispatch.review.creating') : tr('dispatch.review.savingChanges');
+    const submitBusyLabel = isReloading ? tr('dispatch.form.loading') : isCreateMode ? tr('dispatch.review.creating') : tr('dispatch.review.savingChanges');
 
     const imageDataForGrid = images.map((img) => ({
         id: img.id,
@@ -633,7 +637,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 }
                 dispNo={header.disp_no}
                 // No step pills while locked
-                onStepPress={isCheckingAnswer ? undefined : handleStepIndicatorPress}
+                onStepPress={stepsLocked ? undefined : handleStepIndicatorPress}
                 isEditMode={!isCreateMode}
             />
 
@@ -653,7 +657,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             id="details"
                             testIDPrefix="dispatch-review"
                             title={tr('dispatch.steps.details')}
-                            onEdit={isCheckingAnswer ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.INFO)}
+                            onEdit={stepsLocked ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.INFO)}
                             editLabel={tr('dispatch.review.editDetails')}
                             closedLine={[header.disp_no, formatDisplayDate(header.disp_date), header.customer_name].filter(Boolean).join(' · ')}
                             open={openSection === 'details'}
@@ -735,7 +739,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             title={tr('common.items')}
                             count={items.length}
                             tag={!isCreateMode && stock.status === 'error' ? tr('dispatch.review.stockNotChecked') : undefined}
-                            onEdit={isCheckingAnswer ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS)}
+                            onEdit={stepsLocked ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS)}
                             editLabel={tr('dispatch.review.editItems')}
                             closedLine={tr('dispatch.review.closedItems', { quantity: formatNumber(totals.totalQuantity) })}
                             open={openSection === 'items'}

@@ -77,6 +77,19 @@ export interface DispatchItemData {
   original_disp_quantity?: number; // Previous dispatch quantity (for edit mode validation)
 }
 
+/**
+ * What an order asked of one lot when a dispatch form was filled from it (or when its lines were read again after the
+ * order changed; wave B, D5): the bags the order line requested, and the quantity the form was given for the line (the
+ * request, at most the stock). The form keeps one per lot that was on the order then, so a reload can tell a quantity
+ * the person changed from one the form was simply given, and a line the person removed from a lot that was never there.
+ */
+export interface OrderLotAsk {
+  /** The bags the order line requested. */
+  requested: number;
+  /** The quantity the form was given for that lot: `requested`, at most the stock. */
+  defaultQuantity: number;
+}
+
 // ============================================================================
 // FORM STATE
 // ============================================================================
@@ -137,6 +150,11 @@ export interface DispatchFormState {
    * Kept with the form so step 1 shows it when the person is taken there; it goes when the date changes or step 1 is checked.
    */
   dateRefusal?: string | null;
+  /**
+   * New dispatch from an order: lot id -> what the order asked of the lot when the form was filled, or when its lines
+   * were last read again (D5). Null for a form that is not made from an order. Not changed by editing the lines.
+   */
+  orderLots?: Record<string, OrderLotAsk> | null;
 }
 
 // ============================================================================

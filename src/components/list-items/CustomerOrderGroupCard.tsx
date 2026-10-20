@@ -161,13 +161,14 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
   // Fill the dispatch form from the order and open its first step, once per visit to this screen.
   const openDispatchForm = useCallback(
-    (header: ConvertedDispatchData['header'], items: ConvertedDispatchData['items']) => {
+    (header: ConvertedDispatchData['header'], items: ConvertedDispatchData['items'], orderLots: ConvertedDispatchData['orderLots']) => {
       if (isOpening.current) return;
       if (refusedByOpenForm()) return;
       isOpening.current = true;
       dispatch(loadFromOrder({
         header,
         items,
+        orderLots,
         source_order_id: order.id,
       }));
       router.push('/dispatch-form/step1');
@@ -194,7 +195,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
     // Convert order to dispatch data (use fullOrder which has items)
     const converted = convertOrderToDispatchData(orderToDispatch);
-    const { items, skippedItems } = converted;
+    const { items, orderLots, skippedItems } = converted;
     // Wave B (D5): the order as it was read with its lines. The server refuses the create when the order changed since.
     // Only an order read in full has it (the row of the queue list does not carry the same `updated_at`).
     const header: ConvertedDispatchData['header'] = fullOrder?.updated_at
@@ -220,13 +221,13 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
           { text: translate('common.cancel'), style: 'cancel' },
           {
             text: translate('lists.dispatch.create'),
-            onPress: () => openDispatchForm(header, items),
+            onPress: () => openDispatchForm(header, items, orderLots),
           },
         ]
       );
     } else {
       // No skipped items, proceed directly
-      openDispatchForm(header, items);
+      openDispatchForm(header, items, orderLots);
     }
   }, [order, fullOrder, canDispatch, refusedByOpenForm, openDispatchForm]);
 

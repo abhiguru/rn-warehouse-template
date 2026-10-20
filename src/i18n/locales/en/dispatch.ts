@@ -126,6 +126,8 @@ export const dispatch = {
     bagsToDispatch: 'Bags to dispatch',
     fromAnotherCustomer: 'Dispatching from another customer:',
     leftAfterDispatch: 'Left after dispatch',
+    // A new dispatch from an order: what the order asks of the lot of a line ("Order asks for 40 bags"), to check the quantity against.
+    orderAsks: 'Order asks for {{bags}}',
     enterBags: 'Enter bags',
     maxBagsOriginal: 'Enter {{count}} bags or fewer. That is the original stock.',
     maxBagsAvailable: 'Enter {{count}} bags or fewer. That is the available stock.',
@@ -347,7 +349,7 @@ export const dispatch = {
     // A new dispatch from an order that changed after the form was opened (D5)
     orderChangedTitle: 'This order changed after you opened it',
     orderChangedMessage: 'The lines were reloaded from the order. Check the quantities, then create the dispatch again.',
-    orderEmpty: 'This order has no lines left to dispatch.',
+    orderEmpty: 'This order has no lines left to dispatch. Go back to Items to add lots, or close the form with X.',
     // Edit: the order was kept in step with the saved quantities (D4)
     orderSynced: 'The order was updated to match.',
   },

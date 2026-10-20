@@ -98,14 +98,18 @@ const makeStyles = (t: ThemeTokens) => ({
         borderColor: t.status.negative.border,
         borderWidth: 2,
     },
-    // A locked field: the date and the number of a dispatch that is on an invoice (wave B D2)
+    // A locked field: the date and the number of a dispatch that is on an invoice (wave B D2). Read-only: no border (style guide section 10)
     inputContainerLocked: {
         backgroundColor: t.surface.fieldReadOnly,
+        borderWidth: 0,
+    },
+    // The number and the date, when the hint under them is drawn: the hint follows them closely, then the usual gap
+    formGroupAboveHint: {
+        marginBottom: space.sm,
     },
     lockHint: {
         ...typography.footnote,
         color: t.text.secondary,
-        marginTop: -space.sm,
         marginBottom: space.lg,
     },
     loadingInputContainer: {
@@ -284,6 +288,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
 
     // Edit: a dispatch that is on an invoice keeps its date and its number until the invoice is deleted or edited (D2).
     const dateAndNumberLocked = !isCreateMode && invoicedNumber !== null && invoicedNumber !== undefined;
+    // Why they are locked: shown under them, and the hint a screen reader gives for each of the two locked fields.
+    const lockedReason = dateAndNumberLocked ? tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(invoicedNumber || '—') }) : undefined;
 
     const openDatePicker = () => {
         if (dateAndNumberLocked) return;
@@ -377,7 +383,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Compact Row: Dispatch Number & Date */}
                         <View style={styles.compactRow}>
                             {/* Dispatch Number */}
-                            <View style={[styles.formGroup, styles.halfField]}>
+                            <View style={[styles.formGroup, styles.halfField, dateAndNumberLocked && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.dispatchNumber')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -395,6 +401,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                         <TextInput
                                             style={styles.input}
                                             accessibilityLabel={tr('common.dispatchNumber')}
+                                            accessibilityState={{ disabled: dateAndNumberLocked }}
+                                            accessibilityHint={lockedReason}
                                             editable={!dateAndNumberLocked}
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
@@ -409,7 +417,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             </View>
 
                             {/* Date */}
-                            <View style={[styles.formGroup, styles.halfField, styles.dateField]}>
+                            <View style={[styles.formGroup, styles.halfField, styles.dateField, dateAndNumberLocked && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.date')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -423,6 +431,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                     onPress={openDatePicker}
                                     disabled={dateAndNumberLocked}
                                     accessibilityState={{ disabled: dateAndNumberLocked }}
+                                    accessibilityHint={lockedReason}
                                     accessibilityRole="button"
                                     accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: displayDate }) : tr('dispatch.form.chooseDispatchDate')}
                                 >
@@ -441,7 +450,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         </View>
                         {dateAndNumberLocked ? (
                             <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-invoiced-hint">
-                                {tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(invoicedNumber || '—') })}
+                                {lockedReason}
                             </Text>
                         ) : null}
 

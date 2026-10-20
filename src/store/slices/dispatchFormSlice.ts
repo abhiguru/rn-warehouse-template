@@ -12,9 +12,10 @@ import type {
   DispatchItemData,
   DispatchImageData,
   ItemFormData,
+  OrderLotAsk,
 } from '@/types/dispatch.types';
 import { createEmptyDispatchHeader } from '@/types/dispatch.types';
-import { mergeOrderIntoDispatchItems } from '@/utils/orderToDispatchConverter';
+import { mergeOrderIntoDispatchItems, orderLotsOfItems } from '@/utils/orderToDispatchConverter';
 
 const dispatchFormLogger = createLogger('DispatchFormSlice');
 
@@ -66,10 +67,38 @@ const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnaps
   invoicedNumber: null,
   loadedDateNumber: null,
   dateRefusal: null,
+  orderLots: null,
 
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
 });
+
+/**
+ * What a dispatch that was read gives to the form besides its header and its lines (shared by `loadDispatchData` and
+ * `reloadDispatchData`): the bags each lot held when it was read (the server gives them back on a save, so a lot's
+ * stock limit is its stock plus these; not changed while the dispatch is edited, so an item changed to another lot and
+ * back still finds them), the version token (D1), the invoice lock (D2), and the date and number as read (put back when
+ * the server says they are locked; the date rules (D25) compare the day with this one).
+ */
+function holdWhatWasRead(
+  state: DispatchFormState,
+  header: DispatchHeaderData,
+  items: DispatchItemData[],
+  updatedAt: string | null | undefined,
+  invoicedNumber: string | null | undefined
+): void {
+  const held: Record<string, number> = {};
+  for (const item of items) {
+    if (!item.grnItems_id) continue;
+    held[item.grnItems_id] = (held[item.grnItems_id] ?? 0) + (item.original_disp_quantity ?? item.disp_quantity ?? 0);
+  }
+  state.heldBags = held;
+  state.loadedUpdatedAt = updatedAt ?? null;
+  state.invoicedNumber = invoicedNumber ?? null;
+  state.loadedDateNumber = { disp_no: header.disp_no, disp_date: header.disp_date };
+  state.dateRefusal = null;
+  state.orderLots = null;
+}
 
 // ============================================================================
 // SLICE
@@ -398,19 +427,7 @@ const dispatchFormSlice = createSlice({
       state.submissionNonce = null;
       state.savedDispatchId = null;
       state.checkingAnswer = false;
-      // The bags each lot held when the dispatch was read. The server gives them back on a save, so a lot's stock
-      // limit is its stock plus these. Filled here, and not changed while the dispatch is edited (an item changed
-      // to another lot and back still finds them).
-      const held: Record<string, number> = {};
-      for (const item of items) {
-        if (!item.grnItems_id) continue;
-        held[item.grnItems_id] = (held[item.grnItems_id] ?? 0) + (item.original_disp_quantity ?? item.disp_quantity ?? 0);
-      }
-      state.heldBags = held;
-      state.loadedUpdatedAt = updatedAt ?? null;
-      state.invoicedNumber = invoicedNumber ?? null;
-      state.loadedDateNumber = { disp_no: header.disp_no, disp_date: header.disp_date };
-      state.dateRefusal = null;
+      holdWhatWasRead(state, header, items, updatedAt, invoicedNumber);
     },
 
     /**
@@ -438,16 +455,7 @@ const dispatchFormSlice = createSlice({
       state.validationErrors = {};
       state.takenNumberError = null;
       state.snapshot = null;
-      const held: Record<string, number> = {};
-      for (const item of items) {
-        if (!item.grnItems_id) continue;
-        held[item.grnItems_id] = (held[item.grnItems_id] ?? 0) + (item.original_disp_quantity ?? item.disp_quantity ?? 0);
-      }
-      state.heldBags = held;
-      state.loadedUpdatedAt = updatedAt ?? null;
-      state.invoicedNumber = invoicedNumber ?? null;
-      state.loadedDateNumber = { disp_no: header.disp_no, disp_date: header.disp_date };
-      state.dateRefusal = null;
+      holdWhatWasRead(state, header, items, updatedAt, invoicedNumber);
     },
 
     /** A save was accepted: the dispatch's new `updated_at` is the token of the next save of this form (wave B, D1). */
@@ -500,6 +508,7 @@ const dispatchFormSlice = createSlice({
       state.invoicedNumber = null;
       state.loadedDateNumber = null;
       state.dateRefusal = null;
+      state.orderLots = null;
     },
 
     /**
@@ -512,9 +521,11 @@ const dispatchFormSlice = createSlice({
         header: Partial<DispatchHeaderData>;
         items: DispatchItemData[];
         source_order_id: string;
+        /** What the order asked of each lot (D5); worked out from the lines when the caller has none. */
+        orderLots?: Record<string, OrderLotAsk>;
       }>
     ) => {
-      const { header, items, source_order_id } = action.payload;
+      const { header, items, source_order_id, orderLots } = action.payload;
       state.dispatch_id = null; // New dispatch, not editing
       state.header = {
         ...createEmptyDispatchHeader(),
@@ -538,21 +549,30 @@ const dispatchFormSlice = createSlice({
       state.invoicedNumber = null;
       state.loadedDateNumber = null;
       state.dateRefusal = null;
+      state.orderLots = orderLots ?? orderLotsOfItems(items);
     },
 
     /**
      * The order the form was made from changed after it was opened (wave B, D5): its lines were read again and are
-     * merged into the form. A lot that is still on the order keeps the quantity typed in the form, at most its stock;
-     * a lot that was taken from the order and is no longer on it is dropped; a lot new on the order comes in with its
-     * default quantity. Lots the person added by hand are not the order's and stay. The order's new `updated_at`
-     * replaces the old one, so the next create is checked against what the form now shows.
+     * merged into the form (`mergeOrderIntoDispatchItems`). A lot that is still on the order keeps the quantity the
+     * person changed, at most its stock, and takes the order's new default when the quantity is still the one the form
+     * was given; a lot that was taken from the order and is no longer on it is dropped; a lot new on the order comes in
+     * with its default quantity; a lot the person removed does not come back. Lots the person added by hand are not the
+     * order's and stay. What the order asks now replaces what it asked, and the order's new `updated_at` replaces the
+     * old one, so the next create is checked against what the form now shows.
      */
     reloadFromOrder: (
       state,
-      action: PayloadAction<{ items: DispatchItemData[]; source_order_updated_at?: string }>
+      action: PayloadAction<{
+        items: DispatchItemData[];
+        source_order_updated_at?: string;
+        /** What the order asks of each lot now (D5); worked out from the lines when the caller has none. */
+        orderLots?: Record<string, OrderLotAsk>;
+      }>
     ) => {
-      const { items, source_order_updated_at } = action.payload;
-      state.items = mergeOrderIntoDispatchItems(state.items, items);
+      const { items, source_order_updated_at, orderLots } = action.payload;
+      state.items = mergeOrderIntoDispatchItems(state.items, items, state.orderLots);
+      state.orderLots = orderLots ?? orderLotsOfItems(items);
       state.header.source_order_updated_at = source_order_updated_at;
       state.validationErrors = {};
     },

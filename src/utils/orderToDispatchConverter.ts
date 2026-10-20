@@ -4,15 +4,17 @@
  */
 
 import type { Order, OrderItem } from '@/types/order.types';
-import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
+import type { DispatchHeaderData, DispatchItemData, OrderLotAsk } from '@/types/dispatch.types';
 import { t } from '@/i18n';
 
-/** Every line made from an order line has a `unique_id` that starts with this; a line the person added by hand does not. */
+/** The `unique_id` of a line made from an order line starts with this. It only keeps the ids apart: where a line came from is told by its lot (see `OrderLotAsk`). */
 const ORDER_LINE_ID_PREFIX = 'order_';
 
 export interface ConvertedDispatchData {
   header: Partial<DispatchHeaderData>;
   items: DispatchItemData[];
+  /** Lot id -> what the order asked of the lot, for every line that became a line of the form (D5). */
+  orderLots: Record<string, OrderLotAsk>;
   skippedItems: Array<{ item: OrderItem; reason: string }>;
 }
 
@@ -24,6 +26,7 @@ export interface ConvertedDispatchData {
 export function convertOrderToDispatchData(order: Order): ConvertedDispatchData {
   const skippedItems: Array<{ item: OrderItem; reason: string }> = [];
   const items: DispatchItemData[] = [];
+  const orderLots: Record<string, OrderLotAsk> = {};
 
   // Convert each order item to dispatch item
   order.items?.forEach((orderItem) => {
@@ -72,6 +75,7 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
     };
 
     items.push(dispatchItem);
+    orderLots[orderItem.grn_item_id] = { requested: orderItem.requested_quantity, defaultQuantity: dispatchItem.disp_quantity };
   });
 
   // Build partial header with customer info
@@ -84,37 +88,60 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
   return {
     header,
     items,
+    orderLots,
     skippedItems,
   };
 }
 
 /**
+ * What a form that is made from an order knows of the order's lots, when the form has no such record (a form filled by a
+ * caller that passed none): every line is taken as one the order gave, with the quantity it holds as its default.
+ */
+export function orderLotsOfItems(items: DispatchItemData[]): Record<string, OrderLotAsk> {
+  const lots: Record<string, OrderLotAsk> = {};
+  for (const line of items) {
+    if (line.grnItems_id) lots[line.grnItems_id] = { requested: line.disp_quantity, defaultQuantity: line.disp_quantity };
+  }
+  return lots;
+}
+
+/**
  * The lines of a dispatch form made from an order, merged with the order as it is now (wave B, D5: the order changed
  * after the form was opened and its lines were read again). `fresh` is what `convertOrderToDispatchData` made from the
- * order now (a quantity of at most the stock, no line without stock).
- * - a lot that is on the order now keeps the line already in the form, with the quantity typed there, at most its
- *   stock now (a quantity of 0 or less is not a typed quantity: the order's own default is used);
+ * order now (a quantity of at most the stock, no line without stock); `before` is what the order asked of each lot when
+ * the form was filled or last read again (`OrderLotAsk`). Where a line came from is told by its lot, not by its id:
+ * - a lot that is on the order now keeps the line already in the form. Its quantity stays when the person changed it
+ *   (at most the stock now); a quantity that is still the one the form was given for that lot (or 0) is not the
+ *   person's, and takes the order's new default;
  * - a line made from the order whose lot is no longer on it (or has no stock) is dropped;
- * - a lot new on the order is added with its default quantity;
- * - a line the person added by hand (not made from the order) stays as it is, unless the order now has that lot too.
+ * - a lot new on the order is added with its default quantity; a lot that was on the order when the form was filled and
+ *   has no line now was removed by the person, and does not come back;
+ * - a line the person added by hand (its lot was not on the order) stays as it is, unless the order now has that lot
+ *   too, which makes it the order's line.
  * The order of the form's lines is kept, new lots come last.
  */
-export function mergeOrderIntoDispatchItems(current: DispatchItemData[], fresh: DispatchItemData[]): DispatchItemData[] {
+export function mergeOrderIntoDispatchItems(
+  current: DispatchItemData[],
+  fresh: DispatchItemData[],
+  before: Record<string, OrderLotAsk> | null | undefined
+): DispatchItemData[] {
+  const wasOnOrder = before ?? {};
   const freshByLot = new Map(fresh.map((line) => [line.grnItems_id, line]));
   const merged: DispatchItemData[] = [];
-  const kept = new Set<string>();
+  const placed = new Set<string>();
   for (const line of current) {
     const now = freshByLot.get(line.grnItems_id);
     if (now) {
-      const typed = line.disp_quantity > 0 ? line.disp_quantity : now.disp_quantity;
+      const wasDefault = line.disp_quantity === wasOnOrder[line.grnItems_id]?.defaultQuantity;
+      const typed = line.disp_quantity > 0 && !wasDefault ? line.disp_quantity : now.disp_quantity;
       merged.push({ ...now, unique_id: line.unique_id, disp_quantity: Math.max(1, Math.min(typed, now.grnItems_stock)) });
-      kept.add(line.grnItems_id);
-    } else if (!line.unique_id.startsWith(ORDER_LINE_ID_PREFIX)) {
+      placed.add(line.grnItems_id);
+    } else if (!wasOnOrder[line.grnItems_id]) {
       merged.push(line);
     }
   }
   for (const line of fresh) {
-    if (!kept.has(line.grnItems_id)) merged.push(line);
+    if (!placed.has(line.grnItems_id) && !wasOnOrder[line.grnItems_id]) merged.push(line);
   }
   return merged;
 }

@@ -128,6 +128,8 @@ export const dispatch: Translation<typeof source> = {
     bagsToDispatch: 'મોકલવાના નંગ',
     fromAnotherCustomer: 'બીજા વેપારીના માલમાંથી જાવક:',
     leftAfterDispatch: 'જાવક પછી બાકી',
+    // Draft for the owner's wording review (2026-10-20): what the order asks of the lot of a line, to check the quantity against.
+    orderAsks: 'ઑર્ડરમાં {{bags}} માંગ્યા છે',
     enterBags: 'નંગ લખો',
     maxBagsOriginal: '{{count}} કે તેથી ઓછા નંગ લખો. મૂળ સ્ટોક એટલો જ છે.',
     maxBagsAvailable: '{{count}} કે તેથી ઓછા નંગ લખો. સ્ટોકમાં એટલા જ છે.',
@@ -351,7 +353,8 @@ export const dispatch: Translation<typeof source> = {
     // Draft for the owner's wording review (2026-10-20): a new dispatch from an order that changed after the form was opened.
     orderChangedTitle: 'તમે ખોલ્યા પછી આ ઑર્ડર બદલાયો',
     orderChangedMessage: 'ઑર્ડરની લાઇન ફરી લોડ કરી છે. નંગ તપાસો, પછી ફરી જાવક બનાવો.',
-    orderEmpty: 'આ ઑર્ડરમાં જાવક માટે કોઈ લાઇન બાકી નથી.',
+    // Draft for the owner's wording review (2026-10-20): says what to do (go back to Items, or close the form with X).
+    orderEmpty: 'આ ઑર્ડરમાં જાવક માટે કોઈ લાઇન બાકી નથી. જથ્થા ઉમેરવા આઇટમ પર પાછા જાઓ, અથવા X થી ફોર્મ બંધ કરો.',
     // Draft for the owner's wording review (2026-10-20): the order was kept in step with the saved quantities.
     orderSynced: 'ઑર્ડર પણ તે મુજબ બદલાયો.',
   },

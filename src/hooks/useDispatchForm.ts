@@ -90,12 +90,14 @@ import type {
   DispatchHeaderData,
   DispatchItemData,
   DispatchImageData,
+  OrderLotAsk,
 } from '@/types/dispatch.types';
 import {
   validateStep1,
   validateStep2,
   validateStep3,
   validateDispatchDateVsGRNDates,
+  dateRuleScope,
 } from '@/features/dispatch/schemas/dispatchValidation';
 import {
   getNextDispatchNumber,
@@ -122,6 +124,7 @@ const log = createLogger('useDispatchForm');
 
 // One object for a form that holds none, so a screen's effects do not see a new one at every render.
 const NO_HELD_BAGS: Record<string, number> = {};
+const NO_ORDER_LOTS: Record<string, OrderLotAsk> = {};
 
 /**
  * A random id for one form. It only has to differ from the id of another form, so a plain
@@ -210,6 +213,10 @@ export interface UseDispatchFormReturn {
   heldBags: Record<string, number>;
   /** Edit: the number of the invoice the dispatch is on (its date and number are locked); null when it is on none. */
   invoicedNumber: string | null;
+  /** New dispatch from an order: lot id -> what the order asks of the lot (the form shows "Order asks for N"); empty for any other form. */
+  orderLots: Record<string, OrderLotAsk>;
+  /** Edit: the dispatch is being read again ("Open it again"); the screen is busy (no save, no way to another step) until it is. */
+  isReloading: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
   hasFormData: boolean;
@@ -328,6 +335,9 @@ export function useDispatchForm({
   );
 
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.disp_no);
+
+  // The dispatch is being read again after "Open it again" (`reloadDispatch`).
+  const [isReloading, setIsReloading] = useState(false);
 
   // AbortController for cancelling pending dispatch number change operations
   const dispNoChangeAbortRef = useRef<AbortController | null>(null);
@@ -569,8 +579,18 @@ export function useDispatchForm({
   const validateCurrentStep = useCallback(async (step: number): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
     // Read the store, not the values from the last render: the items step saves the item being typed and
     // asks for the next step in the same tap, and the saved item is not in this render yet.
-    const { header, items } = store.getState().dispatchForm;
+    const { header, items, loadedDateNumber, heldBags } = store.getState().dispatchForm;
     let result: { isValid: boolean; errors: Record<string, string> };
+
+    // The date rules (not in the future, not before a GRN) judge a new dispatch whole; an edit only where it changed
+    // something (owner decision D25): a changed day with every line, an unchanged day with the lines the edit added.
+    const dateScope = dateRuleScope({
+      isEdit: !isCreateMode,
+      dispDate: header.disp_date,
+      loadedDispDate: loadedDateNumber?.disp_date,
+      heldBags,
+      lines: items,
+    });
 
     console.log('[useDispatchForm] validateCurrentStep called for step:', step);
 
@@ -579,7 +599,7 @@ export function useDispatchForm({
         console.log('[useDispatchForm] Validating step 1');
         // Step 1 is checked again: a date the server refused earlier is judged by the checks now, not remembered.
         dispatch(setDateRefusal(null));
-        result = await validateStep1(header);
+        result = await validateStep1(header, { checkFuture: dateScope.checkFuture });
         console.log('[useDispatchForm] Step 1 validation result:', result);
         break;
       case 2:
@@ -597,12 +617,12 @@ export function useDispatchForm({
           console.log('[useDispatchForm] 🔍 Items grns_dates:', items.map(i => ({ grns_gr_no: i.grns_gr_no, grns_date: i.grns_date })));
         }
         // Step 3 includes cross-validation
-        result = await validateStep3({ header, items });
+        result = await validateStep3({ header, items }, { checkFuture: dateScope.checkFuture, grnDateLines: dateScope.lines });
         console.log('[useDispatchForm] Step 3 validation result:', result);
         if (result.isValid) {
           // Additional cross-validation: dispatch date vs GRN dates
           console.log('[useDispatchForm] 🔍 Running date cross-validation...');
-          const dateValidation = validateDispatchDateVsGRNDates(header.disp_date, items);
+          const dateValidation = validateDispatchDateVsGRNDates(header.disp_date, dateScope.lines);
           console.log('[useDispatchForm] Date cross-validation result:', dateValidation);
           if (!dateValidation.isValid) {
             result = {
@@ -651,7 +671,7 @@ export function useDispatchForm({
     }
 
     return result;
-  }, [store, dispatch, takenNumberError]);
+  }, [store, dispatch, takenNumberError, isCreateMode]);
 
   const clearFieldValidationError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {
@@ -872,8 +892,10 @@ export function useDispatchForm({
             report(t('dispatch.wizard.errorTitle'), message);
             return { success: false, error: message };
           }
+          const converted = convertOrderToDispatchData(read.data);
           dispatch(reloadFromOrder({
-            items: convertOrderToDispatchData(read.data).items,
+            items: converted.items,
+            orderLots: converted.orderLots,
             source_order_updated_at: read.data.updated_at,
           }));
           return { success: false, orderChanged: { empty: store.getState().dispatchForm.items.length === 0 } };
@@ -931,8 +953,10 @@ export function useDispatchForm({
       // form is not touched (no `formCreated`, no flags, no alert about a refusal).
       if (formChanged() || controller.signal.aborted) {
         if (result.success) {
-          // The same form still stands (only this screen went): it is marked as having made its dispatch.
+          // The same form still stands (only this screen went): a new dispatch is marked as having made its dispatch, and
+          // an edit holds the version it just saved, so its next save is not refused as someone else's change (D1).
           if (!formChanged() && isCreateMode && result.dispatch_id) dispatch(formCreated(result.dispatch_id));
+          if (!formChanged() && !isCreateMode && result.updated_at) dispatch(setLoadedUpdatedAt(result.updated_at));
           reportSavedAfterLeaving(header.disp_no, result.failed_photos);
         }
         return { success: false, aborted: true };
@@ -994,22 +1018,28 @@ export function useDispatchForm({
   const reloadDispatch = useCallback(async (): Promise<boolean> => {
     if (!dispatchIdParam) return false;
     const formSession = currentDispatchFormSession();
-    const result = await readDispatch(dispatchIdParam);
-    // The form was left (or another dispatch is in it) while this one was read: nothing is put into the form that is there now.
-    if (currentDispatchFormSession() !== formSession || store.getState().dispatchForm.dispatch_id !== dispatchIdParam) return false;
-    if (!result.success || !result.data) {
-      showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.loadFailed')));
-      return false;
+    // The screen is busy while the dispatch is read: a save or a step change meanwhile would be replaced by what is read.
+    setIsReloading(true);
+    try {
+      const result = await readDispatch(dispatchIdParam);
+      // The form was left (or another dispatch is in it) while this one was read: nothing is put into the form that is there now.
+      if (currentDispatchFormSession() !== formSession || store.getState().dispatchForm.dispatch_id !== dispatchIdParam) return false;
+      if (!result.success || !result.data) {
+        showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.loadFailed')));
+        return false;
+      }
+      dispatch(reloadDispatchData({
+        dispatchId: dispatchIdParam,
+        header: result.data.header,
+        items: result.data.items,
+        updatedAt: result.data.updatedAt,
+        invoicedNumber: result.data.invoicedNumber,
+      }));
+      setLocalValidationErrors({});
+      return true;
+    } finally {
+      setIsReloading(false);
     }
-    dispatch(reloadDispatchData({
-      dispatchId: dispatchIdParam,
-      header: result.data.header,
-      items: result.data.items,
-      updatedAt: result.data.updatedAt,
-      invoicedNumber: result.data.invoicedNumber,
-    }));
-    setLocalValidationErrors({});
-    return true;
   }, [dispatchIdParam, store, dispatch]);
 
   /**
@@ -1084,6 +1114,8 @@ export function useDispatchForm({
     isCheckingAnswer: dispatchFormState.checkingAnswer === true,
     heldBags: dispatchFormState.heldBags ?? NO_HELD_BAGS,
     invoicedNumber: dispatchFormState.invoicedNumber ?? null,
+    orderLots: dispatchFormState.orderLots ?? NO_ORDER_LOTS,
+    isReloading,
     validationErrors,
     isCreateMode,
     hasFormData,

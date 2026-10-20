@@ -48,7 +48,7 @@ import {
 } from '@/features/dispatch/components';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { validateSingleItem, checkDuplicateLots } from '@/features/dispatch/schemas/dispatchValidation';
-import type { GRNDetailItem, DispatchItemData, ItemFormData } from '@/types/dispatch.types';
+import type { GRNDetailItem, DispatchItemData, ItemFormData, OrderLotAsk } from '@/types/dispatch.types';
 import { EMPTY_DISPATCH_ITEM } from '@/types/dispatch.types';
 import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { getUserFriendlyError } from '@/utils/errorHandler';
@@ -61,6 +61,8 @@ import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters'
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 /** The bags a saved dispatch held per lot, for a form that holds none (a new dispatch). */
 const NO_HELD_BAGS: Record<string, number> = {};
+/** What an order asks of each lot, for a form that is not made from an order. */
+const NO_ORDER_LOTS: Record<string, OrderLotAsk> = {};
 
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
@@ -83,6 +85,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         header,
         items: savedItems,
         heldBags = NO_HELD_BAGS,
+        orderLots = NO_ORDER_LOTS,
         isCreateMode,
         addFormItems,
         updateFormItem,
@@ -1153,6 +1156,15 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                         </Text>
                                     )}
                                 </View>
+                                {/* A new dispatch from an order: what the order asks of this lot, so the quantity can be checked against it. */}
+                                {currentItem.grnItems_id && orderLots[currentItem.grnItems_id] ? (
+                                    <View style={styles.stockInfoRow} testID="dispatch-items-order-asks">
+                                        <Icon name="clipboard-text-outline" size={iconSize.sm} color={t.status.informative.text} />
+                                        <Text style={styles.stockDisplayText}>
+                                            {tr('dispatch.items.orderAsks', { bags: formatCount(orderLots[currentItem.grnItems_id].requested, 'bag') })}
+                                        </Text>
+                                    </View>
+                                ) : null}
                             </View>
                         )}
 
@@ -1300,6 +1312,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                 onDeleteItem={handleDeleteItem}
                 onEditItem={handleEditItem}
                 editingItemId={editingItemId ?? undefined}
+                orderLots={orderLots}
             />
 
             {/* Confirmation dialogs */}
