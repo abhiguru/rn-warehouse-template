@@ -45,7 +45,6 @@ const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnaps
 
   // UI state
   current_step: 0,
-  is_loading: false,
   is_saving: false,
 
   // Error state
@@ -54,6 +53,14 @@ const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnaps
   // Validation
   validationErrors: {},
   takenNumberError: null,
+
+  // What a form is, apart from its data (see DispatchFormState)
+  submissionNonce: null,
+  dateChosenByUser: false,
+  dispNoTyped: false,
+  savedDispatchId: null,
+  checkingAnswer: false,
+  heldBags: {},
 
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
@@ -79,6 +86,32 @@ const dispatchFormSlice = createSlice({
         ...state.header,
         ...action.payload,
       };
+      // A date that was set is the person's choice: the form no longer follows the clock.
+      if (action.payload.disp_date !== undefined) state.dateChosenByUser = true;
+    },
+
+    /**
+     * A new form opens on the day it opens, unless the person already picked a date. The
+     * form can outlive the day it was made on (the app stays open overnight).
+     */
+    refreshDefaultDate: (state, action: PayloadAction<string>) => {
+      if (!state.dateChosenByUser) state.header.disp_date = action.payload;
+    },
+
+    /** The person typed the dispatch number (a number the form fetched itself is not typed). */
+    markDispNoTyped: (state) => {
+      state.dispNoTyped = true;
+    },
+
+    /** The id that tells this form's create from another form's with the same fields (see DispatchFormState). */
+    setSubmissionNonce: (state, action: PayloadAction<string | null>) => {
+      state.submissionNonce = action.payload;
+    },
+
+    /** This form created a dispatch: it is finished, and the next create gets a new nonce. */
+    formCreated: (state, action: PayloadAction<string>) => {
+      state.savedDispatchId = action.payload;
+      state.submissionNonce = null;
     },
 
     /**
@@ -262,17 +295,18 @@ const dispatchFormSlice = createSlice({
     },
 
     /**
-     * Set loading state
-     */
-    setIsLoading: (state, action: PayloadAction<boolean>) => {
-      state.is_loading = action.payload;
-    },
-
-    /**
      * Set saving state
      */
     setIsSaving: (state, action: PayloadAction<boolean>) => {
       state.is_saving = action.payload;
+    },
+
+    /**
+     * A save or create got no answer and the app is asking the server what became of it: the form is locked (no
+     * edits, no way out but the X with its warning) until the server's answer is known.
+     */
+    setCheckingAnswer: (state, action: PayloadAction<boolean>) => {
+      state.checkingAnswer = action.payload;
     },
 
     /**
@@ -348,6 +382,18 @@ const dispatchFormSlice = createSlice({
       state.images = images || [];
       state.current_step = 0;
       state.validationErrors = {};
+      state.submissionNonce = null;
+      state.savedDispatchId = null;
+      state.checkingAnswer = false;
+      // The bags each lot held when the dispatch was read. The server gives them back on a save, so a lot's stock
+      // limit is its stock plus these. Filled here, and not changed while the dispatch is edited (an item changed
+      // to another lot and back still finds them).
+      const held: Record<string, number> = {};
+      for (const item of items) {
+        if (!item.grnItems_id) continue;
+        held[item.grnItems_id] = (held[item.grnItems_id] ?? 0) + (item.original_disp_quantity ?? item.disp_quantity ?? 0);
+      }
+      state.heldBags = held;
     },
 
     /**
@@ -366,6 +412,12 @@ const dispatchFormSlice = createSlice({
       state.items = [];
       state.images = [];
       state.validationErrors = {};
+      state.submissionNonce = null;
+      state.dateChosenByUser = false;
+      state.dispNoTyped = false;
+      state.savedDispatchId = null;
+      state.checkingAnswer = false;
+      state.heldBags = {};
     },
 
     /**
@@ -394,6 +446,12 @@ const dispatchFormSlice = createSlice({
       state.images = [];
       state.current_step = 0;
       state.validationErrors = {};
+      state.submissionNonce = null;
+      state.dateChosenByUser = false;
+      state.dispNoTyped = false;
+      state.savedDispatchId = null;
+      state.checkingAnswer = false;
+      state.heldBags = {};
     },
 
     // #18 Fix: Snapshot actions for optimistic update rollback
@@ -445,7 +503,11 @@ const dispatchFormSlice = createSlice({
 export const {
   // Header actions
   updateHeader,
+  refreshDefaultDate,
+  markDispNoTyped,
   setDispatchId,
+  setSubmissionNonce,
+  formCreated,
 
   // Item actions
   addItem,
@@ -464,8 +526,8 @@ export const {
 
   // UI state actions
   setCurrentStep,
-  setIsLoading,
   setIsSaving,
+  setCheckingAnswer,
   setError,
   clearError,
 
@@ -553,8 +615,9 @@ export const selectDispatchTakenNumberError = (state: { dispatchForm: DispatchFo
 export const selectDispatchFormValidationErrors = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.validationErrors;
 export const selectDispatchFormCurrentStep = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.current_step;
 export const selectDispatchFormId = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.dispatch_id;
-export const selectDispatchFormIsLoading = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.is_loading;
 export const selectDispatchFormIsSaving = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.is_saving;
+/** The form is locked while the app asks the server what became of a save that got no answer. */
+export const selectDispatchCheckingAnswer = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.checkingAnswer === true;
 export const selectDispatchFormError = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.error;
 
 /**

@@ -39,6 +39,20 @@ export const dispatch = {
     numberTakenFor: 'Dispatch {{number}} already exists ({{customer}}). Enter a different number.',
     loadFailed: 'Failed to load dispatch data',
     saveFailed: 'Failed to save dispatch',
+    editMismatch: 'This form belongs to a different dispatch. Go back and open the dispatch again.',
+    numberUsedNext: 'Dispatch number {{number}} is already used. The next free number is {{next}}.',
+  },
+  // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
+  edit: {
+    openFailedTitle: "Couldn't open the dispatch",
+    openFailedMessage: 'The dispatch link is incomplete. Open the dispatch again from the list.',
+    // Another dispatch form (or a new dispatch) is already open: this one is not opened over it.
+    finishOtherTitle: 'Another dispatch is open',
+    finishOtherEdit: 'Finish or cancel the edit of dispatch {{number}} first.',
+    finishOtherEditNoNumber: 'Finish or cancel the dispatch edit that is already open first.',
+    finishOtherNew: 'Finish or cancel the new dispatch first.',
+    // The refusal's button: takes the person to the form that is open.
+    openIt: 'Open it',
   },
   // Step 1: dispatch details
   form: {
@@ -234,6 +248,10 @@ export const dispatch = {
       other: '{{count}} items will be saved and stock levels updated.',
     },
     orderFulfilled: 'Order fulfilled and removed from the queue.',
+    orderLinesLeft: {
+      one: '{{count}} line is still open on the order.',
+      other: '{{count}} lines are still open on the order.',
+    },
     photosNotUploadedTitle: 'Photos not uploaded',
     photosNotUploadedMessage: 'Dispatch {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     failedPhoto: 'Photo {{position}}',
@@ -378,7 +396,26 @@ export const dispatch = {
     deletedMessageNoNumber: 'The dispatch is deleted.',
     viewDispatches: 'View dispatches',
     cannotDeleteTitle: "Can't delete dispatch",
-    deleteInvoicesFirst: 'Delete its invoices first, then try again.',
+    hasInvoices: "This dispatch has invoices, so it can't be deleted. Delete its invoices first, then try again.",
+    orderLinesGivenBack: {
+      one: "{{count}} line was given back to the customer's order.",
+      other: "{{count}} lines were given back to the customer's order.",
+    },
+    orderLinesNotRestored: {
+      one: "{{count}} line could not be given back to the order: it was saved before the order's quantities were recorded.",
+      other: "{{count}} lines could not be given back to the order: they were saved before the order's quantities were recorded.",
+    },
+    orderLinesNoOpenOrder: {
+      one: '{{count}} line could not be given back: the customer has no open order.',
+      other: '{{count}} lines could not be given back: the customer has no open order.',
+    },
+    // The delete got no answer and the dispatch was found gone: the app cannot say what happened to the order.
+    orderCheck: "Check the customer's order: the app could not tell whether its lines were given back.",
+    // Leaving the page while the app is still asking the server whether a delete went through.
+    leaveCheckTitle: 'Leave this page?',
+    leaveCheckMessage: 'It may have been deleted. Check the dispatch list before deleting it again.',
+    stayHere: 'Stay',
+    leavePage: 'Leave',
     deleteFailedTitle: "Couldn't delete dispatch",
     tryAgain: 'Try again.',
     pdfFailedTitle: "Couldn't create the PDF",

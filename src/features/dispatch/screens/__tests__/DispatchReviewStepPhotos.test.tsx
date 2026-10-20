@@ -132,8 +132,36 @@ it('"Try again" uploads only the failed photos to the created dispatch', async (
   await act(async () => { await photoDialog(tree).props.onConfirm(); });
   expect(uploadDeferredDispatchImages).toHaveBeenLastCalledWith(DISPATCH_ID, [mockImages[2]]);
   expect(photoDialog(tree).props.visible).toBe(false);
+  // The photo dialog is closing: the success dialog waits for it (a second Modal would never show on iOS).
+  expect(successShown(tree)).toBe(false);
+  await dismissed(tree);
   expect(successShown(tree)).toBe(true);
   expect(mockSubmitForm).toHaveBeenCalledTimes(1);
+});
+
+it('the question stays on screen, busy, while the retry runs, and the Back key does nothing on it', async () => {
+  mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1]] });
+  let finish!: (outcome: Awaited<ReturnType<typeof uploadDeferredDispatchImages>>) => void;
+  jest.mocked(uploadDeferredDispatchImages).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  const tree = await render();
+  await create_(tree);
+  // Not busy until the person asks, and the Back key never answers the question for them.
+  expect(photoDialog(tree).props.busy).toBe(false);
+  expect(photoDialog(tree).props.ignoreBack).toBe(true);
+
+  let retry!: Promise<void>;
+  await act(async () => { retry = photoDialog(tree).props.onConfirm(); });
+
+  // The dialog is still there and busy: nothing to leave the screen by while the photos go.
+  expect(photoDialog(tree).props.visible).toBe(true);
+  expect(photoDialog(tree).props.busy).toBe(true);
+  expect(successShown(tree)).toBe(false);
+
+  await act(async () => { finish({ success: true, uploadedCount: 1, errors: [], failed: [] }); await retry; });
+  expect(photoDialog(tree).props.busy).toBe(false);
+  expect(photoDialog(tree).props.visible).toBe(false);
+  await dismissed(tree);
+  expect(successShown(tree)).toBe(true);
 });
 
 it('"Continue without them" goes on to the success dialog without uploading', async () => {
@@ -152,7 +180,7 @@ const successDialog = (tree: ReactTestRenderer) => tree.root.findByType('Documen
 
 describe('toasts wait for the dialog to go', () => {
   it('"Order fulfilled" is said once the success dialog is left, after the step is left', async () => {
-    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], sourceOrderCleared: true });
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 0 });
     const tree = await render();
     await create_(tree);
     expect(successShown(tree)).toBe(true);
@@ -166,11 +194,12 @@ describe('toasts wait for the dialog to go', () => {
   });
 
   it('"Photos uploaded" after a successful retry is said once, with the order, when the dialog is left', async () => {
-    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1]], sourceOrderCleared: true });
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1]], orderLinesLeft: 0 });
     jest.mocked(uploadDeferredDispatchImages).mockResolvedValue({ success: true, uploadedCount: 1, errors: [], failed: [] });
     const tree = await render();
     await create_(tree);
     await act(async () => { await photoDialog(tree).props.onConfirm(); });
+    await dismissed(tree);
     expect(successShown(tree)).toBe(true);
     expect(showToast).not.toHaveBeenCalled();
 
@@ -178,6 +207,31 @@ describe('toasts wait for the dialog to go', () => {
     expect(router.replace).toHaveBeenCalledWith('/dispatch-form/step1');
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Order fulfilled and removed from the queue. Photos uploaded.');
+  });
+
+  it('an order with lines left says how many, not that it is fulfilled', async () => {
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 2 });
+    const tree = await render();
+    await create_(tree);
+    await act(async () => { successDialog(tree).props.onViewList(); });
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('2 lines are still open on the order.');
+  });
+
+  it('one line left is said in the singular', async () => {
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 1 });
+    const tree = await render();
+    await create_(tree);
+    await act(async () => { successDialog(tree).props.onViewList(); });
+    expect(showToast).toHaveBeenCalledWith('1 line is still open on the order.');
+  });
+
+  it.each([[null], [undefined]])('says nothing about the order when the server does not (%s)', async (orderLinesLeft) => {
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft });
+    const tree = await render();
+    await create_(tree);
+    await act(async () => { successDialog(tree).props.onViewList(); });
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('a save that cleared no order and lost no photo says nothing', async () => {

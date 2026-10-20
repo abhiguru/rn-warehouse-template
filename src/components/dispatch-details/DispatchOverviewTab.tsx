@@ -42,6 +42,8 @@ interface DispatchOverviewTabProps {
   can_delete?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  /** A delete is running: the Delete button is busy and disabled. */
+  is_deleting?: boolean;
   onSharePDF?: () => void;
   is_share_loading?: boolean;
   onPrint?: () => void;
@@ -60,6 +62,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
   can_delete,
   onEdit,
   onDelete,
+  is_deleting = false,
   onSharePDF,
   is_share_loading = false,
   onPrint,
@@ -144,6 +147,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
         canEdit={can_edit}
         canDelete={can_delete}
         onDelete={onDelete}
+        isDeleting={is_deleting}
       />
 
       {/* Bottom Spacing */}

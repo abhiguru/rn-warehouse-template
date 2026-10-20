@@ -42,6 +42,19 @@ export const dispatch: Translation<typeof source> = {
     numberTakenFor: 'જાવક {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
     loadFailed: 'જાવકની વિગતો લોડ કરી શકાઈ નથી',
     saveFailed: 'જાવક સાચવી શકાઈ નથી',
+    editMismatch: 'આ ફોર્મ બીજી જાવકનું છે. પાછા જાઓ અને જાવક ફરી ખોલો.',
+    numberUsedNext: 'જાવક નંબર {{number}} પહેલેથી વપરાયેલો છે. હવે પછીનો ખાલી નંબર {{next}} છે.',
+  },
+  // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
+  edit: {
+    openFailedTitle: 'જાવક ખોલી શકાઈ નથી',
+    openFailedMessage: 'જાવકની લિંક અધૂરી છે. યાદીમાંથી જાવક ફરી ખોલો.',
+    // Draft for the owner's wording review (tweak 2026-10-20, review finding 3): finishOtherTitle to openIt.
+    finishOtherTitle: 'બીજી જાવક ખુલ્લી છે',
+    finishOtherEdit: 'પહેલાં જાવક {{number}} નો ફેરફાર પૂરો કરો અથવા રદ કરો.',
+    finishOtherEditNoNumber: 'પહેલાં ખુલ્લી જાવકનો ફેરફાર પૂરો કરો અથવા રદ કરો.',
+    finishOtherNew: 'પહેલાં નવી જાવક પૂરી કરો અથવા રદ કરો.',
+    openIt: 'તે ખોલો',
   },
   // Step 1: dispatch details
   form: {
@@ -237,6 +250,10 @@ export const dispatch: Translation<typeof source> = {
       other: '{{count}} આઇટમ સચવાશે અને સ્ટોક બદલાશે.',
     },
     orderFulfilled: 'ઑર્ડર પૂરો થયો અને કતારમાંથી નીકળી ગયો.',
+    orderLinesLeft: {
+      one: '{{count}} લાઇન હજુ ઑર્ડરમાં બાકી છે.',
+      other: '{{count}} લાઇન હજુ ઑર્ડરમાં બાકી છે.',
+    },
     photosNotUploadedTitle: 'ફોટો અપલોડ થયા નથી',
     photosNotUploadedMessage: 'જાવક {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedPhoto: 'ફોટો {{position}}',
@@ -381,7 +398,25 @@ export const dispatch: Translation<typeof source> = {
     deletedMessageNoNumber: 'જાવક ડિલીટ થઈ ગઈ છે.',
     viewDispatches: 'જાવકની યાદી જુઓ',
     cannotDeleteTitle: 'જાવક ડિલીટ કરી શકાતી નથી',
-    deleteInvoicesFirst: 'પહેલાં તેના ઇન્વૉઇસ ડિલીટ કરો, પછી ફરી પ્રયાસ કરો.',
+    hasInvoices: 'આ જાવકના ઇન્વૉઇસ બનેલા છે, તેથી તે ડિલીટ થઈ શકતી નથી. પહેલાં તેના ઇન્વૉઇસ ડિલીટ કરો, પછી ફરી પ્રયાસ કરો.',
+    orderLinesGivenBack: {
+      one: 'વેપારીના ઑર્ડરમાં {{count}} લાઇન પાછી મૂકી.',
+      other: 'વેપારીના ઑર્ડરમાં {{count}} લાઇન પાછી મૂકી.',
+    },
+    orderLinesNotRestored: {
+      one: '{{count}} લાઇન ઑર્ડરમાં પાછી મૂકી શકાઈ નથી: તે ઑર્ડરના નંગ નોંધાતા થયા તે પહેલાં સચવાયેલી હતી.',
+      other: '{{count}} લાઇન ઑર્ડરમાં પાછી મૂકી શકાઈ નથી: તે ઑર્ડરના નંગ નોંધાતા થયા તે પહેલાં સચવાયેલી હતી.',
+    },
+    orderLinesNoOpenOrder: {
+      one: '{{count}} લાઇન પાછી મૂકી શકાઈ નથી: વેપારીનો કોઈ બાકી ઑર્ડર નથી.',
+      other: '{{count}} લાઇન પાછી મૂકી શકાઈ નથી: વેપારીનો કોઈ બાકી ઑર્ડર નથી.',
+    },
+    // Draft for the owner's wording review (tweak 2026-10-20, owner rule D22): orderCheck to leavePage.
+    orderCheck: 'વેપારીનો ઑર્ડર તપાસો: ઑર્ડરમાં લાઇન પાછી મૂકાઈ કે નહીં તે ઍપ કહી શકતી નથી.',
+    leaveCheckTitle: 'આ પાનું છોડવું છે?',
+    leaveCheckMessage: 'જાવક ડિલીટ થઈ ગઈ હોઈ શકે. ફરી ડિલીટ કરતા પહેલાં જાવકની યાદી તપાસો.',
+    stayHere: 'રહો',
+    leavePage: 'છોડો',
     deleteFailedTitle: 'જાવક ડિલીટ કરી શકાઈ નથી',
     tryAgain: 'ફરી પ્રયાસ કરો.',
     pdfFailedTitle: 'PDF બનાવી શકાઈ નથી',

@@ -86,7 +86,6 @@ export interface DispatchFormState {
 
   // UI state
   current_step: number;         // 0-based (0=step1, 1=step2, 2=step3)
-  is_loading: boolean;
   is_saving: boolean;
 
   // Error state for displaying save/load failures to user
@@ -98,6 +97,23 @@ export interface DispatchFormState {
   // Message for a typed dispatch number another dispatch holds. Kept with the form, not
   // in a screen, so step 1 still refuses the number after it was left and reopened.
   takenNumberError?: string | null;
+
+  // The part of the form's identity that is not in the data:
+  /** One random id per form (made when the form first tries to create, kept across retries of it, dropped after a save). It goes into the idempotency key only, never into the request. */
+  submissionNonce?: string | null;
+  /** True once the person picked a date; until then a new form is dated the day it opens. */
+  dateChosenByUser?: boolean;
+  /** True once the person typed the dispatch number; a number the form fetched is not "typed". */
+  dispNoTyped?: boolean;
+  /** Set when this form created a dispatch. A form that did is finished: it is reset when it is left. */
+  savedDispatchId?: string | null;
+  /** True while the app asks the server what became of a create or save that got no answer: the form is locked. */
+  checkingAnswer?: boolean;
+  /**
+   * Edit only: lot id -> the bags the dispatch held on that lot when it was read. Filled with the dispatch and not
+   * changed while it is edited; a lot's stock limit is its stock plus these (the server gives them back on a save).
+   */
+  heldBags?: Record<string, number>;
 }
 
 // ============================================================================
@@ -152,6 +168,14 @@ export interface DispatchApiResponse {
   invoiceNumber?: string;
   source_order_cleared?: boolean;  // True when dispatch was created from an order and the order was soft-deleted
   source_order_id?: string;        // The order ID that was cleared
+  /** Create only (server migration 120): lines of the source order still open after this dispatch; null for a dispatch without an order; absent on an older server. */
+  order_lines_left?: number | null;
+  /** The server refused the number: another dispatch holds it (`reason: 'NUMBER_TAKEN'`, or the unique-key error of an older server). */
+  reason?: 'NUMBER_TAKEN';
+  /** The number the refusal is about. */
+  number?: string;
+  /** The person left while the app was still asking the server what became of a request that got no answer; nothing more was done. */
+  aborted?: boolean;
   /** Create only: photos picked in the form that did not upload after the dispatch was saved. */
   failed_photos?: DispatchImageData[];
 }

@@ -23,20 +23,17 @@
  *    - 750ms debounce before checking database
  *    - Minimum 5 characters before checking
  *
- * 2. **Module-Level Session ID** (`globalSessionId`)
+ * 2. **Module-Level Session ID** (`dispatchFormSession`)
  *    - Persists across hook instances (survives route changes)
- *    - Incremented before navigation to cancel in-flight async operations
+ *    - Ended when the form is reset, to cancel in-flight async operations
  *    - Checked in async functions before updating Redux state
  *
- * 3. **Redux-Based Load Check** (NOT ref-based)
- *    - Each step screen creates NEW hook instance with fresh refs
- *    - previousDispatchIdParamRef resets to undefined on each step
- *    - Instead, we check: `dispatchId === dispatchIdParam` (Redux persists across steps)
- *    - This prevents reloading data when navigating Step 1 → Step 2 → Step 3
- *
- * 4. **Dependency Array Management**
- *    - dispatchId is NOT in load effect deps (prevents reload on resetForm)
- *    - Only dispatchIdParam triggers reload (URL param change = new Dispatch to load)
+ * 3. **Edit mode does not load here**
+ *    - The edit layout (`app/dispatch-edit/[id]/_layout.tsx`) resets the form, reads the dispatch
+ *      on every entry and shows the steps only once it is loaded; it resets the form again when it
+ *      closes. A step screen can therefore rely on the form holding the dispatch of its route.
+ *    - Navigation and save in edit mode use the dispatch of the route and refuse when the form
+ *      holds another one.
  *
  */
 
@@ -48,7 +45,10 @@ import { useStore } from 'react-redux';
 import type { RootState } from '@/store';
 import {
   updateHeader,
-  setDispatchId,
+  refreshDefaultDate,
+  markDispNoTyped,
+  setSubmissionNonce,
+  formCreated,
   addItem,
   addItems,
   updateItem,
@@ -60,14 +60,13 @@ import {
   updateImageStatus,
   removeImage,
   setCurrentStep,
-  setIsLoading,
   setIsSaving,
+  setCheckingAnswer,
   setValidationErrors,
   clearValidationErrors,
   clearFieldError,
   setTakenNumberError,
   selectDispatchTakenNumberError,
-  loadDispatchData,
   resetForm,
   loadFromOrder,
   selectHasFormData,
@@ -89,9 +88,9 @@ import {
   getNextDispatchNumber,
   createDispatch,
   updateDispatch,
-  loadDispatchData as loadDispatchDataService,
   checkDispatchExists,
 } from '@/features/dispatch/services/dispatchFormService';
+import { currentDispatchFormSession, endDispatchFormSession } from '@/features/dispatch/utils/dispatchFormSession';
 
 import { showAlert } from '@/utils/alert';
 import { createLogger } from '@/utils/logger';
@@ -101,16 +100,25 @@ import { serverText } from '@/utils/serverText';
 import { validationSummary } from '@/utils/validationSummary';
 import { documentNumberState } from '@/utils/documentNumberCheck';
 import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership';
-/**
- * Module-level session ID that persists across all hook instances.
- * This allows cancellation to work when navigating between create/edit routes.
- *
- * Pattern: Increment before navigation, check in async functions before state updates.
- * If session changed, the async operation was cancelled and should not update state.
- */
+import { toLocalISODate } from '@/utils/formatters';
+
 const log = createLogger('useDispatchForm');
 
-let globalSessionId = 0;
+// One object for a form that holds none, so a screen's effects do not see a new one at every render.
+const NO_HELD_BAGS: Record<string, number> = {};
+
+/**
+ * A random id for one form. It only has to differ from the id of another form, so a plain
+ * v4-shaped text is enough where the platform has no `crypto.randomUUID`.
+ */
+function newSubmissionNonce(): string {
+  const platformCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof platformCrypto?.randomUUID === 'function') return platformCrypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (placeholder) => {
+    const digit = Math.floor(Math.random() * 16);
+    return (placeholder === 'x' ? digit : (digit % 4) + 8).toString(16);
+  });
+}
 
 export type DispatchFormMode = 'create' | 'edit';
 
@@ -120,15 +128,32 @@ export interface UseDispatchFormOptions {
   sourceOrderId?: string;
 }
 
+export type DispatchSubmitResult = {
+  success: boolean;
+  dispatchId?: string;
+  error?: string;
+  orderLinesLeft?: number | null;
+  failedPhotos?: DispatchImageData[];
+  numberTaken?: { message: string };
+  /** The person left while the app was still asking the server what became of the request; nothing more was done and nothing is to be said. */
+  aborted?: boolean;
+};
+
 export interface UseDispatchFormReturn {
   // State
   header: DispatchHeaderData;
   items: DispatchItemData[];
   images: DispatchImageData[];
   dispatchId: string | null;
-  isLoading: boolean;
   isGeneratingNumber: boolean;
   isSaving: boolean;
+  /**
+   * A create or save got no answer and the app is asking the server what became of it (owner rule D22). The form is
+   * locked: no edits, no Create or Save, no Previous or step pills or Back key. Only the X leaves, with its warning.
+   */
+  isCheckingAnswer: boolean;
+  /** Edit: lot id -> the bags the dispatch held on that lot when it was read (the stock limit of a lot adds them). */
+  heldBags: Record<string, number>;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
   hasFormData: boolean;
@@ -137,7 +162,6 @@ export interface UseDispatchFormReturn {
 
   // Initialization
   initializeForm: () => Promise<void>;
-  loadExistingDispatch: (id: string) => Promise<void>;
   loadFromOrderData: (orderId: string, orderData: { header: Partial<DispatchHeaderData>; items: DispatchItemData[] }) => void;
 
   // Header actions
@@ -169,7 +193,11 @@ export interface UseDispatchFormReturn {
   canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
 
   // Submission
-  submitForm: (generateInvoice?: boolean, onFailure?: (title: string, message: string) => void) => Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }>;
+  /**
+   * Create or save. A refusal for the dispatch number (another dispatch holds it) comes back with `numberTaken`: the
+   * number field already says so, and the caller takes the person to step 1, where that field is.
+   */
+  submitForm: (generateInvoice?: boolean, onFailure?: (title: string, message: string) => void) => Promise<DispatchSubmitResult>;
 
   // Reset
   resetFormState: () => void;
@@ -238,14 +266,20 @@ export function useDispatchForm({
   // AbortController for cancelling pending dispatch number change operations
   const dispNoChangeAbortRef = useRef<AbortController | null>(null);
 
+  // Aborted when this screen goes or the form is reset: a create, save or delete that is asking the server what became of
+  // a request that got no answer then stops, and nothing is sent again.
+  const submitAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => {
+      submitAbortRef.current?.abort();
+    };
+  }, []);
+
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
   const hasGeneratedDispNo = useRef(false);
   const hasSetSupervisor = useRef(false);
-  const isLoadingData = useRef(false);
   const previousModeRef = useRef<DispatchFormMode | null>(null);
-  // Track the previous dispatchIdParam to detect when we need to reload
-  const previousDispatchIdParamRef = useRef<string | undefined>(undefined);
 
   /**
    * Initialize form for create mode
@@ -254,7 +288,7 @@ export function useDispatchForm({
     console.log('[useDispatchForm] initializeForm called:', {
       isCreateMode,
       hasInitialized: hasInitialized.current,
-      globalSessionId,
+      session: currentDispatchFormSession(),
     });
 
     if (!isCreateMode || hasInitialized.current) {
@@ -264,8 +298,12 @@ export function useDispatchForm({
     hasInitialized.current = true;
 
     // Capture global session ID at start of operation
-    const currentSessionId = globalSessionId;
+    const currentSessionId = currentDispatchFormSession();
     console.log('[useDispatchForm] initializeForm started with session:', currentSessionId);
+
+    // A new dispatch is dated the day it is opened. The form can be older than that (a reset form keeps the day
+    // it was reset on, and the app stays open overnight); a date the person picked is left alone.
+    dispatch(refreshDefaultDate(toLocalISODate(new Date())));
 
     // Generate dispatch number
     if (!header.disp_no && !hasGeneratedDispNo.current) {
@@ -274,14 +312,14 @@ export function useDispatchForm({
       try {
         const disp_no = await getNextDispatchNumber();
         // Check if session changed before updating state (prevents stale updates after navigation)
-        if (globalSessionId !== currentSessionId) {
-          console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', globalSessionId);
+        if (currentDispatchFormSession() !== currentSessionId) {
+          console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', currentDispatchFormSession());
           return;
         }
         dispatch(updateHeader({ disp_no }));
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
-        if (globalSessionId === currentSessionId) {
+        if (currentDispatchFormSession() === currentSessionId) {
           showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.numberFailed'));
         }
       } finally {
@@ -292,7 +330,7 @@ export function useDispatchForm({
     }
 
     // Check session again before supervisor update
-    if (globalSessionId !== currentSessionId) return;
+    if (currentDispatchFormSession() !== currentSessionId) return;
 
     // Auto-set supervisor to current user
     if (!header.supervisor_id && userProfile && !hasSetSupervisor.current) {
@@ -304,56 +342,6 @@ export function useDispatchForm({
       }));
     }
   }, [isCreateMode, header.disp_no, header.supervisor_id, userProfile, dispatch]);
-
-  /**
-   * Load existing dispatch data for edit mode
-   */
-  const loadExistingDispatch = useCallback(async (id: string) => {
-    console.log('[useDispatchForm] loadExistingDispatch called for id:', id, {
-      isLoadingData: isLoadingData.current,
-      globalSessionId,
-    });
-
-    if (isLoadingData.current) {
-      console.log('[useDispatchForm] loadExistingDispatch skipped - already loading');
-      return;
-    }
-    isLoadingData.current = true;
-
-    // Capture global session ID at start of operation
-    const currentSessionId = globalSessionId;
-    console.log('[useDispatchForm] loadExistingDispatch started with session:', currentSessionId);
-
-    dispatch(setIsLoading(true));
-    try {
-      const result = await loadDispatchDataService(id);
-      // Check if session changed before updating state (prevents stale updates after navigation)
-      if (globalSessionId !== currentSessionId) {
-        console.log('[useDispatchForm] Load dispatch cancelled - session changed from', currentSessionId, 'to', globalSessionId);
-        return;
-      }
-      if (result.success && result.data) {
-        dispatch(loadDispatchData({
-          dispatchId: id,
-          header: result.data.header,
-          items: result.data.items,
-          images: [], // Images are not loaded from edit; they can be added fresh
-        }));
-      } else {
-        if (globalSessionId === currentSessionId) {
-          showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.loadFailed')));
-        }
-      }
-    } catch (error) {
-      console.error('[useDispatchForm] Failed to load dispatch:', error);
-      if (globalSessionId === currentSessionId) {
-        showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.loadFailed'));
-      }
-    } finally {
-      dispatch(setIsLoading(false));
-      isLoadingData.current = false;
-    }
-  }, [dispatch]);
 
   /**
    * Load from order data (order-to-dispatch flow)
@@ -415,6 +403,7 @@ export function useDispatchForm({
 
     // Update Redux immediately so UI is responsive
     dispatch(updateHeader({ disp_no: newDispNo }));
+    dispatch(markDispNoTyped());
     dispatch(clearFieldError('disp_no'));
     dispatch(setTakenNumberError(null));
     clearLocalErrors(['disp_no']);
@@ -640,11 +629,26 @@ export function useDispatchForm({
   }, [validateCurrentStep]);
 
   /**
+   * Edit mode: the form holds the dispatch of the route. Read from the store, not from the last
+   * render, so a dispatch that was loaded or reset a moment ago is seen as it is.
+   */
+  const formHoldsRouteDispatch = useCallback((): boolean => {
+    return Boolean(dispatchIdParam) && store.getState().dispatchForm.dispatch_id === dispatchIdParam;
+  }, [store, dispatchIdParam]);
+
+  /**
    * Navigate to a specific step
    */
   const navigateToStep = useCallback(async (step: number): Promise<boolean> => {
     const currentStep = dispatchFormState.current_step;
     console.log(`[useDispatchForm] navigateToStep called: currentStep=${currentStep}, targetStep=${step}`);
+
+    // An edit goes by the dispatch of its route. The form must hold that dispatch: any other
+    // way would send the person to the steps of a dispatch they did not open.
+    if (!isCreateMode && !formHoldsRouteDispatch()) {
+      showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.editMismatch'));
+      return false;
+    }
 
     const canNavigate = await canNavigateToStep(step, currentStep);
 
@@ -656,7 +660,7 @@ export function useDispatchForm({
     dispatch(setCurrentStep(step));
 
     // Determine route based on mode
-    const baseRoute = isCreateMode ? '/dispatch-form' : `/dispatch-edit/${dispatchId}`;
+    const baseRoute = isCreateMode ? '/dispatch-form' : `/dispatch-edit/${dispatchIdParam}`;
     const route = `${baseRoute}/step${step}`;
     console.log(`[useDispatchForm] Navigating to route: ${route}`);
 
@@ -673,14 +677,23 @@ export function useDispatchForm({
     }
 
     return true;
-  }, [dispatchFormState.current_step, canNavigateToStep, isCreateMode, dispatchId, dispatch]);
+  }, [dispatchFormState.current_step, canNavigateToStep, isCreateMode, dispatchIdParam, formHoldsRouteDispatch, dispatch]);
 
   /**
    * Submit the form (create or update)
    */
-  const submitForm = useCallback(async (generateInvoice: boolean = false, onFailure?: (title: string, message: string) => void): Promise<{ success: boolean; dispatchId?: string; error?: string; sourceOrderCleared?: boolean; failedPhotos?: DispatchImageData[] }> => {
+  const submitForm = useCallback(async (generateInvoice: boolean = false, onFailure?: (title: string, message: string) => void): Promise<DispatchSubmitResult> => {
     // The caller may hold the error until a dialog still closing is gone (iOS shows no Modal over it)
     const report = onFailure ?? showAlert;
+
+    // An edit saves the dispatch of its route. A form that holds another one is not saved: its
+    // changes would land on a dispatch the person did not open.
+    if (!isCreateMode && !formHoldsRouteDispatch()) {
+      const message = t('dispatch.wizard.editMismatch');
+      report(t('dispatch.wizard.errorTitle'), message);
+      return { success: false, error: message };
+    }
+
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
@@ -690,7 +703,40 @@ export function useDispatchForm({
 
     dispatch(setIsSaving(true));
 
+    /**
+     * The server says another dispatch holds the number. The person is told which number is free
+     * next. A number the form fetched itself is replaced by it; a number the person typed is kept
+     * (the field flags it and step 1 does not pass until it is changed).
+     */
+    const reportNumberTaken = async (takenNumber: string): Promise<DispatchSubmitResult> => {
+      let next: string | null = null;
+      try {
+        next = await getNextDispatchNumber();
+      } catch {
+        // The message then only asks for another number.
+      }
+      const message = next
+        ? t('dispatch.wizard.numberUsedNext', { number: formatIdentifier(takenNumber), next: formatIdentifier(next) })
+        : t('dispatch.wizard.numberTaken', { number: formatIdentifier(takenNumber) });
+      if (next && isCreateMode && !store.getState().dispatchForm.dispNoTyped) {
+        dispatch(updateHeader({ disp_no: next }));
+      } else {
+        dispatch(setTakenNumberError(message));
+      }
+      report(t('dispatch.wizard.errorTitle'), message);
+      return { success: false, error: message, numberTaken: { message } };
+    };
+
     try {
+      // One id per form, made when the form first tries to create and kept while it is sent again
+      // after a lost answer: the same form is the same create, another form with the same
+      // fields is not. It is part of the idempotency key only.
+      let submissionNonce = store.getState().dispatchForm.submissionNonce ?? undefined;
+      if (isCreateMode && !submissionNonce) {
+        submissionNonce = newSubmissionNonce();
+        dispatch(setSubmissionNonce(submissionNonce));
+      }
+
       const payload = {
         header,
         items,
@@ -698,30 +744,46 @@ export function useDispatchForm({
         generateInvoice,
       };
 
+      // A request that gets no answer locks the form (the Review step shows why) while the server is asked what became
+      // of it; the check is stopped when the person leaves.
+      const controller = new AbortController();
+      submitAbortRef.current = controller;
+      const lostAnswer = { onLostAnswer: () => dispatch(setCheckingAnswer(true)), signal: controller.signal };
+
       const result = isCreateMode
-        ? await createDispatch(payload)
-        : await updateDispatch(dispatchId!, payload);
+        ? await createDispatch({ ...payload, submissionNonce }, lostAnswer)
+        : await updateDispatch(dispatchIdParam!, payload, lostAnswer);
+
+      // The person left meanwhile: there is nobody to tell.
+      if (result.aborted) return { success: false, aborted: true };
 
       if (result.success) {
+        // The form has made its dispatch: it is finished, and is reset when it is left.
+        if (isCreateMode && result.dispatch_id) dispatch(formCreated(result.dispatch_id));
         return {
           success: true,
           dispatchId: result.dispatch_id,
-          sourceOrderCleared: result.source_order_cleared,
+          orderLinesLeft: result.order_lines_left,
           failedPhotos: result.failed_photos ?? [],
         };
-      } else {
-        report(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed'), { write: true, form: true }));
-        return { success: false, error: result.error };
       }
+
+      if (result.reason === 'NUMBER_TAKEN') {
+        return await reportNumberTaken(result.number || header.disp_no);
+      }
+
+      report(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed'), { write: true, form: true }));
+      return { success: false, error: result.error };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('dispatch.wizard.unknownError');
       console.error('[useDispatchForm] Submit error:', error);
       report(t('dispatch.wizard.errorTitle'), errorMessage);
       return { success: false, error: errorMessage };
     } finally {
+      dispatch(setCheckingAnswer(false));
       dispatch(setIsSaving(false));
     }
-  }, [header, items, images, dispatchId, isCreateMode, validateCurrentStep, dispatch]);
+  }, [header, items, images, dispatchIdParam, isCreateMode, store, formHoldsRouteDispatch, validateCurrentStep, dispatch]);
 
   /**
    * Reset form to initial state
@@ -734,10 +796,11 @@ export function useDispatchForm({
 
     // Cancel any pending dispatch number change operation
     dispNoChangeAbortRef.current?.abort();
+    // A create or save still asking the server what became of a lost request stops (the person left through the X)
+    submitAbortRef.current?.abort();
 
-    // Increment GLOBAL session ID to invalidate any pending async operations across all hook instances
-    globalSessionId += 1;
-    console.log('[useDispatchForm] Global session incremented to:', globalSessionId);
+    // End the form's session to invalidate any pending async operations across all hook instances
+    console.log('[useDispatchForm] Form session ended; new session:', endDispatchFormSession());
 
     setLocalValidationErrors({});
     releaseFormPhotoFiles(formImagesRef.current);
@@ -751,9 +814,8 @@ export function useDispatchForm({
   useEffect(() => {
     if (previousModeRef.current !== null && previousModeRef.current !== mode) {
       console.log('[useDispatchForm] Mode changed from', previousModeRef.current, 'to', mode, '- incrementing session');
-      // Increment session to invalidate any pending operations from the old mode
-      globalSessionId += 1;
-      console.log('[useDispatchForm] Global session incremented to:', globalSessionId, 'due to mode change');
+      // End the session to invalidate any pending operations from the old mode
+      console.log('[useDispatchForm] Form session ended; new session:', endDispatchFormSession(), 'due to mode change');
       // DO NOT reset instance refs - let the new mode's useEffect handle initialization
     }
     previousModeRef.current = mode;
@@ -772,46 +834,17 @@ export function useDispatchForm({
     }
   }, [isCreateMode, initializeForm]);
 
-  // Load data for edit mode when dispatchIdParam changes
-  // NOTE: dispatchId is intentionally NOT in the dependency array to prevent
-  // re-loading when resetForm() sets dispatchId to null during navigation
+  // A form that created its dispatch is finished: when the screen that did it is left, however it is left (a Back
+  // key included), the form is emptied, so it cannot be sent a second time. A way out that already reset the form
+  // (View list, Create another, Print) has cleared the flag, and this does nothing.
   useEffect(() => {
-    console.log('[useDispatchForm] Load effect running:', {
-      isCreateMode,
-      dispatchIdParam,
-      previousDispatchIdParam: previousDispatchIdParamRef.current,
-      reduxDispatchId: dispatchId,
-      isLoadingData: isLoadingData.current,
-    });
-
-    // Only load if:
-    // 1. We're in edit mode
-    // 2. We have a dispatchIdParam
-    // 3. Redux doesn't already have this dispatch loaded (dispatchId !== dispatchIdParam)
-    // 4. Not already loading
-    // NOTE: We check dispatchId !== dispatchIdParam instead of using previousDispatchIdParamRef
-    // because the ref is local to each hook instance and resets when navigating between steps.
-    // Redux state persists across step navigation, so it's a reliable indicator.
-    if (!isCreateMode && dispatchIdParam && !isLoadingData.current) {
-      const alreadyLoaded = dispatchId === dispatchIdParam;
-      const shouldLoad = !alreadyLoaded;
-
-      console.log('[useDispatchForm] Load check:', { alreadyLoaded, shouldLoad });
-
-      if (shouldLoad) {
-        console.log('[useDispatchForm] Load effect calling loadExistingDispatch:', dispatchIdParam);
-        // Reset form before loading new data to prevent stale data flash
-        if (previousDispatchIdParamRef.current && previousDispatchIdParamRef.current !== dispatchIdParam) {
-          console.log('[useDispatchForm] Dispatch ID changed, resetting form first');
-          releaseFormPhotoFiles(formImagesRef.current);
-          dispatch(resetForm());
-        }
-        loadExistingDispatch(dispatchIdParam);
-      }
-    }
-
-    previousDispatchIdParamRef.current = dispatchIdParam;
-  }, [isCreateMode, dispatchIdParam, loadExistingDispatch, dispatch]);
+    return () => {
+      const form = store.getState().dispatchForm;
+      if (!form.savedDispatchId) return;
+      releaseFormPhotoFiles(form.images);
+      dispatch(resetForm());
+    };
+  }, [store, dispatch]);
 
   return {
     // State
@@ -819,9 +852,10 @@ export function useDispatchForm({
     items,
     images,
     dispatchId,
-    isLoading: dispatchFormState.is_loading,
     isGeneratingNumber,
     isSaving: dispatchFormState.is_saving,
+    isCheckingAnswer: dispatchFormState.checkingAnswer === true,
+    heldBags: dispatchFormState.heldBags ?? NO_HELD_BAGS,
     validationErrors,
     isCreateMode,
     hasFormData,
@@ -830,7 +864,6 @@ export function useDispatchForm({
 
     // Initialization
     initializeForm,
-    loadExistingDispatch,
     loadFromOrderData,
 
     // Header actions

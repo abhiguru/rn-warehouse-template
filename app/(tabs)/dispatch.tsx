@@ -11,14 +11,14 @@
  * - Floating create button for roles that can create (guide 14.1)
  */
 
-import React, { useCallback } from 'react';
+import React from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
 import { DispatchFlashList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
+import { useOpenNewDispatchForm } from '@/features/dispatch/hooks/useOpenNewDispatchForm';
 import { t } from '@/i18n';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -33,9 +33,8 @@ export default function DispatchTab() {
   const styles = useThemedStyles(makeStyles);
   const { canCreate } = usePermissions();
 
-  const handleCreateDispatch = useCallback(() => {
-    router.push('/dispatch-form/step1');
-  }, []);
+  // Resets the form first (a new dispatch never carries what an earlier form left) and ignores a second tap.
+  const handleCreateDispatch = useOpenNewDispatchForm();
 
   return (
     <View style={styles.container}>

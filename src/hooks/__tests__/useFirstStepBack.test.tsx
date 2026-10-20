@@ -13,6 +13,7 @@ import GRNFormStep2 from '../../../app/grn-form/step2';
 import GRNFormStep3 from '../../../app/grn-form/step3';
 import DispatchFormStep2 from '../../../app/dispatch-form/step2';
 import DispatchFormStep3 from '../../../app/dispatch-form/step3';
+import DispatchEditStep3 from '../../../app/dispatch-edit/[id]/step3';
 
 jest.mock('expo-router', () => {
   const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismissTo: jest.fn(), canGoBack: jest.fn(() => true) };
@@ -24,6 +25,9 @@ jest.mock('expo-router', () => {
   };
 });
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// The dispatch review routes read whether a lost answer is being checked (owner rule D22).
+let mockCheckingAnswer = false;
+jest.mock('@/store/hooks', () => ({ useAppSelector: () => mockCheckingAnswer, useAppDispatch: () => jest.fn() }));
 // The steps themselves are not under test here, only the Back key of their routes.
 jest.mock('@/features/grn/screens/GrnItemsStep', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/features/grn/screens/GrnReviewStep', () => ({ __esModule: true, default: () => null }));
@@ -32,6 +36,7 @@ jest.mock('@/features/dispatch/screens', () => ({ DispatchItemsStep: () => null,
 let back: ReturnType<typeof installHardwareBack>;
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCheckingAnswer = false;
   back = installHardwareBack();
 });
 afterEach(() => back.restore());
@@ -172,6 +177,30 @@ describe('Back on the later steps of a create form', () => {
     expect(router.dismissTo).toHaveBeenCalledWith(previous);
     expect(router.replace).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('Back on the dispatch review while the server is asked what became of a request that got no answer', () => {
+  it.each([
+    ['new dispatch', <DispatchFormStep3 key="d3" />],
+    ['edited dispatch', <DispatchEditStep3 key="e3" />],
+  ])('%s: does nothing, and goes nowhere', async (_name, screen) => {
+    mockCheckingAnswer = true;
+    const tree = await mount(screen);
+
+    expect(back.press()).toBe(true);
+
+    expect(router.dismissTo).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('an edited dispatch leaves the Back key to the system when nothing is being checked', async () => {
+    const tree = await mount(<DispatchEditStep3 />);
+
+    expect(back.press()).toBe(false);
     await act(async () => { tree.unmount(); });
   });
 });

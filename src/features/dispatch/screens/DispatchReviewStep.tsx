@@ -9,7 +9,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { uploadDeferredDispatchImages, unpreparedDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
@@ -32,8 +32,9 @@ import { StatusTag } from '@/components/ui';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { generateDispatchPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
-import { useDispatchForm } from '@/hooks/useDispatchForm';
+import { useDispatchForm, type DispatchSubmitResult } from '@/hooks/useDispatchForm';
 import { useDispatchLotStock } from '@/features/dispatch/hooks/useDispatchLotStock';
+import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
 import type { DispatchItemData, DispatchImageData } from '@/types/dispatch.types';
 import { ImageUploadButton, type CustomUploadFunction } from '@/features/grn/components/ImageUploadButton';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
@@ -86,7 +87,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         items,
         images,
         isSaving,
-        dispatchId,
+        isCheckingAnswer,
         isCreateMode,
         addImageToForm,
         updateImageUploadProgress: updateImageProgress,
@@ -250,6 +251,16 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         if (!showConfirmDialog && photosNotUploaded === null && Platform.OS !== 'ios') runAfterDialog();
     }, [showConfirmDialog, photosNotUploaded]);
 
+    // The save or create got no answer: the screen is locked and says so (owner rule D22), which the busy confirm would
+    // hide (and it has no X). The confirm closes now, so `performSubmit` has no closing of it to wait for later.
+    const confirmClosedEarly = useRef(false);
+    useEffect(() => {
+        if (isCheckingAnswer && showConfirmDialog) {
+            confirmClosedEarly.current = true;
+            setShowConfirmDialog(false);
+        }
+    }, [isCheckingAnswer, showConfirmDialog]);
+
     // Handle form submission
     const handleSubmit = async () => {
         // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
@@ -277,18 +288,23 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         void performSubmit();
     };
 
-    const performSubmit = async () => {
-        const result = await submitForm(false, (title, message) => {
-            afterDialog.current = () => showAlert(title, message);
-        });
-        // The next dialog is queued in `afterDialog` below; it is drawn once the confirm has finished closing.
-        setShowConfirmDialog(false);
-
+    // What the answer of the save shows. The next dialog is queued in `afterDialog`; it is drawn once the confirm has
+    // finished closing.
+    const showResult = (result: DispatchSubmitResult) => {
         if (!result.success) {
             triggerError();
             // Re-enable button on error so user can retry
             setIsSubmitting(false);
-            // The error is shown by `afterDialog`, once the confirm is gone
+            // The error is shown by `afterDialog`, once the confirm is gone. When another dispatch holds the number,
+            // the number field says so (and may already hold the next free number): the alert takes the person to
+            // step 1, where that field is.
+            if (result.numberTaken) {
+                const { message } = result.numberTaken;
+                afterDialog.current = () =>
+                    showAlert(tr('dispatch.wizard.errorTitle'), message, [
+                        { text: tr('common.ok'), onPress: () => { void navigateToStep(DISPATCH_STEP_NUMBERS.INFO); } },
+                    ]);
+            }
             return;
         }
 
@@ -302,9 +318,13 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 itemCount: items.length,
             });
 
-            // Said once the success dialog is gone, if the order was cleared
-            if (result.sourceOrderCleared) {
+            // Said once the success dialog is gone, for a dispatch made from an order: the order is gone from the
+            // queue only when this dispatch used up its last line. The server says how many lines are left; an
+            // older server says nothing and nothing is said.
+            if (result.orderLinesLeft === 0) {
                 queueToast(tr('dispatch.review.orderFulfilled'));
+            } else if (typeof result.orderLinesLeft === 'number' && result.orderLinesLeft > 0) {
+                queueToast(tr('dispatch.review.orderLinesLeft', { count: result.orderLinesLeft }));
             }
 
             // The dispatch is saved. Photos that did not upload are named with a
@@ -321,6 +341,24 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         }
     };
 
+    const performSubmit = async () => {
+        const result = await submitForm(false, (title, message) => {
+            afterDialog.current = () => showAlert(title, message);
+        });
+        // The person left (the X) while the server was still being asked what became of the request: nobody to tell.
+        if (result.aborted) return;
+        setShowConfirmDialog(false);
+
+        showResult(result);
+
+        // The confirm was closed earlier (the screen was locked): no "finished closing" is still to come, so the next
+        // dialog is opened here.
+        if (confirmClosedEarly.current) {
+            confirmClosedEarly.current = false;
+            runAfterDialog();
+        }
+    };
+
     /** How each photo that was not uploaded is named: its place among the photos picked in the form. */
     const photosNotUploadedMessage = (failed: DispatchImageData[]) =>
         tr('dispatch.review.photosNotUploadedMessage', {
@@ -330,10 +368,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 .join('\n'),
         });
 
+    // The question stays on screen, busy, while the photos go: a busy dialog does not close for the Back key or a tap
+    // outside it, so the retry always ends on this screen, and the success dialog (with the ways out, which empty the
+    // form) follows. Leaving in the middle left the saved dispatch's form behind, ready to be created again.
     const handleRetryPhotos = async () => {
         if (!photosNotUploaded || isRetryingPhotos) return;
         const { dispatchId: savedDispatchId, failed } = photosNotUploaded;
-        setPhotosNotUploaded(null);
         setIsRetryingPhotos(true);
         try {
             const outcome = await uploadDeferredDispatchImages(savedDispatchId, failed);
@@ -344,7 +384,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             }
             triggerSuccess();
             queueToast(tr('dispatch.review.photosUploaded'));
-            setShowSuccessDialog(true);
+            // The success dialog opens once this one has finished closing
+            afterDialog.current = () => setShowSuccessDialog(true);
+            setPhotosNotUploaded(null);
         } finally {
             setIsRetryingPhotos(false);
         }
@@ -366,7 +408,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const handleEditSuccessConfirm = () => {
         setShowEditSuccessDialog(false);
         resetFormState();
-        router.replace(`/dispatch-details/${dispatchId}`);
+        // The edit was opened over the dispatch's page, which asks again when it comes back: go back to that page,
+        // not on to a second copy of it. The dispatch is the one of the route, not whatever the form holds.
+        if (id) router.dismissTo(`/dispatch-details/${id}` as Href);
+        else router.back();
     };
 
     // Handle Share PDF (create mode); a failure is said inside the dialog, which is open
@@ -416,7 +461,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowPrintDialog(true);
     };
 
-    const isBusy = isSaving || isSubmitting || isRetryingPhotos;
+    const isBusy = isSaving || isSubmitting || isRetryingPhotos || isCheckingAnswer;
 
     // ========================================================================
     // THE ITEMS TABLE (Item | GRN/Received | Qty)
@@ -530,17 +575,23 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 currentStep={DISPATCH_STEP_NUMBERS.REVIEW}
                 completedSteps={getDispatchCompletedSteps(DISPATCH_STEP_NUMBERS.REVIEW)}
                 onCancel={handleCancel}
+                // While the server is asked what became of the request, the X is the only way out, and it warns
                 cancelMessage={
-                    isCreateMode
-                        ? items.length > 0
-                            ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
-                            : tr('dispatch.wizard.discardDetailsMessage')
-                        : tr('dispatch.wizard.discardEditMessage')
+                    isCheckingAnswer
+                        ? tr('errors.lostAnswer.leaveWarning')
+                        : isCreateMode
+                            ? items.length > 0
+                                ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
+                                : tr('dispatch.wizard.discardDetailsMessage')
+                            : tr('dispatch.wizard.discardEditMessage')
                 }
                 dispNo={header.disp_no}
-                onStepPress={handleStepIndicatorPress}
+                // No step pills while locked
+                onStepPress={isCheckingAnswer ? undefined : handleStepIndicatorPress}
                 isEditMode={!isCreateMode}
             />
+
+            {isCheckingAnswer ? <LostAnswerStrip kind="save" testID="dispatch-review-checking" /> : null}
 
             <View style={styles.contentWrapper}>
                 <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -550,7 +601,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             id="details"
                             testIDPrefix="dispatch-review"
                             title={tr('dispatch.steps.details')}
-                            onEdit={() => navigateToStep(DISPATCH_STEP_NUMBERS.INFO)}
+                            onEdit={isCheckingAnswer ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.INFO)}
                             editLabel={tr('dispatch.review.editDetails')}
                             closedLine={[header.disp_no, formatDisplayDate(header.disp_date), header.customer_name].filter(Boolean).join(' · ')}
                             open={openSection === 'details'}
@@ -601,24 +652,26 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                                                 setSelectedImageIndex(index >= 0 ? index : 0);
                                                 setShowImageOverlay(true);
                                             }}
-                                            editable={true}
+                                            editable={!isCheckingAnswer}
                                             maxImages={10}
                                             columns={3}
                                         />
                                     )}
 
-                                    <ImageUploadButton
-                                        onImageUploadStart={handleImageUploadStart}
-                                        onImageUploadProgress={handleImageUploadProgress}
-                                        onImageUploadComplete={handleImageUploadComplete}
-                                        onImageUploadError={handleImageUploadError}
-                                        grnId={tempDispatchId}
-                                        imageType="header"
-                                        currentImages={images.map((img) => img.image_url)}
-                                        maxImages={10}
-                                        buttonText={images.length > 0 ? tr('dispatch.review.addMorePhotos') : tr('dispatch.review.addPhotos')}
-                                        customUploadFunction={dispatchUploadFunction}
-                                    />
+                                    {isCheckingAnswer ? null : (
+                                        <ImageUploadButton
+                                            onImageUploadStart={handleImageUploadStart}
+                                            onImageUploadProgress={handleImageUploadProgress}
+                                            onImageUploadComplete={handleImageUploadComplete}
+                                            onImageUploadError={handleImageUploadError}
+                                            grnId={tempDispatchId}
+                                            imageType="header"
+                                            currentImages={images.map((img) => img.image_url)}
+                                            maxImages={10}
+                                            buttonText={images.length > 0 ? tr('dispatch.review.addMorePhotos') : tr('dispatch.review.addPhotos')}
+                                            customUploadFunction={dispatchUploadFunction}
+                                        />
+                                    )}
                                 </View>
                             </ReviewSection>
                         ) : null}
@@ -630,7 +683,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             title={tr('common.items')}
                             count={items.length}
                             tag={!isCreateMode && stock.status === 'error' ? tr('dispatch.review.stockNotChecked') : undefined}
-                            onEdit={() => navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS)}
+                            onEdit={isCheckingAnswer ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS)}
                             editLabel={tr('dispatch.review.editItems')}
                             closedLine={tr('dispatch.review.closedItems', { quantity: formatNumber(totals.totalQuantity) })}
                             open={openSection === 'items'}
@@ -737,6 +790,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 variant="warning"
                 icon="image-off-outline"
                 dismissible={false}
+                // Giving the photos up is the button's choice, not the Back key's (it used to take that way and drop the files unasked).
+                ignoreBack
+                busy={isRetryingPhotos}
                 onDismissed={runAfterDialog}
             />
 

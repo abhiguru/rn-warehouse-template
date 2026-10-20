@@ -7,9 +7,10 @@
  * data, items and error messages never reach the console.
  */
 
+import * as Crypto from 'expo-crypto';
 import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
 import type {
@@ -22,6 +23,7 @@ import type {
 } from '@/types/dispatch.types';
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { serverText } from '@/utils/serverText';
+import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
 
@@ -30,6 +32,25 @@ const log = createLogger('dispatch');
 /** Only the PostgREST/Postgres code of an RPC error is loggable. */
 const errorCode = (error: { code?: string | null } | null | undefined) =>
   typeof error?.code === 'string' ? error.code : undefined;
+
+/**
+ * Another dispatch holds the number. The server names it (`reason: 'NUMBER_TAKEN'`, migration 120); an older server
+ * answers with the unique-key error of the table, which names the key.
+ */
+function isNumberTakenAnswer(answer: unknown): boolean {
+  if (typeof answer !== 'object' || answer === null) return false;
+  const fields = answer as { reason?: unknown; code?: unknown; error_code?: unknown; error?: unknown; message?: unknown };
+  if (fields.reason === 'NUMBER_TAKEN') return true;
+  const code = String(fields.error_code ?? fields.code ?? '');
+  const text = `${typeof fields.error === 'string' ? fields.error : ''} ${typeof fields.message === 'string' ? fields.message : ''}`;
+  return code === '23505' && text.includes('dispatch_disp_no_key');
+}
+
+/** The number a refusal is about: the one the server names, else the number that was sent. */
+function numberOfRefusal(answer: unknown, sent: string): string {
+  const named = (answer as { number?: unknown } | null)?.number;
+  return typeof named === 'string' && named.trim() !== '' ? named : sent;
+}
 
 // ============================================================================
 // CHECK DISPATCH EXISTS
@@ -104,6 +125,58 @@ export const checkDispatchExists = async (
   }
 };
 
+/**
+ * What a write needs so a request that gets no answer is not guessed about (owner rule D22). `onLostAnswer` is called
+ * when the request may have reached the server and no answer came back: the screen locks until the server says what
+ * became of it. `signal` is aborted when the person leaves; the check then stops and nothing is sent again.
+ */
+export interface LostAnswerOptions {
+  onLostAnswer?: () => void;
+  signal?: AbortSignal;
+}
+
+type RpcAnswer = { data: any; error: any; status?: number };
+
+/**
+ * Sends a write and returns the answer it gets. When the request gets no answer (`isLostAnswer`: it may have reached
+ * the server; a statement timeout, 57014, is not one, nothing was saved then) the screen is told to lock, and once the
+ * phone is online and the server has had time (`checkSubmission`) the server is asked about THIS attempt by its
+ * request code:
+ *  - found: the stored answer is used as the answer that was lost;
+ *  - not found: the identical request is sent once more with the same code, and its answer is handled as any answer
+ *    (if that one is lost too, this repeats).
+ * Nothing is looked up by customer, date or lines. Returns null when `signal` was aborted (the person left).
+ */
+async function sendUntilAnswered(
+  rpcName: string,
+  send: () => PromiseLike<RpcAnswer>,
+  requestKey: string,
+  options: LostAnswerOptions
+): Promise<{ data: any; error: any } | null> {
+  for (;;) {
+    const sentAt = Date.now();
+    const { data, error, status } = await send();
+    if (!error || !isLostAnswer(typeof status === 'number' ? { ...error, status } : error)) return { data, error };
+
+    log.warn(`${rpcName} got no answer; asking the server what became of it`, { code: errorCode(error) });
+    options.onLostAnswer?.();
+    let check: Awaited<ReturnType<typeof checkSubmission>>;
+    try {
+      check = await checkSubmission(requestKey, sentAt, options.signal);
+    } catch (checkError) {
+      // The helper may report the person's leaving as a rejection.
+      if (options.signal?.aborted) return null;
+      throw checkError;
+    }
+    if (options.signal?.aborted) return null;
+    if (check.found) {
+      log.info(`${rpcName} had been saved although its answer was lost`);
+      return { data: check.response, error: null };
+    }
+    log.info(`${rpcName} was not saved; sending the same request again`);
+  }
+}
+
 // ============================================================================
 // GET NEXT DISPATCH NUMBER
 // ============================================================================
@@ -170,6 +243,15 @@ export const getAvailableStock = async (grTrlId: string): Promise<StockCheckResp
   return result.data;
 };
 
+/** The refusal the screens turn into "number already used, the next free one is ...". */
+const numberTakenResponse = (number: string): DispatchApiResponse => ({
+  success: false,
+  reason: 'NUMBER_TAKEN',
+  number,
+  error: t('dispatch.service.duplicate'),
+  message: t('dispatch.service.duplicate'),
+});
+
 // ============================================================================
 // CREATE DISPATCH
 // ============================================================================
@@ -183,7 +265,9 @@ export const createDispatch = async (payload: {
   header: DispatchHeaderData;
   items: DispatchItemData[];
   images?: DispatchImageData[];
-}): Promise<DispatchApiResponse> => {
+  /** The id of the form that makes this create (see DispatchFormState.submissionNonce): hashed into the key, never sent. */
+  submissionNonce?: string;
+}, options: LostAnswerOptions = {}): Promise<DispatchApiResponse> => {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
@@ -217,24 +301,38 @@ export const createDispatch = async (payload: {
     };
     const rpcPayload: CreateDispatchPayload = {
       ...rpcBody,
-      p_idempotency_key: await submissionIdempotencyKey('dispatch', rpcBody),
+      // The form's own id is part of the key: two forms with the same fields (a dispatch made, deleted and made again
+      // with the same number) must not share a key, or the server would answer the second from the first's cache.
+      p_idempotency_key: await submissionIdempotencyKey('dispatch', { ...rpcBody, nonce: payload.submissionNonce }),
     };
 
     log.debug('Calling create_dispatch_with_stock_check');
 
-    const { data, error } = await authenticatedClient.rpc(
+    // The key is the request code of this attempt: it is what the server is asked about when no answer comes back,
+    // and what an identical request is sent again with.
+    const answer = await sendUntilAnswered(
       'create_dispatch_with_stock_check',
-      rpcPayload
+      () => authenticatedClient.rpc('create_dispatch_with_stock_check', rpcPayload),
+      rpcPayload.p_idempotency_key,
+      options
     );
+    if (!answer) return { success: false, aborted: true, error: '', message: '' };
+    const { data, error } = answer;
 
     if (error) {
       log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
+      if (isNumberTakenAnswer(error)) {
+        return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
+      }
       throw new Error(serverText(error, t('dispatch.service.createFailed'), { write: true, form: true }));
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
       log.error('create_dispatch_with_stock_check returned failure');
+      if (isNumberTakenAnswer(data)) {
+        return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
+      }
       throw new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true }));
     }
 
@@ -274,6 +372,9 @@ export const createDispatch = async (payload: {
       invoice_data: data.invoice_data,
       source_order_cleared: data.source_order_cleared || false,
       source_order_id: data.source_order_id,
+      // Server migration 120: how many lines of the order are still open. Absent on an older server (null: show
+      // neither text).
+      order_lines_left: typeof data.order_lines_left === 'number' ? data.order_lines_left : null,
     };
   } catch (error: any) {
     log.error('Dispatch creation failed');
@@ -311,18 +412,25 @@ export const createDispatch = async (payload: {
 /**
  * Update existing dispatch using update_dispatch_smart RPC
  * Handles stock restoration and recalculation
+ *
+ * The save has a request code of its own (`p_dispatch_data.request_key`, migration 120): it is made when Save is
+ * first tapped and kept until the save's outcome is known, that is for this whole call, however many times the
+ * identical request is sent again after a lost answer (see sendUntilAnswered). A save that is tapped again later is
+ * another attempt and gets another code.
  */
 export const updateDispatch = async (
   dispatchId: string,
   payload: {
     header: DispatchHeaderData;
     items: DispatchItemData[];
-  }
+  },
+  options: LostAnswerOptions = {}
 ): Promise<DispatchApiResponse> => {
   try {
     log.info('Updating dispatch', { dispatchId, itemCount: payload.items.length });
 
     const authenticatedClient = await getAuthenticatedClient();
+    const requestKey = `warehouse-dispatch-update-${Crypto.randomUUID()}`;
 
     // Transform data to match RPC function format
     const rpcPayload = {
@@ -336,6 +444,7 @@ export const updateDispatch = async (
         supervisor_id: payload.header.supervisor_id,
         supervisor_name: payload.header.supervisor_name,
         note: payload.header.note || '',
+        request_key: requestKey,
       },
       p_dispatch_items: payload.items.map((item) => ({
         gr_trl_id: item.grnItems_id,
@@ -345,15 +454,28 @@ export const updateDispatch = async (
 
     log.debug('Calling update_dispatch_smart', { dispatchId });
 
-    const { data, error } = await authenticatedClient.rpc('update_dispatch_smart', rpcPayload);
+    const answer = await sendUntilAnswered(
+      'update_dispatch_smart',
+      () => authenticatedClient.rpc('update_dispatch_smart', rpcPayload),
+      requestKey,
+      options
+    );
+    if (!answer) return { success: false, aborted: true, error: '', message: '' };
+    const { data, error } = answer;
 
     if (error) {
       log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
+      if (isNumberTakenAnswer(error)) {
+        return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
+      }
       throw new Error(serverText(error, t('dispatch.service.updateFailed'), { write: true, form: true }));
     }
 
     if (data && data.success === false) {
       log.error('update_dispatch_smart returned failure', { dispatchId });
+      if (isNumberTakenAnswer(data)) {
+        return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
+      }
       throw new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true }));
     }
 
@@ -479,56 +601,4 @@ export const loadDispatchData = async (
       error: serverText(error.message, t('dispatch.service.loadFailed')),
     };
   }
-};
-
-// ============================================================================
-// DELETE DISPATCH
-// ============================================================================
-
-/**
- * Delete dispatch using delete_dispatch_with_order_cleanup RPC
- * Handles stock restoration and order cleanup
- */
-// M3 Fix: Using executeRPC wrapper
-export const deleteDispatch = async (
-  dispatchId: string,
-  userId: string
-): Promise<DispatchApiResponse> => {
-  log.info('Deleting dispatch', { dispatchId });
-
-  const result = await executeRPC<{ message?: string; order_restored?: boolean; restored_order_id?: string }>(
-    getAuthenticatedClient,
-    'delete_dispatch_with_order_cleanup',
-    {
-      p_dispatch_id: dispatchId,
-      p_user_id: userId,
-    },
-    {
-      context: 'DispatchFormService.deleteDispatch',
-      write: true,
-      errorMessage: t('dispatch.service.deleteFailed'),
-      unwrapNested: false,
-      validateSuccess: false,
-    }
-  );
-
-  if (!result.success) {
-    log.error('delete_dispatch_with_order_cleanup failed', { dispatchId });
-    return {
-      ...createErrorResponse(result.error, t('dispatch.service.deleteFailed')),
-    };
-  }
-
-  // The write changed what reports count: a report on screen asks again (SR-10).
-  void invalidateReportQueries();
-  log.info('Dispatch deleted', {
-    dispatchId,
-    orderRestored: result.data?.order_restored || false,
-    restoredOrderId: result.data?.restored_order_id,
-  });
-
-  return {
-    success: true,
-    message: serverText(result.data?.message, t('dispatch.service.deleted')),
-  };
 };

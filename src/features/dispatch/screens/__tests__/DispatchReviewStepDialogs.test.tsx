@@ -17,6 +17,7 @@ const failedPhoto = { id: 'temp_seal', file_name: 'seal.webp', image_url: 'file:
 
 let mockCreateMode = true;
 const mockSubmitForm = jest.fn();
+let mockNavigateToStep = jest.fn();
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
@@ -31,7 +32,7 @@ jest.mock('@/hooks/useDispatchForm', () => ({
     isCreateMode: mockCreateMode,
     dispatchId: mockCreateMode ? null : 'd1',
     submitForm: mockSubmitForm,
-    navigateToStep: jest.fn(),
+    navigateToStep: (step: number) => mockNavigateToStep(step),
     resetFormState: jest.fn(),
     addImageToForm: jest.fn(),
     updateImageStatus: jest.fn(),
@@ -190,7 +191,7 @@ describe('on Android', () => {
 describe('after a failed print', () => {
   it('"Order fulfilled" is said when the person closes the print error, not under it', async () => {
     setPlatform('ios');
-    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], sourceOrderCleared: true });
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 0 });
     jest.mocked(printDispatchRange).mockResolvedValue({ success: false } as never);
     await render();
     await saveAndAnswer();
@@ -212,5 +213,31 @@ describe('after a failed print', () => {
     await act(async () => { buttons[0].onPress?.(); });
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Order fulfilled and removed from the queue.');
+  });
+});
+
+describe('when another dispatch holds the number', () => {
+  it('the alert takes the person to step 1, where the number field is', async () => {
+    setPlatform('android');
+    const navigateToStep = jest.fn();
+    mockNavigateToStep = navigateToStep;
+    mockSubmitForm.mockResolvedValue({
+      success: false,
+      error: 'Dispatch number I0042 is already used. The next free number is I0043.',
+      numberTaken: { message: 'Dispatch number I0042 is already used. The next free number is I0043.' },
+    });
+    await render();
+    await saveAndAnswer();
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
+    expect(title).toBe('Error');
+    expect(message).toBe('Dispatch number I0042 is already used. The next free number is I0043.');
+    // Nothing has moved yet; OK takes the person to step 1.
+    expect(navigateToStep).not.toHaveBeenCalled();
+    await act(async () => { buttons![0].onPress?.(); });
+    expect(navigateToStep).toHaveBeenCalledTimes(1);
+    expect(navigateToStep).toHaveBeenCalledWith(1);
+    mockNavigateToStep = jest.fn();
   });
 });

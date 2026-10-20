@@ -39,7 +39,11 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({}) }));
+jest.mock('expo-router', () => ({
+  router: { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismissTo: jest.fn() },
+  // The route's dispatch: an edit goes back to it, whatever the form holds.
+  useLocalSearchParams: () => ({ id: 'route-dispatch' }),
+}));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
@@ -196,6 +200,9 @@ describe('the sections of an edited dispatch', () => {
     const saved = dialogs().find((dialog) => dialog.props.title === 'Dispatch I0042 saved')!;
     expect(saved.props.visible).toBe(true);
     await act(async () => { saved.props.onConfirm(); });
-    expect(jest.requireMock('expo-router').router.replace).toHaveBeenCalledWith('/dispatch-details/d1');
+    // The page the edit was opened over (the route's dispatch, not the form's `dispatchId` 'd1'), not a second copy of it.
+    const { router } = jest.requireMock('expo-router');
+    expect(router.dismissTo).toHaveBeenCalledWith('/dispatch-details/route-dispatch');
+    expect(router.replace).not.toHaveBeenCalled();
   });
 });

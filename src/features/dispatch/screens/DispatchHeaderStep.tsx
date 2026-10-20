@@ -53,17 +53,6 @@ const makeStyles = (t: ThemeTokens) => ({
         flex: 1,
         backgroundColor: t.background.base,
     },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-        backgroundColor: t.background.base,
-    },
-    loadingText: {
-        ...typography.body,
-        marginTop: space.md,
-        color: t.text.secondary,
-    },
     scrollView: {
         flex: 1,
     },
@@ -228,7 +217,6 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const {
         header,
         validationErrors,
-        isLoading,
         isGeneratingNumber,
         isCreateMode,
         updateHeaderField,
@@ -321,16 +309,6 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const formatDisplayDate = (isoDate: string) => {
         return toDate(isoDate) ? formatDate(isoDate) : '';
     };
-
-    // Loading state (edit mode)
-    if (isLoading) {
-        return (
-            <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
-                <ActivityIndicator size="large" color={t.brand.tint} />
-                <Text style={styles.loadingText}>{tr('dispatch.form.loading')}</Text>
-            </View>
-        );
-    }
 
     // Handle step indicator press for navigation
     const handleStepIndicatorPress = async (stepNumber: number) => {
