@@ -36,6 +36,7 @@ export const grn = {
     dispatchedQuantityLocked:
       'Cannot modify quantities for items with existing dispatches. Other details can still be updated.',
     loadFailed: 'Failed to load GRN',
+    itemDeleted: 'An item in this GRN was deleted. Remove that line, then save again.',
   },
 
   // Step 1: GRN details
@@ -260,6 +261,7 @@ export const grn = {
       overlap: "This weight band overlaps another band of the item's rate. Use the same band, or change the bands on the item's Pricing tab.",
       invoiced: 'This GRN is invoiced, so its rates for this GRN only cannot change.',
       notForGrn: 'A rate you set does not match an item of this GRN. Check the rates and save again.',
+      stale: 'A rate of one of these items was changed by someone else. The rates are shown again; check them and save again.',
       generic: "The rates couldn't be saved. Check them and try again.",
     },
     savedWithSkipped:
@@ -273,10 +275,11 @@ export const grn = {
     photosPreparingMessage: 'Wait a moment for the photos to finish, then save again.',
     photoNotPreparedTitle: "A photo couldn't be prepared",
     photoNotPreparedMessage: 'Remove the photo marked as failed, or add it again, then save.',
-    saveUnanswered:
-      'The server did not answer, so the GRN may or may not be saved. Nothing in the form was lost. Check your connection and save again: the app first checks what was saved.',
-    saveNotConfirmed:
-      "Couldn't check whether the last save reached the server. Check your connection and try again.",
+    numberUsedNext: 'GRN number {{number}} is already used. The next free number is {{next}}.',
+    savedAfterLeavingTitle: 'GRN saved',
+    savedAfterLeaving: 'GRN {{number}} was saved before you left the form. Find it in the GRN list.',
+    savedAfterLeavingPhotos:
+      'GRN {{number}} was saved, but its photos were not uploaded. Open it in the GRN list and add them under Images.',
     photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
     failedGrnPhoto: 'GRN photo {{position}}',
@@ -546,6 +549,7 @@ export const grn = {
     stockMovementCount: { one: '{{count}} stock movement', other: '{{count}} stock movements' },
     deleteFailedTitle: "Couldn't delete the GRN",
     deleteFailed: "Couldn't delete the GRN. Try again.",
+    leaveWhileCheckingTitle: 'Leave this screen?',
     dispatchItemsInvoiced: {
       one: '{{count}} dispatch item invoiced.',
       other: '{{count}} dispatch items invoiced.',

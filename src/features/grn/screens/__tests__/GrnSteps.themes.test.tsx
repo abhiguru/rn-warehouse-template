@@ -28,7 +28,6 @@ const mockForm = {
   items: [
     { grn_trl_id: 't1', item_table_id: 'i1', item_name: 'Potatoes', packaging: 'Bag', qty: 120, stock: 100, weight: 50.5, rack: 'B-14', package_mark: 'PT', trl_images: [] },
   ],
-  isLoading: false,
   isSaving: false,
   isGeneratingNumber: false,
   isCreateMode: false,

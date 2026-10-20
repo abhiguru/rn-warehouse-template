@@ -193,8 +193,10 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   // right after a `set…` call it still holds the values from before. That is
   // why `discardOpenItem` and `commitOpenItem` return the lines they leave and
   // `continueTo` is given them, instead of reading them from here.
-  const latest = useRef({ currentItem, editingItemId, savedItems, items, isNavigating, isCreateMode, grnId, itemsWithDispatchesOnLoad });
-  latest.current = { currentItem, editingItemId, savedItems, items, isNavigating, isCreateMode, grnId, itemsWithDispatchesOnLoad };
+  // In edit mode the GRN is the route's (`id`), not whatever id the form last held.
+  const grnIdForEdit = (Array.isArray(id) ? id[0] : id) || grnId;
+  const latest = useRef({ currentItem, editingItemId, savedItems, items, isNavigating, isCreateMode, grnId: grnIdForEdit, itemsWithDispatchesOnLoad });
+  latest.current = { currentItem, editingItemId, savedItems, items, isNavigating, isCreateMode, grnId: grnIdForEdit, itemsWithDispatchesOnLoad };
 
   /** Puts an item into the form: a new one (`editingId` null) or a saved one to correct. */
   const loadForm = useCallback((item: ItemFormData, editingId: string | null) => {

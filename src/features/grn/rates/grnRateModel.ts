@@ -494,7 +494,15 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  * rates for this GRN only. An entry whose item is no longer on the GRN, or whose band holds none of that
  * item's weights, is left out (the server refuses it: RATE_NOT_FOR_GRN). A one-time GRN stores labour 0.
  */
-export function buildRates(a: { grnRates: GrnRate[]; changes: RateChange[]; ctx: RateContext; lines: GrnLine[]; invoiced?: boolean }): RatesPayloadEntry[] {
+export function buildRates(a: {
+  grnRates: GrnRate[];
+  changes: RateChange[];
+  ctx: RateContext;
+  lines: GrnLine[];
+  invoiced?: boolean;
+  /** The stored rates the sheet read (`useGrnRates`): each customer / everyone entry is sent with the ids of its scope (`seen_ids`). */
+  stored?: ItemStoragePrice[];
+}): RatesPayloadEntry[] {
   const weights = new Map<string, number[]>();
   for (const line of a.lines) {
     if (!line.item_table_id) continue;
@@ -515,8 +523,26 @@ export function buildRates(a: { grnRates: GrnRate[]; changes: RateChange[]; ctx:
   // An invoiced GRN keeps its stored set: sent back unchanged (the server accepts an equal set and checks nothing else).
   if (a.invoiced) return a.grnRates.map(g => ({ scope: 'grn' as const, ...base(g) }));
   const key = contextKey(a.ctx);
+  // The rows of the entry's scope the sheet read that are in force on the GRN's day: the item's rates of this customer
+  // ('customer') or of everyone ('everyone', no customer), of either price type. Only those: the server refuses
+  // when a row in force on that day is not listed (someone changed the scope since), and an ended or planned row
+  // listed with them would hide a row that really changed. Sorted, so the same sheet gives the same body, and with
+  // it the same idempotency key, on a retry.
+  const seenIds = (c: RateChange): string[] =>
+    (a.stored ?? [])
+      .filter(
+        r =>
+          r.item_id === c.item_id &&
+          (c.scope === 'customer' ? r.customer_id === a.ctx.customerId : !r.customer_id) &&
+          r.effective_from <= a.ctx.day &&
+          (r.effective_to == null || r.effective_to >= a.ctx.day)
+      )
+      .map(r => r.id)
+      .sort();
   return [
-    ...a.changes.filter(c => c.ctx === key && c.price_type === a.ctx.priceType && live(c)).map(c => ({ scope: c.scope, ...base(c), to: c.to })),
+    ...a.changes
+      .filter(c => c.ctx === key && c.price_type === a.ctx.priceType && live(c))
+      .map(c => ({ scope: c.scope, ...base(c), to: c.to, ...(a.stored ? { seen_ids: seenIds(c) } : {}) })),
     ...a.grnRates.filter(g => g.price_type === a.ctx.priceType && live(g)).map(g => ({ scope: 'grn' as const, ...base(g) })),
   ];
 }

@@ -21,7 +21,7 @@ import { resetFlashListWindow, setFlashListWindow } from '@/tests/helpers/window
 import { StyleSheet } from 'react-native';
 import { BRANDS, getTokens } from '@/theme/tokens';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: jest.fn() }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashListMock'));
 jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');

@@ -15,11 +15,10 @@ const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
 
 const mockDispatch = jest.fn();
 let mockRemovedImages: Array<{ id: string; storagePath?: string }> = [];
-let mockSaveUnconfirmed = false;
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: mockRemovedImages, saveUnconfirmed: mockSaveUnconfirmed } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: mockRemovedImages } }),
 }));
 
 const mockHeader = {
@@ -61,7 +60,9 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
-jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), findLinesSavedByLostUpdate: jest.fn() }));
+jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), getNextGRNNumber: jest.fn() }));
+// The server is asked about a lost answer by this (utils/lostAnswer); none of these tests loses one.
+jest.mock('@/utils/lostAnswer', () => ({ checkSubmission: jest.fn() }));
 // What unpreparedGRNPhotos answers for real forms is tested with the service (grnPhotoSaving.test.ts).
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
@@ -90,7 +91,6 @@ async function render(mode: 'create' | 'edit', items = LINES) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRemovedImages = [];
-  mockSaveUnconfirmed = false;
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());

@@ -41,7 +41,12 @@ export interface RateChange extends GrnRate {
 
 export type RateScope = 'customer' | 'everyone' | 'grn';
 
-/** One entry of `p_rates`, exactly as the server reads it (contract-2 section 1). */
+/**
+ * One entry of `p_rates`, exactly as the server reads it (contract-2 section 1). A customer or everyone entry
+ * carries `seen_ids` (backend migration 120): the ids of the stored rate rows of its scope (the item's rates of
+ * this customer, or of everyone) that the sheet read; the server answers STALE_RATES when a row of that scope
+ * in force on the GRN's day is not among them. Left out, nothing is checked (an app from before).
+ */
 export type RatesPayloadEntry =
   | ({ scope: 'grn' } & Omit<GrnRate, 'price_type'>)
-  | ({ scope: 'customer' | 'everyone'; to: string | null } & Omit<GrnRate, 'price_type'>);
+  | ({ scope: 'customer' | 'everyone'; to: string | null; seen_ids?: string[] } & Omit<GrnRate, 'price_type'>);

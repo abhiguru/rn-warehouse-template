@@ -12,7 +12,8 @@ import { isTemporaryGRNImageId } from './imageId';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
-import { executeRPC, createErrorResponse, isOfflineFailure } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { isLostAnswer } from '@/utils/lostAnswer';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
@@ -42,10 +43,25 @@ const getFullImageUrl = (storagePath: string): string => {
 };
 
 interface CreateGRNPayload {
+  /**
+   * `gr_no` is the number the form holds: the screen fetches it once and stores it in the form before the
+   * first send, so a retry sends the same body. createGRN never asks the server for a number.
+   */
   header: Omit<GRNHeaderData, 'gr_no'> & { gr_no?: string };
   items: Omit<GRNItemData, 'grn_trl_id' | 'stock'>[];
   /** `p_rates` (migration 86): the rates saved with the GRN. Absent: the old call, no rate check. */
   rates?: RatesPayloadEntry[];
+  /**
+   * The form's session id (grnFormSlice `submissionNonce`). Part of what the idempotency key hashes, never
+   * of the RPC body: the same GRN entered again in a new form meets a new key, not the answer cached for a
+   * GRN that was deleted since (contract item 11). Absent: the key is the body's alone, as before.
+   */
+  nonce?: string;
+  /**
+   * The answer of an earlier press of Create that got no answer, found stored on the server under this request's
+   * key (`checkSubmission`): it is handled exactly as the answer that was lost, and nothing is sent.
+   */
+  storedAnswer?: unknown;
 }
 
 interface UpdateGRNPayload {
@@ -222,16 +238,85 @@ export const getNextGRNNumber = async (): Promise<string> => {
   }
 };
 
+/**
+ * save_grn / update_grn refused because an item of the GRN no longer exists in the catalogue (an item deleted
+ * after it was put into the form): the foreign key from the line to the items table. Told apart from other
+ * foreign keys by the constraint's name, so a line that cannot be removed (stock movements, orders) keeps the
+ * shared "Other records depend on this one" text.
+ */
+const ITEM_FK = /goodsreceived_trl_item_id_fkey|not present in table "items"/i;
+const isItemGone = (failure: unknown): boolean => {
+  if (!failure) return false;
+  if (typeof failure === 'string') return ITEM_FK.test(failure);
+  if (typeof failure !== 'object') return false;
+  const { message, details, error } = failure as { message?: unknown; details?: unknown; error?: unknown };
+  return [message, details, error].some(text => typeof text === 'string' && ITEM_FK.test(text));
+};
+
+/** The wording of a refusal because an item was deleted; undefined for any other failure. */
+const itemGoneText = (failure: unknown): string | undefined => (isItemGone(failure) ? t('grn.form.itemDeleted') : undefined);
+
+/**
+ * A request that went out and got no answer (a dropped connection, the 60 s timeout): the write may have been
+ * applied. `key` is the request code it was sent under and `sentAt` when it went out; the screen locks the form and
+ * asks the server about that code (`checkSubmission` in utils/lostAnswer) before it sends anything again. A 57014
+ * statement timeout is not one: nothing was saved.
+ */
+export interface GRNLostAnswer {
+  key: string;
+  sentAt: number;
+}
+
+/** What save_grn answers (and what is stored under its key): `data` holds the saved GRN. */
+interface SaveGRNResult {
+  grn_id: string;
+  gr_no: string;
+  items_created?: number;
+  images_saved?: number;
+  item_ids?: unknown;
+  image_ids?: unknown;
+  item_mapping?: Array<{ index: number; item_id: string }>;
+}
+type SaveGRNAnswer = {
+  success?: boolean;
+  data?: SaveGRNResult;
+  message?: string;
+  error?: string;
+  error_code?: string;
+  reason?: string;
+} | null;
+
+/** save_grn refused because another GRN holds the number (the server names the number in its sentence). */
+const NUMBER_TAKEN = /GRN number already exists/i;
+const isNumberTaken = (answer: unknown): boolean => {
+  if (!answer || typeof answer !== 'object') return false;
+  const { reason, message, error } = answer as { reason?: unknown; message?: unknown; error?: unknown };
+  return reason === 'NUMBER_TAKEN' || [message, error].some(text => typeof text === 'string' && NUMBER_TAKEN.test(text));
+};
+class NumberTakenRefusal extends Error {
+  constructor(public readonly number: string, message: string) {
+    super(message);
+    this.name = 'NumberTakenRefusal';
+  }
+}
+
 // Create new GRN using enhanced save_grn RPC with item-level image mapping
 // M3 Fix: Not migrated to executeRPC - extensive debug logging for troubleshooting
 // image uploads and item mapping; complex post-RPC deferred image upload logic
 export const createGRN = async (payload: CreateGRNPayload) => {
   let finishMutation: (() => void) | undefined;
+  // Set when save_grn was sent and no answer came back: the GRN may be saved. The screen locks the form, asks the
+  // server about this request's key and either handles the stored answer or sends the identical request again.
+  let lostAnswer: GRNLostAnswer | undefined;
+  // The latest send (a retry without p_rates is a second one): its key and time.
+  const sent: { last?: GRNLostAnswer } = {};
   try {
     finishMutation = beginOperatorMutation();
 
-    // Generate GRN number if not provided
-    const grNumber = payload.header.gr_no || await getNextGRNNumber();
+    // The number is the form's: the screen fetched it once and stored it in the form before the first send. Asking
+    // for a number here would give a retry after a lost answer the next number, and with it another key.
+    const grNumber = payload.header.gr_no;
+    if (!grNumber || !grNumber.trim()) throw new Error(t('errors.document.numberRequired'));
 
     // Prepare items for RPC (map frontend format to RPC format)
     const rpcItems = payload.items.map(item => ({
@@ -250,51 +335,69 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     // before the receipt does, and the server refuses any other path
     // (migration 43). Photos are uploaded after the save, below.
 
-    // Call the enhanced save_grn RPC function using authenticated client
-    const authenticatedClient = await getAuthenticatedClient();
-    const rpcPayload = {
-      p_gr_no: grNumber,
-      p_date: toCalendarDay(payload.header.date),
-      p_customer_id: payload.header.customer_id,
-      p_customer_name: payload.header.customer_name,
-      p_sender_id: payload.header.sender_id || null,
-      p_sender_name: payload.header.sender_name || null,
-      p_supervisor_id: payload.header.supervisor_id || null,
-      p_supervisor_name: payload.header.supervisor_name || null,
-      p_registration: payload.header.registration || null,
-      p_note: payload.header.note || null,
-      p_leon: payload.header.leon || false,
-      p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
-      p_items: rpcItems,
-      // Part of what the idempotency key hashes: the same form with other rates is another save.
-      ...(payload.rates ? { p_rates: payload.rates } : {}),
-    };
-    const callSave = async (body: typeof rpcPayload) =>
-      authenticatedClient.rpc('save_grn', { ...body, p_idempotency_key: await submissionIdempotencyKey('grn', body) });
-    let { data, error } = await callSave(rpcPayload);
-    if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
-      // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
-      // has a stored rate, so the old call (and its key) loses nothing.
-      log.warn('save_grn does not take p_rates on this server; sent without it');
-      const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
-      ({ data, error } = await callSave(withoutRates as typeof rpcPayload));
-    }
+    // The answer is either the stored answer of an earlier press (found by its key: nothing is sent) or the answer
+    // of save_grn.
+    let data: SaveGRNAnswer;
+    if (payload.storedAnswer !== undefined) {
+      data = payload.storedAnswer as SaveGRNAnswer;
+    } else {
+      // Call the enhanced save_grn RPC function using authenticated client
+      const authenticatedClient = await getAuthenticatedClient();
+      const rpcPayload = {
+        p_gr_no: grNumber,
+        p_date: toCalendarDay(payload.header.date),
+        p_customer_id: payload.header.customer_id,
+        p_customer_name: payload.header.customer_name,
+        p_sender_id: payload.header.sender_id || null,
+        p_sender_name: payload.header.sender_name || null,
+        p_supervisor_id: payload.header.supervisor_id || null,
+        p_supervisor_name: payload.header.supervisor_name || null,
+        p_registration: payload.header.registration || null,
+        p_note: payload.header.note || null,
+        p_leon: payload.header.leon || false,
+        p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
+        p_items: rpcItems,
+        // Part of what the idempotency key hashes: the same form with other rates is another save.
+        ...(payload.rates ? { p_rates: payload.rates } : {}),
+      };
+      // The form's nonce is hashed with the body and never sent in it. The same body and nonce give the same key,
+      // which is the request code the screen asks the server about after a lost answer.
+      const callSave = async (body: typeof rpcPayload) => {
+        const key = await submissionIdempotencyKey('grn', payload.nonce ? { ...body, nonce: payload.nonce } : body);
+        sent.last = { key, sentAt: Date.now() };
+        return authenticatedClient.rpc('save_grn', { ...body, p_idempotency_key: key });
+      };
+      let { data: answer, error } = await callSave(rpcPayload);
+      if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+        // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
+        // has a stored rate, so the old call (and its key) loses nothing.
+        log.warn('save_grn does not take p_rates on this server; sent without it');
+        const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
+        ({ data: answer, error } = await callSave(withoutRates as typeof rpcPayload));
+      }
 
-    if (error) {
-      log.error('save_grn failed', loggableError(error));
-      if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
-      throw new Error(serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
+      if (error) {
+        log.error('save_grn failed', loggableError(error));
+        if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
+        // Sent and not answered (a dropped connection, the 60 s timeout): the GRN may be saved. A statement timeout
+        // is an answer: nothing was saved.
+        if (sent.last && isLostAnswer(error)) lostAnswer = sent.last;
+        throw new Error(itemGoneText(error) ?? serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
+      }
+      data = answer;
     }
 
     if (!data || !data.success) {
       log.error('save_grn returned failure', { errorCode: data?.error_code });
-      if (isRateRefusalCode(data?.error_code)) throw new RateRefusal(data.error_code, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
-      throw new Error(serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
+      const refusalCode = data?.error_code;
+      if (isRateRefusalCode(refusalCode)) throw new RateRefusal(refusalCode, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
+      // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one.
+      if (isNumberTaken(data)) throw new NumberTakenRefusal(grNumber, serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
+      throw new Error(itemGoneText(data) ?? serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
     }
+    const rpcResult = data.data as SaveGRNResult;
     // The write changed what reports count: a report on screen asks again (SR-10).
     void invalidateReportQueries();
-
-    const rpcResult = data.data;
 
     // ✅ Upload the photos picked in the form now that we have a real GRN ID.
     // Each line's id comes from the mapping save_grn returns.
@@ -333,6 +436,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     return {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.createFailed'),
+      lostAnswer,
+      numberTaken: error instanceof NumberTakenRefusal ? { number: error.number } : undefined,
       rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
     };
   } finally {
@@ -512,67 +617,76 @@ const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
 export const updateGRN = async (
   grnId: string,
   payload: UpdateGRNPayload,
-  options: { removedImages?: RemovedGRNImage[]; adoptedLineIds?: Record<string, string> } = {}
+  options: {
+    removedImages?: RemovedGRNImage[];
+    /**
+     * The stored answer of an earlier Save that got no answer, found on the server under its request code
+     * (`checkSubmission`): it is handled exactly as the answer that was lost, and nothing is sent.
+     */
+    storedAnswer?: unknown;
+  } = {}
 ) => {
   let finishMutation: (() => void) | undefined;
-  // True when update_grn was sent and no answer came back: the server may have
-  // applied it. The same Save sent again carries the same idempotency key and
-  // gets the first answer. A changed form gets a new key, and so does a server
-  // without the parameter, so a line added in this edit must not be sent again
-  // as new until the server has been asked what it holds
-  // (findLinesSavedByLostUpdate).
-  let outcomeUnknown = false;
+  // Set when update_grn was sent and no answer came back: the server may have applied it. The screen locks the
+  // form and asks the server about this request's key; the same body sent again carries the same key (the edit
+  // session keeps it until a save is answered), so a resend is answered from the first if that one was applied.
+  let lostAnswer: GRNLostAnswer | undefined;
+  // The latest send (a retry without p_rates is a second one): its key and time. No key when the server takes none.
+  const sent: { last?: GRNLostAnswer } = {};
   try {
     finishMutation = beginOperatorMutation();
 
-    // After a lost answer the form may hold as new a line the server saved
-    // (options.adoptedLineIds). The request carries its saved id; the key is
-    // taken from the request as the form first sent it, so this Save is still
-    // the retry of that one.
-    const adoptedLineIds = options.adoptedLineIds ?? {};
-    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, {
-      ...payload,
-      items: payload.items.map(item => ({ ...item, grn_trl_id: adoptedLineIds[item.grn_trl_id] ?? item.grn_trl_id })),
-    });
-    const firstSentRequest = Object.keys(adoptedLineIds).length > 0
-      ? buildUpdateGRNRequest(grnId, payload).rpcRequest
-      : rpcRequest;
-    const idempotencyKey = await grnUpdateIdempotencyKey(grnId, firstSentRequest);
+    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, payload);
 
-    // Call the update_grn RPC function with correct parameters using authenticated client
     const authenticatedClient = await getAuthenticatedClient();
-    let sentRequest: typeof rpcRequest = rpcRequest;
-    let { data, error } = await authenticatedClient.rpc('update_grn', { ...sentRequest, p_idempotency_key: idempotencyKey });
-    if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
-      // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
-      // has a stored rate, so the call as it was before rates loses nothing (and its key is the old key).
-      log.warn('update_grn does not take p_rates on this server; sent without it');
-      const without = (request: typeof rpcRequest) => {
-        const { p_rates: _noRates, ...rest } = request as typeof rpcRequest & { p_rates?: unknown };
-        return rest as typeof rpcRequest;
+    // The answer is either the stored answer of an earlier Save (found by its request code: nothing is sent) or
+    // the answer of update_grn.
+    let data: any;
+    if (options.storedAnswer !== undefined) {
+      data = options.storedAnswer;
+    } else {
+      // Call the update_grn RPC function with correct parameters using authenticated client. The request code is the
+      // edit session's key for this complete body: the same Save sent again carries the same one.
+      const send = async (request: typeof rpcRequest) => {
+        const key = await grnUpdateIdempotencyKey(grnId, request);
+        sent.last = { key, sentAt: Date.now() };
+        return authenticatedClient.rpc('update_grn', { ...request, p_idempotency_key: key });
       };
-      sentRequest = without(rpcRequest);
-      ({ data, error } = await authenticatedClient.rpc('update_grn', { ...sentRequest, p_idempotency_key: await grnUpdateIdempotencyKey(grnId, without(firstSentRequest)) }));
-    }
-    if (error && isUnknownFunctionSignature(error)) {
-      // A server that has not applied migration 47 knows no p_idempotency_key and
-      // refused the call before running it. Sent once more as that server takes it.
-      log.warn('update_grn does not take an idempotency key on this server; sent without it');
-      ({ data, error } = await authenticatedClient.rpc('update_grn', sentRequest));
-    }
-    // With rates set, a server that still refuses the call has no p_rates (migration 86 missing).
-    if (error && payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
-
-    if (error) {
-      log.error('update_grn failed', loggableError(error));
-      outcomeUnknown = isOfflineFailure(error);
-
-      // Handle stock protection errors specifically
-      if (error.message?.includes('dispatches exist') || error.message?.includes('STOCK_PROTECTED')) {
-        throw new Error(`Stock Protection: ${error.message}`);
+      let sentRequest: typeof rpcRequest = rpcRequest;
+      let { data: answer, error } = await send(sentRequest);
+      if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+        // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
+        // has a stored rate, so the call as it was before rates loses nothing (and its key is the old key).
+        log.warn('update_grn does not take p_rates on this server; sent without it');
+        const { p_rates: _noRates, ...rest } = rpcRequest as typeof rpcRequest & { p_rates?: unknown };
+        sentRequest = rest as typeof rpcRequest;
+        ({ data: answer, error } = await send(sentRequest));
       }
+      if (error && isUnknownFunctionSignature(error)) {
+        // A server that has not applied migration 47 knows no p_idempotency_key and
+        // refused the call before running it. Sent once more as that server takes it: with no request code, a
+        // lost answer of this send cannot be asked about.
+        log.warn('update_grn does not take an idempotency key on this server; sent without it');
+        sent.last = undefined;
+        ({ data: answer, error } = await authenticatedClient.rpc('update_grn', sentRequest));
+      }
+      // With rates set, a server that still refuses the call has no p_rates (migration 86 missing).
+      if (error && payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
 
-      throw new Error(serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
+      if (error) {
+        log.error('update_grn failed', loggableError(error));
+        // Sent and not answered (a dropped connection, the 60 s timeout): the save may be applied. A statement
+        // timeout is an answer: nothing was saved.
+        if (sent.last && isLostAnswer(error)) lostAnswer = sent.last;
+
+        // Handle stock protection errors specifically
+        if (error.message?.includes('dispatches exist') || error.message?.includes('STOCK_PROTECTED')) {
+          throw new Error(`Stock Protection: ${error.message}`);
+        }
+
+        throw new Error(itemGoneText(error) ?? serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
+      }
+      data = answer;
     }
 
     // RPC returns array, get first result (with safe array access)
@@ -589,7 +703,7 @@ export const updateGRN = async (
         throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true, form: true }), rpcResult?.data);
       }
 
-      throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected'), { write: true, form: true }));
+      throw new Error(itemGoneText(rpcResult) ?? serverText(rpcResult?.message, t('grn.form.updateRejected'), { write: true, form: true }));
     }
 
     // Saved (also when this is the stored answer of an earlier attempt,
@@ -675,65 +789,11 @@ export const updateGRN = async (
     return {
       success: false,
       error: errorMessage,
-      outcomeUnknown,
+      lostAnswer,
       rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
     };
   } finally {
     finishMutation?.();
-  }
-};
-
-/** A line of the form as far as matching it to a saved line needs. */
-type FormLine = Pick<GRNItemData, 'grn_trl_id' | 'item_table_id' | 'packaging' | 'qty' | 'weight' | 'rack' | 'package_mark'>;
-
-const isSavedLineId = (id: string | undefined | null): id is string =>
-  !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-/**
- * After an update whose answer was lost: which lines the form still holds as
- * new are already on the GRN. Reads the GRN's lines from the server and pairs
- * each new line of the form with a saved line the form does not know, same
- * item, packing, quantity, weight, rack and mark, each saved line used once.
- *
- * The caller gives the paired lines their server id, so the next Save updates
- * them instead of adding them a second time. Nothing else in the form changes.
- *
- * @returns `adopted`: local line id -> saved line id. A failure means the
- * server could not be asked; the form must not be saved until it can.
- */
-export const findLinesSavedByLostUpdate = async (
-  grnId: string,
-  lines: FormLine[]
-): Promise<{ success: true; adopted: Record<string, string> } | { success: false; error: string }> => {
-  try {
-    const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient
-      .from('goodsreceived_trl')
-      .select('id, item_id, packaging, qty, weight, rack, package_mark')
-      .eq('gr_id', grnId);
-    if (error) throw error;
-
-    const text = (value: unknown) => (value === null || value === undefined ? '' : String(value).trim());
-    const signature = (line: { item: unknown; packaging: unknown; qty: unknown; weight: unknown; rack: unknown; mark: unknown }) =>
-      JSON.stringify([text(line.item), text(line.packaging), Number(line.qty) || 0, Number(line.weight) || 0, text(line.rack), text(line.mark)]);
-
-    const known = new Set(lines.map(line => line.grn_trl_id).filter(isSavedLineId));
-    const unknownSaved = ((data ?? []) as Array<Record<string, unknown>>).filter(row => !known.has(String(row.id)));
-    const adopted: Record<string, string> = {};
-    for (const line of lines) {
-      if (isSavedLineId(line.grn_trl_id)) continue;
-      const wanted = signature({ item: line.item_table_id, packaging: line.packaging, qty: line.qty, weight: line.weight, rack: line.rack, mark: line.package_mark });
-      const at = unknownSaved.findIndex(row =>
-        signature({ item: row.item_id, packaging: row.packaging, qty: row.qty, weight: row.weight, rack: row.rack, mark: row.package_mark }) === wanted
-      );
-      if (at === -1) continue;
-      adopted[line.grn_trl_id] = String(unknownSaved[at].id);
-      unknownSaved.splice(at, 1);
-    }
-    return { success: true, adopted };
-  } catch (error) {
-    log.error('Could not read the lines of the GRN after a lost update', loggableError(error));
-    return { success: false, error: t('grn.review.saveNotConfirmed') };
   }
 };
 

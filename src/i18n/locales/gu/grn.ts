@@ -37,6 +37,7 @@ export const grn: Translation<typeof source> = {
     updateFailed: 'આવક પાવતી સાચવી શકાઈ નથી',
     dispatchedQuantityLocked: 'જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ બદલી શકાતા નથી. બીજી વિગતો બદલી શકાય છે.',
     loadFailed: 'આવક પાવતી લોડ થઈ શકી નથી',
+    itemDeleted: 'આ આવક પાવતીની એક આઇટમ ડિલીટ થઈ ગઈ છે. તે લાઇન કાઢી નાખો, પછી ફરી સાચવો.',
   },
 
   header: {
@@ -255,6 +256,7 @@ export const grn: Translation<typeof source> = {
       overlap: 'આ વજન મર્યાદા આઇટમના દરની બીજી વજન મર્યાદા સાથે ભળે છે. એ જ વજન મર્યાદા વાપરો, અથવા આઇટમના દર ટૅબમાં વજન મર્યાદા બદલો.',
       invoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ બની ગયું છે, એટલે ફક્ત આ આવક પાવતીના દર બદલી શકાતા નથી.',
       notForGrn: 'તમે મૂકેલો એક દર આ આવક પાવતીની કોઈ આઇટમ સાથે બંધબેસતો નથી. દર તપાસો અને ફરી સાચવો.',
+      stale: 'આ આઇટમમાંથી કોઈ એકનો દર બીજા કોઈએ બદલ્યો છે. દર ફરી બતાવ્યા છે; તેમને તપાસો અને ફરી સાચવો.',
       generic: 'દર સાચવી શકાયા નહીં. તેમને તપાસો અને ફરી પ્રયાસ કરો.',
     },
     savedWithSkipped:
@@ -268,10 +270,12 @@ export const grn: Translation<typeof source> = {
     photosPreparingMessage: 'ફોટો તૈયાર થાય ત્યાં સુધી થોડી રાહ જુઓ, પછી ફરી સાચવો.',
     photoNotPreparedTitle: 'એક ફોટો તૈયાર થઈ શક્યો નથી',
     photoNotPreparedMessage: 'નિષ્ફળ બતાવેલો ફોટો કાઢી નાખો અથવા ફરી ઉમેરો, પછી સાચવો.',
-    saveUnanswered:
-      'સર્વર તરફથી જવાબ મળ્યો નથી, એટલે આવક પાવતી સચવાઈ છે કે નહીં તે નક્કી નથી. ફોર્મમાંથી કંઈ ગયું નથી. કનેક્શન તપાસો અને ફરી સાચવો: ઍપ પહેલાં તપાસશે કે શું સચવાયું છે.',
-    saveNotConfirmed:
-      'છેલ્લી વાર સાચવેલું સર્વર સુધી પહોંચ્યું કે નહીં તે તપાસી શકાયું નથી. કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    // Gujarati draft for the owner's wording review (2026-10-20).
+    numberUsedNext: 'આવક પાવતી નંબર {{number}} પહેલેથી વપરાયેલો છે. આગળનો ખાલી નંબર {{next}} છે.',
+    savedAfterLeavingTitle: 'આવક પાવતી સચવાઈ ગઈ',
+    savedAfterLeaving: 'તમે ફોર્મ છોડ્યું તે પહેલાં આવક પાવતી {{number}} સચવાઈ ગઈ. તે આવક પાવતીની યાદીમાં છે.',
+    savedAfterLeavingPhotos:
+      'આવક પાવતી {{number}} સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને આવક પાવતીની યાદીમાં ખોલો અને ફોટો ટૅબમાં ફોટો ઉમેરો.',
     photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
@@ -544,6 +548,8 @@ export const grn: Translation<typeof source> = {
     stockMovementCount: { one: '{{count}} સ્ટોકની હેરફેર', other: '{{count}} સ્ટોકની હેરફેર' },
     deleteFailedTitle: 'આવક પાવતી ડિલીટ થઈ શકી નથી',
     deleteFailed: 'આવક પાવતી ડિલીટ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
+    // Gujarati draft for the owner's wording review (2026-10-20).
+    leaveWhileCheckingTitle: 'આ સ્ક્રીન છોડવી છે?',
     dispatchItemsInvoiced: {
       one: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',
       other: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',

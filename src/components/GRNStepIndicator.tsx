@@ -22,6 +22,10 @@ export interface GRNStepIndicatorProps {
   backOnFirstStep?: GenericStepIndicatorHeaderProps['backOnFirstStep'];
   grnNo?: string;
   isEditMode?: boolean;
+  /** A save is running: the close button and the step circles do nothing (see GenericStepIndicatorHeader). */
+  disabled?: boolean;
+  /** While `disabled`: the close button still works, and asks with this warning (see GenericStepIndicatorHeader). */
+  leaveWarning?: string;
 }
 
 export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
@@ -34,6 +38,8 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
   backOnFirstStep,
   grnNo,
   isEditMode = false,
+  disabled = false,
+  leaveWarning,
 }) => {
   return (
     <GenericStepIndicatorHeader
@@ -54,6 +60,8 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
       }
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
+      disabled={disabled}
+      leaveWarning={leaveWarning}
     />
   );
 };

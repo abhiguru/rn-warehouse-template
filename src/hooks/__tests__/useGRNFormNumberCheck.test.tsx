@@ -215,6 +215,19 @@ describe('GRN number check', () => {
       await unmount();
     });
 
+    it('marks the number as typed by the person, and not typed when the field is cleared', async () => {
+      (checkGrnExists as jest.Mock).mockResolvedValue({ exists: false });
+      const { store, form, unmount } = await openCreate();
+      expect(store.getState().grnForm.grNoTyped).toBe(false);
+
+      await typeNumber(form, 'A0030');
+      expect(store.getState().grnForm.grNoTyped).toBe(true);
+
+      await typeNumber(form, '');
+      expect(store.getState().grnForm.grNoTyped).toBe(false);
+      await unmount();
+    });
+
     it('drops spaces from the typed number', async () => {
       (checkGrnExists as jest.Mock).mockResolvedValue({ exists: false });
       const { store, form, unmount } = await openCreate();

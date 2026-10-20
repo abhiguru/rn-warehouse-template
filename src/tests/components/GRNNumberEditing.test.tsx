@@ -5,7 +5,6 @@ import { GrnHeaderStep } from '@/features/grn/screens/GrnHeaderStep';
 
 const mockForm = {
   header: { gr_no: 'A0002', date: '2026-09-30T00:00:00Z' },
-  isLoading: false,
   isGeneratingNumber: false,
   isCreateMode: true,
   validationErrors: {},

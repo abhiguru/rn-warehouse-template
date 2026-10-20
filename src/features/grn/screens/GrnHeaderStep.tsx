@@ -17,7 +17,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
-import { selectGRNFormItems } from '@/store/slices/grnFormSlice';
+import { selectGRNFormItems, selectGRNFormChanged } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
@@ -46,7 +46,6 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Use consolidated form hook - the GRN number check lives in the hook
   const {
     header,
-    isLoading,
     isGeneratingNumber,
     validationErrors,
     isCreateMode,
@@ -59,6 +58,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
   // Items still needed for dispatched check
   const items = useAppSelector(selectGRNFormItems);
+  // An edited GRN: the form differs from the GRN as it was loaded (always false for a new GRN).
+  const editChanged = useAppSelector(selectGRNFormChanged);
 
   // Local UI state (not form data)
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -162,16 +163,6 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     await navigateToStep(stepNumber);
   }, [navigateToStep]);
 
-  // Loading state for edit mode - show while fetching existing GRN data
-  if (!isCreateMode && isLoading) {
-    return (
-      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
-        <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>{tr('grn.header.loading')}</Text>
-      </View>
-    );
-  }
-
   const renderLabel = (text: string, required = false) => (
     <Text style={styles.label}>
       {text}
@@ -230,8 +221,13 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
-        // New GRN: the Android Back key asks the same question as the X once something was entered.
-        backOnFirstStep={isCreateMode ? { hasData: hasEnteredData, exitRoute: '/(tabs)/grn' } : undefined}
+        // The Android Back key asks the same question as the X once something was entered (a new GRN) or changed (an
+        // edited one: the edit flow's own Back leaves it as it was before, with nothing changed).
+        backOnFirstStep={
+          isCreateMode
+            ? { hasData: hasEnteredData, exitRoute: '/(tabs)/grn' }
+            : { hasData: true, enabled: editChanged, exitRoute: '/(tabs)/grn' }
+        }
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
@@ -510,13 +506,6 @@ function formatHeaderDate(value: string | undefined): string {
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.background.base,
-  },
-  loadingText: { ...typography.subhead, color: t.text.secondary, marginTop: space.md },
   scrollView: { flex: 1 },
   contentContainer: { padding: space.lg, paddingBottom: space.huge },
   sectionHeaderText: {

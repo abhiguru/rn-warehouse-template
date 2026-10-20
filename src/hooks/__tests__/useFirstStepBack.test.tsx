@@ -25,9 +25,15 @@ jest.mock('expo-router', () => {
   };
 });
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
-// The dispatch review routes read whether a lost answer is being checked (owner rule D22).
+// The dispatch review routes read whether a lost answer is being checked (owner rule D22); the GRN review route reads the
+// form's saving flag (the Back key does nothing while a GRN is being created).
 let mockCheckingAnswer = false;
-jest.mock('@/store/hooks', () => ({ useAppSelector: () => mockCheckingAnswer, useAppDispatch: () => jest.fn() }));
+let mockSaving = false;
+jest.mock('@/store/hooks', () => ({
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ dispatchForm: { checkingAnswer: mockCheckingAnswer }, grnForm: { isSaving: mockSaving } }),
+  useAppDispatch: () => jest.fn(),
+}));
 // The steps themselves are not under test here, only the Back key of their routes.
 jest.mock('@/features/grn/screens/GrnItemsStep', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/features/grn/screens/GrnReviewStep', () => ({ __esModule: true, default: () => null }));
@@ -37,6 +43,7 @@ let back: ReturnType<typeof installHardwareBack>;
 beforeEach(() => {
   jest.clearAllMocks();
   mockCheckingAnswer = false;
+  mockSaving = false;
   back = installHardwareBack();
 });
 afterEach(() => back.restore());
@@ -201,6 +208,21 @@ describe('Back on the dispatch review while the server is asked what became of a
     const tree = await mount(<DispatchEditStep3 />);
 
     expect(back.press()).toBe(false);
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('Back on the GRN review step while the GRN is being created', () => {
+  it('does nothing: the form is not left under the save', async () => {
+    mockSaving = true;
+    const tree = await mount(<GRNFormStep3 />);
+
+    // The key is handled (so the app does not close or pop the screen) and goes nowhere.
+    expect(back.press()).toBe(true);
+
+    expect(router.dismissTo).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 });

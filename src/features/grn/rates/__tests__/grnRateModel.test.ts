@@ -235,6 +235,38 @@ describe('p_rates', () => {
     expect(buildRates({ grnRates: [], changes: [], ctx, lines })).toEqual([]);
   });
 
+  it('sends seen_ids with a customer or everyone entry: the ids of that scope in force on the GRN day, sorted; none for this GRN only', () => {
+    const own = row('gur', 0, 100, 3.5, '2026-01-01', null, CUST);
+    const ownToday = row('gur', 101, 200, 3.4, '2026-10-12', '2026-12-31', CUST);
+    const everyone = row('gur', 0, 100, 3, '2026-01-01');
+    const otherCustomer = row('gur', 0, 100, 3.2, '2026-01-01', null, 'cust-b');
+    const otherItem = row('rice', 0, 100, 2, '2026-01-01', null, CUST);
+    const stored = [ownToday, own, everyone, otherCustomer, otherItem];
+    const everyoneChange: RateChange = { ...change, scope: 'everyone' };
+
+    const out = buildRates({ grnRates: [grn], changes: [change, everyoneChange], ctx, lines, stored });
+    expect(out[0]).toMatchObject({ scope: 'customer', seen_ids: [own.id, ownToday.id].sort() });
+    expect(out[1]).toMatchObject({ scope: 'everyone', seen_ids: [everyone.id] });
+    expect(out[2]).toEqual({ scope: 'grn', item_id: 'gur', weight_min: 21, weight_max: 50, unit_price: 3, labour_rate: 2, tax_percent: 5 });
+  });
+
+  it('does not list a row that ended before the GRN day or starts after it: such a row would hide one that really changed', () => {
+    const inForce = row('gur', 0, 100, 3.5, '2026-01-01', null, CUST);
+    const ended = row('gur', 0, 100, 3, '2025-01-01', '2025-12-31', CUST);
+    const endedTheDayBefore = row('gur', 0, 100, 3.1, '2026-01-01', '2026-10-11', CUST);
+    const planned = row('gur', 0, 100, 4, '2027-01-01', null, CUST);
+    const startsTomorrow = row('gur', 0, 100, 4.1, '2026-10-13', null, CUST);
+    const endsToday = row('gur', 0, 100, 3.6, '2026-02-01', '2026-10-12', CUST);
+
+    const out = buildRates({ grnRates: [], changes: [change], ctx, lines, stored: [inForce, ended, endedTheDayBefore, planned, startsTomorrow, endsToday] });
+    expect(out[0]).toMatchObject({ seen_ids: [inForce.id, endsToday.id].sort() });
+  });
+
+  it('sends an empty seen_ids when the scope has no stored row, and none at all when the stored rates are not given (an older call)', () => {
+    expect(buildRates({ grnRates: [], changes: [change], ctx, lines, stored: [] })[0]).toMatchObject({ seen_ids: [] });
+    expect(buildRates({ grnRates: [], changes: [change], ctx, lines })[0]).not.toHaveProperty('seen_ids');
+  });
+
   it('leaves out an entry whose item is off the GRN or whose band holds none of its weights, and a change for another context', () => {
     const stale = { ...change, ctx: contextKey({ ...ctx, day: '2026-01-01' }) };
     const off = { ...grn, item_id: 'rice' };

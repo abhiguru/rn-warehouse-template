@@ -24,20 +24,15 @@
  *    - 750ms debounce before checking database
  *    - Minimum 5 characters before checking
  *
- * 2. **Module-Level Session ID** (`globalSessionId`)
+ * 2. **Module-Level Session ID** (`currentGrnFormSession()`, features/grn/utils/grnFormSession.ts)
  *    - Persists across hook instances (survives route changes)
  *    - Incremented before navigation to cancel in-flight async operations
  *    - Checked in async functions before updating Redux state
  *
- * 3. **Redux-Based Load Check** (NOT ref-based)
- *    - Each step screen creates NEW hook instance with fresh refs
- *    - previousGrnIdParamRef resets to undefined on each step
- *    - Instead, we check: `grnId === grnIdParam` (Redux persists across steps)
- *    - This prevents reloading data when navigating Step 1 → Step 2 → Step 3
- *
- * 4. **Dependency Array Management**
- *    - grnId is NOT in load effect deps (prevents reload on resetForm)
- *    - Only grnIdParam triggers reload (URL param change = new GRN to load)
+ * 3. **No loading here**
+ *    - The edit form is loaded by its layout (app/grn-edit/[id]/_layout.tsx), which reads the GRN from the
+ *      server every time the edit flow is entered and shows the steps only once it is in the form
+ *    - This hook only reads the form and changes it
  *
  */
 
@@ -56,9 +51,7 @@ import {
   clearValidationError,
   setCurrentStep,
   setTempGrnId,
-  setIsLoading,
   setIsSaving,
-  loadGRNData,
   resetForm,
   addHeaderImage,
   removeHeaderImage,
@@ -68,20 +61,20 @@ import {
   selectGRNFormItems,
   selectGRNFormId,
   selectGRNTempId,
-  selectGRNRemovedImages,
   selectGRNTakenNumberError,
   setTakenNumberError,
+  setGrNoTyped,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
 } from '@/store/slices/grnFormSlice';
 import { validateStep1, validateStep2, validateStep3 } from '@/features/grn/schemas/grnValidation';
-import { getNextGRNNumber, createGRN, updateGRN, loadGRNData as loadGRNDataService, checkGrnExists } from '@/features/grn/services/grnFormService';
+import { getNextGRNNumber, checkGrnExists } from '@/features/grn/services/grnFormService';
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
+import { currentGrnFormSession, nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
 
 import { showAlert } from '@/utils/alert';
 import { t, formatIdentifier } from '@/i18n';
-import { serverText } from '@/utils/serverText';
 import { documentNumberState } from '@/utils/documentNumberCheck';
 /** Plain-language list of validation messages for an alert (never raw field keys). */
 function describeValidationErrors(errors: Record<string, string>): string {
@@ -90,13 +83,6 @@ function describeValidationErrors(errors: Record<string, string>): string {
   return messages.map(message => `• ${message}`).join('\n');
 }
 
-/**
- * Module-level session ID that persists across all hook instances.
- * This allows cancellation to work when navigating between create/edit routes.
- *
- * Pattern: Increment before navigation, check in async functions before state updates.
- * If session changed, the async operation was cancelled and should not update state.
- */
 const log = createLogger('useGRNForm');
 
 /**
@@ -114,8 +100,6 @@ function releaseFormPhotoFiles(header: GRNHeaderData, items: GRNItemData[]): voi
   void releaseLocalPhotosOwnedBy(LOCAL_PHOTO_OWNERS.grnForm, { createdBefore: resetAt });
 }
 
-let globalSessionId = 0;
-
 export type GRNFormMode = 'create' | 'edit';
 
 export interface UseGRNFormOptions {
@@ -129,7 +113,6 @@ export interface UseGRNFormReturn {
   items: GRNItemData[];
   grnId: string | null;
   tempGrnId: string | null;
-  isLoading: boolean;
   isGeneratingNumber: boolean;
   isSaving: boolean;
   validationErrors: Record<string, string>;
@@ -137,7 +120,6 @@ export interface UseGRNFormReturn {
 
   // Initialization
   initializeForm: () => Promise<void>;
-  loadExistingGRN: (id: string) => Promise<void>;
 
   // Header actions
   updateHeaderField: (field: keyof GRNHeaderData, value: unknown) => void;
@@ -163,9 +145,6 @@ export interface UseGRNFormReturn {
   navigateToStep: (step: number) => Promise<boolean>;
   canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
 
-  // Submission
-  submitForm: () => Promise<{ success: boolean; grnId?: string; error?: string }>;
-
   // Reset
   resetFormState: () => void;
 }
@@ -188,7 +167,6 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   const items = useAppSelector(selectGRNFormItems);
   const grnId = useAppSelector(selectGRNFormId);
   const tempGrnId = useAppSelector(selectGRNTempId);
-  const removedImages = useAppSelector(selectGRNRemovedImages);
 
   const isCreateMode = mode === 'create';
 
@@ -226,10 +204,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   const hasInitialized = useRef(false);
   const hasGeneratedGRN = useRef(false);
   const hasSetSupervisor = useRef(false);
-  const isLoadingData = useRef(false);
   const previousModeRef = useRef<GRNFormMode | null>(null);
-  // Track the previous grnIdParam to detect when we need to reload
-  const previousGrnIdParamRef = useRef<string | undefined>(undefined);
 
   /**
    * Initialize form for create mode
@@ -241,7 +216,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     console.log('[useGRNForm] initializeForm called:', {
       isCreateMode,
       hasInitialized: hasInitialized.current,
-      globalSessionId,
+      globalSessionId: currentGrnFormSession(),
     });
 
     if (!isCreateMode || hasInitialized.current) {
@@ -251,7 +226,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     hasInitialized.current = true;
 
     // Capture global session ID at start of operation
-    const currentSessionId = globalSessionId;
+    const currentSessionId = currentGrnFormSession();
     console.log('[useGRNForm] initializeForm started with session:', currentSessionId);
 
     // Generate GRN number
@@ -261,14 +236,14 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       try {
         const grNumber = await getNextGRNNumber();
         // Check if session changed before updating state (prevents stale updates after navigation)
-        if (globalSessionId !== currentSessionId) {
-          console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', globalSessionId);
+        if (currentGrnFormSession() !== currentSessionId) {
+          console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', currentGrnFormSession());
           return;
         }
         dispatch(updateHeader({ gr_no: grNumber }));
       } catch (error) {
         console.error('[useGRNForm] Failed to generate GRN number:', error);
-        if (globalSessionId === currentSessionId) {
+        if (currentGrnFormSession() === currentSessionId) {
           showAlert(t('errors.grn.form.numberFailedTitle'), t('common.checkConnection'));
         }
       } finally {
@@ -279,7 +254,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     // Check session again before continuing
-    if (globalSessionId !== currentSessionId) return;
+    if (currentGrnFormSession() !== currentSessionId) return;
 
     // Generate temp ID for image uploads
     if (!grnId && !tempGrnId) {
@@ -288,7 +263,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     // Check session again before supervisor update
-    if (globalSessionId !== currentSessionId) return;
+    if (currentGrnFormSession() !== currentSessionId) return;
 
     // Auto-set supervisor to current user
     if (!header.supervisor_id && userProfile && !hasSetSupervisor.current) {
@@ -300,65 +275,6 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       }));
     }
   }, [isCreateMode, header.gr_no, header.supervisor_id, grnId, tempGrnId, userProfile, dispatch]);
-
-  /**
-   * Load existing GRN data for edit mode
-   */
-  const loadExistingGRNRef = useRef<((id: string) => Promise<void>) | null>(null);
-  const loadExistingGRN = useCallback(async (id: string) => {
-    console.log('[useGRNForm] loadExistingGRN called for id:', id, {
-      isLoadingData: isLoadingData.current,
-      globalSessionId,
-    });
-
-    if (isLoadingData.current) {
-      console.log('[useGRNForm] loadExistingGRN skipped - already loading');
-      return;
-    }
-    isLoadingData.current = true;
-
-    // Capture global session ID at start of operation
-    const currentSessionId = globalSessionId;
-    console.log('[useGRNForm] loadExistingGRN started with session:', currentSessionId);
-
-    dispatch(setIsLoading(true));
-    try {
-      const result = await loadGRNDataService(id);
-      // Check if session changed before updating state (prevents stale updates after navigation)
-      if (globalSessionId !== currentSessionId) {
-        console.log('[useGRNForm] Load GRN cancelled - session changed from', currentSessionId, 'to', globalSessionId);
-        return;
-      }
-      if (result.success && result.data) {
-        dispatch(loadGRNData({
-          header: result.data.header,
-          items: result.data.items,
-          grnId: id,
-          grnRates: result.data.grnRates,
-          grnInvoiced: result.data.grnInvoiced,
-        }));
-      } else {
-        if (globalSessionId === currentSessionId) {
-          // Nothing is put in the form: a GRN that was read only in part (its photo list
-          // missing) must not be opened for saving. The person can ask again.
-          showAlert(t('errors.grn.form.loadFailedTitle'), serverText(result.error, t('common.checkConnection')), [
-            { text: t('common.cancel'), style: 'cancel' },
-            { text: t('common.retry'), onPress: () => { void loadExistingGRNRef.current?.(id); } },
-          ]);
-        }
-      }
-    } catch (error) {
-      console.error('[useGRNForm] Failed to load GRN:', error);
-      if (globalSessionId === currentSessionId) {
-        showAlert(t('errors.grn.form.loadFailedTitle'), t('common.checkConnection'));
-      }
-    } finally {
-      dispatch(setIsLoading(false));
-      isLoadingData.current = false;
-    }
-  }, [dispatch]);
-
-  loadExistingGRNRef.current = loadExistingGRN;
 
   // The screens read the local copy of the errors, so a changed field has to be cleared there too.
   const clearLocalErrors = useCallback((fields: string[]) => {
@@ -405,8 +321,10 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     grNoChangeAbortRef.current = new AbortController();
     const signal = grNoChangeAbortRef.current.signal;
 
-    // Update Redux immediately so UI is responsive
+    // Update Redux immediately so UI is responsive. A number the person typed is theirs: a refusal at Create
+    // because another GRN holds it does not replace it with the next free number (a cleared field is not typed).
     dispatch(updateHeader({ gr_no: newGrNo }));
+    dispatch(setGrNoTyped(newGrNo.length > 0));
     dispatch(clearValidationError('gr_no'));
     dispatch(setTakenNumberError(null));
     clearLocalErrors(['gr_no']);
@@ -559,8 +477,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
     dispatch(setCurrentStep(step));
 
-    // Determine route based on mode
-    const baseRoute = isCreateMode ? '/grn-form' : `/grn-edit/${grnId}`;
+    // Determine route based on mode. In edit mode the route's own id: the form's id is only what was last loaded.
+    const baseRoute = isCreateMode ? '/grn-form' : `/grn-edit/${grnIdParam ?? grnId}`;
 
     switch (step) {
       case 1:
@@ -575,46 +493,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     return true;
-  }, [grnFormState.currentStep, canNavigateToStep, isCreateMode, grnId, dispatch]);
-
-  /**
-   * Submit the form (create or update)
-   */
-  const submitForm = useCallback(async (): Promise<{ success: boolean; grnId?: string; error?: string }> => {
-    // Validate step 3
-    const validation = await validateCurrentStep(3);
-    if (!validation.isValid) {
-      showAlert(t('errors.grn.form.checkDetailsTitle'), describeValidationErrors(validation.errors));
-      return { success: false, error: t('errors.general.validationFailed') };
-    }
-
-    dispatch(setIsSaving(true));
-
-    try {
-      const payload = {
-        header,
-        items,
-      };
-
-      const result = isCreateMode
-        ? await createGRN(payload)
-        : await updateGRN(grnId!, payload, { removedImages });
-
-      if (result.success) {
-        return { success: true, grnId: result.data?.id };
-      } else {
-        showAlert(t('errors.grn.form.saveFailedTitle'), serverText(result.error, t('common.checkConnection'), { write: true, form: true }));
-        return { success: false, error: result.error };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : t('errors.general.unknown');
-      console.error('[useGRNForm] Submit error:', error);
-      showAlert(t('errors.grn.form.saveFailedTitle'), t('common.checkConnection'));
-      return { success: false, error: errorMessage };
-    } finally {
-      dispatch(setIsSaving(false));
-    }
-  }, [header, items, grnId, removedImages, isCreateMode, validateCurrentStep, dispatch]);
+  }, [grnFormState.currentStep, canNavigateToStep, isCreateMode, grnIdParam, grnId, dispatch]);
 
   /**
    * Reset form to initial state
@@ -629,8 +508,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     grNoChangeAbortRef.current?.abort();
 
     // Increment GLOBAL session ID to invalidate any pending async operations across all hook instances
-    globalSessionId += 1;
-    console.log('[useGRNForm] Global session incremented to:', globalSessionId);
+    nextGrnFormSession();
+    console.log('[useGRNForm] Global session incremented to:', currentGrnFormSession());
 
     setLocalValidationErrors({});
     releaseFormPhotoFiles(formPhotosRef.current.header, formPhotosRef.current.items);
@@ -645,8 +524,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     if (previousModeRef.current !== null && previousModeRef.current !== mode) {
       console.log('[useGRNForm] Mode changed from', previousModeRef.current, 'to', mode, '- incrementing session');
       // Increment session to invalidate any pending operations from the old mode
-      globalSessionId += 1;
-      console.log('[useGRNForm] Global session incremented to:', globalSessionId, 'due to mode change');
+      nextGrnFormSession();
+      console.log('[useGRNForm] Global session incremented to:', currentGrnFormSession(), 'due to mode change');
       // DO NOT reset instance refs - let the new mode's useEffect handle initialization
     }
     previousModeRef.current = mode;
@@ -665,54 +544,12 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
   }, [isCreateMode, initializeForm]);
 
-  // Load data for edit mode when grnIdParam changes
-  // NOTE: grnId is intentionally NOT in the dependency array to prevent
-  // re-loading when resetForm() sets grnId to null during navigation
-  useEffect(() => {
-    console.log('[useGRNForm] Load effect running:', {
-      isCreateMode,
-      grnIdParam,
-      previousGrnIdParam: previousGrnIdParamRef.current,
-      reduxGrnId: grnId,
-      isLoadingData: isLoadingData.current,
-    });
-
-    // Only load if:
-    // 1. We're in edit mode
-    // 2. We have a grnIdParam
-    // 3. Redux doesn't already have this GRN loaded (grnId !== grnIdParam)
-    // 4. Not already loading
-    // NOTE: We check grnId !== grnIdParam instead of using previousGrnIdParamRef
-    // because the ref is local to each hook instance and resets when navigating between steps.
-    // Redux state persists across step navigation, so it's a reliable indicator.
-    if (!isCreateMode && grnIdParam && !isLoadingData.current) {
-      const alreadyLoaded = grnId === grnIdParam;
-      const shouldLoad = !alreadyLoaded;
-
-      console.log('[useGRNForm] Load check:', { alreadyLoaded, shouldLoad });
-
-      if (shouldLoad) {
-        console.log('[useGRNForm] Load effect calling loadExistingGRN:', grnIdParam);
-        // Reset form before loading new data to prevent stale data flash
-        if (previousGrnIdParamRef.current && previousGrnIdParamRef.current !== grnIdParam) {
-          console.log('[useGRNForm] GRN ID changed, resetting form first');
-          releaseFormPhotoFiles(formPhotosRef.current.header, formPhotosRef.current.items);
-          dispatch(resetForm());
-        }
-        loadExistingGRN(grnIdParam);
-      }
-    }
-
-    previousGrnIdParamRef.current = grnIdParam;
-  }, [isCreateMode, grnIdParam, loadExistingGRN, dispatch]);
-
   return {
     // State
     header,
     items,
     grnId,
     tempGrnId,
-    isLoading: grnFormState.isLoading,
     isGeneratingNumber,
     isSaving: grnFormState.isSaving,
     validationErrors,
@@ -720,7 +557,6 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
     // Initialization
     initializeForm,
-    loadExistingGRN,
 
     // Header actions
     updateHeaderField,
@@ -745,9 +581,6 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Navigation
     navigateToStep,
     canNavigateToStep,
-
-    // Submission
-    submitForm,
 
     // Reset
     resetFormState,

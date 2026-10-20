@@ -6,12 +6,12 @@
  * item?" on a GRN, "Go back to details?" on a dispatch). The two Dispatch
  * stacks turned the swipe off for all their steps; the two GRN stacks did not.
  * Back in the footer, the step circles and the X in the step header are the
- * ways back.
+ * ways back. (The edited GRN's stack reads the GRN before it draws its steps:
+ * src/tests/components/GrnEditLayout.test.tsx checks its stack options too.)
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import GRNFormLayout from '../../../app/grn-form/_layout';
-import GRNEditLayout from '../../../app/grn-edit/[id]/_layout';
 import DispatchFormLayout from '../../../app/dispatch-form/_layout';
 
 type ScreenProps = { name: string; options?: Record<string, unknown> };
@@ -49,7 +49,6 @@ afterEach(async () => {
 
 describe.each([
   ['a new GRN', GRNFormLayout],
-  ['an edited GRN', GRNEditLayout],
   ['a new dispatch', DispatchFormLayout],
   // An edited dispatch reads the dispatch before it draws its stack: its stack is tested with its layout
   // (src/tests/components/DispatchEditLayout.test.tsx).

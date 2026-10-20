@@ -19,7 +19,6 @@ const emptyHeader = () => ({
 });
 const mockForm = {
   header: emptyHeader(),
-  isLoading: false,
   isGeneratingNumber: false,
   isCreateMode: true,
   validationErrors: {},
@@ -30,12 +29,26 @@ const mockForm = {
   resetFormState: jest.fn(),
 };
 let mockItems: unknown[] = [];
+// What the edit form was loaded as: null for a new GRN; any text that differs from the form's own signature for an
+// edit form that has been changed since.
+let mockLoadedSignature: string | null = null;
 
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: mockItems } }),
+    selector({
+      theme: { preference: 'light', brand: 'orange' },
+      grnForm: {
+        items: mockItems,
+        header: mockForm.header,
+        removedImages: [],
+        grnRates: [],
+        rateChanges: [],
+        removedGrnRates: [],
+        loadedSignature: mockLoadedSignature,
+      },
+    }),
 }));
 jest.mock('expo-router', () => {
   const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true) };
@@ -68,6 +81,7 @@ beforeEach(() => {
   mockForm.header = emptyHeader();
   mockForm.isCreateMode = true;
   mockItems = [];
+  mockLoadedSignature = null;
   resetSheetBack();
   back = installHardwareBack();
 });
@@ -244,16 +258,50 @@ describe('Back on step 1 of a new GRN while a picker is open', () => {
 });
 
 describe('Back on step 1 of a GRN that is being edited', () => {
-  it('is not handled by the form: the edit flow is as it was', async () => {
-    mockForm.isCreateMode = false;
-    mockForm.header.customer_id = 'c1';
+  beforeEach(() => { mockForm.isCreateMode = false; });
+
+  it('is left to the system while nothing was changed: the edit flow goes back as it did', async () => {
+    mockLoadedSignature = null;
     const tree = await render(<GRNEditStep1 />);
 
     expect(await pressBack()).toBe(false);
 
-    expect(back.count()).toBe(0);
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('asks the question the X asks once the form differs from the GRN as it was loaded, and stays', async () => {
+    mockForm.header.customer_id = 'c1';
+    mockLoadedSignature = 'the GRN as it was loaded';
+    const tree = await render(<GRNEditStep1 />);
+
+    expect(await pressBack()).toBe(true);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    const fromBack = question();
+    expect(fromBack.buttons).toEqual([{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard', style: 'destructive' }]);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Cancel editing' && typeof node.props.onPress === 'function');
+    await act(async () => { close.props.onPress(); });
+    expect(question()).toEqual(fromBack);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('"Discard" empties the form and goes to the GRN list, as the X\'s does; "Keep editing" stays', async () => {
+    mockLoadedSignature = 'the GRN as it was loaded';
+    const tree = await render(<GRNEditStep1 />);
+    await pressBack();
+    await answer('Keep editing');
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+
+    await pressBack();
+    await answer('Discard');
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith('/grn');
     await act(async () => { tree.unmount(); });
   });
 });
