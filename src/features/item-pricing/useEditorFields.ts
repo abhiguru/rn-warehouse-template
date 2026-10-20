@@ -91,7 +91,9 @@ export function useEditorFields(order: string[], options: UseEditorFieldsOptions
         ensureVisible(key);
       },
       next: key => {
-        const following = order[order.indexOf(key) + 1];
+        // Fields of a collapsed band are not mounted: walk on to the next one that is.
+        const start = order.indexOf(key);
+        const following = start < 0 ? undefined : order.slice(start + 1).find(k => nodes.current[k]);
         const node = following ? nodes.current[following] : null;
         if (node) node.focus();
         else Keyboard.dismiss();

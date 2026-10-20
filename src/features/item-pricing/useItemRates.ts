@@ -3,8 +3,8 @@
  *
  * They are kept in a session cache (module level, for the facility and the person signed in):
  * a screen that opens with data in the cache shows it at once and refreshes in the background,
- * with no skeleton and no jump (P-16). The whole cache is read again only when it is older than
- * RATES_STALE_MS (or by pull to refresh, or reloadItemRatesCache). A save elsewhere calls notifyRatesChanged(itemId) (contract.ts),
+ * with no skeleton and no jump (P-16). A screen that opens reads it again; the Items list on focus only when it is older than
+ * RATES_STALE_MS (or marked stale by markItemRatesStale), and by pull to refresh or reloadItemRatesCache. A save elsewhere calls notifyRatesChanged(itemId) (contract.ts),
  * which refetches that item's rows only and merges them in.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -56,8 +56,8 @@ export function clearItemRatesCache(): void {
 export const RATES_STALE_MS = 5 * 60 * 1000;
 
 /** One full load (items and every rate) for this facility and person; a load already running is joined. */
-function loadAllFor(key: string): Promise<void> {
-  if (!inFlightAll || inFlightKey !== key) {
+function loadAllFor(key: string, fresh = false): Promise<void> {
+  if (fresh || !inFlightAll || inFlightKey !== key) {
     const seq = ++loadSeq;
     const promise: Promise<void> = (async () => {
       const [items, rates] = await Promise.all([listActiveItems(), listAllRates()]);
@@ -79,7 +79,13 @@ function loadAllFor(key: string): Promise<void> {
 /** Read the whole cache again when something changed the set of active items (a deactivate or delete elsewhere). */
 export function reloadItemRatesCache(): Promise<void> {
   const key = snapshot?.key;
-  return key ? loadAllFor(key).catch(() => { /* the screens keep the older data */ }) : Promise.resolve();
+  // Always a new load: one already running may have begun before the change that made this call.
+  return key ? loadAllFor(key, true).catch(() => { /* the screens keep the older data */ }) : Promise.resolve();
+}
+
+/** The next screen that opens reads everything again (a save elsewhere changed which items have a rate). */
+export function markItemRatesStale(): void {
+  if (snapshot) snapshot = { ...snapshot, loadedAt: 0 };
 }
 
 /** When the whole cache was last read (ms since the epoch); 0 when nothing is held. */
@@ -183,8 +189,9 @@ export function useItemRates(): UseItemRatesResult {
 
   useEffect(() => {
     ensureChangeListener();
-    void refreshIfStale();
-    // Load once per mount and facility, unless the cache is fresh.
+    // A screen that opens reads the rates again (shown cache stays on screen meanwhile); only the Items focus effect waits for them to be old.
+    void refresh();
+    // Once per mount and facility.
   }, [key]);
 
   const itemRates = useCallback(
@@ -220,6 +227,8 @@ export interface UseItemRatesForResult {
   status: RatesStatus;
   /** The item is not among the active items. */
   notFound: boolean;
+  /** The item's own rows as read, also when the item is not active (a deactivated item's rates are shown read only). */
+  ownRows?: ItemStoragePrice[];
   refreshing: boolean;
   refreshError: boolean;
   lastUpdated: number | null;
@@ -288,6 +297,7 @@ export function useItemRatesFor(itemId: string): UseItemRatesForResult {
     itemRates: result,
     status,
     notFound,
+    ownRows: own?.rows,
     refreshing: refreshing && status === 'ready',
     refreshError: refreshError && status === 'ready',
     lastUpdated: own?.at ?? cached?.loadedAt ?? null,

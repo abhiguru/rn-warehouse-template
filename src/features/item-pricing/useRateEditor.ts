@@ -5,7 +5,7 @@
  *
  * The hook does not load the rows: the caller reads them (listItemRates / the session cache) and passes them
  * in, `null` while they load. A new `rows` array opens a new draft, except while figures are being typed: the typing is kept
- * and `rowsChanged` says so (see below). `refreshRows` is called when the server says
+ * and `rowsChanged` says so (see below); the context follows the new rows. `refreshRows` is called when the server says
  * the rates changed meanwhile (STALE_RATES): the caller reads them again and passes the new array.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -25,6 +25,7 @@ import {
   savedStop,
   setStartsOn as withStartsOn,
   rentErrors,
+  scopeRowsKey,
   switchNewRateType,
   toReplaceInput,
   validate,
@@ -88,7 +89,7 @@ export interface UseRateEditor {
   copiedFrom: string | null;
   /**
    * The rows changed (another phone, a background read) while the figures were being typed: the typing is kept as it is
-   * and the screen says so. Saving then asks the server, which refuses (STALE_RATES) when it matters.
+   * and the screen says so. Saving then sends the rows now held.
    */
   rowsChanged: boolean;
   /** The oldest day a rate may start (learned from the server when it refused a day). */
@@ -170,8 +171,24 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       setCore({ ...core, rows });
     } else if (!ownSave.current && !maybeSaved.current && !core.ctx.managerOnly && hasChanges(core.draft, core.initial)) {
       // Figures are being typed: new rows (a pull to refresh, a background read) must not replace them.
-      setCore({ ...core, rows });
-      setRowsChanged(true);
+      const { customerId } = core.ctx;
+      const type = core.draft.priceType;
+      if (scopeRowsKey(core.rows, customerId, type) === scopeRowsKey(rows, customerId, type)) {
+        // Only other rows of the item changed (another customer's rate, the other price type): this rate is as it was.
+        setCore({ ...core, rows, ctx: { ...core.ctx, rows } });
+      } else {
+        // The rows of this rate changed: Save must send the rows now held (p_seen_rows), with the typing kept.
+        const opened = initialDraft({
+          mode,
+          params: { ...params, mode, item_id: item.id, item_name: item.name, customer_id: customer?.id, customer_name: customer?.name, price_type: type } as EditorParams,
+          rows,
+          role,
+          today: todayNow(),
+          earliest: core.ctx.earliestStart ?? getRateStartFloor(),
+        });
+        setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
+        setRowsChanged(true);
+      }
     } else {
       openDraft(rows);
     }
@@ -290,8 +307,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       if (result.errorCode === 'STALE_RATES') {
         // Someone changed the rates meanwhile: load them again and say so.
         setStrip(result.message ?? t('pricing.error.generic'));
-        // The typed figures were built on rows that are gone: open a new draft from the rows now held (and from the ones the read brings).
-        setCore(null);
+        // The typed figures stay: the rows the read brings replace the ones sent, and Save sends those.
         refreshRows();
         return;
       }

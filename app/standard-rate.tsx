@@ -7,6 +7,7 @@
  * tier starting where the one before ends), with a labour and tax on every tier. The server checks the
  * same rules again and names the tier and field it refuses.
  */
+import { markItemRatesStale } from '@/features/item-pricing/useItemRates';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -228,7 +229,8 @@ export default function StandardRateScreen() {
         const tiers = result.tiers && result.tiers.length > 0 ? result.tiers : tiersToSend;
         // The version is the server's own string (never a Date made here).
         rememberStandardRate(key, { tiers, updatedAt: result.updatedAt ?? null, updatedByName: null });
-        // The list and the item pages read the rates again when they come back into view.
+        // The Items list and the customer Pricing tabs read every rate again the next time they open (items got a rate).
+        markItemRatesStale();
         void refresh().catch(() => {});
         const priced = result.itemsPriced ?? 0;
         showToast(priced > 0 ? `${t('pricing.standard.saved')} ${t('pricing.standard.itemsGotIt', { count: priced })}` : t('pricing.standard.saved'));

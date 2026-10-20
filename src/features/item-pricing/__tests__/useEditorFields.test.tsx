@@ -80,3 +80,24 @@ it('a field focused before the keypad shows is scrolled when the keypad arrives'
   act(() => { listeners.keyboardDidShow({ endCoordinates: { screenY: 400 } }); });
   expect(scrollTo).toHaveBeenCalledWith({ y: 54, animated: true });
 });
+
+it('Next skips a field that is not on the screen (a closed band) and goes on to the next one that is', () => {
+  let fields!: UseEditorFields;
+  function Three() {
+    fields = useEditorFields(['a', 'b', 'c']);
+    return null;
+  }
+  act(() => { tree?.unmount(); tree = create(<Three />); });
+  const a = field(100);
+  const c = field(200);
+  fields.fields.register('a', a as never);
+  fields.fields.register('b', null as never);
+  fields.fields.register('c', c as never);
+  const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+  fields.fields.next('a');
+  expect(c.focus).toHaveBeenCalledTimes(1);
+  expect(dismiss).not.toHaveBeenCalled();
+  // After the last mounted field the keyboard closes.
+  fields.fields.next('c');
+  expect(dismiss).toHaveBeenCalledTimes(1);
+});

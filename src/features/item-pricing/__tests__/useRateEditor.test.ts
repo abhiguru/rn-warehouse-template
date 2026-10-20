@@ -180,6 +180,49 @@ it('different rows arriving while figures are typed keep the typing and say the 
   expect(latest.errors['band.0.rent']).toBe(RENT_ERR);
 });
 
+it('after the rates of this scope changed while typing, Save sends the rows now held with the typing kept', async () => {
+  await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  const changed = cuminRows();
+  changed[0] = { ...changed[0], unit_price: 99 };
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(changed) })));
+  expect(latest.rowsChanged).toBe(true);
+  expect(latest.draft!.bands[0].rent).toBe('12');
+  replace.mockResolvedValueOnce({ success: true });
+  await act(async () => { await latest.submit(); });
+  const sent = replace.mock.calls[0][0];
+  expect(sent.bands[0].unit_price).toBe(12);
+  expect(sent.seen_rows).toEqual(changed.filter(r => r.customer_id === null && r.price_type === 'monthly').map(r => r.id));
+  expect(onSaved).toHaveBeenCalledTimes(1);
+});
+
+it('rows of another customer changing while typing do not raise the warning and are not sent as seen', async () => {
+  const rows = await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  const withOther = [...(rows ?? []), rate('cumin', { id: 'c-other', name: 'Other' }, 0, 100, 9, 1, 5, '2026-01-01', null)];
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(withOther) })));
+  expect(latest.rowsChanged).toBe(false);
+  expect(latest.draft!.bands[0].rent).toBe('12');
+  replace.mockResolvedValueOnce({ success: true });
+  await act(async () => { await latest.submit(); });
+  expect(replace.mock.calls[0][0].seen_rows).toEqual(
+    withOther.filter(r => r.customer_id === null && r.price_type === 'monthly').map(r => r.id),
+  );
+  expect(replace.mock.calls[0][0].seen_rows).not.toContain(withOther[withOther.length - 1].id);
+});
+
+it('STALE_RATES keeps the typed figures while the rows are read again', async () => {
+  await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  replace.mockResolvedValueOnce({ success: false, errorCode: 'STALE_RATES', message: 'Rates changed.' });
+  await act(async () => { await latest.submit(); });
+  expect(latest.ready).toBe(true);
+  expect(latest.draft!.bands[0].rent).toBe('12');
+});
+
 it('a draft opened from new rows (nothing being typed) has none of the field errors of the last one', async () => {
   await submitWithEmptyRent();
   // Back to the opening figures: nothing is being typed now.
@@ -272,6 +315,8 @@ describe('copying the bands of another item into a new rate', () => {
     replace.mockResolvedValueOnce({ success: false, errorCode: 'STALE_RATES', message: 'Rates changed.' });
     await act(async () => { await latest.submit(); });
     expect(replace).toHaveBeenCalledTimes(1);
+    // The rows are read again: null while they load, then the new array.
+    act(() => tree!.update(React.createElement(Harness, { args: { ...baseArgs(null), ...NEW_ITEM } })));
     act(() => tree!.update(React.createElement(Harness, { args: { ...baseArgs([]), ...NEW_ITEM } })));
     expect(latest.copiedFrom).toBeNull();
   });

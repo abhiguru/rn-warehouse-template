@@ -52,7 +52,7 @@ export const items: Translation<typeof source> = {
   // The item page (Items -> an item).
   page: {
     tabOverview: 'સારાંશ',
-    details: 'વિગત',
+    details: 'વિગતો',
     activate: 'આઇટમ સક્રિય કરો',
     loadFailed: 'આ આઇટમ ખોલી શકાઈ નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
   },
@@ -117,8 +117,6 @@ export const items: Translation<typeof source> = {
     discardNewTitle: 'આ આઇટમ છોડી દેવી છે?',
     discardNewMessage: 'તમે ભરેલી વિગતો જતી રહેશે.',
     discardMessage: 'આ આઇટમમાં સાચવ્યા વગરના ફેરફાર જતા રહેશે.',
-    notFoundTitle: 'આ આઇટમ મળી નથી',
-    notFoundMessage: 'કદાચ તે ડિલીટ થઈ ગઈ છે.',
     // Draft for the owner's wording review (Items screens 2026-10-20).
     notFoundSentence: 'આ આઇટમ મળી નથી. કદાચ તે ડિલીટ થઈ ગઈ છે.',
     // Draft for the owner's wording review (Items screens 2026-10-20).

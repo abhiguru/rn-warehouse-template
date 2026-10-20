@@ -254,6 +254,8 @@ export default function ItemsScreen() {
     const current = stateRef.current;
     const neverLoaded = current.loadedAt === null || !!current.error;
     if (neverLoaded || reloadOnFocus.current) {
+      // Coming back from Add item: the new item may have got a rate.
+      if (reloadOnFocus.current && canSeeRates) void refreshRates();
       reloadOnFocus.current = false;
       // The No rate list comes from the cached items, not from get_items.
       if (!current.filters.noRate) fetchItems(current.filters, 0);

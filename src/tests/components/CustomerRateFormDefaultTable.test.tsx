@@ -66,7 +66,7 @@ describe('DefaultRatesTable', () => {
   it('at large text Rent stays the one figure column and labour and tax go under the band', () => {
     setWindow(2);
     const tree = draw(false);
-    expect(texts(tree).map(x => x.replace(/\u00a0/g, ' '))).toEqual(['Band', 'Rent', bandName(0), 'Labour 1.50 · Tax 5%', '12.00', bandName(1), 'Labour 2.00 · Tax 12.5%', '14.25']);
+    expect(texts(tree).map(x => x.replace(/\u00a0/g, ' '))).toEqual(['Band', 'Rent', bandName(0), 'Labour ₹1.50 · Tax 5%', '12.00', bandName(1), 'Labour ₹2.00 · Tax 12.5%', '14.25']);
     act(() => tree.unmount());
   });
 

@@ -81,6 +81,7 @@ export const pricing = {
     empty: '{{customer}} has no rates of their own yet.',
     emptyDefault: 'Every item is charged at the default rate.',
     deactivated: 'This customer is deactivated. Activate them to change their rates.',
+    checkFailed: "Couldn't check this customer. Try again.",
     since: 'since {{date}}',
   },
   // The rate box: the band table that is edited in place.
@@ -129,6 +130,7 @@ export const pricing = {
   },
   // The Pricing tab of an item (Items -> an item -> Pricing).
   itemTab: {
+    deactivated: 'This item is deactivated. Activate it to change its rates.',
     sectionMonthly: 'Monthly rates',
     sectionOneTime: 'One-time rates',
     addRate: 'Add rate',

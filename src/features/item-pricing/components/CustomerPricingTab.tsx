@@ -59,7 +59,7 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
   }, [items, entries]);
 
   const openItem = useCallback(
-    (itemId: string) => router.push(customerRatePath(itemId, customerId, undefined, customerName, undefined, deactivated)),
+    (itemId: string) => router.push(customerRatePath(itemId, customerId, undefined, customerName, deactivated)),
     [customerId, customerName, deactivated],
   );
   const addForItem = useCallback(

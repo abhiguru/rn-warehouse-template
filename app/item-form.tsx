@@ -7,6 +7,7 @@
  * Based on SAP Fiori for iOS Design Guidelines
  */
 
+import { markItemRatesStale } from '@/features/item-pricing/useItemRates';
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -155,6 +156,8 @@ const ItemFormScreen: React.FC = () => {
 
       if (result.success) {
         timedOutName.current = null;
+        // The new item may have got a rate: the Items list and the Pricing tabs read the rates again.
+        markItemRatesStale();
         leaveWithoutAsking(() => router.back());
         const name = formData.name.trim();
         const rateSourceDone = result.data?.rate_source;

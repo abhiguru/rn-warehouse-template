@@ -82,6 +82,7 @@ export const pricing: Translation<typeof source> = {
     // Draft for the owner's wording review (Customers review, 2026-10-20).
     emptyDefault: 'દરેક આઇટમ મૂળ દરે લાગે છે.',
     deactivated: 'આ વેપારી નિષ્ક્રિય છે. તેમના દર બદલવા તેમને સક્રિય કરો.',
+    checkFailed: 'આ વેપારીને તપાસી શકાયા નથી. ફરી પ્રયાસ કરો.',
     since: '{{date}} થી',
   },
   box: {
@@ -129,6 +130,7 @@ export const pricing: Translation<typeof source> = {
   },
   // The Pricing tab of an item (Items -> an item -> Pricing).
   itemTab: {
+    deactivated: 'આ આઇટમ નિષ્ક્રિય છે. તેના દર બદલવા તેને સક્રિય કરો.',
     sectionMonthly: 'માસિક દર',
     sectionOneTime: 'એક વખતના દર',
     addRate: 'દર ઉમેરો',
@@ -177,7 +179,7 @@ export const pricing: Translation<typeof source> = {
       one: 'જે આઇટમનો કોઈ દિવસ દર નથી રહ્યો તે {{count}} આઇટમને આ દર આપવો?',
       other: 'જે આઇટમનો કોઈ દિવસ દર નથી રહ્યો તે {{count}} આઇટમને આ દર આપવો?',
     },
-    giveMessage: 'તેમના પહેલા GRN થી આવેલા જથ્થા પર તે લાગશે.',
+    giveMessage: 'તેમની પહેલી આવક પાવતીથી આવેલા જથ્થા પર તે લાગશે.',
     giveConfirm: 'સાચવો અને આપો',
     reload: 'ફરી લોડ કરો',
     lastTierHint: '{{kg}} કિલોથી વધુ વજનના નંગ પર પ્રમાણભૂત દર લાગતો નથી.',

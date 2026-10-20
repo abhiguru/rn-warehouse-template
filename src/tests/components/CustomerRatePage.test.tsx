@@ -190,23 +190,9 @@ describe('a customer with no own rate for the item', () => {
     // The first rate of a customer is added on its own screen (owner, 2026-10-17); this page opens no box.
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer-add/[customerId]',
-      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
+      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
     });
     expect(host('rate-box-add')).toHaveLength(0);
-  });
-
-  it('add=1 (the Pricing tab\'s "+ Add item") opens that box at once, and Save sends it with the customer', async () => {
-    jest.mocked(replaceItemRates).mockResolvedValue({ success: true } as never);
-    await open('admin', noOwn(), { ...params, add: '1' });
-    expect(host('rate-box-add').length).toBeGreaterThan(0);
-    expect(cell('band-0-rent').props.value).toBe('3.50');
-    expect(byId('add-customer-rate')).toHaveLength(0);
-    // The seed is the default rate's one band: no extra empty band.
-    expect(cell('band-1-upTo')).toBeUndefined();
-    await type('band-0-rent', '3.25');
-    await act(async () => { chip('Today').props.onPress(); });
-    await act(async () => { byId('save-bar-save')[0].props.onPress(); });
-    expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ item_id: 'onion', customer_id: 'orchard-b', starts_on: '2026-10-14' }));
   });
 
   it('a customer whose own rate ended is in the same place', async () => {

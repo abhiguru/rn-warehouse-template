@@ -12,10 +12,13 @@ interface Props {
   customerName?: string;
   /** The customer's state when known (true = deactivated, null = not known yet): a deactivated customer gets no new rate. */
   customerDeactivated?: boolean | null;
+  /** The read of the customer's state failed: the form says so and offers to try again. */
+  customerCheckFailed?: boolean;
+  onRetryCustomerCheck?: () => void;
 }
 
-export function CustomerRateForm({ itemId, customerId, customerName, customerDeactivated }: Props) {
-  return <RateForm itemId={itemId} mode="addCustomer" customerId={customerId} customerName={customerName} customerDeactivated={customerDeactivated} />;
+export function CustomerRateForm({ itemId, customerId, customerName, customerDeactivated, customerCheckFailed, onRetryCustomerCheck }: Props) {
+  return <RateForm itemId={itemId} mode="addCustomer" customerId={customerId} customerName={customerName} customerDeactivated={customerDeactivated} customerCheckFailed={customerCheckFailed} onRetryCustomerCheck={onRetryCustomerCheck} />;
 }
 
 export default CustomerRateForm;

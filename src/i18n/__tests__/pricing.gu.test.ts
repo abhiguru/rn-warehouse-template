@@ -52,7 +52,7 @@ describe('pricing in Gujarati', () => {
     expect(t('pricing.standard.title', undefined, 'gu')).toBe('પ્રમાણભૂત દર');
     expect(t('pricing.standard.tagStandard', undefined, 'gu')).toBe('પ્રમાણભૂત');
     expect(t('pricing.standard.tagThisItem', undefined, 'gu')).toBe('આ આઇટમનો');
-    expect(t('pricing.standard.giveMessage', undefined, 'gu')).toBe('તેમના પહેલા GRN થી આવેલા જથ્થા પર તે લાગશે.');
+    expect(t('pricing.standard.giveMessage', undefined, 'gu')).toBe('તેમની પહેલી આવક પાવતીથી આવેલા જથ્થા પર તે લાગશે.');
     expect(t('pricing.standard.error.stale', undefined, 'gu')).toBe('બીજા કોઈએ પ્રમાણભૂત દર બદલ્યો છે. તેમના ફેરફાર જોવા ફરી લોડ કરો.');
   });
   it('counts the items that got the standard rate', () => {

@@ -40,11 +40,11 @@ export const rateFormPath = (p: { itemId: string; mode: 'add' | 'correct' | 'upc
 /** The Pricing tab of a customer, on the box of one item when `itemId` is given. */
 export const customerPricingPath = (customerId: string, itemId?: string) =>
   ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
-/** The box of one customer's own rate for one item. `add` opens the box for a new rate at once (the Pricing tab's "+ Add item"). */
 /** The customer's state carried in a link (`deactivated` = '1' or '0'); anything else = not known, the screen reads it. */
 export const knownDeactivated = (value: unknown): boolean | null => (value === '1' ? true : value === '0' ? false : null);
 const deactivatedParam = (deactivated?: boolean | null) => (typeof deactivated === 'boolean' ? { deactivated: deactivated ? '1' : '0' } : {});
-export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, add?: boolean, deactivated?: boolean | null) =>
+/** The box of one customer's own rate for one item. */
+export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, deactivated?: boolean | null) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',
     params: {
@@ -52,7 +52,6 @@ export const customerRatePath = (itemId: string, customerId: string, on?: string
       customerId,
       ...(on ? { on } : {}),
       ...(customerName ? { customer_name: customerName } : {}),
-      ...(add ? { add: '1' } : {}),
       ...deactivatedParam(deactivated),
     },
   }) as const;

@@ -625,6 +625,11 @@ export function seenRowIds(rows: ItemStoragePrice[], customerId: string | null, 
   return rows.filter(r => inScope(r, { customerId, priceType })).map(r => r.id);
 }
 
+/** The rows of one scope with their content, as text: two reads of the item with the same text hold the same rates for that scope. */
+export function scopeRowsKey(rows: ItemStoragePrice[], customerId: string | null, priceType: PriceType): string {
+  return JSON.stringify(rows.filter(r => inScope(r, { customerId, priceType })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
+}
+
 export function toReplaceInput(draft: Draft, ctx: EditorContext): ReplaceRatesInput {
   const oneTime = draft.priceType === 'one_time';
   const planned = ctx.mode === 'upcoming' ? ctx.originalStart : null;

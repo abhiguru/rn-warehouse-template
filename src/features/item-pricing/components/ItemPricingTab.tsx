@@ -71,7 +71,7 @@ export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingT
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const rights = rateRights(role);
   const offline = useIsOffline();
-  const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
+  const { itemRates, ownRows, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
   // The standard rate is read once per page (from the session cache when it is there) for the Standard / This item tags.
   const standard = useStandardRate();
   const actions = useRateActions({ id: itemId, name: itemName });
@@ -80,7 +80,7 @@ export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingT
   const [howOpen, setHowOpen] = useState(false);
   const day = todayDay();
 
-  const rows = useMemo(() => itemRates?.rows ?? [], [itemRates]);
+  const rows = useMemo(() => itemRates?.rows ?? ownRows ?? [], [itemRates, ownRows]);
   // Opens on Monthly; on One-time when the item has one-time periods and no monthly one. A tap on the switch decides after that.
   const priceType: PriceType =
     chosenType ??
@@ -159,12 +159,17 @@ export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingT
         testID="item-pricing-error"
       />
     );
-  } else if (notFound || !active) {
+  } else if (notFound && active) {
     body = <RatesState icon="package-variant-closed" title={t('pricing.item.notFound')} testID="item-pricing-not-found" />;
   } else {
     const hasButtons = periods.some(p => buttonsOf(p).length > 0) || canChange;
     body = (
       <View style={styles.block}>
+        {!active ? (
+          <View style={styles.strip}>
+            <InlineValidation variant="warning" message={t('pricing.itemTab.deactivated')} />
+          </View>
+        ) : null}
         {refreshError ? (
           <View style={styles.strip}>
             <InlineValidation variant="error" message={t('pricing.list.refreshFailed', { time: lastUpdated ? formatTime(new Date(lastUpdated)) : '' })} />
@@ -230,7 +235,7 @@ export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingT
     );
   }
 
-  const showSwitch = status === 'ready' && !notFound && active;
+  const showSwitch = status === 'ready' && !(notFound && active);
   return (
     <View style={{ flex: 1 }} testID="item-pricing-tab">
       <ScrollView

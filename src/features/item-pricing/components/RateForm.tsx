@@ -113,12 +113,15 @@ interface Props {
   startsOn?: string;
   /** A customer's rate (mode addCustomer): true = the customer is deactivated, null = not known yet. Both leave Save off. */
   customerDeactivated?: boolean | null;
+  /** The read of the customer's state failed (Save stays off): a strip says so, with Try again. */
+  customerCheckFailed?: boolean;
+  onRetryCustomerCheck?: () => void;
 }
 
 /** A typed rupee figure as money ("₹12.50"), or a dash while it is empty or not a number. */
 const figure = (text: string): string => (text.trim() !== '' && Number.isFinite(Number(text)) ? money(Number(text)) : '—');
 
-export function RateForm({ itemId, mode, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink, customerDeactivated }: Props) {
+export function RateForm({ itemId, mode, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink, customerDeactivated, customerCheckFailed, onRetryCustomerCheck }: Props) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
@@ -171,6 +174,8 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   });
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: editor.ready && editor.dirty,
+    // While a save runs the ways out are held, not asked about.
+    blocked: editor.saving,
     // Both the item's rate and a customer's rate ask "Discard this rate?" (house rule: create forms name the thing).
     title: t('pricing.rateForm.discardTitle'),
   });
@@ -304,6 +309,14 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView ref={scrollRef} style={styles.flex} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" onScroll={onScroll} scrollEventThrottle={16}>
           {customerDeactivated === true ? <EditorStrip variant="warning" message={t('pricing.customerTab.deactivated')} testID="add-rate-deactivated" /> : null}
+          {customerCheckFailed && customerDeactivated == null ? (
+            <View>
+              <EditorStrip variant="critical" message={t('pricing.customerTab.checkFailed')} testID="add-rate-customer-check-failed" />
+              {onRetryCustomerCheck ? (
+                <Button type="tertiary" onPress={onRetryCustomerCheck} testID="add-rate-customer-check-retry">{t('pricing.list.tryAgain')}</Button>
+              ) : null}
+            </View>
+          ) : null}
           {refusal ? <EditorStrip variant="critical" message={refusal} testID="add-rate-refused" /> : null}
           {ctx.mode === 'correct' && !refusal ? (
             <EditorStrip variant="warning" message={t('pricing.edit.correctWarning', { date: dateText(draft.startsOn ?? '') })} testID="add-rate-correct-warning" />

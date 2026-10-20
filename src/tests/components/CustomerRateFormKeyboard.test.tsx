@@ -183,10 +183,8 @@ describe('with a second band', () => {
     expect(Keyboard.dismiss).not.toHaveBeenCalled();
   });
 
-  // APP BUG (reported): the Next order lists every band's fields, but a closed band's fields are not on the screen, so
-  // Next from the open band's Rent finds no field to focus and closes the keyboard (useEditorFields.ts `next`, order from
-  // RateForm.tsx `editor.order`). `it.failing` keeps this green until the app is fixed; then change it to `it`.
-  it.failing('Next from the rent of an open first band goes on to the labour, not out of the form', async () => {
+  // Next skips the fields of a closed band (they are not on the screen) and goes on to the next one that is.
+  it('Next from the rent of an open first band goes on to the labour, not out of the form', async () => {
     const t = await open();
     await addBand(t);
     // Open band 1 again: band 2 is now the closed one, and its fields are not on the screen.

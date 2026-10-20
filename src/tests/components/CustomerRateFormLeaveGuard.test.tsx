@@ -7,6 +7,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRateForm';
+import { replaceItemRates } from '@/services/item-pricing-service';
 import { RateForm } from '@/features/item-pricing/components/RateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { chip, inputsWithLabel, onionRows, rate } from '@/tests/helpers/rateEditorFixtures';
@@ -21,9 +22,9 @@ jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn() } }
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
-let mockGuard: { hasChanges: boolean; title?: string } = { hasChanges: false };
+let mockGuard: { hasChanges: boolean; title?: string; blocked?: boolean } = { hasChanges: false };
 jest.mock('@/hooks/useLeaveGuard', () => ({
-  useLeaveGuard: (options: { hasChanges: boolean; title?: string }) => {
+  useLeaveGuard: (options: { hasChanges: boolean; title?: string; blocked?: boolean }) => {
     mockGuard = options;
     return { leaveWithoutAsking: (go: () => void) => go() };
   },
@@ -99,6 +100,40 @@ describe('Add customer rate (Orchard A has none)', () => {
     expect(mockGuard.hasChanges).toBe(true);
     await act(async () => { chip(t, 'Today').props.onPress(); });
     expect(mockGuard.hasChanges).toBe(false);
+  });
+});
+
+describe('while the save runs and when the customer cannot be checked', () => {
+  it('holds the ways out (blocked) from the tap on Save until the server answers', async () => {
+    const t = await openCustomer();
+    expect(mockGuard.blocked).toBe(false);
+    await type(t, 'Rent ₹/month', '3.25');
+    await act(async () => { chip(t, 'Today').props.onPress(); });
+    let answer!: (v: unknown) => void;
+    jest.mocked(replaceItemRates).mockReturnValue(new Promise(res => { answer = res; }) as never);
+    const save = t.root.findAll(n => n.props.testID === 'add-rate-save' && typeof n.props.onPress === 'function')[0];
+    await act(async () => { save.props.onPress(); });
+    expect(mockGuard.blocked).toBe(true);
+    await act(async () => { answer({ success: false, errorCode: 'X', message: 'No.' }); });
+    expect(mockGuard.blocked).toBe(false);
+  });
+
+  it('a customer that could not be checked shows the strip with Try again, and Try again calls the retry', async () => {
+    jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
+    const retry = jest.fn();
+    await act(async () => {
+      tree = create(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={null} customerCheckFailed onRetryCustomerCheck={retry} />);
+    });
+    const text = JSON.stringify(tree!.toJSON());
+    expect(text).toContain("Couldn't check this customer. Try again.");
+    await act(async () => { tree!.root.find(n => n.props.testID === 'add-rate-customer-check-retry' && typeof n.props.onPress === 'function').props.onPress(); });
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no such strip when the state is simply not read yet', async () => {
+    jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
+    await act(async () => { tree = create(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={null} />); });
+    expect(JSON.stringify(tree!.toJSON())).not.toContain("Couldn't check this customer");
   });
 });
 

@@ -63,8 +63,6 @@ export interface ScopeRatesProps {
   onBar: (bar: RateSaveBarState | null) => void;
   /** Something in a box is changed and not saved. */
   onDirty: (dirty: boolean) => void;
-  /** Open the box for a new rate at once when the scope has no rate (the customer's "+ Add item"): no extra band. */
-  openAdd?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -326,7 +324,6 @@ export function ScopeRates({
   refreshRows,
   onBar,
   onDirty,
-  openAdd,
 }: ScopeRatesProps) {
   const styles = useThemedStyles(makeStyles);
   const actions = useRateActions(item);
@@ -337,9 +334,7 @@ export function ScopeRates({
   const writable = rights.canWrite && day === today;
 
   const [modes, setModes] = useState<Partial<Record<PriceType, PlanMode>>>({});
-  const [adding, setAdding] = useState<{ priceType?: PriceType; nonce: number } | null>(
-    () => (openAdd && writable && plan.plans.length === 0 ? { nonce: 0 } : null),
-  );
+  const [adding, setAdding] = useState<{ priceType?: PriceType; nonce: number } | null>(null);
   const [reports, setReports] = useState<Record<string, BoxReport>>({});
   // A save is done; the rows that come back close the correction or the new rate that was saved.
   const [savedFlag, setSavedFlag] = useState(false);
@@ -441,8 +436,8 @@ export function ScopeRates({
           type="primary"
           size="fullWidth"
           disabled={offline}
-          // A customer's first rate for the item is added on the full-screen form (owner, 2026-10-17).
-          onPress={() => router.push(customerRateAddPath(item.id, customerId, customerName || undefined))}
+          // A customer's first rate for the item is added on the full-screen form (owner, 2026-10-17). The button shows on a writable page only, so the customer is not deactivated.
+          onPress={() => router.push(customerRateAddPath(item.id, customerId, customerName || undefined, false))}
           testID="add-customer-rate"
         >
           {t('pricing.action.addCustomer')}

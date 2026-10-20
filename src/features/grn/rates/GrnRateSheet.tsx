@@ -459,7 +459,8 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
               set(kept);
               // A refused key says why at once; an accepted one takes the message away.
               setErrors(e => {
-                if (kept !== typed) return { ...e, rent: t('pricing.edit.err.rent') };
+                // The message stays while a stored rent that is too high is still in the box.
+                if (kept !== typed || (priceNumber(kept, 2) ?? 0) > RENT_MAX) return { ...e, rent: t('pricing.edit.err.rent') };
                 const { rent: _gone, ...rest } = e;
                 return rest;
               });

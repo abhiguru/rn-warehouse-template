@@ -435,7 +435,7 @@ describe('adding', () => {
     await press('add-customer-rate');
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer-add/[customerId]',
-      params: { itemId: 'onion', customerId: 'orchard-c', customer_name: 'Review Orchard C' },
+      params: { itemId: 'onion', customerId: 'orchard-c', customer_name: 'Review Orchard C', deactivated: '0' },
     });
     // No box opens on this page; the form saves the rate (its own tests).
     expect(cell('band-0-rent')).toBeUndefined();

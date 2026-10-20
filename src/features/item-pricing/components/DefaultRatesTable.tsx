@@ -11,7 +11,7 @@ import { DataTable } from '@/components/table/DataTable';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { typography } from '@/theme/tokens';
-import { bandText } from '../rateText';
+import { bandText, money } from '../rateText';
 import type { BandRow } from './BandList';
 
 const defaultColumn = createAppColumnHelper<BandRow>();
@@ -53,7 +53,7 @@ export function DefaultRatesTable({ bands, oneTime }: { bands: BandRow[]; oneTim
         cell: ({ row }) => {
           const under = stacked
             ? [
-                oneTime ? null : t('pricing.row.labour', { amount: labourText(row.original) }),
+                oneTime ? null : t('pricing.row.labour', { amount: money(Number(row.original.labour_rate)) }),
                 t('pricing.row.tax', { percent: taxText(row.original) }),
               ].filter(Boolean).join(' · ')
             : '';

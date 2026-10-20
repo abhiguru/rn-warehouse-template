@@ -109,8 +109,6 @@ export const items = {
     discardNewTitle: 'Discard this item?',
     discardNewMessage: 'The details you entered will be lost.',
     discardMessage: 'Your unsaved changes to this item will be lost.',
-    notFoundTitle: "Couldn't find this item",
-    notFoundMessage: 'It may have been deleted.',
     notFoundSentence: "Couldn't find this item. It may have been deleted.",
     someoneDeleted: 'Someone deleted this item.',
     alreadyAdded: '{{name}} is already in your items. Your last try may have added it.',

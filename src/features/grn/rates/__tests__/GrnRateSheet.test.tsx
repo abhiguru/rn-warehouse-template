@@ -111,6 +111,17 @@ describe('Add rate', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it('keeps the rent message while a stored rent above the limit stays in the box, and drops it once it is lowered', async () => {
+    open([stored(0, 50, 12000, '2026-01-01')], 12);
+    const ERR = 'Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.';
+    expect(input('Rent ₹/month')!.props.error).toBe(ERR);
+    // Typing one more digit than the stored rent has is refused, and the message stays; so does an accepted key that is still too high.
+    await type('Rent ₹/month', '12000');
+    expect(input('Rent ₹/month')!.props.error).toBe(ERR);
+    await type('Rent ₹/month', '9999');
+    expect(input('Rent ₹/month')!.props.error).toBeUndefined();
+  });
+
   it('refuses a tax above 100 and a rent with three decimals', async () => {
     open([], 12);
     await type('Rent ₹/month', '3.125'); await type('Labour ₹', '1'); await type('Tax', '101');

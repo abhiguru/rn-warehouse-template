@@ -95,7 +95,6 @@ describe('one word per idea', () => {
       '{{name}} saved.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       '{{name}} activated.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       '{{name}} deactivated.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
-      'details': 'the tab of an item page (વિગત, a draft awaiting the owner\'s wording review) and the step label of the forms (વિગતો)',
       'critical': 'a sensor status and a battery level',
     };
     const groups = new Map<string, Map<string, string[]>>();

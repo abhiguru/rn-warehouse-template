@@ -3,7 +3,7 @@ import { Text } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { listActiveItems, listAllRates, listItemRates } from '@/services/item-pricing-service';
 import { notifyRatesChanged } from '../contract';
-import { clearItemRatesCache, RATES_STALE_MS, useItemRates, useItemRatesFor, type UseItemRatesResult, type UseItemRatesForResult } from '../useItemRates';
+import { clearItemRatesCache, markItemRatesStale, reloadItemRatesCache, RATES_STALE_MS, useItemRates, useItemRatesFor, type UseItemRatesResult, type UseItemRatesForResult } from '../useItemRates';
 import { F1, ITEMS } from '@/tests/helpers/ratesFixtures';
 
 jest.mock('@/services/item-pricing-service', () => ({
@@ -62,7 +62,7 @@ describe('useItemRates', () => {
     act(() => view.unmount());
   });
 
-  it('a second mount with a fresh cache is ready at once and does not read again (P-16)', async () => {
+  it('a second mount with a fresh cache is ready at once and reads again in the background (P-16)', async () => {
     const first = wrap(<ListProbe />);
     await waitFor(() => expect(latest.status).toBe('ready'));
     act(() => first.unmount());
@@ -71,7 +71,7 @@ describe('useItemRates', () => {
     expect(latest.status).toBe('ready');
     expect(latest.items).toHaveLength(ITEMS.length);
     await flush();
-    expect(listAllRates).toHaveBeenCalledTimes(1);
+    expect(listAllRates).toHaveBeenCalledTimes(2);
     act(() => second.unmount());
   });
 
@@ -91,6 +91,34 @@ describe('useItemRates', () => {
     await act(async () => { slow.resolve(F1); });
     act(() => second.unmount());
     spy.mockRestore();
+  });
+
+  it('refreshIfStale skips a fresh cache, and reads again once markItemRatesStale was called', async () => {
+    const view = wrap(<ListProbe />);
+    await waitFor(() => expect(latest.status).toBe('ready'));
+    expect(listAllRates).toHaveBeenCalledTimes(1);
+    await act(async () => { await latest.refreshIfStale(); });
+    expect(listAllRates).toHaveBeenCalledTimes(1);
+    act(() => { markItemRatesStale(); });
+    await act(async () => { await latest.refreshIfStale(); });
+    expect(listAllRates).toHaveBeenCalledTimes(2);
+    act(() => view.unmount());
+  });
+
+  it('reloadItemRatesCache starts a new load even when one is running', async () => {
+    const view = wrap(<ListProbe />);
+    await waitFor(() => expect(latest.status).toBe('ready'));
+    const slow = deferred<typeof F1>();
+    jest.mocked(listAllRates).mockReturnValueOnce(slow.promise);
+    void reloadItemRatesCache();
+    const newer = F1.slice(0, 1);
+    jest.mocked(listAllRates).mockResolvedValueOnce(newer);
+    await act(async () => { await reloadItemRatesCache(); });
+    expect(listAllRates).toHaveBeenCalledTimes(3);
+    expect(latest.rates).toHaveLength(1);
+    await act(async () => { slow.resolve(F1); });
+    expect(latest.rates).toHaveLength(1);
+    act(() => view.unmount());
   });
 
   it('a failed first load is an error, not an empty list (P-15)', async () => {

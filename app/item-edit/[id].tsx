@@ -47,6 +47,9 @@ import {
 import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors, Item } from '@/types/item.types';
 
+// The active state is not edited here (it is on the item page), so the form holds no `active`.
+type EditFormData = Omit<ItemFormData, 'active'>;
+
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -75,11 +78,10 @@ const ItemEditScreen: React.FC = () => {
   const [originalItem, setOriginalItem] = useState<Item | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState<ItemFormData>({
+  const [formData, setFormData] = useState<EditFormData>({
     name: '',
     packaging: '',
     description: '',
-    active: true,
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
   const { groups, suggestions } = usePackagingWords();
@@ -105,7 +107,6 @@ const ItemEditScreen: React.FC = () => {
           name: item.name || '',
           packaging: item.packaging || '',
           description: item.description || '',
-          active: item.active ?? true,
         });
       } else if (result.code === 'NOT_FOUND') {
         // The server answered: there is no such item. The page says so, with Go back.
@@ -124,7 +125,7 @@ const ItemEditScreen: React.FC = () => {
 
   // Field change handlers
   const handleFieldChange = useCallback(
-    (field: keyof ItemFormData, value: string | boolean) => {
+    (field: keyof EditFormData, value: string) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
       // Clear error when user types
       if (errors[field as keyof ItemValidationErrors]) {
