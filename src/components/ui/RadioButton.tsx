@@ -396,6 +396,8 @@ export interface RadioGroupProps {
   disabled?: boolean;
   /** Container style override */
   style?: StyleProp<ViewStyle>;
+  /** Ref to the group's label text, so a screen can move screen-reader focus to it */
+  labelRef?: React.Ref<Text>;
 }
 
 export const RadioGroup: React.FC<RadioGroupProps> = ({
@@ -405,13 +407,14 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
   onValueChange,
   disabled = false,
   style,
+  labelRef,
 }) => {
   const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={[styles.radioGroupContainer, style]}>
       {label && (
-        <Text style={[styles.label, styles.labelStacked, disabled && styles.labelDisabled]}>
+        <Text ref={labelRef} accessible={labelRef ? true : undefined} style={[styles.label, styles.labelStacked, disabled && styles.labelDisabled]}>
           {label}
         </Text>
       )}

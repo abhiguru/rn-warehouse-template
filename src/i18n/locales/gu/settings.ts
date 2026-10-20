@@ -9,6 +9,8 @@ export const settings: Translation<typeof source> = {
   features: {
     title: 'વખારનાં સાધનો',
     customersSubtitle: 'જેમનો માલ તમે સાચવો છો તે ખેડૂતો અને વેપારી',
+    // Draft for the owner's wording review (access requests, 2026-10-20).
+    enrollmentReviewWaiting: '{{count}} અરજી બાકી',
     enrollmentReviewSubtitle: 'આ કોલ્ડ સ્ટોરેજ વાપરવા અરજી કરનાર લોકોને મંજૂરી આપો',
     itemsSubtitle: 'તમે સાચવો છો તે ઉપજ, જેમ કે બટાકા કે લસણ',
     usersSubtitle: 'લૉગિન કરી શકે તેવા લોકો, તેમનો હોદ્દો અને વેપારી',

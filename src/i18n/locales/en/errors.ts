@@ -447,7 +447,7 @@ export const errors = {
     updated: 'User updated successfully',
     accountDeleted: 'Account deleted successfully',
     selectExistingCustomer: 'Select at least one existing customer.',
-    enrollmentReviewNotAccepted: 'Enrollment review was not accepted.',
+    enrollmentReviewNotAccepted: 'The server did not accept this decision.',
     enrollmentAlreadyHandled: 'This request was already handled.',
     enrollmentServerNeedsUpdate: "This facility's server needs an update before a person can be approved as staff or a supervisor.",
   },

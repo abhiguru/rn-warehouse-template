@@ -7,9 +7,9 @@
  * deletion); Help and about (Help, terms, privacy); Development (development
  * builds only); the app version.
  */
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -46,6 +46,7 @@ import {
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { countPendingEnrollments } from '@/services/enrollmentReviewService';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
 
 const THEME_OPTIONS: {
@@ -83,6 +84,8 @@ const SettingsScreen: React.FC = () => {
   const { language, preference: languagePreference, setPreference: setLanguagePreference } = useAppLanguage();
   // A language change rebuilds this screen; the sheet that made it opens again.
   const [sheet, setSheet] = useState<PreferenceSheetId | null>(takeRememberedSheet);
+  // How many access requests wait, read each time Settings is shown (administrators only). Null: none, or not readable.
+  const [waitingRequests, setWaitingRequests] = useState<number | null>(null);
 
   const languageOptions: { value: LanguagePreference; label: string; accessibilityLabel: string; icon: string }[] = [
     { value: 'system', label: t('settings.language.system'), accessibilityLabel: t('settings.language.system'), icon: 'cellphone' },
@@ -109,12 +112,13 @@ const SettingsScreen: React.FC = () => {
 
   // Feature rows by role: the same table the server uses (src/config/roles.ts). A row of a
   // capability this facility does not have (Sensors) is not shown.
-  const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; route: string }> = {
+  const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; value?: string; route: string }> = {
     customers: { icon: 'account-outline', label: t('common.customers'), subtitle: t('settings.features.customersSubtitle'), route: '/customers' },
     enrollmentReview: {
       icon: 'account-plus-outline',
       label: t('auth.review.screenTitle'),
       subtitle: t('settings.features.enrollmentReviewSubtitle'),
+      value: waitingRequests ? t('settings.features.enrollmentReviewWaiting', { count: waitingRequests }) : undefined,
       route: '/enrollment-review',
     },
     items: { icon: 'cube-outline', label: t('common.items'), subtitle: t('settings.features.itemsSubtitle'), route: '/items' },
@@ -123,6 +127,15 @@ const SettingsScreen: React.FC = () => {
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
   const featureRows = settingsFeatureRows(userProfile?.role, capabilities);
+  const showsRequests = featureRows.includes('enrollmentReview');
+  useFocusEffect(useCallback(() => {
+    if (!showsRequests) { setWaitingRequests(null); return undefined; }
+    let current = true;
+    countPendingEnrollments()
+      .then(count => { if (current) setWaitingRequests(count > 0 ? count : null); })
+      .catch(() => { if (current) setWaitingRequests(null); });
+    return () => { current = false; };
+  }, [showsRequests]));
 
   // The server in use, named under "Change warehouse server" (as Help names the facility).
   const activeServer = getActiveOperatorServer();
@@ -182,6 +195,7 @@ const SettingsScreen: React.FC = () => {
                 icon={FEATURE_ROWS[feature].icon}
                 label={FEATURE_ROWS[feature].label}
                 subtitle={FEATURE_ROWS[feature].subtitle}
+                value={FEATURE_ROWS[feature].value}
                 onPress={() => router.push(FEATURE_ROWS[feature].route as never)}
                 last={index === featureRows.length - 1}
               />

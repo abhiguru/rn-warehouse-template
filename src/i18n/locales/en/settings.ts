@@ -8,6 +8,7 @@ export const settings = {
     title: 'Warehouse tools',
     customersSubtitle: 'Farmers and traders you store goods for',
     enrollmentReviewSubtitle: 'Approve people who asked to use this facility',
+    enrollmentReviewWaiting: '{{count}} waiting',
     itemsSubtitle: 'Produce you store, like potatoes or garlic',
     usersSubtitle: 'People who can sign in, their role and customers',
     standardRate: 'Standard rate',
