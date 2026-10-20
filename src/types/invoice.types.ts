@@ -1,4 +1,5 @@
 // Invoice form types for creation and editing
+import type { ServerRefusal } from '@/utils/serverRefusal';
 
 // Invoiceable GRN (available for invoice creation)
 export interface InvoiceableGrn {
@@ -140,6 +141,13 @@ export interface InvoiceFormState {
   invoice_id: string | null;
   selected_gr_id: string | null;
 
+  /**
+   * Edit only: the invoice's `updated_at` as it was read with the invoice (`get_invoice_detail`, backend migration 121),
+   * unchanged. It goes back with the update as `expected_updated_at`, so the server refuses a save over a change
+   * someone else made meanwhile (owner decision D1). null: none was read (a new invoice, or a server before 121).
+   */
+  loadedUpdatedAt: string | null;
+
   // Form data
   header: InvoiceHeaderData;
   items: InvoiceItemData[];
@@ -181,6 +189,16 @@ export interface CreateInvoicePayload {
     tax_amount: number;
     total: number;
     one_time_charge: boolean;
+    /**
+     * Edit only (D1): the `updated_at` the form was loaded with, sent as `expected_updated_at`. Left out of the
+     * request when the app holds none. Part of the captured payload, so a resend after a lost answer is identical.
+     */
+    expected_updated_at?: string | null;
+    /**
+     * The total the person confirmed in the save question (D18), sent as `expected_total`: the server refuses
+     * the save when its own total differs by more than 1. Left out of the request when not given.
+     */
+    expected_total?: number;
   };
   items: {
     disp_trl_id: string;
@@ -227,6 +245,8 @@ export interface InvoiceFormDataResponse {
   data: {
     header: Partial<InvoiceHeaderData> | InvoiceHeaderData;
     items: InvoiceItemData[];
+    /** Edit only: the invoice's `updated_at` as the server sent it (D1); absent from a server before migration 121. */
+    updated_at?: string;
   };
   message?: string;
   /** Set when the server refused the GRN itself: not fully dispatched, or already invoiced. */
@@ -254,4 +274,9 @@ export interface CreateInvoiceResponse {
    * between: the first send may have saved the invoice (`numberTaken` holds the number). No next number is offered.
    */
   numberMaybeSaved?: boolean;
+  /**
+   * The server refused the save for a reason the screen acts on by name (wave B): STALE_RECORD (D1), GRN_HAS_STOCK (D9)
+   * or TOTAL_CHANGED (D18). `message` is then only a fallback: the screen words it in the app's language from the fields.
+   */
+  refusal?: ServerRefusal;
 }

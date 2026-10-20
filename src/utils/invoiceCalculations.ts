@@ -346,6 +346,57 @@ export function recalculateItemWithEdits(
 }
 
 /**
+ * The duration and days the server worked out for one line of an invoice, in its refusal TOTAL_CHANGED (owner decision
+ * D18): the figures the total it names was made from.
+ */
+export interface ServerLineDuration {
+  disp_trl_id: string;
+  duration: number;
+  no_of_days: number;
+}
+
+/**
+ * The lines of a TOTAL_CHANGED refusal (`fields.lines`), as far as they are well formed: a dispatch line id, a duration
+ * above 0 and a whole number of days. Anything else is left out, so a line the app cannot read keeps its own figures.
+ */
+export function serverLineDurations(value: unknown): ServerLineDuration[] {
+  if (!Array.isArray(value)) return [];
+  const lines: ServerLineDuration[] = [];
+  value.forEach((entry) => {
+    if (typeof entry !== 'object' || entry === null) return;
+    const { disp_trl_id, duration, no_of_days } = entry as Record<string, unknown>;
+    const months = Number(duration);
+    const days = Number(no_of_days);
+    if (typeof disp_trl_id !== 'string' || disp_trl_id === '') return;
+    if (!Number.isFinite(months) || months <= 0 || !Number.isFinite(days) || days < 0) return;
+    lines.push({ disp_trl_id, duration: months, no_of_days: Math.round(days) });
+  });
+  return lines;
+}
+
+/**
+ * The lines with the server's own duration and days on every line it names (matched by dispatch line), and their
+ * amounts worked out again. Rates, discount and everything else the person typed are not touched. Returns the same
+ * array when no line changes.
+ */
+export function withServerDurations(
+  items: InvoiceItemData[],
+  lines: ServerLineDuration[]
+): InvoiceItemData[] {
+  if (lines.length === 0) return items;
+  const byLine = new Map<string, ServerLineDuration>();
+  lines.forEach((line) => byLine.set(line.disp_trl_id, line));
+  let changed = false;
+  const next = items.map((item) => {
+    const server = byLine.get(item.disp_trl_id);
+    if (!server || (server.duration === item.duration && server.no_of_days === item.no_of_days)) return item;
+    changed = true;
+    return recalculateItemWithEdits(item, { duration: server.duration, no_of_days: server.no_of_days });
+  });
+  return changed ? next : items;
+}
+
+/**
  * Apply group rates to the lines of one group, with override support.
  * Used by bulkUpdateItemGroupPricing reducer.
  *

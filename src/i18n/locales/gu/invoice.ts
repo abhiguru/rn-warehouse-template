@@ -296,6 +296,11 @@ export const invoice: Translation<typeof source> = {
     pdfCreateFailed: 'PDF બનાવી શકાઈ નથી. ફરી પ્રયાસ કરો.',
     pdfShareFailed: 'PDF શેર કરી શકાઈ નથી. ફરી પ્રયાસ કરો.',
   },
+  // Draft for the owner's wording review (2026-10-20).
+  refusal: {
+    hasStock: 'આવક પાવતી {{grn}} માં હજુ {{stock}} સ્ટોકમાં છે. પહેલા તેની જાવક કરો, પછી ઇન્વૉઇસ બનાવો.',
+    totalChanged: 'કુલ રકમ હવે {{current}} છે, {{expected}} નથી. રકમ તપાસીને ફરી સાચવો.',
+  },
   // The dialog after an invoice is saved
   success: {
     savedTitle: 'ઇન્વૉઇસ સચવાઈ ગયું',

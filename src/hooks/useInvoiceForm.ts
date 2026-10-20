@@ -29,6 +29,8 @@ import {
   setValidationError,
   clearValidationError,
   loadInvoiceFormData,
+  loadInvoiceEditData,
+  applyServerDurations,
   resetForm,
   numberRequested,
   numberAnswered,
@@ -59,6 +61,7 @@ import {
 import {
   getNextInvoiceNumber,
   loadInvoiceFormData as loadInvoiceFormDataService,
+  loadInvoiceData as loadInvoiceDataService,
   createInvoice,
   updateInvoice,
   invoiceFromStoredAnswer,
@@ -74,7 +77,9 @@ import { showAlert } from '@/utils/alert';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
-import { calculateFinancialYear } from '@/utils/invoiceCalculations';
+import { REFUSAL, refusalNumber, refusalString } from '@/utils/serverRefusal';
+import { formatCount } from '@/utils/formatters';
+import { calculateFinancialYear, formatInvoiceAmount, serverLineDurations } from '@/utils/invoiceCalculations';
 
 const log = createLogger('useInvoiceForm');
 
@@ -115,6 +120,13 @@ export interface SubmitFailureInfo {
   numberTaken?: boolean;
   /** The message is the one that says the invoice may already be saved: it is shown with only a way to close the form. */
   numberMaybeSaved?: boolean;
+  /**
+   * The invoice was changed by someone else after this form read it (STALE_RECORD, D1): nothing was saved. The screen asks
+   * `askStaleRecord('invoice')` instead of showing the message, and on "Open it again" calls `reloadInvoice`.
+   */
+  stale?: boolean;
+  /** The GRN still has stock (GRN_HAS_STOCK, D9): a new invoice goes back to step 1, where the GRN field is marked. */
+  grnHasStock?: boolean;
 }
 /** `busy`: a save is already on its way; this call did nothing. */
 export type SubmitResult = SubmitSuccess | SubmitFailure | 'busy';
@@ -153,6 +165,11 @@ export interface UseInvoiceFormReturn {
   savedGrId: string | null;
   /** Edit only: the GRN the invoice was saved with, as the picker lists it. */
   savedGrn: { id: string; gr_no: string; customer_name: string } | null;
+  /**
+   * Edit only: reads the invoice again from the server and replaces the form with it (the answer to "Open it again", D1).
+   * True when the form was replaced; false (form unchanged, a message shown) when it could not be read.
+   */
+  reloadInvoice: () => Promise<boolean>;
 
   // GRN
   /** Loads the lines of a GRN and puts them in the form; false (form unchanged, a message shown) when it fails. */
@@ -703,13 +720,25 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       // One request code for this save, made now and kept until its outcome is known (D22). Every send of this save,
       // the first and any send after a lost answer, is the identical request: the same payload and the same code.
       const requestKey = newInvoiceRequestKey(isCreateMode ? 'create' : 'update');
-      const payload: CreateInvoicePayload = isCreateMode
+      const base: CreateInvoicePayload = isCreateMode
         ? {
             // The service converts inv_fin_year from "2026-27" to the year it starts in.
             header: { ...header, inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10) },
             items,
           }
         : transformFormDataToPayload(header, items);
+      // What the server checks besides the figures (wave B), part of the captured payload like the request code, so every
+      // send of this save, a resend after a lost answer too, is the identical request. The total is the figure of the save
+      // question the person confirmed (D18). An edit also sends the version it was loaded from (D1), when it holds one.
+      const loadedUpdatedAt = isCreateMode ? null : store.getState().invoiceForm.loadedUpdatedAt;
+      const payload: CreateInvoicePayload = {
+        ...base,
+        header: {
+          ...base.header,
+          expected_total: header.total,
+          ...(loadedUpdatedAt ? { expected_updated_at: loadedUpdatedAt } : {}),
+        },
+      };
       const controller = new AbortController();
       saveAbort.current = controller;
       const outcome = await sendUntilAnswered({
@@ -748,6 +777,36 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         report(t('invoice.form.numberTakenTitle'), message, { numberTaken: true });
         return { success: false, error: message, numberTaken: true };
       }
+      const refusal = result.refusal;
+      if (refusal?.reason === REFUSAL.STALE_RECORD && !isCreateMode) {
+        // D1: someone else changed the invoice. The screen asks "Keep editing" or "Open it again"; the form is not touched.
+        report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')), { stale: true });
+        return { success: false, error: result.message };
+      }
+      const stock = refusal?.reason === REFUSAL.GRN_HAS_STOCK ? refusalNumber(refusal, 'stock') : undefined;
+      if (refusal && stock !== undefined) {
+        // D9: the GRN still has stock. A new invoice goes back to step 1 with the GRN field marked; an edit stays here.
+        const message = t('invoice.refusal.hasStock', {
+          grn: formatIdentifier(refusalString(refusal, 'gr_no') ?? header.gr_no),
+          stock: formatCount(stock, 'bag'),
+        });
+        if (isCreateMode) dispatch(setValidationError({ field: 'gr_id', message }));
+        report(t(failedTitleKey), message, isCreateMode ? { grnHasStock: true } : undefined);
+        return { success: false, error: message };
+      }
+      const currentTotal = refusal?.reason === REFUSAL.TOTAL_CHANGED ? refusalNumber(refusal, 'current_total') : undefined;
+      if (refusal && currentTotal !== undefined) {
+        // D18: the total the person confirmed is not the server's. The server's duration and days go on the lines it
+        // names and the figures are worked out again; the typed discount, reasons, rates, number and date stay. The form
+        // stays on this step, so the next Save sends the new total.
+        dispatch(applyServerDurations(serverLineDurations(refusal.fields.lines)));
+        const message = t('invoice.refusal.totalChanged', {
+          current: formatInvoiceAmount(currentTotal),
+          expected: formatInvoiceAmount(refusalNumber(refusal, 'expected_total') ?? header.total),
+        });
+        report(t(failedTitleKey), message);
+        return { success: false, error: message };
+      }
       // A refusal, or a failure before the request was sent. A lost answer is asked about above (D22), so the
       // old "it may have been saved, check the list" wording is not used for Save invoice and Update invoice.
       report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')));
@@ -763,6 +822,36 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       saveLock.current = false;
     }
   }, [header, items, invoiceId, isCreateMode, store, dispatch, runSchema, handleNumberTaken]);
+
+  /**
+   * "Open it again" after STALE_RECORD (D1): the invoice is read again and the form is replaced with what was read, with
+   * the version it carries. Done here, not by the edit layout, so the screens stay where they are and nothing is skipped
+   * because "this invoice is already loaded". The form is replaced only when the read worked.
+   */
+  const reloadInvoice = useCallback(async (): Promise<boolean> => {
+    if (isCreateMode || !invoiceId) return false;
+    // The form holds another invoice than this route's (J1): it is not replaced from here.
+    if (holdsAnotherInvoice(store.getState().invoiceForm.invoice_id, invoiceId)) return false;
+    try {
+      const result = await loadInvoiceDataService(invoiceId);
+      if (result.success && result.data) {
+        dispatch(loadInvoiceEditData({
+          invoiceId,
+          header: result.data.header as InvoiceHeaderData,
+          items: result.data.items,
+          grId: result.data.header.gr_id || '',
+          updatedAt: result.data.updated_at ?? null,
+        }));
+        return true;
+      }
+      showAlert(t('invoice.edit.openFailedTitle'), serverText(result.message, t('common.checkConnection')));
+      return false;
+    } catch (error) {
+      log.error('Failed to read the invoice again:', error);
+      showAlert(t('invoice.edit.openFailedTitle'), t('common.checkConnection'));
+      return false;
+    }
+  }, [isCreateMode, invoiceId, store, dispatch]);
 
   const restoreSavedLines = useCallback(() => {
     dispatch(restoreSavedGrn());
@@ -795,6 +884,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     hasTypedRates,
     savedGrId: baseline?.gr_id ?? null,
     savedGrn,
+    reloadInvoice,
 
     loadGRNData,
 

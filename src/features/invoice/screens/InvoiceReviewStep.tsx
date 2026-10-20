@@ -37,6 +37,7 @@ import { printInvoiceRange } from '@/services/print-service';
 import { generateInvoicePDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { showAlert } from '@/utils/alert';
+import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { showToast } from '@/utils/toast';
 import type { SavedInvoiceData } from '@/types/invoice.types';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
@@ -81,6 +82,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     updateDiscountAmount,
     updateHeaderField,
     loadGRNData,
+    reloadInvoice,
     navigateToStep,
     submitForm,
     lostAnswer,
@@ -270,6 +272,16 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     // A refusal is told once the question has closed, never over it. One call only: the latest `later` is the one kept.
     const result = await submitForm((title, message, info) => {
       confirmClosed.later(() => {
+        if (info?.stale) {
+          // Someone else changed the invoice (D1): nothing was saved. "Keep editing" leaves the form exactly as it is
+          // (a later Save is refused again until the invoice is opened again); "Open it again" replaces the form with
+          // the invoice as it is now and goes back to step 1.
+          void askStaleRecord('invoice').then(async (choice) => {
+            if (choice !== 'reload') return;
+            if (await reloadInvoice()) void navigateToStep(STEP_NUMBERS.HEADER);
+          });
+          return;
+        }
         if (info?.numberMaybeSaved) {
           // The save may already be on the server under this number: the only way out is to close the form and look in
           // the list. Nothing can be sent again from here, and no next number is offered.
@@ -285,7 +297,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
           showAlert(title, message);
         }
         // The invoice number is taken (I4): the step with the number field, which holds the next free number.
-        if (info?.numberTaken) void navigateToStep(STEP_NUMBERS.HEADER);
+        // The GRN still has stock (D9): the step with the GRN field, which is marked.
+        if (info?.numberTaken || info?.grnHasStock) void navigateToStep(STEP_NUMBERS.HEADER);
       });
     });
     if (result === 'busy') return;

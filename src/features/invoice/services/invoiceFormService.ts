@@ -15,6 +15,7 @@ import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
 import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
+import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -149,6 +150,31 @@ class NumberTakenError extends Error {
     this.taken = taken;
   }
 }
+
+/**
+ * The refusals of a save that a screen acts on by their reason (wave B): the invoice changed since it was opened (D1),
+ * the GRN still has stock (D9), the total the person confirmed is not the server's (D18). Any other refusal keeps the
+ * worded message below. The server runs the version check and the total check only after the answer stored under the
+ * request code is replayed, so a resend of this same save (same payload, same code) is answered with the stored answer
+ * and never refused as STALE_RECORD or TOTAL_CHANGED because of its own first send.
+ */
+const ACTED_ON_REASONS: ReadonlySet<string> = new Set([REFUSAL.STALE_RECORD, REFUSAL.GRN_HAS_STOCK, REFUSAL.TOTAL_CHANGED]);
+function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
+  const refusal = refusalOf(answer);
+  return refusal && ACTED_ON_REASONS.has(refusal.reason) ? refusal : undefined;
+}
+
+/** The result of a save that was refused for one of those reasons: the screen words it from `refusal`. */
+const refusedResponse = (refusal: ServerRefusal, fallback: string): CreateInvoiceResponse => ({
+  success: false,
+  data: { invoice_id: '', invoice_no: 0 },
+  message: serverText(refusal.text, fallback),
+  refusal,
+});
+
+/** A number the app holds for the server's own check (D1, D18): left out of the request when it is not a number. */
+const givenTotal = (total: unknown): { expected_total: number } | Record<string, never> =>
+  typeof total === 'number' && Number.isFinite(total) ? { expected_total: total } : {};
 
 /**
  * What `createInvoice` and `updateInvoice` are told besides the payload. `resend`: this is the identical request sent
@@ -699,6 +725,8 @@ export const createInvoice = async (
       one_time_charge: Boolean(payload.header.one_time_charge),
       is_auto_generated: false, // Manual creation
       ...zeroChargeHeader(payload),
+      // The total the person confirmed: the server refuses the save when its own total differs by more than 1 (D18).
+      ...givenTotal(payload.header.expected_total),
       ...(requestKey ? { request_key: requestKey } : {}),
     };
 
@@ -752,6 +780,8 @@ export const createInvoice = async (
     if (!data || !data.success) {
       const taken = numberTakenFrom(data, payload.header.inv_no);
       if (taken) throw new NumberTakenError(taken.number);
+      const refusal = actedOnRefusal(data);
+      if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'));
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
       throw new Error(errorMsg);
     }
@@ -971,6 +1001,9 @@ export const loadInvoiceData = async (
       data: {
         header: formattedHeader,
         items: formattedItems,
+        // The version token of the invoice (D1), as the server wrote it: sent back unchanged with the update.
+        // An older server sends none.
+        ...(typeof header.updated_at === 'string' && header.updated_at !== '' ? { updated_at: header.updated_at } : {}),
       },
       message: t('invoice.service.loaded'),
     };
@@ -1038,6 +1071,10 @@ export const updateInvoice = async (
       total: payload.header.total || 0,
       one_time_charge: payload.header.one_time_charge || false,
       ...zeroChargeHeader(payload),
+      // The version the form was loaded from: the server refuses the update when the invoice changed since (D1).
+      ...(payload.header.expected_updated_at ? { expected_updated_at: payload.header.expected_updated_at } : {}),
+      // The total the person confirmed: the server refuses the update when its own total differs by more than 1 (D18).
+      ...givenTotal(payload.header.expected_total),
       ...(requestKey ? { request_key: requestKey } : {}),
     };
 
@@ -1088,6 +1125,8 @@ export const updateInvoice = async (
           numberTaken: { number: taken.number },
         };
       }
+      const refusal = actedOnRefusal(result);
+      if (refusal) return refusedResponse(refusal, t('invoice.service.updateFailed'));
       const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'), result?.error_code);
       return {
         success: false,

@@ -13,6 +13,8 @@ import {
   calculateItemAmounts,
   recalculateItemWithEdits,
   applyBulkGroupPricing,
+  withServerDurations,
+  type ServerLineDuration,
 } from '@/utils/invoiceCalculations';
 
 import { toLocalISODate } from '@/utils/formatters';
@@ -138,6 +140,7 @@ export type InvoiceFormSliceState = InvoiceFormState & {
 const createInitialState = (formSession = 0): InvoiceFormSliceState => ({
   invoice_id: null,
   selected_gr_id: null,
+  loadedUpdatedAt: null,
   header: createInitialHeader(),
   items: [],
   editedItems: {},
@@ -467,10 +470,14 @@ const invoiceFormSlice = createSlice({
         header: InvoiceHeaderData;
         items: InvoiceItemData[];
         grId: string;
+        /** The invoice's `updated_at` as it was read (D1); absent when the server sent none. */
+        updatedAt?: string | null;
       }>
     ) => {
       // Set invoice ID to enable edit mode
       state.invoice_id = action.payload.invoiceId;
+      // The version this form starts from: the update sends it back, and the server refuses it when the invoice changed.
+      state.loadedUpdatedAt = action.payload.updatedAt || null;
 
       // Replace entire header with loaded data (no preservation needed in edit mode).
       // Remember the stored discount: only a changed discount needs a new reason.
@@ -518,6 +525,25 @@ const invoiceFormSlice = createSlice({
         // Frozen copies: see loadInvoiceFormData.
         items: state.items.map((item) => Object.freeze({ ...item })),
       };
+    },
+
+    // The server refused a save with TOTAL_CHANGED (D18): its own duration and days go on the lines it names, and the
+    // amounts and the header's totals are worked out again from them. Rates, discount, reasons, number and date are
+    // the person's and stay. A duration or days typed on a named line is dropped from its edits, or the next edit of
+    // that line would put the typed figure back over the server's.
+    applyServerDurations: (state, action: PayloadAction<ServerLineDuration[]>) => {
+      const lines = plainLines(state.items);
+      const next = withServerDurations(lines, action.payload);
+      if (next === lines) return;
+      const named = new Set(action.payload.map((line) => line.disp_trl_id));
+      lines.forEach((line) => {
+        const edits = state.editedItems[line.temp_id];
+        if (!edits || !named.has(line.disp_trl_id)) return;
+        delete edits.duration;
+        delete edits.no_of_days;
+      });
+      state.items = next;
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
     },
 
     // An edit that moved to another GRN goes back to the GRN it was saved with: the saved lines, discount and
@@ -596,6 +622,7 @@ export const {
   clearValidationError,
   loadInvoiceFormData,
   loadInvoiceEditData,
+  applyServerDurations,
   restoreSavedGrn,
   resetForm,
   numberRequested,

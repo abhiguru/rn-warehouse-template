@@ -99,6 +99,8 @@ export default function InvoiceEditLayout() {
           header: result.data.header as InvoiceHeaderData,
           items: result.data.items,
           grId: result.data.header.gr_id || '',
+          // The version the invoice was read at: the update sends it back, so a change by someone else is refused (D1).
+          updatedAt: result.data.updated_at ?? null,
         }));
         setPhase('ready');
       } else {
