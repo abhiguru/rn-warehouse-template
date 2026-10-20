@@ -69,7 +69,8 @@ export function zeroChargeNeedsReason(
 
 /**
  * The text of the question before an invoice is saved or updated: the customer
- * and the estimated total and, when lines have a charge of 0, how many do.
+ * and the total (which the server checks: a different total saves nothing) and, when lines have a charge of 0, how
+ * many do.
  *
  * The last line is for every role. A line can be free on purpose, or because
  * its item has no price in the price list (it then arrives with a charge of
@@ -357,7 +358,8 @@ export interface ServerLineDuration {
 
 /**
  * The lines of a TOTAL_CHANGED refusal (`fields.lines`), as far as they are well formed: a dispatch line id, a duration
- * above 0 and a whole number of days. Anything else is left out, so a line the app cannot read keeps its own figures.
+ * above 0 and a whole number of days (a negative one too: old rows hold them, and the server counted with it). Anything
+ * else is left out, so a line the app cannot read keeps its own figures.
  */
 export function serverLineDurations(value: unknown): ServerLineDuration[] {
   if (!Array.isArray(value)) return [];
@@ -368,7 +370,7 @@ export function serverLineDurations(value: unknown): ServerLineDuration[] {
     const months = Number(duration);
     const days = Number(no_of_days);
     if (typeof disp_trl_id !== 'string' || disp_trl_id === '') return;
-    if (!Number.isFinite(months) || months <= 0 || !Number.isFinite(days) || days < 0) return;
+    if (!Number.isFinite(months) || months <= 0 || !Number.isFinite(days)) return;
     lines.push({ disp_trl_id, duration: months, no_of_days: Math.round(days) });
   });
   return lines;

@@ -83,6 +83,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     updateHeaderField,
     loadGRNData,
     reloadInvoice,
+    reloading,
     navigateToStep,
     submitForm,
     lostAnswer,
@@ -273,9 +274,10 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     const result = await submitForm((title, message, info) => {
       confirmClosed.later(() => {
         if (info?.stale) {
-          // Someone else changed the invoice (D1): nothing was saved. "Keep editing" leaves the form exactly as it is
-          // (a later Save is refused again until the invoice is opened again); "Open it again" replaces the form with
-          // the invoice as it is now and goes back to step 1.
+          // Someone else changed the invoice (D1), or the server's total is one the form cannot work out (D18): nothing
+          // was saved. "Keep editing" leaves the form exactly as it is (a later Save is refused again until the invoice
+          // is opened again); "Open it again" replaces the form with the invoice as it is now and goes back to step 1.
+          // The bottom bar and the step links wait while it is read (`reloading`).
           void askStaleRecord('invoice').then(async (choice) => {
             if (choice !== 'reload') return;
             if (await reloadInvoice()) void navigateToStep(STEP_NUMBERS.HEADER);
@@ -299,6 +301,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         // The invoice number is taken (I4): the step with the number field, which holds the next free number.
         // The GRN still has stock (D9): the step with the GRN field, which is marked.
         if (info?.numberTaken || info?.grnHasStock) void navigateToStep(STEP_NUMBERS.HEADER);
+        // The server's total differs (D18): the Charges section is open, with the figures worked out again.
+        if (info?.totalChanged) show('charges');
       });
     });
     if (result === 'busy') return;
@@ -447,8 +451,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         // The question's buttons then read "Keep waiting" / "Leave anyway" (see GenericStepIndicatorHeader).
         disabled={lostAnswer}
         leaveWarning={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
-        // The step circles go nowhere while the answer is lost.
-        onStepPress={lostAnswer ? undefined : handleStepPress}
+        // The step circles go nowhere while the answer is lost, or while the invoice is read again (D1).
+        onStepPress={lostAnswer || reloading ? undefined : handleStepPress}
         invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
         isEditMode={isEdit}
       />
@@ -468,7 +472,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             id="details"
             testIDPrefix="invoice-review"
             title={tr('invoice.review.invoiceDetails')}
-            onEdit={lostAnswer ? undefined : () => handleStepPress(STEP_NUMBERS.HEADER)}
+            onEdit={lostAnswer || reloading ? undefined : () => handleStepPress(STEP_NUMBERS.HEADER)}
             editLabel={tr('invoice.review.editDetailsA11y')}
             closedLine={[
               header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
@@ -495,7 +499,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             testIDPrefix="invoice-review"
             title={tr('common.items')}
             count={groupCount}
-            onEdit={lostAnswer ? undefined : () => handleStepPress(STEP_NUMBERS.ITEMS)}
+            onEdit={lostAnswer || reloading ? undefined : () => handleStepPress(STEP_NUMBERS.ITEMS)}
             editLabel={tr('invoice.review.editItemsA11y')}
             closedLine={formatCount(totalQty, 'bag')}
             open={openSection === 'items'}
@@ -537,12 +541,13 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         currentStep={STEP_NUMBERS.REVIEW}
         totalSteps={3}
         onPrevious={handleBack}
-        // No way to another step while the answer of the save is lost (D22), and no second Save or Update.
-        showPrevious={!lostAnswer}
+        // No way to another step while the answer of the save is lost (D22) or the invoice is read again (D1), and no
+        // second Save or Update.
+        showPrevious={!lostAnswer && !reloading}
         previousAccessibilityLabel={tr('invoice.review.backToItems')}
         onNext={handleSubmit}
         nextLabel={saveLabel}
-        nextDisabled={lostAnswer}
+        nextDisabled={lostAnswer || reloading}
         isLoading={isSaving}
         loadingLabel={tr('common.saving')}
       />

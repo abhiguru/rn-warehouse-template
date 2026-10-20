@@ -121,10 +121,13 @@ export interface SubmitFailureInfo {
   /** The message is the one that says the invoice may already be saved: it is shown with only a way to close the form. */
   numberMaybeSaved?: boolean;
   /**
-   * The invoice was changed by someone else after this form read it (STALE_RECORD, D1): nothing was saved. The screen asks
+   * The invoice was changed by someone else after this form read it (STALE_RECORD, D1), or the server's total is one this
+   * form cannot work out even from the server's own durations (TOTAL_CHANGED, D18): nothing was saved. The screen asks
    * `askStaleRecord('invoice')` instead of showing the message, and on "Open it again" calls `reloadInvoice`.
    */
   stale?: boolean;
+  /** The server's total differs from the form's (TOTAL_CHANGED, D18) and the form now holds the server's figures: the Charges section is opened. */
+  totalChanged?: boolean;
   /** The GRN still has stock (GRN_HAS_STOCK, D9): a new invoice goes back to step 1, where the GRN field is marked. */
   grnHasStock?: boolean;
 }
@@ -170,6 +173,8 @@ export interface UseInvoiceFormReturn {
    * True when the form was replaced; false (form unchanged, a message shown) when it could not be read.
    */
   reloadInvoice: () => Promise<boolean>;
+  /** Edit only: the invoice is being read again ("Open it again"). The bottom bar and the step links wait for it. */
+  reloading: boolean;
 
   // GRN
   /** Loads the lines of a GRN and puts them in the form; false (form unchanged, a message shown) when it fails. */
@@ -328,6 +333,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   // An answer is lost (D22): held here, in the hook of the screen that saves. The controller ends the asking when the
   // person leaves the form (or the screen goes), so nothing is sent from a form that is gone.
   const [lostAnswer, setLostAnswer] = useState(false);
+  // The invoice is being read again after "Open it again" (D1): the form is about to be replaced.
+  const [reloading, setReloading] = useState(false);
   const saveAbort = useRef<AbortController | null>(null);
   useEffect(() => () => saveAbort.current?.abort(), []);
   const leaveAfterLostAnswer = useCallback(() => {
@@ -800,11 +807,24 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         // names and the figures are worked out again; the typed discount, reasons, rates, number and date stay. The form
         // stays on this step, so the next Save sends the new total.
         dispatch(applyServerDurations(serverLineDurations(refusal.fields.lines)));
+        // The form cannot work out the server's total when its own, from the server's durations, is still more than 1 away
+        // (the server accepts a total within 1): sending the new figure again would be refused again, and so on. The lines
+        // are read again instead: a new invoice offers "Reload lines", an edit "Open it again".
+        const formTotal = store.getState().invoiceForm.header.total;
+        if (Math.abs(formTotal - currentTotal) > 1) {
+          if (isCreateMode) {
+            const message = t('invoice.review.grnChanged');
+            report(t(failedTitleKey), message, { reloadLines: true });
+            return { success: false, error: message, reloadLines: true };
+          }
+          report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')), { stale: true });
+          return { success: false, error: result.message };
+        }
         const message = t('invoice.refusal.totalChanged', {
           current: formatInvoiceAmount(currentTotal),
           expected: formatInvoiceAmount(refusalNumber(refusal, 'expected_total') ?? header.total),
         });
-        report(t(failedTitleKey), message);
+        report(t(failedTitleKey), message, { totalChanged: true });
         return { success: false, error: message };
       }
       // A refusal, or a failure before the request was sent. A lost answer is asked about above (D22), so the
@@ -830,8 +850,12 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
    */
   const reloadInvoice = useCallback(async (): Promise<boolean> => {
     if (isCreateMode || !invoiceId) return false;
-    // The form holds another invoice than this route's (J1): it is not replaced from here.
-    if (holdsAnotherInvoice(store.getState().invoiceForm.invoice_id, invoiceId)) return false;
+    // The form holds another invoice than this route's (J1): it is not replaced from here, and the person is told why.
+    if (holdsAnotherInvoice(store.getState().invoiceForm.invoice_id, invoiceId)) {
+      showAlert(t('invoice.edit.otherInvoiceTitle'), t('invoice.edit.otherInvoiceMessage'));
+      return false;
+    }
+    setReloading(true);
     try {
       const result = await loadInvoiceDataService(invoiceId);
       if (result.success && result.data) {
@@ -850,6 +874,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       log.error('Failed to read the invoice again:', error);
       showAlert(t('invoice.edit.openFailedTitle'), t('common.checkConnection'));
       return false;
+    } finally {
+      setReloading(false);
     }
   }, [isCreateMode, invoiceId, store, dispatch]);
 
@@ -885,6 +911,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     savedGrId: baseline?.gr_id ?? null,
     savedGrn,
     reloadInvoice,
+    reloading,
 
     loadGRNData,
 

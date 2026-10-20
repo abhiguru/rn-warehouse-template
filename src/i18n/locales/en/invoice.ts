@@ -256,7 +256,7 @@ export const invoice = {
     updateInvoice: 'Update invoice',
     saveTitle: 'Save invoice {{number}}?',
     updateTitle: 'Update invoice {{number}}?',
-    confirmMessage: '{{customer}}\nEstimated total {{total}}\nThe server works out the final total when the invoice is saved.',
+    confirmMessage: '{{customer}}\nTotal {{total}}\nIf the server works out a different total, nothing is saved and the new total is shown.',
     // Added to the question before saving, for every role, when lines have a charge of 0.
     zeroChargeCount: { one: '{{count}} item has a charge of 0.', other: '{{count}} items have a charge of 0.' },
     noItemsMessage: 'Go back to the details step and select a GRN that has dispatched items.',
@@ -288,8 +288,8 @@ export const invoice = {
   },
   // Refusals of a save that the app words itself, from the server's reason and fields (backend migration 121)
   refusal: {
-    // D9: no invoice while the GRN still has stock. {{stock}} is a count of bags, {{grn}} the GRN's number.
-    hasStock: 'GRN {{grn}} still has {{stock}} in stock. Dispatch it first, then make the invoice.',
+    // D9: no invoice while the GRN still has stock (new invoice and edit alike). {{stock}} is a count of bags, {{grn}} the GRN's number.
+    hasStock: 'GRN {{grn}} still has {{stock}} in stock. Dispatch it first, then save the invoice.',
     // D18: the total the person confirmed is not the server's. Both are amounts in rupees.
     totalChanged: 'The total is now {{current}}, not {{expected}}. Review the figures and save again.',
   },

@@ -265,7 +265,8 @@ export const invoice: Translation<typeof source> = {
     updateInvoice: 'ઇન્વૉઇસ અપડેટ કરો',
     saveTitle: 'ઇન્વૉઇસ {{number}} સાચવવું છે?',
     updateTitle: 'ઇન્વૉઇસ {{number}} અપડેટ કરવું છે?',
-    confirmMessage: '{{customer}}\nઅંદાજિત કુલ {{total}}\nઇન્વૉઇસ સચવાય ત્યારે છેલ્લી રકમ સર્વર ગણે છે.',
+    // Draft for the owner's wording review (2026-10-20): the server checks the total shown here.
+    confirmMessage: '{{customer}}\nકુલ {{total}}\nસર્વર જુદી કુલ રકમ ગણે તો કંઈ સચવાશે નહીં અને નવી રકમ બતાવાશે.',
     // Added to the question before saving, for every role, when lines have a charge of 0.
     zeroChargeCount: { one: '{{count}} આઇટમનો ભાડાનો દર ૦ છે.', other: '{{count}} આઇટમનો ભાડાનો દર ૦ છે.' },
     noItemsMessage: 'વિગતોના પગલા પર પાછા જાઓ અને જેમાંથી માલની જાવક થઈ હોય એવી આવક પાવતી પસંદ કરો.',
@@ -298,7 +299,7 @@ export const invoice: Translation<typeof source> = {
   },
   // Draft for the owner's wording review (2026-10-20).
   refusal: {
-    hasStock: 'આવક પાવતી {{grn}} માં હજુ {{stock}} સ્ટોકમાં છે. પહેલા તેની જાવક કરો, પછી ઇન્વૉઇસ બનાવો.',
+    hasStock: 'આવક પાવતી {{grn}} માં હજુ {{stock}} સ્ટોકમાં છે. પહેલા તેની જાવક કરો, પછી ઇન્વૉઇસ સાચવો.',
     totalChanged: 'કુલ રકમ હવે {{current}} છે, {{expected}} નથી. રકમ તપાસીને ફરી સાચવો.',
   },
   // The dialog after an invoice is saved

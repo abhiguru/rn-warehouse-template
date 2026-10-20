@@ -529,20 +529,13 @@ const invoiceFormSlice = createSlice({
 
     // The server refused a save with TOTAL_CHANGED (D18): its own duration and days go on the lines it names, and the
     // amounts and the header's totals are worked out again from them. Rates, discount, reasons, number and date are
-    // the person's and stay. A duration or days typed on a named line is dropped from its edits, or the next edit of
-    // that line would put the typed figure back over the server's.
+    // the person's and stay. A duration is never typed on this form, so no typed edit is touched. The header's totals
+    // are worked out again even when no line changed: they may have drifted from the lines, and the caller compares them
+    // with the server's total.
     applyServerDurations: (state, action: PayloadAction<ServerLineDuration[]>) => {
       const lines = plainLines(state.items);
       const next = withServerDurations(lines, action.payload);
-      if (next === lines) return;
-      const named = new Set(action.payload.map((line) => line.disp_trl_id));
-      lines.forEach((line) => {
-        const edits = state.editedItems[line.temp_id];
-        if (!edits || !named.has(line.disp_trl_id)) return;
-        delete edits.duration;
-        delete edits.no_of_days;
-      });
-      state.items = next;
+      if (next !== lines) state.items = next;
       Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
     },
 
