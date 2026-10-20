@@ -1,18 +1,16 @@
 import type { PriceType } from '@/types/item-pricing.types';
 
 /**
- * How a rate form opens. The rate boxes (useRateEditor) use every mode; the edit screen (/item-rates/edit) is
- * opened with 'invoice' only (no screen opens it since 2026-10-19: the invoice pricing pencil was removed; kept until
- * the owner decides whether to remove it), and resolves it to a mode itself (section 10).
+ * How a rate form opens. The rate boxes (useRateEditor) use every mode.
  */
-export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming' | 'invoice';
+export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming';
 
-/** What a rate form needs to open. Router params are strings; snake_case names are the ones the invoice screen sends. */
+/** What a rate form needs to open. Built by useRateEditor from its args; the snake_case names are kept from the old route params. */
 export type EditorParams = {
   mode: EditorMode;
   item_id: string;
   item_name?: string;
-  /** Missing = the default rate (all customers); for 'addCustomer' missing = the edit screen cannot open. */
+  /** Missing = the default rate (all customers); for 'addCustomer' it is required. */
   customer_id?: string;
   customer_name?: string;
   price_type?: PriceType;
@@ -20,16 +18,6 @@ export type EditorParams = {
   starts_on?: string;
   /** '1': the form opens with one empty band added after the last (the Add button of the Item pricing list). */
   add_band?: '1';
-  // Invoice prefill (mode 'invoice'): the line as the invoice shows it.
-  unit_price?: string;
-  labour_rate?: string;
-  tax_percent?: string;
-  weight_min?: string;
-  weight_max?: string;
-  /** Goods-received date (YYYY-MM-DD) of the line. */
-  grn_date?: string;
-  /** '1' when the tapped invoice group holds lots of several received days (grn_date is the latest). */
-  grn_dates_differ?: '1';
 };
 
 /** The stop screen. price_type and the scope decide what stops; the last day is chosen on the screen. */
@@ -73,9 +61,6 @@ export const customerRateAddPath = (itemId: string, customerId: string, customer
     pathname: '/item-rates/[itemId]/customer-add/[customerId]',
     params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}) },
   }) as const;
-/** What the edit screen is opened with: formerly the price pencil of an invoice line; no screen opens it since 2026-10-19. */
-export type InvoiceEditorParams = EditorParams & { mode: 'invoice' };
-export const editorPath = (params: InvoiceEditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
 export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string } = {}) =>
   ({ pathname: '/item-price-history', params: p }) as const;

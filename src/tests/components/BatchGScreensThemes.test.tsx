@@ -16,7 +16,7 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
-  useLocalSearchParams: () => ({ id: 'i1', userId: 'u1', itemId: 'i1', customerId: 'c1', item_id: 'i1', mode: 'change', price_type: 'monthly' }),
+  useLocalSearchParams: () => ({ id: 'i1', userId: 'u1', itemId: 'i1', customerId: 'c1', item_id: 'i1', price_type: 'monthly' }),
   Stack: { Screen: () => null },
   useIsFocused: () => true,
   useFocusEffect: jest.fn(),
@@ -150,7 +150,6 @@ import UsersScreen from '../../../app/users';
 import ItemEditScreen from '../../../app/item-edit/[id]';
 import ItemPricingScreen from '../../../app/item-pricing';
 import ItemRatesPageScreen from '../../../app/item-rates/[itemId]';
-import RateEditorScreen from '../../../app/item-rates/edit';
 import RateStopScreen from '../../../app/item-rates/stop';
 import CustomerRatePageScreen from '../../../app/item-rates/[itemId]/customer/[customerId]';
 import UserEditScreen from '../../../app/user-edit/[id]';
@@ -178,7 +177,6 @@ const SCREENS: Array<[string, () => React.ReactElement, string | ((t: ReturnType
   ['item pricing', () => <ItemPricingScreen />, t => t.background.base],
   ['item rates page', () => <ItemRatesPageScreen />, t => t.background.base],
   ['customer rate page', () => <CustomerRatePageScreen />, t => t.background.base],
-  ['rate editor', () => <RateEditorScreen />, t => t.background.base],
   ['rate stop', () => <RateStopScreen />, t => t.background.base],
   ['own profile edit', () => <OwnProfileEditScreen />, t => t.background.base],
   ['help', () => <HelpScreen />, t => t.background.grouped],

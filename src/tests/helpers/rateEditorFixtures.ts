@@ -38,7 +38,6 @@ export const rate = (
   created_by: '',
 });
 
-export const ORCHARD_A = { id: 'cust-a', name: 'Review Orchard A' };
 export const ORCHARD_B = { id: 'cust-b', name: 'Review Orchard B' };
 
 export const cuminRows = () => [
@@ -58,19 +57,8 @@ export const gingerRows = () => [rate('ginger', null, 0, 100, 8, 2, 5, '2025-01-
 export const textsOf = (tree: ReactTestRenderer): string[] =>
   tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
 
-export const inputWithLabel = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(Input).find(n => n.props.label === label);
-
 export const inputsWithLabel = (tree: ReactTestRenderer, label: string) =>
   tree.root.findAllByType(Input).filter(n => n.props.label === label);
-
-/** A pressable that carries this label or this text. */
-export const pressable = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(
-    n =>
-      typeof n.props.onPress === 'function' &&
-      (n.props.accessibilityLabel === label || n.props.children === label || (n.findAllByType(Text).some(x => x.props.children === label)))
-  )[0];
 
 /** The chip of a radio group (ChoiceChips). */
 export const chip = (tree: ReactTestRenderer, label: string) =>

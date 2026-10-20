@@ -1,8 +1,8 @@
 /**
  * useRateEditor: opening a draft from the item's rows, what counts as a change, the payload of the save, the
- * LATER_RATES_EXIST question and every refusal of the server. It serves the rate boxes (every mode) and the edit
- * screen of the invoice pencil; the modes that only the boxes use (change, add, correct, upcoming, add_band, copy
- * bands, the start-day floor) are tested here, the screens have their own tests.
+ * LATER_RATES_EXIST question and every refusal of the server. It serves the rate boxes and the Add customer rate form; every mode (change,
+ * add, addCustomer, correct, upcoming, add_band, copy bands, the start-day floor) is tested here; the screens have
+ * their own tests.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';

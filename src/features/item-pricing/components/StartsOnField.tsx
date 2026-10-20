@@ -23,8 +23,6 @@ interface Props {
   earliest?: string | null;
   /** Admin and supervisor may start a rate in the past (up to three years back). */
   canStartInPast: boolean;
-  /** An invoice line's goods-received day, offered as the first chip when it is before today. */
-  receivedDay?: string | null;
   /** The day is the rate's own and cannot be chosen (a correction). */
   fixed?: boolean;
   error?: string;
@@ -42,7 +40,7 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function StartsOnField({ choice, day, today, earliest, canStartInPast, receivedDay, fixed, error, onChange, hideRequired = false }: Props) {
+export function StartsOnField({ choice, day, today, earliest, canStartInPast, fixed, error, onChange, hideRequired = false }: Props) {
   const styles = useThemedStyles(makeStyles);
   const chips = startChips(today);
   const nextMonth = chips.find(c => c.id === 'nextMonth')?.day ?? today;
@@ -67,7 +65,6 @@ export function StartsOnField({ choice, day, today, earliest, canStartInPast, re
   }
 
   const options = [
-    ...(receivedDay && receivedDay < today ? [{ value: 'received' as const, label: t('pricing.edit.received', { date: dateText(receivedDay) }) }] : []),
     { value: 'today' as const, label: t('pricing.edit.today') },
     ...chips.filter(c => c.id !== 'today').map(c => ({ value: c.id, label: dateText(c.day) })),
     { value: 'other' as const, label: t('pricing.edit.otherDate') },
@@ -75,7 +72,6 @@ export function StartsOnField({ choice, day, today, earliest, canStartInPast, re
 
   const pick = (next: StartsOnChoice) => {
     if (next === 'today') return onChange('today', today);
-    if (next === 'received' && receivedDay) return onChange('received', receivedDay);
     const chip = chips.find(c => c.id === next);
     if (chip) return onChange(chip.id, chip.day);
     // Other date: the calendar opens at once on Android, on the first of next month.

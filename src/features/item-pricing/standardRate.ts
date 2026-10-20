@@ -31,7 +31,6 @@ export function standardContext(today: string): EditorContext {
     editingIds: [],
     originalStart: null,
     copied: false,
-    invoice: null,
   };
 }
 

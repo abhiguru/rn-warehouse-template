@@ -1,7 +1,7 @@
 /**
  * The state and the save flow of one rate form: opening a draft from the item's rows, the edits, whether
  * anything changed, and the save with every answer of replace_item_rates mapped to what the person sees.
- * Ported from app/item-rates/edit.tsx, which now uses it; the item page's rate boxes use it too.
+ * Used by the rate boxes of the item page and the customer's rate pages.
  *
  * The hook does not load the rows: the caller reads them (listItemRates / the session cache) and passes them
  * in, `null` while they load. A new `rows` array opens a new draft. `refreshRows` is called when the server says
@@ -49,8 +49,8 @@ export interface UseRateEditorArgs {
   priceType?: PriceType;
   mode: EditorMode;
   /**
-   * The other editor params it needs: `starts_on` and `weight_max` (and the rest of the invoice line) for
-   * 'correct', 'upcoming' and 'invoice'; `add_band: '1'` for one more empty band. `item_id`, `item_name`,
+   * The other editor params it needs: `starts_on` for
+   * 'correct' and 'upcoming'; `add_band: '1'` for one more empty band. `item_id`, `item_name`,
    * `customer_id`, `customer_name`, `price_type` and `mode` come from the other args.
    */
   params?: Partial<EditorParams>;

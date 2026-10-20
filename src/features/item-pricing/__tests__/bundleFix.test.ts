@@ -101,32 +101,6 @@ describe('F11 / F12: the replace question names every planned rate, and a rate o
   });
 });
 
-describe('F14: the invoice pencil with an own rate that does not hold the line weight', () => {
-  const rows = [row(null, 0, 100, 3.5, '2025-01-01', null), row(CUST, 0, 40, 3, '2026-01-01', null)];
-  const line = { customer_id: CUST, customer_name: 'Review Orchard A', grn_date: '2026-10-01', unit_price: '3.50', labour_rate: '1.75', tax_percent: '5', weight_max: '60' };
-
-  it('does not correct the 0-40 band: it keeps it and adds a band for 60 kg', () => {
-    const { draft, context } = open('invoice', line, rows);
-    expect(context.mode).toBe('addCustomer');
-    expect(draft.bands.map(b => [fromOf(draft, draft.bands.indexOf(b)), b.upTo, b.rent])).toEqual([[0, '40', '3.00'], [41, '60', '3.50']]);
-    expect(draft.labour).toBe('1.75');
-  });
-
-  it('an own band that holds the weight is still corrected', () => {
-    const { draft, context } = open('invoice', { ...line, weight_max: '30', unit_price: '3.25' }, rows);
-    expect(context.mode).toBe('correct');
-    expect(draft.bands[0].rent).toBe('3.25');
-  });
-
-  it('a weight below an own rate that starts higher gets the band before it', () => {
-    const heavy = [row(null, 0, 100, 3.5, '2025-01-01', null), row(CUST, 51, 100, 4, '2026-01-01', null)];
-    const { draft } = open('invoice', { ...line, weight_max: '30' }, heavy);
-    expect(draft.firstFrom).toBe(0);
-    expect(draft.bands.map(b => b.upTo)).toEqual(['50', '100']);
-    expect(draft.bands[0].rent).toBe('3.50');
-  });
-});
-
 describe('F15: Add monthly rate beside a one-time default', () => {
   it('asks for the labour instead of prefilling 0.00', () => {
     const rows = [row(null, 0, 100, 20, '2025-01-01', null, 'one_time', 0)];

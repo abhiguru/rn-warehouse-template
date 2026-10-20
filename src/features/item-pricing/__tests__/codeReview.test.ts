@@ -1,7 +1,7 @@
 /**
  * Code-review fixes of the rate editor's rules (CR-01, 02, 03, 09, 16): moving a planned rate,
  * keeping a scheduled stop, correcting without touching later rates, defaults that start at 0 kg
- * and the invoice pencil for staff.
+ * and the Correct rate sent as the correct mode.
  */
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { keptEnd, initialDraft, rateAfterCustomerStop, setStartsOn, setBandField, summaryLines, toReplaceInput, validate } from '../editModel';
@@ -92,17 +92,6 @@ describe('CR-03: a correction sends the correct mode', () => {
     row(CUSTOMER_B, 0, 100, 10, '2026-01-01', '2026-03-31'),
     row(CUSTOMER_B, 0, 100, 11, '2026-04-01', null),
   ];
-
-  it('the invoice pencil of a supervisor corrects the rate of the goods-received day', () => {
-    const { draft, context } = open('invoice', {
-      customer_id: CUSTOMER_B, price_type: 'monthly', unit_price: '10', labour_rate: '3', tax_percent: '5',
-      weight_min: '0', weight_max: '50', grn_date: '2026-02-10',
-    }, rows, 'supervisor');
-    expect(context.mode).toBe('correct');
-    const input = toReplaceInput(draft, context);
-    expect(input.mode).toBe('correct');
-    expect(input.starts_on).toBe('2026-01-01');
-  });
 
   it('Correct this rate on the item page sends the correct mode with the rate\'s own start', () => {
     const { draft, context } = open('correct', { customer_id: CUSTOMER_B, price_type: 'monthly', starts_on: '2026-04-01' }, rows);
