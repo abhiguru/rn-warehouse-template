@@ -64,7 +64,7 @@ export const customerRateAddPath = (itemId: string, customerId: string, customer
   }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
 /** The changes of one item or of one customer's rate for an item. */
-export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string }) =>
+export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string; customer_name?: string }) =>
   ({ pathname: '/item-price-history', params: p }) as const;
 
 // A save in the editor, the stop screen or a delete tells the pages that show rates to refetch that item.

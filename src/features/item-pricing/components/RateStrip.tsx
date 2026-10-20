@@ -17,6 +17,8 @@ export interface RateStripAction {
   a11yLabel?: string;
   onPress: () => void;
   disabled?: boolean;
+  /** Said by a screen reader after the label (why the action is off). */
+  a11yHint?: string;
   /** Draw the action in the destructive colour. */
   negative?: boolean;
   testID?: string;
@@ -67,6 +69,7 @@ export function RateStrip({ variant, message, actions, testID }: RateStripProps)
               onPress={action.onPress}
               disabled={action.disabled}
               accessibilityLabel={action.a11yLabel}
+              accessibilityHint={action.a11yHint}
               testID={action.testID}
             >
               {action.label}

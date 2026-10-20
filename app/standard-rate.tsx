@@ -32,9 +32,11 @@ import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { setStandardRate } from '@/services/item-pricing-service';
+import type { SetStandardRateResult } from '@/types/item-pricing.types';
 import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { askAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { fieldOrder, hasChanges, rentErrors, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
+import { fieldOrder, hasChanges, rentErrors, wholeKg, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
 import { todayDay } from '@/features/item-pricing/rateText';
 import {
   fieldForRefusal,
@@ -47,6 +49,7 @@ import { useStandardRate, rememberStandardRate, clearStandardRateCache } from '@
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import type { FieldNode, FieldRegistry } from '@/features/item-pricing/components/fieldLink';
+import { RateStrip } from '@/features/item-pricing/components/RateStrip';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
 
 const ABOVE_KEYBOARD = space.xxl;
@@ -55,6 +58,12 @@ interface Form {
   draft: Draft;
   initial: Draft;
   ctx: EditorContext;
+  /**
+   * The version of the standard rate this draft was built from, the exact `updated_at` string the server sent
+   * ('-infinity' when no tiers were loaded, null when the server sent none for saved tiers). Sent with Save so
+   * the server refuses when someone else saved meanwhile. Not changed by a background refresh.
+   */
+  version: string | null;
 }
 
 export default function StandardRateScreen() {
@@ -67,7 +76,18 @@ export default function StandardRateScreen() {
   const [form, setForm] = useState<Form | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [strip, setStrip] = useState<string | null>(null);
+  // Someone else saved the standard rate after this draft was built: Reload reads it again and drops the typing.
+  const [stale, setStale] = useState(false);
   const [saving, setSaving] = useState(false);
+  // The save was sent and no answer came: nothing may be saved again until the screen has read the standard rate anew.
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const savingRef = useRef(false);
+  // False once the screen is gone: a dry run or a question that finishes later must not save or ask over the previous screen.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const checked = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const nodes = useRef<Record<string, FieldNode | null>>({});
@@ -96,7 +116,7 @@ export default function StandardRateScreen() {
     if (!rate || form || fresh !== 'ok') return;
     const today = todayDay();
     const draft = standardDraft(rate.tiers, today);
-    setForm({ draft, initial: draft, ctx: standardContext(today) });
+    setForm({ draft, initial: draft, ctx: standardContext(today), version: rate.updatedAt ?? (rate.tiers.length === 0 ? '-infinity' : null) });
   }, [rate, form, fresh]);
 
   const changed = !!form && hasChanges(form.draft, form.initial);
@@ -157,8 +177,18 @@ export default function StandardRateScreen() {
     node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - 160), animated: true }));
   };
 
+  const reload = () => {
+    setForm(null);
+    setErrors({});
+    setStrip(null);
+    setStale(false);
+    setUnconfirmed(false);
+    checked.current = false;
+    readFresh();
+  };
+
   const submit = async () => {
-    if (!form || saving) return;
+    if (!form || saving || savingRef.current || unconfirmed) return;
     checked.current = true;
     const check = validateStandard(form.draft, form.ctx);
     setErrors(check.errors);
@@ -168,33 +198,70 @@ export default function StandardRateScreen() {
       scrollToError(order.find(k => check.errors[k]) ?? keys[0]);
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     setStrip(null);
+    setStale(false);
     try {
-      const result = await setStandardRate(tiersOf(form.draft, form.ctx));
+      const tiersToSend = tiersOf(form.draft, form.ctx);
+      // First a dry run: it checks everything, writes nothing and counts the items that would be given this rate.
+      const dry = await setStandardRate(tiersToSend, { expectedUpdatedAt: form.version, dryRun: true });
+      if (!alive.current) return;
+      if (!dry.success) {
+        showRefusal(dry);
+        return;
+      }
+      if ((dry.itemsPriced ?? 0) > 0) {
+        const go = await askAlert(
+          t('pricing.standard.giveTitle', { count: dry.itemsPriced ?? 0 }),
+          t('pricing.standard.giveMessage'),
+          [
+            { text: t('common.back'), style: 'cancel', value: false },
+            { text: t('pricing.standard.giveConfirm'), value: true },
+          ],
+          false,
+        );
+        if (!go || !alive.current) return;
+      }
+      const result = await setStandardRate(tiersToSend, { expectedUpdatedAt: form.version });
       if (result.success) {
-        const tiers = result.tiers && result.tiers.length > 0 ? result.tiers : tiersOf(form.draft, form.ctx);
-        rememberStandardRate(key, { tiers, updatedAt: new Date().toISOString(), updatedByName: null });
+        const tiers = result.tiers && result.tiers.length > 0 ? result.tiers : tiersToSend;
+        // The version is the server's own string (never a Date made here).
+        rememberStandardRate(key, { tiers, updatedAt: result.updatedAt ?? null, updatedByName: null });
         // The list and the item pages read the rates again when they come back into view.
         void refresh().catch(() => {});
         const priced = result.itemsPriced ?? 0;
         showToast(priced > 0 ? `${t('pricing.standard.saved')} ${t('pricing.standard.itemsGotIt', { count: priced })}` : t('pricing.standard.saved'));
-        leaveWithoutAsking(() => router.back());
+        if (alive.current) leaveWithoutAsking(() => router.back());
         return;
       }
-      const target = fieldForRefusal(result);
-      if (target) {
-        setErrors(current => ({ ...current, [target]: result.message ?? '' }));
-        scrollToError(target);
-        return;
-      }
-      if (result.outcomeUnknown) clearStandardRateCache();
-      setStrip(result.message ?? t('pricing.error.generic'));
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      if (alive.current) showRefusal(result);
     } finally {
-      setSaving(false);
+      savingRef.current = false;
+      if (alive.current) setSaving(false);
     }
   };
+
+  /** A refused save or dry run: the field the server named, the stale question, or a strip at the top. */
+  function showRefusal(result: SetStandardRateResult) {
+    if (result.errorCode === 'STALE_STANDARD_RATE') {
+      setStale(true);
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      return;
+    }
+    const target = fieldForRefusal(result);
+    if (target) {
+      setErrors(current => ({ ...current, [target]: result.message ?? '' }));
+      scrollToError(target);
+      return;
+    }
+    if (result.outcomeUnknown) {
+      clearStandardRateCache();
+      setUnconfirmed(true);
+    }
+    setStrip(result.message ?? t('pricing.error.generic'));
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
@@ -228,6 +295,8 @@ export default function StandardRateScreen() {
   }
 
   const helper = offline ? t('pricing.error.offline') : null;
+  // Under the last tier: what lies above it (a bag heavier than the last "Up to" gets no standard rate).
+  const lastUpTo = wholeKg(form.draft.bands[form.draft.bands.length - 1]?.upTo ?? '');
 
   return (
     <View style={styles.container}>
@@ -242,9 +311,25 @@ export default function StandardRateScreen() {
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => { scrollY.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
         >
-          {strip ? <EditorStrip variant="critical" message={strip} testID="standard-error" /> : null}
+          {stale ? (
+            <RateStrip
+              variant="critical"
+              message={t('pricing.standard.error.stale')}
+              actions={[{ label: t('pricing.standard.reload'), onPress: reload, disabled: saving, testID: 'standard-reload' }]}
+              testID="standard-stale"
+            />
+          ) : null}
+          {unconfirmed ? (
+            <RateStrip
+              variant="critical"
+              message={t('pricing.standard.error.unconfirmed')}
+              actions={[{ label: t('pricing.standard.reload'), onPress: reload, disabled: saving, testID: 'standard-reload-unconfirmed' }]}
+              testID="standard-unconfirmed"
+            />
+          ) : strip ? <EditorStrip variant="critical" message={strip} testID="standard-error" /> : null}
           <Text style={styles.note} testID="standard-note">{t('pricing.standard.note')}</Text>
           <BandsEditor draft={form.draft} ctx={form.ctx} errors={{ ...rentErrors(form.draft), ...errors }} onChange={setDraft} fields={fields} />
+          {lastUpTo !== null ? <Text style={styles.note} testID="standard-last-tier-hint">{t('pricing.standard.lastTierHint', { kg: lastUpTo })}</Text> : null}
         </ScrollView>
 
         <View
@@ -260,7 +345,7 @@ export default function StandardRateScreen() {
             type="primary"
             size="fullWidth"
             onPress={() => void submit()}
-            disabled={saving || offline}
+            disabled={saving || offline || unconfirmed}
             loading={saving}
             loadingText={t('pricing.edit.saving')}
             testID="standard-save"

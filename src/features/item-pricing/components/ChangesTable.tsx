@@ -9,7 +9,7 @@
  */
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
-import { ONE_LINE, makeTableStyles } from '@/components/common/DetailTable';
+import { ONE_LINE, crowded, makeTableStyles, nb, nestedRowWidth, numberColumnWidth, useStackedWhen, useTableLayout } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
 import { useThemedStyles } from '@/hooks/useTheme';
@@ -29,6 +29,7 @@ export interface ChangeRow {
 }
 
 const helper = createAppColumnHelper<ChangeRow>();
+/** The width of a figure column at font scale 1; it grows with the text size and the widest figure. */
 const NUMBER_WIDTH = 64;
 
 const makeStyles = (th: ThemeTokens) => ({
@@ -51,6 +52,19 @@ interface Props {
 export function ChangesTable({ rows, from, oneTime }: Props) {
   const styles = useThemedStyles(makeStyles);
   const table = useThemedStyles(makeTableStyles);
+  const screen = useTableLayout();
+  // Each figure column is as wide as its widest value or its heading at the current text size (rents go to 9999.99).
+  const headingSize = typography.footnote.fontSize ?? 13;
+  const widthOf = (heading: string, values: string[]) =>
+    Math.max(numberColumnWidth(screen, NUMBER_WIDTH, values), numberColumnWidth(screen, 0, [heading], [], headingSize));
+  const rentWidth = widthOf(t('pricing.addForm.refRent'), rows.map(r => money(r.rent)));
+  const labourWidth = widthOf(t('pricing.addForm.refLabour'), rows.map(r => money(r.labour)));
+  const taxWidth = widthOf(t('pricing.addForm.refTax'), rows.map(r => percent(r.tax)));
+  // At large text the columns no longer fit: Rent stays the one figure column, labour and tax go under the band.
+  const stacked = useStackedWhen(
+    screen,
+    crowded(nestedRowWidth(screen), [rentWidth, ...(oneTime ? [] : [labourWidth]), taxWidth], 0, screen.scale),
+  ).stacked;
 
   const columns = useMemo(() => {
     const figure = (value: number | null, base: number | null, text: (n: number | null) => string) => (
@@ -60,29 +74,47 @@ export function ChangesTable({ rows, from, oneTime }: Props) {
       helper.accessor('band', {
         header: t('pricing.addForm.refBand'),
         meta: { width: 'grow' },
-        cell: info => <Text style={table.primary} {...ONE_LINE}>{info.getValue()}</Text>,
+        cell: info => {
+          const r = info.row.original;
+          const under = stacked
+            ? [
+                oneTime ? null : t('pricing.row.labour', { amount: money(r.labour) }),
+                t('pricing.row.tax', { percent: percent(r.tax) }),
+              ].filter(Boolean).join(' · ')
+            : '';
+          return (
+            <View>
+              <Text style={table.primary} {...(stacked ? {} : ONE_LINE)}>{r.band}</Text>
+              {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
+            </View>
+          );
+        },
       }),
       helper.accessor('rent', {
         header: t('pricing.addForm.refRent'),
-        meta: { width: NUMBER_WIDTH, numeric: true },
+        meta: { width: rentWidth, numeric: true },
         cell: info => figure(info.getValue(), info.row.original.defaultRent, money),
       }),
-      ...(oneTime
+      ...(oneTime || stacked
         ? []
         : [
             helper.accessor('labour', {
               header: t('pricing.addForm.refLabour'),
-              meta: { width: NUMBER_WIDTH, numeric: true },
+              meta: { width: labourWidth, numeric: true },
               cell: info => figure(info.getValue(), info.row.original.defaultLabour, money),
             }),
           ]),
-      helper.accessor('tax', {
-        header: t('pricing.addForm.refTax'),
-        meta: { width: NUMBER_WIDTH, numeric: true },
-        cell: info => figure(info.getValue(), info.row.original.defaultTax, percent),
-      }),
+      ...(stacked
+        ? []
+        : [
+            helper.accessor('tax', {
+              header: t('pricing.addForm.refTax'),
+              meta: { width: taxWidth, numeric: true },
+              cell: info => figure(info.getValue(), info.row.original.defaultTax, percent),
+            }),
+          ]),
     ]);
-  }, [oneTime, styles, table]);
+  }, [oneTime, stacked, styles, table, rentWidth, labourWidth, taxWidth]);
 
   const tanstack = useAppTable({ columns, data: rows, getRowId: row => row.key });
 

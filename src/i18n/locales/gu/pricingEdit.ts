@@ -52,6 +52,12 @@ export const pricingEdit: Translation<typeof source> = {
     copyTiers: 'બીજી આઇટમની વજન મર્યાદાઓ લો…',
     copyTitle: 'આઇટમ પસંદ કરો',
     copyNone: 'આજે લાગુ દર ધરાવતી બીજી કોઈ આઇટમ નથી.',
+    // Draft for the owner's wording review (Standard rate and pricing leftovers, 2026-10-20).
+    copyDetail: { one: '{{count}} વજન મર્યાદા · ભાડું {{range}}', other: '{{count}} વજન મર્યાદા · ભાડું {{range}}' },
+    copyReplaceTitle: 'તમે લખેલી વજન મર્યાદાઓ બદલવી છે?',
+    copyReplaceMessage: 'તમે લખેલી વજન મર્યાદાઓ અને રકમો {{item}} ની વજન મર્યાદાઓથી બદલાઈ જશે.',
+    copyReplaceConfirm: 'બદલો',
+    rowsChanged: 'બીજા ફોન પર દર બદલાઈ ગયા છે. સાચવતા પહેલાં તપાસો.',
     copyLoading: 'આઇટમ લોડ થઈ રહી છે…',
     copiedFromItem: '{{item}} ની વજન મર્યાદાઓ લીધી છે. જે અલગ હોય તે બદલો.',
     dayChanged: 'તારીખ બદલાઈ ગઈ છે. શરૂઆતની તારીખ તપાસો, પછી ફરી સાચવો.',
@@ -93,6 +99,7 @@ export const pricingEdit: Translation<typeof source> = {
   },
   changes: {
     titleItem: 'ફેરફારો: {{item}}',
+    titleCustomer: 'ફેરફારો · {{customer}} · {{item}}',
     group: '{{date}} થી દર બદલાયો',
     groupStopped: '{{date}} પછી દર બંધ થયો',
     arrow: '{{old}} → {{new}}',

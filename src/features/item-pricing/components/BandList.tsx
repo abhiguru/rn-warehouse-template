@@ -1,7 +1,7 @@
 /** The weight bands of a rate: "Weight each" and the rent, with labour only when the bands differ in it. */
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
-import { makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
+import { crowded, makeTableStyles, nb, nestedRowWidth, numberColumnWidth, useStackedWhen, useTableLayout } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
 import { StatusTag } from '@/components/ui/StatusTag';
@@ -58,6 +58,11 @@ export function BandList({ bands, priceType, tags }: BandListProps) {
   const rentWidth = widthOf(rentHeader, bands.map(b => money(b.unit_price)));
   const labourWidth = widthOf(labourHeader, bands.map(b => money(b.labour_rate)));
   const taxWidth = widthOf(taxHeader, bands.map(taxText));
+  // Large text (font scale 1.5 and over), or figure columns that would crowd the weights: labour and tax go under the weights.
+  const stacked = useStackedWhen(
+    screen,
+    crowded(nestedRowWidth(screen), [rentWidth, ...(showLabour ? [labourWidth] : []), ...(showTax ? [taxWidth] : [])], 0, screen.scale),
+  ).stacked;
 
   const columns = useMemo(
     () =>
@@ -68,9 +73,14 @@ export function BandList({ bands, priceType, tags }: BandListProps) {
           meta: { width: 'grow' },
           cell: ({ row }) => {
             const tag = tags?.[row.index];
+            const under = [
+              stacked && showLabour ? t('pricing.row.labour', { amount: money(row.original.labour_rate) }) : null,
+              stacked && showTax ? t('pricing.row.tax', { percent: localizeDigits(String(row.original.tax_percent)) }) : null,
+            ].filter(Boolean).join(' · ');
             return (
               <View style={styles.first}>
                 <Text style={table.primary}>{bandText(row.original.weight_min, row.original.weight_max)}</Text>
+                {under ? <Text style={table.secondary}>{nb(under)}</Text> : null}
                 {tag ? <TierTagView tag={tag} testID={`band-tag-${row.index}`} /> : null}
               </View>
             );
@@ -82,7 +92,7 @@ export function BandList({ bands, priceType, tags }: BandListProps) {
           meta: { width: rentWidth, numeric: true },
           cell: ({ row }) => <Text style={table.numberStrong}>{money(row.original.unit_price)}</Text>,
         }),
-        ...(showLabour
+        ...(showLabour && !stacked
           ? [
               bandColumn.display({
                 id: 'labour',
@@ -92,7 +102,7 @@ export function BandList({ bands, priceType, tags }: BandListProps) {
               }),
             ]
           : []),
-        ...(showTax
+        ...(showTax && !stacked
           ? [
               bandColumn.display({
                 id: 'tax',
@@ -103,7 +113,7 @@ export function BandList({ bands, priceType, tags }: BandListProps) {
             ]
           : []),
       ]),
-    [tags, table, styles, rentHeader, labourHeader, taxHeader, showLabour, showTax, rentWidth, labourWidth, taxWidth]
+    [tags, table, styles, stacked, rentHeader, labourHeader, taxHeader, showLabour, showTax, rentWidth, labourWidth, taxWidth]
   );
   const tanstack = useAppTable({ columns, data: bands, getRowId: b => b.id });
 

@@ -37,7 +37,7 @@ import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.type
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
-import { failureText, serverText } from '@/utils/serverText';
+import { failureText, serverText, transportText } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -307,6 +307,7 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   NOT_A_RATE_START: 'pricing.error.notARateStart',
   NOTHING_TO_MOVE: 'pricing.error.nothingToMove',
   STALE_RATES: 'pricing.error.staleRates',
+  STALE_STANDARD_RATE: 'pricing.standard.error.stale',
   STANDARD_RATE_MANAGER_ONLY: 'pricing.standard.error.managerOnly',
   // LATER_RATES_EXIST has no message: the screen's dialog explains.
 };
@@ -454,6 +455,8 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
         p_customer_id: input.customerId,
         p_price_type: input.priceType,
         p_starts_on: input.startsOn,
+        // Every row of the scope the screen loaded (ended and planned too): the server answers STALE_RATES when another phone changed the scope since.
+        ...(input.seenRows ? { p_seen_rows: input.seenRows } : {}),
       })),
       RPC_TIMEOUT_MS,
       'Rate change'
@@ -612,17 +615,32 @@ export const getStandardRate = async (): Promise<StandardRate> => {
   };
 };
 
+export interface SetStandardRateOptions {
+  /**
+   * The `updated_at` string of the standard rate the draft was built from (get_standard_rate, or the last save's answer);
+   * '-infinity' when no tiers were loaded; undefined sends nothing (the server skips the check).
+   */
+  expectedUpdatedAt?: string | null;
+  /** Check everything and count the items that would be priced; nothing is written. */
+  dryRun?: boolean;
+}
+
 /**
  * Save the standard rate (administrators and supervisors). The server also gives the tiers to every
  * active item that has no default rate yet and says how many (`itemsPriced`). A failure carries
  * `errorCode` and the app's own `message`; the server's English text is never shown.
  */
-export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandardRateResult> => {
+export const setStandardRate = async (tiers: StandardTier[], options: SetStandardRateOptions = {}): Promise<SetStandardRateResult> => {
   const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
     const { data, error } = await withTimeout(
-      Promise.resolve(client.rpc('set_standard_rate', { p_tiers: tiers })),
+      Promise.resolve(client.rpc('set_standard_rate', {
+        p_tiers: tiers,
+        // The version the draft was built from, as the exact string the server sent (never through a Date: it would cut the microseconds).
+        ...(options.expectedUpdatedAt !== undefined ? { p_expected_updated_at: options.expectedUpdatedAt } : {}),
+        ...(options.dryRun ? { p_dry_run: true } : {}),
+      })),
       RPC_TIMEOUT_MS,
       'Standard rate'
     );
@@ -631,13 +649,14 @@ export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandar
       itemPricingLogger.error('set_standard_rate RPC error:', error);
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'set_standard_rate');
-      // An error with no database code is the connection failing: the save may have gone through.
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unconfirmed();
+      if (mapped.code === 'SERVER_NEEDS_UPDATE') return { success: false, errorCode: mapped.code, message: t('pricing.standard.error.serverNeedsUpdateSave') };
+      // An error with no database code is the connection failing: the save may have gone through (a dry run writes nothing).
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
       return { success: false, errorCode: mapped.code, message: mapped.message };
     }
 
     const response = unwrapArrayResponse(data) as
-      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown } | null }
+      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown; updated_at?: unknown } | null }
       | null;
     if (!response || typeof response !== 'object') return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') };
 
@@ -660,14 +679,19 @@ export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandar
       success: true,
       tiers: toTiers(details.tiers),
       itemsPriced: Number(details.items_priced ?? 0) || 0,
+      // The new version, exactly as the server wrote it.
+      updatedAt: typeof details.updated_at === 'string' ? details.updated_at : null,
+      dryRun: options.dryRun === true,
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in setStandardRate:', { error: errorMessage });
     handleGlobalAuthError(err);
     if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'set_standard_rate')) {
-      return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
+      return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.standard.error.serverNeedsUpdateSave') };
     }
+    // A dry run writes nothing, so a lost answer to one is only a failure to ask.
+    if (options.dryRun) return { success: false, errorCode: 'UNKNOWN', message: transportText(err, { write: false }) ?? t('pricing.error.generic') };
     // A timeout or a lost answer: the server may have committed the change.
     return unconfirmed();
   }

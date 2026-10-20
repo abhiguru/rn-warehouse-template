@@ -2,7 +2,7 @@
  * Changes (price history): who added, changed or deleted which item price, and when. Read-only,
  * for administrators and supervisors (backend migration 48, get_item_price_history).
  * Opened from the Pricing tab of an item (that item's changes) or from a customer's rate page (that
- * customer's changes for the item): params item_id, customer_id, item_name. One of item_id and
+ * customer's changes for the item): params item_id, customer_id, item_name, customer_name. One of item_id and
  * customer_id is needed; without both nothing is requested (there is no all-items view). Newest
  * first, 50 at a time. Rows written by one save are one card.
  */
@@ -22,7 +22,7 @@ import ChangeGroupCard from '@/features/item-pricing/components/ChangeGroupCard'
 import { groupBySave, groupChanges, type GroupView } from '@/features/item-pricing/utils/priceHistory';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
-import { showAlert } from '@/utils/alert';
+import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
 
@@ -38,7 +38,7 @@ type ListRow =
   | { type: 'group'; key: string; entries: ItemPriceHistoryEntry[]; view: GroupView };
 
 const ItemPriceHistoryScreen: React.FC = () => {
-  const params = useLocalSearchParams<{ item_id?: string; customer_id?: string; item_name?: string }>();
+  const params = useLocalSearchParams<{ item_id?: string; customer_id?: string; item_name?: string; customer_name?: string }>();
   const itemId = params.item_id || undefined;
   const customerId = params.customer_id || undefined;
   const role = useAppSelector((state) => state.auth.userProfile?.role);
@@ -56,6 +56,8 @@ const ItemPriceHistoryScreen: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   /** The first page failed: shown in place of the list. */
   const [error, setError] = useState<string | null>(null);
+  /** A refresh failed: a strip above the entries that stay on screen (not a dialog). */
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   /** A further page failed: shown under the entries already loaded. */
   const [moreError, setMoreError] = useState<string | null>(null);
   /** A further page held only entries already shown, several times over: paging goes on with a button. */
@@ -86,6 +88,8 @@ const ItemPriceHistoryScreen: React.FC = () => {
     setRefreshing(kind === 'refresh');
     setLoadingMore(kind === 'more');
     setMoreError(null);
+    // A failed refresh stays on screen while a further page loads; only a first load or a refresh clears it.
+    if (kind !== 'more') setRefreshError(null);
     setStalled(false);
     try {
       let pageOffset = offset;
@@ -102,8 +106,8 @@ const ItemPriceHistoryScreen: React.FC = () => {
           const message = result.message || tr('pricing.list.tryAgainInAMoment');
           if (kind === 'first') setError(message);
           else if (kind === 'more') setMoreError(message);
-          // A failed refresh keeps the entries on screen.
-          else showAlert(tr('pricing.history.loadErrorTitle'), message);
+          // A failed refresh keeps the entries on screen and says so in a strip; the message is the app's own text (offline, timeout ...).
+          else setRefreshError(message);
           return;
         }
         // A price changed while paging moves every later entry down: never show one twice.
@@ -172,7 +176,14 @@ const ItemPriceHistoryScreen: React.FC = () => {
   );
 
   const itemName = params.item_name || entries[0]?.item_name || '';
-  const title = itemId && itemName ? tr('pricing.changes.titleItem', { item: itemName }) : tr('pricing.history.title');
+  const customerName = params.customer_name || entries.find((entry) => entry.customer_id === customerId)?.customer_name || '';
+  // A customer's changes for an item name both; an item's changes name the item.
+  const title =
+    customerId && itemName && customerName
+      ? tr('pricing.changes.titleCustomer', { customer: customerName, item: itemName })
+      : itemId && itemName
+        ? tr('pricing.changes.titleItem', { item: itemName })
+        : tr('pricing.history.title');
 
   const renderFooter = () => {
     if (loadingMore) {
@@ -282,6 +293,13 @@ const ItemPriceHistoryScreen: React.FC = () => {
             emptySubtitle={tr('pricing.history.emptySubtitle')}
           />
         }
+        ListHeaderComponent={
+          refreshError ? (
+            <View style={styles.refreshStrip}>
+              <EditorStrip variant="critical" message={`${tr('pricing.history.refreshFailed')} ${refreshError}`} testID="history-refresh-error" />
+            </View>
+          ) : null
+        }
         ListFooterComponent={renderFooter}
         refreshControl={
           <RefreshControl
@@ -321,6 +339,10 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.title2,
     color: t.text.primary,
     flexShrink: 1,
+  },
+  refreshStrip: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
   },
   listContent: {
     flexGrow: 1,

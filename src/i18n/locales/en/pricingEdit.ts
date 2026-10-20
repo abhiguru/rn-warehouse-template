@@ -49,6 +49,12 @@ export const pricingEdit = {
     copyTiers: 'Copy weight bands from another item…',
     copyTitle: 'Choose an item to copy',
     copyNone: 'No other item has a rate in force today to copy.',
+    // Under each item of the copy list.
+    copyDetail: { one: '{{count}} weight band · rent {{range}}', other: '{{count}} weight bands · rent {{range}}' },
+    copyReplaceTitle: 'Replace the bands you typed?',
+    copyReplaceMessage: 'The weight bands and figures you typed are replaced by the bands of {{item}}.',
+    copyReplaceConfirm: 'Replace',
+    rowsChanged: 'The rates changed on another phone. Check them before you save.',
     copyLoading: 'Loading items…',
     copiedFromItem: 'Weight bands copied from {{item}}. Change what is different.',
     dayChanged: 'The date has changed. Check the start date, then save again.',
@@ -90,6 +96,7 @@ export const pricingEdit = {
   },
   changes: {
     titleItem: 'Changes: {{item}}',
+    titleCustomer: 'Changes · {{customer}} · {{item}}',
     group: 'Rate changed from {{date}}',
     groupStopped: 'Rate stopped after {{date}}',
     arrow: '{{old}} → {{new}}',

@@ -22,7 +22,7 @@ import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { customerRateAddPath, type EditorMode } from '../contract';
 import { router } from 'expo-router';
-import { lotsRule, summaryLines } from '../editModel';
+import { lotsRule, seenRowIds, summaryLines } from '../editModel';
 import { laterDialogText } from '../laterRates';
 import { applicableRate, type ScopeView } from '../rateModel';
 import type { RateRights } from '../rateRights';
@@ -125,6 +125,8 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
   const styles = useThemedStyles(makeStyles);
   const adding = mode === 'add' || mode === 'addCustomer';
   const [saved, setSaved] = useState(false);
+  // "Discard this rate?" (house rule, style guide §14.4): typed figures are not thrown away by one tap.
+  const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
 
   const viewRef = useRef<EditorView | null>(null);
   viewRef.current = {
@@ -156,13 +158,22 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
   const active = editor.ready && !saved && (dirty || adding);
 
   // Functions the Save bar keeps between reports: they read the latest editor.
-  const latest = useRef({ editor, onClose, onDiscard, special: adding || mode !== 'change' });
-  latest.current = { editor, onClose, onDiscard, special: adding || mode !== 'change' };
+  const latest = useRef({ editor, onClose, onDiscard, special: adding || mode !== 'change', saved });
+  latest.current = { editor, onClose, onDiscard, special: adding || mode !== 'change', saved };
   const stable = useRef({
     onChange: (choice: Parameters<typeof editor.setStartsOn>[0], day: string) => latest.current.editor.setStartsOn(choice, day),
     save: () => { void latest.current.editor.submit(); },
-    discard: () => (latest.current.special ? latest.current.onClose() : latest.current.onDiscard()),
+    discard: () => {
+      const go = () => (latest.current.special ? latest.current.onClose() : latest.current.onDiscard());
+      if (latest.current.editor.dirty && !latest.current.saved) setPendingDiscard(() => go);
+      else go();
+    },
   }).current;
+  /** The Discard buttons of the box: ask first when figures were typed. */
+  const askToDiscard = (go: () => void) => () => {
+    if (dirty) setPendingDiscard(() => go);
+    else go();
+  };
 
   let bar: RateSaveBarState | null = null;
   if (active && draft && ctx) {
@@ -224,7 +235,7 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
               <RateStrip
                 variant="critical"
                 message={t('pricing.edit.correctWarning', { date: dateText(draft.startsOn ?? '') })}
-                actions={[{ label: t('pricing.box.discard'), onPress: onClose, testID: 'correct-discard' }]}
+                actions={[{ label: t('pricing.box.discard'), onPress: askToDiscard(onClose), testID: 'correct-discard' }]}
                 testID="correct-warning"
               />
             </View>
@@ -234,7 +245,7 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
               <RateStrip
                 variant="info"
                 message={t('pricing.edit.title.upcoming')}
-                actions={[{ label: t('pricing.box.discard'), onPress: onClose, testID: 'upcoming-discard' }]}
+                actions={[{ label: t('pricing.box.discard'), onPress: askToDiscard(onClose), testID: 'upcoming-discard' }]}
                 testID="upcoming-mode"
               />
             </View>
@@ -248,12 +259,27 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
             testID={`rate-box-${id}`}
           />
           {adding ? (
-            <Button type="tertiary" style={styles.add} onPress={onClose} disabled={saving} testID="box-close">
+            <Button type="tertiary" style={styles.add} onPress={askToDiscard(onClose)} disabled={saving} testID="box-close">
               {t('pricing.box.discard')}
             </Button>
           ) : null}
         </>
       )}
+      <ConfirmDialog
+        visible={pendingDiscard !== null}
+        variant="danger"
+        title={adding ? t('pricing.rateForm.discardTitle') : t('common.discardChangesTitle')}
+        message={t('common.discardChangesMessage')}
+        confirmText={t('common.discard')}
+        cancelText={t('common.keepEditing')}
+        onConfirm={() => {
+          const go = pendingDiscard;
+          setPendingDiscard(null);
+          go?.();
+        }}
+        onCancel={() => setPendingDiscard(null)}
+        testID="discard-rate-dialog"
+      />
       <ConfirmDialog
         visible={!!first}
         variant="warning"
@@ -383,6 +409,7 @@ export function ScopeRates({
     bands: view.inForce,
     upcoming: view.upcoming,
     stopsAfter: view.stopsAfter,
+    seenRows: seenRowIds(rows, customerId, priceType),
   });
 
   const hasMonthly = plan.plans.some(p => p.priceType === 'monthly');
@@ -525,7 +552,9 @@ export function ScopeRates({
                     {
                       label: t('pricing.action.cancelUpcoming'),
                       onPress: () => actions.askCancel(scopeOf(priceType, scopeView)),
-                      disabled: offline || busy,
+                      // Not while figures are typed: the rows would be read again under them.
+                      disabled: offline || busy || anyDirty,
+                      a11yHint: anyDirty ? t('pricing.item.finishTypingFirst') : undefined,
                       negative: true,
                       testID: 'cancel-upcoming',
                     },
@@ -538,7 +567,7 @@ export function ScopeRates({
                 <RateStrip
                   variant="warning"
                   message={t('pricing.item.stops', { date: dateText(stopsAfter) })}
-                  actions={[{ label: t('pricing.action.undoStop'), onPress: () => { void actions.undoStop(scopeOf(priceType, scopeView)); }, disabled: offline || busy, testID: 'undo-stop' }]}
+                  actions={[{ label: t('pricing.action.undoStop'), onPress: () => { void actions.undoStop(scopeOf(priceType, scopeView)); }, disabled: offline || busy || anyDirty, a11yHint: anyDirty ? t('pricing.item.finishTypingFirst') : undefined, testID: 'undo-stop' }]}
                 />
               </View>
             ) : null}
@@ -558,7 +587,8 @@ export function ScopeRates({
                   type="tertiary"
                   variant="negative"
                   onPress={() => actions.stop(scopeOf(priceType, scopeView))}
-                  disabled={offline || busy}
+                  disabled={offline || busy || anyDirty}
+                  accessibilityHint={anyDirty ? t('pricing.item.finishTypingFirst') : undefined}
                   testID="rate-stop"
                 >
                   {t('pricing.action.stop')}
@@ -566,6 +596,9 @@ export function ScopeRates({
               </View>
             ) : null}
             {offline && hasRate ? <Text style={styles.note}>{t('pricing.item.offlineChange')}</Text> : null}
+            {anyDirty && hasRate && (upcoming || stopsAfter || current.mode === 'change') ? (
+              <Text style={styles.note} testID="finish-typing-first">{t('pricing.item.finishTypingFirst')}</Text>
+            ) : null}
           </View>
         );
       })}

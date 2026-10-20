@@ -13,8 +13,8 @@
  * band (From / Up to and the rent, each with + and −; labour and tax in the card only when the bands differ in them);
  * otherwise one row of labour and tax for every band; Add weight band and Copy weight bands; "View default rate", an
  * outlined pill closed by default that opens into a table of the default's bands; what changes. Save is pinned at the
- * bottom, disabled until something differs from the copy; leaving with changes asks "Discard changes?" ("Discard this
- * rate?" for the default rate); a save goes back to the Pricing tab.
+ * bottom, disabled until something differs from the copy; leaving with changes asks "Discard this rate?" (both for the
+ * default rate and for a customer's rate); a save goes back to the Pricing tab.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -35,17 +35,17 @@ import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTok
 import { fromOf, lotsRule, removeBand, summaryLines, wholeKg, setBandField, setBandFrom, setFirstFrom, setUpTo, type Draft } from '../editModel';
 import { priceNumber } from '@/utils/priceNumbers';
 import { laterDialogText } from '../laterRates';
-import { bandText, dateText, todayDay, unitText } from '../rateText';
+import { bandText, dateText, money, todayDay, unitText } from '../rateText';
 import { planScope } from '../scopePlan';
 import { useItemRatesFor } from '../useItemRates';
 import { useEditorFields } from '../useEditorFields';
+import { figuresStack } from '../figureRow';
 import { useRateEditor, type EditorView } from '../useRateEditor';
 import { priceTypeLabel } from '../utils/priceLabels';
-import { TABLE_FALLBACK_SCALE } from './BandsTable';
 import { BandsFooter } from './BandsFooter';
 import { ChangeSummary } from './ChangeSummary';
 import { ChangesTable, type ChangeRow } from './ChangesTable';
-import { CopyTiersSheet } from './CopyTiersSheet';
+import { CopyTiersSheet, confirmReplaceBands } from './CopyTiersSheet';
 import { DefaultRatesTable } from './DefaultRatesTable';
 import { EditorStrip } from './EditorStrip';
 import { fieldLink } from './fieldLink';
@@ -115,12 +115,16 @@ interface Props {
   customerDeactivated?: boolean | null;
 }
 
+/** A typed rupee figure as money ("₹12.50"), or a dash while it is empty or not a number. */
+const figure = (text: string): string => (text.trim() !== '' && Number.isFinite(Number(text)) ? money(Number(text)) : '—');
+
 export function RateForm({ itemId, mode, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink, customerDeactivated }: Props) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
-  const stacked = (fontScale || 1) >= TABLE_FALLBACK_SCALE;
+  const { fontScale, width: windowWidth } = useWindowDimensions();
+  // A row of fields stacks at large text, or when the widest rent (9999.99) does not fit the field (figureRow.ts).
+  const stackedFor = (count: number): boolean => figuresStack({ width: windowWidth, fontScale, count, edge: layout.marginCompact + space.md + 1 });
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const offline = useIsOffline();
   const today = todayDay();
@@ -167,7 +171,8 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   });
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: editor.ready && editor.dirty,
-    ...(customerId ? {} : { title: t('pricing.rateForm.discardTitle') }),
+    // Both the item's rate and a customer's rate ask "Discard this rate?" (house rule: create forms name the thing).
+    title: t('pricing.rateForm.discardTitle'),
   });
   // A band just added opens; a removed one leaves the open band in range.
   const bandCount = editor.draft?.bands.length ?? 0;
@@ -267,7 +272,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : customerId ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
 
   /** A number field with + and − under it. */
-  const field = (key: string, label: string, value: string, onText: (text: string) => void, kind: StepKind, fieldName: string, suffix?: string) => (
+  const field = (stacked: boolean, key: string, label: string, value: string, onText: (text: string) => void, kind: StepKind, fieldName: string, suffix?: string) => (
     <View key={key} style={stacked ? undefined : styles.cell}>
       <Input
         label={label}
@@ -286,6 +291,10 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   );
 
   const rentLabel = oneTime ? t('pricing.addForm.rentOnce') : t('pricing.addForm.rent');
+  const pairStacked = stackedFor(2);
+  // Rent beside labour and tax (per-band figures), or labour beside tax (shared), or rent alone.
+  const figuresStacked = stackedFor(1 + (perBand && !oneTime ? 1 : 0) + (perBand ? 1 : 0));
+  const sharedStacked = stackedFor(oneTime ? 1 : 2);
 
   return (
     <View style={styles.screen}>
@@ -300,6 +309,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
             <EditorStrip variant="warning" message={t('pricing.edit.correctWarning', { date: dateText(draft.startsOn ?? '') })} testID="add-rate-correct-warning" />
           ) : null}
           {editor.strip && editor.strip !== errors.bands ? <EditorStrip variant="critical" message={editor.strip} testID="add-rate-error" /> : null}
+          {editor.rowsChanged ? <EditorStrip variant="warning" message={t('pricing.edit.rowsChanged')} testID="add-rate-rows-changed" /> : null}
           {editor.copiedFrom ? (
             <Text style={styles.note} testID="add-rate-copied">{t('pricing.edit.copiedFromItem', { item: editor.copiedFrom })}</Text>
           ) : ctx.copied && customerId ? (
@@ -351,9 +361,10 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
             const range = from !== null && upTo !== null ? bandText(from, upTo) : t('pricing.addForm.bandNew');
             const labour = perBand ? band.labour ?? '' : draft.labour;
             const tax = perBand ? band.tax ?? '' : draft.tax;
+            // The typed figures in the language's digits (Gujarati digits in Gujarati), "—" where one is not a number yet.
             const rate = oneTime
-              ? t('pricing.addForm.bandRateOnce', { rent: band.rent || '—', tax: tax || '—' })
-              : t('pricing.addForm.bandRate', { rent: band.rent || '—', labour: labour || '—', tax: tax || '—' });
+              ? t('pricing.addForm.bandRateOnce', { rent: figure(band.rent), tax: localizeDigits(tax || '—') })
+              : t('pricing.addForm.bandRate', { rent: figure(band.rent), labour: figure(labour), tax: localizeDigits(tax || '—') });
             const title = t('pricing.addForm.bandTitle', { n, range });
             return (
               <View key={i} style={[styles.card, open && styles.cardOpen]} testID={`add-rate-band-${i}`}>
@@ -368,7 +379,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
                   >
                     <View style={styles.cardTitles}>
                       <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
-                      {open ? null : <Text style={styles.cardLine} numberOfLines={1} testID={`add-rate-band-${i}-rate`}>{rate}</Text>}
+                      {open ? null : <Text style={styles.cardLine} numberOfLines={2} testID={`add-rate-band-${i}-rate`}>{rate}</Text>}
                     </View>
                     <Icon name={open ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={th.brand.tint} />
                   </Pressable>
@@ -380,14 +391,14 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
                 </View>
                 {open ? (
                   <>
-                    <View style={stacked ? styles.stack : styles.pair}>
-                      {field(fromKey, t('pricing.addForm.fromKg'), fromTextOf(i), text => set(i === 0 ? setFirstFrom(draft, text) : setBandFrom(draft, i, text)), 'kg', t('pricing.addForm.fieldFrom'))}
-                      {field(`band.${i}.upTo`, t('pricing.addForm.upToKg'), band.upTo, text => set(setUpTo(draft, i, text)), 'kg', t('pricing.addForm.fieldUpTo'))}
+                    <View style={pairStacked ? styles.stack : styles.pair}>
+                      {field(pairStacked, fromKey, t('pricing.addForm.fromKg'), fromTextOf(i), text => set(i === 0 ? setFirstFrom(draft, text) : setBandFrom(draft, i, text)), 'kg', t('pricing.addForm.fieldFrom'))}
+                      {field(pairStacked, `band.${i}.upTo`, t('pricing.addForm.upToKg'), band.upTo, text => set(setUpTo(draft, i, text)), 'kg', t('pricing.addForm.fieldUpTo'))}
                     </View>
-                    <View style={stacked ? styles.stack : styles.pair}>
-                      {field(`band.${i}.rent`, rentLabel, band.rent, text => set(setBandField(draft, i, 'rent', text)), 'rent', t('pricing.addForm.fieldRent'))}
-                      {perBand && !oneTime ? field(`band.${i}.labour`, t('pricing.addForm.labour'), band.labour ?? '', text => set(setBandField(draft, i, 'labour', text)), 'rupee', t('pricing.addForm.fieldLabour')) : null}
-                      {perBand ? field(`band.${i}.tax`, t('pricing.addForm.tax'), band.tax ?? '', text => set(setBandField(draft, i, 'tax', text)), 'percent', t('pricing.addForm.fieldTax'), '%') : null}
+                    <View style={figuresStacked ? styles.stack : styles.pair}>
+                      {field(figuresStacked, `band.${i}.rent`, rentLabel, band.rent, text => set(setBandField(draft, i, 'rent', text)), 'rent', t('pricing.addForm.fieldRent'))}
+                      {perBand && !oneTime ? field(figuresStacked, `band.${i}.labour`, t('pricing.addForm.labour'), band.labour ?? '', text => set(setBandField(draft, i, 'labour', text)), 'rupee', t('pricing.addForm.fieldLabour')) : null}
+                      {perBand ? field(figuresStacked, `band.${i}.tax`, t('pricing.addForm.tax'), band.tax ?? '', text => set(setBandField(draft, i, 'tax', text)), 'percent', t('pricing.addForm.fieldTax'), '%') : null}
                     </View>
                   </>
                 ) : null}
@@ -399,9 +410,9 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
           {perBand ? null : (
             <View style={styles.section} testID="add-rate-shared">
               <Text style={styles.note}>{t('pricing.addForm.sharedCaption')}</Text>
-              <View style={stacked ? styles.stack : styles.pair}>
-                {oneTime ? null : field('labour', t('pricing.addForm.labour'), draft.labour, text => set({ ...draft, labour: text }), 'rupee', t('pricing.addForm.fieldLabour'))}
-                {field('tax', t('pricing.addForm.tax'), draft.tax, text => set({ ...draft, tax: text }), 'percent', t('pricing.addForm.fieldTax'), '%')}
+              <View style={sharedStacked ? styles.stack : styles.pair}>
+                {oneTime ? null : field(sharedStacked, 'labour', t('pricing.addForm.labour'), draft.labour, text => set({ ...draft, labour: text }), 'rupee', t('pricing.addForm.fieldLabour'))}
+                {field(sharedStacked, 'tax', t('pricing.addForm.tax'), draft.tax, text => set({ ...draft, tax: text }), 'percent', t('pricing.addForm.fieldTax'), '%')}
               </View>
               {oneTime ? <Text style={styles.note}>{t('pricing.edit.oneTimeLabour')}</Text> : null}
             </View>
@@ -467,7 +478,9 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
           today={ctx.today}
           onPick={(picked, pickedRows) => {
             setCopyOpen(false);
-            editor.copyFrom(picked, pickedRows);
+            // Typed figures are not replaced without asking.
+            if (!editor.dirty) editor.copyFrom(picked, pickedRows);
+            else void confirmReplaceBands(picked.name).then(yes => { if (yes) editor.copyFrom(picked, pickedRows); });
           }}
         />
       ) : null}

@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/Input';
 import { SegmentedControl } from '@/components/ui/RadioButton';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { wholeKg } from '@/features/item-pricing/editModel';
-import { TABLE_FALLBACK_SCALE } from '@/features/item-pricing/components/BandsTable';
+import { figuresStack } from '@/features/item-pricing/figureRow';
 import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
 import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
 import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
@@ -221,11 +221,13 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width: windowWidth } = useWindowDimensions();
   const oneTime = input.ctx.priceType === 'one_time';
   const adding = row !== null && row.rate === null;
-  // Large text: the figures stack, one under another (as the rate tables fall back to cards).
-  const stackFigures = (fontScale || 1) >= TABLE_FALLBACK_SCALE;
+  // Large text, or a field too narrow for the widest rent (9999.99): the figures stack, one under another (as the rate tables fall back to cards).
+  const stackFigures = figuresStack({ width: windowWidth, fontScale, count: oneTime ? 2 : 3, edge: layout.marginCompact });
+  // From and Up to are two fields in a row, whatever the figures below hold.
+  const stackPair = figuresStack({ width: windowWidth, fontScale, count: 2, edge: layout.marginCompact });
 
   const preload = useMemo(
     () => (row ? (row.rate ? preloadChange(row, row.rate, input) : preloadAdd(row, input)) : null),
@@ -560,12 +562,12 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
             ) : null}
           </View>
 
-          <View style={stackFigures ? styles.stack : styles.figures} onLayout={e => { sectionY.current.band = e.nativeEvent.layout.y; }} testID="rate-band">
-            <View style={stackFigures ? undefined : styles.figure}>
+          <View style={stackPair ? styles.stack : styles.figures} onLayout={e => { sectionY.current.band = e.nativeEvent.layout.y; }} testID="rate-band">
+            <View style={stackPair ? undefined : styles.figure}>
               <Input label={errors.from ? t('grn.rates.sheet.labelRule', { label: t('grn.rates.sheet.fromKg'), rule: errors.from }) : t('grn.rates.sheet.fromKg')} numeric selectTextOnFocus value={from} onChangeText={setFrom} onBlur={() => checkBand()} keyboardType="number-pad" {...keypadProps('from')} invalid={Boolean(errors.from)} accessibilityHint={errors.from} testID="rate-from" />
               {steppers('from', from, setFrom)}
             </View>
-            <View style={stackFigures ? undefined : styles.figure}>
+            <View style={stackPair ? undefined : styles.figure}>
               <Input label={errors.upTo ? t('grn.rates.sheet.labelRule', { label: t('grn.rates.sheet.upToKg'), rule: errors.upTo }) : t('grn.rates.sheet.upToKg')} numeric selectTextOnFocus value={upTo} onChangeText={setUpTo} onBlur={() => checkBand()} keyboardType="number-pad" {...keypadProps('upTo')} invalid={Boolean(errors.upTo)} accessibilityHint={errors.upTo} testID="rate-upto" />
               {steppers('upTo', upTo, setUpTo)}
             </View>

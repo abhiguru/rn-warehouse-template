@@ -29,6 +29,7 @@ import type { PriceType } from '@/types/item-pricing.types';
 import { formatTime } from '@/utils/formatters';
 import { historyPath, rateFormPath } from '../contract';
 import { ratePeriods, type RatePeriod } from '../ratePeriods';
+import { seenRowIds } from '../editModel';
 import { rateState, scopeView } from '../rateModel';
 import { rateRights } from '../rateRights';
 import { addDays, dateText, todayDay } from '../rateText';
@@ -115,6 +116,7 @@ export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingT
     bands: period.state === 'upcoming' ? rowsBefore(period) : view.inForce,
     upcoming: period.state === 'upcoming' ? { startsOn: period.from, rows: period.rows } : null,
     stopsAfter: view.stopsAfter,
+    seenRows: seenRowIds(rows, null, priceType),
   });
   const openForm = (mode: 'add' | 'correct' | 'upcoming', startsOn?: string) =>
     router.push(rateFormPath({ itemId, mode, priceType, startsOn }));

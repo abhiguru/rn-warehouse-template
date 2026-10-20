@@ -65,6 +65,7 @@ export const pricing: Translation<typeof source> = {
     oldStillUsed: '{{from}} થી {{to}} સુધી આવેલા અને હજુ ઇન્વૉઇસ ન થયેલા જથ્થા માટે હજુ વપરાય છે.',
     howLink: 'ઇન્વૉઇસ કયો દર પસંદ કરે છે',
     offlineChange: 'દર બદલવા ઇન્ટરનેટ જોડો.',
+    finishTypingFirst: 'પહેલાં તમે લખી રહ્યા છો તે દર સાચવો અથવા રદ કરો.',
     notFound: 'આ આઇટમ હવે ચાલુ નથી.',
     back: 'પાછળ',
     otherDayLink: 'બીજા દિવસના દર જુઓ',
@@ -171,6 +172,15 @@ export const pricing: Translation<typeof source> = {
     save: 'પ્રમાણભૂત દર સાચવો',
     saved: 'પ્રમાણભૂત દર સચવાયો.',
     itemsGotIt: { one: '{{count}} આઇટમને તે મળ્યો.', other: '{{count}} આઇટમને તે મળ્યો.' },
+    // Draft for the owner's wording review (Standard rate and pricing leftovers, 2026-10-20).
+    giveTitle: {
+      one: 'જે આઇટમનો કોઈ દિવસ દર નથી રહ્યો તે {{count}} આઇટમને આ દર આપવો?',
+      other: 'જે આઇટમનો કોઈ દિવસ દર નથી રહ્યો તે {{count}} આઇટમને આ દર આપવો?',
+    },
+    giveMessage: 'તેમના પહેલા GRN થી આવેલા જથ્થા પર તે લાગશે.',
+    giveConfirm: 'સાચવો અને આપો',
+    reload: 'ફરી લોડ કરો',
+    lastTierHint: '{{kg}} કિલોથી વધુ વજનના નંગ પર પ્રમાણભૂત દર લાગતો નથી.',
     loading: 'પ્રમાણભૂત દર લોડ થઈ રહ્યો છે',
     loadErrorTitle: 'પ્રમાણભૂત દર લોડ થઈ શક્યો નહીં',
     // Tags on the tiers of an item's default monthly rate.
@@ -178,8 +188,10 @@ export const pricing: Translation<typeof source> = {
     tagThisItem: 'આ આઇટમનો',
     error: {
       managerOnly: 'પ્રમાણભૂત દર ફક્ત એડમિન અથવા સુપરવાઇઝર નક્કી કરી શકે છે.',
-      unconfirmed: 'પ્રમાણભૂત દર સચવાયો કે નહીં તે ખાતરી થઈ શકી નથી. ફરી પ્રયાસ કરતા પહેલાં આ સ્ક્રીન બંધ કરીને ફરી ખોલો.',
+      unconfirmed: 'પ્રમાણભૂત દર સચવાયો કે નહીં તે ખાતરી થઈ શકી નથી. ફરી પ્રયાસ કરતા પહેલાં તેને ફરી લોડ કરો.',
       serverNeedsUpdate: 'પ્રમાણભૂત દર માટે આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ જોઈએ.',
+      serverNeedsUpdateSave: 'પ્રમાણભૂત દર સાચવી શકાય તે પહેલાં આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ જોઈએ.',
+      stale: 'બીજા કોઈએ પ્રમાણભૂત દર બદલ્યો છે. તેમના ફેરફાર જોવા ફરી લોડ કરો.',
     },
   },
   itemPicker: {
@@ -209,6 +221,8 @@ export const pricing: Translation<typeof source> = {
     loadingMoreLabel: 'દરના વધુ ફેરફાર લોડ થઈ રહ્યા છે',
     loadErrorTitle: 'દરનો ઇતિહાસ લોડ કરી શકાયો નથી',
     loadMoreFailed: 'દરના વધુ ફેરફાર લોડ કરી શકાયા નથી.',
+    // Draft for the owner's wording review (Standard rate and pricing leftovers, 2026-10-20).
+    refreshFailed: 'ફરી લોડ થઈ શક્યું નહીં. આ પહેલાં લોડ થયેલા ફેરફારો છે.',
     // The server has no price history: a backend older than migration 48. Trying again cannot help.
     serverNeedsUpdate: 'દરનો ઇતિહાસ જોવા માટે આ કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ કરવું જરૂરી છે.',
     emptyTitle: 'હજુ દરમાં કોઈ ફેરફાર નથી',
@@ -250,6 +264,8 @@ export const pricing: Translation<typeof source> = {
     nothingToUndo: 'તે દિવસથી શરૂ થતો કોઈ ફેરફાર પાછો ખેંચવા માટે નથી.',
     notARateStart: 'તે દિવસથી હવે કોઈ દર શરૂ થતો નથી. દર ફરી ખોલીને ફરી પ્રયત્ન કરો.',
     staleRates: 'તમે ફેરફાર કરતા હતા ત્યારે આ આઇટમના દર બદલાઈ ગયા. દર ફરી લોડ કર્યા છે; તપાસીને ફરી સાચવો.',
+    // Draft for the owner's wording review (Standard rate and pricing leftovers, 2026-10-20).
+    staleRatesAction: 'આ આઇટમના દર બીજા ફોન પર બદલાઈ ગયા. દર ફરી લોડ કર્યા છે; તપાસીને ફરી પ્રયત્ન કરો.',
     nothingToMove: 'ખસેડવાનો નવો દર હવે નથી. દર ફરી ખોલીને ફરી પ્રયત્ન કરો.',
     serverNeedsUpdate: 'તારીખથી દર બદલવા માટે આ સુવિધાના સર્વરને અપડેટ જોઈએ.',
     offline: 'દર બદલવા ઇન્ટરનેટ જોડો.',
@@ -260,8 +276,8 @@ export const pricing: Translation<typeof source> = {
     changeFigureA11y: '{{name}} {{value}}, મૂળ {{dflt}}',
     bandTitle: 'વજન મર્યાદા {{n}} · {{range}}',
     bandNew: 'વજન નક્કી નથી',
-    bandRate: 'ભાડું ₹{{rent}} · મજૂરી ₹{{labour}} · ટેક્સ {{tax}}%',
-    bandRateOnce: 'ભાડું ₹{{rent}} · ટેક્સ {{tax}}%',
+    bandRate: 'ભાડું {{rent}} · મજૂરી {{labour}} · ટેક્સ {{tax}}%',
+    bandRateOnce: 'ભાડું {{rent}} · ટેક્સ {{tax}}%',
     copied: 'મૂળ દરમાંથી નકલ કરેલ',
     rule: '{{date}} થી આવેલા જથ્થા માટે',
     kicker: '{{customer}} માટે દર ઉમેરો · {{type}}',

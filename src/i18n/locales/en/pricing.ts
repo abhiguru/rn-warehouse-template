@@ -64,6 +64,7 @@ export const pricing = {
     oldStillUsed: 'Still used for lots received {{from}} – {{to}} that are not invoiced yet.',
     howLink: 'How an invoice picks a rate',
     offlineChange: 'Connect to change rates.',
+    finishTypingFirst: 'Save or discard the rate you are typing first.',
     notFound: 'This item is no longer active.',
     back: 'Back',
     // The item page after the rate box (2026-10-16): one line each for what moved to its own screen.
@@ -171,6 +172,15 @@ export const pricing = {
     save: 'Save standard rate',
     saved: 'Standard rate saved.',
     itemsGotIt: { one: '{{count}} item got it.', other: '{{count}} items got it.' },
+    // Save first asks the server how many items would get the rate (a dry run), then asks this.
+    giveTitle: {
+      one: 'Give this rate to {{count}} item that has never had a rate?',
+      other: 'Give this rate to {{count}} items that have never had a rate?',
+    },
+    giveMessage: 'They are charged it for lots received from their first GRN.',
+    giveConfirm: 'Save and give it',
+    reload: 'Reload',
+    lastTierHint: 'Bags heavier than {{kg}} kg get no standard rate.',
     loading: 'Loading the standard rate',
     loadErrorTitle: "Couldn't load the standard rate",
     // Tags on the tiers of an item's default monthly rate.
@@ -178,8 +188,10 @@ export const pricing = {
     tagThisItem: 'This item',
     error: {
       managerOnly: 'Only an administrator or supervisor can set the standard rate.',
-      unconfirmed: "We couldn't confirm that the standard rate was saved. Close this screen and open it again before you try again.",
+      unconfirmed: "We couldn't confirm that the standard rate was saved. Reload it before you try again.",
       serverNeedsUpdate: "This cold storage's server needs an update before the standard rate is available.",
+      serverNeedsUpdateSave: "This cold storage's server needs an update before the standard rate can be saved.",
+      stale: 'Someone else changed the standard rate. Reload to see their changes.',
     },
   },
   itemPicker: {
@@ -209,6 +221,7 @@ export const pricing = {
     loadingMoreLabel: 'Loading more price changes',
     loadErrorTitle: "Couldn't load the price history",
     loadMoreFailed: "Couldn't load more price changes.",
+    refreshFailed: "Couldn't refresh. These are the changes loaded earlier.",
     // The server has no price history: a backend older than migration 48. Trying again cannot help.
     serverNeedsUpdate: "This facility's server needs an update before the price history is available.",
     emptyTitle: 'No price changes yet',
@@ -250,6 +263,7 @@ export const pricing = {
     nothingToUndo: 'There is no change starting on that day to undo.',
     notARateStart: 'No rate starts on that day any more. Open the rates again and try again.',
     staleRates: 'The rates of this item changed while you were editing. The rates were loaded again; check them and save again.',
+    staleRatesAction: 'The rates of this item changed on another phone. They were loaded again; check them and try again.',
     nothingToMove: 'The new rate you wanted to move no longer exists. Open the rates again and try again.',
     serverNeedsUpdate: "This facility's server needs an update before rates can be changed from a date.",
     offline: 'Connect to change rates.',
@@ -260,8 +274,8 @@ export const pricing = {
     changeFigureA11y: '{{name}} {{value}}, default {{dflt}}',
     bandTitle: 'Band {{n}} · {{range}}',
     bandNew: 'weights not set',
-    bandRate: '₹{{rent}} rent · ₹{{labour}} labour · {{tax}}% tax',
-    bandRateOnce: '₹{{rent}} rent · {{tax}}% tax',
+    bandRate: '{{rent}} rent · {{labour}} labour · {{tax}}% tax',
+    bandRateOnce: '{{rent}} rent · {{tax}}% tax',
     copied: 'Copied from the default rate',
     rule: 'For lots received from {{date}}',
     kicker: 'Add rate for {{customer}} · {{type}}',

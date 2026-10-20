@@ -127,7 +127,7 @@ export default function CustomerRatePage() {
             <Button
               type="tertiary"
               leftIcon="history"
-              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: item.name }))}
+              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: item.name, ...(customerName ? { customer_name: customerName } : {}) }))}
               testID="customer-changes"
             >
               {t('pricing.action.changes')}
