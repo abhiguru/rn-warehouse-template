@@ -57,6 +57,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 
@@ -238,10 +239,13 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     return itemsWithDispatchesOnLoad.has(editingItemId);
   }, [editingItemId, itemsWithDispatchesOnLoad, isCreateMode, currentLocks]);
 
-  // A new line on an invoiced GRN is refused (D9); the item of a dispatched line and the item and weight of an
-  // invoiced one are locked (D2). The form shows them read-only and a tap says why.
-  const newLineLocked = !isCreateMode && !editingItemId && editInvoice !== null;
-  const itemLocked = newLineLocked || (currentLocks !== undefined && (currentLocks.dispatched || currentLocks.invoiced));
+  // A new line on an invoiced GRN is refused (D9): the form is replaced by a notice. The item of a dispatched line and
+  // the item and weight of an invoiced one are locked (D2): the form shows them read-only and a tap says why.
+  const newLineNotice =
+    !isCreateMode && !editingItemId && editInvoice !== null
+      ? invoicedNoNewLotText(formatIdentifier(header.gr_no), editInvoice.invNo)
+      : undefined;
+  const itemLocked = currentLocks !== undefined && (currentLocks.dispatched || currentLocks.invoiced);
   const weightLocked = currentLocks?.invoiced === true;
 
   const handleQtyLockedPress = useCallback(() => {
@@ -251,19 +255,16 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     );
   }, []);
 
-  /** Why the item (and packing) of the line in the form can't be changed, in the app's words. */
-  const lockedMessage = (): string => {
-    const now = latest.current;
-    if (newLineLocked) {
-      return tr('grn.refusal.invoicedNoNewLot', { grn: formatIdentifier(header.gr_no), invoice: formatIdentifier(editInvoice?.invNo) });
-    }
-    const item = now.currentItem.item_name;
-    if (currentLocks?.invoiced) {
-      return tr('grn.refusal.lotInvoiced', { item, invoice: formatIdentifier(currentLocks.invoiceNo ?? editInvoice?.invNo) });
-    }
-    return tr('grn.refusal.lotDispatched', { item });
+  // Why the item (and packing) of the line in the form can't be changed, in the app's words; the weight is locked only
+  // on an invoiced line, so its reason is the invoiced one.
+  const lockReason: string | undefined = currentLocks?.invoiced
+    ? lotInvoicedText(currentItem.item_name, currentLocks.invoiceNo ?? editInvoice?.invNo)
+    : currentLocks?.dispatched
+      ? tr('grn.refusal.lotDispatched', { item: currentItem.item_name })
+      : undefined;
+  const handleLockedPress = () => {
+    if (lockReason) showAlert(tr('grn.refusal.lockedTitle'), lockReason);
   };
-  const handleLockedPress = () => showAlert(tr('grn.refusal.lockedTitle'), lockedMessage());
 
   const hasUnsavedData = () => savedItems.length > 0 || items.length > 0;
 
@@ -394,7 +395,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
 
       // The GRN is invoiced: it takes no new line (owner decision D9; the server refuses it too).
       if (!isCreateMode && editingId === null && editInvoice !== null) {
-        showAlert(tr('grn.refusal.lockedTitle'), tr('grn.refusal.invoicedNoNewLot', { grn: formatIdentifier(header.gr_no), invoice: formatIdentifier(editInvoice.invNo) }));
+        showAlert(tr('grn.refusal.lockedTitle'), invoicedNoNewLotText(formatIdentifier(header.gr_no), editInvoice.invNo));
         return null;
       }
 
@@ -716,18 +717,41 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     }
   }, [dispatch, loadForm, header.customer_name]);
 
-  // The lines the sheet won't let go: dispatched, or with history (owner decision D11). An older server gives no locks,
-  // and the lines whose stock differs from their quantity stand in for them, as before.
-  const protectedItemIds = useMemo(() => {
+  // The lines whose quantity is locked, for the sheet's "Quantity locked" tag: the server's word when it gave locks, else
+  // the lines whose stock differs from their quantity (an older server), as before.
+  const quantityLockedIds = useMemo(() => {
     if (isCreateMode) return undefined;
     const ids = new Set(itemsWithDispatchesOnLoad.keys());
     items.forEach((item) => {
       if (!item.locks) return;
-      if (item.locks.dispatched || item.locks.hasHistory) ids.add(item.grn_trl_id);
+      if (item.locks.dispatched) ids.add(item.grn_trl_id);
       else ids.delete(item.grn_trl_id);
     });
     return ids;
   }, [isCreateMode, itemsWithDispatchesOnLoad, items]);
+
+  // The lines the sheet won't remove, each with the reason (owner decision D11): dispatched or moved before, or on the
+  // customer's order. The server's locks say so; a line without locks (an older server) is kept while its stock differs
+  // from its quantity, with the standard sentence, as before.
+  const removeBlockedReasons = useMemo(() => {
+    if (isCreateMode) return undefined;
+    const reasons = new Map<string, string>();
+    items.forEach((item) => {
+      const locks = item.locks;
+      // The name the sheet shows for the line.
+      const name = savedItems.find((saved) => saved.grn_trl_id === item.grn_trl_id)?.item_name ?? item.item_name;
+      if (!locks) {
+        if (itemsWithDispatchesOnLoad.has(item.grn_trl_id)) reasons.set(item.grn_trl_id, tr('items.summary.protectedMessage', { name }));
+        return;
+      }
+      if (locks.hasHistory) {
+        reasons.set(item.grn_trl_id, tr('grn.refusal.lineDispatchedBefore', { item: name }));
+      } else if (locks.onOrder) {
+        reasons.set(item.grn_trl_id, tr('grn.refusal.lineOnOrder', { item: name, customer: locks.customerName || header.customer_name }));
+      }
+    });
+    return reasons;
+  }, [isCreateMode, items, savedItems, itemsWithDispatchesOnLoad, header.customer_name]);
 
   // `itemId` is the item that was in the form when the photo came back from the picker. The
   // render that opened the picker is older: its item may since have been checkmarked and the
@@ -960,6 +984,8 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
           onItemLockedPress={handleLockedPress}
           isWeightLocked={weightLocked}
           onWeightLockedPress={handleLockedPress}
+          weightLockedReason={weightLocked ? lockReason : undefined}
+          blockedNotice={newLineNotice}
           isValid={isCurrentItemValid}
           isEditing={!!editingItemId}
           editingItemNumber={editingItemNumber}
@@ -989,7 +1015,8 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         onEditItem={handleSheetEditItem}
         onDismissed={() => openRowAfterSheetRef.current()}
         editingItemId={editingItemId ?? undefined}
-        dispatchedItemIds={protectedItemIds}
+        dispatchedItemIds={quantityLockedIds}
+        removeBlockedReasons={removeBlockedReasons}
       />
     </View>
   );

@@ -68,6 +68,12 @@ export interface ItemsSummaryBottomSheetProps<T> {
   editingItemKey?: string;
   /** Check if an item is protected from deletion */
   isItemProtected?: (item: T) => boolean;
+  /**
+   * Why an item can't be removed, in the caller's words, or undefined when it can. An item it answers for is
+   * protected like one `isItemProtected` names, and its text replaces the standard sentence in the dialog that
+   * explains the lock.
+   */
+  getProtectedMessage?: (item: T) => string | undefined;
   /** Title for the header (default: "Saved items") */
   title?: string;
   /** What the list holds. Selects whole-sentence texts in both languages (default: item). */
@@ -101,6 +107,7 @@ function ItemsSummaryBottomSheetInner<T>(
     onDismissed,
     editingItemKey,
     isItemProtected,
+    getProtectedMessage,
     title: titleProp,
     entity = 'item',
     entityName,
@@ -133,8 +140,8 @@ function ItemsSummaryBottomSheetInner<T>(
 
   // Check if an item is protected
   const checkItemProtected = useCallback(
-    (item: T) => isItemProtected?.(item) ?? false,
-    [isItemProtected]
+    (item: T) => (isItemProtected?.(item) ?? false) || getProtectedMessage?.(item) !== undefined,
+    [isItemProtected, getProtectedMessage]
   );
 
   // Handle delete item with confirmation
@@ -147,7 +154,7 @@ function ItemsSummaryBottomSheetInner<T>(
       if (checkItemProtected(item)) {
         showAlert(
           protectedTitle,
-          tr('items.summary.protectedMessage', { name: itemName }),
+          getProtectedMessage?.(item) ?? tr('items.summary.protectedMessage', { name: itemName }),
           [{ text: tr('common.ok'), style: 'default' }]
         );
         return;
@@ -169,7 +176,7 @@ function ItemsSummaryBottomSheetInner<T>(
         ]
       );
     },
-    [getItemKey, getItemName, checkItemProtected, protectedTitle, deleteTitle, deleteLabel, onDeleteItem]
+    [getItemKey, getItemName, checkItemProtected, getProtectedMessage, protectedTitle, deleteTitle, deleteLabel, onDeleteItem]
   );
 
   // Render swipe delete action

@@ -70,7 +70,7 @@ import {
   GRNItemData,
   GRNImageData,
 } from '@/store/slices/grnFormSlice';
-import { validateStep1, validateStep2, validateStep3 } from '@/features/grn/schemas/grnValidation';
+import { validateStep1, validateStep2, validateStep3, withoutStoredNumberError } from '@/features/grn/schemas/grnValidation';
 import { getNextGRNNumber, checkGrnExists } from '@/features/grn/services/grnFormService';
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 import { currentGrnFormSession, nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
@@ -429,6 +429,9 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       default:
         result = { isValid: true, errors: {} };
     }
+
+    // The number of a saved GRN is read-only and goes back as stored: only a number another GRN holds (below) can stop it.
+    if (!isCreateMode) result = withoutStoredNumberError(result);
 
     // A number another GRN holds keeps step 1 from passing until it is changed.
     if (step === 1 && takenNumberError) {

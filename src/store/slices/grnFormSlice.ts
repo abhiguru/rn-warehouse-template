@@ -45,8 +45,6 @@ export interface GRNHeaderData {
 export interface GRNLineLocks {
   /** Dispatch lines point at this lot: its item and packing are locked. */
   dispatched: boolean;
-  /** The bags dispatched from the lot. */
-  dispatchedQty: number;
   /** A dispatch line or a stock movement exists for the lot: the line can't be removed. */
   hasHistory: boolean;
   /** The lot is on a live invoice: item, packing and weight are locked. */
@@ -64,7 +62,6 @@ export interface GRNInvoiceRef {
   id: string;
   /** The invoice number, as the app writes invoice numbers. */
   invNo: string;
-  finYear?: string;
 }
 
 // Item data structure

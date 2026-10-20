@@ -791,15 +791,17 @@ export const updateGRN = async (
       if (rpcResult?.error_code === 'STOCK_PROTECTED') {
         throw new Error(`Stock Protection: ${rpcResult.message}`);
       }
+      // A rate refusal by its `error_code` goes first: STALE_RATES (migration 120) also carries a `reason`, and it must keep
+      // the older path (the stored rates are read again and Review scrolls to Rates), not the refusals of migration 121.
+      if (isRateRefusalCode(rpcResult?.error_code)) {
+        throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true, form: true }), rpcResult?.data);
+      }
       // A refusal by one of the rules of migration 121 (stale version, a locked line, a rate that would go ...): the
       // screen reads its `reason` and words it itself. It was sent AFTER the request code was looked up, so the answer
       // to a resend of one's own lost save is never STALE_RECORD.
       const refusal = refusalOf(rpcResult);
       if (refusal) {
         throw new ServerRefusalError(refusal, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true, form: true }));
-      }
-      if (isRateRefusalCode(rpcResult?.error_code)) {
-        throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true, form: true }), rpcResult?.data);
       }
 
       throw new Error(itemGoneText(rpcResult) ?? serverText(rpcResult?.message, t('grn.form.updateRejected'), { write: true, form: true }));
@@ -867,8 +869,6 @@ export const updateGRN = async (
         id: rpcResult.gr_id || grnId,
         message: rpcResult.message,
         stats: rpcResult.stats as GRNUpdateStats | undefined,
-        // The GRN's new version token (backend migration 121); absent on an older server.
-        updatedAt: typeof rpcResult.grn?.updated_at === 'string' ? (rpcResult.grn.updated_at as string) : undefined,
         photos,
       },
     };
@@ -940,7 +940,6 @@ const readGrnEditState = async (
       ? {
           id: String(data.invoice.id),
           invNo: formatIdentifier(textOrUndefined(data.invoice.inv_no) ?? ''),
-          finYear: textOrUndefined(data.invoice.inv_fin_year),
         }
       : null;
   const lines = new Map<string, GRNLineLocks>();
@@ -949,7 +948,6 @@ const readGrnEditState = async (
     const dispatchedQty = Number(line.dispatched_qty);
     lines.set(line.id, {
       dispatched: Number.isFinite(dispatchedQty) && dispatchedQty > 0,
-      dispatchedQty: Number.isFinite(dispatchedQty) ? dispatchedQty : 0,
       hasHistory: line.has_history === true,
       invoiced: line.on_invoice === true,
       invoiceNo: textOrUndefined(line.invoice_no),

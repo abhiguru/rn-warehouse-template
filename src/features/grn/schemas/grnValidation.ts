@@ -222,6 +222,18 @@ export const fullGRNSchema = yup.object().shape({
   items: step2Schema.fields.items,
 });
 
+/**
+ * The number of a saved GRN is read-only (owner decision D6) and goes back to the server as it was stored. A stored
+ * number that does not meet today's format (older data: too long, with a space) must not keep an edit from saving, so
+ * its format error is dropped from a result in edit mode; a number another GRN holds is added again by the caller.
+ * `header.gr_no` is the key the whole-form check (validateStep3) uses.
+ */
+export const withoutStoredNumberError = (result: { isValid: boolean; errors: Record<string, string> }): { isValid: boolean; errors: Record<string, string> } => {
+  if (!('gr_no' in result.errors) && !('header.gr_no' in result.errors)) return result;
+  const { gr_no: _number, 'header.gr_no': _headerNumber, ...errors } = result.errors;
+  return { isValid: Object.keys(errors).length === 0, errors };
+};
+
 // Validation helpers
 export const validateStep1 = async (data: any): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
   try {

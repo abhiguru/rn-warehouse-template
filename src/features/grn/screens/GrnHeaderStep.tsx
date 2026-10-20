@@ -22,13 +22,14 @@ import {
   selectGRNFormChanged,
   selectGRNInvoice,
   selectGRNFirstDispatchDate,
+  selectGRNLoadedDate,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatDate, formatNumber, toLocalISODate } from '@/utils/formatters';
+import { formatDate, formatNumber, toCalendarDay, toLocalISODate } from '@/utils/formatters';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
@@ -69,6 +70,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // a GRN is not dated after its first dispatch (D3). Both are null on a server that does not have the function.
   const editInvoice = useAppSelector(selectGRNInvoice);
   const firstDispatchDate = useAppSelector(selectGRNFirstDispatchDate);
+  // The date the GRN was opened with: kept pickable when it is already after the first dispatch (older data).
+  const loadedDate = useAppSelector(selectGRNLoadedDate);
   const dateLocked = !isCreateMode && editInvoice !== null;
 
   // Local UI state (not form data)
@@ -84,7 +87,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Input refs
   const registrationInputRef = useRef<GhostTextInputRef>(null);
 
-  const hasDispatchedItems = !isCreateMode && items.some((item) => item.qty !== item.stock);
+  // What is locked on the lines (get_grn_edit_state): dispatched lines keep quantity, item and packing, and lines on an
+  // invoice also their weight. A line without locks (an older server) is dispatched while its stock differs from its quantity.
+  const hasDispatchedItems = !isCreateMode && items.some((item) => (item.locks ? item.locks.dispatched : item.qty !== item.stock));
+  const hasLockInfo = !isCreateMode && items.some((item) => item.locks !== undefined);
+  const hasInvoicedItems = !isCreateMode && items.some((item) => item.locks?.invoiced === true);
 
   // What the user has put into a new GRN. The number, the date and the
   // supervisor are filled in by the form itself and are not counted.
@@ -124,7 +131,6 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   };
 
   const openDatePicker = () => {
-    if (dateLocked) return;
     setShowDatePicker(true);
   };
 
@@ -259,8 +265,9 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
             <View style={styles.warningTextContainer}>
               <Text style={styles.warningTitle}>{tr('grn.header.dispatchedWarningTitle')}</Text>
               <Text style={styles.warningText}>
-                {tr('grn.header.dispatchedWarningText')}
+                {tr(hasLockInfo ? 'grn.header.dispatchedLockedText' : 'grn.header.dispatchedWarningText')}
               </Text>
+              {hasInvoicedItems ? <Text style={styles.warningText}>{tr('grn.header.invoicedLockedText')}</Text> : null}
             </View>
           </View>
         )}
@@ -492,7 +499,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         date={header.date ? new Date(header.date) : new Date()}
         onConfirm={handleDateConfirm}
         onChange={handleDateConfirm}
-        validRange={{ endDate: latestPickableDate(isCreateMode ? null : firstDispatchDate) }}
+        validRange={{ endDate: latestPickableDate(isCreateMode ? null : firstDispatchDate, isCreateMode ? null : loadedDate) }}
         label={tr('grn.header.selectDate')}
       />
 
@@ -522,16 +529,25 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   );
 }
 
+/** The end of a calendar day ("YYYY-MM-DD"), or null when it is not one. */
+function endOfDay(value: string | null): Date | null {
+  const [year, month, day] = (value ?? '').split('-').map(Number);
+  return year && month && day ? new Date(year, month - 1, day, 23, 59, 59) : null;
+}
+
 /**
  * The latest day the date picker offers: today, or for an edited GRN the day of its first dispatch when that is
- * earlier (a GRN is not dated after its first dispatch, owner decision D3).
+ * earlier (a GRN is not dated after its first dispatch, owner decision D3). A date the GRN was opened with that is
+ * already later than that day (older data) stays inside the range, so the picker still shows it; the check of the
+ * form still refuses the days in between.
  */
-function latestPickableDate(firstDispatchDate: string | null): Date {
+function latestPickableDate(firstDispatchDate: string | null, loadedDate: string | null): Date {
   const today = new Date();
-  const [year, month, day] = (firstDispatchDate ?? '').split('-').map(Number);
-  if (!year || !month || !day) return today;
-  const firstDispatch = new Date(year, month - 1, day, 23, 59, 59);
-  return firstDispatch < today ? firstDispatch : today;
+  const firstDispatch = endOfDay(firstDispatchDate);
+  if (!firstDispatch) return today;
+  const stored = endOfDay(loadedDate ? toCalendarDay(loadedDate) : null);
+  const limit = stored && stored > firstDispatch ? stored : firstDispatch;
+  return limit < today ? limit : today;
 }
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */

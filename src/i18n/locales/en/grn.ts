@@ -46,6 +46,9 @@ export const grn = {
     loading: 'Loading GRN details…',
     dispatchedWarningTitle: 'Some items are already dispatched',
     dispatchedWarningText: "You can't change the quantity or stock of items that were dispatched from this GRN.",
+    // From the server's locks (get_grn_edit_state), which say what is locked.
+    dispatchedLockedText: "You can't change the quantity, item or packing of items that were dispatched from this GRN.",
+    invoicedLockedText: "The weight of items that are on an invoice can't change either. Delete or edit the invoice first.",
     basicInformation: 'BASIC INFORMATION',
     gettingNumber: 'Getting the next GRN number',
     receiptNumberLabel: 'Receipt number',
@@ -117,6 +120,8 @@ export const grn = {
     itemLocked: 'Item locked',
     weightLocked: 'Weight locked',
     lockedHint: 'Locked. Tap to see why.',
+    lockedDispatched: 'Quantity, item and packing locked',
+    lockedInvoiced: 'Quantity, item, packing and weight locked',
     weightInputLabel: 'Weight each, in kilograms',
     weightUnit: 'kg',
     floor: 'Floor',
@@ -318,6 +323,8 @@ export const grn = {
     totalItems: 'Total items',
     totalQuantity: 'Total quantity',
     a11yDispatchedLocked: 'already dispatched, quantity locked',
+    a11yDispatchedLockedAll: 'already dispatched, quantity, item and packing locked',
+    a11yInvoicedLocked: 'on an invoice, quantity, item, packing and weight locked',
     confirmCreateTitle: 'Create this GRN?',
     confirmSaveTitle: 'Save changes to this GRN?',
     confirmCreateNumbered: {
@@ -535,12 +542,17 @@ export const grn = {
     removeTitle: "This line can't be removed",
     lotDispatched: "{{item}} has been dispatched. Its item and packing can't be changed.",
     lotInvoiced: "{{item}} is on invoice {{invoice}}. Item, packing and weight can't be changed. Delete or edit the invoice first.",
+    // The same when the server sends no invoice number.
+    lotInvoicedNoNumber: "{{item}} is on an invoice. Item, packing and weight can't be changed. Delete or edit the invoice first.",
     invoicedNoNewLot: "GRN {{grn}} is on invoice {{invoice}}. A line can't be added. Delete the invoice first.",
+    invoicedNoNewLotNoNumber: "GRN {{grn}} is invoiced. A line can't be added. Delete the invoice first.",
     lineOnOrder: "{{item}} is on {{customer}}'s order. Remove it from the order first.",
     lineDispatchedBefore: "{{item}} was dispatched before, so this line can't be removed.",
     // Rates
     ratesNeedManager: 'Ask a manager to make this change. It would remove a rate that was set for this GRN.',
+    ratesNeedManagerItems: 'Ask a manager to make this change. It would remove the rate that was set for this GRN for: {{items}}.',
     ratesWouldDrop: 'This change removes the rate set for this GRN. Set a new rate in Rates.',
+    ratesWouldDropItems: 'This change removes the rate set for this GRN for: {{items}}. Set a new rate in Rates.',
   },
 
   // GRN details screen

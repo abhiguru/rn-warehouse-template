@@ -52,7 +52,8 @@ import {
   type GRNLostAnswer,
   type GRNPhotoSaveReport,
 } from '@/features/grn/services/grnFormService';
-import { REFUSAL, refusalString, type ServerRefusal } from '@/utils/serverRefusal';
+import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
+import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
 import { checkSubmission } from '@/utils/lostAnswer';
@@ -61,7 +62,7 @@ import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/fea
 import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
-import { validateStep3 } from '@/features/grn/schemas/grnValidation';
+import { validateStep3, withoutStoredNumberError } from '@/features/grn/schemas/grnValidation';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
@@ -386,7 +387,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const validateFormData = async (): Promise<boolean> => {
-    const validation = await validateStep3({ header, items });
+    const checked = await validateStep3({ header, items });
+    // The number of a saved GRN is read-only and goes back as it was stored (owner decision D6): a stored number that
+    // fails today's format (older data) does not stop the edit.
+    const validation = isCreateMode ? checked : withoutStoredNumberError(checked);
 
     if (!validation.isValid) {
       setLocalValidationErrors(validation.errors);
@@ -804,9 +808,19 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     const lineIndex = lineId ? items.findIndex((item) => item.grn_trl_id === lineId) : -1;
     const itemName = refusalString(refusal, 'item_name') ?? (lineIndex >= 0 ? items[lineIndex].item_name : '');
     const grNo = refusalString(refusal, 'gr_no') ?? header.gr_no;
-    const invoiceNo = refusalString(refusal, 'invoice_no') ?? '';
+    const invoiceNo = refusalString(refusal, 'invoice_no');
     const lineTitle = lineIndex >= 0 ? tr('grn.refusal.lineTitle', { position: lineIndex + 1 }) : saveFailedTitle();
     const ok = (onPress?: () => void) => [{ text: tr('common.ok'), onPress }];
+
+    // What "Open it again" does after a line refusal: the form is replaced by the GRN as the server holds it now. The
+    // refusal may come from a locked line the form did not know (changed by someone else since it was opened), and
+    // nothing in the form could put it right.
+    const reopen = () => {
+      if (!formLeft()) void reopenFromServer(editedGrnId, formLeft);
+    };
+    const reopenButton = { text: tr('errors.refusal.stale.reload'), style: 'destructive' as const, onPress: reopen };
+    // Close leaves the dialog; `then` is where a line refusal sends the person (the items step), when it does.
+    const closeButton = (then?: () => void) => ({ text: tr('common.close'), style: 'cancel' as const, onPress: then });
 
     switch (refusal.reason) {
       case REFUSAL.STALE_RECORD: {
@@ -816,13 +830,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         return;
       }
       case REFUSAL.LOT_INVOICED:
-        showAlert(lineTitle, tr('grn.refusal.lotInvoiced', { item: itemName, invoice: formatIdentifier(invoiceNo) }), ok(goToItemsStep));
+        showAlert(lineTitle, lotInvoicedText(itemName, invoiceNo), [closeButton(goToItemsStep), reopenButton]);
         return;
       case REFUSAL.LOT_DISPATCHED:
-        showAlert(lineTitle, tr('grn.refusal.lotDispatched', { item: itemName }), ok(goToItemsStep));
+        showAlert(lineTitle, tr('grn.refusal.lotDispatched', { item: itemName }), [closeButton(goToItemsStep), reopenButton]);
         return;
       case REFUSAL.GRN_INVOICED:
-        showAlert(saveFailedTitle(), tr('grn.refusal.invoicedNoNewLot', { grn: formatIdentifier(grNo), invoice: formatIdentifier(invoiceNo) }), ok(goToItemsStep));
+        showAlert(saveFailedTitle(), invoicedNoNewLotText(formatIdentifier(grNo), invoiceNo), ok(goToItemsStep));
         return;
       case REFUSAL.GRN_DATE_AFTER_DISPATCH: {
         // The first dispatch is on this day: the details step's picker and check follow it.
@@ -841,24 +855,35 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       case REFUSAL.GRN_NUMBER_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));
         return;
-      case REFUSAL.RATES_NEED_MANAGER:
+      case REFUSAL.RATES_NEED_MANAGER: {
         // A staff edit that would remove a rate set for this GRN: stays here, the form is kept.
-        showAlert(saveFailedTitle(), tr('grn.refusal.ratesNeedManager'));
+        const names = refusalStrings(refusal, 'items') ?? [];
+        showAlert(
+          saveFailedTitle(),
+          names.length > 0 ? tr('grn.refusal.ratesNeedManagerItems', { items: names.join(', ') }) : tr('grn.refusal.ratesNeedManager')
+        );
         return;
-      case REFUSAL.RATES_WOULD_DROP:
+      }
+      case REFUSAL.RATES_WOULD_DROP: {
         // A weight or pricing-mode edit would drop a rate set for this GRN: Rates is where a new one is set.
+        const names = refusalStrings(refusal, 'items') ?? [];
         void stored.refresh();
-        showAlert(tr('grn.review.ratesRefusedTitle'), tr('grn.refusal.ratesWouldDrop'));
+        showAlert(
+          tr('grn.review.ratesRefusedTitle'),
+          names.length > 0 ? tr('grn.refusal.ratesWouldDropItems', { items: names.join(', ') }) : tr('grn.refusal.ratesWouldDrop')
+        );
         scrollToRates();
         return;
+      }
       case REFUSAL.LINE_ON_ORDER:
         showAlert(
           tr('grn.refusal.removeTitle'),
-          tr('grn.refusal.lineOnOrder', { item: itemName, customer: refusalString(refusal, 'customer_name') ?? header.customer_name })
+          tr('grn.refusal.lineOnOrder', { item: itemName, customer: refusalString(refusal, 'customer_name') ?? header.customer_name }),
+          [closeButton(), reopenButton]
         );
         return;
       case REFUSAL.LINE_DISPATCHED_BEFORE:
-        showAlert(tr('grn.refusal.removeTitle'), tr('grn.refusal.lineDispatchedBefore', { item: itemName }));
+        showAlert(tr('grn.refusal.removeTitle'), tr('grn.refusal.lineDispatchedBefore', { item: itemName }), [closeButton(), reopenButton]);
         return;
       default:
         // A rule this app does not know yet: the server's own sentence, as before.
@@ -1074,7 +1099,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           header: tr('grn.rates.colItem'),
           meta: { width: 'grow' },
           cell: ({ row }) => (
-            <GrnReviewItemCell item={row.original} weightText={lineFacts.weightText(row.original)} isProtected={!isCreateMode && row.original.qty !== row.original.stock} styles={styles} table={table} />
+            <GrnReviewItemCell item={row.original} weightText={lineFacts.weightText(row.original)} lock={lineLock(row.original, isCreateMode)} styles={styles} table={table} />
           ),
         }),
         itemColumnHelper.display({
@@ -1262,7 +1287,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 table={itemsTable}
                 variant="nested"
                 testID="grn-review-items-table"
-                rowLabel={row => lineFacts.label(row.original, row.index, !isCreateMode && row.original.qty !== row.original.stock)}
+                rowLabel={row => lineFacts.label(row.original, row.index, lineLock(row.original, isCreateMode))}
                 footer={
                   <View style={styles.itemsTotal} accessible accessibilityLabel={`${tr('grn.review.totalQuantity')}, ${formatNumber(totalQty)}`}>
                     <Text style={[table.primaryStrong, table.grow]}>{tr('common.total')}</Text>
@@ -1451,8 +1476,33 @@ type TableStyles = ReturnType<typeof makeTableStyles>;
 
 const itemColumnHelper = createAppColumnHelper<GRNItemData>();
 
+/**
+ * What locks a stored line of an edited GRN, as far as the screen says it: 'invoiced' (quantity, item, packing and
+ * weight), 'dispatched' (quantity, item and packing) from the server's locks, or 'quantity' on an older server that
+ * sends none (the line's stock differs from its quantity). null: nothing is locked, or a new GRN.
+ */
+type LineLock = 'invoiced' | 'dispatched' | 'quantity' | null;
+
+function lineLock(item: GRNItemData, isCreateMode: boolean): LineLock {
+  if (isCreateMode) return null;
+  if (item.locks) return item.locks.invoiced ? 'invoiced' : item.locks.dispatched ? 'dispatched' : null;
+  return item.qty !== item.stock ? 'quantity' : null;
+}
+
+/** The tag text and the spoken text of a line's lock. */
+const LOCK_TAG: Record<Exclude<LineLock, null>, () => string> = {
+  invoiced: () => tr('grn.item.lockedInvoiced'),
+  dispatched: () => tr('grn.item.lockedDispatched'),
+  quantity: () => tr('grn.item.quantityLocked'),
+};
+const LOCK_A11Y: Record<Exclude<LineLock, null>, () => string> = {
+  invoiced: () => tr('grn.review.a11yInvoicedLocked'),
+  dispatched: () => tr('grn.review.a11yDispatchedLockedAll'),
+  quantity: () => tr('grn.review.a11yDispatchedLocked'),
+};
+
 /** What a screen reader says for one line of the review's Items table. */
-function itemA11y(item: GRNItemData, index: number, isProtected: boolean, weightText: string | null): string {
+function itemA11y(item: GRNItemData, index: number, lock: LineLock, weightText: string | null): string {
   const qty = item.qty || 0;
   const rack = item.rack?.trim();
   const packageMark = item.package_mark?.trim();
@@ -1466,7 +1516,7 @@ function itemA11y(item: GRNItemData, index: number, isProtected: boolean, weight
     rack ? tr('grn.item.a11yRack', { rack }) : undefined,
     packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
     imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
-    isProtected ? tr('grn.review.a11yDispatchedLocked') : undefined,
+    lock ? LOCK_A11Y[lock]() : undefined,
   ]
     .filter(Boolean)
     .join(', ');
@@ -1488,12 +1538,12 @@ function itemFactsCache() {
   };
   return {
     weightText: (item: GRNItemData) => entry(item).weightText,
-    label: (item: GRNItemData, index: number, isProtected: boolean) => {
+    label: (item: GRNItemData, index: number, lock: LineLock) => {
       const found = entry(item);
-      const key = `${index}|${isProtected}`;
+      const key = `${index}|${lock}`;
       let label = found.labels.get(key);
       if (label === undefined) {
-        label = itemA11y(item, index, isProtected, found.weightText);
+        label = itemA11y(item, index, lock, found.weightText);
         found.labels.set(key, label);
       }
       return label;
@@ -1505,14 +1555,14 @@ interface GrnReviewItemCellProps {
   item: GRNItemData;
   /** The weight of one package ("50 kg each"); null when the line has none, and then nothing is shown. */
   weightText: string | null;
-  /** A stored line with dispatches: its quantity cannot change. */
-  isProtected: boolean;
+  /** What locks this stored line (see LineLock); null when nothing does. */
+  lock: LineLock;
   styles: GrnReviewStyles;
   table: TableStyles;
 }
 
 /** The Item cell of one line of the review's Items table: name, packaging and the tags. */
-const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightText, isProtected, styles, table }: GrnReviewItemCellProps) {
+const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightText, lock, styles, table }: GrnReviewItemCellProps) {
   const rack = item.rack?.trim();
   const packageMark = item.package_mark?.trim();
   const imageCount = item.trl_images?.length || 0;
@@ -1526,7 +1576,7 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightTe
         {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
         {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
         {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
-        {isProtected && <StatusTag wrap status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />}
+        {lock !== null && <StatusTag wrap status="critical" label={LOCK_TAG[lock]()} icon="lock-outline" />}
       </View>
     </>
   );

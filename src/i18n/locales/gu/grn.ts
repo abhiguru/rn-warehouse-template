@@ -46,6 +46,10 @@ export const grn: Translation<typeof source> = {
     loading: 'આવક પાવતીની વિગતો લોડ થઈ રહી છે…',
     dispatchedWarningTitle: 'કેટલીક આઇટમની જાવક થઈ ગઈ છે',
     dispatchedWarningText: 'આ આવક પાવતીમાંથી જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ કે સ્ટોક બદલી શકાતા નથી.',
+    // Draft for the owner's wording review (2026-10-20).
+    dispatchedLockedText: 'આ આવક પાવતીમાંથી જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ, આઇટમ અને પેકિંગ બદલી શકાતા નથી.',
+    // Draft for the owner's wording review (2026-10-20).
+    invoicedLockedText: 'ઇન્વૉઇસમાં હોય તે આઇટમનું વજન પણ બદલી શકાતું નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
     basicInformation: 'મુખ્ય માહિતી',
     gettingNumber: 'આગળનો આવક પાવતી નંબર લાવી રહ્યા છીએ',
     receiptNumberLabel: 'આવક પાવતી નંબર',
@@ -118,6 +122,10 @@ export const grn: Translation<typeof source> = {
     weightLocked: 'વજન લૉક છે',
     // Draft for the owner's wording review (2026-10-20).
     lockedHint: 'લૉક છે. કારણ જોવા ટૅપ કરો.',
+    // Draft for the owner's wording review (2026-10-20).
+    lockedDispatched: 'નંગ, આઇટમ અને પેકિંગ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    lockedInvoiced: 'નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
     weightInputLabel: 'દરેકનું વજન, કિલોમાં',
     weightUnit: 'કિલો',
     floor: 'માળ',
@@ -317,6 +325,10 @@ export const grn: Translation<typeof source> = {
     totalItems: 'કુલ આઇટમ',
     totalQuantity: 'કુલ નંગ',
     a11yDispatchedLocked: 'જાવક થઈ ગઈ છે, નંગ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    a11yDispatchedLockedAll: 'જાવક થઈ ગઈ છે, નંગ, આઇટમ અને પેકિંગ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    a11yInvoicedLocked: 'ઇન્વૉઇસમાં છે, નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
     confirmCreateTitle: 'આ આવક પાવતી બનાવવી છે?',
     confirmSaveTitle: 'આ આવક પાવતીના ફેરફાર સાચવવા છે?',
     confirmCreateNumbered: {
@@ -535,11 +547,15 @@ export const grn: Translation<typeof source> = {
     removeTitle: 'આ જથ્થો કાઢી શકાતો નથી',
     lotDispatched: '{{item}} ની જાવક થઈ ગઈ છે. તેની આઇટમ અને પેકિંગ બદલી શકાતા નથી.',
     lotInvoiced: '{{item}} ઇન્વૉઇસ {{invoice}} માં છે. આઇટમ, પેકિંગ અને વજન બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    lotInvoicedNoNumber: '{{item}} ઇન્વૉઇસમાં છે. આઇટમ, પેકિંગ અને વજન બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
     invoicedNoNewLot: 'આવક પાવતી {{grn}} ઇન્વૉઇસ {{invoice}} માં છે. નવો જથ્થો ઉમેરી શકાતો નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો.',
+    invoicedNoNewLotNoNumber: 'આવક પાવતી {{grn}} નું ઇન્વૉઇસ બનેલું છે. નવો જથ્થો ઉમેરી શકાતો નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો.',
     lineOnOrder: '{{item}} {{customer}} ના ઑર્ડરમાં છે. પહેલાં તેને ઑર્ડરમાંથી કાઢી નાખો.',
     lineDispatchedBefore: '{{item}} ની પહેલાં જાવક થઈ હતી, તેથી આ જથ્થો કાઢી શકાતો નથી.',
     ratesNeedManager: 'આ ફેરફાર એડમિન અથવા સુપરવાઇઝર પાસે કરાવો. તેનાથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે.',
-    ratesWouldDrop: 'આ ફેરફારથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે. દર ટૅબમાં નવો દર નક્કી કરો.',
+    ratesNeedManagerItems: 'આ ફેરફાર એડમિન અથવા સુપરવાઇઝર પાસે કરાવો. તેનાથી આ આવક પાવતી માટે {{items}} નો નક્કી કરેલો દર નીકળી જશે.',
+    ratesWouldDrop: 'આ ફેરફારથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે. દર વિભાગમાં નવો દર નક્કી કરો.',
+    ratesWouldDropItems: 'આ ફેરફારથી આ આવક પાવતી માટે {{items}} નો નક્કી કરેલો દર નીકળી જશે. દર વિભાગમાં નવો દર નક્કી કરો.',
   },
 
   details: {
