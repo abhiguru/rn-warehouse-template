@@ -107,6 +107,8 @@ export interface OrderServiceResponse<T = any> {
   error?: string;
   /** The server's own sentence for a refusal, in English as it sent it (see RPCResult.serverMessage). */
   serverMessage?: string;
+  /** The change got no answer and may have been applied (RPCResult.lostAnswer, owner rule D22). Absent otherwise. */
+  lostAnswer?: boolean;
   metadata?: {
     total_count?: number;
     current_count?: number;

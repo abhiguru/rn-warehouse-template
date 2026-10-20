@@ -293,6 +293,15 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const showResult = (result: DispatchSubmitResult) => {
         if (!result.success) {
             triggerError();
+            // The identical request was refused for the number after a lost answer, and again after the check: the first
+            // send may have saved it. The form stays locked (busy) and its only way out is Close, which leaves the form;
+            // no next number is offered and nothing can be sent again from here.
+            if (result.numberMaybeSaved) {
+                const { message } = result.numberMaybeSaved;
+                afterDialog.current = () =>
+                    showAlert(tr('dispatch.wizard.errorTitle'), message, [{ text: tr('common.close'), onPress: handleCancel }], { cancelable: false });
+                return;
+            }
             // Re-enable button on error so user can retry
             setIsSubmitting(false);
             // The error is shown by `afterDialog`, once the confirm is gone. When another dispatch holds the number,
@@ -576,14 +585,15 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 completedSteps={getDispatchCompletedSteps(DISPATCH_STEP_NUMBERS.REVIEW)}
                 onCancel={handleCancel}
                 // While the server is asked what became of the request, the X is the only way out, and it warns
+                // ("Keep waiting" / "Leave anyway")
+                disabled={isCheckingAnswer}
+                leaveWarning={isCheckingAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
                 cancelMessage={
-                    isCheckingAnswer
-                        ? tr('errors.lostAnswer.leaveWarning')
-                        : isCreateMode
-                            ? items.length > 0
-                                ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
-                                : tr('dispatch.wizard.discardDetailsMessage')
-                            : tr('dispatch.wizard.discardEditMessage')
+                    isCreateMode
+                        ? items.length > 0
+                            ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
+                            : tr('dispatch.wizard.discardDetailsMessage')
+                        : tr('dispatch.wizard.discardEditMessage')
                 }
                 dispNo={header.disp_no}
                 // No step pills while locked

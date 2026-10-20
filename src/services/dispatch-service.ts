@@ -13,8 +13,8 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import type { RpcPagination } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
-import { serverText } from '@/utils/serverText';
-import { isLostAnswer, waitForServer } from '@/utils/lostAnswer';
+import { isUnsettledFailure, serverText } from '@/utils/serverText';
+import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 
@@ -1000,6 +1000,10 @@ async function whatBecameOfDelete(dispatchId: string, sentAt: number, signal?: A
   }
 }
 
+/** The server's answer to a delete of a dispatch it does not have ("Dispatch not found"). */
+const isDispatchNotFound = (answer: Record<string, any> | null | undefined): boolean =>
+  answer?.success === false && /dispatch not found/i.test(String(answer.error ?? answer.message ?? ''));
+
 /** A count the server sent, as a whole number (0 when it sent none). */
 const countOf = (value: unknown): number => (typeof value === 'number' && value > 0 ? Math.floor(value) : 0);
 
@@ -1052,7 +1056,20 @@ export const deleteDispatch = async (
   try {
     console.log('[DispatchService] Deleting dispatch', dispatchId);
 
+    /** The dispatch is not there: the delete went through (this one, or an earlier one whose answer was lost). */
+    const deletedAlready = async (): Promise<DeleteDispatchResult> => {
+      void invalidateReportQueries();
+      try {
+        await invalidateDispatchCache();
+      } catch (cacheError) {
+        console.error('[DispatchService] Cache invalidation failed (mutation succeeded):', cacheError);
+      }
+      return { success: true, message: t('errors.dispatch.deletedWithRestore'), orderCountsUnknown: true };
+    };
+
     let result: RPCResult<Record<string, any>>;
+    // True after a delete whose answer was lost: from then on this is a RESEND, which has to be settled (owner rule D22).
+    let resent = false;
     for (;;) {
       const sentAt = Date.now();
       result = await executeRPC<Record<string, any>>(
@@ -1070,8 +1087,18 @@ export const deleteDispatch = async (
           validateSuccess: false,
         }
       );
-      // A statement timeout (57014) is not a lost answer: the server rolled it back, nothing was deleted.
-      if (result.success || !isLostAnswer(result, result.errorCode)) break;
+      // The answer of a resend is "Dispatch not found": the dispatch is gone, which is what was asked for (the delete
+      // whose answer was lost went through, or someone else deleted it). The order's counts are not known.
+      if (resent && result.success && isDispatchNotFound(result.data)) {
+        console.log('[DispatchService] The resend was answered "not found": the dispatch is gone');
+        return await deletedAlready();
+      }
+      // No answer (`lostAnswer`, from executeRPC; a statement timeout, 57014, is not one: nothing was deleted). On a
+      // resend any failure that is not the server's answer (57014 while it waits behind the first delete, a failure
+      // before sending, a changed session) leaves the attempt unsettled too: back to the check, never an error that
+      // unlocks the screen.
+      const unsettled = !result.success && (result.lostAnswer === true || (resent && isUnsettledFailure(result, result.errorCode)));
+      if (!unsettled) break;
 
       console.warn('[DispatchService] delete_dispatch_with_order_cleanup got no answer; asking the server', { code: result.errorCode });
       options.onLostAnswer?.();
@@ -1079,15 +1106,10 @@ export const deleteDispatch = async (
       if (outcome === 'aborted') return { success: false, aborted: true, message: '' };
       if (outcome === 'gone') {
         console.log('[DispatchService] The dispatch is gone: the delete went through');
-        void invalidateReportQueries();
-        try {
-          await invalidateDispatchCache();
-        } catch (cacheError) {
-          console.error('[DispatchService] Cache invalidation failed (mutation succeeded):', cacheError);
-        }
-        return { success: true, message: t('errors.dispatch.deletedWithRestore'), orderCountsUnknown: true };
+        return await deletedAlready();
       }
       console.log('[DispatchService] The dispatch is still there; sending the delete again');
+      resent = true;
     }
 
     if (!result.success) {

@@ -18,9 +18,12 @@
  * loaded on first use, not when this file is imported: a screen's test that does not stand NetInfo in
  * (a native module) still imports this file, and there NetInfo cannot be had, which counts as online.
  * "Offline" is the phone saying it has no network at all (`isConnected === false`); a connection whose
- * internet is "not reachable" can still reach a facility's own server, so it is asked.
+ * internet is "not reachable" can still reach a facility's own server, so it is asked. The one hook here,
+ * `useIsDisconnected`, is that same test for the notices ("Waiting for the connection…"), so what a screen says is
+ * what the wait waits for.
  */
-import { isStatementTimeout, requestMayHaveBeenSent } from '@/utils/serverText';
+import { useEffect, useState } from 'react';
+import { isLostAnswer } from '@/utils/serverText';
 
 /** How long after a request was sent the app waits before it asks what became of it. */
 export const LOST_ANSWER_MIN_WAIT_MS = 10_000;
@@ -30,14 +33,10 @@ export const LOST_ANSWER_LONGEST_RETRY_MS = 30_000;
 
 /**
  * True when a change failed with no answer after the request may have reached the server (a timeout, a dropped
- * connection, a gateway's error page). False for a failure before the request left the phone (offline, no
- * session), for any answer the server gave, and for SQLSTATE 57014: a statement timeout rolled back, so nothing
- * was saved. `err` is whatever failed (an Error, a Supabase error, a service result `{ error, message }`);
- * `code` is its code when the text passed in does not carry it.
+ * connection, a gateway's error answer). The definition lives in `@/utils/serverText` (and `executeRPC` returns the
+ * result as `lostAnswer`); it is re-exported here for the screens and services that already import it from this file.
  */
-export function isLostAnswer(err: unknown, code?: string): boolean {
-  return requestMayHaveBeenSent(err, code) && !isStatementTimeout(err, code);
-}
+export { isLostAnswer };
 
 /** What `waitForServer` and `checkSubmission` reject with when their signal is aborted. */
 export function abortedError(): Error {
@@ -90,6 +89,41 @@ function netInfo(): NetInfoModule | null {
 
 /** The phone says it has no network at all. An unknown reading is not "offline": the question is asked then. */
 const hasNoNetwork = (state: { isConnected: boolean | null }): boolean => state.isConnected === false;
+
+/**
+ * True while the phone says it has no network at all (`isConnected === false`): the one online test of the lost-answer
+ * rule. The notices ("Waiting for the connection…") read this, so what they say is what `waitForServer` waits for. An
+ * unknown reading (`isConnected === null`), a connection whose internet is "not reachable", and a phone whose state
+ * cannot be read all count as online: the server is asked then. (`useIsOffline` in `@/hooks/useNetworkStatus` is
+ * stricter, for banners, and is not used for this.)
+ */
+export function useIsDisconnected(): boolean {
+  const [disconnected, setDisconnected] = useState(false);
+  useEffect(() => {
+    const info = netInfo();
+    if (!info) return undefined;
+    let active = true;
+    const apply = (state: { isConnected: boolean | null }) => {
+      if (active) setDisconnected(hasNoNetwork(state));
+    };
+    // Subscribed first: an event that arrives while the first reading is pending is newer than it.
+    let received = false;
+    const unsubscribe = info.addEventListener(state => {
+      received = true;
+      apply(state);
+    });
+    void info.fetch().then(state => {
+      if (!received) apply(state);
+    }).catch(() => {
+      // Failure to observe connectivity does not prove the server is down: stay "online".
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+  return disconnected;
+}
 
 /** Resolves once the phone is online; at once when it is, or when its state cannot be read. */
 async function waitUntilOnline(signal?: AbortSignal): Promise<void> {
@@ -145,8 +179,9 @@ export async function waitForServer(sentAt: number, signal?: AbortSignal): Promi
 /**
  * Asks `read` until it answers (anything but null or undefined): the phone must be online for each try, and
  * a try that gets no answer is followed by a pause of 2 s, doubled each time up to 30 s. A `read` that
- * throws counts as no answer. Rejects with an AbortError when the signal is aborted, or when `read` itself
- * throws one (a screen that has been left says so that way).
+ * throws counts as no answer. Rejects with an AbortError when the signal is aborted (also while a read is in
+ * flight: its answer is then ignored), or when `read` itself throws one (a screen that has been left says so
+ * that way).
  */
 export async function readUntilAnswered<T>(
   read: () => Promise<T | null | undefined>,
@@ -162,6 +197,8 @@ export async function readUntilAnswered<T>(
       if (isAbortError(error)) throw error;
       value = null;
     }
+    // The person left while the read was in flight: its answer is not wanted (it may belong to a form that is gone).
+    throwIfAborted(signal);
     if (value !== null && value !== undefined) return value;
     await sleep(pause, signal);
     pause = Math.min(pause * 2, LOST_ANSWER_LONGEST_RETRY_MS);

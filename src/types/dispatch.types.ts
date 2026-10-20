@@ -174,8 +174,18 @@ export interface DispatchApiResponse {
   reason?: 'NUMBER_TAKEN';
   /** The number the refusal is about. */
   number?: string;
-  /** The person left while the app was still asking the server what became of a request that got no answer; nothing more was done. */
+  /**
+   * The person left while the request was on its way or the app was still asking the server what became of it; nothing
+   * more was done. With `success: true` the dispatch was saved before the person left (the screen says so).
+   */
   aborted?: boolean;
+  /** With `aborted`: the person left while the request was on its way and its answer was lost, so it may have been saved. */
+  maybeSaved?: boolean;
+  /**
+   * The request was sent again after a lost answer and refused for the number twice, with a check that found nothing in
+   * between: the first send may have saved the dispatch. `number` is the number; no next number is offered.
+   */
+  numberMaybeSaved?: boolean;
   /** Create only: photos picked in the form that did not upload after the dispatch was saved. */
   failed_photos?: DispatchImageData[];
 }

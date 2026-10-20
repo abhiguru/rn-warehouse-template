@@ -44,6 +44,13 @@ export const dispatch: Translation<typeof source> = {
     saveFailed: 'જાવક સાચવી શકાઈ નથી',
     editMismatch: 'આ ફોર્મ બીજી જાવકનું છે. પાછા જાઓ અને જાવક ફરી ખોલો.',
     numberUsedNext: 'જાવક નંબર {{number}} પહેલેથી વપરાયેલો છે. હવે પછીનો ખાલી નંબર {{next}} છે.',
+    // Draft for the owner's wording review (2026-10-20): the number was refused when the request was sent again after a lost answer.
+    numberMaybeSaved: 'જાવક {{number}} કદાચ પહેલેથી સચવાઈ ગઈ હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
+    // Draft for the owner's wording review (2026-10-20): a save that finished after the form was left.
+    maybeSavedAfterLeavingTitle: 'સર્વરનો જવાબ મળ્યો નથી',
+    savedAfterLeavingTitle: 'જાવક સચવાઈ ગઈ',
+    savedAfterLeaving: 'તમે ફોર્મ છોડ્યું તે પહેલાં જાવક {{number}} સચવાઈ ગઈ. તે જાવકની યાદીમાં છે.',
+    savedAfterLeavingPhotos: 'જાવક {{number}} સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને જાવકની યાદીમાં ખોલો અને ફોટો વિભાગમાં ફોટો ઉમેરો.',
   },
   // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
   edit: {

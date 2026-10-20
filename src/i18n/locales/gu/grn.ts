@@ -28,6 +28,8 @@ export const grn: Translation<typeof source> = {
     checkNumberNetwork: 'આવક પાવતી નંબર તપાસતી વખતે નેટવર્કની ભૂલ આવી',
     numberTaken: 'આવક પાવતી {{number}} પહેલેથી છે. બીજો નંબર લખો.',
     numberTakenFor: 'આવક પાવતી {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
+    // Draft for the owner's wording review (2026-10-20): the number was refused when the request was sent again after a lost answer.
+    numberMaybeSaved: 'આવક પાવતી {{number}} કદાચ પહેલેથી સચવાઈ ગઈ હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
     nextNumberFailed: 'આગળનો આવક પાવતી નંબર મળી શક્યો નથી',
     // Draft for the owner's wording review (2026-10-20): a save that failed with no usable reason.
     requestFailed: 'ફેરફાર સાચવી શકાયા નથી. ફરી પ્રયાસ કરો.',

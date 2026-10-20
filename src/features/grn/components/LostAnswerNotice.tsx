@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useIsDisconnected } from '@/utils/lostAnswer';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -20,7 +20,8 @@ interface LostAnswerNoticeProps {
 export const LostAnswerNotice: React.FC<LostAnswerNoticeProps> = ({ message }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const offline = useIsOffline();
+  // The same online test the wait uses (`waitForServer`): the phone says it has no network at all.
+  const offline = useIsDisconnected();
 
   return (
     <View style={styles.container} accessibilityLiveRegion="polite" testID="lost-answer-notice">

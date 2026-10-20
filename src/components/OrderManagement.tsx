@@ -638,6 +638,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     let noAnswer = false;
 
     for (let index = 0; index < ordered.length; index += 1) {
+      // The person chose "Leave anyway" (the picker's X, after its warning): no further lot is sent. The lots not sent
+      // come back not saved.
+      if (options?.signal?.aborted) break;
       const change = ordered[index];
       const current = orderRef.current;
       // A sign-out or a change of facility ends the save; the rest is not sent.

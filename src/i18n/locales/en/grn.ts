@@ -27,6 +27,8 @@ export const grn = {
     checkNumberNetwork: 'Network error checking GRN',
     numberTaken: 'GRN {{number}} already exists. Enter a different number.',
     numberTakenFor: 'GRN {{number}} already exists ({{customer}}). Enter a different number.',
+    // The number was refused when the request was sent again after a lost answer: the first send may have saved it.
+    numberMaybeSaved: 'GRN {{number}} may already have been saved. Check the list before entering it again.',
     nextNumberFailed: 'Failed to get next GRN number',
     requestFailed: 'Unable to save changes. Please try again.',
     creationFailed: 'GRN creation failed',

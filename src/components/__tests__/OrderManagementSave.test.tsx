@@ -107,9 +107,12 @@ const saved = { success: true, message: '' } as never;
 const refusal = (message: string, error: unknown = 'API_ERROR') => ({ success: false, message, error }) as never;
 // A failure whose own text is in `error`, under the app's text for the action: how
 // OrderService hands back a call without an answer, and an exception the server raised.
-const failedWith = (error: string) => ({ success: false, message: "Couldn't save the item.", error }) as never;
+// `lostAnswer` is the flag executeRPC computed (it knew the HTTP status and the SQL code) and OrderService passes on:
+// the call went out and no answer came.
+const failedWith = (error: string, lostAnswer = false) =>
+  ({ success: false, message: "Couldn't save the item.", error, ...(lostAnswer ? { lostAnswer: true } : {}) }) as never;
 // A call that went out and got no answer (a timeout, a dropped connection): the lot may be on the order already.
-const timedOut = failedWith('TimeoutError: Request timeout');
+const timedOut = failedWith('TimeoutError: Request timeout', true);
 // A call that never left the phone (no session could be renewed for want of a connection): nothing was sent.
 const notSent = failedWith('Network request failed: session refresh unavailable');
 const NOT_SAVED = 'Not saved. Check your connection and try again.';
@@ -478,7 +481,7 @@ describe('a call whose answer was lost is checked', () => {
 
   it.each([
     ['timed out (it had gone out)', timedOut],
-    ['broke the connection after it had gone out', failedWith('TypeError: Network request failed')],
+    ['broke the connection after it had gone out', failedWith('TypeError: Network request failed', true)],
   ])('a call that %s: the lot is named to the picker, the server is asked, the lot shows what it has, nothing is sent again, and the next lots are sent', async (_name, failure) => {
     await openPicker();
     // The server never stored the first lot.
@@ -609,6 +612,21 @@ describe('a call whose answer was lost is checked', () => {
     expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
     expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-one', removal: false }], [null]]);
     expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('is stopped between lots when the person chose Leave anyway: the lots not yet sent come back not saved', async () => {
+    await openPicker();
+    const controller = new AbortController();
+    // The first lot is answered while the person leaves.
+    service.addItemToOrder.mockImplementationOnce(async () => {
+      controller.abort();
+      return saved;
+    });
+
+    const results = await send([{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }], undefined, { signal: controller.signal });
+
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([{ grnItemId: 'lot-one', ok: true }, { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED }]);
   });
 });
 

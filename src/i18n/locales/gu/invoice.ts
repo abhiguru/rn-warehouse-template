@@ -42,7 +42,7 @@ export const invoice: Translation<typeof source> = {
     discardNewTitle: 'આ ઇન્વૉઇસ છોડી દેવું છે?',
     discardEditMessage: 'આ ઇન્વૉઇસમાં કરેલા ફેરફાર જતા રહેશે.',
     discardNewMessage: 'આ ઇન્વૉઇસ માટે લખેલી વિગતો જતી રહેશે.',
-    // The close button's question while the server is asked about a save or delete whose answer was lost (D22).
+    // Draft for the owner's wording review (2026-10-20): the close button's question while the server is asked about a save or delete whose answer was lost (D22).
     lostLeaveTitle: 'જવાબ મળ્યા વગર બહાર નીકળવું છે?',
   },
   // Opening an invoice to edit it
@@ -109,6 +109,8 @@ export const invoice: Translation<typeof source> = {
     numberTakenTitle: 'ઇન્વૉઇસ નંબર વપરાઈ ગયો છે',
     numberTaken: 'ઇન્વૉઇસ નંબર {{number}} વપરાઈ ગયો છે. આગળનો ખાલી નંબર {{next}} છે.',
     numberTakenNoNext: 'ઇન્વૉઇસ નંબર {{number}} વપરાઈ ગયો છે. બીજો નંબર લખો.',
+    // Draft for the owner's wording review (2026-10-20): the number was refused when the save was sent again after a lost answer.
+    numberMaybeSaved: 'ઇન્વૉઇસ {{number}} કદાચ પહેલેથી સચવાઈ ગયું હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
   },
   // The sheet that lists the GRNs that can be invoiced
   grnPicker: {

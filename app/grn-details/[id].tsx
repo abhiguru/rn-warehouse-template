@@ -213,7 +213,7 @@ function GRNDetailScreen() {
   };
 
   const handleAddHeaderImage = async () => {
-    if (!id || !canEdit || imageMutationRef.current) return;
+    if (!id || !canEdit || imageMutationRef.current || deleteRunningRef.current) return;
     imageMutationRef.current = true;
     try {
       // Android's system picker grants access to the selected asset; broad
@@ -256,7 +256,7 @@ function GRNDetailScreen() {
   };
 
   const handleDeleteImage = (image: GRNImageData) => {
-    if (imageMutationRef.current) return;
+    if (imageMutationRef.current || deleteRunningRef.current) return;
     imageMutationRef.current = true;
     showAlert(tr('grn.details.deleteImageTitle'), tr('grn.details.deleteImageMessage'), [
       { text: tr('common.cancel'), style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
@@ -417,12 +417,19 @@ function GRNDetailScreen() {
   // on the stack and Back would show the figures from before). The first focus is the mount, which the effect
   // above already loads.
   const focusCountRef = useRef(0);
+  // This page is the one in front: the "deleted" message's Done leaves only then (a page covered by another screen is
+  // not taken off the stack from under it).
+  const focusedRef = useRef(true);
   const fetchGRNDetailsRef = useRef(fetchGRNDetails);
   fetchGRNDetailsRef.current = fetchGRNDetails;
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) void fetchGRNDetailsRef.current();
+      return () => {
+        focusedRef.current = false;
+      };
     }, [])
   );
 
@@ -431,7 +438,7 @@ function GRNDetailScreen() {
   const askToLeaveDuringCheck = () => {
     showAlert(
       tr('grn.details.leaveWhileCheckingTitle'),
-      tr('errors.lostAnswer.leaveWarning'),
+      tr('errors.lostAnswer.leaveWarningDelete'),
       [
         { text: tr('common.cancel'), style: 'cancel' },
         {
@@ -490,6 +497,8 @@ function GRNDetailScreen() {
 
   // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
   const handleViewInvoice = (invoiceId: string) => {
+    // Not while a delete is on its way or its answer is being checked: the page must still be here for its result.
+    if (deleteRunningRef.current) return;
     router.push(`/invoice-details/${invoiceId}`);
   };
 
@@ -530,9 +539,18 @@ function GRNDetailScreen() {
             const grNumber = data?.grn?.gr_no;
             // The stored photo files of the GRN, read before it is gone: they are removed once it is deleted.
             const photoPaths = photoPathsOf(data?.grn);
+            // The GRN is gone (this delete, or one whose answer was lost): its photo files go, and Done leaves for the
+            // list only if this page is still the one in front.
             const showDeleted = (text: string) => {
               void removeGRNPhotoFiles(photoPaths);
-              showAlert(tr('grn.details.deletedTitle'), text, [{ text: tr('common.done'), onPress: () => router.back() }]);
+              showAlert(tr('grn.details.deletedTitle'), text, [
+                {
+                  text: tr('common.done'),
+                  onPress: () => {
+                    if (focusedRef.current) router.back();
+                  },
+                },
+              ]);
             };
 
             try {
@@ -540,8 +558,11 @@ function GRNDetailScreen() {
               let result = await deleteGRN(id);
 
               // No answer: the delete may have gone through. The screen locks, waits for the connection and for 10 s
-              // to pass since the request was sent, then reads the GRN. Gone: it was deleted. Still there: the delete
-              // is sent once more, and its answer is handled like any other (a lost one starts this again).
+              // to pass since the request was sent, then reads the GRN. Gone: it was deleted (the reports are told, in
+              // settleLostDelete). Still there: the delete is sent once more, and its answer is handled like any other:
+              // a failure of the resend that is not the server's answer (57014 behind the first delete, a failure before
+              // sending) comes back as a lost answer too and starts this again; "GRN not found" is a success (it is
+              // gone, as asked: `alreadyGone`), which is handled below with the photo files removed as well.
               while (result.lostAnswer) {
                 const controller = new AbortController();
                 deleteAbortRef.current = controller;
@@ -554,7 +575,7 @@ function GRNDetailScreen() {
                   return;
                 }
                 sentAt = Date.now();
-                result = await deleteGRN(id);
+                result = await deleteGRN(id, { resend: true });
               }
 
               if (result.success) {
@@ -637,6 +658,8 @@ function GRNDetailScreen() {
 
   // Handle Print
   const handlePrint = () => {
+    // Not while a delete is on its way or its answer is being checked.
+    if (deleteRunningRef.current) return;
     setShowPrintDialog(true);
   };
 
@@ -801,7 +824,11 @@ function GRNDetailScreen() {
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
+      {/* While the answer of the delete is being checked nothing on the page can be pressed (no link to another screen, no photo upload, no print). */}
+      <View
+        style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
+        pointerEvents={deleteChecking ? 'none' : 'auto'}
+      >
         {deleteChecking ? <LostAnswerNotice message={tr('errors.lostAnswer.checkingDelete')} /> : null}
 
         {/* Hero Header - Quick Stats */}

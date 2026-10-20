@@ -249,4 +249,9 @@ export interface CreateInvoiceResponse {
    * (ms since 1970): the caller waits for the connection and for the server, then asks what became of the request.
    */
   lostAnswer?: { sentAt: number };
+  /**
+   * The save was sent again after a lost answer and refused for the number twice, with a check that found nothing in
+   * between: the first send may have saved the invoice (`numberTaken` holds the number). No next number is offered.
+   */
+  numberMaybeSaved?: boolean;
 }

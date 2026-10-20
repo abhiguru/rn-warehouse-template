@@ -214,7 +214,7 @@ it('closes when the save that timed out is found applied: the lot is locked and 
       id: 'line-own', order_id: orderId, grn_item_id: lotId, requested_quantity: quantity, item_status: 'pending',
       created_at: '2026-10-01T09:00:00Z', grn_item: LOTS[0],
     } as OrderItem];
-    return { success: false, message: "Couldn't add the item.", error: 'TimeoutError: Request timeout' } as never;
+    return { success: false, message: "Couldn't add the item.", error: 'TimeoutError: Request timeout', lostAnswer: true } as never;
   });
   // The failure is logged for the developer; it is not a test failure.
   jest.spyOn(console, 'error').mockImplementation(() => undefined);

@@ -263,7 +263,7 @@ describe('the removal of a line', () => {
 
   it('a removal that got no answer is checked, not answered \'unknown\': the order is read, and a line that is gone answers true', async () => {
     const card = await openOrder();
-    service.removeItemFromOrder.mockResolvedValueOnce({ success: false, message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout' } as never);
+    service.removeItemFromOrder.mockResolvedValueOnce({ success: false, message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout', lostAnswer: true } as never);
     service.getOrderWithItems.mockImplementationOnce(async () => ({ success: true, data: { ...copy(makeOrder()), items: [line('lot-kept', 2)] } }) as never);
     const before = reads();
     expect(await remove(card)).toBe(true);
@@ -276,7 +276,7 @@ describe('the removal of a line', () => {
 
   it('a removal that got no answer, with the line still on the order: says it was not removed and answers false', async () => {
     const card = await openOrder();
-    service.removeItemFromOrder.mockResolvedValueOnce({ success: false, message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout' } as never);
+    service.removeItemFromOrder.mockResolvedValueOnce({ success: false, message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout', lostAnswer: true } as never);
     expect(await remove(card)).toBe(false);
     expect(service.removeItemFromOrder).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledTimes(1);
@@ -296,7 +296,7 @@ describe('the removal of a line', () => {
 });
 
 describe('a line whose answer was lost', () => {
-  const lost = { success: false, message: "Couldn't change the item.", error: 'TimeoutError: Request timeout' } as never;
+  const lost = { success: false, message: "Couldn't change the item.", error: 'TimeoutError: Request timeout', lostAnswer: true } as never;
 
   it('is locked while it is checked: the card is told, and a change or removal of it sends nothing', async () => {
     const card = await openOrder();

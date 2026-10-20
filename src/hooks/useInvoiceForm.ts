@@ -113,6 +113,8 @@ export interface SubmitFailureInfo {
   reloadLines?: boolean;
   /** Take the person to the step that has the invoice number (step 1) after the message. */
   numberTaken?: boolean;
+  /** The message is the one that says the invoice may already be saved: it is shown with only a way to close the form. */
+  numberMaybeSaved?: boolean;
 }
 /** `busy`: a save is already on its way; this call did nothing. */
 export type SubmitResult = SubmitSuccess | SubmitFailure | 'busy';
@@ -711,7 +713,11 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       const controller = new AbortController();
       saveAbort.current = controller;
       const outcome = await sendUntilAnswered({
-        send: () => (isCreateMode ? createInvoice(payload, requestKey) : updateInvoice(invoiceId!, payload, requestKey)),
+        // A send after a lost answer says so: a failure of it that is not the server's answer is not settled (D22).
+        send: (resend) =>
+          isCreateMode
+            ? (resend ? createInvoice(payload, requestKey, { resend: true }) : createInvoice(payload, requestKey))
+            : (resend ? updateInvoice(invoiceId!, payload, requestKey, { resend: true }) : updateInvoice(invoiceId!, payload, requestKey)),
         requestKey,
         fromStored: (stored) => invoiceFromStoredAnswer(isCreateMode ? null : invoiceId!, payload, stored),
         signal: controller.signal,
@@ -728,6 +734,13 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           invoiceNo: result.data?.invoice_no,
           total: result.data?.total ?? null,
         };
+      }
+      if (result.numberMaybeSaved) {
+        // The identical save was refused for the number after a lost answer, and again after the check: the first send
+        // may have saved it. No next number; the screen shows this with only a way to close the form.
+        const message = t('invoice.form.numberMaybeSaved', { number: formatIdentifier(result.numberTaken?.number ?? header.inv_no) });
+        report(t(failedTitleKey), message, { numberMaybeSaved: true });
+        return { success: false, error: message };
       }
       if (result.numberTaken) {
         // I4: say which number is taken and which is free, and take the person to the step with the field.

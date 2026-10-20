@@ -13,7 +13,7 @@ import { t } from '@/i18n';
 
 import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
-import { serverReason, serverText } from '@/utils/serverText';
+import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -113,6 +113,10 @@ const isInvoiceNumberRange = (text: unknown, code: unknown): boolean =>
  */
 function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): string {
   if (isInvoiceNumberRange(text, code)) return t('invoice.validation.invoiceNumberRange');
+  // An expired sign-in (PGRST303, "JWT expired") was refused before the save ran and the session is already renewed:
+  // "Your sign-in was renewed. Tap Save again." (PGRST301, which cannot be renewed, says to sign in again).
+  const expired = expiredSessionText(text, { write: true, code: typeof code === 'string' ? code : undefined });
+  if (expired) return expired;
   if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
     return serverReason(text) ?? serverText(text, fallback, { code: typeof code === 'string' ? code : undefined });
   }
@@ -144,6 +148,16 @@ class NumberTakenError extends Error {
     super(t('invoice.form.numberTakenNoNext', { number: String(taken) }));
     this.taken = taken;
   }
+}
+
+/**
+ * What `createInvoice` and `updateInvoice` are told besides the payload. `resend`: this is the identical request sent
+ * again after a lost answer (owner rule D22). A failure of it that is not the server's answer (57014 while it waits
+ * behind the original, a failure before sending, a changed session) leaves the attempt unsettled, so the result says
+ * `lostAnswer` and the form goes back to the check instead of unlocking.
+ */
+export interface InvoiceSaveOptions {
+  resend?: boolean;
 }
 
 /**
@@ -642,7 +656,8 @@ export const invoiceFromStoredAnswer = async (
  */
 export const createInvoice = async (
   payload: CreateInvoicePayload,
-  requestKey?: string
+  requestKey?: string,
+  options: InvoiceSaveOptions = {}
 ): Promise<CreateInvoiceResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
@@ -726,8 +741,9 @@ export const createInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
-      // No answer came, and the request may have reached the server: nothing is worded for the person (D22).
-      if (isLostAnswer(error)) return lostAnswerResponse(sentAt);
+      // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
+      // a failure of a resend that is not the server's answer: that attempt is not settled either.
+      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt);
       const taken = numberTakenFrom(error, payload.header.inv_no);
       if (taken) throw new NumberTakenError(taken.number);
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
@@ -980,7 +996,8 @@ export const loadInvoiceData = async (
 export const updateInvoice = async (
   invoiceId: string,
   payload: CreateInvoicePayload,
-  requestKey?: string
+  requestKey?: string,
+  options: InvoiceSaveOptions = {}
 ): Promise<CreateInvoiceResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
@@ -1043,8 +1060,9 @@ export const updateInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
-      // No answer came, and the request may have reached the server: nothing is worded for the person (D22).
-      if (isLostAnswer(error)) return lostAnswerResponse(sentAt);
+      // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
+      // a failure of a resend that is not the server's answer: that attempt is not settled either.
+      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt);
       const taken = numberTakenFrom(error, payload.header.inv_no);
       if (taken) {
         return {

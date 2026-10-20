@@ -125,7 +125,7 @@ function InvoiceDetailScreen() {
   // The one way off the page while the answer is lost: the header's Back and the Android Back key ask first, with the
   // warning that the invoice may have been deleted. Leaving stops the asking, and no delete is sent after that.
   const askLeaveLostDelete = useCallback(() => {
-    showAlert(tr('invoice.steps.lostLeaveTitle'), tr('errors.lostAnswer.leaveWarning'), [
+    showAlert(tr('invoice.steps.lostLeaveTitle'), tr('errors.lostAnswer.leaveWarningDelete'), [
       { text: tr('common.cancel'), style: 'cancel' },
       {
         text: tr('common.goBack'),
@@ -302,7 +302,9 @@ function InvoiceDetailScreen() {
             reportDeleted();
             return;
           }
-          result = await deleteInvoice(invoiceId);
+          // A failure of the resend that is not the server's answer comes back as a lost answer too (`resend`): the
+          // page stays locked and goes back to the check. "Invoice not found" is `notFound`: deleted, as asked.
+          result = await deleteInvoice(invoiceId, { resend: true });
           if (controller.signal.aborted) return;
         }
 

@@ -15,7 +15,7 @@ import { isTemporaryGRNImageId } from './imageId';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
 import { t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -62,6 +62,12 @@ interface CreateGRNPayload {
    * key (`checkSubmission`): it is handled exactly as the answer that was lost, and nothing is sent.
    */
   storedAnswer?: unknown;
+  /**
+   * The check found nothing for a lost request: the identical request is sent again, byte for byte (`resend.args`: the
+   * body and request code exactly as last sent, no new key is made and nothing is rebuilt). Any failure of it that is
+   * not the server's answer leaves the attempt unsettled (`lostAnswer` again).
+   */
+  resend?: GRNLostAnswer;
 }
 
 interface UpdateGRNPayload {
@@ -265,6 +271,12 @@ const itemGoneText = (failure: unknown): string | undefined => (isItemGone(failu
 export interface GRNLostAnswer {
   key: string;
   sentAt: number;
+  /**
+   * The complete arguments of the RPC as sent, request code (`p_idempotency_key`) included: the exact request a
+   * resend repeats. A retry without `p_rates` (an older server) is the request that was sent last, and is what is
+   * repeated, not the first attempt with its other key.
+   */
+  args: Record<string, unknown>;
 }
 
 /** What save_grn answers (and what is stored under its key): `data` holds the saved GRN. */
@@ -364,24 +376,39 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       // which is the request code the screen asks the server about after a lost answer.
       const callSave = async (body: typeof rpcPayload) => {
         const key = await submissionIdempotencyKey('grn', payload.nonce ? { ...body, nonce: payload.nonce } : body);
-        sent.last = { key, sentAt: Date.now() };
-        return authenticatedClient.rpc('save_grn', { ...body, p_idempotency_key: key });
+        const args = { ...body, p_idempotency_key: key };
+        sent.last = { key, sentAt: Date.now(), args };
+        return authenticatedClient.rpc('save_grn', args);
       };
-      let { data: answer, error } = await callSave(rpcPayload);
-      if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
-        // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
-        // has a stored rate, so the old call (and its key) loses nothing.
-        log.warn('save_grn does not take p_rates on this server; sent without it');
-        const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
-        ({ data: answer, error } = await callSave(withoutRates as typeof rpcPayload));
+      let answer: SaveGRNAnswer;
+      let error: any;
+      let status: number | undefined;
+      if (payload.resend) {
+        // The identical request, byte for byte, under the code the check was made for.
+        const { key, args } = payload.resend;
+        sent.last = { key, sentAt: Date.now(), args };
+        ({ data: answer, error, status } = await authenticatedClient.rpc('save_grn', args));
+      } else {
+        ({ data: answer, error, status } = await callSave(rpcPayload));
+        if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+          // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
+          // has a stored rate, so the old call (and its key) loses nothing.
+          log.warn('save_grn does not take p_rates on this server; sent without it');
+          const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
+          ({ data: answer, error, status } = await callSave(withoutRates as typeof rpcPayload));
+        }
       }
 
       if (error) {
         log.error('save_grn failed', loggableError(error));
         if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
-        // Sent and not answered (a dropped connection, the 60 s timeout): the GRN may be saved. A statement timeout
-        // is an answer: nothing was saved.
-        if (sent.last && isLostAnswer(error)) lostAnswer = sent.last;
+        // Sent and not answered (a dropped connection, the 60 s timeout, a gateway's 502 / 504): the GRN may be saved.
+        // A statement timeout is an answer: nothing was saved. The HTTP status goes with the error, so a gateway's
+        // answer is told from the server's own refusals. A RESEND is settled only by the server's answer: any other
+        // failure of it (57014 while it waits behind the original, a failure before sending, a changed session) leaves
+        // the attempt unsettled, and the screen goes back to the check.
+        const failure = withHttpStatus(error, status);
+        if (sent.last && (isLostAnswer(failure) || (payload.resend && isUnsettledFailure(failure)))) lostAnswer = sent.last;
         throw new Error(itemGoneText(error) ?? serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
       }
       data = answer;
@@ -391,8 +418,13 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       log.error('save_grn returned failure', { errorCode: data?.error_code });
       const refusalCode = data?.error_code;
       if (isRateRefusalCode(refusalCode)) throw new RateRefusal(refusalCode, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
-      // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one.
-      if (isNumberTaken(data)) throw new NumberTakenRefusal(grNumber, serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
+      // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one. On a
+      // RESEND it means the first send may have saved it: the attempt is unsettled (`lostAnswer`), the screen checks
+      // again and, if that finds nothing and it is refused again, says to look in the list; no next number.
+      if (isNumberTaken(data)) {
+        if (payload.resend && sent.last) lostAnswer = sent.last;
+        throw new NumberTakenRefusal(grNumber, serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
+      }
       throw new Error(itemGoneText(data) ?? serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
     }
     const rpcResult = data.data as SaveGRNResult;
@@ -624,6 +656,12 @@ export const updateGRN = async (
      * (`checkSubmission`): it is handled exactly as the answer that was lost, and nothing is sent.
      */
     storedAnswer?: unknown;
+    /**
+     * The check found nothing for a lost Save: the identical request is sent again, byte for byte (`resend.args`: the
+     * body and request code exactly as last sent; the key is not made again, so it cannot differ from the one asked
+     * about). Any failure of it that is not the server's answer leaves the attempt unsettled (`lostAnswer` again).
+     */
+    resend?: GRNLostAnswer;
   } = {}
 ) => {
   let finishMutation: (() => void) | undefined;
@@ -649,35 +687,52 @@ export const updateGRN = async (
       // edit session's key for this complete body: the same Save sent again carries the same one.
       const send = async (request: typeof rpcRequest) => {
         const key = await grnUpdateIdempotencyKey(grnId, request);
-        sent.last = { key, sentAt: Date.now() };
-        return authenticatedClient.rpc('update_grn', { ...request, p_idempotency_key: key });
+        const args = { ...request, p_idempotency_key: key };
+        sent.last = { key, sentAt: Date.now(), args };
+        return authenticatedClient.rpc('update_grn', args);
       };
-      let sentRequest: typeof rpcRequest = rpcRequest;
-      let { data: answer, error } = await send(sentRequest);
-      if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
-        // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
-        // has a stored rate, so the call as it was before rates loses nothing (and its key is the old key).
-        log.warn('update_grn does not take p_rates on this server; sent without it');
-        const { p_rates: _noRates, ...rest } = rpcRequest as typeof rpcRequest & { p_rates?: unknown };
-        sentRequest = rest as typeof rpcRequest;
-        ({ data: answer, error } = await send(sentRequest));
-      }
-      if (error && isUnknownFunctionSignature(error)) {
-        // A server that has not applied migration 47 knows no p_idempotency_key and
-        // refused the call before running it. Sent once more as that server takes it: with no request code, a
-        // lost answer of this send cannot be asked about.
-        log.warn('update_grn does not take an idempotency key on this server; sent without it');
-        sent.last = undefined;
-        ({ data: answer, error } = await authenticatedClient.rpc('update_grn', sentRequest));
+      let answer: any;
+      let error: any;
+      let status: number | undefined;
+      if (options.resend) {
+        // The identical request, byte for byte, under the code the check was made for: nothing is rebuilt, and no key
+        // is made (the first attempt, a retry without p_rates, or the retry as an older server takes it, whichever
+        // was sent last, is what is repeated).
+        const { key, args } = options.resend;
+        sent.last = { key, sentAt: Date.now(), args };
+        ({ data: answer, error, status } = await authenticatedClient.rpc('update_grn', args));
+      } else {
+        let sentRequest: typeof rpcRequest = rpcRequest;
+        ({ data: answer, error, status } = await send(sentRequest));
+        if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+          // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
+          // has a stored rate, so the call as it was before rates loses nothing (and its key is the old key).
+          log.warn('update_grn does not take p_rates on this server; sent without it');
+          const { p_rates: _noRates, ...rest } = rpcRequest as typeof rpcRequest & { p_rates?: unknown };
+          sentRequest = rest as typeof rpcRequest;
+          ({ data: answer, error, status } = await send(sentRequest));
+        }
+        if (error && isUnknownFunctionSignature(error)) {
+          // A server that has not applied migration 47 knows no p_idempotency_key and
+          // refused the call before running it. Sent once more as that server takes it: with no request code, a
+          // lost answer of this send cannot be asked about.
+          log.warn('update_grn does not take an idempotency key on this server; sent without it');
+          sent.last = undefined;
+          ({ data: answer, error, status } = await authenticatedClient.rpc('update_grn', sentRequest));
+        }
       }
       // With rates set, a server that still refuses the call has no p_rates (migration 86 missing).
       if (error && payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
 
       if (error) {
         log.error('update_grn failed', loggableError(error));
-        // Sent and not answered (a dropped connection, the 60 s timeout): the save may be applied. A statement
-        // timeout is an answer: nothing was saved.
-        if (sent.last && isLostAnswer(error)) lostAnswer = sent.last;
+        // Sent and not answered (a dropped connection, the 60 s timeout, a gateway's 502 / 504): the save may be
+        // applied. A statement timeout is an answer: nothing was saved. The HTTP status goes with the error, so a
+        // gateway's answer is told from the server's own refusals. A RESEND is settled only by the server's answer:
+        // any other failure of it (57014 while it waits behind the original, a failure before sending, a changed
+        // session) leaves the attempt unsettled, and the screen goes back to the check.
+        const failure = withHttpStatus(error, status);
+        if (sent.last && (isLostAnswer(failure) || (options.resend && isUnsettledFailure(failure)))) lostAnswer = sent.last;
 
         // Handle stock protection errors specifically
         if (error.message?.includes('dispatches exist') || error.message?.includes('STOCK_PROTECTED')) {

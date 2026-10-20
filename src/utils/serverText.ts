@@ -302,6 +302,58 @@ export function requestMayHaveBeenSent(error: unknown, code?: string): boolean {
 }
 
 /**
+ * True when a change failed with no answer after the request may have reached the server (a timeout, a dropped
+ * connection, a gateway's 502 / 504 answer or error page): a LOST ANSWER (owner rule D22). False for a failure before
+ * the request left the phone (offline, no session), for any answer the server gave, and for SQLSTATE 57014: a
+ * statement timeout rolled back, so nothing was saved. `err` is whatever failed (an Error, a Supabase error carrying
+ * its HTTP `status`, a service result `{ error, message }`); `code` is its code when `err` does not carry it.
+ *
+ * This is the one definition. `executeRPC` (utils/serviceErrorHandler) computes it where it still has the HTTP status
+ * and the SQL code and returns it as `lostAnswer`; services that call `rpc` themselves merge the status into the error
+ * and ask here. Nothing else re-classifies a failure from its text.
+ */
+export function isLostAnswer(error: unknown, code?: string): boolean {
+  return requestMayHaveBeenSent(error, code);
+}
+
+/**
+ * A PostgREST error with the HTTP status of its answer, so a gateway's 502 / 504 is told from the server's own refusals
+ * (`isLostAnswer` reads `status`). Copied field by field: postgrest-js hands a transport failure back as a
+ * PostgrestError, a class that extends Error whose `message` is not enumerable, so a spread would drop the text that says
+ * "Network request failed". Without a status (or a non-object error) the error comes back as it is.
+ */
+export function withHttpStatus(error: unknown, status?: number): unknown {
+  if (typeof status !== 'number' || typeof error !== 'object' || error === null) return error;
+  const raised = error as { message?: unknown; name?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+  return {
+    ...(error as object),
+    ...(typeof raised.message === 'string' ? { message: raised.message } : {}),
+    ...(typeof raised.name === 'string' ? { name: raised.name } : {}),
+    ...(typeof raised.code === 'string' ? { code: raised.code } : {}),
+    ...(typeof raised.details === 'string' ? { details: raised.details } : {}),
+    ...(typeof raised.hint === 'string' ? { hint: raised.hint } : {}),
+    status,
+  };
+}
+
+/**
+ * True when a failure is NOT the server's answer to the request: it says nothing about whether the change was applied.
+ * A lost answer (see `isLostAnswer`), a statement timeout (57014: also what a request waiting behind the original,
+ * still running, runs into), a failure before the request left the phone (offline, no session, "Session changed"), an
+ * expired token (refused before it ran). Used for a RESEND after a lost answer (owner rule D22): such a failure does
+ * not settle the attempt, so the screen stays locked and goes back to the check; it never unlocks the form for a
+ * changed body. An answer the server gave (a refusal such as insufficient stock, the number is taken) is not one.
+ */
+export function isUnsettledFailure(error: unknown, code?: string): boolean {
+  const appCode = getAppErrorCode(error);
+  if (appCode) return appCode !== 'REFUSED';
+  if (isStatementTimeout(error, code)) return true;
+  if (isTimeoutError(error) || isNetworkError(error)) return true;
+  if (isSessionExpiredError(error, code)) return true;
+  return textsOf(error).some(text => NOT_SENT_TEXT.test(text));
+}
+
+/**
  * True when the server found the access token expired (PostgREST PGRST301 / PGRST303, or the text
  * "JWT expired" of a 401). The person is told their login has expired.
  */

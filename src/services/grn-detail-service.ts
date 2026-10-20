@@ -1,6 +1,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC } from '@/utils/serviceErrorHandler';
-import { isLostAnswer, waitForServer } from '@/utils/lostAnswer';
+import { isUnsettledFailure } from '@/utils/serverText';
+import { waitForServer } from '@/utils/lostAnswer';
 // Import canonical types (snake_case) - fully migrated
 import type {
   RpcImageInfo,
@@ -381,9 +382,16 @@ export interface DeleteGRNResponse {
   /**
    * The request went out and got no answer (the connection dropped, the 60 s timeout): the GRN may be deleted
    * all the same. The screen locks, waits (`settleLostDelete`) and reads the GRN before it sends anything again.
-   * A 57014 statement timeout is an answer: nothing was deleted.
+   * A 57014 statement timeout is an answer: nothing was deleted. On a RESEND (`options.resend`) it is also set for any
+   * other failure that is not the server's answer (57014 while the resend waits behind the first delete, a failure
+   * before sending, a changed session): that attempt is not settled, so the screen goes back to the check.
    */
   lostAnswer?: boolean;
+  /**
+   * A resend was answered "GRN not found": the GRN is gone, which is what was asked for (the delete whose answer was
+   * lost went through, or someone else deleted it). Returned as a success; the counts are not known.
+   */
+  alreadyGone?: boolean;
   grn_info?: {
     gr_no: string;
     customer_name: string;
@@ -407,7 +415,7 @@ export interface DeleteGRNResponse {
 }
 
 // M3 Fix: Using executeRPC wrapper
-export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
+export const deleteGRN = async (grnId: string, options: { resend?: boolean } = {}): Promise<DeleteGRNResponse> => {
   if (__DEV__) console.log('[GRNDetailService] Deleting GRN ID:', grnId);
 
   if (!grnId) {
@@ -438,12 +446,19 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
       success: false,
       message: result.message,
       error: result.error,
-      // A failure on the way after the request went out (not one before it left, and not an answer).
-      lostAnswer: isLostAnswer({ message: result.error, code: result.errorCode }, result.errorCode),
+      // A failure on the way after the request went out (executeRPC's `lostAnswer`: not one before it left, and not
+      // an answer). A resend that failed without an answer of the server is not settled either (owner rule D22).
+      lostAnswer: result.lostAnswer === true || (options.resend === true && isUnsettledFailure(result, result.errorCode)),
     };
   }
 
   const responseData = result.data || {} as DeleteGRNResponse;
+
+  // The answer of a resend is "GRN not found": the GRN is gone, as asked. A report left open must stop listing it.
+  if (options.resend && responseData.success === false && /grn not found/i.test(String(responseData.error ?? responseData.message ?? ''))) {
+    void invalidateReportQueries();
+    return { success: true, alreadyGone: true };
+  }
 
   // If the RPC returned success: false, treat it as an error (e.g., blocking dependencies)
   if (responseData.success === false) {
@@ -511,6 +526,11 @@ export const settleLostDelete = async (
   for (let attempt = 0; !signal?.aborted; attempt++) {
     const state = await checkGRNGone(grnId);
     if (signal?.aborted) break;
+    if (state === 'gone') {
+      // The delete had been applied: a report left open must stop listing the GRN, as after any delete (SR-10).
+      void invalidateReportQueries();
+      return state;
+    }
     if (state !== 'unknown') return state;
     await pause(READ_BACKOFF_MS[Math.min(attempt, READ_BACKOFF_MS.length - 1)], signal);
   }

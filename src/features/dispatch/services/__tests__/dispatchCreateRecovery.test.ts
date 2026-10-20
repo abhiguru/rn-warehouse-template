@@ -28,6 +28,7 @@ jest.mock(
   '@/utils/lostAnswer',
   () => ({
     // A network failure or a timeout after the request went out; an answer with a code (57014 included) is not one.
+    // (`isUnsettledFailure`, which the service takes from serverText, is the real one.)
     isLostAnswer: (error: { message?: string; code?: string }) => !error.code && /Network request failed|TimeoutError|dropped/i.test(error.message ?? ''),
     checkSubmission: (...args: unknown[]) => mockCheckSubmission(...args),
     waitForServer: jest.fn(async () => {}),
@@ -210,6 +211,110 @@ describe('a create whose answer was lost', () => {
     expect(onLostAnswer).not.toHaveBeenCalled();
     expect(mockCheckSubmission).not.toHaveBeenCalled();
     expect(names()).toHaveLength(1);
+  });
+});
+
+// Once an answer is lost, the attempt is settled only by the server's answer to the resend (owner rule D22): any other
+// failure of it goes back to the check, and the form is never unlocked for a changed body.
+describe('the resend after a lost answer', () => {
+  const taken = { data: { success: false, error_code: 'WH409', reason: 'NUMBER_TAKEN', number: 'I0042', error: 'Dispatch number I0042 is already used.' }, error: null };
+  const waitedBehindTheFirst = { data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } };
+
+  it('refused for the number goes back to the check, and what the check finds is the answer', async () => {
+    mockRpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(taken);
+    mockCheckSubmission.mockResolvedValueOnce({ found: false }).mockResolvedValueOnce({ found: true, response: { success: true, dispatch_id: 'saved-9' } });
+    const onLostAnswer = jest.fn();
+
+    const result = await createDispatch(payload, { onLostAnswer });
+
+    expect(result).toMatchObject({ success: true, dispatch_id: 'saved-9' });
+    expect(names()).toHaveLength(2);
+    expect(mockCheckSubmission).toHaveBeenCalledTimes(2);
+    expect(onLostAnswer).toHaveBeenCalledTimes(2);
+  });
+
+  it('refused for the number again after a check that found nothing: it may already be saved, no next number is offered', async () => {
+    mockRpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(taken).mockResolvedValueOnce(taken);
+    mockCheckSubmission.mockResolvedValue({ found: false });
+
+    const result = await createDispatch(payload);
+
+    expect(result).toMatchObject({ success: false, numberMaybeSaved: true, number: 'I0042' });
+    expect(result.reason).toBeUndefined();
+    expect(names()).toHaveLength(3);
+    expect(mockCheckSubmission).toHaveBeenCalledTimes(2);
+  });
+
+  it('a save of an edit is treated the same way', async () => {
+    mockRpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(taken).mockResolvedValueOnce(taken);
+    mockCheckSubmission.mockResolvedValue({ found: false });
+
+    expect(await updateDispatch('d1', updatePayload)).toMatchObject({ success: false, numberMaybeSaved: true, number: 'I0042' });
+  });
+
+  it('a statement timeout (waiting behind the original) goes back to the check', async () => {
+    mockRpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(waitedBehindTheFirst).mockResolvedValueOnce({ data: { success: true, dispatch_id: 'saved-8' }, error: null });
+    mockCheckSubmission.mockResolvedValue({ found: false });
+    const onLostAnswer = jest.fn();
+
+    const result = await createDispatch(payload, { onLostAnswer });
+
+    expect(result).toMatchObject({ success: true, dispatch_id: 'saved-8' });
+    expect(onLostAnswer).toHaveBeenCalledTimes(2);
+    expect(names()).toHaveLength(3);
+  });
+
+  it('a failure before the resend left the phone goes back to the check too', async () => {
+    const notSent = { data: null, error: { message: 'Error: fetch failed: connect timed out', code: '' } };
+    mockRpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(notSent).mockResolvedValueOnce({ data: { success: true, dispatch_id: 'saved-6' }, error: null });
+    mockCheckSubmission.mockResolvedValue({ found: false });
+
+    expect(await createDispatch(payload)).toMatchObject({ success: true, dispatch_id: 'saved-6' });
+    expect(mockCheckSubmission).toHaveBeenCalledTimes(2);
+  });
+});
+
+// The X is pressed while a request is on its way (the form is reset and the next one may be open): whatever answer comes
+// later must not touch it, and a saved dispatch is reported to the person so they do not enter it again.
+describe('the person leaves while the request is on its way', () => {
+  it('and its answer is lost: nothing is asked or sent, and the screen is told it may have been saved', async () => {
+    const controller = new AbortController();
+    mockRpc.mockImplementationOnce(async () => {
+      controller.abort();
+      return lost;
+    });
+    const onLostAnswer = jest.fn();
+
+    const result = await createDispatch(payload, { signal: controller.signal, onLostAnswer });
+
+    expect(result).toMatchObject({ success: false, aborted: true, maybeSaved: true });
+    expect(onLostAnswer).not.toHaveBeenCalled();
+    expect(mockCheckSubmission).not.toHaveBeenCalled();
+    expect(names()).toHaveLength(1);
+  });
+
+  it('and it was saved: the screen is told, and no photo is uploaded for a form that is gone', async () => {
+    const { uploadDeferredDispatchImages } = jest.requireMock('../dispatchImageService');
+    const controller = new AbortController();
+    mockRpc.mockImplementationOnce(async () => {
+      controller.abort();
+      return { data: { success: true, dispatch_id: 'saved-7' }, error: null };
+    });
+
+    const result = await createDispatch({ ...payload, images: [{ id: 'img-1' }] } as unknown as Parameters<typeof createDispatch>[0], { signal: controller.signal });
+
+    expect(result).toMatchObject({ success: true, aborted: true, dispatch_id: 'saved-7', failed_photos: [{ id: 'img-1' }] });
+    expect(uploadDeferredDispatchImages).not.toHaveBeenCalled();
+  });
+
+  it('and it was refused: nobody is told', async () => {
+    const controller = new AbortController();
+    mockRpc.mockImplementationOnce(async () => {
+      controller.abort();
+      return { data: { success: false, error: 'Insufficient stock for one or more items' }, error: null };
+    });
+
+    expect(await createDispatch(payload, { signal: controller.signal })).toMatchObject({ success: false, aborted: true });
   });
 });
 

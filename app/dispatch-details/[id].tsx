@@ -249,27 +249,37 @@ function DispatchDetailScreen() {
 
   // Track focus count to skip refetch on initial mount
   const focusCountRef = useRef(0);
+  // This page is the one in front: the "deleted" message's button leaves for the list only then (a page covered by
+  // another screen is not replaced from under it).
+  const focusedRef = useRef(true);
 
   // Refetch on focus (e.g., returning from edit screen)
   // Skip the first focus (initial mount) to avoid double-fetch
   useFocusEffect(
     useCallback(() => {
       isOpeningEdit.current = false;
+      focusedRef.current = true;
       focusCountRef.current += 1;
       // Only refetch on subsequent focuses (not initial mount)
       if (focusCountRef.current > 1) {
         fetchDispatchDetails();
       }
+      return () => {
+        focusedRef.current = false;
+      };
     }, [fetchDispatchDetails])
   );
 
   // Handle GRN navigation
   const handleViewGRN = (grnId: string) => {
+    // Not while a delete is on its way or its answer is being checked: the page must still be here for its result.
+    if (isDeletingRef.current) return;
     router.push(`/grn-details/${grnId}`);
   };
 
   // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
   const handleViewInvoice = (invoiceId: string) => {
+    if (isDeletingRef.current) return;
     router.push(`/invoice-details/${invoiceId}`);
   };
 
@@ -353,8 +363,8 @@ function DispatchDetailScreen() {
             {
               text: tr('dispatch.details.viewDispatches'),
               onPress: () => {
-                // Navigate back to dispatch list
-                router.replace('/dispatch');
+                // Navigate back to dispatch list, if this page is still the one in front
+                if (focusedRef.current) router.replace('/dispatch');
               },
             },
           ]
@@ -418,6 +428,8 @@ function DispatchDetailScreen() {
 
   // Handle Print
   const handlePrint = () => {
+    // Not while a delete is on its way or its answer is being checked.
+    if (isDeletingRef.current) return;
     setShowPrintDialog(true);
   };
 
@@ -525,7 +537,7 @@ function DispatchDetailScreen() {
   // A photo can be added after submit (testvm2 issue 4): the create flow's photo
   // section sits below the item list and is easy to miss.
   const handleAddImage = async () => {
-    if (!id || !canUpdate || imageUploadRef.current) return;
+    if (!id || !canUpdate || imageUploadRef.current || isDeletingRef.current) return;
     imageUploadRef.current = true;
     try {
       // Android's system picker grants access to the selected asset; broad
@@ -599,7 +611,11 @@ function DispatchDetailScreen() {
       />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
-      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
+      {/* While the answer of the delete is being checked nothing on the page can be pressed (no link to another screen, no photo upload, no print). */}
+      <View
+        style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
+        pointerEvents={isCheckingDelete ? 'none' : 'auto'}
+      >
         {/* Hero Header - Quick Stats Only */}
         <DispatchHeroHeader
           disp_no={dispatch.disp_no}

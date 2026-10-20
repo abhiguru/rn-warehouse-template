@@ -12,7 +12,7 @@ import type { ServiceResponse, ServiceListResponse } from '../types/service.type
 import { createEmptyListResponse } from '../types/service.types';
 import { getAppErrorCode } from './appError';
 import { t, type TranslationKey } from '@/i18n';
-import { expiredSessionText, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
+import { expiredSessionText, isLostAnswer, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -600,6 +600,13 @@ export interface RPCResult<T> {
    * Absent for a failure that is not the server's answer (no connection, a timeout).
    */
   serverMessage?: string;
+  /**
+   * True when the call failed with no answer after the request may have reached the server (a timeout, a dropped
+   * connection, a gateway's 502 / 504): a change may have been applied (owner rule D22). Computed here, where the HTTP
+   * status and the SQL code are still at hand (`isLostAnswer`); absent otherwise (a success, a refusal, a failure
+   * before the request left the phone, SQLSTATE 57014). Callers read this flag and never classify the text again.
+   */
+  lostAnswer?: boolean;
 }
 
 /**
@@ -675,8 +682,11 @@ export async function executeRPC<TRaw, TResult = TRaw>(
       // Global auth error handling - auto logout on auth failures
       handleGlobalAuthError(error);
 
+      // The status and the code are in `supabaseError`: the one place the rule can see both.
+      const lostAnswer = isLostAnswer(supabaseError);
       return {
         success: false,
+        ...(lostAnswer ? { lostAnswer: true } : {}),
         message:
           transportText(supabaseError, wording) ??
           // An expired sign-in (PGRST301 / PGRST303, "JWT expired") is said as that, also over the caller's own message.
@@ -738,6 +748,8 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
     return {
       success: false,
+      // A request that threw (the gated fetch's timeout, a dropped connection) carries no status; the rule reads its text.
+      ...(isLostAnswer(error) ? { lostAnswer: true } : {}),
       message: transportText(error, wording) ?? (errorMessage || categorized.userMessage),
       error: categorized.message,
       errorCode: transportCode(error) ?? categorized.code,

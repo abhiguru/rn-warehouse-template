@@ -173,8 +173,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   // all (the close button asks the same, in the header), with the warning that the invoice may have been saved.
   const askLeaveWithoutAnswer = () => {
     showAlert(tr('invoice.steps.lostLeaveTitle'), tr('errors.lostAnswer.leaveWarning'), [
-      { text: tr('common.keepEditing'), style: 'cancel' },
-      { text: tr('common.discard'), style: 'destructive', onPress: handleCancel },
+      { text: tr('orders.catalog.keepWaiting'), style: 'cancel' },
+      { text: tr('orders.catalog.leaveAnyway'), style: 'destructive', onPress: handleCancel },
     ]);
   };
 
@@ -270,6 +270,12 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     // A refusal is told once the question has closed, never over it. One call only: the latest `later` is the one kept.
     const result = await submitForm((title, message, info) => {
       confirmClosed.later(() => {
+        if (info?.numberMaybeSaved) {
+          // The save may already be on the server under this number: the only way out is to close the form and look in
+          // the list. Nothing can be sent again from here, and no next number is offered.
+          showAlert(title, message, [{ text: tr('common.close'), onPress: () => leaveForm() }], { cancelable: false });
+          return;
+        }
         if (info?.reloadLines) {
           showAlert(title, message, [
             { text: tr('common.close'), style: 'cancel' },
@@ -425,7 +431,9 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         onCancel={handleCancel}
         // The close button is the one way out while the answer is lost, and it warns that the invoice may be saved.
         cancelTitle={lostAnswer ? tr('invoice.steps.lostLeaveTitle') : undefined}
-        cancelMessage={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
+        // The question's buttons then read "Keep waiting" / "Leave anyway" (see GenericStepIndicatorHeader).
+        disabled={lostAnswer}
+        leaveWarning={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
         // The step circles go nowhere while the answer is lost.
         onStepPress={lostAnswer ? undefined : handleStepPress}
         invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}

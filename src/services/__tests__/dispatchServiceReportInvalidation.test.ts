@@ -15,10 +15,6 @@ const mockWaitForServer = jest.fn(async (..._args: unknown[]) => {});
 jest.mock(
   '@/utils/lostAnswer',
   () => ({
-    // A network failure or a timeout after the request went out; a statement timeout (57014) and a failure before
-    // sending ("No internet connection") are not.
-    isLostAnswer: (result: { error?: string; errorCode?: string }) =>
-      result.errorCode !== '57014' && /Network request failed|TimeoutError/i.test(result.error ?? ''),
     waitForServer: (...args: unknown[]) => mockWaitForServer(...args),
     checkSubmission: jest.fn(),
   }),
@@ -113,6 +109,40 @@ describe('deleteDispatch: what the answer says and what it leaves unsaid', () =>
 
     expect(result).toMatchObject({ success: false, blockingReason: 'invoices_exist' });
     expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('the delete sent again is answered "Dispatch not found": it is gone, as asked, and the order counts are not known', async () => {
+    rpc.mockResolvedValueOnce(timedOut)
+      .mockResolvedValueOnce(stillThere)
+      .mockResolvedValueOnce({ data: { success: false, error: 'Dispatch not found', message: 'Dispatch not found' }, error: null });
+
+    const result = await deleteDispatch('d1', 'user-a');
+
+    expect(result).toMatchObject({ success: true, orderCountsUnknown: true });
+    expect(names()).toEqual(['delete_dispatch_with_order_cleanup', 'get_dispatch_details', 'delete_dispatch_with_order_cleanup']);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Dispatch not found" on a first delete is a refusal, not a delete', async () => {
+    rpc.mockResolvedValue({ data: { success: false, error: 'Dispatch not found', message: 'Dispatch not found' }, error: null });
+
+    expect((await deleteDispatch('d1', 'user-a')).success).toBe(false);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('the delete sent again that runs into a statement timeout (waiting behind the first) goes back to the check', async () => {
+    const waitedBehindTheFirst = { data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } };
+    rpc.mockResolvedValueOnce(timedOut)
+      .mockResolvedValueOnce(stillThere)
+      .mockResolvedValueOnce(waitedBehindTheFirst)
+      .mockResolvedValueOnce(notFound);
+    const onLostAnswer = jest.fn();
+
+    const result = await deleteDispatch('d1', 'user-a', { onLostAnswer });
+
+    expect(onLostAnswer).toHaveBeenCalledTimes(2);
+    expect(names()).toEqual(['delete_dispatch_with_order_cleanup', 'get_dispatch_details', 'delete_dispatch_with_order_cleanup', 'get_dispatch_details']);
+    expect(result).toMatchObject({ success: true, orderCountsUnknown: true });
   });
 
   it('repeats while the answers are lost', async () => {

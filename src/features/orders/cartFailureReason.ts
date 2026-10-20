@@ -24,7 +24,6 @@
  */
 import { t } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
-import { isLostAnswer } from '@/utils/lostAnswer';
 import { serverReason } from '@/utils/serverText';
 import { isOfflineFailure } from '@/utils/serviceErrorHandler';
 
@@ -34,6 +33,11 @@ export interface CartFailure {
   error?: unknown;
   /** The server's own sentence as it sent it (English), which `message` no longer holds in Gujarati. */
   serverMessage?: unknown;
+  /**
+   * `executeRPC` says the call got no answer after the request may have reached the server (owner rule D22): the one
+   * flag every screen reads, computed where the HTTP status and the SQL code are still known.
+   */
+  lostAnswer?: boolean;
 }
 
 const STOCK = /^Insufficient stock\. Available: (-?\d+), Requested: -?\d+$/i;
@@ -143,14 +147,13 @@ export function isConnectionFailure(failure: CartFailure | null | undefined): bo
 
 /**
  * True when a cart call failed after the request went out with no answer (a timeout, a dropped or reset
- * connection, a gateway's error page): the change may have been applied. A failure before the request
- * left the phone (offline, no session that could be renewed) is not one: nothing was sent. The same rule
- * as every other screen's lost answer (`isLostAnswer`).
+ * connection, a gateway's 502 / 504 answer or error page): the change may have been applied. A failure before the
+ * request left the phone (offline, no session that could be renewed) and a statement timeout (57014, rolled back) are
+ * not one. This is the flag `executeRPC` computed (`lostAnswer`, passed on by `OrderService`); the text is not
+ * classified here again.
  */
 export function mayHaveBeenSaved(failure: CartFailure | null | undefined): boolean {
-  const raw = sentence(failure?.error);
-  // As an error object, the shape the PostgREST client gave it: a bare string is not classed.
-  return raw !== undefined && isLostAnswer({ message: raw });
+  return failure?.lostAnswer === true;
 }
 
 /** True when a removal or change was refused because the line is already gone ("Order item not found"): for certain. */

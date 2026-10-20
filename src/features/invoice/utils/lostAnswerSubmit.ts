@@ -8,8 +8,12 @@ const log = createLogger('InvoiceLostAnswer');
 export type SaveOutcome = CreateInvoiceResponse | 'left';
 
 interface SendUntilAnsweredOptions {
-  /** One send of the save. The same request every time: the same body and the same request code. */
-  send: () => Promise<CreateInvoiceResponse>;
+  /**
+   * One send of the save. The same request every time: the same body and the same request code. `resend` is true for
+   * every send after an answer was lost: a failure of it that is not the server's answer (57014 behind the original, a
+   * failure before sending, a changed session) is then reported as a lost answer again (the service does that).
+   */
+  send: (resend: boolean) => Promise<CreateInvoiceResponse>;
   /** The request code the save is sent with (`p_invoice_data.request_key`). */
   requestKey: string;
   /** The answer the server stored under the code, as the screen's own success; null when it is no usable success. */
@@ -28,17 +32,31 @@ interface SendUntilAnsweredOptions {
  *  3. found: that answer is the save's answer, handled as the normal success;
  *     not found: the identical request is sent once more (same body, same code) and its answer is handled normally.
  *     When that answer is lost as well, the loop goes round again.
- * An answer that never reaches the server's table cannot be confused with a refusal: only a lost answer loops.
+ * Once an answer is lost the attempt is settled only by the server's answer to it. A resend that fails without one
+ * comes back as a lost answer (the service sets it) and the form stays locked. A resend refused for the number means
+ * the first send may have saved it: back to the check, and when the check finds nothing and the resend is refused for
+ * the number again, the outcome says `numberMaybeSaved` (no next number is offered). A refusal on the FIRST send is an
+ * answer, not a lost one.
  */
 export async function sendUntilAnswered(options: SendUntilAnsweredOptions): Promise<SaveOutcome> {
   const { send, requestKey, fromStored, signal, onLocked } = options;
-  let result = await send();
+  let lastSentAt = Date.now();
+  let result = await send(false);
+  let resent = false;
+  let takenOnResend = false;
   try {
-    while (result.lostAnswer) {
+    for (;;) {
+      const lost = result.lostAnswer;
+      const taken = resent && !!result.numberTaken;
+      if (!lost && !taken) return result;
+      if (taken) {
+        if (takenOnResend) return { ...result, numberMaybeSaved: true };
+        takenOnResend = true;
+      }
       onLocked(true);
       let stored: CreateInvoiceResponse | null = null;
       try {
-        const found = await checkSubmission(requestKey, result.lostAnswer.sentAt, signal);
+        const found = await checkSubmission(requestKey, lost?.sentAt ?? lastSentAt, signal);
         if (signal.aborted) return 'left';
         if (found.found) stored = await fromStored(found.response);
       } catch (error) {
@@ -49,10 +67,11 @@ export async function sendUntilAnswered(options: SendUntilAnsweredOptions): Prom
       }
       if (signal.aborted) return 'left';
       if (stored) return stored;
-      result = await send();
+      resent = true;
+      lastSentAt = Date.now();
+      result = await send(true);
       if (signal.aborted) return 'left';
     }
-    return result;
   } finally {
     onLocked(false);
   }

@@ -25,7 +25,7 @@ const MAYBE_SAVED = {
 };
 const ORDER_CLOSED = { en: 'This order is closed. Go back and open it again.', gu: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.' };
 
-const CASES: [string, { message?: unknown; error?: unknown }, { en: string; gu: string }][] = [
+const CASES: [string, { message?: unknown; error?: unknown; lostAnswer?: boolean }, { en: string; gu: string }][] = [
   ['not enough stock on add or change', refused('Insufficient stock. Available: 3, Requested: 10'),
     { en: 'Only 3 bags in stock.', gu: 'સ્ટોકમાં ફક્ત ૩ નંગ છે.' }],
   ['one bag left', refused('Insufficient stock. Available: 1, Requested: 2'),
@@ -52,9 +52,10 @@ const CASES: [string, { message?: unknown; error?: unknown }, { en: string; gu: 
   ['a raw database error', raised('permission denied for function add_item_to_order'), NOT_SAVED],
   ['the order was not found', refused('Order not found'), NOT_SAVED],
   // The request had gone out and no answer came back (review 2026-10-20, A13): the lot may be on the order; it is being checked.
-  ['a connection that dropped after the request went out', { message: "Couldn't add the item.", error: 'Network request failed' }, MAYBE_SAVED],
-  ['a request that timed out', { message: "Couldn't add the item.", error: 'TimeoutError: Request timeout' }, MAYBE_SAVED],
-  ['a socket that was reset', { message: "Couldn't add the item.", error: 'Error: fetch failed: Connection reset by peer' }, MAYBE_SAVED],
+  // (`lostAnswer` is the flag executeRPC computed and OrderService passes on; the text is not classified here.)
+  ['a connection that dropped after the request went out', { message: "Couldn't add the item.", error: 'Network request failed', lostAnswer: true }, MAYBE_SAVED],
+  ['a request that timed out', { message: "Couldn't add the item.", error: 'TimeoutError: Request timeout', lostAnswer: true }, MAYBE_SAVED],
+  ['a socket that was reset', { message: "Couldn't add the item.", error: 'Error: fetch failed: Connection reset by peer', lostAnswer: true }, MAYBE_SAVED],
   // Nothing was sent: no session that could be renewed, a host that could not be found.
   ['no session that could be renewed (nothing sent)', { message: "Couldn't add the item.", error: 'Network request failed: session refresh unavailable' }, NOT_SAVED],
   ['a host that could not be found (nothing sent)', { message: "Couldn't add the item.", error: 'Error: fetch failed: Unable to resolve host "example.test"' }, NOT_SAVED],
@@ -139,21 +140,53 @@ describe('a call that may have been applied (review 2026-10-20, A13)', () => {
     );
   });
 
-  it.each([
-    ['a timeout', 'TimeoutError: Request timeout', true],
-    ['a dropped connection', 'TypeError: Network request failed', true],
-    ['a gateway page', '<html>502 Bad Gateway</html>', true],
-    ['no session that could be renewed', 'Network request failed: session refresh unavailable', false],
-    ['a host that could not be found', 'Error: fetch failed: Unable to resolve host "example.test"', false],
-    ['a refusal sentence', 'Item belongs to another customer', false],
-    ['the placeholder of a refusal', 'API_ERROR', false],
-  ])('%s', (_name, text, expected) => {
-    expect(mayHaveBeenSaved(raised(text))).toBe(expected);
-  });
-  it('is false without an error text', () => {
+  it('is the flag executeRPC computed, and nothing else', () => {
+    expect(mayHaveBeenSaved({ ...raised('TimeoutError: Request timeout'), lostAnswer: true })).toBe(true);
+    // The text alone does not say it: the status and the code were seen where the flag was made.
+    expect(mayHaveBeenSaved(raised('TimeoutError: Request timeout'))).toBe(false);
     expect(mayHaveBeenSaved({})).toBe(false);
     expect(mayHaveBeenSaved(undefined)).toBe(false);
     expect(mayHaveBeenSaved(null)).toBe(false);
+  });
+
+  // The flag as executeRPC makes it from what the PostgREST client hands back (the status and the code are known there).
+  describe.each(['en', 'gu'] as const)('through executeRPC in %s', language => {
+    beforeEach(() => setLanguage(language));
+    const lostFlag = async (answer: { data: unknown; error: unknown; status?: number }) => {
+      const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const result = await executeRPC(async () => ({ rpc: async () => answer }), 'add_item_to_order', {}, { context: 'fictional', write: true, unwrapNested: false });
+      logged.mockRestore();
+      return mayHaveBeenSaved(result);
+    };
+    const failed = (message: string, extra: { code?: string; status?: number } = {}) => ({
+      data: null,
+      error: { message, details: '', hint: '', code: extra.code ?? '' },
+      ...(extra.status ? { status: extra.status } : {}),
+    });
+
+    it.each([
+      ['a timeout', failed('TimeoutError: Request timeout'), true],
+      ['a dropped connection', failed('TypeError: Network request failed'), true],
+      ['a gateway page', failed('<html>502 Bad Gateway</html>', { status: 502 }), true],
+      ['a gateway\'s plain 504 answer', failed('The upstream server is timing out', { status: 504 }), true],
+      ['a gateway answer that carries only its status', failed('Bad Gateway', { status: 502 }), true],
+      ['a statement timeout (rolled back)', failed('canceling statement due to statement timeout', { code: '57014', status: 500 }), false],
+      ['a host that could not be found', failed('Error: fetch failed: Unable to resolve host "example.test"'), false],
+      ['a refusal sentence', failed('Item belongs to another customer', { code: '42501', status: 403 }), false],
+      ['a PostgREST refusal with a high status', failed('boom', { code: 'PGRST116', status: 503 }), false],
+    ])('%s', async (_name, answer, expected) => {
+      expect(await lostFlag(answer)).toBe(expected);
+    });
+
+    it('no session that could be renewed for want of a connection is nothing sent', async () => {
+      const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const result = await executeRPC(
+        async () => { throw new AppError('NETWORK', 'Network request failed: session refresh unavailable'); },
+        'add_item_to_order', {}, { context: 'fictional', write: true, unwrapNested: false }
+      );
+      logged.mockRestore();
+      expect(mayHaveBeenSaved(result)).toBe(false);
+    });
   });
 });
 

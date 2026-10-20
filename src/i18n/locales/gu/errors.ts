@@ -185,6 +185,8 @@ export const errors: Translation<typeof source> = {
     checkingDelete: 'સર્વરનો જવાબ મળ્યો નથી. કાઢી નંખાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
     waiting: 'કનેક્શનની રાહ જોઈ રહ્યા છીએ…',
     leaveWarning: 'કદાચ સચવાઈ ગયું હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
+    // Draft for the owner's wording review (2026-10-20): leaving while the server is asked whether a delete went through.
+    leaveWarningDelete: 'કદાચ કાઢી નંખાયું હોય. ફરી કાઢતાં પહેલાં યાદી તપાસો.',
   },
   auth: {
     authenticationFailed: 'તમારી ઓળખ ચકાસી શકાઈ નથી. ફરી લૉગિન કરો.',

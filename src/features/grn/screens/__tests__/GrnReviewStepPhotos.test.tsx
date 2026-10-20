@@ -32,10 +32,14 @@ jest.mock('@/store/hooks', () => ({
       grnForm: { items: [], removedImages: mockRemovedImages, submissionNonce: mockNonce, grNoTyped: mockNumberTyped },
     }),
 }));
-// The strip shown while a lost answer is checked reads the connection.
-jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
-// The server is asked about the request code by this (utils/lostAnswer); the tests say what it answers and when.
-jest.mock('@/utils/lostAnswer', () => ({ checkSubmission: jest.fn(), waitForServer: jest.fn(), isLostAnswer: jest.fn() }));
+// The server is asked about the request code by this (utils/lostAnswer); the tests say what it answers and when. The
+// strip shown while a lost answer is checked reads the connection with the same online test the wait uses.
+jest.mock('@/utils/lostAnswer', () => ({
+  checkSubmission: jest.fn(),
+  waitForServer: jest.fn(),
+  isLostAnswer: jest.fn(),
+  useIsDisconnected: () => mockOffline,
+}));
 
 const mockHeader = {
   gr_no: 'A0010',
@@ -492,9 +496,10 @@ describe('GRN review step photos', () => {
       await save(tree);
 
       expect(updateGRN).toHaveBeenCalledTimes(2);
-      // The same request object and no stored answer: the same body under the same request code.
+      // The same request object and no stored answer: the same body, sent again exactly as it was last sent (the lost
+      // attempt, with its body and request code, is handed back to the service).
       expect((updateGRN as jest.Mock).mock.calls[1][1]).toBe((updateGRN as jest.Mock).mock.calls[0][1]);
-      expect((updateGRN as jest.Mock).mock.calls[1][2]).toEqual({ removedImages: [] });
+      expect((updateGRN as jest.Mock).mock.calls[1][2]).toEqual({ removedImages: [], resend: LOST });
       expect(checkSubmission).toHaveBeenCalledTimes(1);
       expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
       await act(async () => { tree.unmount(); });
@@ -691,7 +696,8 @@ describe('GRN review step photos', () => {
         await save(tree);
 
         expect(createGRN).toHaveBeenCalledTimes(2);
-        expect((createGRN as jest.Mock).mock.calls[1][0]).toBe((createGRN as jest.Mock).mock.calls[0][0]);
+        // The same request, handed the lost attempt (its body and request code) to send exactly as it was.
+        expect((createGRN as jest.Mock).mock.calls[1][0]).toEqual({ ...(createGRN as jest.Mock).mock.calls[0][0], resend: LOST });
         expect((createGRN as jest.Mock).mock.calls[1][0].storedAnswer).toBeUndefined();
         expect(getNextGRNNumber).not.toHaveBeenCalled();
         expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);

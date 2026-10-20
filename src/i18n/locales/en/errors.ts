@@ -180,6 +180,7 @@ export const errors = {
     checkingDelete: 'No answer from the server. Checking whether it was deleted…',
     waiting: 'Waiting for the connection…',
     leaveWarning: 'It may have been saved. Check the list before entering it again.',
+    leaveWarningDelete: 'It may have been deleted. Check the list before deleting it again.',
   },
   auth: {
     authenticationFailed: 'Authentication failed. Please sign in again.',

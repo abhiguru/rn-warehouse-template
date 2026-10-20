@@ -41,6 +41,13 @@ export const dispatch = {
     saveFailed: 'Failed to save dispatch',
     editMismatch: 'This form belongs to a different dispatch. Go back and open the dispatch again.',
     numberUsedNext: 'Dispatch number {{number}} is already used. The next free number is {{next}}.',
+    // The number was refused when the request was sent again after a lost answer: the first send may have saved it.
+    numberMaybeSaved: 'Dispatch {{number}} may already have been saved. Check the list before entering it again.',
+    // A save finished after the form was left (the same rule as the GRN form's).
+    maybeSavedAfterLeavingTitle: 'No answer from the server',
+    savedAfterLeavingTitle: 'Dispatch saved',
+    savedAfterLeaving: 'Dispatch {{number}} was saved before you left the form. Find it in the Dispatch list.',
+    savedAfterLeavingPhotos: 'Dispatch {{number}} was saved, but its photos were not uploaded. Open it in the Dispatch list and add them under Photos.',
   },
   // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
   edit: {

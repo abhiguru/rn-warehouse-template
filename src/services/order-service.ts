@@ -230,6 +230,7 @@ export class OrderService {
       data: result.data,
       error: result.error,
       serverMessage: result.serverMessage,
+      ...(result.lostAnswer ? { lostAnswer: true } : {}),
     };
   }
 
@@ -282,6 +283,7 @@ export class OrderService {
       data: result.data,
       error: result.error,
       serverMessage: result.serverMessage,
+      ...(result.lostAnswer ? { lostAnswer: true } : {}),
     };
   }
 
@@ -316,6 +318,7 @@ export class OrderService {
       message: result.success ? t('errors.order.itemRemoved') : result.message,
       error: result.error,
       serverMessage: result.serverMessage,
+      ...(result.lostAnswer ? { lostAnswer: true } : {}),
     };
   }
 

@@ -18,10 +18,11 @@ import dispatchFormReducer, {
   markDispNoTyped,
   refreshDefaultDate,
   resetForm,
+  setIsSaving,
   updateHeader,
 } from '@/store/slices/dispatchFormSlice';
 import { createEmptyDispatchHeader, type DispatchItemData } from '@/types/dispatch.types';
-import { createDispatch, updateDispatch } from '@/features/dispatch/services/dispatchFormService';
+import { createDispatch, getNextDispatchNumber, updateDispatch } from '@/features/dispatch/services/dispatchFormService';
 import { showAlert } from '@/utils/alert';
 import { toLocalISODate } from '@/utils/formatters';
 import { useDispatchForm, type DispatchFormMode, type UseDispatchFormReturn } from '../useDispatchForm';
@@ -273,6 +274,82 @@ describe('an answer that was lost (owner rule D22)', () => {
     await unmount();
 
     expect(signal.aborted).toBe(true);
+  });
+
+  // Finding 1 of the D22 review: the X is pressed while the request is on its way; the answer that comes later belongs to a
+  // form that is gone.
+  it('an answer that comes after the X does not touch the next form; the person is told the dispatch was saved', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    let answer!: (result: Awaited<ReturnType<typeof createDispatch>>) => void;
+    create_.mockImplementation(() => new Promise<Awaited<ReturnType<typeof createDispatch>>>((resolve) => { answer = resolve; }));
+    let pending!: Promise<Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>>;
+    await act(async () => { pending = form().submitForm(); });
+
+    // The X resets the form, and the next form is in front with a save of its own on its way.
+    await act(async () => { form().resetFormState(); });
+    store.dispatch(updateHeader({ disp_no: 'DD0100' }));
+    store.dispatch(setIsSaving(true));
+
+    let result!: Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>;
+    await act(async () => { answer({ success: true, dispatch_id: 'late-1', failed_photos: [] }); result = await pending; });
+
+    expect(result).toEqual({ success: false, aborted: true });
+    // Not marked as having made its dispatch, and its saving flag is left as the next form has it.
+    expect(store.getState().dispatchForm.savedDispatchId).toBeNull();
+    expect(store.getState().dispatchForm.is_saving).toBe(true);
+    expect(store.getState().dispatchForm.header.disp_no).toBe('DD0100');
+    expect(showAlert).toHaveBeenCalledWith('Dispatch saved', 'Dispatch DD0003 was saved before you left the form. Find it in the Dispatch list.');
+    await unmount();
+  });
+
+  it('a refusal that comes after the X is nobody\'s business: no alert, no flags', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    let answer!: (result: Awaited<ReturnType<typeof createDispatch>>) => void;
+    create_.mockImplementation(() => new Promise<Awaited<ReturnType<typeof createDispatch>>>((resolve) => { answer = resolve; }));
+    let pending!: Promise<Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>>;
+    await act(async () => { pending = form().submitForm(); });
+    await act(async () => { form().resetFormState(); });
+    store.dispatch(setIsSaving(true));
+
+    await act(async () => { answer({ success: false, error: 'Insufficient stock for one or more items' }); await pending; });
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(store.getState().dispatchForm.is_saving).toBe(true);
+    await unmount();
+  });
+
+  it('a request that got no answer after the person left is told as "it may have been saved"', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    create_.mockResolvedValue({ success: false, aborted: true, maybeSaved: true, error: '' });
+
+    const result = await submit(form);
+
+    expect(result).toEqual({ success: false, aborted: true });
+    expect(showAlert).toHaveBeenCalledWith('No answer from the server', 'It may have been saved. Check the list before entering it again.');
+    await unmount();
+  });
+
+  it('a number refused again after a check that found nothing says it may already be saved: no next number, no alert of its own', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    create_.mockResolvedValue({ success: false, numberMaybeSaved: true, number: 'DD0003', error: '', message: '' });
+
+    const result = await submit(form);
+
+    expect(result).toMatchObject({
+      success: false,
+      numberMaybeSaved: { message: 'Dispatch DD0003 may already have been saved. Check the list before entering it again.' },
+    });
+    expect(getNextDispatchNumber).not.toHaveBeenCalled();
+    expect(showAlert).not.toHaveBeenCalled();
+    await unmount();
   });
 
   it('a save of an edit is asked about the same way', async () => {

@@ -107,6 +107,8 @@ describe('a step that is not locked', () => {
     expect(strips()).toHaveLength(0);
     expect(typeof indicator().props.onStepPress).toBe('function');
     expect(indicator().props.cancelMessage).not.toBe(t('errors.lostAnswer.leaveWarning'));
+    expect(indicator().props.disabled).toBe(false);
+    expect(indicator().props.leaveWarning).toBeUndefined();
     expect(byTestId('dispatch-review-section-details-edit').length).toBeGreaterThan(0);
     expect(byTestId('dispatch-review-section-items-edit').length).toBeGreaterThan(0);
     expect(tree.root.findAllByType('ImageUploadButton' as never)).toHaveLength(1);
@@ -127,7 +129,10 @@ describe('a step that is locked while the server is asked', () => {
     await render();
 
     expect(indicator().props.onStepPress).toBeUndefined();
-    expect(indicator().props.cancelMessage).toBe(t('errors.lostAnswer.leaveWarning'));
+    // The X still asks, with the warning, and its buttons read "Keep waiting" / "Leave anyway" (the header does that
+    // when it is `disabled` and has a `leaveWarning`).
+    expect(indicator().props.disabled).toBe(true);
+    expect(indicator().props.leaveWarning).toBe(t('errors.lostAnswer.leaveWarning'));
   });
 
   it('has no edit links and no photo changes', async () => {

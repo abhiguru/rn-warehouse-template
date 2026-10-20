@@ -532,25 +532,40 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * got no answer it may be applied, so the form stays locked (`lostChecking`: the strip, no edits, X only with its
    * warning) and the server is asked about that request's code once the phone is online and 10 s have passed since it
    * was sent. Found: `send` is called with the stored answer, which is handled like the answer that was lost. Not
-   * found: the identical request is sent once more, and its answer is handled the same way (a lost one repeats this).
-   * A statement timeout is an answer, not a lost one.
+   * found: the identical request is sent once more, byte for byte (`send` is given the lost attempt: its body and its
+   * code), and its answer is handled the same way.
+   *
+   * Once an answer is lost the attempt is settled only by the server's answer to it: a resend that fails without one
+   * (57014 while it waits behind the original, a failure before sending, a changed session, a gateway error) comes
+   * back as a lost answer again (the service sets it), and the form stays locked and goes back to the check. A resend
+   * refused for the number (`numberTaken` with a lost answer) means the first send may have saved it: it goes back to
+   * the check too, and when the check finds nothing and the resend is refused for the number again the result says
+   * `numberMaybeSaved`: no next number is offered. A 57014 on the FIRST send is an answer, not a lost one: nothing was
+   * saved.
    *
    * @returns the answer to handle, or null when the form was left while the check ran (the X's warning said so).
    */
-  const sendUntilAnswered = async <R extends { lostAnswer?: GRNLostAnswer }>(
-    send: (storedAnswer?: unknown) => Promise<R>,
+  const sendUntilAnswered = async <R extends { lostAnswer?: GRNLostAnswer; numberTaken?: { number: string } }>(
+    send: (resend?: GRNLostAnswer, storedAnswer?: unknown) => Promise<R>,
     formLeft: () => boolean
-  ): Promise<R | null> => {
+  ): Promise<(R & { numberMaybeSaved?: boolean }) | null> => {
     try {
       let result = await send();
+      let takenOnResend = false;
       while (result.lostAnswer) {
         if (formLeft()) return null;
+        if (result.numberTaken) {
+          // The second refusal for the number after a check that found nothing: the person looks in the list.
+          if (takenOnResend) return { ...result, lostAnswer: undefined, numberMaybeSaved: true };
+          takenOnResend = true;
+        }
+        const lost = result.lostAnswer;
         const controller = new AbortController();
         lostAbortRef.current = controller;
         setLostChecking(true);
         let check: { found: boolean; response?: unknown };
         try {
-          check = await checkSubmission(result.lostAnswer.key, result.lostAnswer.sentAt, controller.signal);
+          check = await checkSubmission(lost.key, lost.sentAt, controller.signal);
         } catch (checkError) {
           // Aborted: the person left through the X. Anything else is not expected (the check retries by itself).
           if (!controller.signal.aborted) throw checkError;
@@ -559,7 +574,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           lostAbortRef.current = null;
         }
         if (controller.signal.aborted || formLeft()) return null;
-        result = check.found ? await send(check.response ?? undefined) : await send();
+        result = check.found ? await send(undefined, check.response ?? undefined) : await send(lost);
       }
       return result;
     } finally {
@@ -607,8 +622,32 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     showAlert(saveFailedTitle(), message, okButtons);
   };
 
+  /**
+   * The create was refused for its number again after a lost answer and a check that found nothing: the first send may
+   * have saved it. The form stays locked behind this one dialog, whose only button leaves the form for the list; no
+   * next number is offered and nothing can be sent again from here.
+   */
+  const showNumberMaybeSaved = (number: string) => {
+    showAlert(
+      saveFailedTitle(),
+      tr('grn.form.numberMaybeSaved', { number: formatIdentifier(number) }),
+      [
+        {
+          text: tr('common.close'),
+          onPress: () => {
+            resetFormState();
+            router.replace('/grn');
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  };
+
   const performCreate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
+    // Set when the form must stay locked after this call (see showNumberMaybeSaved).
+    let keepLocked = false;
     setIsSubmitting(true);
     dispatch(setIsSaving(true));
     try {
@@ -657,7 +696,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       };
 
       const result = await sendUntilAnswered(
-        (storedAnswer) => createGRN(storedAnswer === undefined ? request : { ...request, storedAnswer }),
+        (resend, storedAnswer) =>
+          createGRN({
+            ...request,
+            ...(storedAnswer === undefined ? {} : { storedAnswer }),
+            ...(resend ? { resend } : {}),
+          }),
         formLeft
       );
       // The form was left while the answer was being checked: nothing more to do here.
@@ -683,6 +727,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           itemCount: items.length,
         });
         finishSave(result.data.id, result.data.photos);
+      } else if (result.numberMaybeSaved) {
+        triggerError();
+        keepLocked = true;
+        showNumberMaybeSaved(result.numberTaken?.number ?? header.gr_no);
       } else if (result.numberTaken) {
         await handleNumberTakenAtCreate(result.numberTaken.number, formLeft);
       } else {
@@ -696,9 +744,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       log.error('Submission error', loggableError(error));
       showAlert(saveFailedTitle(), connectionHint());
     } finally {
-      setIsSubmitting(false);
-      // A form that was left (or reset by this very save) already has its own saving flag.
-      if (!formLeft()) dispatch(setIsSaving(false));
+      if (!keepLocked) {
+        setIsSubmitting(false);
+        // A form that was left (or reset by this very save) already has its own saving flag.
+        if (!formLeft()) dispatch(setIsSaving(false));
+      }
     }
   };
 
@@ -748,7 +798,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       };
 
       const result = await sendUntilAnswered(
-        (storedAnswer) => updateGRN(editedGrnId, request, storedAnswer === undefined ? { removedImages } : { removedImages, storedAnswer }),
+        (resend, storedAnswer) =>
+          updateGRN(editedGrnId, request, {
+            removedImages,
+            ...(storedAnswer === undefined ? {} : { storedAnswer }),
+            ...(resend ? { resend } : {}),
+          }),
         formLeft
       );
       // The form was left while the answer was being checked: nothing more to do here.

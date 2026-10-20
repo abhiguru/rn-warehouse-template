@@ -106,7 +106,8 @@ export interface GenericStepIndicatorHeaderProps {
   /**
    * With `disabled`: the close button stays usable and asks with this text instead of `cancelMessage` (the save's
    * answer is not known yet, and the person may still leave, knowing it may have been saved). The step circles stay
-   * disabled.
+   * disabled. The question's buttons then read "Keep waiting" and "Leave anyway" (not "Keep editing" and "Discard":
+   * nothing is being edited, the app is waiting for the server), as in the Add items picker.
    */
   leaveWarning?: string;
 }
@@ -221,16 +222,18 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   const cancelDisabled = disabled && !leaveWarning;
   const handleCancelPress = () => {
     if (cancelDisabled) return;
+    // The server is being asked what became of a request (leaveWarning): the person waits, or leaves anyway.
+    const waiting = disabled && !!leaveWarning;
     showAlert(
       cancelTitle || defaultDiscardTitle,
-      disabled && leaveWarning ? leaveWarning : cancelMessage,
+      waiting ? leaveWarning : cancelMessage,
       [
         {
-          text: tr('common.keepEditing'),
+          text: waiting ? tr('orders.catalog.keepWaiting') : tr('common.keepEditing'),
           style: 'cancel',
         },
         {
-          text: tr('common.discard'),
+          text: waiting ? tr('orders.catalog.leaveAnyway') : tr('common.discard'),
           style: 'destructive',
           onPress: onCancel,
         },

@@ -120,6 +120,20 @@ function newSubmissionNonce(): string {
   });
 }
 
+/**
+ * A save finished after its form was left (the form was reset, or the screen went, while the request was on its way): the
+ * dispatch is saved, but the form and the screen belong to someone else now, so only the person is told, in a dialog,
+ * that it is saved. Otherwise a person who believes the form was discarded enters the same dispatch again.
+ */
+function reportSavedAfterLeaving(dispNo: string | undefined, failedPhotos: DispatchImageData[] | undefined): void {
+  showAlert(
+    t('dispatch.wizard.savedAfterLeavingTitle'),
+    t(failedPhotos && failedPhotos.length > 0 ? 'dispatch.wizard.savedAfterLeavingPhotos' : 'dispatch.wizard.savedAfterLeaving', {
+      number: formatIdentifier(dispNo ?? ''),
+    })
+  );
+}
+
 export type DispatchFormMode = 'create' | 'edit';
 
 export interface UseDispatchFormOptions {
@@ -135,7 +149,13 @@ export type DispatchSubmitResult = {
   orderLinesLeft?: number | null;
   failedPhotos?: DispatchImageData[];
   numberTaken?: { message: string };
-  /** The person left while the app was still asking the server what became of the request; nothing more was done and nothing is to be said. */
+  /**
+   * The request was sent again after a lost answer and refused for the number twice: the first send may have saved the
+   * dispatch. The message says so ("may already have been saved. Check the list before entering it again."); no next
+   * number is offered, and the form is only closed.
+   */
+  numberMaybeSaved?: { message: string };
+  /** The person left (or the form was reset) while the request was on its way or being checked; nothing more was done and nothing is to be said. */
   aborted?: boolean;
 };
 
@@ -683,6 +703,11 @@ export function useDispatchForm({
    * Submit the form (create or update)
    */
   const submitForm = useCallback(async (generateInvoice: boolean = false, onFailure?: (title: string, message: string) => void): Promise<DispatchSubmitResult> => {
+    // The form this submit belongs to. A form that is left (X) or reset while the request is on its way is a new
+    // session: whatever answer comes late must not touch the next form (its `formCreated`, its saving flags, its alerts).
+    const formSession = currentDispatchFormSession();
+    const formChanged = () => currentDispatchFormSession() !== formSession;
+
     // The caller may hold the error until a dialog still closing is gone (iOS shows no Modal over it)
     const report = onFailure ?? showAlert;
 
@@ -696,6 +721,7 @@ export function useDispatchForm({
 
     // Validate step 3
     const validation = await validateCurrentStep(3);
+    if (formChanged()) return { success: false, aborted: true };
     if (!validation.isValid) {
       report(t('dispatch.validation.title'), validationSummary(validation.errors) || t('dispatch.validation.fillRequired'));
       return { success: false, error: t('dispatch.validation.failed') };
@@ -715,6 +741,8 @@ export function useDispatchForm({
       } catch {
         // The message then only asks for another number.
       }
+      // The form was left while the next number was asked for: nothing is put into the form that is there now.
+      if (formChanged()) return { success: false, aborted: true };
       const message = next
         ? t('dispatch.wizard.numberUsedNext', { number: formatIdentifier(takenNumber), next: formatIdentifier(next) })
         : t('dispatch.wizard.numberTaken', { number: formatIdentifier(takenNumber) });
@@ -754,8 +782,27 @@ export function useDispatchForm({
         ? await createDispatch({ ...payload, submissionNonce }, lostAnswer)
         : await updateDispatch(dispatchIdParam!, payload, lostAnswer);
 
-      // The person left meanwhile: there is nobody to tell.
-      if (result.aborted) return { success: false, aborted: true };
+      // The person left while the server was being asked, with no answer known: nothing is known, nobody to tell
+      // (they were warned by the X's question). When they left while the first send was on its way and its answer was
+      // lost, they were not warned: they are told it may have been saved, so they do not enter it again.
+      if (result.aborted && !result.success) {
+        if (result.maybeSaved) {
+          showAlert(t('dispatch.wizard.maybeSavedAfterLeavingTitle'), t('errors.lostAnswer.leaveWarning'));
+        }
+        return { success: false, aborted: true };
+      }
+
+      // The form was left (X, which resets it and may have opened the next one) or the screen went while the request
+      // was on its way. A saved dispatch is told to the person, in a dialog, so they do not enter it again; the next
+      // form is not touched (no `formCreated`, no flags, no alert about a refusal).
+      if (formChanged() || controller.signal.aborted) {
+        if (result.success) {
+          // The same form still stands (only this screen went): it is marked as having made its dispatch.
+          if (!formChanged() && isCreateMode && result.dispatch_id) dispatch(formCreated(result.dispatch_id));
+          reportSavedAfterLeaving(header.disp_no, result.failed_photos);
+        }
+        return { success: false, aborted: true };
+      }
 
       if (result.success) {
         // The form has made its dispatch: it is finished, and is reset when it is left.
@@ -768,6 +815,13 @@ export function useDispatchForm({
         };
       }
 
+      // The identical request was refused for the number after a lost answer, and again after the check: the first send
+      // may have saved it. Not "the next free number is ...": the screen shows this, with only a way to close.
+      if (result.numberMaybeSaved) {
+        const message = t('dispatch.wizard.numberMaybeSaved', { number: formatIdentifier(result.number || header.disp_no) });
+        return { success: false, error: message, numberMaybeSaved: { message } };
+      }
+
       if (result.reason === 'NUMBER_TAKEN') {
         return await reportNumberTaken(result.number || header.disp_no);
       }
@@ -777,11 +831,15 @@ export function useDispatchForm({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('dispatch.wizard.unknownError');
       console.error('[useDispatchForm] Submit error:', error);
+      if (formChanged()) return { success: false, aborted: true };
       report(t('dispatch.wizard.errorTitle'), errorMessage);
       return { success: false, error: errorMessage };
     } finally {
-      dispatch(setCheckingAnswer(false));
-      dispatch(setIsSaving(false));
+      // A form that was left (or reset) has its own flags now: this submit must not clear the next form's.
+      if (!formChanged()) {
+        dispatch(setCheckingAnswer(false));
+        dispatch(setIsSaving(false));
+      }
     }
   }, [header, items, images, dispatchIdParam, isCreateMode, store, formHoldsRouteDispatch, validateCurrentStep, dispatch]);
 

@@ -119,8 +119,18 @@ describe('a Create that got no answer', () => {
     const before = Date.now();
     const result = await createGRN({ header, items, nonce: 'nonce-of-this-form' });
     expect(result.success).toBe(false);
-    expect(result.lostAnswer).toEqual({ key: 'warehouse-grn-fictional-key', sentAt: expect.any(Number) });
+    // The lost attempt carries the exact arguments that went out (body and request code): what a resend repeats.
+    expect(result.lostAnswer).toEqual({
+      key: 'warehouse-grn-fictional-key',
+      sentAt: expect.any(Number),
+      args: expect.objectContaining({ p_gr_no: 'A0010', p_idempotency_key: 'warehouse-grn-fictional-key' }),
+    });
     expect(result.lostAnswer!.sentAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it('is reported as one after a gateway\'s 502 answer, which carries the HTTP status', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'Bad Gateway', code: '' }, status: 502 });
+    expect((await createGRN({ header, items })).lostAnswer).toBeDefined();
   });
 
   it('is not one after a refusal, a failure before the request left, or a statement timeout (nothing was saved)', async () => {
@@ -151,6 +161,59 @@ describe('a Create that got no answer', () => {
     expect(callsOf('save_grn')[1][1]).toEqual(callsOf('save_grn')[0][1]);
     expect(first.lostAnswer?.key).toBe(callsOf('save_grn')[0][1].p_idempotency_key);
     expect(again).toMatchObject({ success: true, data: { id: GRN_ID } });
+  });
+
+  describe('the identical request sent again after the check found nothing', () => {
+    it('goes out with exactly the arguments that were sent, and no new key is made', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: dropped }).mockResolvedValueOnce(saved);
+      const first = await createGRN({ header, items, nonce: 'nonce-of-this-form' });
+      jest.mocked(submissionIdempotencyKey).mockClear();
+
+      // Whatever the form holds now, the resend repeats the lost attempt, not a rebuilt body.
+      const again = await createGRN({ header, items: [{ ...items[0], qty: 99 }], nonce: 'nonce-of-this-form', resend: first.lostAnswer });
+
+      expect(submissionIdempotencyKey).not.toHaveBeenCalled();
+      expect(callsOf('save_grn')[1][1]).toBe(first.lostAnswer!.args);
+      expect(again).toMatchObject({ success: true, data: { id: GRN_ID } });
+    });
+
+    it('is not settled by a statement timeout (it may be waiting behind the original): the attempt is lost again', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: dropped });
+      const first = await createGRN({ header, items });
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } });
+
+      const again = await createGRN({ header, items, resend: first.lostAnswer });
+
+      expect(again.success).toBe(false);
+      expect(again.lostAnswer).toEqual({ key: first.lostAnswer!.key, sentAt: expect.any(Number), args: first.lostAnswer!.args });
+    });
+
+    it('is not settled by a failure before it left the phone either', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: dropped });
+      const first = await createGRN({ header, items });
+      mockRpc.mockResolvedValueOnce({ data: null, error: neverSent });
+
+      expect((await createGRN({ header, items, resend: first.lostAnswer })).lostAnswer).toBeDefined();
+    });
+
+    it('refused for the number is not settled: the first send may have saved it (and the refusal is still reported)', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: dropped });
+      const first = await createGRN({ header, items });
+      mockRpc.mockResolvedValueOnce({ data: { success: false, message: 'GRN number already exists: A0010' }, error: null });
+
+      const again = await createGRN({ header, items, resend: first.lostAnswer });
+
+      expect(again.numberTaken).toEqual({ number: 'A0010' });
+      expect(again.lostAnswer).toBeDefined();
+    });
+
+    it('a refusal the server answers settles it: no lost answer', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: dropped });
+      const first = await createGRN({ header, items });
+      mockRpc.mockResolvedValueOnce({ data: { success: false, message: 'Refused' }, error: null });
+
+      expect((await createGRN({ header, items, resend: first.lostAnswer })).lostAnswer).toBeUndefined();
+    });
   });
 
   it('with the stored answer found under its code it is handled as the lost answer and nothing is sent', async () => {
@@ -192,7 +255,11 @@ describe('a Save of an edited GRN that got no answer', () => {
   it('is reported as a lost answer with the edit session\'s key, and not after a refusal', async () => {
     mockRpc.mockResolvedValueOnce({ data: null, error: dropped });
     const result = await updateGRN(GRN_ID, { header, items: lines });
-    expect(result.lostAnswer).toEqual({ key: 'warehouse-grn-update-fictional-key', sentAt: expect.any(Number) });
+    expect(result.lostAnswer).toEqual({
+      key: 'warehouse-grn-update-fictional-key',
+      sentAt: expect.any(Number),
+      args: expect.objectContaining({ p_grn_id: GRN_ID, p_idempotency_key: 'warehouse-grn-update-fictional-key' }),
+    });
 
     mockRpc.mockResolvedValueOnce({ data: { success: false, message: 'Refused' }, error: null });
     expect((await updateGRN(GRN_ID, { header, items: lines })).lostAnswer).toBeUndefined();
@@ -214,6 +281,35 @@ describe('a Save of an edited GRN that got no answer', () => {
     expect(callsOf('update_grn')).toHaveLength(2);
     expect(callsOf('update_grn')[1][1].p_idempotency_key).toBe('warehouse-grn-update-fictional-key');
     expect(again.success).toBe(true);
+  });
+
+  it('resent, it goes out byte for byte as it was last sent, also when that was the retry without p_rates', async () => {
+    // A server without migration 86: update_grn refuses p_rates, the retry without it is the one that got no answer.
+    mockRpc
+      .mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.update_grn(p_rates)' } })
+      .mockResolvedValueOnce({ data: null, error: dropped })
+      .mockResolvedValueOnce(updated);
+    const first = await updateGRN(GRN_ID, { header, items: lines, rates: [] });
+    expect(first.lostAnswer).toBeDefined();
+    expect(first.lostAnswer!.args).not.toHaveProperty('p_rates');
+
+    // The form is locked meanwhile, but whatever it held, the resend repeats the lost attempt.
+    const again = await updateGRN(GRN_ID, { header, items: lines, rates: [] }, { resend: first.lostAnswer });
+
+    expect(callsOf('update_grn')).toHaveLength(3);
+    expect(callsOf('update_grn')[2][1]).toBe(first.lostAnswer!.args);
+    expect(again.success).toBe(true);
+  });
+
+  it('resent, a statement timeout or a failure before sending leaves it unsettled: the attempt is lost again', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: dropped });
+    const first = await updateGRN(GRN_ID, { header, items: lines });
+    mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } });
+    const second = await updateGRN(GRN_ID, { header, items: lines }, { resend: first.lostAnswer });
+    expect(second.lostAnswer).toEqual({ key: first.lostAnswer!.key, sentAt: expect.any(Number), args: first.lostAnswer!.args });
+
+    mockRpc.mockResolvedValueOnce({ data: null, error: neverSent });
+    expect((await updateGRN(GRN_ID, { header, items: lines }, { resend: second.lostAnswer })).lostAnswer).toBeDefined();
   });
 
   it('with the stored answer found under its code it is handled as the lost answer and nothing is sent', async () => {

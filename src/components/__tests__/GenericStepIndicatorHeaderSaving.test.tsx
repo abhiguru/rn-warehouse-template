@@ -74,7 +74,7 @@ describe('the step header', () => {
     act(() => tree.unmount());
   });
 
-  it('with a leave warning the X still asks, with that warning, and Discard leaves; the circles stay disabled', () => {
+  it('with a leave warning the X still asks, with that warning, and Leave anyway leaves; the circles stay disabled', () => {
     const { tree, onStepPress, onCancel } = render({ disabled: true, leaveWarning: WARNING });
 
     expect(close(tree).props.accessibilityState).toBeUndefined();
@@ -82,7 +82,8 @@ describe('the step header', () => {
     expect(showAlert).toHaveBeenCalledTimes(1);
     const [, message, buttons] = lastQuestion();
     expect(message).toBe(WARNING);
-    expect(buttons!.map((button) => button.text)).toEqual(['Keep editing', 'Discard']);
+    // Nothing is being edited: the app waits for the server, so the buttons say that ("Leave anyway" leaves).
+    expect(buttons!.map((button) => button.text)).toEqual(['Keep waiting', 'Leave anyway']);
     act(() => buttons![1].onPress!());
     expect(onCancel).toHaveBeenCalledTimes(1);
 

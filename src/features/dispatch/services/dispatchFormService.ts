@@ -22,7 +22,7 @@ import type {
   StockCheckResponse,
 } from '@/types/dispatch.types';
 import { uploadDeferredDispatchImages } from './dispatchImageService';
-import { serverText } from '@/utils/serverText';
+import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -137,28 +137,71 @@ export interface LostAnswerOptions {
 
 type RpcAnswer = { data: any; error: any; status?: number };
 
+/** What `sendUntilAnswered` hands back when the attempt is settled (or the person gave up waiting on it being answered). */
+interface SentAnswer {
+  data: any;
+  error: any;
+  /**
+   * The person left (the signal was aborted) while the request was on its way: the answer came, but there is nobody
+   * on the form to act on it. A saved dispatch is then only reported ("saved after you left"), never touched further.
+   */
+  afterLeaving: boolean;
+  /**
+   * The identical request was sent again after a lost answer and refused for the number, twice, with a check that
+   * found nothing in between: the first send may well have saved the dispatch under that number. The person is told to
+   * check the list; no next number is offered.
+   */
+  numberMaybeSaved: boolean;
+  /**
+   * The person left (X) while the FIRST send was on its way and its answer was lost: no warning was given, and the
+   * request may have been applied. The screen tells them to check the list before entering it again.
+   */
+  lostAfterLeaving: boolean;
+}
+
 /**
- * Sends a write and returns the answer it gets. When the request gets no answer (`isLostAnswer`: it may have reached
- * the server; a statement timeout, 57014, is not one, nothing was saved then) the screen is told to lock, and once the
- * phone is online and the server has had time (`checkSubmission`) the server is asked about THIS attempt by its
+ * Sends a write and returns the answer that settles it. When the request gets no answer (`isLostAnswer`: it may have
+ * reached the server; a statement timeout, 57014, is not one, nothing was saved then) the screen is told to lock, and
+ * once the phone is online and the server has had time (`checkSubmission`) the server is asked about THIS attempt by its
  * request code:
  *  - found: the stored answer is used as the answer that was lost;
- *  - not found: the identical request is sent once more with the same code, and its answer is handled as any answer
- *    (if that one is lost too, this repeats).
- * Nothing is looked up by customer, date or lines. Returns null when `signal` was aborted (the person left).
+ *  - not found: the identical request is sent once more with the same code, and its answer is handled as any answer.
+ *
+ * Once an attempt's answer is lost it is settled only by the server's answer to it. Any failure of the resend that is
+ * not such an answer (57014 while it waits behind the original, a failure before sending, a changed session, a
+ * gateway error) leaves the attempt unsettled: the screen stays locked and goes back to the check; the form is never
+ * unlocked for a changed body. A resend refused for the number means the first send may have saved it: back to the
+ * check, and if the check still finds nothing and the resend is refused again, the person is told to check the list
+ * (`numberMaybeSaved`) and no next number is offered. Nothing is looked up by customer, date or lines.
+ *
+ * Returns null when `signal` was aborted while the answer was unknown (the person left).
  */
 async function sendUntilAnswered(
   rpcName: string,
   send: () => PromiseLike<RpcAnswer>,
   requestKey: string,
   options: LostAnswerOptions
-): Promise<{ data: any; error: any } | null> {
+): Promise<SentAnswer | null> {
+  // True once an answer was lost: every later send is a resend of the identical request.
+  let resent = false;
+  let takenOnResend = false;
   for (;;) {
     const sentAt = Date.now();
     const { data, error, status } = await send();
-    if (!error || !isLostAnswer(typeof status === 'number' ? { ...error, status } : error)) return { data, error };
+    const left = options.signal?.aborted === true;
+    // The HTTP status goes with the error: a gateway's 502 / 504 is told from the server's own refusals.
+    const failure = error ? withHttpStatus(error, status) : null;
+    const lost = failure !== null && isLostAnswer(failure);
+    const unsettled = lost || (resent && failure !== null && isUnsettledFailure(failure));
+    const taken = resent && isNumberTakenAnswer(failure ?? data);
+    if (!unsettled && !taken) return { data, error, afterLeaving: left, numberMaybeSaved: false, lostAfterLeaving: false };
+    if (taken && takenOnResend) return { data, error, afterLeaving: left, numberMaybeSaved: true, lostAfterLeaving: false };
+    if (taken) takenOnResend = true;
+    // The person left: nothing is asked or sent for a form that is gone. When it was the first send that got no answer
+    // they were not warned (the warning belongs to the check), so the screen tells them it may have been saved.
+    if (left) return resent ? null : { data, error, afterLeaving: true, numberMaybeSaved: false, lostAfterLeaving: true };
 
-    log.warn(`${rpcName} got no answer; asking the server what became of it`, { code: errorCode(error) });
+    log.warn(`${rpcName} is not settled; asking the server what became of it`, { code: errorCode(error) });
     options.onLostAnswer?.();
     let check: Awaited<ReturnType<typeof checkSubmission>>;
     try {
@@ -171,9 +214,10 @@ async function sendUntilAnswered(
     if (options.signal?.aborted) return null;
     if (check.found) {
       log.info(`${rpcName} had been saved although its answer was lost`);
-      return { data: check.response, error: null };
+      return { data: check.response, error: null, afterLeaving: false, numberMaybeSaved: false, lostAfterLeaving: false };
     }
     log.info(`${rpcName} was not saved; sending the same request again`);
+    resent = true;
   }
 }
 
@@ -317,7 +361,21 @@ export const createDispatch = async (payload: {
       options
     );
     if (!answer) return { success: false, aborted: true, error: '', message: '' };
+    if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
+    // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
+    if (answer.numberMaybeSaved) {
+      return {
+        success: false,
+        numberMaybeSaved: true,
+        number: numberOfRefusal(answer.error ?? answer.data, payload.header.disp_no),
+        error: '',
+        message: '',
+      };
+    }
     const { data, error } = answer;
+    // The person left while the request was on its way: only a saved dispatch is worth a word (the screen says it was
+    // saved after they left); a refusal is nobody's business any more.
+    if (answer.afterLeaving && (error || !data || data.success === false)) return { success: false, aborted: true, error: '', message: '' };
 
     if (error) {
       log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
@@ -339,6 +397,12 @@ export const createDispatch = async (payload: {
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
     // The write changed what reports count: a report on screen asks again (SR-10).
     void invalidateReportQueries();
+
+    // The person left before the answer came: the dispatch is saved, but the form and its photo files belong to someone
+    // else now. Nothing is uploaded; the screen tells the person it was saved (and that any photos are still to be added).
+    if (answer.afterLeaving) {
+      return { success: true, aborted: true, dispatch_id: data?.dispatch_id, failed_photos: payload.images ?? [], error: '', message: '' };
+    }
 
     // Upload deferred images if any. The dispatch is saved either way; photos
     // that did not arrive are returned so the screen can name them and offer
@@ -461,7 +525,20 @@ export const updateDispatch = async (
       options
     );
     if (!answer) return { success: false, aborted: true, error: '', message: '' };
+    if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
+    // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
+    if (answer.numberMaybeSaved) {
+      return {
+        success: false,
+        numberMaybeSaved: true,
+        number: numberOfRefusal(answer.error ?? answer.data, payload.header.disp_no),
+        error: '',
+        message: '',
+      };
+    }
     const { data, error } = answer;
+    // The person left while the request was on its way (see createDispatch).
+    if (answer.afterLeaving && (error || !data || data.success === false)) return { success: false, aborted: true, error: '', message: '' };
 
     if (error) {
       log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
@@ -482,6 +559,11 @@ export const updateDispatch = async (
     log.info('Dispatch updated', { dispatchId });
     // The write changed what reports count: a report on screen asks again (SR-10).
     void invalidateReportQueries();
+
+    // The person left before the answer came: the edit is saved; the screen tells them so.
+    if (answer.afterLeaving) {
+      return { success: true, aborted: true, dispatch_id: data?.dispatch_id ?? dispatchId, error: '', message: '' };
+    }
 
     return {
       success: true,

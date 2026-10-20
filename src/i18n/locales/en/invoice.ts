@@ -107,6 +107,8 @@ export const invoice = {
     numberTakenTitle: 'Invoice number already used',
     numberTaken: 'Invoice number {{number}} is already used. The next free number is {{next}}.',
     numberTakenNoNext: 'Invoice number {{number}} is already used. Type a different number.',
+    // The number was refused when the save was sent again after a lost answer: the first send may have saved it.
+    numberMaybeSaved: 'Invoice {{number}} may already have been saved. Check the list before entering it again.',
   },
   // The sheet that lists the GRNs that can be invoiced
   grnPicker: {

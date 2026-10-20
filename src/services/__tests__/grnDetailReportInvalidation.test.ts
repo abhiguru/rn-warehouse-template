@@ -5,14 +5,15 @@
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { isLostAnswer, waitForServer } from '@/utils/lostAnswer';
+import { waitForServer } from '@/utils/lostAnswer';
 import { checkGRNGone, deleteGRN, photoPathsOf, removeGRNPhotoFiles, settleLostDelete } from '../grn-detail-service';
 
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/lib/queryClient', () => ({ ...jest.requireActual('@/lib/queryClient'), invalidateReportQueries: jest.fn(async () => {}) }));
 jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn() }));
-// Whether a failure is a lost answer, and the wait for the server, are the shared helper's (utils/lostAnswer); said here.
-jest.mock('@/utils/lostAnswer', () => ({ isLostAnswer: jest.fn(() => false), waitForServer: jest.fn(async () => {}) }));
+// The wait for the server is the shared helper's (utils/lostAnswer); said here. Whether a failure is a lost answer is
+// executeRPC's flag (`lostAnswer`), which this test sets on the result it mocks.
+jest.mock('@/utils/lostAnswer', () => ({ waitForServer: jest.fn(async () => {}) }));
 
 const invalidate = jest.mocked(invalidateReportQueries);
 const rpc = jest.mocked(executeRPC);
@@ -53,19 +54,46 @@ describe('deleteGRN', () => {
 // Review 2026-10-20, G11 and owner rule D22: a delete that got no answer is read back, not retried blind.
 describe('deleteGRN after a failure on the way', () => {
   it('asks for the delete wording and says the answer was lost when the failure came after the request went out', async () => {
-    rpc.mockResolvedValue({ success: false, message: 'No answer from the server. It may have been deleted.', error: 'TimeoutError: Request timeout', errorCode: 'TIMEOUT' } as never);
-    jest.mocked(isLostAnswer).mockReturnValue(true);
+    rpc.mockResolvedValue({ success: false, message: 'No answer from the server. It may have been deleted.', error: 'TimeoutError: Request timeout', errorCode: 'TIMEOUT', lostAnswer: true } as never);
     expect(await deleteGRN(GRN_ID)).toMatchObject({ success: false, lostAnswer: true, message: 'No answer from the server. It may have been deleted.' });
     expect(rpc.mock.calls[0][3]).toMatchObject({ write: true, delete: true });
-    expect(isLostAnswer).toHaveBeenCalledWith({ message: 'TimeoutError: Request timeout', code: 'TIMEOUT' }, 'TIMEOUT');
   });
 
   it('a failure before the request left, a statement timeout and a refusal the server answered are not a lost answer', async () => {
-    jest.mocked(isLostAnswer).mockReturnValue(false);
     rpc.mockResolvedValue({ success: false, message: 'Offline', error: 'AppError: No internet connection', errorCode: 'NETWORK' } as never);
     expect((await deleteGRN(GRN_ID)).lostAnswer).toBe(false);
     rpc.mockResolvedValue({ success: false, message: 'Refused', error: 'P0001', errorCode: 'P0001' } as never);
     expect((await deleteGRN(GRN_ID)).lostAnswer).toBe(false);
+  });
+
+  // Owner rule D22: the delete sent again after a lost answer is settled only by the server's answer.
+  describe('sent again after a lost answer (resend)', () => {
+    it('"GRN not found" means it is gone, as asked: a success, and the reports are told', async () => {
+      rpc.mockResolvedValue({ success: true, data: { success: false, error: 'GRN not found' } } as never);
+      expect(await deleteGRN(GRN_ID, { resend: true })).toEqual({ success: true, alreadyGone: true });
+      expect(invalidate).toHaveBeenCalledTimes(1);
+    });
+
+    it('"GRN not found" on a first delete is still only a refusal', async () => {
+      rpc.mockResolvedValue({ success: true, data: { success: false, error: 'GRN not found' } } as never);
+      expect((await deleteGRN(GRN_ID)).success).toBe(false);
+      expect(invalidate).not.toHaveBeenCalled();
+    });
+
+    it('a statement timeout or a failure before sending leaves it unsettled: a lost answer again', async () => {
+      rpc.mockResolvedValue({ success: false, message: 'Cancelled', error: 'canceling statement due to statement timeout', errorCode: '57014' } as never);
+      expect((await deleteGRN(GRN_ID, { resend: true })).lostAnswer).toBe(true);
+      rpc.mockResolvedValue({ success: false, message: 'Offline', error: 'AppError: No internet connection', errorCode: 'NETWORK' } as never);
+      expect((await deleteGRN(GRN_ID, { resend: true })).lostAnswer).toBe(true);
+      // The same failures on a first delete are answers of the phone, not lost answers.
+      rpc.mockResolvedValue({ success: false, message: 'Cancelled', error: 'canceling statement due to statement timeout', errorCode: '57014' } as never);
+      expect((await deleteGRN(GRN_ID)).lostAnswer).toBe(false);
+    });
+
+    it('a refusal the server answers settles it: no lost answer', async () => {
+      rpc.mockResolvedValue({ success: false, message: 'Refused', error: 'P0001', errorCode: 'P0001' } as never);
+      expect((await deleteGRN(GRN_ID, { resend: true })).lostAnswer).toBe(false);
+    });
   });
 });
 
@@ -110,6 +138,8 @@ describe('settleLostDelete', () => {
     const read = reads(notFound);
     const signal = new AbortController().signal;
     expect(await settleLostDelete(GRN_ID, 1_000, signal)).toBe('gone');
+    // The delete had been applied: a report left open stops listing the GRN, as after any delete.
+    expect(invalidate).toHaveBeenCalledTimes(1);
     expect(waitForServer).toHaveBeenCalledWith(1_000, signal);
     expect(read).toHaveBeenCalledWith('get_grn_details', { p_grn_id: GRN_ID });
     expect(jest.mocked(waitForServer).mock.invocationCallOrder[0]).toBeLessThan(read.mock.invocationCallOrder[0]);
@@ -118,6 +148,7 @@ describe('settleLostDelete', () => {
   it('says exists when the GRN is still there: the caller sends the delete once more', async () => {
     reads(there);
     expect(await settleLostDelete(GRN_ID, 1_000)).toBe('exists');
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it('a read that fails is tried again, with a longer wait each time, until the server answers', async () => {

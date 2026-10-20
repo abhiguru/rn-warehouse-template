@@ -5,8 +5,7 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
-import { isNetworkError, isStatementTimeout, isTimeoutError, serverReason, serverText } from '@/utils/serverText';
-import { isLostAnswer } from '@/utils/lostAnswer';
+import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
@@ -932,7 +931,13 @@ export const invoiceDeleteState = async (invoiceId: string): Promise<'gone' | 't
 };
 
 // M3 Fix: Using executeRPC wrapper
-export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceResponse> => {
+/**
+ * `options.resend`: this is the delete sent again after one whose answer was lost (owner rule D22). Any failure of it
+ * that is not the server's answer (a statement timeout while it waits behind the first delete, a failure before
+ * sending, a changed session) leaves the attempt unsettled, so the result says `lostAnswer` and the caller goes back to
+ * the check instead of unlocking the page. "Invoice not found" is `notFound`: deleted, as asked.
+ */
+export const deleteInvoice = async (invoiceId: string, options: { resend?: boolean } = {}): Promise<DeleteInvoiceResponse> => {
   const sentAt = Date.now();
   const result = await executeRPC<{
     message: string;
@@ -957,7 +962,7 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
     // The request may have reached the server and no answer came: the invoice may be gone already. Nothing is worded
     // for the person; the caller waits, reads the invoice, and sends the delete again only if it is still there (D22).
     // (Not the server's own statement timeout, 57014: it rolled back, so nothing was deleted.)
-    if (isLostAnswer(result)) {
+    if (result.lostAnswer || (options.resend && isUnsettledFailure(result, result.errorCode))) {
       return { success: false, error: result.error, lostAnswer: true, sentAt };
     }
     // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in

@@ -31,6 +31,9 @@ export interface InvoiceStepIndicatorProps {
   backOnFirstStep?: GenericStepIndicatorHeaderProps['backOnFirstStep'];
   invoiceNo?: string | number;
   isEditMode?: boolean;
+  /** The server is being asked what became of a save: the close button still asks, with `leaveWarning` (see GenericStepIndicatorHeader). */
+  disabled?: boolean;
+  leaveWarning?: string;
 }
 
 export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
@@ -44,6 +47,8 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
   backOnFirstStep,
   invoiceNo,
   isEditMode = false,
+  disabled = false,
+  leaveWarning,
 }) => {
   // Document numbers read "Invoice 2026-0042" (style guide §12.3), so no "#".
   const displayInvoiceNo = invoiceNo ? String(invoiceNo) : undefined;
@@ -67,6 +72,8 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
       }
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
+      disabled={disabled}
+      leaveWarning={leaveWarning}
     />
   );
 };

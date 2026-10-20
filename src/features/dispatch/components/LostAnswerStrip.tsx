@@ -6,7 +6,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
-import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useIsDisconnected } from '@/utils/lostAnswer';
 import { space } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 
@@ -17,7 +17,8 @@ interface LostAnswerStripProps {
 }
 
 export function LostAnswerStrip({ kind, testID }: LostAnswerStripProps) {
-  const offline = useIsOffline();
+  // The same online test the wait uses (`waitForServer`): the phone says it has no network at all.
+  const offline = useIsDisconnected();
   const message = [
     tr(kind === 'delete' ? 'errors.lostAnswer.checkingDelete' : 'errors.lostAnswer.checking'),
     offline ? tr('errors.lostAnswer.waiting') : null,
