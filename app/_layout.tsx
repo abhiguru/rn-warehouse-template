@@ -52,7 +52,6 @@ import {
   ActivityIndicator,
   AppState,
   Image,
-  StyleSheet,
 } from 'react-native';
 import {
   DarkTheme,
@@ -702,9 +701,7 @@ function RootLayout() {
         {/* Here, not in ThemedContent: the bootstrap screens (config error, server choice) show dialogs too, and the queue must not lose its host. It needs only Redux (theme). */}
         <AlertHost />
         {/* Here too: signing out of a facility re-runs bootstrap and unmounts ThemedContent, and a toast shown just before must survive. Fills the screen without taking touches. */}
-        <SafeAreaProvider style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          <ToastHost />
-        </SafeAreaProvider>
+        <ToastHost />
       </PersistGate>
     </Provider>
   );
