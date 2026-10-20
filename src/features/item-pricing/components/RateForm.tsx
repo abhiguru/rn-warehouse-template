@@ -33,7 +33,7 @@ import { localizeDigits, t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { fromOf, lotsRule, removeBand, summaryLines, wholeKg, setBandField, setBandFrom, setFirstFrom, setUpTo, type Draft } from '../editModel';
-import { priceNumber } from '../utils/priceNumbers';
+import { priceNumber } from '@/utils/priceNumbers';
 import { laterDialogText } from '../laterRates';
 import { bandText, dateText, todayDay, unitText } from '../rateText';
 import { planScope } from '../scopePlan';
@@ -382,7 +382,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
                       {field(`band.${i}.upTo`, t('pricing.addForm.upToKg'), band.upTo, text => set(setUpTo(draft, i, text)), 'kg', t('pricing.addForm.fieldUpTo'))}
                     </View>
                     <View style={stacked ? styles.stack : styles.pair}>
-                      {field(`band.${i}.rent`, rentLabel, band.rent, text => set(setBandField(draft, i, 'rent', text)), 'rupee', t('pricing.addForm.fieldRent'))}
+                      {field(`band.${i}.rent`, rentLabel, band.rent, text => set(setBandField(draft, i, 'rent', text)), 'rent', t('pricing.addForm.fieldRent'))}
                       {perBand && !oneTime ? field(`band.${i}.labour`, t('pricing.addForm.labour'), band.labour ?? '', text => set(setBandField(draft, i, 'labour', text)), 'rupee', t('pricing.addForm.fieldLabour')) : null}
                       {perBand ? field(`band.${i}.tax`, t('pricing.addForm.tax'), band.tax ?? '', text => set(setBandField(draft, i, 'tax', text)), 'percent', t('pricing.addForm.fieldTax'), '%') : null}
                     </View>

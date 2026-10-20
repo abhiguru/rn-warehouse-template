@@ -432,6 +432,7 @@ export const grn = {
       field_from: 'from weight',
       field_upTo: 'up-to weight',
       stepDown: 'Lower the {{field}} by {{step}}',
+      stepDownToMax: 'Lower the {{field}} to {{amount}}',
       stepUp: 'Raise the {{field}} by {{step}}',
       lastDay: 'Last day',
       noEnd: 'No end date',

@@ -430,6 +430,7 @@ export const grn: Translation<typeof source> = {
       field_from: 'થી વજન',
       field_upTo: 'સુધી વજન',
       stepDown: '{{field}} {{step}} ઘટાડો',
+      stepDownToMax: '{{field}} ઘટાડીને {{amount}} કરો',
       stepUp: '{{field}} {{step}} વધારો',
       lastDay: 'છેલ્લી તારીખ',
       noEnd: 'છેલ્લી તારીખ નથી',

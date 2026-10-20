@@ -289,6 +289,7 @@ export const pricing = {
     fieldTax: 'tax',
     stepUp: 'Raise the {{field}} by {{step}}',
     stepDown: 'Lower the {{field}} by {{step}}',
+    stepDownToMax: 'Lower the {{field}} to {{amount}}',
   },
   ...pricingEdit,
 };

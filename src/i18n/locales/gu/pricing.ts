@@ -288,6 +288,7 @@ export const pricing: Translation<typeof source> = {
     fieldTax: 'ટેક્સ',
     stepUp: '{{field}} {{step}} વધારો',
     stepDown: '{{field}} {{step}} ઘટાડો',
+    stepDownToMax: '{{field}} ઘટાડીને {{amount}} કરો',
   },
   ...pricingEdit,
 };

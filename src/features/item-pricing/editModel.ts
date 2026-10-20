@@ -10,7 +10,7 @@ import type { ItemStoragePrice, PriceType, ReplaceRatesInput } from '@/types/ite
 import type { EditorMode, EditorParams } from './contract';
 import { rateRights } from './rateRights';
 import { addDays, bandText, dateText, money, unitText } from './rateText';
-import { priceNumber } from './utils/priceNumbers';
+import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 
 /** The server allows ten bands in one scope (INVALID_BANDS). */
 export const MAX_BANDS = 10;
@@ -30,6 +30,8 @@ export interface BandDraft {
    * the default rate). The editor keeps the gap; a band that starts right after the one before has none.
    */
   gapFrom?: number;
+  /** The last rent key was refused (it would pass 9999.99 or 2 decimals): the field says why until a key is accepted. Not a change. */
+  rentRefused?: true;
   /** A customer band's "From" as typed (not the first band, which has firstFromText). Set only when the person typed a start other than the end of the band before plus one. */
   fromText?: string;
 }
@@ -256,7 +258,29 @@ export function setUpTo(draft: Draft, index: number, text: string): Draft {
 }
 
 export function setBandField(draft: Draft, index: number, field: 'rent' | 'labour' | 'tax', text: string): Draft {
-  return { ...draft, bands: draft.bands.map((b, i) => (i === index ? { ...b, [field]: text } : b)) };
+  // A rent that would pass 9999.99 or 2 decimals is not taken: the field keeps what it held.
+  const old = draft.bands[index]?.rent ?? '';
+  const value = field === 'rent' ? acceptRentText(old, text) : text;
+  const refused = field === 'rent' && value === old && text !== old;
+  return {
+    ...draft,
+    bands: draft.bands.map((b, i) => {
+      if (i !== index) return b;
+      if (field !== 'rent') return { ...b, [field]: value };
+      const { rentRefused: _was, ...rest } = b;
+      return { ...rest, rent: value, ...(refused ? { rentRefused: true as const } : {}) };
+    }),
+  };
+}
+
+/** The rent message of each band whose last key was refused, or whose rent (stored or copied) is above the limit. Shown before Save. */
+export function rentErrors(draft: Draft): Record<string, string> {
+  const errors: Record<string, string> = {};
+  draft.bands.forEach((band, i) => {
+    const n = priceNumber(band.rent, 2);
+    if (band.rentRefused || (n !== null && n > RENT_MAX)) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
+  });
+  return errors;
 }
 
 /** Why "Add weight band" cannot add one now: ten bands already, or the last "Up to" is not a whole number yet. */
@@ -556,7 +580,7 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
         });
       }
     }
-    if (priceNumber(band.rent, 2) === null) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
+    if (rentNumber(band.rent) === null) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
     if (band.labour !== undefined && !oneTime && priceNumber(band.labour, 2) === null) {
       errors[`band.${i}.labour`] = t('pricing.edit.err.labour');
     }

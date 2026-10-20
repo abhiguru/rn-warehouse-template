@@ -23,7 +23,7 @@ import { wholeKg } from '@/features/item-pricing/editModel';
 import { TABLE_FALLBACK_SCALE } from '@/features/item-pricing/components/BandsTable';
 import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
 import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
-import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
+import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { showAlert } from '@/utils/alert';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
@@ -68,7 +68,7 @@ const text = (n: number | null): string => (n === null ? '' : String(Math.round(
 const rupees = (n: number | null): string => (n === null ? '' : n.toFixed(2));
 /** What a − or + press adds, and the most a figure may be (owner, 2026-10-17). */
 const STEP = { rent: 0.25, labour: 0.25, tax: 1, from: 1, upTo: 1 } as const;
-const MAX = { rent: 999999, labour: 999999, tax: 100, from: 100000, upTo: 100000 } as const;
+const MAX = { rent: RENT_MAX, labour: 999999, tax: 100, from: 100000, upTo: 100000 } as const;
 type StepKey = keyof typeof STEP;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -260,7 +260,8 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     setLabour(rupees(preload.figures.labour_rate));
     setTax(text(preload.figures.tax_percent));
     setTo(preload.to);
-    setErrors({});
+    // A loaded rent above the limit says so at once.
+    setErrors(preload.figures.unit_price !== null && preload.figures.unit_price > RENT_MAX ? { rent: t('pricing.edit.err.rent') } : {});
     setFacts(null);
     setExplainOpen(false);
     setReferenceOpen(false);
@@ -280,7 +281,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     const next: Record<string, string> = bandProblems(from, upTo);
     const min = wholeKg(from);
     const max = wholeKg(upTo);
-    const unit = priceNumber(rent, 2);
+    const unit = rentNumber(rent);
     if (unit === null) next.rent = t('pricing.edit.err.rent');
     const labourRate = oneTime ? 0 : priceNumber(labour, 2);
     if (labourRate === null) next.labour = t('pricing.edit.err.labour');
@@ -399,7 +400,8 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     const now = (kg ? wholeKg(value) : priceNumber(value, 2)) ?? 0;
     const next = Math.min(MAX[key], Math.max(0, round2(now + dir * STEP[key])));
     const stepText = kg ? `${localizeDigits(String(STEP[key]))} ${t('pricing.kg')}` : key === 'tax' ? `${localizeDigits(String(STEP.tax))}%` : money(STEP[key]);
-    const disabled = next === now;
+    const disabled = next === now || (dir > 0 && now >= MAX[key]);
+    const toMax = dir < 0 && now > MAX[key];
     // A weight stepped is checked at once, as when its field is left.
     const press = kg
       ? () => { set(String(next)); checkBand(key === 'from' ? String(next) : from, key === 'upTo' ? String(next) : upTo); }
@@ -411,7 +413,11 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
         onPress={press}
         disabled={disabled}
         accessibilityRole="button"
-        accessibilityLabel={t(dir < 0 ? 'grn.rates.sheet.stepDown' : 'grn.rates.sheet.stepUp', { field: name, step: stepText })}
+        accessibilityLabel={
+          toMax
+            ? t('grn.rates.sheet.stepDownToMax', { field: name, amount: money(MAX[key]) })
+            : t(dir < 0 ? 'grn.rates.sheet.stepDown' : 'grn.rates.sheet.stepUp', { field: name, step: stepText })
+        }
         accessibilityState={{ disabled }}
         testID={`rate-${key}-${dir < 0 ? 'down' : 'up'}`}
       >
@@ -444,7 +450,20 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
       numeric
       selectTextOnFocus
       value={value}
-      onChangeText={set}
+      onChangeText={
+        key === 'rent'
+          ? (typed: string) => {
+              const kept = acceptRentText(value, typed);
+              set(kept);
+              // A refused key says why at once; an accepted one takes the message away.
+              setErrors(e => {
+                if (kept !== typed) return { ...e, rent: t('pricing.edit.err.rent') };
+                const { rent: _gone, ...rest } = e;
+                return rest;
+              });
+            }
+          : set
+      }
       keyboardType="decimal-pad"
       {...keypadProps(key)}
       error={errors[key]}

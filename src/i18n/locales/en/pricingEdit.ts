@@ -55,7 +55,7 @@ export const pricingEdit = {
     firstFrom: 'From',
     loadErrorTitle: "Couldn't load the rates of this item",
     err: {
-      rent: 'Enter a rent of 0 or more.',
+      rent: 'Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.',
       wholeKg: 'Enter whole kilograms, for example 40.',
       fromOverlap: 'The band before ends at {{kg}} kg. Start at {{next}} kg or more.',
       gapDefault: 'A default rate cannot have a gap: every weight needs a rate.',

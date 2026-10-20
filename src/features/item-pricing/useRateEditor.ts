@@ -23,6 +23,7 @@ import {
   resyncToday,
   savedStop,
   setStartsOn as withStartsOn,
+  rentErrors,
   switchNewRateType,
   toReplaceInput,
   validate,
@@ -296,7 +297,8 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     draft,
     initial: open?.initial,
     ctx,
-    errors,
+    // The rent message shows as soon as a key is refused or a stored rent is too high, before Save.
+    errors: draft ? { ...rentErrors(draft), ...errors } : errors,
     strip,
     saving,
     later,

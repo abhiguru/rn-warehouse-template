@@ -34,7 +34,7 @@ import { t } from '@/i18n';
 import { setStandardRate } from '@/services/item-pricing-service';
 import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
-import { fieldOrder, hasChanges, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
+import { fieldOrder, hasChanges, rentErrors, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
 import { todayDay } from '@/features/item-pricing/rateText';
 import {
   fieldForRefusal,
@@ -244,7 +244,7 @@ export default function StandardRateScreen() {
         >
           {strip ? <EditorStrip variant="critical" message={strip} testID="standard-error" /> : null}
           <Text style={styles.note} testID="standard-note">{t('pricing.standard.note')}</Text>
-          <BandsEditor draft={form.draft} ctx={form.ctx} errors={errors} onChange={setDraft} fields={fields} />
+          <BandsEditor draft={form.draft} ctx={form.ctx} errors={{ ...rentErrors(form.draft), ...errors }} onChange={setDraft} fields={fields} />
         </ScrollView>
 
         <View
