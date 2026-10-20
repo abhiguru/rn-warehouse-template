@@ -69,6 +69,7 @@ export type RoleGatedScreen =
   | 'itemPriceHistory'
   | 'standardRate'
   | 'sensors'
+  | 'sensorWrite'
   | 'userManagement'
   | 'enrollmentReview'
   | 'masterData';
@@ -87,6 +88,9 @@ export function canOpenScreen(
   switch (screen) {
     case 'sensors':
       return isWarehouseUser(role) && (capabilities === undefined || capabilities.sensors);
+    case 'sensorWrite':
+      // Renaming a sensor and setting its limits: administrators only (update_sensor_device, migration 74).
+      return normalizeRole(role) === 'admin' && (capabilities === undefined || capabilities.sensors);
     case 'operationsDashboard':
     case 'userManagement':
     case 'masterData':

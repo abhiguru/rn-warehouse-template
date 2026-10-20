@@ -111,3 +111,57 @@ export async function getDevice(deviceId: string): Promise<ReportServiceResult<S
     return { success: false, message: fallback, error: error instanceof Error ? error.message : undefined };
   }
 }
+
+/** What Edit sensor sends to update_sensor_device (backend migration for the temperature limits). */
+export interface SensorUpdate {
+  deviceId: string;
+  name: string;
+  /** Empty clears the location. */
+  location: string;
+  stalenessMinutes: number;
+  /**
+   * The temperature limits, in °C; null clears one. Left out when they are not changed, so a
+   * save that leaves them alone also works against a server before the limits.
+   */
+  limits?: { min: number | null; max: number | null };
+}
+
+/** Result of saving a sensor: the server's reason (in the app's language) and code on a refusal. */
+export interface SensorUpdateResult {
+  success: boolean;
+  message?: string;
+  code?: string;
+}
+
+/** Administrators only (update_sensor_device): the name, place, "no recent data" threshold and limits of one sensor. */
+export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateResult> {
+  const fallback = t('sensors.edit.couldNotSave');
+  const args: Record<string, unknown> = {
+    p_device_id: update.deviceId,
+    p_device_name: update.name,
+    p_location: update.location,
+    p_staleness_threshold_minutes: update.stalenessMinutes,
+  };
+  if (update.limits) {
+    args.p_temperature_min = update.limits.min;
+    args.p_temperature_max = update.limits.max;
+    args.p_set_temperature_limits = true;
+  }
+  try {
+    const { data, error } = await callRpc('update_sensor_device', args);
+    if (error) {
+      sensorLogger.error('RPC error:', error);
+      const refusal: RpcRefusal = { text: error.message, code: error.code };
+      return { success: false, message: serverText(refusal.text, fallback), code: failureCode(refusal) };
+    }
+    const refusal = rpcRefusal(data);
+    if (refusal) {
+      sensorLogger.warn('Sensor not saved', { code: refusal.code });
+      return { success: false, message: serverText(refusal.text, fallback), code: failureCode(refusal) };
+    }
+    return { success: true };
+  } catch (error) {
+    sensorLogger.error('Exception:', error);
+    return { success: false, message: fallback };
+  }
+}

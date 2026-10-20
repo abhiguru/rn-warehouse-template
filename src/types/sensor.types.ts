@@ -3,7 +3,8 @@
 
 /**
  * Per-sensor alert settings (`sensor_devices.alert_config`, jsonb). Only the temperature
- * limits are read by the app: the detail chart draws them as dashed lines.
+ * limits are read by the app: the detail chart draws them as dashed lines, and Edit sensor
+ * sets them (update_sensor_device).
  */
 export interface SensorAlertConfig {
   /** Highest allowed temperature, °C. */
@@ -19,7 +20,8 @@ export interface SensorDevice {
   mac_address: string;
   location: string;
   active: boolean;
-  health_status: 'healthy' | 'warning' | 'critical';
+  /** The server also sends 'offline' (offline or no recent data) and 'unknown' (never heard from). */
+  health_status: 'healthy' | 'warning' | 'critical' | 'offline' | 'unknown';
   battery_status: 'OK' | 'LOW' | 'CRITICAL' | 'UNKNOWN';
   /** OFFLINE when the hub is offline, STALE when nothing came within the threshold, else ONLINE. */
   connectivity_status: 'ONLINE' | 'OFFLINE' | 'STALE' | 'UNKNOWN';
@@ -43,6 +45,13 @@ export interface SensorDevice {
   /** The last time the bridge heard from the sensor, with or without new values. */
   last_seen_at?: string | null;
   alert_config?: SensorAlertConfig | null;
+  /** The latest values have not changed within the threshold, though the sensor may still be heard from. */
+  values_stale?: boolean | null;
+  /**
+   * The newest temperature is above the sensor's highest limit (HIGH) or below its lowest (LOW).
+   * Servers before the temperature limits do not send it: no flag means not out of range.
+   */
+  temperature_alert?: 'HIGH' | 'LOW' | null;
 }
 
 /** The hub a sensor reports through. */

@@ -193,7 +193,7 @@ describe('the sensor and its history', () => {
       days.release(historyOf(7));
     });
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Chamber 7', 'Healthy', 'All readings, last 7 days', 'Based on 7 readings']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Chamber 7', 'Sensor OK', 'All readings, last 7 days', 'Based on 7 readings']));
     expect(screen.facts()).toEqual(['Connection: Online', 'Battery: Good', 'Last reading: 12 Oct 2026, 9:55 am']);
   });
 

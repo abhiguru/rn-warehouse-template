@@ -157,7 +157,7 @@ async function open() {
     tree,
     texts,
     // The figures as they are read out: "Online: 2".
-    kpis: () => labels().filter(label => /^(Sensors|Online|No recent data|Battery low): /.test(label)),
+    kpis: () => labels().filter(label => /^(Sensors|Online|Offline or no recent data|Battery low): /.test(label)),
     // The status tag of each sensor row, in order.
     rowTags: () =>
       tree.root
@@ -175,8 +175,8 @@ describe('the sensors list', () => {
     const screen = await open();
     expect(snapshot).toHaveBeenCalledTimes(1);
     expect(screen.texts()).toEqual(expect.arrayContaining(['Temperature and humidity', 'North chamber probe', 'South chamber probe', 'Dock probe', '−18.0°C', '4.0°C', '80%']));
-    expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 3', 'No recent data: 0', 'Battery low: 1']);
-    expect(screen.rowTags()).toEqual(['Healthy', 'Healthy', 'Battery low']);
+    expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 3', 'Offline or no recent data: 0', 'Battery low: 1']);
+    expect(screen.rowTags()).toEqual(['Sensor OK', 'Sensor OK', 'Battery low']);
     expect(screen.status()).toBe('Last updated 10:00 am');
     expect(screen.texts()).toContain('Updated 5 min ago');
   });
@@ -185,7 +185,7 @@ describe('the sensors list', () => {
     snapshot.mockResolvedValue(answer([]) as never);
     const screen = await open();
     expect(screen.texts()).toEqual(expect.arrayContaining(['No sensors yet', 'Sensors set up for this facility appear here.']));
-    expect(screen.kpis()).toEqual(['Sensors: 0', 'Online: 0', 'No recent data: 0', 'Battery low: 0']);
+    expect(screen.kpis()).toEqual(['Sensors: 0', 'Online: 0', 'Offline or no recent data: 0', 'Battery low: 0']);
   });
 });
 
@@ -222,15 +222,15 @@ describe('kept current by the minute timer', () => {
 
   it('a sensor turns "No recent data" from the time alone, whatever the minute timer reads', async () => {
     const screen = await open();
-    expect(screen.rowTags()).toEqual(['Healthy', 'Healthy', 'Battery low']);
+    expect(screen.rowTags()).toEqual(['Sensor OK', 'Sensor OK', 'Battery low']);
     expect(screen.texts()).not.toContain('1 with no recent data');
 
     // South was read 29 minutes ago against 30: two minutes on, it has had nothing for 31.
     // The server's answer is unchanged (is_stale false): only the time has moved.
     await flush(2 * 60_000);
-    expect(screen.rowTags()).toEqual(['Healthy', 'No recent data', 'Battery low']);
+    expect(screen.rowTags()).toEqual(['Sensor OK', 'No recent data', 'Battery low']);
     expect(screen.alerts()).toEqual(['1 with no recent data', '1 low battery']);
-    expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 2', 'No recent data: 1', 'Battery low: 1']);
+    expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 2', 'Offline or no recent data: 1', 'Battery low: 1']);
     expect(screen.texts()).toContain('Updated 7 min ago');
     // The minute timer asked twice more (60 s and 120 s); its answers did not change.
     expect(snapshot).toHaveBeenCalledTimes(3);
@@ -263,7 +263,7 @@ describe('needs attention', () => {
     await act(async () => links[0].props.onPress());
     expect(push).toHaveBeenCalledWith('/sensor-detail/s4');
     // The offline sensor's row says why it shows no values.
-    expect(screen.rowTags()).toEqual(['Healthy', 'Offline', 'Battery low']);
+    expect(screen.rowTags()).toEqual(['Sensor OK', 'Offline', 'Battery low']);
     expect(screen.texts()).toContain('Last seen 1 h ago');
   });
 

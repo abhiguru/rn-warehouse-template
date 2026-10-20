@@ -7,12 +7,15 @@
  * threshold has passed, without a request. The server's own verdict (`is_stale`,
  * `connectivity_status`) still counts: the phone only adds what time has done since.
  *
+ * One sensor is described by one status at a time: the most severe of its health, its
+ * connection, its values not changing, its temperature against its limits and its battery.
+ * *
  * Pure functions apart from the words, which are looked up when called.
  */
 import type { StatusKind } from '@/components/ui/StatusTag';
 import type { SensorChartThreshold } from '@/components/sensors/SensorHistoryChart';
 import type { SensorDevice } from '@/types/sensor.types';
-import { formatTemperature } from '@/utils/formatters';
+import { formatRelativeTime, formatTemperature } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 
 export interface SensorStatus {
@@ -73,11 +76,65 @@ export function isStale(device: SensorDevice, now: number): boolean {
   return now - at > minutes * 60_000;
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * The latest values have stopped changing while the sensor is still heard from: the server
+ * says so (`values_stale`), or the values were observed longer than the threshold before
+ * `now`. A sensor that is offline or has no recent data is not this: that is its connection.
+ */
+export function valuesNotChanging(device: SensorDevice, now: number): boolean {
+  if (isOffline(device) || isStale(device, now)) return false;
+  if (device.values_stale === true) return true;
+  const at = toTime(readingTime(device));
+  if (at === undefined) return false;
+  const minutes = device.staleness_threshold_minutes > 0 ? device.staleness_threshold_minutes : DEFAULT_STALENESS_MINUTES;
+  return now - at > minutes * 60_000;
+}
+
+/** The latest values cannot be taken as current: offline, no recent data, or not changing. */
+export const isQuiet = (device: SensorDevice, now: number): boolean =>
+  isOffline(device) || isStale(device, now) || valuesNotChanging(device, now);
+
+/**
+ * "Last known, 2 days ago": when the figures on screen were observed, for a quiet sensor.
+ * A day or more is counted in days (the app's relative time stops at hours); null when the
+ * sensor never reported.
+ */
+export function lastKnownText(device: SensorDevice, now: number): string | null {
+  const at = readingTime(device);
+  if (!at || toTime(at) === undefined) return null;
+  const time = formatRelativeTime(
+    at,
+    date => tr('sensors.detail.daysAgo', { count: Math.max(1, Math.floor((now - date.getTime()) / DAY_MS)) }),
+    new Date(now),
+  );
+  return tr('sensors.detail.lastKnown', { time });
+}
+
+/**
+ * Whether the latest temperature is outside the sensor's limits: HIGH (too warm), LOW (too
+ * cold), or null when it is within them, the sensor is quiet (its temperature is not current)
+ * or the server sends no flag (an older server: not out of range).
+ */
+export function temperatureState(device: SensorDevice, now: number): 'HIGH' | 'LOW' | null {
+  if (isQuiet(device, now)) return null;
+  return device.temperature_alert === 'HIGH' || device.temperature_alert === 'LOW' ? device.temperature_alert : null;
+}
+
+/** "Too warm" or "Too cold" as a tag, or null. */
+export function temperatureTag(device: SensorDevice, now: number): SensorStatus | null {
+  const state = temperatureState(device, now);
+  if (state === 'HIGH') return { kind: 'negative', label: tr('sensors.status.tooWarm') };
+  if (state === 'LOW') return { kind: 'negative', label: tr('sensors.status.tooCold') };
+  return null;
+}
+
 /** Health: healthy / warning / critical as positive / critical / negative. */
 export function healthStatus(health: SensorDevice['health_status']): SensorStatus {
   switch (health) {
     case 'healthy':
-      return { kind: 'positive', label: tr('sensors.status.healthy') };
+      return { kind: 'positive', label: tr('sensors.status.sensorOk') };
     case 'warning':
       return { kind: 'critical', label: tr('sensors.status.warning') };
     case 'critical':
@@ -114,17 +171,34 @@ export function connectionStatus(device: SensorDevice, now: number): SensorStatu
   return { kind: 'neutral', label: tr('common.unknown') };
 }
 
-/** The one status a list row shows: the most severe of health, connection and battery. */
+/**
+ * The one status a sensor shows, on its row and at the top of its page: the most severe of
+ * health, connection, values not changing, temperature and battery; of two equally severe,
+ * the first of those. The server's health says "offline" for a sensor that is offline or
+ * quiet (the connection names which) and "warning" for a low battery or values not changing
+ * (those name themselves), so those two add a tag of their own only when nothing else says why.
+ */
 export function rowStatus(device: SensorDevice, now: number): SensorStatus {
-  const candidates: SensorStatus[] = [healthStatus(device.health_status)];
-  if (isOffline(device)) candidates.push({ kind: 'negative', label: tr('sensors.status.offline') });
-  else if (isStale(device, now)) candidates.push({ kind: 'critical', label: tr('sensors.status.noRecentData') });
+  const offline = isOffline(device);
+  const stale = !offline && isStale(device, now);
+  const notChanging = valuesNotChanging(device, now);
   const battery = batteryTag(device);
+  const temperature = temperatureTag(device, now);
+  const candidates: SensorStatus[] = [];
+  if (device.health_status === 'offline') {
+    if (!offline && !stale) candidates.push(healthStatus('unknown'));
+  } else if (device.health_status !== 'warning' || (!notChanging && !battery)) {
+    candidates.push(healthStatus(device.health_status));
+  }
+  if (offline) candidates.push({ kind: 'negative', label: tr('sensors.status.offline') });
+  else if (stale) candidates.push({ kind: 'critical', label: tr('sensors.status.noRecentData') });
+  if (notChanging) candidates.push({ kind: 'critical', label: tr('sensors.status.valuesNotChanging') });
+  if (temperature) candidates.push(temperature);
   if (battery) candidates.push(battery);
   return mostSevere(candidates);
 }
 
-export type SensorAlertKind = 'offline' | 'stale' | 'batteryCritical' | 'batteryLow';
+export type SensorAlertKind = 'offline' | 'stale' | 'tooWarm' | 'tooCold' | 'batteryCritical' | 'batteryLow';
 
 /** One line of "Needs attention": what is wrong, how many sensors, and which. */
 export interface SensorAlert {
@@ -138,7 +212,8 @@ export interface SensorAlert {
 /**
  * What needs attention, most serious first; a kind with no sensor is left out. A sensor
  * whose hub is offline is counted as offline, not also as having no recent data; a
- * critical battery is not also counted as low.
+ * critical battery is not also counted as low. A quiet sensor is not too warm or too cold:
+ * its temperature is not current.
  */
 export function sensorAlerts(devices: readonly SensorDevice[], now: number): SensorAlert[] {
   const pick = (test: (device: SensorDevice) => boolean) =>
@@ -146,6 +221,8 @@ export function sensorAlerts(devices: readonly SensorDevice[], now: number): Sen
   const lines: [SensorAlertKind, StatusKind, ReturnType<typeof pick>, (count: number) => string][] = [
     ['offline', 'negative', pick(isOffline), count => tr('sensors.list.offlineCount', { count })],
     ['stale', 'critical', pick(device => !isOffline(device) && isStale(device, now)), count => tr('sensors.list.staleCount', { count })],
+    ['tooWarm', 'negative', pick(device => temperatureState(device, now) === 'HIGH'), count => tr('sensors.list.tooWarmCount', { count })],
+    ['tooCold', 'negative', pick(device => temperatureState(device, now) === 'LOW'), count => tr('sensors.list.tooColdCount', { count })],
     ['batteryCritical', 'negative', pick(batteryCritical), count => tr('sensors.list.criticalBatteryCount', { count })],
     ['batteryLow', 'critical', pick(batteryLow), count => tr('sensors.list.lowBatteryCount', { count })],
   ];

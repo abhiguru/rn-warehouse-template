@@ -101,6 +101,8 @@ describe('signed in', () => {
     ['standard-rate', 'allow', 'allow', 'home', 'home'],
     ['sensors', 'allow', 'allow', 'allow', 'home'],
     ['sensor-detail/[id]', 'allow', 'allow', 'allow', 'home'],
+    // Editing a sensor is for administrators only.
+    ['sensor-edit/[id]', 'allow', 'home', 'home', 'home'],
     ['users', 'allow', 'allow', 'home', 'home'],
     ['user-edit/[id]', 'allow', 'allow', 'home', 'home'],
     ['enrollment-review', 'allow', 'home', 'home', 'home'],
@@ -140,6 +142,12 @@ describe('by facility capability', () => {
       expect(roles.map((role) => decideRoute(route, withCapabilities(role, ON)))).toEqual(['allow', 'allow', 'allow', 'home']);
     }
   );
+
+  it('the sensor edit route needs the capability too, and an administrator', () => {
+    const roles = ['admin', 'supervisor', 'staff', 'customer'];
+    expect(roles.map((role) => decideRoute('sensor-edit/[id]', withCapabilities(role, OFF)))).toEqual(['home', 'home', 'home', 'home']);
+    expect(roles.map((role) => decideRoute(['sensor-edit', 'device-1'], withCapabilities(role, ON)))).toEqual(['allow', 'home', 'home', 'home']);
+  });
 
   it('a capability gates only its own routes', () => {
     expect(decideRoute('item-pricing', withCapabilities('supervisor', OFF))).toBe('allow');

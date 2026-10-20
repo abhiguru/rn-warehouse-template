@@ -426,7 +426,9 @@ Rules:
 | Invoice (invoice history report) | a balance over ₹0.50 / nothing owed, worked out from the payments recorded | Critical / Positive | Pending / Paid. A part-paid invoice stays Pending: its card adds one footnote line under the cell, "Paid: ₹4.00 · Pending: ₹10.00" |
 | Dispatch (activity report) | has quantity / no quantity | Positive / Critical | Complete / Pending |
 | Stock age | 0–120 / 121–240 / 241–364 / over 364 days | Positive / Informative / Critical / Negative | 0–120 days … |
-| Sensor health | `healthy` / `warning` / `critical` | Positive / Critical / Negative | Healthy / Warning / Critical |
+| Sensor health | `healthy` / `warning` / `critical` | Positive / Critical / Negative | Sensor OK / Warning / Critical |
+| Sensor temperature | above the highest limit / below the lowest | Negative | Too warm / Too cold |
+| Sensor values | latest values stopped changing | Critical | Values not changing |
 | Sensor battery | `GOOD` / `LOW` / `CRITICAL` | Positive / Critical / Negative | In lists: Battery good / Battery low / Battery critical. In a row labelled Battery: Good / Low / Critical |
 | Sensor connection | online / stale / offline | Positive / Critical / Negative | Online / No recent data / Offline |
 | Printer | online / busy / offline or error | Positive / Informative / Negative | Online / Busy / Offline |

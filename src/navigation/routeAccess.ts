@@ -43,6 +43,7 @@ const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'standard-rate': 'standardRate',
   sensors: 'sensors',
   'sensor-detail': 'sensors',
+  'sensor-edit': 'sensorWrite',
   'reports/operations-dashboard': 'operationsDashboard',
 };
 
