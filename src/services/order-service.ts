@@ -35,6 +35,25 @@ import { t } from '@/i18n';
 import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
+import { refusalOf } from '@/utils/serverRefusal';
+
+/**
+ * The new version of the order line in a server answer (`data.updated_at`, owner decision D1; the answer is the body,
+ * since these calls are not unwrapped). Undefined from an old server.
+ */
+function lineVersionOf(body: unknown): string | undefined {
+  const data = (body as { data?: { updated_at?: unknown } } | null | undefined)?.data;
+  const version = data?.updated_at;
+  return typeof version === 'string' && version.trim() !== '' ? version : undefined;
+}
+
+/**
+ * PostgREST found no function that takes the parameters sent (PGRST202): a server without migration 121 knows no
+ * `p_expected_updated_at`. It refused the call before running anything, so the call can be sent again without it.
+ */
+function isUnknownFunctionSignature(result: { errorCode?: string; serverMessage?: string; error?: string }): boolean {
+  return result.errorCode === 'PGRST202' || /could not find the function/i.test(result.serverMessage ?? result.error ?? '');
+}
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
@@ -224,6 +243,8 @@ export class OrderService {
     // A changed order changes the reports (Operations: Pending orders); after a success only.
     if (result.success) void invalidateReportQueries();
 
+    const refusal = refusalOf(result);
+    const updatedAt = result.success ? lineVersionOf(result.data) : undefined;
     return {
       success: result.success,
       message: result.success ? t('errors.order.itemAdded') : result.message,
@@ -231,19 +252,27 @@ export class OrderService {
       error: result.error,
       serverMessage: result.serverMessage,
       ...(result.lostAnswer ? { lostAnswer: true } : {}),
+      ...(refusal ? { refusal } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
     };
   }
 
   // Update order item quantity using correct RPC
   // M3 Fix: Using executeRPC wrapper
+  //
+  // `expectedUpdatedAt` is the version of the line the change is based on (`updated_at` of the line as the screen read
+  // it, owner decision D1). The server refuses the change with the reason STALE_RECORD (`refusal.reason`) when the line
+  // was changed by someone else since, and writes nothing. It is sent only when the caller holds one. A server without
+  // migration 121 knows no such parameter and answers PGRST202: the call is then sent again without it (no check).
   static async updateOrderItemQuantity(
     itemId: string,
     orderId: string,
-    newQuantity: number
+    newQuantity: number,
+    expectedUpdatedAt?: string
   ): Promise<OrderServiceResponse<OrderItem>> {
     if (newQuantity === 0) {
       // If quantity is 0, remove the item
-      const removeResult = await this.removeItemFromOrder(itemId, orderId);
+      const removeResult = await this.removeItemFromOrder(itemId, orderId, expectedUpdatedAt);
       if (!removeResult.success) {
         return removeResult as OrderServiceResponse<OrderItem>;
       }
@@ -261,22 +290,28 @@ export class OrderService {
       };
     }
 
-    const result = await executeRPC<OrderItem>(
-      getAuthenticatedClient,
-      'update_order_item_quantity',
-      {
-        p_new_quantity: newQuantity,
-        p_order_item_id: itemId,
-      },
-      {
-        context: 'OrderService.updateOrderItemQuantity',
-        write: true,
-        errorMessage: t('errors.order.updateQuantityFailed'),
-        unwrapNested: false,
-      }
-    );
+    const send = (withVersion: boolean) =>
+      executeRPC<OrderItem>(
+        getAuthenticatedClient,
+        'update_order_item_quantity',
+        {
+          p_new_quantity: newQuantity,
+          p_order_item_id: itemId,
+          ...(withVersion ? { p_expected_updated_at: expectedUpdatedAt } : {}),
+        },
+        {
+          context: 'OrderService.updateOrderItemQuantity',
+          write: true,
+          errorMessage: t('errors.order.updateQuantityFailed'),
+          unwrapNested: false,
+        }
+      );
+    let result = await send(!!expectedUpdatedAt);
+    if (expectedUpdatedAt && !result.success && isUnknownFunctionSignature(result)) result = await send(false);
     if (result.success) void invalidateReportQueries();
 
+    const refusal = refusalOf(result);
+    const updatedAt = result.success ? lineVersionOf(result.data) : undefined;
     return {
       success: result.success,
       message: result.success ? t('errors.order.quantityUpdated') : result.message,
@@ -284,13 +319,17 @@ export class OrderService {
       error: result.error,
       serverMessage: result.serverMessage,
       ...(result.lostAnswer ? { lostAnswer: true } : {}),
+      ...(refusal ? { refusal } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
     };
   }
 
   // Remove item from order. The RPC records the removal in the order history.
+  // `expectedUpdatedAt`: as for updateOrderItemQuantity (STALE_RECORD, nothing removed; sent again without it on PGRST202).
   static async removeItemFromOrder(
     itemId: string,
-    _orderId: string
+    _orderId: string,
+    expectedUpdatedAt?: string
   ): Promise<OrderServiceResponse<void>> {
     if (!itemId) {
       return {
@@ -300,25 +339,30 @@ export class OrderService {
       };
     }
 
-    const result = await executeRPC<void>(
-      getAuthenticatedClient,
-      'remove_item_from_order',
-      { p_order_item_id: itemId },
-      {
-        context: 'OrderService.removeItemFromOrder',
-        write: true,
-        errorMessage: t('errors.order.removeItemFailed'),
-        unwrapNested: false,
-      }
-    );
+    const send = (withVersion: boolean) =>
+      executeRPC<void>(
+        getAuthenticatedClient,
+        'remove_item_from_order',
+        { p_order_item_id: itemId, ...(withVersion ? { p_expected_updated_at: expectedUpdatedAt } : {}) },
+        {
+          context: 'OrderService.removeItemFromOrder',
+          write: true,
+          errorMessage: t('errors.order.removeItemFailed'),
+          unwrapNested: false,
+        }
+      );
+    let result = await send(!!expectedUpdatedAt);
+    if (expectedUpdatedAt && !result.success && isUnknownFunctionSignature(result)) result = await send(false);
     if (result.success) void invalidateReportQueries();
 
+    const refusal = refusalOf(result);
     return {
       success: result.success,
       message: result.success ? t('errors.order.itemRemoved') : result.message,
       error: result.error,
       serverMessage: result.serverMessage,
       ...(result.lostAnswer ? { lostAnswer: true } : {}),
+      ...(refusal ? { refusal } : {}),
     };
   }
 

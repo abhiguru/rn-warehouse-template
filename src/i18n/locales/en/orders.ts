@@ -47,6 +47,15 @@ export const orders = {
     quantity: 'Quantity {{quantity}}',
     quantitySaving: 'Quantity {{quantity}}, saving',
     quantitySaved: 'Quantity {{quantity}}, saved',
+    // The line asks for more than the lot has now; {{stock}} is the stock. It can be lowered to that or removed.
+    onlyInStock: 'Only {{stock}} in stock',
+  },
+  // What the server's refusals say on the order screen (wave B, owner decision D1).
+  refusal: {
+    // Someone else changed the line after this screen read it; nothing was saved. {{current}} and {{chosen}} are bags.
+    staleTitle: 'Someone else changed this order line',
+    stale: 'It now shows {{current}}. You wanted {{chosen}}. Change it again if you still want that.',
+    staleRemove: 'Someone else changed this order line, so it was not removed. Check it and try again.',
   },
   quickAdd: {
     select: 'Select {{name}}',
