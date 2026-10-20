@@ -9,8 +9,9 @@
  * order on the second read would show "Add", not "Add (1)".
  *
  * On the same harness: a save that timed out although the server applied it
- * (review 2026-10-14). The editor reads the order again after the failure, so the
- * next Add finds the lot saved, sends nothing and closes the picker.
+ * (review 2026-10-14; owner decision D22, 2026-10-20). The lot is locked and named
+ * as being checked, the editor waits until 10 s have passed since the request,
+ * reads the order, finds the lot saved, sends nothing again and closes the picker.
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -33,6 +34,11 @@ jest.mock('@/config/supabaseConfig', () => ({
   getSupabaseClient: jest.fn(),
 }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }) }));
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),
@@ -188,17 +194,13 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   expect(isSelected('Fictional onions')).toBe(false);
 });
 
-it('closes on the next Add when the save that timed out was in fact applied', async () => {
+it('closes when the save that timed out is found applied: the lot is locked and checked first, and nothing is sent again', async () => {
   const onClose = jest.fn();
   await act(async () => {
     renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />);
   });
   await settle();
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
-  const pressAdd = async () => {
-    await act(async () => { node('catalog-add').props.onPress(); });
-    await settle();
-  };
 
   await act(async () => {
     renderer!.root.findAll(candidate =>
@@ -216,21 +218,28 @@ it('closes on the next Add when the save that timed out was in fact applied', as
   });
   // The failure is logged for the developer; it is not a test failure.
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  await pressAdd();
+  await act(async () => { node('catalog-add').props.onPress(); });
+  await settle();
 
-  // The picker stays open with the lot and its reason, and the order was read again.
+  // The request went out and no answer came: the picker stays open and locked, the lot says it is being checked,
+  // and the server is not asked yet (10 s have not passed since the request).
+  const CHECKING = 'No answer from the server. Checking whether it was saved…';
   expect(onClose).not.toHaveBeenCalled();
   expect(service.addItemToOrder.mock.calls).toEqual([['order-fictional-1', 'lot-a', 1]]);
-  // The request went out and no answer came: the lot may be on the order, and the picker says to check it.
-  expect(textOf(node('catalog-reason-lot-a'))).toBe('No answer from the server. It may have been saved. Check the order.');
-  expect(addButtonText()).toBe('Add (1)');
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
-  expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
+  expect(textOf(node('catalog-checking-lot-a'))).toBe(CHECKING);
+  expect(textOf(node('catalog-checking-summary'))).toBe(CHECKING);
+  expect(addButtonText()).toBe('Saving 1 of 1…');
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
 
-  // Add again: the lot is in the order with that quantity, so nothing is sent and the picker closes.
-  await pressAdd();
+  // Ten seconds after the request the order is read: the lot is there with that quantity, so it counts as saved,
+  // nothing is sent again, and the picker closes.
+  await act(async () => { await jest.advanceTimersByTimeAsync(10_000); });
+  await settle();
   expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
   expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
   expect(service.removeItemFromOrder).not.toHaveBeenCalled();
   expect(onClose).toHaveBeenCalledTimes(1);
+  // The check read the order once, and the save read it once more at its end.
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
+  expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
 });

@@ -174,6 +174,13 @@ export const errors = {
     businessDeactivated: 'This business is deactivated. Activate it in Customers to receive new goods.',
     businessNotActive: 'This business is not active, so nothing new can be added for it. Activate it in Customers first.',
   },
+  // One rule for a change whose answer never came (utils/lostAnswer.ts): the screen locks, waits, and asks the server.
+  lostAnswer: {
+    checking: 'No answer from the server. Checking whether it was saved…',
+    checkingDelete: 'No answer from the server. Checking whether it was deleted…',
+    waiting: 'Waiting for the connection…',
+    leaveWarning: 'It may have been saved. Check the list before entering it again.',
+  },
   auth: {
     authenticationFailed: 'Authentication failed. Please sign in again.',
     loginAgain: 'Authentication required. Please log in again.',

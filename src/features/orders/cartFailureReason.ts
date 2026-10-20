@@ -24,7 +24,8 @@
  */
 import { t } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
-import { requestMayHaveBeenSent, serverReason } from '@/utils/serverText';
+import { isLostAnswer } from '@/utils/lostAnswer';
+import { serverReason } from '@/utils/serverText';
 import { isOfflineFailure } from '@/utils/serviceErrorHandler';
 
 /** The failed answer of an `OrderService` cart call; only these three fields are read. */
@@ -79,7 +80,7 @@ export interface CartFailureContext {
   lineConfirmedGone?: boolean;
   /** The bags the person chose, for the "removed by someone else" sentence of a change. */
   chosen?: number;
-  /** The call took the lot off the order: a timeout then says it "may have been removed", not saved. */
+  /** The call took the lot off the order: a lost answer is then "checking whether it was deleted", not saved. */
   removal?: boolean;
 }
 
@@ -106,8 +107,9 @@ export function cartFailureReason(failure: CartFailure | null | undefined, conte
       : t('orders.catalog.reasonLineGone');
   }
   // The request went out and no answer came (a timeout, a connection that dropped): the lot may be on the order
-  // (or, for a removal, may be off it).
-  if (mayHaveBeenSaved(failure)) return t(context?.removal ? 'orders.catalog.reasonMaybeRemoved' : 'orders.catalog.reasonMaybeSaved');
+  // (or, for a removal, may be off it). The editor checks it (waits, reads the order) and shows the server's state;
+  // until then the lot says it is being checked.
+  if (mayHaveBeenSaved(failure)) return t(context?.removal ? 'errors.lostAnswer.checkingDelete' : 'errors.lostAnswer.checking');
   const refused = accessRefusalText(failure);
   if (refused) return refused;
   return t('orders.catalog.reasonNotSaved');
@@ -142,12 +144,13 @@ export function isConnectionFailure(failure: CartFailure | null | undefined): bo
 /**
  * True when a cart call failed after the request went out with no answer (a timeout, a dropped or reset
  * connection, a gateway's error page): the change may have been applied. A failure before the request
- * left the phone (offline, no session that could be renewed) is not one: nothing was sent.
+ * left the phone (offline, no session that could be renewed) is not one: nothing was sent. The same rule
+ * as every other screen's lost answer (`isLostAnswer`).
  */
 export function mayHaveBeenSaved(failure: CartFailure | null | undefined): boolean {
   const raw = sentence(failure?.error);
   // As an error object, the shape the PostgREST client gave it: a bare string is not classed.
-  return raw !== undefined && requestMayHaveBeenSent({ message: raw });
+  return raw !== undefined && isLostAnswer({ message: raw });
 }
 
 /** True when a removal or change was refused because the line is already gone ("Order item not found"): for certain. */

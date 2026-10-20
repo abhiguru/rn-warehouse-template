@@ -30,6 +30,9 @@ export const orders: Translation<typeof source> = {
     // Draft for the owner's wording review (2026-10-20): a line that is no longer on the order when it is changed or removed.
     lineGoneTitle: 'આ આઇટમ હવે ઑર્ડરમાં નથી',
     lineGoneMessage: 'બીજા કોઈએ તેને કાઢી નાખી છે અથવા તેની જાવક થઈ ગઈ છે. ઑર્ડર હવે જેવો છે તેવો ફરી બતાવ્યો છે.',
+    // Drafts for the owner's wording review (2026-10-20): the answer to a change of a line was lost; the server did not apply it.
+    lostAnswerNotSaved: 'સર્વરે ફેરફાર સાચવ્યો નથી. ઑર્ડરમાં હવે જે સચવાયેલું છે તે દેખાય છે.',
+    lostAnswerNotRemoved: 'સર્વરે આઇટમ કાઢી નાખી નથી. તે હજુ ઑર્ડરમાં છે.',
     emptyTitle: 'આ ઑર્ડરમાં કોઈ આઇટમ નથી',
     emptyMessage: 'આ વેપારીના સ્ટોકમાંથી તમે ઉમેરેલી આઇટમ અહીં દેખાશે.',
     labelDetail: '{{label}}, {{detail}}',
@@ -113,14 +116,19 @@ export const orders: Translation<typeof source> = {
     reasonBelowDispatched: '{{bags}} ની જાવક થઈ ચૂકી છે. એટલા કે વધુ નંગ પસંદ કરો.',
     reasonOrderClosed: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.',
     reasonNotSaved: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    // Draft for the owner's wording review (2026-10-20): the request went out and no answer came.
-    reasonMaybeSaved: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સચવાઈ ગયું હોય. ઑર્ડર તપાસો.',
-    // Draft for the owner's wording review (2026-10-20): the same for a lot that was being taken off the order; a line that is no longer on the order.
-    reasonMaybeRemoved: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ કાઢી નંખાયું હોય. ઑર્ડર તપાસો.',
+    // Draft for the owner's wording review (2026-10-20): a line that is no longer on the order.
     reasonLineGone: 'આ આઇટમ હવે ઑર્ડરમાં નથી.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
     reasonChangedMeanwhile: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonRemovedMeanwhile: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonChangedMeanwhileRemove: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    // Drafts for the owner's wording review (2026-10-20): the answer was lost, the lot was checked, the server did not apply it.
+    reasonCheckedNotSaved: 'તપાસ્યું: સચવાયું નથી. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonCheckedOther: 'તપાસ્યું: ઑર્ડરમાં હવે {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonCheckedNotRemoved: 'તપાસ્યું: દૂર થયું નથી. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonLineChecking: 'આ આઇટમ હજુ તપાસાઈ રહી છે. થોડી વાર પછી ફરી "ઉમેરો" દબાવો.',
+    leaveCheckingTitle: 'તપાસ દરમિયાન છોડી દેવું છે?',
+    keepWaiting: 'રાહ જુઓ',
+    leaveAnyway: 'છતાં છોડી દો',
   },
 };

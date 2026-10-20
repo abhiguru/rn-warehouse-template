@@ -27,6 +27,9 @@ export const orders = {
     // A line that is no longer on the order when it is changed or removed (taken off or dispatched by someone else).
     lineGoneTitle: 'This item is no longer on the order',
     lineGoneMessage: 'Someone else removed it, or it was dispatched. The order is shown again as it is now.',
+    // The answer to a change of a line was lost; the line was checked and the server did not apply it.
+    lostAnswerNotSaved: 'The server did not save the change. The order shows what is saved now.',
+    lostAnswerNotRemoved: 'The server did not remove the item. It is still on the order.',
     emptyTitle: 'No items in this order',
     emptyMessage: "Items you add from this customer's stock appear here.",
     labelDetail: '{{label}}, {{detail}}',
@@ -109,15 +112,22 @@ export const orders = {
     reasonBelowDispatched: '{{bags}} already dispatched. Choose that many or more.',
     reasonOrderClosed: 'This order is closed. Go back and open it again.',
     reasonNotSaved: 'Not saved. Check your connection and try again.',
-    // The request went out and no answer came: the lot may be on the order already.
-    reasonMaybeSaved: 'No answer from the server. It may have been saved. Check the order.',
-    // The same for a lot that was being taken off the order.
-    reasonMaybeRemoved: 'No answer from the server. It may have been removed. Check the order.',
     // The line the lot was saved on is no longer on the order.
     reasonLineGone: 'This item is no longer on the order.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
     reasonChangedMeanwhile: 'Changed by someone else: now {{bags}} in the order. Tap Add again to make it {{chosen}}.',
     reasonRemovedMeanwhile: 'Removed by someone else. Tap Add again to add {{chosen}}.',
     reasonChangedMeanwhileRemove: 'Changed by someone else: now {{bags}} in the order. Tap Add again to remove it.',
+    // The answer was lost, the lot was locked while the order was read again, and the server's state is not what was asked.
+    // Nothing is sent again by itself: the person taps Add.
+    reasonCheckedNotSaved: 'Checked: it was not saved. Tap Add again to add {{chosen}}.',
+    reasonCheckedOther: 'Checked: the order has {{bags}} now. Tap Add again to make it {{chosen}}.',
+    reasonCheckedNotRemoved: 'Checked: it was not removed. Tap Add again to remove it.',
+    // The lot's line is being checked after an answer of its own card was lost; nothing was sent for it.
+    reasonLineChecking: 'This item is still being checked. Tap Add again in a moment.',
+    // Leaving the picker while a lot's answer is being checked (X only).
+    leaveCheckingTitle: 'Leave while checking?',
+    keepWaiting: 'Keep waiting',
+    leaveAnyway: 'Leave anyway',
   },
 };

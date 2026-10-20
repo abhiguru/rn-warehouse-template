@@ -18,9 +18,10 @@ const refused = (message: string, error: unknown = 'API_ERROR') => ({ success: f
 const raised = (text: string) => ({ success: false, message: "Couldn't add the item.", error: text });
 
 const NOT_SAVED = { en: 'Not saved. Check your connection and try again.', gu: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.' };
+// A lost answer: while the editor checks it (waits, reads the order) the lot says it is being checked.
 const MAYBE_SAVED = {
-  en: 'No answer from the server. It may have been saved. Check the order.',
-  gu: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સચવાઈ ગયું હોય. ઑર્ડર તપાસો.',
+  en: 'No answer from the server. Checking whether it was saved…',
+  gu: 'સર્વરનો જવાબ મળ્યો નથી. સચવાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
 };
 const ORDER_CLOSED = { en: 'This order is closed. Go back and open it again.', gu: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.' };
 
@@ -50,7 +51,7 @@ const CASES: [string, { message?: unknown; error?: unknown }, { en: string; gu: 
   ['database text that quotes a known sentence', refused('Error adding item: Insufficient stock. Available: 3, Requested: 10'), NOT_SAVED],
   ['a raw database error', raised('permission denied for function add_item_to_order'), NOT_SAVED],
   ['the order was not found', refused('Order not found'), NOT_SAVED],
-  // The request had gone out and no answer came back (review 2026-10-20, A13): the lot may be on the order.
+  // The request had gone out and no answer came back (review 2026-10-20, A13): the lot may be on the order; it is being checked.
   ['a connection that dropped after the request went out', { message: "Couldn't add the item.", error: 'Network request failed' }, MAYBE_SAVED],
   ['a request that timed out', { message: "Couldn't add the item.", error: 'TimeoutError: Request timeout' }, MAYBE_SAVED],
   ['a socket that was reset', { message: "Couldn't add the item.", error: 'Error: fetch failed: Connection reset by peer' }, MAYBE_SAVED],
@@ -130,11 +131,11 @@ describe('a line that is gone (review 2026-10-20, A12)', () => {
 });
 
 describe('a call that may have been applied (review 2026-10-20, A13)', () => {
-  it.each(['en', 'gu'] as const)('a removal that got no answer says it may have been removed, in %s', language => {
+  it.each(['en', 'gu'] as const)('a removal that got no answer says it is checking whether it was deleted, in %s', language => {
     setLanguage(language);
     const timedOut = { message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout' };
     expect(cartFailureReason(timedOut, { removal: true })).toBe(
-      language === 'en' ? 'No answer from the server. It may have been removed. Check the order.' : 'સર્વરનો જવાબ મળ્યો નથી. કદાચ કાઢી નંખાયું હોય. ઑર્ડર તપાસો.'
+      language === 'en' ? 'No answer from the server. Checking whether it was deleted…' : 'સર્વરનો જવાબ મળ્યો નથી. કાઢી નંખાયું છે કે નહીં તે તપાસી રહ્યા છીએ…'
     );
   });
 

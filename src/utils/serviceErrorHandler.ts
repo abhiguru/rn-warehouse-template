@@ -647,7 +647,19 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     // Handle Supabase error
     if (error) {
       // The HTTP status goes with the error, so a gateway's 502 / 504 is told from the server's own refusals.
-      const supabaseError = (typeof status === 'number' ? { ...error, status } : error) as {
+      // The fields are copied one by one: postgrest-js (2.117) hands a transport failure back as a PostgrestError,
+      // a class that extends Error, whose `message` is not enumerable, so a spread would drop the text that says
+      // "Network request failed" or "TimeoutError: Request timeout" and the failure would no longer be told as one.
+      const raised = error as { message?: unknown; name?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+      const supabaseError = {
+        ...(error as object),
+        ...(typeof raised.message === 'string' ? { message: raised.message } : {}),
+        ...(typeof raised.name === 'string' ? { name: raised.name } : {}),
+        ...(typeof raised.code === 'string' ? { code: raised.code } : {}),
+        ...(typeof raised.details === 'string' ? { details: raised.details } : {}),
+        ...(typeof raised.hint === 'string' ? { hint: raised.hint } : {}),
+        ...(typeof status === 'number' ? { status } : {}),
+      } as {
         message?: string;
         code?: string;
         details?: string;

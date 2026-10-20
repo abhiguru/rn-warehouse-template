@@ -44,6 +44,23 @@ export interface PickerResult {
   savedQuantity?: number;
 }
 
+/**
+ * The lot whose answer was lost while an Add is being saved: it is locked and shown as being checked
+ * (`removal`: the call was taking it off the order). The save tells the picker with `onChecking`, and
+ * tells it `null` when the check is over.
+ */
+export interface PickerChecking {
+  grnItemId: string;
+  removal: boolean;
+}
+
+/** What the picker hands the save besides the changes: where to report a lot being checked, and how to stop it. */
+export interface AddItemsOptions {
+  onChecking?: (lot: PickerChecking | null) => void;
+  /** Aborted when the person leaves the picker while a lot is being checked (X, after the warning). */
+  signal?: AbortSignal;
+}
+
 export interface PickerDraft {
   base: ReadonlyMap<string, PickerLine>;
   selection: ReadonlyMap<string, PickerLine>;

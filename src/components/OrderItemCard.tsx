@@ -21,6 +21,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import StockIndicator from './StockIndicator';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { localizeDigits, t as tr } from '@/i18n';
 
 /** A count as it is stored (no grouping), in the digits of the language. */
@@ -41,12 +42,22 @@ interface OrderItemCardProps {
    * that was waiting is dropped too (a change of a line that may be gone), and the card shows the stored one.
    */
   onRemove: (itemId: string) => Promise<boolean | 'unknown'> | boolean | 'unknown' | void;
+  /**
+   * The answer to a change of this line (`save`) or to its removal (`remove`) was lost and the server is being
+   * asked what became of it: the card is locked (no tap on it does anything) and says so, until the order has
+   * been read again and the card shows what the server has. Nothing is sent again by itself.
+   */
+  checking?: 'save' | 'remove';
+  /** The phone has no network: a card that is checking then adds "Waiting for the connection…". */
+  offline?: boolean;
 }
 
 const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   item,
   onQuantityChange,
   onRemove,
+  checking,
+  offline = false,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -58,6 +69,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const [flashRed, setFlashRed] = useState(false);
   // The question "Remove …?" is open, or the removal is running: the card's buttons are off.
   const [isRemoving, setIsRemoving] = useState(false);
+  // The card's buttons are off while the question or the removal is open, and while a lost answer is being checked.
+  const locked = isRemoving || checking !== undefined;
 
   // Animation for red flash
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -100,6 +113,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const orderIdRef = useRef(item.order_id);
   orderIdRef.current = item.order_id;
 
+  // The answer to a change of this line was lost and is being checked: nothing is sent for the line meanwhile.
+  const checkingRef = useRef(false);
+  checkingRef.current = checking !== undefined;
   // A "Remove …?" question is open or a removal is running for this line. Nothing is written for the line
   // meanwhile (no change of the quantity could be applied to a line that is going), and when the person does
   // not remove it the flag is lowered again (see handleRemove).
@@ -184,8 +200,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     // Set new timer
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
-      // The question "Remove …?" is open: nothing is sent now. If the line stays, the quantity shown is sent then.
-      if (removalRef.current) {
+      // The question "Remove …?" is open, or the answer to an earlier change is being checked: nothing is sent now.
+      // If the line stays, the quantity shown is sent then (after the check, once the server's state is known).
+      if (removalRef.current || checkingRef.current) {
         deferredSaveRef.current = true;
         return;
       }
@@ -193,11 +210,18 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     }, 2000); // 2 second delay
   }, [saveQuantity]);
 
+  // A change that came due while the answer to the last one was being checked goes out when the check is over.
+  useEffect(() => {
+    if (checking !== undefined || !deferredSaveRef.current || removalRef.current) return;
+    deferredSaveRef.current = false;
+    void saveQuantity(localQuantityRef.current);
+  }, [checking, saveQuantity]);
+
   // Asks the parent to remove the line. Only one question or removal at a time; while it runs the buttons are
   // off. The change waiting to be saved is not dropped: if the line is not removed (Cancel, or the removal
   // failed) the flag goes down and that change is saved, so the card shows what the server has.
   const handleRemove = async () => {
-    if (removalRef.current) return;
+    if (removalRef.current || checkingRef.current) return;
     removalRef.current = true;
     setIsRemoving(true);
     let outcome: boolean | 'unknown' = false;
@@ -237,7 +261,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   };
 
   const handleQuantityDecrease = (amount: number = 1) => {
-    if (removalRef.current) return;
+    if (removalRef.current || checkingRef.current) return;
     if (localQuantity > amount) {
       const newQuantity = localQuantity - amount;
       setLocalQuantity(newQuantity);
@@ -256,7 +280,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   };
 
   const handleQuantityIncrease = (amount: number = 1) => {
-    if (removalRef.current) return;
+    if (removalRef.current || checkingRef.current) return;
     if (!item.grn_item) return;
 
     const currentStock = item.grn_item.current_stock;
@@ -286,6 +310,12 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   // The lot's weight is the weight of one bag, box or crate; a lot without one shows no weight.
   const weightEach = formatWeightEach(item.grn_item.weight);
   const quantityStatus = isPending ? tr('common.saving') : showSaved ? tr('orders.item.saved') : tr('orders.item.qty');
+  // What is being checked, and, while the phone has no network, what it is waiting for.
+  const checkingText = checking === undefined
+    ? ''
+    : [tr(checking === 'remove' ? 'errors.lostAnswer.checkingDelete' : 'errors.lostAnswer.checking'), offline ? tr('errors.lostAnswer.waiting') : '']
+        .filter(Boolean)
+        .join(' ');
 
   return (
     <View style={styles.container}>
@@ -334,11 +364,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       <View style={styles.quantitySection}>
         {/* -10 Button */}
         <Pressable
-          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, locked && styles.controlOff]}
           onPress={() => handleQuantityDecrease(10)}
-          disabled={isRemoving}
+          disabled={locked}
           accessibilityRole="button"
-          accessibilityState={{ disabled: isRemoving }}
+          accessibilityState={{ disabled: locked }}
           accessibilityLabel={tr('orders.item.removeAmount', { amount: 10, name: itemName })}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('−10')}</Text>
@@ -346,11 +376,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         <View style={styles.quantityContainer}>
           <Pressable
-            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, locked && styles.controlOff]}
             onPress={() => handleQuantityDecrease(1)}
-            disabled={isRemoving}
+            disabled={locked}
             accessibilityRole="button"
-            accessibilityState={{ disabled: isRemoving }}
+            accessibilityState={{ disabled: locked }}
             accessibilityLabel={localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 })}
           >
             <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
@@ -392,11 +422,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
 
           <Pressable
-            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, locked && styles.controlOff]}
             onPress={() => handleQuantityIncrease(1)}
-            disabled={isRemoving}
+            disabled={locked}
             accessibilityRole="button"
-            accessibilityState={{ disabled: isRemoving }}
+            accessibilityState={{ disabled: locked }}
             accessibilityLabel={tr('orders.item.increase', { name: itemName, amount: 1 })}
           >
             <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
@@ -405,11 +435,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {/* +10 Button */}
         <Pressable
-          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, isRemoving && styles.controlOff]}
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, locked && styles.controlOff]}
           onPress={() => handleQuantityIncrease(10)}
-          disabled={isRemoving}
+          disabled={locked}
           accessibilityRole="button"
-          accessibilityState={{ disabled: isRemoving }}
+          accessibilityState={{ disabled: locked }}
           accessibilityLabel={tr('orders.item.addAmount', { amount: 10, name: itemName })}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('+10')}</Text>
@@ -418,15 +448,22 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         {/* Remove Button: secondary negative, last in the row */}
         <Pressable
           onPress={() => void handleRemove()}
-          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed, isRemoving && styles.controlOff]}
-          disabled={isRemoving}
+          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed, locked && styles.controlOff]}
+          disabled={locked}
           accessibilityRole="button"
-          accessibilityState={{ disabled: isRemoving }}
+          accessibilityState={{ disabled: locked }}
           accessibilityLabel={tr('orders.item.removeFromOrder', { name: itemName })}
         >
           <Icon name="trash-can-outline" size={iconSize.md} color={t.status.negative.text} />
         </Pressable>
       </View>
+
+      {/* The answer to a change of this line was lost: the server is being asked what became of it. */}
+      {checking !== undefined ? (
+        <View style={styles.checkingRow} testID="order-line-checking">
+          <InlineValidation variant="warning" message={checkingText} />
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -601,9 +638,14 @@ const makeStyles = (t: ThemeTokens) => ({
     position: 'absolute' as const,
     right: -space.xxl,
   },
-  // A button while the line is being removed
+  // A button while the line is being removed or checked
   controlOff: {
     opacity: t.interaction.disabledOpacity,
+  },
+  // The "checking" strip under the stepper
+  checkingRow: {
+    paddingHorizontal: space.md,
+    paddingBottom: space.md,
   },
   // Delete button - secondary negative style
   removeButton: {

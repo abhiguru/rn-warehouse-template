@@ -126,6 +126,23 @@ describe('executeRPC wording of a failed call', () => {
     expect(t('errors.parsed.timeoutWrite')).toMatch(/[઀-૿]/);
   });
 
+  it('a transport failure handed back as a PostgrestError (an Error subclass whose message is not enumerable) is still told as no answer', async () => {
+    // postgrest-js 2.117 returns a failed fetch this way; spreading such an error would drop its message.
+    class FakePostgrestError extends Error {
+      details = '';
+      hint = '';
+      code = '';
+      constructor(message: string) {
+        super(message);
+        this.name = 'PostgrestError';
+      }
+    }
+    const answer = async () => ({ rpc: async () => ({ data: null, status: 0, error: new FakePostgrestError('TypeError: Network request failed') }) });
+    const result = await call(answer, { write: true });
+    expect(result.message).toBe(t('errors.parsed.timeoutWrite'));
+    expect(result.error).toBe('TypeError: Network request failed');
+  });
+
   it('a save that never went out says to check the connection', async () => {
     const unsent = async () => { throw new AppError('NETWORK', 'Network request failed: session refresh unavailable'); };
     expect((await call(unsent, { write: true })).message).toBe(t('errors.parsed.network'));

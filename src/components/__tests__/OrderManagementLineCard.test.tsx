@@ -7,6 +7,9 @@
  *    permission", and the order is read again. Without that read "Customer access denied" is a permission text.
  *  - Any other failed write is followed by a read too, so the card shows what is stored.
  *  - A removal asks first, answers true only when the line is gone, and false for Cancel or a failure.
+ *  - A change or removal whose answer was lost (owner decision D22, 2026-10-20) locks the line, waits for the
+ *    server (the 10 s wait is stubbed here), reads the order, and answers with what the server has. Nothing
+ *    is sent again.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -14,11 +17,13 @@ import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
 import { askAlert, showAlert } from '@/utils/alert';
 import type { Order, OrderItem } from '@/types/order.types';
+import { waitForServer } from '@/utils/lostAnswer';
 
 type CardProps = {
   item: OrderItem;
   onQuantityChange: (itemId: string, newQuantity: number, orderId?: string) => Promise<boolean>;
   onRemove: (itemId: string) => Promise<boolean | 'unknown'>;
+  checking?: 'save' | 'remove';
 };
 const mockCards: { byId: Record<string, CardProps> } = { byId: {} };
 jest.mock('../OrderItemCard', () => ({
@@ -30,6 +35,11 @@ jest.mock('../OrderItemCard', () => ({
 }));
 jest.mock('../ItemCatalogBrowser', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => undefined }));
+// The 10 s wait of a lost answer belongs to lostAnswer.ts; here it ends at once (a test that wants to see the wait replaces it).
+jest.mock('@/utils/lostAnswer', () => ({
+  ...jest.requireActual('@/utils/lostAnswer'),
+  waitForServer: jest.fn(() => Promise.resolve()),
+}));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true, type: 'wifi' }) }));
 jest.mock('@/services/order-service', () => ({
@@ -103,6 +113,7 @@ beforeEach(() => {
   service.updateOrderItemQuantity.mockReset().mockResolvedValue(saved);
   service.removeItemFromOrder.mockReset().mockResolvedValue(saved);
   jest.mocked(showAlert).mockReset();
+  jest.mocked(waitForServer).mockClear();
   jest.mocked(askAlert).mockReset().mockResolvedValue('remove' as never);
   logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -250,12 +261,26 @@ describe('the removal of a line', () => {
     expect(reads()).toBe(before + 1);
   });
 
-  it('a removal that got no answer after the request went out answers \'unknown\'', async () => {
+  it('a removal that got no answer is checked, not answered \'unknown\': the order is read, and a line that is gone answers true', async () => {
     const card = await openOrder();
     service.removeItemFromOrder.mockResolvedValueOnce({ success: false, message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout' } as never);
-    let answer: unknown;
-    await act(async () => { answer = await card.onRemove(LINE); });
-    expect(answer).toBe('unknown');
+    service.getOrderWithItems.mockImplementationOnce(async () => ({ success: true, data: { ...copy(makeOrder()), items: [line('lot-kept', 2)] } }) as never);
+    const before = reads();
+    expect(await remove(card)).toBe(true);
+    // Sent once, never again; the wait for the server was asked for; one read, which shows the line is gone.
+    expect(service.removeItemFromOrder).toHaveBeenCalledTimes(1);
+    expect(waitForServer).toHaveBeenCalledTimes(1);
+    expect(reads()).toBe(before + 1);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('a removal that got no answer, with the line still on the order: says it was not removed and answers false', async () => {
+    const card = await openOrder();
+    service.removeItemFromOrder.mockResolvedValueOnce({ success: false, message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout' } as never);
+    expect(await remove(card)).toBe(false);
+    expect(service.removeItemFromOrder).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't remove the item", 'The server did not remove the item. It is still on the order.');
   });
 
   it('any other failure says so, reads the order again and answers false', async () => {
@@ -267,5 +292,87 @@ describe('the removal of a line', () => {
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(jest.mocked(showAlert).mock.calls[0][0]).toBe("Couldn't remove the item");
     expect(reads()).toBe(before + 1);
+  });
+});
+
+describe('a line whose answer was lost', () => {
+  const lost = { success: false, message: "Couldn't change the item.", error: 'TimeoutError: Request timeout' } as never;
+
+  it('is locked while it is checked: the card is told, and a change or removal of it sends nothing', async () => {
+    const card = await openOrder();
+    expect(mockCards.byId[LINE].checking).toBeUndefined();
+    let release!: () => void;
+    jest.mocked(waitForServer).mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
+    let change!: Promise<boolean>;
+    await act(async () => { change = card.onQuantityChange(LINE, 6, ORDER_ID); });
+    await settle();
+    // Waiting for the server: the card is told to show it is checking, and nothing was read yet.
+    expect(mockCards.byId[LINE].checking).toBe('save');
+    expect(mockCards.byId['line-lot-kept'].checking).toBeUndefined();
+
+    let again!: boolean;
+    let removal!: boolean | 'unknown';
+    await act(async () => { again = await card.onQuantityChange(LINE, 7, ORDER_ID); });
+    await act(async () => { removal = await card.onRemove(LINE); });
+    expect(again).toBe(false);
+    expect(removal).toBe(false);
+    expect(service.updateOrderItemQuantity).toHaveBeenCalledTimes(1);
+    expect(service.removeItemFromOrder).not.toHaveBeenCalled();
+    expect(askAlert).not.toHaveBeenCalled();
+
+    await act(async () => { release(); await change; });
+    expect(mockCards.byId[LINE].checking).toBeUndefined();
+  });
+
+  it('a change the server did apply is saved: the card is told true and no message is shown', async () => {
+    const card = await openOrder();
+    service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
+    service.getOrderWithItems.mockImplementationOnce(async () => ({
+      success: true,
+      data: { ...copy(makeOrder()), items: [line('lot-kept', 2), line('lot-open', 6)] },
+    }) as never);
+    let answer!: boolean;
+    await act(async () => { answer = await card.onQuantityChange(LINE, 6, ORDER_ID); });
+    expect(answer).toBe(true);
+    expect(service.updateOrderItemQuantity).toHaveBeenCalledTimes(1);
+    expect(waitForServer).toHaveBeenCalledTimes(1);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('a change the server did not apply says so and the card is told false (it shows what the server has)', async () => {
+    const card = await openOrder();
+    service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
+    const before = reads();
+    let answer!: boolean;
+    await act(async () => { answer = await card.onQuantityChange(LINE, 6, ORDER_ID); });
+    expect(answer).toBe(false);
+    expect(service.updateOrderItemQuantity).toHaveBeenCalledTimes(1);
+    expect(reads()).toBe(before + 1);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith("Couldn't change the quantity", 'The server did not save the change. The order shows what is saved now.');
+  });
+
+  it('a line taken off the order meanwhile is told as that, and the card is told false', async () => {
+    const card = await openOrder();
+    service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
+    service.getOrderWithItems.mockImplementationOnce(async () => ({ success: true, data: { ...copy(makeOrder()), items: [line('lot-kept', 2)] } }) as never);
+    let answer!: boolean;
+    await act(async () => { answer = await card.onQuantityChange(LINE, 6, ORDER_ID); });
+    expect(answer).toBe(false);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith(GONE_TITLE, GONE_MESSAGE);
+  });
+
+  it('is not checked when the call never left the phone: the usual failure, no wait', async () => {
+    const card = await openOrder();
+    service.updateOrderItemQuantity.mockResolvedValueOnce(
+      { success: false, message: "Couldn't change the item.", error: 'Network request failed: session refresh unavailable' } as never
+    );
+    let answer!: boolean;
+    await act(async () => { answer = await card.onQuantityChange(LINE, 6, ORDER_ID); });
+    expect(answer).toBe(false);
+    expect(waitForServer).not.toHaveBeenCalled();
+    expect(showAlert).toHaveBeenCalledTimes(1);
   });
 });

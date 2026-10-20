@@ -47,7 +47,9 @@ import {
   seedDraft,
   withQuantity,
   withoutReasons,
+  type AddItemsOptions,
   type PickerChange,
+  type PickerChecking,
   type PickerDraft,
   type PickerLine,
   type PickerResult,
@@ -61,6 +63,9 @@ const formatBags = (n: number) => formatCount(n, 'bag');
 
 /** The answers of the "leaving with unsaved changes" question. */
 type UnsavedAnswer = 'add' | 'keep' | 'discard';
+
+/** The answers of the question asked when the picker is left while a lot's answer is being checked. */
+type CheckingLeaveAnswer = 'wait' | 'leave';
 
 /**
  * What names a lot, in one place for the spoken label of a row and the lines of the
@@ -113,12 +118,18 @@ interface ItemCatalogBrowserProps {
   /**
    * Saves what the user changed (quantity 0 = take the lot off the order) and
    * answers for each lot. Must not reject. `onProgress` reports the lot being
-   * saved, counted from 1.
+   * saved, counted from 1. When a lot's answer is lost the save locks that lot, waits
+   * for the server and reads the order again: `options.onChecking` names the lot
+   * meanwhile (`null` when the check is over), and `options.signal` is aborted when
+   * the person leaves the picker through X while it runs.
    */
   onAddItems: (
     changes: PickerChange[],
-    onProgress: (position: number, total: number) => void
+    onProgress: (position: number, total: number) => void,
+    options?: AddItemsOptions
   ) => Promise<PickerResult[]>;
+  /** The phone has no network (passed by OrderManagement): a lot being checked then adds "Waiting for the connection…". */
+  offline?: boolean;
   /** Passed by OrderManagement; not read by the browser. */
   currentOrderId?: string;
   customerId: string;
@@ -170,6 +181,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   onAddItems,
   customerId,
   currentOrderItems = NO_ORDER_ITEMS,
+  offline = false,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -195,6 +207,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const [saving, setSaving] = useState<{ position: number; total: number } | null>(null);
   const isSaving = saving !== null;
   const savingRef = useRef(false);
+  // The lot whose answer was lost while Add was saving: it is being checked (see `onAddItems`).
+  const [checking, setChecking] = useState<PickerChecking | null>(null);
+  const checkingRef = useRef<PickerChecking | null>(null);
+  // Stops the check of the Add that is running, when the person leaves through X.
+  const addAbortRef = useRef<AbortController | null>(null);
   // The callers pass new functions on every render; handlers read the latest.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -708,16 +725,28 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setDraft(sent);
 
     let answers: PickerResult[] = [];
+    const controller = new AbortController();
+    addAbortRef.current = controller;
     try {
       answers = await onAddItemsRef.current(changes, (position, total) => {
         if (isMountedRef.current) setSaving({ position, total });
+      }, {
+        signal: controller.signal,
+        onChecking: lot => {
+          checkingRef.current = lot;
+          if (isMountedRef.current) setChecking(lot);
+        },
       });
     } catch (error) {
       // The owner answers for every lot and does not reject; this is the guard for one that does.
       console.error('[ItemCatalogBrowser] Add items error:', error);
     }
     savingRef.current = false;
-    if (!isMountedRef.current) return;
+    checkingRef.current = null;
+    addAbortRef.current = null;
+    // Also when the person left through X while a lot was being checked: nothing is shown or presented again.
+    if (!isMountedRef.current || closedRef.current) return;
+    setChecking(null);
 
     // A lot without an answer was not saved.
     const answered = Array.isArray(answers) ? answers : [];
@@ -744,6 +773,28 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // first, listing the changes: Add to order (only when Add would send something),
   // Keep editing, Discard selections. While an Add is being saved it does nothing.
   const requestClose = useCallback(async (source: CloseSource) => {
+    // A lot's answer was lost and is being checked: the picker is locked. Only X (Cancel) leaves, after a warning;
+    // Back, a tap outside and a swipe do nothing.
+    if (checkingRef.current) {
+      if (source !== 'cancel' || closedRef.current || askingRef.current) return;
+      askingRef.current = true;
+      const leave = await askAlert<CheckingLeaveAnswer>(
+        tr('orders.catalog.leaveCheckingTitle'),
+        tr('errors.lostAnswer.leaveWarning'),
+        [
+          { text: tr('orders.catalog.keepWaiting'), style: 'cancel', value: 'wait' },
+          { text: tr('orders.catalog.leaveAnyway'), style: 'destructive', value: 'leave' },
+        ],
+        'wait'
+      );
+      askingRef.current = false;
+      if (!isMountedRef.current) return;
+      if (leave === 'leave') {
+        addAbortRef.current?.abort();
+        finishClose();
+      }
+      return;
+    }
     if (savingRef.current || closedRef.current || askingRef.current) return;
     const asked = draftRef.current;
     const changes = changesOf(asked);
@@ -882,6 +933,14 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // order with saved lots opens its picker with "Add" and no number.
   const changeCount = useMemo(() => changesOf(draft).length, [draft]);
   const failedReasons = draft.failed;
+  // What the lot being checked says: the question, and while the phone has no network, what it is waiting for.
+  const checkingText = useMemo(() => {
+    if (!checking) return '';
+    return [
+      tr(checking.removal ? 'errors.lostAnswer.checkingDelete' : 'errors.lostAnswer.checking'),
+      offline ? tr('errors.lostAnswer.waiting') : '',
+    ].filter(Boolean).join(' ');
+  }, [checking, offline]);
 
   // Compute display items: merge filtered items with selected items
   // This ensures items with quantity > 0 always show, even if they don't match current filters
@@ -915,18 +974,20 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       }
     });
 
-    if (failedReasons.size === 0) return Array.from(itemMap.values());
+    if (failedReasons.size === 0 && !checking) return Array.from(itemMap.values());
 
-    // Lots that were not saved come first. One whose removal was refused is no
+    // Lots that were not saved, and the lot being checked, come first. One whose removal was refused is no
     // longer selected; its row comes from the saved line.
     const notSaved: GRNItem[] = [];
-    failedReasons.forEach((_reason, itemId) => {
+    const firstIds = new Set<string>(failedReasons.keys());
+    if (checking) firstIds.add(checking.grnItemId);
+    firstIds.forEach(itemId => {
       const item = itemMap.get(itemId) ?? draft.base.get(itemId)?.item;
       if (item) notSaved.push(item);
     });
     const first = new Set(notSaved.map(item => item.id));
     return [...notSaved, ...Array.from(itemMap.values()).filter(item => !first.has(item.id))];
-  }, [filteredItems, selectedItems, showSelectedItems, searchQuery, failedReasons, draft.base]);
+  }, [filteredItems, selectedItems, showSelectedItems, searchQuery, failedReasons, checking, draft.base]);
 
   // Get stock status for Fiori semantic styling - memoized to prevent recreation
   // @see PO1 - FlashList renderItem Inline Function Anti-Pattern
@@ -944,6 +1005,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const quantity = selected?.quantity || 0;
     // Why this lot was not saved by the last Add, if it was not.
     const reason = failedReasons.get(item.id);
+    // This lot's answer was lost and the server is being asked what became of it.
+    const checkingHere = checking?.grnItemId === item.id;
     // Quantities stay as they are while an Add is being saved.
     const locked = isSaving;
 
@@ -1069,6 +1132,13 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           </View>
         ) : null}
 
+        {/* The answer for this lot was lost: it is locked while the server is asked what became of it */}
+        {checkingHere ? (
+          <View style={styles.rowReason} testID={`catalog-checking-${item.id}`}>
+            <InlineValidation variant="warning" message={checkingText} />
+          </View>
+        ) : null}
+
         {/* Quantity Section with Presets + Stepper */}
         <View style={styles.quantitySection}>
           {/* Preset Buttons Row */}
@@ -1107,7 +1177,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         </View>
       </View>
     );
-  }, [selectedItems, failedReasons, isSaving, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
+  }, [selectedItems, failedReasons, isSaving, checking, checkingText, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
 
   // Android back asks to leave the picker before anything else (guide §13.9, §15).
   useEffect(() => {
@@ -1176,11 +1246,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         <Pressable
           testID="catalog-cancel"
           onPress={() => { void requestClose('cancel'); }}
-          disabled={isSaving}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed, isSaving && styles.disabled]}
+          disabled={isSaving && !checking}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed, isSaving && !checking && styles.disabled]}
           accessibilityRole="button"
           accessibilityLabel={tr('orders.catalog.cancelAdding')}
-          accessibilityState={{ disabled: isSaving }}
+          accessibilityState={{ disabled: isSaving && !checking }}
         >
           <Text style={styles.headerButtonTextCancel} {...singleLineText()}>{tr('common.cancel')}</Text>
         </Pressable>
@@ -1262,6 +1332,13 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         recentlyAddedItems={recentlyAddedItems.map(item => ({ id: item.id, name: item.name }))}
       />
 
+      {/* A lot's answer was lost: the whole picker is locked while the server is asked, and says so here. */}
+      {checking ? (
+        <View style={styles.notSavedSummary} testID="catalog-checking-summary">
+          <InlineValidation variant="warning" message={checkingText} />
+        </View>
+      ) : null}
+
       {/* What the last Add did not save; those lots are the first rows below. */}
       {failedReasons.size > 0 ? (
         <View style={styles.notSavedSummary} testID="catalog-not-saved-summary">
@@ -1272,7 +1349,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         </View>
       ) : null}
     </>
-  ), [styles, t, requestClose, handleAddItems, changeCount, saving, failedReasons.size, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
+  ), [styles, t, requestClose, handleAddItems, changeCount, saving, checking, checkingText, failedReasons.size, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
 
   // Memoized ListEmptyComponent
   const listEmptyComponent = useMemo(() => {
@@ -1383,7 +1460,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           windowSize={5}
           removeClippedSubviews={Platform.OS === 'android'}
           // A row with a reason on it is taller than the fixed estimate.
-          getItemLayout={failedReasons.size > 0 ? undefined : getItemLayout}
+          getItemLayout={failedReasons.size > 0 || checking ? undefined : getItemLayout}
           ListHeaderComponent={listHeaderComponent}
           ListEmptyComponent={listEmptyComponent}
           ListFooterComponent={listFooterComponent}

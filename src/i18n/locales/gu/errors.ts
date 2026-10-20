@@ -179,6 +179,13 @@ export const errors: Translation<typeof source> = {
     businessDeactivated: 'આ વેપારી નિષ્ક્રિય છે. નવો માલ લેવા માટે વેપારીઓમાં તેને સક્રિય કરો.',
     businessNotActive: 'આ વેપારી સક્રિય નથી, તેથી તેના માટે નવું કંઈ ઉમેરી શકાતું નથી. પહેલા વેપારીઓમાં તેને સક્રિય કરો.',
   },
+  lostAnswer: {
+    // Drafts for the owner's wording review (2026-10-20): a change whose answer never came; the screen waits and asks the server.
+    checking: 'સર્વરનો જવાબ મળ્યો નથી. સચવાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
+    checkingDelete: 'સર્વરનો જવાબ મળ્યો નથી. કાઢી નંખાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
+    waiting: 'કનેક્શનની રાહ જોઈ રહ્યા છીએ…',
+    leaveWarning: 'કદાચ સચવાઈ ગયું હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
+  },
   auth: {
     authenticationFailed: 'તમારી ઓળખ ચકાસી શકાઈ નથી. ફરી લૉગિન કરો.',
     loginAgain: 'લૉગિન કરવું જરૂરી છે. ફરી લૉગિન કરો.',

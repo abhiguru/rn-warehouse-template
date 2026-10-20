@@ -339,6 +339,9 @@ export interface ServerTextOptions {
    * The request changes data. A timeout, and any other network failure that came after the request
    * went out, then says it may have been saved; for a read, and for a failure before the request
    * left the device (offline, no session), it is only a network failure ("Check your connection").
+   * A screen that runs the lost-answer check itself (`isLostAnswer`, `checkSubmission` in
+   * `@/utils/lostAnswer`: the forms and the order lines) does not show these "may have been saved"
+   * texts; they are for the places that have no check (lists, user and settings screens).
    */
   write?: boolean;
   /**

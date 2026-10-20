@@ -1,0 +1,219 @@
+/**
+ * One rule for an answer that never came (owner decision D22, 2026-10-20).
+ *
+ * A change (a create, an edit, a delete, a line on an order) whose request may have reached the server
+ * but whose answer did not come back is a lost answer. The screen then:
+ *
+ *   1. locks at once (no field, button or tap that could leave or send the change again);
+ *   2. waits until the phone is online AND at least 10 s have passed since the request was sent
+ *      (`waitForServer`);
+ *   3. asks the server what became of THAT request (`checkSubmission` for creates and edits that
+ *      carry a request code; a read of the record for deletes; a read of the order for order lines);
+ *   4. keeps asking, with a pause that doubles up to 30 s, while the question itself gets no answer.
+ *
+ * Nothing here finds a record "by customer, date or lines": the server is asked about the request code.
+ *
+ * Online state: the app's one source of it is NetInfo (`useNetworkStatus` and `ensureNetworkConnection` in
+ * `@/hooks/useNetworkStatus` read it). These helpers are not hooks, so they read NetInfo directly. It is
+ * loaded on first use, not when this file is imported: a screen's test that does not stand NetInfo in
+ * (a native module) still imports this file, and there NetInfo cannot be had, which counts as online.
+ * "Offline" is the phone saying it has no network at all (`isConnected === false`); a connection whose
+ * internet is "not reachable" can still reach a facility's own server, so it is asked.
+ */
+import { isStatementTimeout, requestMayHaveBeenSent } from '@/utils/serverText';
+
+/** How long after a request was sent the app waits before it asks what became of it. */
+export const LOST_ANSWER_MIN_WAIT_MS = 10_000;
+/** The first pause between two questions that got no answer; it doubles up to the longest. */
+export const LOST_ANSWER_FIRST_RETRY_MS = 2_000;
+export const LOST_ANSWER_LONGEST_RETRY_MS = 30_000;
+
+/**
+ * True when a change failed with no answer after the request may have reached the server (a timeout, a dropped
+ * connection, a gateway's error page). False for a failure before the request left the phone (offline, no
+ * session), for any answer the server gave, and for SQLSTATE 57014: a statement timeout rolled back, so nothing
+ * was saved. `err` is whatever failed (an Error, a Supabase error, a service result `{ error, message }`);
+ * `code` is its code when the text passed in does not carry it.
+ */
+export function isLostAnswer(err: unknown, code?: string): boolean {
+  return requestMayHaveBeenSent(err, code) && !isStatementTimeout(err, code);
+}
+
+/** What `waitForServer` and `checkSubmission` reject with when their signal is aborted. */
+export function abortedError(): Error {
+  const error = new Error('Aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+/** True for the rejection of an aborted wait or check. */
+export function isAbortError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError';
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortedError();
+}
+
+/** Resolves after `ms`; rejects at once when the signal is aborted. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortedError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortedError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort);
+  });
+}
+
+type NetInfoModule = typeof import('@react-native-community/netinfo').default;
+let netInfoModule: NetInfoModule | null | undefined;
+
+function netInfo(): NetInfoModule | null {
+  if (netInfoModule === undefined) {
+    try {
+      netInfoModule = (require('@react-native-community/netinfo') as typeof import('@react-native-community/netinfo')).default ?? null;
+    } catch {
+      netInfoModule = null;
+    }
+  }
+  return netInfoModule;
+}
+
+/** The phone says it has no network at all. An unknown reading is not "offline": the question is asked then. */
+const hasNoNetwork = (state: { isConnected: boolean | null }): boolean => state.isConnected === false;
+
+/** Resolves once the phone is online; at once when it is, or when its state cannot be read. */
+async function waitUntilOnline(signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  const info = netInfo();
+  if (!info) return;
+  try {
+    if (!hasNoNetwork(await info.fetch())) {
+      throwIfAborted(signal);
+      return;
+    }
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    // Failure to observe connectivity does not prove the server is down: ask.
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    let done = false;
+    let unsubscribe: (() => void) | undefined;
+    const finish = (error?: Error) => {
+      if (done) return;
+      done = true;
+      signal?.removeEventListener('abort', onAbort);
+      unsubscribe?.();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onAbort = () => finish(abortedError());
+    signal?.addEventListener('abort', onAbort);
+    unsubscribe = info.addEventListener(state => {
+      if (!hasNoNetwork(state)) finish();
+    });
+    // The listener may have answered before `unsubscribe` was set.
+    if (done) unsubscribe();
+  });
+}
+
+/**
+ * Waits until the phone is online AND at least 10 s have passed since the request was sent (`sentAt`, a
+ * `Date.now()` reading taken just before it went out). A connection lost while waiting is waited out too.
+ * Rejects with an AbortError (see `isAbortError`) when the signal is aborted.
+ */
+export async function waitForServer(sentAt: number, signal?: AbortSignal): Promise<void> {
+  for (;;) {
+    await waitUntilOnline(signal);
+    // Capped, so a clock that was set back never makes the wait longer than the rule says.
+    const remaining = Math.min(sentAt + LOST_ANSWER_MIN_WAIT_MS - Date.now(), LOST_ANSWER_MIN_WAIT_MS);
+    if (remaining <= 0) return;
+    await sleep(remaining, signal);
+  }
+}
+
+/**
+ * Asks `read` until it answers (anything but null or undefined): the phone must be online for each try, and
+ * a try that gets no answer is followed by a pause of 2 s, doubled each time up to 30 s. A `read` that
+ * throws counts as no answer. Rejects with an AbortError when the signal is aborted, or when `read` itself
+ * throws one (a screen that has been left says so that way).
+ */
+export async function readUntilAnswered<T>(
+  read: () => Promise<T | null | undefined>,
+  signal?: AbortSignal,
+): Promise<T> {
+  let pause = LOST_ANSWER_FIRST_RETRY_MS;
+  for (;;) {
+    await waitUntilOnline(signal);
+    let value: T | null | undefined;
+    try {
+      value = await read();
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      value = null;
+    }
+    if (value !== null && value !== undefined) return value;
+    await sleep(pause, signal);
+    pause = Math.min(pause * 2, LOST_ANSWER_LONGEST_RETRY_MS);
+  }
+}
+
+/** What `get_submission_result` answers: the stored answer of the request, when the server has it. */
+export interface SubmissionResult {
+  found: boolean;
+  /** The answer the lost request was given by the server; treat it exactly like the answer that was lost. */
+  // The stored answer is the server's own JSON for whichever RPC was sent; its shape is the caller's.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  response?: any;
+}
+
+/**
+ * One question to the server: the stored success answer of the request code, for the calling user, when the
+ * record it made still exists. undefined when the question itself got no answer. An older server that has
+ * no `get_submission_result` (before backend migration 120) cannot say: `found: false`, so the caller sends
+ * the identical request once, which its own request code (or its own refusal of a duplicate) makes safe.
+ */
+async function askServer(key: string): Promise<SubmissionResult | undefined> {
+  // Loaded when asked, like NetInfo above: a screen's test does not need the whole data layer to import this file.
+  const { executeRPC } = require('@/utils/serviceErrorHandler') as typeof import('@/utils/serviceErrorHandler');
+  const { getAuthenticatedClient } = require('@/config/supabaseConfig') as typeof import('@/config/supabaseConfig');
+  const result = await executeRPC<Record<string, unknown>>(
+    getAuthenticatedClient,
+    'get_submission_result',
+    { p_key: key },
+    { context: 'LostAnswer.checkSubmission', unwrapNested: false, validateSuccess: false },
+  );
+  if (result.success) {
+    const data = result.data;
+    if (data && typeof data === 'object' && typeof data.found === 'boolean') {
+      return data.found ? { found: true, response: data.response } : { found: false };
+    }
+    return undefined;
+  }
+  // PostgREST: PGRST202 (function not in the schema cache), Postgres: 42883 (undefined function).
+  if (result.errorCode === 'PGRST202' || result.errorCode === '42883') return { found: false };
+  return undefined;
+}
+
+/**
+ * Asks the server what became of the request that carried `key` (its request code): waits first
+ * (`waitForServer`), then calls `get_submission_result` with `{ p_key: key }`, and asks again, with a pause
+ * that doubles up to 30 s, while the question gets no answer. `{ found: true, response }` says the request
+ * was applied: treat `response` exactly like the answer that was lost. `{ found: false }` says it was not:
+ * the caller sends the identical request once, with the same body and the same request code.
+ * Rejects with an AbortError (see `isAbortError`) when the signal is aborted.
+ */
+export async function checkSubmission(key: string, sentAt: number, signal?: AbortSignal): Promise<SubmissionResult> {
+  await waitForServer(sentAt, signal);
+  return readUntilAnswered(() => askServer(key), signal);
+}
