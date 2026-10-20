@@ -117,7 +117,7 @@ describe('the total of an updated invoice', () => {
     return dialog.props.message as string;
   };
 
-  it('is checked by the server and shown as the server stored it', async () => {
+  it('models an old server that counts periods differently: the success dialog shows the total the server stored', async () => {
     // The form holds 335 (735 less the discount of 400). The server counts 1.5 periods and stores 598.
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 598 } });
     const tree = await render();

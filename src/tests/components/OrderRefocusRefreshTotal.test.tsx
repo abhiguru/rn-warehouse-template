@@ -16,6 +16,11 @@ import { OrderService } from '@/services/order-service';
 import type { Order } from '@/types/order.types';
 import { resetScreenFocus, setScreenFocused } from './focusHarness';
 
+// The "Waiting for the connection…" text reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,

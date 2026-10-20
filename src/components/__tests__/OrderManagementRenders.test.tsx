@@ -19,6 +19,11 @@ type CardProps = {
   onRemove: (itemId: string) => Promise<boolean> | boolean | void;
 };
 const mockCards = { renders: 0, props: new Map<string, CardProps>() };
+// The "Waiting for the connection…" text reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('../OrderItemCard', () => {
   const ReactActual = jest.requireActual('react');
   const Card = (props: CardProps) => {

@@ -292,6 +292,8 @@ export const invoice = {
     hasStock: 'GRN {{grn}} still has {{stock}} in stock. Dispatch it first, then save the invoice.',
     // D18: the total the person confirmed is not the server's. Both are amounts in rupees.
     totalChanged: 'The total is now {{current}}, not {{expected}}. Review the figures and save again.',
+    // D18, when the form cannot work out the server's total from the server's durations.
+    totalUnmatched: "The server's total is {{current}}. Open the invoice again to see its figures.",
   },
   // The dialog after an invoice is saved
   success: {

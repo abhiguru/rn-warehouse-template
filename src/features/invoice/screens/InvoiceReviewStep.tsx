@@ -284,6 +284,25 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
           });
           return;
         }
+        if (info?.totalUnmatched) {
+          // D18, a total the form cannot work out: the only way on is to read the invoice (or its lines) again.
+          showAlert(title, message, [
+            { text: tr('common.close'), style: 'cancel' },
+            {
+              text: tr('errors.refusal.stale.reload'),
+              onPress: () => {
+                if (!isEdit) {
+                  handleReloadLines();
+                  return;
+                }
+                void reloadInvoice().then((reloaded) => {
+                  if (reloaded) void navigateToStep(STEP_NUMBERS.HEADER);
+                });
+              },
+            },
+          ]);
+          return;
+        }
         if (info?.numberMaybeSaved) {
           // The save may already be on the server under this number: the only way out is to close the form and look in
           // the list. Nothing can be sent again from here, and no next number is offered.

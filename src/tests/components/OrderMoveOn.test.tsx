@@ -15,6 +15,11 @@ import type { Order, OrderItem } from '@/types/order.types';
 import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
 
 const mockParams: { customerId?: string } = { customerId: 'customer-a' };
+// The "Waiting for the connection…" text reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   Stack: { Screen: () => null },

@@ -440,7 +440,7 @@ export const dispatch: Translation<typeof source> = {
     leaveCheckTitle: 'આ પાનું છોડવું છે?',
     leaveCheckMessage: 'જાવક ડિલીટ થઈ ગઈ હોઈ શકે. ફરી ડિલીટ કરતા પહેલાં જાવકની યાદી તપાસો.',
     stayHere: 'અહીં રહો',
-    leavePage: 'નીકળો',
+    leavePage: 'છોડી દો',
     deleteFailedTitle: 'જાવક ડિલીટ કરી શકાઈ નથી',
     tryAgain: 'ફરી પ્રયાસ કરો.',
     pdfFailedTitle: 'PDF બનાવી શકાઈ નથી',

@@ -346,26 +346,26 @@ describe('a line whose answer was lost', () => {
     expect(showAlert).not.toHaveBeenCalled();
   });
 
-  it('a change the server did not apply says so and the card is told false (it shows what the server has)', async () => {
+  it('a change the server did not apply says so and the card is told checked (it shows what the server has)', async () => {
     const card = await openOrder();
     service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
     const before = reads();
-    let answer!: boolean;
+    let answer!: boolean | string;
     await act(async () => { answer = await card.onQuantityChange(LINE, 6, ORDER_ID); });
-    expect(answer).toBe(false);
+    expect(answer).toBe('checked');
     expect(service.updateOrderItemQuantity).toHaveBeenCalledTimes(1);
     expect(reads()).toBe(before + 1);
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith("Couldn't change the quantity", 'The server did not save the change. The order shows what is saved now.');
   });
 
-  it('a line taken off the order meanwhile is told as that, and the card is told false', async () => {
+  it('a line taken off the order meanwhile is told as that, and the card is told checked', async () => {
     const card = await openOrder();
     service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
     service.getOrderWithItems.mockImplementationOnce(async () => ({ success: true, data: { ...copy(makeOrder()), items: [line('lot-kept', 2)] } }) as never);
-    let answer!: boolean;
+    let answer!: boolean | string;
     await act(async () => { answer = await card.onQuantityChange(LINE, 6, ORDER_ID); });
-    expect(answer).toBe(false);
+    expect(answer).toBe('checked');
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith(GONE_TITLE, GONE_MESSAGE);
   });

@@ -138,7 +138,7 @@ export const orders: Translation<typeof source> = {
     reasonCheckedOther: 'તપાસ્યું: ઑર્ડરમાં હવે {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonCheckedNotRemoved: 'તપાસ્યું: દૂર થયું નથી. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonLineChecking: 'આ આઇટમ હજુ તપાસાઈ રહી છે. થોડી વાર પછી ફરી "ઉમેરો" દબાવો.',
-    leaveCheckingTitle: 'તપાસ દરમિયાન છોડી દેવું છે?',
+    leaveCheckingTitle: 'તપાસ દરમિયાન છોડવું છે?',
     keepWaiting: 'રાહ જુઓ',
     leaveAnyway: 'છતાં છોડી દો',
   },

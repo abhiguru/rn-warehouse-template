@@ -788,6 +788,8 @@ export const createInvoice = async (
     return await createdInvoice(authenticatedClient, data, payload);
   } catch (error: any) {
     invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
+    // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
+    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now());
     if (error instanceof NumberTakenError) {
       return {
         success: false,
@@ -1137,6 +1139,8 @@ export const updateInvoice = async (
     return await updatedInvoice(authenticatedClient, result, invoiceId, payload);
   } catch (error: any) {
     invoiceFormLogger.error('Error updating invoice:', errorForLog(error));
+    // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
+    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now());
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },

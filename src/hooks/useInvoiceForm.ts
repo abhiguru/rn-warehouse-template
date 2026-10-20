@@ -126,6 +126,8 @@ export interface SubmitFailureInfo {
    * `askStaleRecord('invoice')` instead of showing the message, and on "Open it again" calls `reloadInvoice`.
    */
   stale?: boolean;
+  /** The server's total is one the form cannot work out (TOTAL_CHANGED, D18): the message offers "Open it again" (a new invoice reads the lines again, an edit opens the invoice again). */
+  totalUnmatched?: boolean;
   /** The server's total differs from the form's (TOTAL_CHANGED, D18) and the form now holds the server's figures: the Charges section is opened. */
   totalChanged?: boolean;
   /** The GRN still has stock (GRN_HAS_STOCK, D9): a new invoice goes back to step 1, where the GRN field is marked. */
@@ -812,13 +814,13 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         // are read again instead: a new invoice offers "Reload lines", an edit "Open it again".
         const formTotal = store.getState().invoiceForm.header.total;
         if (Math.abs(formTotal - currentTotal) > 1) {
+          const message = t('invoice.refusal.totalUnmatched', { current: formatInvoiceAmount(currentTotal) });
           if (isCreateMode) {
-            const message = t('invoice.review.grnChanged');
-            report(t(failedTitleKey), message, { reloadLines: true });
+            report(t(failedTitleKey), message, { reloadLines: true, totalUnmatched: true });
             return { success: false, error: message, reloadLines: true };
           }
-          report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')), { stale: true });
-          return { success: false, error: result.message };
+          report(t(failedTitleKey), message, { totalUnmatched: true });
+          return { success: false, error: message };
         }
         const message = t('invoice.refusal.totalChanged', {
           current: formatInvoiceAmount(currentTotal),

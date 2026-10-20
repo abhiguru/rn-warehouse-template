@@ -43,7 +43,7 @@ export const invoice: Translation<typeof source> = {
     discardEditMessage: 'આ ઇન્વૉઇસમાં કરેલા ફેરફાર જતા રહેશે.',
     discardNewMessage: 'આ ઇન્વૉઇસ માટે લખેલી વિગતો જતી રહેશે.',
     // Draft for the owner's wording review (2026-10-20): the close button's question while the server is asked about a save or delete whose answer was lost (D22).
-    lostLeaveTitle: 'જવાબ મળ્યા વગર બહાર નીકળવું છે?',
+    lostLeaveTitle: 'જવાબ મળ્યા વગર છોડવું છે?',
   },
   // Opening an invoice to edit it
   edit: {
@@ -301,6 +301,8 @@ export const invoice: Translation<typeof source> = {
   refusal: {
     hasStock: 'આવક પાવતી {{grn}} માં હજુ {{stock}} સ્ટોકમાં છે. પહેલા તેની જાવક કરો, પછી ઇન્વૉઇસ સાચવો.',
     totalChanged: 'કુલ રકમ હવે {{current}} છે, {{expected}} નથી. રકમ તપાસીને ફરી સાચવો.',
+    // Draft for the owner's wording review (push 2026-10-21).
+    totalUnmatched: 'સર્વર પ્રમાણે કુલ રકમ {{current}} છે. તેની રકમો જોવા ઇન્વૉઇસ ફરી ખોલો.',
   },
   // The dialog after an invoice is saved
   success: {

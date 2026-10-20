@@ -1,5 +1,6 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useIsDisconnected } from '@/utils/lostAnswer';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
@@ -428,7 +429,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     newQuantity: number,
     lineOrderId?: string,
     expectedUpdatedAt?: string,
-  ): Promise<boolean | LineSaved | 'stale'> => {
+  ): Promise<boolean | LineSaved | 'stale' | 'checked'> => {
     const orderId = lineOrderId || orderRef.current?.id;
     if (!orderId) return false;
     // The answer to an earlier call for this line was lost and is being checked: nothing is sent for it meanwhile.
@@ -490,7 +491,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         } else {
           showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('orders.manage.lostAnswerNotSaved'));
         }
-        return false;
+        // Told already: the card shows the stored quantity and does not flash the stock red.
+        return 'checked';
       }
       // The order is read again behind the alert, so the card shows what is stored now.
       const read = activeOrderId.current === orderId ? rereadOrder(false) : Promise.resolve<Order | null>(null);
@@ -635,6 +637,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const noNetworkRef = useRef(false);
   const noNetwork = isConnected === false && networkType === 'none';
   noNetworkRef.current = noNetwork;
+  // The "Waiting for the connection…" text follows the same test the wait for the server uses (`useIsDisconnected`).
+  const disconnected = useIsDisconnected();
 
   // Saves what the Add items picker changed, one lot after another, and answers
   // for each lot. A lot the user did not touch is not in `changes`, so a line
@@ -958,7 +962,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
                 onQuantityChange={handleQuantityUpdate}
                 onRemove={handleRemoveItem}
                 checking={checkingLines.get(item.id)}
-                offline={noNetwork && checkingLines.has(item.id)}
+                offline={disconnected && checkingLines.has(item.id)}
               />
             ))}
           </>
@@ -1063,7 +1067,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           isVisible={showItemCatalog}
           onClose={() => setShowItemCatalog(false)}
           onAddItems={handleItemsAdded}
-          offline={noNetwork}
+          offline={disconnected}
           currentOrderId={order.id}
           customerId={selectedCustomer.id}
           currentOrderItems={pickerLines}

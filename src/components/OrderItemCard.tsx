@@ -46,9 +46,11 @@ const loweredAboveStock = (quantity: number, stock: number, amount: number): num
 /**
  * What a change of the quantity answers: true (or `{ updatedAt }`, which also names the line's new version) once the
  * server stored it, false when it did not, and 'stale' when it refused because someone else changed the line since this
- * card read it (owner decision D1): nothing was written, and the order was read again.
+ * card read it (owner decision D1): nothing was written, and the order was read again. 'checked' means the answer was
+ * lost, the server was asked and the change is not applied: the person was told, so the card shows the stored quantity
+ * without flashing the stock red.
  */
-type QuantityAnswer = boolean | LineSaved | 'stale' | void;
+type QuantityAnswer = boolean | LineSaved | 'stale' | 'checked' | void;
 
 interface OrderItemCardProps {
   item: OrderItem;
@@ -278,7 +280,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       }
       savingRef.current = false;
       const stale = answer === 'stale';
-      const saved = !stale && answer !== false;
+      const checked = answer === 'checked';
+      const saved = !stale && !checked && answer !== false;
       if (saved) {
         // The save leaves a new version of the line: the card's next change is based on it. An answer that names none (an
         // older server) leaves the card without one until the next read of the order brings it.
@@ -317,7 +320,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       if (!saved && !superseded) {
         // The server refused the change: show the stored quantity again.
         setLocalQuantity(lastSavedQuantityRef.current);
-        triggerStockError();
+        // A change the check found not applied was told already; it is not a stock refusal.
+        if (!checked) triggerStockError();
       }
       if (queued) return;
       // A refused change leaves the line as it was: the card follows the line's version again (a read made after the

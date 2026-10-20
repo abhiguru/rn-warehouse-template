@@ -265,18 +265,20 @@ describe('a refusal for a changed record or a changed total', () => {
     await act(async () => { result = await form().submitForm(onFailure); });
 
     expect(result).toMatchObject({ success: false, reloadLines: true });
-    expect(onFailure.mock.calls[0][2]).toEqual({ reloadLines: true });
+    expect(onFailure.mock.calls[0][2]).toEqual({ reloadLines: true, totalUnmatched: true });
+    expect(onFailure.mock.calls[0][1]).toContain("Open the invoice again to see its figures.");
     await unmount();
   });
 
-  it('TOTAL_CHANGED that the form cannot reach on an edit is treated as a stale record', async () => {
+  it('TOTAL_CHANGED that the form cannot reach on an edit says so and offers to open the invoice again', async () => {
     jest.mocked(updateInvoice).mockResolvedValue(refused('TOTAL_CHANGED', { current_total: 99999, expected_total: header.total, lines: serverLines }, 'The total is now 99999'));
     const { form, unmount } = await mount('edit');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
 
-    expect(onFailure.mock.calls[0][2]).toEqual({ stale: true });
+    expect(onFailure.mock.calls[0][2]).toEqual({ totalUnmatched: true });
+    expect(onFailure.mock.calls[0][1]).toContain("The server's total is");
     await unmount();
   });
 

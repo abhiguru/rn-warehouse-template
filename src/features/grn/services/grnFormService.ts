@@ -492,6 +492,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     };
   } catch (error) {
     log.error('Error creating GRN with enhanced RPC', loggableError(error));
+    // A resend whose session client could not be got is not settled either: the lock stays.
+    if (!lostAnswer && payload.resend && isUnsettledFailure(error)) lostAnswer = payload.resend;
     return {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.createFailed'),
@@ -874,6 +876,8 @@ export const updateGRN = async (
     };
   } catch (error) {
     log.error('Error updating GRN with RPC', loggableError(error));
+    // A resend whose session client could not be got is not settled either: the lock stays.
+    if (!lostAnswer && options.resend && isUnsettledFailure(error)) lostAnswer = options.resend;
 
     // Provide user-friendly error messages
     let errorMessage = t('grn.form.updateFailed');
