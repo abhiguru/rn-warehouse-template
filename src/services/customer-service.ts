@@ -43,6 +43,10 @@ class CustomerService {
   /**
    * Search customers by name or mobile
    * Uses search_customers RPC which respects RLS
+   *
+   * A search that could not be made (no connection, a refusal) throws, so the
+   * picker can say so instead of showing "Nothing matches". A search that was
+   * made and found nothing returns [].
    */
   async searchCustomers(
     query: string,
@@ -62,8 +66,7 @@ class CustomerService {
 
       if (error) {
         handleGlobalAuthError(error);
-        log.error('searchCustomers error', loggableError(error));
-        return [];
+        throw error; // logged once, by the catch below
       }
 
       // Handle standardized response format: { success: true, data: [...] }
@@ -111,7 +114,7 @@ class CustomerService {
       return results;
     } catch (error) {
       log.error('Exception in searchCustomers', loggableError(error));
-      return [];
+      throw error;
     }
   }
 
@@ -174,9 +177,10 @@ class CustomerService {
         log.error('getCustomerList error', loggableError(error));
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.fetchListFailed')),
+          message: serverText(error, t('errors.customer.fetchListFailed')),
           data: [],
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -216,7 +220,7 @@ class CustomerService {
       log.error('Exception in getCustomerList', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.fetchListFailed'),
+        message: serverText(error, t('errors.customer.fetchListFailed')),
         data: [],
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
@@ -254,8 +258,9 @@ class CustomerService {
         log.error('getCustomerById error', loggableError(error));
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.notFound')),
+          message: serverText(error, t('errors.customer.notFound')),
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -297,7 +302,7 @@ class CustomerService {
       log.error('Exception in getCustomerById', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.fetchFailed'),
+        message: serverText(error, t('errors.customer.fetchFailed')),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
@@ -348,6 +353,7 @@ class CustomerService {
       params as unknown as Record<string, unknown>,
       {
         context: 'CustomerService.createCustomer',
+        write: true,
         errorMessage: t('errors.customer.createFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -359,6 +365,7 @@ class CustomerService {
         success: false,
         message: result.message,
         error: result.error,
+        code: result.errorCode,
       };
     }
 
@@ -464,6 +471,7 @@ class CustomerService {
       },
       {
         context: 'CustomerService.updateCustomer',
+        write: true,
         errorMessage: t('errors.customer.updateFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -475,6 +483,7 @@ class CustomerService {
         success: false,
         message: result.message,
         error: result.error,
+        code: result.errorCode,
       };
     }
 
@@ -539,8 +548,9 @@ class CustomerService {
         // by a direct write to the customers table.
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.inactivateFailed')),
+          message: serverText(error, t('errors.customer.inactivateFailed'), { write: true }),
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -562,7 +572,7 @@ class CustomerService {
       log.error('Exception in inactivateCustomer', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.inactivateFailed'),
+        message: serverText(error, t('errors.customer.inactivateFailed'), { write: true }),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
@@ -603,8 +613,9 @@ class CustomerService {
         // direct write to the customers table.
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.restoreFailed')),
+          message: serverText(error, t('errors.customer.restoreFailed'), { write: true }),
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -626,7 +637,7 @@ class CustomerService {
       log.error('Exception in restoreCustomer', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.restoreFailed'),
+        message: serverText(error, t('errors.customer.restoreFailed'), { write: true }),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }

@@ -16,11 +16,12 @@ async function ownCustomers(ctx: FilterContext): Promise<PickedOption[]> {
   if (known.length === ctx.assignedCustomers.length) return known;
   // The profile carried ids only: read the names (row-level security keeps this to own customers).
   const client = await getAuthenticatedClient();
-  const { data } = await client
+  const { data, error } = await client
     .from('customers')
     .select('id, name, city')
     .in('id', ctx.assignedCustomers.map(customer => customer.id))
     .order('name');
+  if (error) throw error;
   return (data ?? []).map(row => ({ id: row.id, label: row.name, detail: row.city ?? undefined }));
 }
 
@@ -28,7 +29,9 @@ export const customerSource: PickerSource = {
   async initial(ctx) {
     if (!ctx.isWarehouseRole) return ownCustomers(ctx);
     const client = await getAuthenticatedClient();
-    const { data } = await client.from('customers').select('id, name, city').order('name').limit(INITIAL_OPTIONS);
+    const { data, error } = await client.from('customers').select('id, name, city').order('name').limit(INITIAL_OPTIONS);
+    // A failed load throws: the picker then says it could not load, instead of listing nothing.
+    if (error) throw error;
     return (data ?? []).map(row => ({ id: row.id, label: row.name, detail: row.city ?? undefined }));
   },
   async search(query, ctx) {
@@ -36,7 +39,7 @@ export const customerSource: PickerSource = {
       const needle = query.trim().toLowerCase();
       return (await ownCustomers(ctx)).filter(customer => customer.label.toLowerCase().includes(needle));
     }
-    const results = await searchService.searchCustomers(query);
+    const results = await searchService.searchCustomersOrThrow(query);
     return results.map(result => ({ id: result.value, label: result.label, detail: result.city ?? result.detail }));
   },
 };

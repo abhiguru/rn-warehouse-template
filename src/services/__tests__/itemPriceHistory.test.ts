@@ -113,7 +113,7 @@ it('a request that throws is a failure too', async () => {
   const result = await getItemPriceHistory();
   expect(result.success).toBe(false);
   expect(result.data).toEqual([]);
-  expect(result.message).toBe('Network connection issue. Please check your internet and try again.');
+  expect(result.message).toBe('Check your connection and try again.');
 });
 
 // A backend without migration 48 does not have the function: PostgREST answers PGRST202.

@@ -115,7 +115,7 @@ class AdminUserService {
         log.error('getUsersList error', loggableError(error));
         return {
           success: false,
-          error: serverText(error.message, t('errors.user.fetchListFailed')),
+          error: serverText(error, t('errors.user.fetchListFailed')),
         };
       }
 
@@ -177,7 +177,7 @@ class AdminUserService {
       log.error('Exception in getUsersList', loggableError(error));
       return {
         success: false,
-        error: error instanceof Error ? error.message : t('errors.general.unknown'),
+        error: serverText(error, t('errors.general.unknown')),
       };
     }
   }
@@ -203,7 +203,7 @@ class AdminUserService {
         log.error('getUserDetails error', loggableError(error));
         return {
           success: false,
-          error: serverText(error.message, t('errors.user.fetchDetailsFailed')),
+          error: serverText(error, t('errors.user.fetchDetailsFailed')),
         };
       }
 
@@ -250,7 +250,7 @@ class AdminUserService {
       log.error('Exception in getUserDetails', loggableError(error));
       return {
         success: false,
-        error: error instanceof Error ? error.message : t('errors.general.unknown'),
+        error: serverText(error, t('errors.general.unknown')),
       };
     }
   }
@@ -279,7 +279,7 @@ class AdminUserService {
         log.error('updateUserRole error', loggableError(error));
         return {
           success: false,
-          error: serverText(error.message, t('errors.user.updateUserRoleFailed')),
+          error: serverText(error, t('errors.user.updateUserRoleFailed'), { write: true }),
         };
       }
 
@@ -294,7 +294,7 @@ class AdminUserService {
             ? t('errors.user.lastAdminRole')
             : refusalCode(responseData) === SERVICE_ACCOUNT_READ_ONLY
               ? t('users.edit.serviceAccountReadOnly')
-              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateRoleFailed')),
+              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateRoleFailed'), { write: true }),
         };
       }
 
@@ -311,7 +311,7 @@ class AdminUserService {
       log.error('Exception in updateUserRole', loggableError(error));
       return {
         success: false,
-        error: error instanceof Error ? error.message : t('errors.general.unknown'),
+        error: serverText(error, t('errors.general.unknown'), { write: true }),
       };
     }
   }
@@ -341,7 +341,7 @@ class AdminUserService {
         log.error('updateUserStatus error', loggableError(error));
         return {
           success: false,
-          error: serverText(error.message, t('errors.user.updateUserStatusFailed')),
+          error: serverText(error, t('errors.user.updateUserStatusFailed'), { write: true }),
         };
       }
 
@@ -355,7 +355,7 @@ class AdminUserService {
             ? t('errors.user.lastAdminDeactivate')
             : refusalCode(responseData) === SERVICE_ACCOUNT_READ_ONLY
               ? t('users.edit.serviceAccountReadOnly')
-              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateStatusFailed')),
+              : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateStatusFailed'), { write: true }),
         };
       }
 
@@ -371,7 +371,7 @@ class AdminUserService {
       log.error('Exception in updateUserStatus', loggableError(error));
       return {
         success: false,
-        error: error instanceof Error ? error.message : t('errors.general.unknown'),
+        error: serverText(error, t('errors.general.unknown'), { write: true }),
       };
     }
   }
@@ -401,6 +401,7 @@ class AdminUserService {
       },
       {
         context: 'AdminUserService.assignCustomerToUser',
+        write: true,
         errorMessage: t('errors.user.assignCustomerFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -432,6 +433,7 @@ class AdminUserService {
       },
       {
         context: 'AdminUserService.removeCustomerAssignment',
+        write: true,
         errorMessage: t('errors.user.removeAssignmentFailed'),
         unwrapNested: false,
         validateSuccess: false,

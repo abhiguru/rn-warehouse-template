@@ -229,13 +229,13 @@ export const createDispatch = async (payload: {
 
     if (error) {
       log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
-      throw new Error(serverText(error.message, t('dispatch.service.createFailed')));
+      throw new Error(serverText(error.message, t('dispatch.service.createFailed'), { write: true }));
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
       log.error('create_dispatch_with_stock_check returned failure');
-      throw new Error(serverText(data.error || data.message, t('dispatch.service.createFailed')));
+      throw new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true }));
     }
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
@@ -349,12 +349,12 @@ export const updateDispatch = async (
 
     if (error) {
       log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
-      throw new Error(serverText(error.message, t('dispatch.service.updateFailed')));
+      throw new Error(serverText(error.message, t('dispatch.service.updateFailed'), { write: true }));
     }
 
     if (data && data.success === false) {
       log.error('update_dispatch_smart returned failure', { dispatchId });
-      throw new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed')));
+      throw new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true }));
     }
 
     log.info('Dispatch updated', { dispatchId });
@@ -370,8 +370,8 @@ export const updateDispatch = async (
     log.error('Dispatch update failed', { dispatchId });
     return {
       success: false,
-      error: serverText(error.message, t('dispatch.service.updateFailed')),
-      message: serverText(error.message, t('dispatch.service.updateFailed')),
+      error: serverText(error.message, t('dispatch.service.updateFailed'), { write: true }),
+      message: serverText(error.message, t('dispatch.service.updateFailed'), { write: true }),
     };
   }
 };
@@ -505,6 +505,7 @@ export const deleteDispatch = async (
     },
     {
       context: 'DispatchFormService.deleteDispatch',
+      write: true,
       errorMessage: t('dispatch.service.deleteFailed'),
       unwrapNested: false,
       validateSuccess: false,

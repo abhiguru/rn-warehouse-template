@@ -197,7 +197,7 @@ const ItemEditScreen: React.FC = () => {
         ) {
           setErrors({ name: tr('items.form.duplicateName') });
         } else {
-          showAlert(tr('items.form.couldNotSaveTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
+          showAlert(tr('items.form.couldNotSaveTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment'), { write: true }));
         }
       }
     } catch (err) {

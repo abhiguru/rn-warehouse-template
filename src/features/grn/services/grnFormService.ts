@@ -283,13 +283,13 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     if (error) {
       log.error('save_grn failed', loggableError(error));
       if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
-      throw new Error(serverText(error.message, t('grn.form.requestFailed')));
+      throw new Error(serverText(error.message, t('grn.form.requestFailed'), { write: true }));
     }
 
     if (!data || !data.success) {
       log.error('save_grn returned failure', { errorCode: data?.error_code });
-      if (isRateRefusalCode(data?.error_code)) throw new RateRefusal(data.error_code, serverText(data?.message ?? data?.error, t('grn.form.creationFailed')), data?.data);
-      throw new Error(serverText(data?.message, t('grn.form.creationFailed')));
+      if (isRateRefusalCode(data?.error_code)) throw new RateRefusal(data.error_code, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true }), data?.data);
+      throw new Error(serverText(data?.message, t('grn.form.creationFailed'), { write: true }));
     }
     // The write changed what reports count: a report on screen asks again (SR-10).
     void invalidateReportQueries();
@@ -572,7 +572,7 @@ export const updateGRN = async (
         throw new Error(`Stock Protection: ${error.message}`);
       }
 
-      throw new Error(serverText(error.message, t('grn.form.requestFailed')));
+      throw new Error(serverText(error.message, t('grn.form.requestFailed'), { write: true }));
     }
 
     // RPC returns array, get first result (with safe array access)
@@ -586,10 +586,10 @@ export const updateGRN = async (
         throw new Error(`Stock Protection: ${rpcResult.message}`);
       }
       if (isRateRefusalCode(rpcResult?.error_code)) {
-        throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected')), rpcResult?.data);
+        throw new RateRefusal(rpcResult.error_code, serverText(rpcResult?.message ?? rpcResult?.error, t('grn.form.updateRejected'), { write: true }), rpcResult?.data);
       }
 
-      throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected')));
+      throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected'), { write: true }));
     }
 
     // Saved (also when this is the stored answer of an earlier attempt,

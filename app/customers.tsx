@@ -186,7 +186,7 @@ export default function CustomersScreen() {
           // Show error to user
           showAlert(
             currentActive ? tr('customers.list.couldNotDeactivateTitle') : tr('customers.list.couldNotActivateTitle'),
-            serverText(result.message, tr('customers.list.tryAgainInAMoment')),
+            serverText(result.message, tr('customers.list.tryAgainInAMoment'), { write: true }),
             [{ text: tr('common.ok') }]
           );
         }

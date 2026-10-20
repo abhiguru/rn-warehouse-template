@@ -12,7 +12,7 @@ import type { ServiceResponse, ServiceListResponse } from '../types/service.type
 import { createEmptyListResponse } from '../types/service.types';
 import { getAppErrorCode } from './appError';
 import { t, type TranslationKey } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -460,6 +460,16 @@ export async function withServiceErrorHandling<T>(
 }
 
 /**
+ * The code a transport failure is told apart by ('NETWORK' or 'TIMEOUT'), so a screen can ask
+ * isNetworkError(result) of a service result; undefined for any other failure.
+ */
+function transportCode(error: unknown): 'NETWORK' | 'TIMEOUT' | undefined {
+  if (isTimeoutError(error)) return 'TIMEOUT';
+  if (isNetworkError(error)) return 'NETWORK';
+  return undefined;
+}
+
+/**
  * M1 Fix: DRY utility for creating error response base fields
  *
  * Creates the common error response fields that can be spread into
@@ -480,7 +490,7 @@ export function createErrorResponse(
   error: unknown,
   defaultMessage: string,
   context?: string
-): { success: false; message: string; error: string } {
+): { success: false; message: string; error: string; errorCode?: string } {
   const categorized = categorizeError(error);
 
   // Log error if context provided
@@ -494,10 +504,12 @@ export function createErrorResponse(
   // Global auth error handling - auto logout on auth failures
   handleGlobalAuthError(error);
 
+  const code = transportCode(error);
   return {
     success: false,
     message: defaultMessage,
     error: categorized.message,
+    ...(code ? { errorCode: code } : {}),
   };
 }
 
@@ -557,6 +569,8 @@ export interface ExecuteRPCOptions<TRaw, TResult = TRaw> {
   validateSuccess?: boolean;
   /** Whether to log RPC call timing (default: false) */
   logTiming?: boolean;
+  /** The call changes data: a timeout then says the change may have been saved (see serverText). */
+  write?: boolean;
 }
 
 export interface RPCResult<T> {
@@ -589,6 +603,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     unwrapNested = true,
     validateSuccess = true,
     logTiming = false,
+    write = false,
   } = options;
 
   const startTime = logTiming ? Date.now() : 0;
@@ -620,9 +635,11 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
       return {
         success: false,
-        message: errorMessage || serverText(supabaseError.message, t('errors.general.executeFailed', { name: rpcName })),
+        message:
+          transportText(supabaseError, { write }) ??
+          (errorMessage || serverText(supabaseError.message, t('errors.general.executeFailed', { name: rpcName }), { code: supabaseError.code, write })),
         error: supabaseError.message || 'RPC_ERROR',
-        errorCode: supabaseError.code,
+        errorCode: supabaseError.code || transportCode(supabaseError),
       };
     }
 
@@ -641,7 +658,10 @@ export async function executeRPC<TRaw, TResult = TRaw>(
       handleGlobalAuthError(dataObj);
       return {
         success: false,
-        message: (dataObj.message as string) || errorMessage || t('errors.general.operationFailed'),
+        message: serverText(dataObj.message ?? dataObj.error, errorMessage || t('errors.general.operationFailed'), {
+          code: typeof dataObj.error_code === 'string' ? dataObj.error_code : undefined,
+          write,
+        }),
         error: (dataObj.error as string) || 'API_ERROR',
         ...(typeof dataObj.error_code === 'string' ? { errorCode: dataObj.error_code } : {}),
       };
@@ -670,9 +690,9 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
     return {
       success: false,
-      message: errorMessage || categorized.userMessage,
+      message: transportText(error, { write }) ?? (errorMessage || categorized.userMessage),
       error: categorized.message,
-      errorCode: categorized.code,
+      errorCode: transportCode(error) ?? categorized.code,
     };
   }
 }

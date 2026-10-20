@@ -137,9 +137,10 @@ class ItemService {
         console.error('[ItemService] List error:', error);
         return {
           success: false,
-          message: serverText(error.message, t('errors.item.fetchListFailed')),
+          message: serverText(error, t('errors.item.fetchListFailed')),
           data: [],
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -212,7 +213,7 @@ class ItemService {
       console.error('[ItemService] Exception in getItemList:', error);
       return {
         success: false,
-        message: t('errors.item.fetchListFailed'),
+        message: serverText(error, t('errors.item.fetchListFailed')),
         data: [],
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
@@ -256,8 +257,9 @@ class ItemService {
         console.error('[ItemService] Get by ID error:', error);
         return {
           success: false,
-          message: serverText(error.message, t('errors.item.notFound')),
+          message: serverText(error, t('errors.item.notFound')),
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -316,7 +318,7 @@ class ItemService {
       console.error('[ItemService] Exception in getItemById:', error);
       return {
         success: false,
-        message: t('errors.item.fetchFailed'),
+        message: serverText(error, t('errors.item.fetchFailed')),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
@@ -354,6 +356,7 @@ class ItemService {
       params as unknown as Record<string, unknown>,
       {
         context: 'ItemService.createItem',
+        write: true,
         errorMessage: t('errors.item.createFailed'),
         unwrapNested: false,
         validateSuccess: false, // We validate manually below
@@ -369,6 +372,7 @@ class ItemService {
         success: false,
         message: result.message,
         error: result.error,
+        code: result.errorCode,
       };
     }
 
@@ -427,6 +431,7 @@ class ItemService {
       params as unknown as Record<string, unknown>,
       {
         context: 'ItemService.updateItem',
+        write: true,
         errorMessage: t('errors.item.updateFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -438,6 +443,7 @@ class ItemService {
         success: false,
         message: result.message,
         error: result.error,
+        code: result.errorCode,
       };
     }
 
@@ -495,6 +501,7 @@ class ItemService {
       { p_item_id: itemId },
       {
         context: 'ItemService.deleteItem',
+        write: true,
         errorMessage: t('errors.item.deleteFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -558,7 +565,7 @@ class ItemService {
       console.error('[ItemService] Exception in toggleItemActive:', error);
       return {
         success: false,
-        message: t('errors.item.toggleStatusFailed'),
+        message: serverText(error, t('errors.item.toggleStatusFailed'), { write: true }),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }

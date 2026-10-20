@@ -29,6 +29,7 @@ export const customers: Translation<typeof source> = {
   search: {
     title: 'વેપારી પસંદ કરો',
     placeholder: 'વેપારી શોધો',
+    failed: 'વેપારીની શોધ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     close: 'વેપારીની શોધ બંધ કરો',
     searching: 'શોધી રહ્યા છીએ…',
     searchingLabel: 'શોધી રહ્યા છીએ',

@@ -89,7 +89,7 @@ export default function CustomerPage() {
         } else {
           showAlert(
             tr(active ? 'customers.list.couldNotActivateTitle' : 'customers.list.couldNotDeactivateTitle'),
-            serverText(result.message, tr('customers.list.tryAgainInAMoment')),
+            serverText(result.message, tr('customers.list.tryAgainInAMoment'), { write: true }),
             [{ text: tr('common.ok') }]
           );
         }

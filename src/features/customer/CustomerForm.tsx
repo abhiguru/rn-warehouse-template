@@ -143,7 +143,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
               : result.code === 'DUPLICATE_MOBILE'
                 ? tr('customers.save.duplicateMobile')
                 : undefined;
-          showAlert(tr('customers.save.errorTitle'), known ?? serverText(result.message, tr('customers.save.saveFailed')));
+          showAlert(tr('customers.save.errorTitle'), known ?? serverText(result.message, tr('customers.save.saveFailed'), { write: true }));
           return;
         }
         if (customerId) {

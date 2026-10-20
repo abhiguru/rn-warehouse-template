@@ -98,12 +98,12 @@ export async function reviewEnrollment(
     if (error.code === 'PGRST202') throw new AppError('REFUSED', t('errors.user.enrollmentServerNeedsUpdate'));
     // Only an answer from the database is the server saying no (INVALID_ROLE ...). A timeout, a gateway
     // page or a changed session leaves open whether the decision was saved.
-    if (UserService.isDatabaseAnswer(error)) throw new AppError('REFUSED', serverText(error.message, t('errors.user.enrollmentReviewNotAccepted')));
+    if (UserService.isDatabaseAnswer(error)) throw new AppError('REFUSED', serverText(error.message, t('errors.user.enrollmentReviewNotAccepted'), { write: true }));
     throw new Error(error.message);
   }
   // The request was decided meanwhile (by another administrator): say so, the screen reloads.
   if (data?.success === false && data?.code === 'unknown_user')
     throw new AppError('REFUSED', t('errors.user.enrollmentAlreadyHandled'));
   if (data?.success !== true || data?.data?.status !== decision)
-    throw new AppError('REFUSED', serverText(data?.message, t('errors.user.enrollmentReviewNotAccepted')));
+    throw new AppError('REFUSED', serverText(data?.message, t('errors.user.enrollmentReviewNotAccepted'), { write: true }));
 }

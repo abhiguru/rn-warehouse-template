@@ -170,7 +170,7 @@ export default function UserEditScreen() {
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
           showToast(tr(ROLE_CHANGED_KEYS[newRole], { name: user.name || tr('users.thisUser') }));
         } else {
-          showAlert(tr('users.edit.couldNotChangeRole'), serverText(response.error, tr('users.edit.tryAgainSoon')));
+          showAlert(tr('users.edit.couldNotChangeRole'), serverText(response.error, tr('users.edit.tryAgainSoon'), { write: true }));
         }
       } catch (err) {
         console.error('[UserEdit] Role update error:', err);
@@ -234,7 +234,7 @@ export default function UserEditScreen() {
         setUser((prev) => (prev ? { ...prev, active: false } : null));
         showToast(tr('users.edit.disconnectedMessage', { name: user.name || tr('users.thisUser') }));
       } else {
-        showAlert(tr('users.edit.couldNotDisconnect'), serverText(response.error, tr('users.edit.tryAgainSoon')));
+        showAlert(tr('users.edit.couldNotDisconnect'), serverText(response.error, tr('users.edit.tryAgainSoon'), { write: true }));
       }
     } catch {
       showAlert(tr('users.edit.couldNotDisconnect'), tr('common.checkConnection'));
@@ -255,7 +255,7 @@ export default function UserEditScreen() {
         setUser((prev) => (prev ? { ...prev, active } : null));
         showToast(tr(active ? 'users.edit.activatedMessage' : 'users.edit.deactivatedMessage', { name: user.name || tr('users.thisUser') }));
       } else {
-        showAlert(tr('users.edit.couldNotChangeStatus'), serverText(response.error, tr('users.edit.tryAgainSoon')));
+        showAlert(tr('users.edit.couldNotChangeStatus'), serverText(response.error, tr('users.edit.tryAgainSoon'), { write: true }));
       }
     } catch (err) {
       console.error('[UserEdit] Status update error:', err);
@@ -302,7 +302,7 @@ export default function UserEditScreen() {
           );
           showToast(tr('users.edit.assignedMessage', { name: customer.name }));
         } else {
-          showAlert(tr('users.edit.couldNotAssign'), serverText(response.error, tr('users.edit.tryAgainSoon')));
+          showAlert(tr('users.edit.couldNotAssign'), serverText(response.error, tr('users.edit.tryAgainSoon'), { write: true }));
         }
       } catch (err) {
         console.error('[UserEdit] Assign customer error:', err);
@@ -344,7 +344,7 @@ export default function UserEditScreen() {
                 } else {
                   showAlert(
                     tr('users.edit.couldNotRemove'),
-                    serverText(response.error, tr('users.edit.tryAgainSoon'))
+                    serverText(response.error, tr('users.edit.tryAgainSoon'), { write: true })
                   );
                 }
               } catch (err) {
@@ -369,18 +369,14 @@ export default function UserEditScreen() {
     async (query: string): Promise<CustomerSearchResult[]> => {
       if (query.length < 2) return [];
 
-      try {
-        const results = await customerService.searchCustomers(query, 20);
-        return results.map((c) => ({
-          id: c.id,
-          name: c.name,
-          mobile: c.mobile,
-          city: c.city,
-        }));
-      } catch (err) {
-        console.error('[UserEdit] Customer search error:', err);
-        return [];
-      }
+      // A failed search throws: the sheet then says so and offers Try again, instead of "Nothing matches".
+      const results = await customerService.searchCustomers(query, 20);
+      return results.map((c) => ({
+        id: c.id,
+        name: c.name,
+        mobile: c.mobile,
+        city: c.city,
+      }));
     },
     []
   );
@@ -681,6 +677,7 @@ export default function UserEditScreen() {
         title={tr('users.edit.assignCustomer')}
         placeholder={tr('users.edit.searchPlaceholder')}
         searchFn={searchCustomers}
+        searchErrorText={tr('customers.search.failed')}
         renderItem={renderCustomerSearchItem}
         keyExtractor={(item) => item.id}
         emptyInitialText={tr('users.edit.searchEmpty')}

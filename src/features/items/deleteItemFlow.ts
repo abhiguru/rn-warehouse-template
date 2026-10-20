@@ -90,7 +90,7 @@ export async function deleteItemFlow(item: { id: string; name: string }, { onDel
               { text: t('items.list.deactivateItem'), onPress: onDeactivate },
             ]);
           } else {
-            showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment')));
+            showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true }));
           }
         } catch (error) {
           log.error('deleteItem error', loggableError(error));

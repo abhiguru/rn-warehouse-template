@@ -710,7 +710,7 @@ export function useDispatchForm({
           failedPhotos: result.failed_photos ?? [],
         };
       } else {
-        report(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed')));
+        report(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed'), { write: true }));
         return { success: false, error: result.error };
       }
     } catch (error) {

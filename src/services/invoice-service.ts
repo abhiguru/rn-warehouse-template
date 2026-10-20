@@ -907,7 +907,7 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
     getAuthenticatedClient,
     'delete_invoice',
     { p_invoice_id: invoiceId },
-    { context: 'InvoiceService.deleteInvoice', errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
+    { context: 'InvoiceService.deleteInvoice', write: true, errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
   );
 
   if (!result.success) {

@@ -18,8 +18,19 @@ export interface SearchResult {
 }
 
 class SearchService {
-  // Search customers by name using RPC for proper security
+  // Search customers by name using RPC for proper security.
+  // A search that fails answers [] (see searchCustomersOrThrow for a picker that says so).
   async searchCustomers(query: string): Promise<SearchResult[]> {
+    try {
+      return await this.searchCustomersOrThrow(query);
+    } catch {
+      return [];
+    }
+  }
+
+  // The same search, but a search that could not be made throws instead of answering [],
+  // so a picker can tell "could not search" from "nothing matches".
+  async searchCustomersOrThrow(query: string): Promise<SearchResult[]> {
     try {
       if (!query || query.length < 1) {
         return [];
@@ -34,8 +45,7 @@ class SearchService {
         });
 
       if (error) {
-        log.error('searchCustomers error', loggableError(error));
-        return [];
+        throw error; // logged once, by the catch below
       }
 
       // Handle wrapped response format: { data: [...], message, success }
@@ -78,7 +88,7 @@ class SearchService {
       return results;
     } catch (error) {
       log.error('Exception in searchCustomers', loggableError(error));
-      return [];
+      throw error;
     }
   }
 

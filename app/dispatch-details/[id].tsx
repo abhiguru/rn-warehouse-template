@@ -298,7 +298,7 @@ function DispatchDetailScreen() {
             [{ text: tr('common.close') }]
           );
         } else {
-          showAlert(tr('dispatch.details.deleteFailedTitle'), serverText(result.error || result.message, tr('dispatch.details.tryAgain')));
+          showAlert(tr('dispatch.details.deleteFailedTitle'), serverText(result.error || result.message, tr('dispatch.details.tryAgain'), { write: true }));
         }
       }
     } catch (error) {

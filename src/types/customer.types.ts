@@ -175,6 +175,8 @@ export interface CustomerListResponse {
   data: CustomerListItem[];
   pagination?: CustomerPagination;
   error?: string;
+  /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */
+  code?: string;
 }
 
 /**

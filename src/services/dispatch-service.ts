@@ -984,7 +984,7 @@ export const deleteDispatch = async (
       console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(result.blocking_reason) });
       return {
         success: false,
-        message: serverText(result.message, t('errors.dispatch.deleteFailed')),
+        message: serverText(result.message, t('errors.dispatch.deleteFailed'), { write: true }),
         error: result.error,
         invoiceItemsCount: result.invoice_items_count,
         blockingReason: result.blocking_reason,

@@ -41,6 +41,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   BackHandler,
+  AccessibilityInfo,
   ListRenderItem,
 } from 'react-native';
 import {
@@ -110,6 +111,14 @@ export interface SearchableBottomSheetProps<T> {
   emptySubText?: string;
   /** Optional: a button under the empty-state text (for example Try again when the list could not be loaded) */
   emptyAction?: { label: string; onPress: () => void };
+  /**
+   * Optional: what to say when the search itself failed (no connection ...), for
+   * example "Couldn't search customers. Check your connection and try again."
+   * The sheet then shows this text and a Try again button that repeats the search,
+   * instead of "Nothing matches". The `searchFn` must throw for a failure; a
+   * `searchFn` that returns [] on failure shows the empty result.
+   */
+  searchErrorText?: string;
 }
 
 // ============================================================================
@@ -190,6 +199,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   emptyInitialText: emptyInitialTextProp,
   emptySubText: emptySubTextProp,
   emptyAction,
+  searchErrorText,
 }: SearchableBottomSheetProps<T>): ReactElement {
   const placeholder = placeholderProp ?? tr('common.search');
   const emptyInitialText = emptyInitialTextProp ?? tr('components.searchSheet.emptyInitial');
@@ -214,6 +224,15 @@ export function SearchableBottomSheet<T extends { id: string }>({
     userId
   );
 
+  // Whether the last search failed (thrown by searchFn), as opposed to finding nothing
+  const [searchFailed, setSearchFailed] = React.useState(false);
+  const handleSearchStart = useCallback(() => setSearchFailed(false), []);
+  const failedText = searchErrorText ?? tr('components.searchSheet.searchFailed');
+  const handleSearchError = useCallback(() => {
+    setSearchFailed(true);
+    AccessibilityInfo.announceForAccessibility(failedText);
+  }, [failedText]);
+
   // Search state via hook
   const {
     searchQuery,
@@ -227,12 +246,23 @@ export function SearchableBottomSheet<T extends { id: string }>({
     searchFn: searchNormalized,
     minQueryLength,
     debounceMs,
+    onSearchStart: handleSearchStart,
+    onSearchError: handleSearchError,
   });
 
   // Snap points
   const snapPoints = useMemo(
     () => customSnapPoints || ['60%', '95%'],
     [customSnapPoints]
+  );
+
+  // A new text is a new search: the failure of the last one no longer applies
+  const handleTextChange = useCallback(
+    (text: string) => {
+      setSearchFailed(false);
+      handleSearchChange(text);
+    },
+    [handleSearchChange]
   );
 
   // Handle sheet changes
@@ -245,6 +275,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
         }
         onClose();
         clearSearch();
+        setSearchFailed(false);
       }
     },
     [onClose, clearSearch, searchTimeoutRef]
@@ -331,6 +362,23 @@ export function SearchableBottomSheet<T extends { id: string }>({
       );
     }
 
+    if (searchFailed && searchQuery.length >= minQueryLength) {
+      return (
+        <View style={dynamicStyles.emptyContainer}>
+          <Icon
+            name="alert-circle-outline"
+            size={iconSize.hero}
+            color={t.status.negative.text}
+            style={styles.emptyIcon}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <Text style={dynamicStyles.emptyText} accessibilityLiveRegion="polite">{failedText}</Text>
+          <Button type="secondary" onPress={() => { void performSearchNow(searchQuery); }} testID="sheet-search-retry">{tr('common.retry')}</Button>
+        </View>
+      );
+    }
+
     if (searchQuery.length >= minQueryLength) {
       return (
         <View style={dynamicStyles.emptyContainer}>
@@ -375,6 +423,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
     emptyInitialText,
     emptySubText,
     emptyAction,
+    searchFailed,
+    searchErrorText,
+    performSearchNow,
     recentItems,
     renderRecentSection,
     dynamicStyles,
@@ -478,7 +529,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
             placeholderTextColor={t.text.placeholder}
             accessibilityLabel={placeholder}
             value={searchQuery}
-            onChangeText={handleSearchChange}
+            onChangeText={handleTextChange}
             returnKeyType="search"
             autoCapitalize="words"
             autoCorrect={false}

@@ -88,6 +88,8 @@ export interface ItemServiceResponse<T = Item> {
   message: string;
   data?: T;
   error?: string;
+  /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */
+  code?: string;
 }
 
 /**
@@ -98,6 +100,8 @@ export interface ItemListResponse {
   message: string;
   data: ItemListItem[];
   pagination?: ItemPagination;
+  /** The failure's code, as in ItemServiceResponse. */
+  code?: string;
   error?: string;
 }
 

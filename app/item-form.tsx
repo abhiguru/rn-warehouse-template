@@ -150,7 +150,7 @@ const ItemFormScreen: React.FC = () => {
             result.message?.toLowerCase().includes('already exists')) {
           setErrors({ name: tr('items.form.duplicateName') });
         } else {
-          showAlert(tr('items.form.couldNotAddTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
+          showAlert(tr('items.form.couldNotAddTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment'), { write: true }));
         }
       }
     } catch (err) {

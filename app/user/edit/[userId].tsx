@@ -185,7 +185,7 @@ const UserEditScreen: React.FC = () => {
         leaveWithoutAsking(() => router.back());
         showToast(tr('users.selfEdit.savedTitle'));
       } else {
-        showAlert(tr('users.selfEdit.couldNotSaveTitle'), serverText(result.message, tr('users.edit.tryAgainSoon')));
+        showAlert(tr('users.selfEdit.couldNotSaveTitle'), serverText(result.message, tr('users.edit.tryAgainSoon'), { write: true }));
       }
     } catch (error) {
       log.error('Save error', loggableError(error));

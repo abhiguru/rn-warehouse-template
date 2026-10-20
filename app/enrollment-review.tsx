@@ -105,12 +105,9 @@ export default function EnrollmentReviewScreen() {
 
   const searchCustomers = useCallback(async (query: string): Promise<CustomerHit[]> => {
     if (query.length < 2) return [];
-    try {
-      const results = await customerService.searchCustomers(query, 20);
-      return results.map(customer => ({ id: customer.id, name: customer.name, mobile: customer.mobile, city: customer.city }));
-    } catch {
-      return [];
-    }
+    // A failed search throws: the sheet then says so and offers Try again, instead of "Nothing matches".
+    const results = await customerService.searchCustomers(query, 20);
+    return results.map(customer => ({ id: customer.id, name: customer.name, mobile: customer.mobile, city: customer.city }));
   }, []);
 
   const addChosen = useCallback((customer: CustomerHit) => {
@@ -326,6 +323,7 @@ export default function EnrollmentReviewScreen() {
         title={tr('auth.review.searchTitle')}
         placeholder={tr('customers.search.placeholder')}
         searchFn={searchCustomers}
+        searchErrorText={tr('customers.search.failed')}
         renderItem={renderHit}
         keyExtractor={item => item.id}
         emptyInitialText={tr('users.edit.searchEmpty')}

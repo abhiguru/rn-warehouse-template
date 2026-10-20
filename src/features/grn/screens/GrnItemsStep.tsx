@@ -775,7 +775,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
           dropUnpreparedPhoto(tempImageData.id, { itemId, imageUrl: asset.uri });
           showAlert(
             tr('grn.photos.captureFailedTitle'),
-            serverText(uploadResult.error, tr('grn.photos.captureFailedMessage'))
+            serverText(uploadResult.error, tr('grn.photos.captureFailedMessage'), { write: true })
           );
           return;
         }

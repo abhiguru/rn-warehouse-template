@@ -269,7 +269,7 @@ export default function ItemsScreen() {
           // Show error to user
           showAlert(
             currentActive ? tr('items.list.couldNotDeactivateTitle') : tr('items.list.couldNotActivateTitle'),
-            serverText(result.message, tr('items.list.tryAgainInAMoment')),
+            serverText(result.message, tr('items.list.tryAgainInAMoment'), { write: true }),
             [{ text: tr('common.ok') }]
           );
         }
