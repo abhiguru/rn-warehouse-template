@@ -419,14 +419,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   //
   // `expectedUpdatedAt` is the version of the line the card's change is based on (owner decision D1). When the server
   // refuses with STALE_RECORD (someone else changed the line since), nothing was written: the order is read again, the
-  // card shows the quantity the line holds now, and the person is told so. Resolves `{ updatedAt }` instead of true when
-  // the server named the line's new version, so the card's next change starts from it.
+  // person is told so, and this resolves 'stale': the card drops what it was waiting to send, shows the quantity the line
+  // holds now and starts from its latest version (a plain false would make it flash the stock red and ask again). Resolves
+  // `{ updatedAt }` instead of true when the line's new version is known (the server named it, or the read that follows the
+  // save has the line with the quantity that was saved), so the card's next change starts from it.
   const handleQuantityUpdate = useCallback(async (
     itemId: string,
     newQuantity: number,
     lineOrderId?: string,
     expectedUpdatedAt?: string,
-  ): Promise<boolean | LineSaved> => {
+  ): Promise<boolean | LineSaved | 'stale'> => {
     const orderId = lineOrderId || orderRef.current?.id;
     if (!orderId) return false;
     // The answer to an earlier call for this line was lost and is being checked: nothing is sent for it meanwhile.
@@ -438,13 +440,21 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
       if (result.success) {
         // Refresh order, while it is still the one shown
-        if (activeOrderId.current === orderId) await onRefresh();
-        return result.updatedAt ? { updatedAt: result.updatedAt } : true;
+        const read = activeOrderId.current === orderId ? await rereadOrder() : null;
+        if (result.updatedAt) return { updatedAt: result.updatedAt };
+        // The server named no new version (an older one): the read that was just made has it, when the line holds the
+        // quantity that was saved (another quantity means someone else changed it since, and the card must not take
+        // over a version it has not seen).
+        const saved = read?.items?.find(line => line.id === itemId && isOpenLine(line));
+        return saved?.updated_at && saved.requested_quantity === newQuantity ? { updatedAt: saved.updated_at } : true;
       }
       // Someone else changed the line after this card read it: the server refused and wrote nothing. The order is read
       // again, and the card shows what the line holds now.
       if (result.refusal?.reason === REFUSAL.STALE_RECORD) {
         const read = activeOrderId.current === orderId ? await rereadOrder(false) : null;
+        // The order is no longer the one shown (the editor moved on to another business, or the screen was left): there
+        // is nothing to tell about it, and no connection problem to report.
+        if (activeOrderId.current !== orderId) return 'stale';
         const stored = read?.items?.find(line => line.id === itemId && isOpenLine(line));
         // The line already holds the quantity that was asked (only something else on it changed): nothing is left to do.
         if (stored && stored.requested_quantity === newQuantity) return stored.updated_at ? { updatedAt: stored.updated_at } : true;
@@ -463,7 +473,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           // The read behind the refusal did not answer, so the quantity it holds now is not known.
           showAlert(tr('orders.refusal.staleTitle'), tr('common.checkConnection'));
         }
-        return false;
+        return 'stale';
       }
       // No answer after the request went out: the line is locked, the server is asked what became of the change (the
       // order is read again once the phone is online and 10 s have passed) and the card shows the server's state.
@@ -503,7 +513,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('common.checkConnection'));
       return false;
     }
-  }, [onRefresh, rereadOrder, checkAfterLostAnswer]);
+  }, [rereadOrder, checkAfterLostAnswer]);
 
   // Handle removal of one line, by its id; one function for every card. Asks first, then removes.
   // Resolves true when the line is gone (removed, or already gone), false when it stays (the person said no, or
@@ -511,9 +521,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // buttons off while this runs and, on false or 'unknown', takes them back (and on 'unknown' sends no change
   // of the quantity that was waiting).
   //
-  // `expectedUpdatedAt`: the version of the line the card holds (owner decision D1). A STALE_RECORD answer means someone
+  // `getExpectedUpdatedAt` gives the version of the line the card holds (owner decision D1). It is asked for when the
+  // removal is actually sent, after the question above and after the card's own running save has finished (that save leaves
+  // a new version, and a removal sent with the old one would be refused as stale). A STALE_RECORD answer means someone
   // else changed the line since: it was not removed, the order is read again, and the person is told to check it.
-  const handleRemoveItem = useCallback(async (itemId: string, expectedUpdatedAt?: string): Promise<boolean | 'unknown'> => {
+  const handleRemoveItem = useCallback(async (
+    itemId: string,
+    getExpectedUpdatedAt?: () => Promise<string | undefined>,
+  ): Promise<boolean | 'unknown'> => {
     const current = orderRef.current;
     const item = current?.items?.find(line => line.id === itemId);
     if (!current || !item) return false;
@@ -539,6 +554,12 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     }
 
     try {
+      const expectedUpdatedAt = await getExpectedUpdatedAt?.();
+      // The answer to a change of this line was lost meanwhile and is being checked: nothing is sent for it until then.
+      if (checkingRef.current.has(itemId)) {
+        ownRemovals.current.delete(itemId);
+        return false;
+      }
       const sentAt = Date.now();
       const result = await dropLine(item.id, current.id, expectedUpdatedAt);
       if (result.success) {

@@ -48,7 +48,12 @@ export const orders = {
     quantitySaving: 'Quantity {{quantity}}, saving',
     quantitySaved: 'Quantity {{quantity}}, saved',
     // The line asks for more than the lot has now; {{stock}} is the stock. It can be lowered to that or removed.
+    // `onlyInStock` is the short form (a row of the Add items sheet); `overStock` is the warning on the order line.
     onlyInStock: 'Only {{stock}} in stock',
+    overStock: 'Only {{stock}} in stock. Lower it to {{stock}} or less, or remove it.',
+    // The spoken label of − and −10 on a line above its stock: they lower it ({{quantity}} is the quantity it gets, at most the
+    // stock); with no stock left they ask to remove it.
+    lowerTo: 'Lower {{name}} to {{quantity}}',
   },
   // What the server's refusals say on the order screen (wave B, owner decision D1).
   refusal: {

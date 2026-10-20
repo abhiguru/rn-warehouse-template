@@ -52,12 +52,15 @@ export const orders: Translation<typeof source> = {
     quantitySaved: 'નંગ {{quantity}}, સચવાયું',
     // Draft for the owner's wording review (2026-10-20): the line asks for more than the lot has now.
     onlyInStock: 'સ્ટોકમાં ફક્ત {{stock}} છે',
+    // Draft for the owner's wording review (2026-10-20): the warning on the order line, and the label of − and −10 above the stock.
+    overStock: 'સ્ટોકમાં ફક્ત {{stock}} છે. તેને ઘટાડીને {{stock}} કે તેથી ઓછું કરો, અથવા કાઢી નાખો.',
+    lowerTo: '{{name}} ને ઘટાડીને {{quantity}} કરો',
   },
   // Drafts for the owner's wording review (2026-10-20): someone else changed the line after this screen read it; nothing was saved.
   refusal: {
     staleTitle: 'બીજા કોઈએ ઑર્ડરની આ આઇટમ બદલી છે',
     stale: 'હવે તેમાં {{current}} દેખાય છે. તમે {{chosen}} ઇચ્છતા હતા. હજુ એ જોઈતું હોય તો ફરી બદલો.',
-    staleRemove: 'બીજા કોઈએ ઑર્ડરની આ આઇટમ બદલી છે, તેથી તે કાઢી નથી. તપાસીને ફરી પ્રયાસ કરો.',
+    staleRemove: 'બીજા કોઈએ ઑર્ડરની આ આઇટમ બદલી છે, તેથી તે કાઢી નાખી નથી. તપાસીને ફરી પ્રયાસ કરો.',
   },
   quickAdd: {
     select: '{{name}} પસંદ કરો',

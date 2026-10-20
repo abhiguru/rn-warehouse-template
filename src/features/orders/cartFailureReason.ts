@@ -24,7 +24,6 @@
  */
 import { t } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
-import { REFUSAL, type ServerRefusal } from '@/utils/serverRefusal';
 import { serverReason } from '@/utils/serverText';
 import { isOfflineFailure } from '@/utils/serviceErrorHandler';
 
@@ -39,11 +38,6 @@ export interface CartFailure {
    * flag every screen reads, computed where the HTTP status and the SQL code are still known.
    */
   lostAnswer?: boolean;
-  /**
-   * The rule the server refused by (wave B, `reason` and its fields), when it named one. A reason is read by this, never by
-   * the sentence.
-   */
-  refusal?: ServerRefusal;
 }
 
 const STOCK = /^Insufficient stock\. Available: (-?\d+), Requested: -?\d+$/i;
@@ -105,9 +99,6 @@ export function cartFailureReason(failure: CartFailure | null | undefined, conte
     return null;
   };
 
-  // Changed by someone else since the order was read (owner decision D1; nothing was written). The order editor tells
-  // each lot what the order holds now from a read made after the refusal; this is the reason when it has no read.
-  if (failure?.refusal?.reason === REFUSAL.STALE_RECORD) return t('orders.refusal.staleTitle');
   const stock = match(STOCK);
   if (stock) return t('orders.catalog.reasonStock', { bags: bags(stock[1]) });
   if (match(ALREADY_IN_ORDER)) return t('orders.catalog.reasonAlreadyInOrder');

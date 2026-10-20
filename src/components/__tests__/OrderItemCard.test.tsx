@@ -74,7 +74,7 @@ it('names its own line when it removes it or saves a pending change on unmount',
   let tree!: ReturnType<typeof create>;
   await act(async () => { tree = create(<OrderItemCard item={item} onQuantityChange={onQuantityChange} onRemove={onRemove} />); });
   await act(async () => { press(tree, 'Remove Fictional Onions from order'); });
-  expect(onRemove).toHaveBeenCalledWith('line-1');
+  expect(onRemove).toHaveBeenCalledWith('line-1', expect.any(Function));
   await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
   expect(onQuantityChange).not.toHaveBeenCalled();
   await act(async () => { tree.unmount(); });
@@ -104,7 +104,7 @@ describe('removing the line', () => {
     await act(async () => { press(tree, DECREASE); });
     expect(texts(tree)).toContain('1');
     await act(async () => { press(tree, REMOVE); });
-    expect(onRemove).toHaveBeenCalledWith('line-1');
+    expect(onRemove).toHaveBeenCalledWith('line-1', expect.any(Function));
     expect(byLabel(tree, INCREASE).props.disabled).toBe(true);
 
     // The question stays open longer than the 2 s wait: the change waiting to be saved is held back.

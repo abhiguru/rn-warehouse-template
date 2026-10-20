@@ -37,10 +37,18 @@ const sendChange = (
 ) => (version === undefined ? onChange(itemId, quantity, orderId) : onChange(itemId, quantity, orderId, version));
 
 /**
- * What a change of the quantity answers: true (or `{ updatedAt }`, which also names the line's new version) once the
- * server stored it, false when it did not.
+ * What − (amount 1) and −10 do to a line above its stock (owner decision D17): the quantity it is lowered to, never above
+ * the stock and never below 1; 0 when no stock is left, which asks to remove the line.
  */
-type QuantityAnswer = boolean | LineSaved | void;
+const loweredAboveStock = (quantity: number, stock: number, amount: number): number =>
+  stock <= 0 ? 0 : Math.min(stock, Math.max(1, quantity - amount));
+
+/**
+ * What a change of the quantity answers: true (or `{ updatedAt }`, which also names the line's new version) once the
+ * server stored it, false when it did not, and 'stale' when it refused because someone else changed the line since this
+ * card read it (owner decision D1): nothing was written, and the order was read again.
+ */
+type QuantityAnswer = boolean | LineSaved | 'stale' | void;
 
 interface OrderItemCardProps {
   item: OrderItem;
@@ -53,7 +61,8 @@ interface OrderItemCardProps {
    * card read with the line, or the one the card's own last save answered with. It is passed only when the card holds
    * one, so a server that sends none gets the call as before. The server refuses the change when the line was changed
    * by someone else since. A save that answers `{ updatedAt }` names the line's new version, and the card's next
-   * change starts from it.
+   * change starts from it. A save that answers 'stale' was refused for that reason: the card drops what was waiting,
+   * shows the quantity the line holds and starts from the line's latest version.
    */
   onQuantityChange: (
     itemId: string,
@@ -62,13 +71,19 @@ interface OrderItemCardProps {
     expectedUpdatedAt?: string
   ) => Promise<QuantityAnswer> | QuantityAnswer;
   /**
-   * Called with this card's line id (and, when the card holds one, the version of the line it is based on, as above).
+   * Called with this card's line id and a function that gives the version of the line the removal is based on (as
+   * above; undefined when the card holds none). The caller asks for it when the removal is actually sent, after the
+   * question "Remove …?" and after the card's own running save has finished, because that save leaves a new version of
+   * the line and a removal sent with the old one would be refused as stale.
    * Resolves true when the line was removed (or was already gone), false when
    * the person said no or the removal was refused, and 'unknown' when no answer came and the line may be gone.
    * While it runs the card's buttons are off, and no change of the quantity is sent; after 'unknown' the quantity
    * that was waiting is dropped too (a change of a line that may be gone), and the card shows the stored one.
    */
-  onRemove: (itemId: string, expectedUpdatedAt?: string) => Promise<boolean | 'unknown'> | boolean | 'unknown' | void;
+  onRemove: (
+    itemId: string,
+    getExpectedUpdatedAt?: () => Promise<string | undefined>
+  ) => Promise<boolean | 'unknown'> | boolean | 'unknown' | void;
   /**
    * The answer to a change of this line (`save`) or to its removal (`remove`) was lost and the server is being
    * asked what became of it: the card is locked (no tap on it does anything) and says so, until the order has
@@ -118,12 +133,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   // the version that save leaves and is not refused as stale.
   const savingRef = useRef(false);
   const queuedRef = useRef(false);
-
-  // Update local quantity when item prop changes
-  useEffect(() => {
-    setLocalQuantity(item.requested_quantity);
-    lastSavedQuantityRef.current = item.requested_quantity;
-  }, [item.requested_quantity]);
+  // The running save, until it is done: a removal and the save on unmount wait for it (see settleSaves).
+  const savePromiseRef = useRef<Promise<void> | null>(null);
 
   // Handle red flash animation for stock errors
   useEffect(() => {
@@ -182,9 +193,38 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       && !deferredSaveRef.current && !removalRef.current;
     if (idle) baseVersionRef.current = latestVersionRef.current;
   }, []);
+  // Update local quantity when item prop changes (a read of the order brought another quantity).
+  useEffect(() => {
+    // The read replaces the number shown while a change of the person's is still waiting for its 2 s (and no save of
+    // the card runs, and no removal is asked): the number they tapped is out of date, so it is not sent later over
+    // what the line holds now, and the card starts from the version of this read. Without that, the person's next tap
+    // on the number they now see would be sent with the old version and refused as stale.
+    const replacedWhileWaiting = debounceTimerRef.current !== null && !savingRef.current && !removalRef.current
+      && item.requested_quantity !== lastSavedQuantityRef.current;
+    setLocalQuantity(item.requested_quantity);
+    lastSavedQuantityRef.current = item.requested_quantity;
+    if (replacedWhileWaiting) {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+      deferredSaveRef.current = false;
+      setIsPending(false);
+      baseVersionRef.current = latestVersionRef.current;
+    }
+  }, [item.requested_quantity]);
   useEffect(() => {
     adoptLatestVersion();
   }, [item.updated_at, adoptLatestVersion]);
+
+  // Resolves when no save of this card is running (also one that starts from the one that ended).
+  const settleSaves = useCallback(async (): Promise<void> => {
+    while (savePromiseRef.current) await savePromiseRef.current;
+  }, []);
+  // The version a removal is based on, asked for when it is actually sent: after the card's own running save, which leaves
+  // a new version of the line.
+  const versionForRemoval = useCallback(async (): Promise<string | undefined> => {
+    await settleSaves();
+    return baseVersionRef.current;
+  }, [settleSaves]);
 
   // Async saves finish after unmount when the list refreshes.
   const isMountedRef = useRef(true);
@@ -195,67 +235,107 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
         // Force save if there's a pending update, but not while a removal is asked or running: that one covers the line.
-        const currentLocalQty = localQuantityRef.current;
-        const lastSavedQty = lastSavedQuantityRef.current;
-        if (currentLocalQty !== lastSavedQty && !removalRef.current) {
+        if (removalRef.current) return;
+        // A save of the card may still be running: this one goes out when it is done, so it starts from the version
+        // that save leaves (sent at once it would be refused as stale). What is sent is read then, from refs only.
+        const forceSave = () => {
+          const currentLocalQty = localQuantityRef.current;
+          const lastSavedQty = lastSavedQuantityRef.current;
+          if (currentLocalQty === lastSavedQty || removalRef.current) return;
           if (__DEV__) console.log(`[OrderItemCard] Force saving on unmount: ${lastSavedQty} → ${currentLocalQty}`);
           void sendChange(onQuantityChangeRef.current, itemIdRef.current, currentLocalQty, orderIdRef.current || undefined, baseVersionRef.current);
-        }
+        };
+        if (savePromiseRef.current) void settleSaves().then(forceSave);
+        else forceSave();
       }
     };
-  }, []); // Empty dependency array - only run on mount/unmount
+  }, [settleSaves]);
 
-  // Sends the quantity to the server, unless it is the one the server has.
-  const saveQuantity = useCallback(async (newQuantity: number): Promise<void> => {
+  // Sends the quantity to the server, unless it is the one the server has. One save at a time: a change that comes due while
+  // one runs waits for it (`queuedRef`) and goes out when it is done, from the version that save leaves, so it is not
+  // refused as stale. Every way to a save (the timer, the end of a check, Cancel after "Remove …?", the end of a save)
+  // comes through here.
+  const saveQuantity = useCallback((newQuantity: number): Promise<void> => {
+    if (savingRef.current) {
+      queuedRef.current = true;
+      return savePromiseRef.current ?? Promise.resolve();
+    }
     // Only send update if quantity actually changed from last saved value
     if (newQuantity === lastSavedQuantityRef.current) {
       if (isMountedRef.current) setIsPending(false);
-      return;
+      return Promise.resolve();
     }
     if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
     savingRef.current = true;
-    let answer: QuantityAnswer;
-    try {
-      answer = await sendChange(onQuantityChange, itemIdRef.current, newQuantity, orderIdRef.current || undefined, baseVersionRef.current);
-    } catch {
-      answer = false;
-    }
-    savingRef.current = false;
-    const saved = answer !== false;
-    // The save leaves a new version of the line: the card's next change is based on it. An answer that names none (an
-    // older server) leaves the card without one until the next read of the order brings it.
-    if (saved) baseVersionRef.current = answer && typeof answer === 'object' && answer.updatedAt ? answer.updatedAt : undefined;
-    // A change that came due while this one was running (see queuedRef).
-    const queued = queuedRef.current;
-    queuedRef.current = false;
-    if (!isMountedRef.current) return;
-    // A newer edit started while this one was saving; it owns the indicator.
-    const superseded = debounceTimerRef.current !== null || queued;
-    if (saved) {
-      lastSavedQuantityRef.current = newQuantity;
-    } else if (!superseded) {
-      // The server refused the change: show the stored quantity again.
-      setLocalQuantity(lastSavedQuantityRef.current);
-      triggerStockError();
-    }
-    if (queued) {
-      // The quantity shown now goes out, from the version this save left (after a question or a check, when one is open).
-      if (removalRef.current || checkingRef.current) deferredSaveRef.current = true;
-      else void saveQuantity(localQuantityRef.current);
-      return;
-    }
-    // A refused change leaves the line as it was: the card follows the line's version again (a read made after the
-    // refusal may have brought a newer one).
-    if (!saved) adoptLatestVersion();
-    if (superseded) return;
-    setIsPending(false);
-    if (saved) {
-      setShowSaved(true);
-      setTimeout(() => {
-        if (isMountedRef.current) setShowSaved(false);
-      }, 2000); // Show "Saved" for 2 seconds
-    }
+    const run: Promise<void> = (async () => {
+      let answer: QuantityAnswer;
+      try {
+        answer = await sendChange(onQuantityChange, itemIdRef.current, newQuantity, orderIdRef.current || undefined, baseVersionRef.current);
+      } catch {
+        answer = false;
+      }
+      savingRef.current = false;
+      const stale = answer === 'stale';
+      const saved = !stale && answer !== false;
+      if (saved) {
+        // The save leaves a new version of the line: the card's next change is based on it. An answer that names none (an
+        // older server) leaves the card without one until the next read of the order brings it.
+        baseVersionRef.current = answer && typeof answer === 'object' && answer.updatedAt ? answer.updatedAt : undefined;
+        lastSavedQuantityRef.current = newQuantity;
+      }
+      if (stale) {
+        // Someone else changed the line since this card read it (owner decision D1): nothing was written and the order was
+        // read again. What the person meant (this change, and any made meanwhile on top of the old number) is dropped:
+        // nothing is sent again by itself. The card shows the quantity the server has (a read that brought another one
+        // replaces it, see the effect on `item`), starts from the line's latest version, and does not flash the stock red.
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+        queuedRef.current = false;
+        deferredSaveRef.current = false;
+        localQuantityRef.current = lastSavedQuantityRef.current;
+        adoptLatestVersion();
+        if (isMountedRef.current) {
+          setLocalQuantity(lastSavedQuantityRef.current);
+          setIsPending(false);
+        }
+        return;
+      }
+      // A change that came due while this one was running (see queuedRef). It is handled before anything that needs the
+      // card on the screen, so that a change made while the last save ran is not lost when the card has gone: the quantity
+      // shown last goes out, from the version this save left (after a question or a check, when one is open).
+      const queued = queuedRef.current;
+      queuedRef.current = false;
+      if (queued) {
+        if (removalRef.current || checkingRef.current) deferredSaveRef.current = true;
+        else void saveQuantity(localQuantityRef.current);
+      }
+      if (!isMountedRef.current) return;
+      // A newer edit started while this one was saving; it owns the indicator.
+      const superseded = debounceTimerRef.current !== null || queued;
+      if (!saved && !superseded) {
+        // The server refused the change: show the stored quantity again.
+        setLocalQuantity(lastSavedQuantityRef.current);
+        triggerStockError();
+      }
+      if (queued) return;
+      // A refused change leaves the line as it was: the card follows the line's version again (a read made after the
+      // refusal may have brought a newer one).
+      if (!saved) adoptLatestVersion();
+      if (superseded) return;
+      setIsPending(false);
+      if (saved) {
+        setShowSaved(true);
+        setTimeout(() => {
+          if (isMountedRef.current) setShowSaved(false);
+        }, 2000); // Show "Saved" for 2 seconds
+      }
+    })().finally(() => {
+      if (savePromiseRef.current === run) savePromiseRef.current = null;
+    });
+    savePromiseRef.current = run;
+    return run;
   }, [onQuantityChange, triggerStockError, adoptLatestVersion]);
 
   // Debounced quantity update
@@ -277,11 +357,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         deferredSaveRef.current = true;
         return;
       }
-      // The last save of this card is still running: this change goes out when it is done, from the version it leaves.
-      if (savingRef.current) {
-        queuedRef.current = true;
-        return;
-      }
+      // If the last save of this card is still running, this change goes out when it is done (see saveQuantity).
       void saveQuantity(newQuantity);
     }, 2000); // 2 second delay
   }, [saveQuantity]);
@@ -302,8 +378,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     setIsRemoving(true);
     let outcome: boolean | 'unknown' = false;
     try {
-      const version = baseVersionRef.current;
-      const answer = await (version === undefined ? onRemove(item.id) : onRemove(item.id, version));
+      const answer = await onRemove(item.id, versionForRemoval);
       outcome = answer === true || answer === 'unknown' ? answer : false;
     } catch {
       outcome = false;
@@ -346,11 +421,11 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     // the step, to the stock at most; with no stock left only the removal remains and the tap asks for it.
     const available = item.grn_item?.current_stock;
     if (available !== undefined && localQuantity > available) {
-      if (available <= 0) {
+      const lowered = loweredAboveStock(localQuantity, available, amount);
+      if (lowered === 0) {
         void handleRemove();
         return;
       }
-      const lowered = Math.min(available, Math.max(1, localQuantity - amount));
       setLocalQuantity(lowered);
       debouncedQuantityUpdate(lowered);
       return;
@@ -407,6 +482,14 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const stock = item.grn_item.current_stock;
   const overStock = localQuantity > stock;
   const raiseOff = locked || overStock;
+  // − and −10 on a line above its stock lower it to the stock (the removal question when there is none): the spoken labels say so.
+  const lowerLabel = (amount: number): string | undefined => {
+    if (!overStock) return undefined;
+    const lowered = loweredAboveStock(localQuantity, stock, amount);
+    return lowered === 0
+      ? tr('orders.item.removeFromOrder', { name: itemName })
+      : tr('orders.item.lowerTo', { name: itemName, quantity: digits(lowered) });
+  };
   // The lot's weight is the weight of one bag, box or crate; a lot without one shows no weight.
   const weightEach = formatWeightEach(item.grn_item.weight);
   const quantityStatus = isPending ? tr('common.saving') : showSaved ? tr('orders.item.saved') : tr('orders.item.qty');
@@ -461,7 +544,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {overStock ? (
           <View style={styles.overStockRow} testID="order-line-over-stock">
-            <InlineValidation variant="warning" message={tr('orders.item.onlyInStock', { stock: digits(stock) })} />
+            <InlineValidation variant="warning" message={tr('orders.item.overStock', { stock: digits(stock) })} />
           </View>
         ) : null}
       </View>
@@ -475,7 +558,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           disabled={locked}
           accessibilityRole="button"
           accessibilityState={{ disabled: locked }}
-          accessibilityLabel={tr('orders.item.removeAmount', { amount: 10, name: itemName })}
+          accessibilityLabel={lowerLabel(10) ?? tr('orders.item.removeAmount', { amount: 10, name: itemName })}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('−10')}</Text>
         </Pressable>
@@ -487,7 +570,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
             disabled={locked}
             accessibilityRole="button"
             accessibilityState={{ disabled: locked }}
-            accessibilityLabel={localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 })}
+            accessibilityLabel={lowerLabel(1) ?? (localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 }))}
           >
             <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
           </Pressable>

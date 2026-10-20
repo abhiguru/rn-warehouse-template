@@ -7,6 +7,7 @@ import {
   createErrorResponse,
   executeRPC,
   handleGlobalAuthError,
+  type RPCResult,
 } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -36,6 +37,8 @@ import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { refusalOf } from '@/utils/serverRefusal';
+import { facilityKey } from '@/services/stock-service';
+import { isMissingFunction } from '@/services/item-pricing-service';
 
 /**
  * The new version of the order line in a server answer (`data.updated_at`, owner decision D1; the answer is the body,
@@ -48,11 +51,33 @@ function lineVersionOf(body: unknown): string | undefined {
 }
 
 /**
- * PostgREST found no function that takes the parameters sent (PGRST202): a server without migration 121 knows no
- * `p_expected_updated_at`. It refused the call before running anything, so the call can be sent again without it.
+ * The facilities (by origin and instance) whose `update_order_item_quantity` and `remove_item_from_order` refused
+ * `p_expected_updated_at` as an unknown parameter: a server without migration 121. Their later calls go without it at
+ * once, instead of failing first. Kept for the app's run: a facility that is updated is asked with it again after a
+ * restart.
  */
-function isUnknownFunctionSignature(result: { errorCode?: string; serverMessage?: string; error?: string }): boolean {
-  return result.errorCode === 'PGRST202' || /could not find the function/i.test(result.serverMessage ?? result.error ?? '');
+const facilitiesWithoutLineVersion = new Set<string>();
+/** Forget which facilities could not check a line's version (tests). */
+export const forgetLineVersionSupport = (): void => facilitiesWithoutLineVersion.clear();
+
+/**
+ * Sends a write of an order line with the line's version (`p_expected_updated_at`, owner decision D1). A server without
+ * migration 121 knows no such parameter and answers PGRST202 before it runs anything, so the call is sent again
+ * without it (no check) and the facility is remembered. Without a version the call goes out as it always did.
+ */
+async function withLineVersion<T>(
+  rpcName: string,
+  expectedUpdatedAt: string | undefined,
+  send: (withVersion: boolean) => Promise<RPCResult<T>>
+): Promise<RPCResult<T>> {
+  const facility = facilityKey();
+  if (!expectedUpdatedAt || (facility !== '' && facilitiesWithoutLineVersion.has(facility))) return send(false);
+  const result = await send(true);
+  if (!result.success && isMissingFunction({ code: result.errorCode, message: result.serverMessage ?? result.error }, rpcName)) {
+    if (facility !== '') facilitiesWithoutLineVersion.add(facility);
+    return send(false);
+  }
+  return result;
 }
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
@@ -244,7 +269,6 @@ export class OrderService {
     if (result.success) void invalidateReportQueries();
 
     const refusal = refusalOf(result);
-    const updatedAt = result.success ? lineVersionOf(result.data) : undefined;
     return {
       success: result.success,
       message: result.success ? t('errors.order.itemAdded') : result.message,
@@ -253,7 +277,6 @@ export class OrderService {
       serverMessage: result.serverMessage,
       ...(result.lostAnswer ? { lostAnswer: true } : {}),
       ...(refusal ? { refusal } : {}),
-      ...(updatedAt ? { updatedAt } : {}),
     };
   }
 
@@ -263,7 +286,7 @@ export class OrderService {
   // `expectedUpdatedAt` is the version of the line the change is based on (`updated_at` of the line as the screen read
   // it, owner decision D1). The server refuses the change with the reason STALE_RECORD (`refusal.reason`) when the line
   // was changed by someone else since, and writes nothing. It is sent only when the caller holds one. A server without
-  // migration 121 knows no such parameter and answers PGRST202: the call is then sent again without it (no check).
+  // migration 121 knows no such parameter and answers PGRST202: the call is then sent again without it (no check), see withLineVersion.
   static async updateOrderItemQuantity(
     itemId: string,
     orderId: string,
@@ -290,7 +313,7 @@ export class OrderService {
       };
     }
 
-    const send = (withVersion: boolean) =>
+    const result = await withLineVersion('update_order_item_quantity', expectedUpdatedAt, withVersion =>
       executeRPC<OrderItem>(
         getAuthenticatedClient,
         'update_order_item_quantity',
@@ -305,9 +328,8 @@ export class OrderService {
           errorMessage: t('errors.order.updateQuantityFailed'),
           unwrapNested: false,
         }
-      );
-    let result = await send(!!expectedUpdatedAt);
-    if (expectedUpdatedAt && !result.success && isUnknownFunctionSignature(result)) result = await send(false);
+      )
+    );
     if (result.success) void invalidateReportQueries();
 
     const refusal = refusalOf(result);
@@ -325,7 +347,7 @@ export class OrderService {
   }
 
   // Remove item from order. The RPC records the removal in the order history.
-  // `expectedUpdatedAt`: as for updateOrderItemQuantity (STALE_RECORD, nothing removed; sent again without it on PGRST202).
+  // `expectedUpdatedAt`: as for updateOrderItemQuantity (STALE_RECORD, nothing removed; see withLineVersion for an old server).
   static async removeItemFromOrder(
     itemId: string,
     _orderId: string,
@@ -339,7 +361,7 @@ export class OrderService {
       };
     }
 
-    const send = (withVersion: boolean) =>
+    const result = await withLineVersion('remove_item_from_order', expectedUpdatedAt, withVersion =>
       executeRPC<void>(
         getAuthenticatedClient,
         'remove_item_from_order',
@@ -350,9 +372,8 @@ export class OrderService {
           errorMessage: t('errors.order.removeItemFailed'),
           unwrapNested: false,
         }
-      );
-    let result = await send(!!expectedUpdatedAt);
-    if (expectedUpdatedAt && !result.success && isUnknownFunctionSignature(result)) result = await send(false);
+      )
+    );
     if (result.success) void invalidateReportQueries();
 
     const refusal = refusalOf(result);

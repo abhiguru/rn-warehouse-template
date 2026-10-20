@@ -117,8 +117,8 @@ export interface OrderServiceResponse<T = any> {
    */
   refusal?: ServerRefusal;
   /**
-   * The new version of the order line after a write (`data.updated_at` of the server's answer, owner decision D1): the
-   * next change of the line is sent with it. Absent from an old server.
+   * The new version of the order line after a change of its quantity (`data.updated_at` of the server's answer, owner
+   * decision D1): the next change of the line is sent with it. Absent from an old server, and from the other calls.
    */
   updatedAt?: string;
   metadata?: {

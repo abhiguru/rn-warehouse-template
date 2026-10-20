@@ -609,9 +609,16 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   }, [isVisible, fetchItems]);
 
   // Handle quantity change
-  const handleQuantityChange = useCallback((item: GRNItem, quantity: number) => {
+  const handleQuantityChange = useCallback((item: GRNItem, requested: number) => {
     // Nothing changes while an Add is being saved.
     if (savingRef.current) return;
+    // A lot the order holds above its stock (owner decision D17) may be lowered: a lower number is held at the stock at most
+    // (as the order line's own stepper does), and 0 (or no stock left) takes it off. Raising a lot above its stock stays refused,
+    // and nothing here changes a lot by itself.
+    const chosen = draftRef.current.selection.get(item.id)?.quantity ?? 0;
+    const quantity = chosen > item.current_stock && requested > 0 && requested < chosen
+      ? Math.min(item.current_stock, requested)
+      : requested;
     if (quantity === 0) {
       setDraft(prev => withQuantity(prev, item, 0));
 
@@ -1015,6 +1022,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       orderItem => orderItem.grnItemId === item.id
     );
 
+    // The lot is chosen above its stock (the order holds more than the lot has now, owner decision D17): a warning says so, and
+    // − and −10 lower it to the stock at most (or take it off when there is none); + stays refused.
+    const overStock = quantity > item.current_stock;
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
     const status = t.status[stockStatus];
     const stockWord = stockLabel(stockStatus);
@@ -1030,6 +1040,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
     const addBags = (count: number) => tr('orders.catalog.addBags', { count, name: item.name });
     const removeBags = (count: number) => tr('orders.catalog.removeBags', { count, name: item.name });
+    // What − and −10 give a lot above its stock: the quantity it is lowered to (never above the stock, never below 1; 0 when
+    // there is no stock, which takes it off), and the spoken label that says so.
+    const loweredTo = (amount: number) => item.current_stock <= 0 ? 0 : Math.min(item.current_stock, Math.max(1, quantity - amount));
+    const lowerBags = (amount: number) => loweredTo(amount) === 0
+      ? tr('orders.item.removeFromOrder', { name: item.name })
+      : tr('orders.item.lowerTo', { name: item.name, quantity: formatNumber(loweredTo(amount)) });
 
     const preset = (amount: number, label: string, a11y: string, disabled = false) => (
       <Pressable
@@ -1132,6 +1148,13 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           </View>
         ) : null}
 
+        {/* The lot is chosen above its stock: it can be lowered or taken off, not raised */}
+        {overStock ? (
+          <View style={styles.rowReason} testID={`catalog-over-stock-${item.id}`}>
+            <InlineValidation variant="warning" message={tr('orders.item.onlyInStock', { stock: formatNumber(item.current_stock) })} />
+          </View>
+        ) : null}
+
         {/* The answer for this lot was lost: it is locked while the server is asked what became of it */}
         {checkingHere ? (
           <View style={styles.rowReason} testID={`catalog-checking-${item.id}`}>
@@ -1155,8 +1178,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           {quantity > 0 && (
             <View style={styles.quantityControlsContainer}>
               <View style={styles.quantityControls}>
-                {stepper(Math.max(0, quantity - 10), '−10', removeBags(10), quantity < 10)}
-                {stepper(quantity - 1, '−', removeBags(1), quantity === 0)}
+                {overStock
+                  ? stepper(loweredTo(10), '−10', lowerBags(10), false)
+                  : stepper(Math.max(0, quantity - 10), '−10', removeBags(10), quantity < 10)}
+                {stepper(overStock ? loweredTo(1) : quantity - 1, '−', overStock ? lowerBags(1) : removeBags(1), quantity === 0)}
                 <Text
                   style={styles.quantity}
                   accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatBags(quantity), name: item.name })}
