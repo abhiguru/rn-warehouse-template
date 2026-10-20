@@ -12,6 +12,8 @@ export interface RatesStateProps {
   text?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** What a screen reader says for the action when it differs from the label ("+ Add item" is read without the plus). */
+  actionAccessibilityLabel?: string;
   testID?: string;
 }
 
@@ -22,7 +24,7 @@ const makeStyles = (th: ThemeTokens) => ({
   action: { marginTop: space.md },
 });
 
-export function RatesState({ icon, title, text, actionLabel, onAction, testID }: RatesStateProps) {
+export function RatesState({ icon, title, text, actionLabel, onAction, actionAccessibilityLabel, testID }: RatesStateProps) {
   const th = useTokens();
   const styles = useThemedStyles(makeStyles);
   return (
@@ -33,7 +35,7 @@ export function RatesState({ icon, title, text, actionLabel, onAction, testID }:
       <Text style={styles.title} accessibilityRole="header">{title}</Text>
       {text ? <Text style={styles.text}>{text}</Text> : null}
       {actionLabel && onAction ? (
-        <Button type="secondary" onPress={onAction} style={styles.action}>{actionLabel}</Button>
+        <Button type="secondary" onPress={onAction} style={styles.action} accessibilityLabel={actionAccessibilityLabel}>{actionLabel}</Button>
       ) : null}
     </View>
   );

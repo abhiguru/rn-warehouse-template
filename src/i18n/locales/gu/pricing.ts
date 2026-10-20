@@ -78,6 +78,9 @@ export const pricing: Translation<typeof source> = {
     pickNone: 'દર ઉમેરવા માટે બીજી કોઈ આઇટમ નથી.',
     footer: 'બાકીની બધી આઇટમ મૂળ દરે લાગે છે.',
     empty: '{{customer}} ના પોતાના દર હજુ નથી.',
+    // Draft for the owner's wording review (Customers review, 2026-10-20).
+    emptyDefault: 'દરેક આઇટમ મૂળ દરે લાગે છે.',
+    deactivated: 'આ વેપારી નિષ્ક્રિય છે. તેમના દર બદલવા તેમને સક્રિય કરો.',
     since: '{{date}} થી',
   },
   box: {

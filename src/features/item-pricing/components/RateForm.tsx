@@ -111,9 +111,11 @@ interface Props {
   priceType?: PriceType;
   /** correct and upcoming: the start of the period being corrected or changed. */
   startsOn?: string;
+  /** A customer's rate (mode addCustomer): true = the customer is deactivated, null = not known yet. Both leave Save off. */
+  customerDeactivated?: boolean | null;
 }
 
-export function RateForm({ itemId, mode, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink }: Props) {
+export function RateForm({ itemId, mode, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink, customerDeactivated }: Props) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
@@ -261,7 +263,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   const laterText = later && later.length > 0 && draft.startsOn ? laterDialogText(later, draft.startsOn, ctx.today) : null;
   const helper = offline ? t('pricing.error.offline') : !draft.startsOn ? t('pricing.edit.chooseDate') : null;
   // Nothing to save until the copy of the default rate is changed (owner, 2026-10-17).
-  const saveDisabled = saving || offline || !draft.startsOn || !editor.dirty || refusal !== null;
+  const saveDisabled = saving || offline || !draft.startsOn || !editor.dirty || refusal !== null || (customerDeactivated !== undefined && customerDeactivated !== false);
   const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : customerId ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
 
   /** A number field with + and − under it. */
@@ -292,6 +294,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
           it, as on the GRN Change rate screen (style guide §5.2). */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView ref={scrollRef} style={styles.flex} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" onScroll={onScroll} scrollEventThrottle={16}>
+          {customerDeactivated === true ? <EditorStrip variant="warning" message={t('pricing.customerTab.deactivated')} testID="add-rate-deactivated" /> : null}
           {refusal ? <EditorStrip variant="critical" message={refusal} testID="add-rate-refused" /> : null}
           {ctx.mode === 'correct' && !refusal ? (
             <EditorStrip variant="warning" message={t('pricing.edit.correctWarning', { date: dateText(draft.startsOn ?? '') })} testID="add-rate-correct-warning" />

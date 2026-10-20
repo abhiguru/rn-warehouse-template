@@ -390,7 +390,7 @@ export function ScopeRates({
   const addMode: EditorMode = 'addCustomer';
   const startAdding = (priceType?: PriceType) => setAdding(current => ({ priceType, nonce: (current?.nonce ?? 0) + 1 }));
 
-  const addBox = adding ? (
+  const addBox = adding && writable ? (
     <ScopeBox
       key={`add:${adding.nonce}`}
       id="add"

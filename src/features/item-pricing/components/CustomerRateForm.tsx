@@ -10,10 +10,12 @@ interface Props {
   customerId: string;
   /** From the link; the rows give it too once a customer has any rate. */
   customerName?: string;
+  /** The customer's state when known (true = deactivated, null = not known yet): a deactivated customer gets no new rate. */
+  customerDeactivated?: boolean | null;
 }
 
-export function CustomerRateForm({ itemId, customerId, customerName }: Props) {
-  return <RateForm itemId={itemId} mode="addCustomer" customerId={customerId} customerName={customerName} />;
+export function CustomerRateForm({ itemId, customerId, customerName, customerDeactivated }: Props) {
+  return <RateForm itemId={itemId} mode="addCustomer" customerId={customerId} customerName={customerName} customerDeactivated={customerDeactivated} />;
 }
 
 export default CustomerRateForm;

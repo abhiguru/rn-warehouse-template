@@ -78,6 +78,8 @@ export const pricing = {
     pickNone: 'There is no other item to add a rate for.',
     footer: 'All other items are charged at the default rate.',
     empty: '{{customer}} has no rates of their own yet.',
+    emptyDefault: 'Every item is charged at the default rate.',
+    deactivated: 'This customer is deactivated. Activate them to change their rates.',
     since: 'since {{date}}',
   },
   // The rate box: the band table that is edited in place.

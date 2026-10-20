@@ -41,7 +41,10 @@ export const rateFormPath = (p: { itemId: string; mode: 'add' | 'correct' | 'upc
 export const customerPricingPath = (customerId: string, itemId?: string) =>
   ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
 /** The box of one customer's own rate for one item. `add` opens the box for a new rate at once (the Pricing tab's "+ Add item"). */
-export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, add?: boolean) =>
+/** The customer's state carried in a link (`deactivated` = '1' or '0'); anything else = not known, the screen reads it. */
+export const knownDeactivated = (value: unknown): boolean | null => (value === '1' ? true : value === '0' ? false : null);
+const deactivatedParam = (deactivated?: boolean | null) => (typeof deactivated === 'boolean' ? { deactivated: deactivated ? '1' : '0' } : {});
+export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, add?: boolean, deactivated?: boolean | null) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',
     params: {
@@ -50,13 +53,14 @@ export const customerRatePath = (itemId: string, customerId: string, on?: string
       ...(on ? { on } : {}),
       ...(customerName ? { customer_name: customerName } : {}),
       ...(add ? { add: '1' } : {}),
+      ...deactivatedParam(deactivated),
     },
   }) as const;
 /** The full-screen form that adds a customer's own rate for one item (owner, 2026-10-17). */
-export const customerRateAddPath = (itemId: string, customerId: string, customerName?: string) =>
+export const customerRateAddPath = (itemId: string, customerId: string, customerName?: string, deactivated?: boolean | null) =>
   ({
     pathname: '/item-rates/[itemId]/customer-add/[customerId]',
-    params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}) },
+    params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}), ...deactivatedParam(deactivated) },
   }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
 /** The changes of one item or of one customer's rate for an item. */
