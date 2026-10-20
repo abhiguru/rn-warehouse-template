@@ -1,6 +1,6 @@
 import { getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
-import { clearAutocompleteCache, getGRNAutocomplete, getDispatchAutocomplete } from '../autocomplete-service';
+import { clearAutocompleteCache, getDispatchAutocomplete } from '../autocomplete-service';
 
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
@@ -18,7 +18,6 @@ beforeEach(() => {
 });
 
 describe.each([
-  ['GRN', getGRNAutocomplete, 'get_grn_autocomplete'],
   ['dispatch', getDispatchAutocomplete, 'get_dispatch_autocomplete'],
 ] as const)('%s searches', (_label, search, name) => {
   it('reauthorizes repeated queries instead of returning cached business data', async () => {

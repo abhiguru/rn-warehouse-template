@@ -61,6 +61,24 @@ describe('getAccessibleCustomers', () => {
     expect(customersIn).not.toHaveBeenCalled();
   });
 
+  it('lists the customers by name (ignoring case), then by id, whatever order the chunked reads return', async () => {
+    const row = (id: string, name: string) => ({ ...CUSTOMER, id, name });
+    // More than one chunk of ids (100 per read), each read answering in its own order.
+    const ids = Array.from({ length: 150 }, (_, index) => `c-${index}`);
+    const answers = [
+      [row('c-9', 'zeta Traders'), row('c-2', 'Alpha Traders')],
+      [row('c-5', 'alpha traders'), row('c-1', 'Beta Traders'), row('c-4', 'Alpha Traders')],
+    ];
+    const customersIn = jest.fn(async () => ({ data: answers.shift(), error: null }));
+    const client = {
+      rpc: jest.fn(async () => ({ data: ids, error: null })),
+      from: jest.fn(() => ({ select: () => ({ in: customersIn }) })),
+    };
+    const result = await UserService.getAccessibleCustomers(client as never);
+    expect(customersIn).toHaveBeenCalledTimes(2);
+    expect(result.customers.map(customer => customer.id)).toEqual(['c-2', 'c-4', 'c-5', 'c-1', 'c-9']);
+  });
+
   it('failed when the RPC fails, and the error is offered to the sign-out check', async () => {
     clientFor('rpc');
     expect(await UserService.getAccessibleCustomers()).toEqual({ status: 'failed', customers: [] });

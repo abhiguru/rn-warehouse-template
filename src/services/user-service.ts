@@ -150,9 +150,14 @@ export class UserService {
         }
         customers.push(...(rows as CustomerAssignment[]));
       }
+      // The chunked reads come back in no set order: by name (ignoring case and accents), then by id. Names that start with a digit
+      // come first here; the Customers rail lists them last, under '#'.
+      const byNameThenId = (a: CustomerAssignment, b: CustomerAssignment) =>
+        String(a.name ?? '').localeCompare(String(b.name ?? ''), 'en', { sensitivity: 'base' }) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
       return {
         status: 'loaded',
-        customers: customers.map((customer: CustomerAssignment) => ({
+        customers: customers.sort(byNameThenId).map((customer: CustomerAssignment) => ({
           id: customer.id,
           name: customer.name,
           mobile: customer.mobile,
