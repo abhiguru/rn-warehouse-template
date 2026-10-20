@@ -64,7 +64,7 @@ export interface AutocompleteResponse {
 let requestEpoch = 0;
 
 async function getAutocomplete(
-  rpcName: 'get_grn_autocomplete' | 'get_dispatch_autocomplete',
+  rpcName: 'get_dispatch_autocomplete',
   searchQuery: string,
   limit: number
 ): Promise<AutocompleteResponse> {
@@ -124,12 +124,6 @@ async function getAutocomplete(
     };
   }
 }
-
-export const getGRNAutocomplete = (
-  searchQuery: string,
-  limit: number = 10
-): Promise<AutocompleteResponse> =>
-  getAutocomplete('get_grn_autocomplete', searchQuery, limit);
 
 export const getDispatchAutocomplete = (
   searchQuery: string,
