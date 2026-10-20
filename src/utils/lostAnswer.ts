@@ -167,10 +167,12 @@ async function waitUntilOnline(signal?: AbortSignal): Promise<void> {
  * Rejects with an AbortError (see `isAbortError`) when the signal is aborted.
  */
 export async function waitForServer(sentAt: number, signal?: AbortSignal): Promise<void> {
+  // The end of the 10 s, fixed once and capped at 10 s from now, so a clock that was set back after the request went
+  // out never makes the wait longer than the rule says (a cap on each round would repeat for as long as the clock lags).
+  const deadline = Math.min(sentAt + LOST_ANSWER_MIN_WAIT_MS, Date.now() + LOST_ANSWER_MIN_WAIT_MS);
   for (;;) {
     await waitUntilOnline(signal);
-    // Capped, so a clock that was set back never makes the wait longer than the rule says.
-    const remaining = Math.min(sentAt + LOST_ANSWER_MIN_WAIT_MS - Date.now(), LOST_ANSWER_MIN_WAIT_MS);
+    const remaining = deadline - Date.now();
     if (remaining <= 0) return;
     await sleep(remaining, signal);
   }

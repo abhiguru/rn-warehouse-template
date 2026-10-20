@@ -661,7 +661,7 @@ export const invoiceFromStoredAnswer = async (
   if (!answer || answer.success !== true) return null;
   // The total is read back like after any save; when the connection is not there for it, the save stays reported
   // as done and the total as not read.
-  let client: RpcClient | null = null;
+  let client: RpcClient | null;
   try {
     client = await getAuthenticatedClient();
   } catch {

@@ -879,7 +879,7 @@ export function useDispatchForm({
           if (!orderId) return undefined;
           // Loaded when needed (as lostAnswer.ts does): a form's screens and tests do not need the whole orders service.
           const { OrderService } = require('@/services/order-service') as typeof import('@/services/order-service');
-          let read: Awaited<ReturnType<typeof OrderService.getOrderWithItems>> | null = null;
+          let read: Awaited<ReturnType<typeof OrderService.getOrderWithItems>> | null;
           try {
             read = await OrderService.getOrderWithItems(orderId);
           } catch {

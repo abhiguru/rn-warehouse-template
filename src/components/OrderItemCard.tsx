@@ -376,7 +376,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     if (removalRef.current || checkingRef.current) return;
     removalRef.current = true;
     setIsRemoving(true);
-    let outcome: boolean | 'unknown' = false;
+    let outcome: boolean | 'unknown';
     try {
       const answer = await onRemove(item.id, versionForRemoval);
       outcome = answer === true || answer === 'unknown' ? answer : false;

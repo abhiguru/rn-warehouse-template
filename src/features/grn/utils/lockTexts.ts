@@ -21,6 +21,6 @@ export function lotInvoicedText(item: string, invoiceNo: string | null | undefin
 export function invoicedNoNewLotText(grn: string, invoiceNo: string | null | undefined): string {
   const invoice = numberOf(invoiceNo);
   return invoice === undefined
-    ? tr('grn.refusal.invoicedNoNewLotNoNumber', { grn })
-    : tr('grn.refusal.invoicedNoNewLot', { grn, invoice });
+    ? tr('grn.refusal.invoicedNoNewLotNoNumber', { grn: String(grn) })
+    : tr('grn.refusal.invoicedNoNewLot', { grn: String(grn), invoice });
 }
