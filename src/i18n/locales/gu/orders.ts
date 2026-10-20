@@ -87,6 +87,17 @@ export const orders: Translation<typeof source> = {
       other: '{{count}} જથ્થાના ફેરફાર સચવાયા નથી.',
     },
     discardSelections: 'પસંદગી છોડી દો',
+    // The same question when Add would send something: it lists the changes and offers Add to order. Gujarati is a draft.
+    addChangesTitle: 'આ ફેરફાર ઑર્ડરમાં ઉમેરવા છે?',
+    addToOrder: 'ઑર્ડરમાં ઉમેરો',
+    // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{count}} the bags after the change.
+    // The changed quantity is in words, not "→", so a screen reader says it right.
+    changeAdd: { one: '{{lot}} — {{count}} નંગ ઉમેરો', other: '{{lot}} — {{count}} નંગ ઉમેરો' },
+    changeSet: { one: '{{lot}} — {{from}} થી {{count}} નંગ', other: '{{lot}} — {{from}} થી {{count}} નંગ' },
+    // {{count}} is the bags on the order that would be taken off.
+    changeRemove: { one: '{{lot}} — {{count}} નંગ દૂર કરો', other: '{{lot}} — {{count}} નંગ દૂર કરો' },
+    // Last line of the question when Add is not offered (every lot already on the order was taken off, none chosen). Draft.
+    discardOnlyNote: 'પસંદગી છોડી દેવાથી ઑર્ડર જેમ છે તેમ રહે છે. બધા જથ્થા કાઢવા માટે ઑર્ડરના પેજ પરથી આઇટમ કાઢી નાખો.',
     // Add waits for the server; a lot that was not saved keeps its reason.
     savingProgress: '{{total}} માંથી {{done}} સાચવી રહ્યા છીએ…',
     // Shown only when at least one lot was not saved, so `one` (0 and 1 in Gujarati) is written for 1.

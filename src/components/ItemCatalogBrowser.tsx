@@ -37,7 +37,7 @@ import { SessionRecentItemsService } from '@/services/session-recent-items-servi
 import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types/order.types';
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
-import { askAlert, showAlert } from '@/utils/alert';
+import { askAlert, showAlert, type AlertChoice } from '@/utils/alert';
 import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
@@ -48,6 +48,7 @@ import {
   withQuantity,
   withoutReasons,
   type PickerChange,
+  type PickerDraft,
   type PickerLine,
   type PickerResult,
 } from '@/features/orders/pickerDraft';
@@ -57,6 +58,48 @@ type StockStatus = 'positive' | 'critical' | 'negative';
 const stockLabel = (status: StockStatus): string =>
   status === 'negative' ? tr('common.outOfStock') : status === 'critical' ? tr('common.lowStock') : tr('common.inStock');
 const formatBags = (n: number) => formatCount(n, 'bag');
+
+/** The answers of the "leaving with unsaved changes" question. */
+type UnsavedAnswer = 'add' | 'keep' | 'discard';
+
+/**
+ * What names a lot, in one place for the spoken label of a row and the lines of the
+ * leave question: name, package mark, GRN number and the weight of one package.
+ */
+const lotParts = (item: GRNItem): string[] =>
+  [
+    item.name,
+    item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
+    item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
+    formatWeightEach(item.weight),
+  ].filter((part): part is string => Boolean(part));
+
+/** A lot as the leave question names it: the parts of the row's name, set apart by dots. */
+const lotLabel = (item: GRNItem): string => lotParts(item).join(' \u00B7 ');
+
+/** What Add would do to one lot: put it on the order, change its bags, or take it off. */
+const changeLine = (draft: PickerDraft, change: PickerChange): string => {
+  const item = draft.selection.get(change.grnItemId)?.item ?? draft.base.get(change.grnItemId)?.item;
+  const lot = item ? lotLabel(item) : '';
+  if (change.quantity === 0) return tr('orders.catalog.changeRemove', { lot, count: change.expected });
+  if (change.expected === 0) return tr('orders.catalog.changeAdd', { lot, count: change.quantity });
+  return tr('orders.catalog.changeSet', { lot, from: change.expected, count: change.quantity });
+};
+
+/**
+ * The text of the question: how many lots changed, then every change on its own line,
+ * removals first, then changed quantities, then lots new to the order. When Add is not
+ * offered it says what Discard does and where the lots can be taken off instead.
+ */
+const unsavedMessage = (draft: PickerDraft, changes: PickerChange[], canAdd: boolean): string => {
+  const removals = changes.filter(change => change.quantity === 0);
+  const additions = changes.filter(change => change.quantity !== 0 && change.expected === 0);
+  const edits = changes.filter(change => change.quantity !== 0 && change.expected !== 0);
+  const lines = [...removals, ...edits, ...additions].map(change => `\u2022 ${changeLine(draft, change)}`);
+  const parts = [tr('orders.catalog.discardMessage', { count: changes.length }), lines.join('\n')];
+  if (!canAdd) parts.push(tr('orders.catalog.discardOnlyNote'));
+  return parts.join('\n\n');
+};
 
 /**
  * The Add items picker of one order. Mount it once per opening (OrderManagement
@@ -159,7 +202,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   onAddItemsRef.current = onAddItems;
   // onClose has been called for this opening; it is called once.
   const closedRef = useRef(false);
-  // "Discard selections?" is on screen.
+  // The leave question is on screen.
   const askingRef = useRef(false);
   // The sheet is off the screen (a swipe took it) while the picker itself is still
   // open. Set by every dismissal the library reports for an open picker, cleared
@@ -638,39 +681,6 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     onCloseRef.current();
   }, []);
 
-  // Every way out goes through here: Cancel, the Back key, a tap outside and a
-  // swipe down. Nothing unsaved: the picker closes at once. Otherwise it asks
-  // first. While an Add is being saved it does nothing.
-  const requestClose = useCallback(async (source: CloseSource) => {
-    if (savingRef.current || closedRef.current || askingRef.current) return;
-    const unsaved = changesOf(draftRef.current).length;
-    if (unsaved === 0) {
-      finishClose();
-      return;
-    }
-    askingRef.current = true;
-    const discard = await askAlert(
-      tr('orders.catalog.discardTitle'),
-      tr('orders.catalog.discardMessage', { count: unsaved }),
-      [
-        { text: tr('common.keepEditing'), style: 'cancel', value: false },
-        { text: tr('orders.catalog.discardSelections'), style: 'destructive', value: true },
-      ],
-      false
-    );
-    askingRef.current = false;
-    if (!isMountedRef.current) return;
-    if (discard) {
-      finishClose();
-    } else if (source === 'swipe' || sheetDownRef.current) {
-      // A swipe took the sheet away: show it again with what was chosen. That is so
-      // also when another way out asked first: the sheet was flung down, Back or
-      // Cancel was pressed before it was gone, and its dismissal came while the
-      // question was open (and was not asked about a second time).
-      presentSheet();
-    }
-  }, [finishClose, presentSheet]);
-
   // Add: sends only what changed since the picker opened and waits for the
   // answer. Everything saved: the picker closes. Otherwise it stays open with
   // the lots that were not saved, each with its reason.
@@ -728,6 +738,54 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setShowSelectedItems(false);
     if (sheetDownRef.current) presentSheet();
   }, [finishClose, presentSheet]);
+
+  // Every way out goes through here: Cancel, the Back key, a tap outside and a
+  // swipe down. Nothing unsaved: the picker closes at once. Otherwise it asks
+  // first, listing the changes: Add to order (only when Add would send something),
+  // Keep editing, Discard selections. While an Add is being saved it does nothing.
+  const requestClose = useCallback(async (source: CloseSource) => {
+    if (savingRef.current || closedRef.current || askingRef.current) return;
+    const asked = draftRef.current;
+    const changes = changesOf(asked);
+    if (changes.length === 0) {
+      finishClose();
+      return;
+    }
+    // Add refuses when every lot was deselected (see handleAddItems), so it is not offered then.
+    const canAdd = asked.selection.size > 0;
+    const choices: AlertChoice<UnsavedAnswer>[] = [];
+    if (canAdd) choices.push({ text: tr('orders.catalog.addToOrder'), value: 'add' });
+    choices.push(
+      { text: tr('common.keepEditing'), style: 'cancel', value: 'keep' },
+      { text: tr('orders.catalog.discardSelections'), style: 'destructive', value: 'discard' }
+    );
+    askingRef.current = true;
+    const answer = await askAlert<UnsavedAnswer>(
+      canAdd ? tr('orders.catalog.addChangesTitle') : tr('orders.catalog.discardTitle'),
+      unsavedMessage(asked, changes, canAdd),
+      choices,
+      'keep'
+    );
+    askingRef.current = false;
+    if (!isMountedRef.current) return;
+    if (answer === 'discard') {
+      finishClose();
+      return;
+    }
+    // A swipe took the sheet away. That is so also when another way out asked first:
+    // the sheet was flung down, Back or Cancel was pressed before it was gone, and
+    // its dismissal came while the question was open (and was not asked about a second time).
+    const sheetIsDown = source === 'swipe' || sheetDownRef.current;
+    // Keep editing, or closing the question without an answer: show the sheet again with what was chosen.
+    if (answer !== 'add') {
+      if (sheetIsDown) presentSheet();
+      return;
+    }
+    // Add to order: the same Add as the header's. The sheet comes back first, so the progress and
+    // any lot that was not saved are seen; with everything saved the picker closes as it does after the header's Add.
+    if (sheetIsDown) presentSheet();
+    await handleAddItems();
+  }, [finishClose, presentSheet, handleAddItems]);
 
   // Helper functions for search UI
   const getSearchPlaceholder = useCallback(() => {
@@ -901,10 +959,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     // The weight of one package, "50 kg each"; none for a lot without a weight.
     const weightText = formatWeightEach(item.weight);
     const rowLabel = [
-      item.name,
-      item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
-      item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
-      weightText,
+      ...lotParts(item),
       tr('orders.catalog.rowStock', { status: stockWord, current: formatBags(item.current_stock), total: formatBags(item.original_quantity) }),
       isInExistingOrder ? tr('orders.catalog.rowAlreadyInOrder') : null,
       quantity > 0 ? tr('orders.catalog.rowSelected', { bags: formatBags(quantity) }) : null,

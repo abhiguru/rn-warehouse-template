@@ -84,6 +84,17 @@ export const orders = {
       other: 'Changes to {{count}} lots have not been saved.',
     },
     discardSelections: 'Discard selections',
+    // The same question when Add would send something: it lists the changes and offers Add to order.
+    addChangesTitle: 'Add these changes to the order?',
+    addToOrder: 'Add to order',
+    // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{count}} the bags after the change.
+    // The changed quantity is in words, not "→", so a screen reader says it right.
+    changeAdd: { one: '{{lot}} — add {{count}} bag', other: '{{lot}} — add {{count}} bags' },
+    changeSet: { one: '{{lot}} — from {{from}} to {{count}} bag', other: '{{lot}} — from {{from}} to {{count}} bags' },
+    // {{count}} is the bags on the order that would be taken off.
+    changeRemove: { one: '{{lot}} — remove ({{count}} bag)', other: '{{lot}} — remove ({{count}} bags)' },
+    // Last line of the question when Add is not offered (every lot already on the order was taken off, none chosen).
+    discardOnlyNote: 'Discard keeps the order as it is. To take every lot off, remove the lines on the order page.',
     // Add waits for the server; a lot that was not saved keeps its reason.
     savingProgress: 'Saving {{done}} of {{total}}…',
     notSavedSummary: {
