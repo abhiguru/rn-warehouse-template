@@ -11,7 +11,7 @@ import {
 } from '@/types/invoice.types';
 import { t } from '@/i18n';
 
-import { toLocalISODate } from '@/utils/formatters';
+import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
@@ -110,6 +110,34 @@ function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): st
   }
   return serverText(text, fallback, { write: true, form: true, code: typeof code === 'string' ? code : undefined });
 }
+/**
+ * The invoice number is taken (I4, backend migration 120): `reason: 'NUMBER_TAKEN'` with the number, in the answer of
+ * save_invoice and update_invoice. A server before migration 120 answers with the unique constraint's SQLSTATE 23505
+ * (as the answer's `error_code`, or as the error's `code`); its text names `unique_inv_no_per_year`. Null when the
+ * answer is any other refusal. `fallbackNumber` is the number that was sent, for an answer that does not repeat it.
+ */
+type MaybeRefusal = { reason?: unknown; number?: unknown; error?: unknown; message?: unknown; details?: unknown; code?: unknown; error_code?: unknown };
+function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber: number): { number: number } | null {
+  if (!answer) return null;
+  const code = typeof answer.error_code === 'string' ? answer.error_code : typeof answer.code === 'string' ? answer.code : undefined;
+  const text = [answer.error, answer.message, answer.details].filter((part) => typeof part === 'string').join(' ');
+  const named = answer.reason === 'NUMBER_TAKEN';
+  const olderServer = code === '23505' && /unique_inv_no_per_year/i.test(text);
+  if (!named && !olderServer) return null;
+  const given = Number(answer.number);
+  return { number: Number.isFinite(given) && given > 0 ? given : fallbackNumber };
+}
+
+/** Thrown inside createInvoice so its catch can answer with the taken number instead of a worded failure. */
+class NumberTakenError extends Error {
+  taken: number;
+
+  constructor(taken: number) {
+    super(t('invoice.form.numberTakenNoNext', { number: String(taken) }));
+    this.taken = taken;
+  }
+}
+
 /** PostgREST found no function that takes the parameters sent (PGRST202). */
 const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
   error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
@@ -478,7 +506,7 @@ export const loadInvoiceFormData = async (
 export const checkGrnStillInvoiceable = async (
   grId: string,
   formItems: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]
-): Promise<{ ok: true } | { ok: false; message: string }> => {
+): Promise<{ ok: true } | { ok: false; message: string; linesChanged?: true }> => {
   const fresh = await loadInvoiceFormData(grId);
   if (!fresh.success) {
     return {
@@ -493,7 +521,8 @@ export const checkGrnStillInvoiceable = async (
   const lines = (items: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]) =>
     items.map((item) => `${item.disp_trl_id}:${Number(item.qty)}`).sort().join('|');
   if (lines(fresh.data.items) !== lines(formItems)) {
-    return { ok: false, message: t('invoice.review.grnChanged') };
+    // The caller offers to load the lines again (I3).
+    return { ok: false, message: t('invoice.review.grnChanged'), linesChanged: true };
   }
   return { ok: true };
 };
@@ -587,10 +616,14 @@ export const createInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
+      const taken = numberTakenFrom(error, payload.header.inv_no);
+      if (taken) throw new NumberTakenError(taken.number);
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
     }
 
     if (!data || !data.success) {
+      const taken = numberTakenFrom(data, payload.header.inv_no);
+      if (taken) throw new NumberTakenError(taken.number);
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
       throw new Error(errorMsg);
     }
@@ -607,6 +640,14 @@ export const createInvoice = async (
     };
   } catch (error: any) {
     invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
+    if (error instanceof NumberTakenError) {
+      return {
+        success: false,
+        data: { invoice_id: '', invoice_no: 0 },
+        message: error.message,
+        numberTaken: { number: error.taken },
+      };
+    }
     return {
       success: false,
       data: {
@@ -734,7 +775,10 @@ export const loadInvoiceData = async (
       customer_name: header.customer_name || '',
       gr_id: header.gr_id || '',
       gr_no: header.gr_no || '',
-      inv_date: header.inv_date ? header.inv_date.split('T')[0] : toLocalISODate(new Date()),
+      // The day the invoice has on India's calendar, as the details screen shows it. The server sends a UTC
+      // timestamp; its date part is the day before for an invoice stamped after 18:30 UTC (I13).
+      // A text that is not a date at all keeps its first ten characters, as before, and no text gives today.
+      inv_date: indiaDay(header.inv_date) || header.inv_date?.slice(0, 10) || toLocalISODate(new Date()),
       inv_fin_year: finYear,
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
       // The GRN's pricing mode, not the flag stored with the invoice: the
@@ -893,6 +937,15 @@ export const updateInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
+      const taken = numberTakenFrom(error, payload.header.inv_no);
+      if (taken) {
+        return {
+          success: false,
+          data: { invoice_id: '', invoice_no: 0 },
+          message: t('invoice.form.numberTakenNoNext', { number: String(taken.number) }),
+          numberTaken: { number: taken.number },
+        };
+      }
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed'), error.code));
     }
 
@@ -900,6 +953,15 @@ export const updateInvoice = async (
     const result = data;
 
     if (!result || !result.success) {
+      const taken = numberTakenFrom(result, payload.header.inv_no);
+      if (taken) {
+        return {
+          success: false,
+          data: { invoice_id: '', invoice_no: 0 },
+          message: t('invoice.form.numberTakenNoNext', { number: String(taken.number) }),
+          numberTaken: { number: taken.number },
+        };
+      }
       const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'), result?.error_code);
       return {
         success: false,

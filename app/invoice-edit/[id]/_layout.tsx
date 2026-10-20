@@ -3,7 +3,7 @@ import { Stack, useLocalSearchParams, router, useNavigation, type Href } from 'e
 import { View, Text, ActivityIndicator } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
+import { useAppSelector, useAppDispatch, useAppStore } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   setInvoiceId,
@@ -13,6 +13,14 @@ import {
   resetForm,
 } from '@/store/slices/invoiceFormSlice';
 import { loadInvoiceData } from '@/features/invoice/services/invoiceFormService';
+import {
+  openFormBlocking,
+  openInvoiceFormCount,
+  registerInvoiceForm,
+  type OpenInvoiceForm,
+} from '@/features/invoice/utils/openInvoiceForms';
+import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
+import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
 import { InvoiceHeaderData } from '@/types/invoice.types';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 
@@ -22,15 +30,17 @@ import { createLogger } from '@/utils/logger';
 
 const log = createLogger('InvoiceEditLayout');
 
-type Phase = 'loading' | 'ready' | 'error';
+// `blocked`: another invoice's form (or a new invoice) is open, and this edit is not opened over it.
+type Phase = 'loading' | 'ready' | 'error' | 'blocked';
 
-// How many edit layouts are open. The form lives in one slice, so a second edit of the same invoice (opened
-// from the GRN's invoice list on top of the first) shares the first one's form. The one that closes first must
-// not empty it: the form is reset only when the last layout closes.
-let openLayouts = 0;
+// The form lives in one slice, so a second edit of the same invoice (opened from the GRN's invoice list on top of
+// the first) shares the first one's form. The one that closes first must not empty it: the form is reset only when
+// the last open invoice form closes (openInvoiceForms.ts). An edit of another invoice, or a new invoice, is never
+// opened over an open form (J1): it would load into the same slice and swap the first form's data under it.
 
 export default function InvoiceEditLayout() {
   const dispatch = useAppDispatch();
+  const store = useAppStore();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const invoiceId = useAppSelector(selectInvoiceFormId);
@@ -39,9 +49,14 @@ export default function InvoiceEditLayout() {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
+  // Asked once, before anything is loaded: the form that is open must not be touched.
+  const [blocker] = useState<OpenInvoiceForm | null>(() => (id ? openFormBlocking({ kind: 'edit', id }) : null));
+
   // Starts in loading, so the form is never drawn empty before the invoice is there. An invoice
   // that is already loaded in the store (the layout opened again on it) is ready at once.
-  const [phase, setPhase] = useState<Phase>(() => (id && invoiceId === id && baseline ? 'ready' : 'loading'));
+  const [phase, setPhase] = useState<Phase>(() =>
+    blocker ? 'blocked' : id && invoiceId === id && baseline ? 'ready' : 'loading'
+  );
   const [errorMessage, setErrorMessage] = useState('');
 
   // Protect edit routes - redirect if user cannot update
@@ -98,24 +113,48 @@ export default function InvoiceEditLayout() {
     }
   }, [id, dispatch]);
 
+  // Blocked: say why and go back, leaving the form that is open as it is. Once, whatever mounts again.
+  const turnedAway = useRef(false);
+  useEffect(() => {
+    if (!blocker || turnedAway.current) return;
+    turnedAway.current = true;
+    // The number of the invoice that is open, from its own loaded form (the slice was not touched by this visit).
+    const open = store.getState().invoiceForm;
+    showOpenFormRefusal(blocker, open.baseline?.inv_no || open.header.inv_no || undefined);
+    router.back();
+  }, []);
+
   // Main loading effect - only depends on `id`
   useEffect(() => {
+    if (blocker) return;
     if (id && invoiceId === id && baseline) return; // already loaded
     void load();
   }, [id]);
 
-  // Clean up on unmount: the last layout to close empties the form
+  // The registry names this invoice by its own number once it is loaded, for the refusal of a form opened over it.
+  const openForm = useRef<OpenInvoiceForm | null>(null);
+
+  // Clean up on unmount: the last form to close empties the slice. A blocked layout never loaded or registered
+  // anything, so its going changes nothing.
   useEffect(() => {
-    openLayouts += 1;
+    if (blocker || !id) return;
+    const form: OpenInvoiceForm = { kind: 'edit', id };
+    openForm.current = form;
+    const release = registerInvoiceForm(form);
     return () => {
-      openLayouts -= 1;
+      release();
+      openForm.current = null;
       loadRequest.current += 1;
-      if (openLayouts === 0) dispatch(resetForm());
+      if (openInvoiceFormCount() === 0) dispatch(resetForm());
     };
   }, [dispatch]);
 
-  // Don't render if no permission
-  if (!canUpdate) {
+  useEffect(() => {
+    if (openForm.current?.kind === 'edit' && baseline?.inv_no) openForm.current.number = baseline.inv_no;
+  }, [baseline]);
+
+  // Don't render if no permission, or while this visit is being turned away
+  if (!canUpdate || phase === 'blocked') {
     return null;
   }
 
@@ -140,18 +179,21 @@ export default function InvoiceEditLayout() {
     );
   }
 
+  // The steps save and navigate by this route's invoice, not by whatever the slice holds (J1).
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        // The steps are left by their own Back and Cancel, which ask first and keep the form in step.
-        gestureEnabled: false,
-      }}
-    >
-      <Stack.Screen name="step1" />
-      <Stack.Screen name="step2" />
-      <Stack.Screen name="step3" />
-    </Stack>
+    <InvoiceRouteIdContext.Provider value={id ?? null}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          // The steps are left by their own Back and Cancel, which ask first and keep the form in step.
+          gestureEnabled: false,
+        }}
+      >
+        <Stack.Screen name="step1" />
+        <Stack.Screen name="step2" />
+        <Stack.Screen name="step3" />
+      </Stack>
+    </InvoiceRouteIdContext.Provider>
   );
 }
 

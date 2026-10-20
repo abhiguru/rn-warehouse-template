@@ -178,7 +178,7 @@ describe('editing a saved invoice', () => {
     expect(state.header.discount_reason).toBe('');
   });
 
-  it('clears the stored discount and its reasons when another GRN is chosen (owner decision, 2026-10-18)', () => {
+  it('clears the discount when another GRN is chosen, but keeps what the invoice was saved with (owner decision 2026-10-18; review I9)', () => {
     const state = reducer(
       saved(),
       slice.loadInvoiceFormData({
@@ -191,10 +191,11 @@ describe('editing a saved invoice', () => {
     expect(state.invoice_id).toBe('inv-42');
     expect(state.header.gr_id).toBe('gr2');
     expect(state.header.discount).toBe(0);
-    expect(state.header.saved_discount).toBeUndefined();
     expect(state.header.discount_reason ?? '').toBe('');
-    expect(state.header.saved_discount_reason).toBeUndefined();
-    expect(discountNeedsReason(state.header, 'staff')).toBe(false);
+    // The server compares with the stored invoice: going from 100 to 0 is a change, and staff give a reason for it.
+    expect(state.header.saved_discount).toBe(100);
+    expect(state.header.saved_discount_reason).toBe('Damaged bags');
+    expect(discountNeedsReason(state.header, 'staff')).toBe(true);
   });
 
   it('keeps the stored discount and its reason when the same GRN is loaded again', () => {

@@ -16,7 +16,7 @@ import { useCapability } from '@/hooks/useCapability';
  * while the keyboard is open.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -289,6 +289,9 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState<'start' | 'end' | null>(null);
+  // A print job is on its way. Set before the first await: two presses before the next render (a double tap, or
+  // Return and then the button) would both find `loading` still false and send two jobs to the printer (J3).
+  const sending = useRef(false);
 
   useEffect(() => {
     if (visible) {
@@ -305,6 +308,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   }, [visible, defaultNumber]);
 
   const handleConfirm = async () => {
+    if (sending.current) return;
     setError(null);
 
     if (!startNumber.trim() || !endNumber.trim()) {
@@ -312,6 +316,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       return;
     }
 
+    sending.current = true;
     setLoading(true);
 
     try {
@@ -324,6 +329,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
           : tr('components.printRange.printFailed')
       );
     } finally {
+      sending.current = false;
       setLoading(false);
     }
   };

@@ -2,7 +2,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
 import type { CreateInvoicePayload, InvoiceItemData } from '@/types/invoice.types';
-import { checkGrnStillInvoiceable, createInvoice, updateInvoice } from '../invoiceFormService';
+import { checkGrnStillInvoiceable, createInvoice, loadInvoiceData, updateInvoice } from '../invoiceFormService';
 
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
@@ -85,6 +85,65 @@ describe.each(['en', 'gu'] as const)('a refused invoice save (%s)', (language) =
   });
 });
 
+describe('a refused invoice number (I4)', () => {
+  const INVOICE = '33333333-3333-4444-8555-666666666666';
+
+  it.each([
+    ['named by the server (migration 120)', { data: { success: false, error_code: 'WH409', reason: 'NUMBER_TAKEN', number: 15, error: 'Invoice number 15 is already used' }, error: null }, 15],
+    ['named, without the number', { data: { success: false, error_code: 'WH409', reason: 'NUMBER_TAKEN', error: 'Invoice number is already used' }, error: null }, 12],
+    ['an older server, in the answer', { data: { success: false, error_code: '23505', error: 'duplicate key value violates unique constraint "unique_inv_no_per_year"' }, error: null }, 12],
+    ['an older server, as the request error', { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "unique_inv_no_per_year"' } }, 12],
+  ])('says which number was refused: %s', async (_name, answer, number) => {
+    mockRpc(answer);
+
+    const created = await createInvoice(payload);
+    const updated = await updateInvoice(INVOICE, payload);
+
+    expect(created.success).toBe(false);
+    expect(created.numberTaken).toEqual({ number });
+    expect(updated.success).toBe(false);
+    expect(updated.numberTaken).toEqual({ number });
+  });
+
+  it('leaves another duplicate to the general words', async () => {
+    mockRpc({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "some_other_key"' } });
+
+    const created = await createInvoice(payload);
+
+    expect(created.success).toBe(false);
+    expect(created.numberTaken).toBeUndefined();
+    expect(created.message).toBe(t('errors.parsed.duplicate'));
+  });
+});
+
+describe('opening an invoice to edit it (I13)', () => {
+  const detail = (inv_date: string) => ({
+    data: {
+      success: true,
+      invoice: {
+        id: '33333333-3333-4444-8555-666666666666', inv_no: 12, inv_fin_year: 2026, inv_date, gr_id: GRN, gr_no: 'A0010',
+        customer_id: payload.header.customer_id, customer_name: 'Example Traders', discount: 0, labour: 0, tax_amount: 0, total: 0,
+        grn_pricing_mode: 'MONTHLY',
+      },
+      items: [],
+    },
+    error: null,
+  });
+
+  it.each([
+    ['a stamp after 18:30 UTC is the next day in India', '2026-03-31T18:30:00+00:00', '2026-04-01'],
+    ['the app\'s own midnight stamp stays on its day', '2026-10-05T00:00:00Z', '2026-10-05'],
+    ['a plain date stays as it is', '2026-10-05', '2026-10-05'],
+  ])('takes the date on India\'s calendar: %s', async (_name, stored, shown) => {
+    mockRpc(detail(stored));
+
+    const result = await loadInvoiceData('33333333-3333-4444-8555-666666666666');
+
+    expect(result.success).toBe(true);
+    expect(result.data.header).toMatchObject({ inv_date: shown });
+  });
+});
+
 describe('checking a GRN again just before saving', () => {
   it('passes when the GRN still has the same dispatch lines', async () => {
     const rpc = mockRpc({
@@ -118,7 +177,7 @@ describe('checking a GRN again just before saving', () => {
 
     const result = await checkGrnStillInvoiceable(GRN, [formLine(LINE_A, 20)]);
 
-    expect(result).toEqual({ ok: false, message: t('invoice.review.grnChanged') });
+    expect(result).toEqual({ ok: false, message: t('invoice.review.grnChanged'), linesChanged: true });
   });
 
   it('stops when the check itself cannot be made', async () => {

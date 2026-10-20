@@ -400,8 +400,15 @@ const invoiceFormSlice = createSlice({
       // What goes with the discount stays with it (the same GRN loaded again): an invoice being edited
       // would otherwise forget the discount it was saved with, ask for a reason although nothing
       // changed, and show an empty reason field.
+      // An invoice being edited keeps the discount and reason it was SAVED with even when it moves to another GRN:
+      // the server compares the new discount with the stored invoice, so going to 0 is a change that needs a reason (I9).
       const preservedDiscountRecord = anotherGrn
-        ? {}
+        ? state.baseline
+          ? {
+              saved_discount: state.baseline.header.saved_discount ?? state.header.saved_discount,
+              saved_discount_reason: state.baseline.header.saved_discount_reason ?? state.header.saved_discount_reason,
+            }
+          : {}
         : {
             discount_reason: state.header.discount_reason,
             saved_discount: state.header.saved_discount,

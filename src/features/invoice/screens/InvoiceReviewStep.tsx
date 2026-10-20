@@ -76,8 +76,10 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     items,
     invoiceId,
     isSaving,
+    hasTypedRates,
     updateDiscountAmount,
     updateHeaderField,
+    loadGRNData,
     navigateToStep,
     submitForm,
     resetFormState,
@@ -218,11 +220,40 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     setShowConfirmSubmitDialog(true);
   };
 
+  // The GRN's dispatch lines changed after they were read (I3): read them again, after a question when rates were
+  // typed on the lines (only they are lost). The GRN, its discount and reasons stay, so they are not asked about.
+  const reloadLines = () => {
+    void loadGRNData(header.gr_id).then((loaded) => {
+      if (loaded) showToast(tr('invoice.review.linesReloaded'));
+    });
+  };
+  const handleReloadLines = () => {
+    if (!hasTypedRates) {
+      reloadLines();
+      return;
+    }
+    showAlert(tr('invoice.review.reloadLinesTitle'), tr('invoice.review.reloadLinesMessage'), [
+      { text: tr('common.cancel'), style: 'cancel' },
+      { text: tr('invoice.review.reloadLines'), onPress: reloadLines },
+    ]);
+  };
+
   // The question stays open, busy, until the save is over, so that a second tap on its button does nothing.
   const performSubmit = async () => {
-    // A refusal is told once the question has closed, never over it.
-    const result = await submitForm((title, message) => {
-      confirmClosed.later(() => showAlert(title, message));
+    // A refusal is told once the question has closed, never over it. One call only: the latest `later` is the one kept.
+    const result = await submitForm((title, message, info) => {
+      confirmClosed.later(() => {
+        if (info?.reloadLines) {
+          showAlert(title, message, [
+            { text: tr('common.close'), style: 'cancel' },
+            { text: tr('invoice.review.reloadLines'), onPress: handleReloadLines },
+          ]);
+        } else {
+          showAlert(title, message);
+        }
+        // The invoice number is taken (I4): the step with the number field, which holds the next free number.
+        if (info?.numberTaken) void navigateToStep(STEP_NUMBERS.HEADER);
+      });
     });
     if (result === 'busy') return;
 

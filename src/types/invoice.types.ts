@@ -242,4 +242,6 @@ export interface CreateInvoiceResponse {
     total?: number | null;
   };
   message?: string;
+  /** The save was refused because the invoice number is taken (the number that was refused). */
+  numberTaken?: { number: number };
 }

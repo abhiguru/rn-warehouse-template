@@ -12,7 +12,7 @@
  * attempt (the lock against a second save).
  */
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useContext, useMemo, useRef } from 'react';
 
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
@@ -63,6 +63,7 @@ import {
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 import { transformFormDataToPayload } from '@/features/invoice/utils/invoicePayload';
+import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
 
 import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
 import { showAlert } from '@/utils/alert';
@@ -94,6 +95,18 @@ export interface SubmitSuccess {
 export interface SubmitFailure {
   success: false;
   error?: string;
+  /** The invoice number is taken: the form holds the next free one (unless it was typed; then the field shows the message). */
+  numberTaken?: boolean;
+  /** The GRN's dispatch lines changed since the form read them: the lines can be loaded again. */
+  reloadLines?: boolean;
+}
+
+/** What a screen may add to the way it tells a refused save (the button or the step it offers with the message). */
+export interface SubmitFailureInfo {
+  /** Offer "Reload lines" with the message. */
+  reloadLines?: boolean;
+  /** Take the person to the step that has the invoice number (step 1) after the message. */
+  numberTaken?: boolean;
 }
 /** `busy`: a save is already on its way; this call did nothing. */
 export type SubmitResult = SubmitSuccess | SubmitFailure | 'busy';
@@ -126,6 +139,8 @@ export interface UseInvoiceFormReturn {
   getIsChanged: () => boolean;
   /** Rates typed on the lines, a discount or a reason: all of it is lost when the lines are replaced. */
   hasLineEdits: boolean;
+  /** Rates typed on the lines (or a group rate): the only part lost when the same GRN's lines are read again. */
+  hasTypedRates: boolean;
   /** Edit only: the GRN the invoice was saved with. */
   savedGrId: string | null;
   /** Edit only: the GRN the invoice was saved with, as the picker lists it. */
@@ -164,7 +179,7 @@ export interface UseInvoiceFormReturn {
 
   // Submission
   /** `onFailure` receives the message of a refused save instead of the alert (a screen that draws it once its dialog is closed). */
-  submitForm: (onFailure?: (title: string, message: string) => void) => Promise<SubmitResult>;
+  submitForm: (onFailure?: (title: string, message: string, info?: SubmitFailureInfo) => void) => Promise<SubmitResult>;
 
   // Reset
   resetFormState: () => void;
@@ -224,6 +239,13 @@ const hasKeys = (value: object): boolean => {
   return false;
 };
 
+/**
+ * The form holds another invoice than the route's (J1): a second form was opened over this one and loaded its own.
+ * A form with no invoice at all is not "another invoice": it was emptied, and the checks of the form catch that.
+ */
+const holdsAnotherInvoice = (formInvoiceId: string | null, routeInvoiceId: string): boolean =>
+  !!formInvoiceId && formInvoiceId !== routeInvoiceId;
+
 export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoiceFormReturn {
   const dispatch = useAppDispatch();
 
@@ -235,7 +257,11 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   const header = useAppSelector(selectInvoiceFormHeader, step === 3 ? undefined : sameHeaderBesidesTotals);
   const items = useAppSelector(selectInvoiceFormItems, step === 1 ? sameCount : undefined);
   const itemOverrides = useAppSelector(step === 2 ? selectInvoiceFormItemOverrides : selectNoOverrides);
-  const invoiceId = useAppSelector(selectInvoiceFormId);
+  const formInvoiceId = useAppSelector(selectInvoiceFormId);
+  // An edit saves and navigates by the invoice its route is for. The slice holds whichever invoice was loaded last,
+  // and a second form opened over this one must never turn this one into a save of that invoice (J1).
+  const routeInvoiceId = useContext(InvoiceRouteIdContext);
+  const invoiceId = mode === 'edit' && routeInvoiceId ? routeInvoiceId : formInvoiceId;
   const numberStatus = useAppSelector(selectInvoiceNumberStatus);
   const baseline = useAppSelector(selectInvoiceFormBaseline);
   // Not subscribed: step 1 stays mounted under step 2, and following the fingerprint would walk every line
@@ -257,6 +283,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       !!form.header.zero_charge_reason?.trim()
     );
   });
+  // Reading the same GRN's lines again keeps the discount and the reasons; only typed rates go.
+  const hasTypedRates = useAppSelector((state) => hasKeys(state.invoiceForm.editedItems) || hasKeys(state.invoiceForm.bulkPricing));
   const savedGrn = useMemo(
     () => (baseline ? { id: baseline.gr_id, gr_no: baseline.header.gr_no, customer_name: baseline.header.customer_name } : null),
     [baseline]
@@ -523,6 +551,12 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
    */
   const navigateToStep = useCallback(async (target: number): Promise<NavigateResult> => {
     if (target < 1 || target > 3) return 'invalid';
+    // The form holds another invoice than this route's (J1): nothing goes on from here, and the route is never
+    // built from the other invoice's id. Going back stays allowed.
+    if (target > step && !isCreateMode && invoiceId && holdsAnotherInvoice(store.getState().invoiceForm.invoice_id, invoiceId)) {
+      showAlert(t('invoice.edit.otherInvoiceTitle'), t('invoice.edit.otherInvoiceMessage'));
+      return 'invalid';
+    }
     // A second tap while the first is still being checked does nothing.
     if (isNavigating.current) return 'busy';
     // Going on waits for the invoice number: while it is being asked for, and
@@ -563,15 +597,47 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     } finally {
       isNavigating.current = false;
     }
-  }, [step, validateCurrentStep, isCreateMode, invoiceId, isGettingNextNumber, suggestNumberIfEmpty]);
+  }, [step, store, validateCurrentStep, isCreateMode, invoiceId, isGettingNextNumber, suggestNumberIfEmpty]);
+
+  /**
+   * The invoice number was refused as taken (a second phone saved the same suggestion first, or an edit moved the
+   * invoice to a number that is used). Asks for the next free number of the financial year and returns the message.
+   * A number the person typed stays, and its field shows the message. A number the app suggested is replaced by the
+   * free one: the field is then correct, so it shows no error and the alert says what happened (I4).
+   */
+  const handleNumberTaken = useCallback(async (takenNumber: number): Promise<string> => {
+    const current = store.getState().invoiceForm.header;
+    let next: number | null = null;
+    try {
+      const answer = await withTimeout(getNextInvoiceNumber(current.inv_fin_year), NUMBER_REQUEST_TIMEOUT_MS);
+      if (answer.success && answer.data && answer.data.next_invoice_number > 0) next = answer.data.next_invoice_number;
+    } catch (error) {
+      log.warn('Could not read the next invoice number after a taken number:', error);
+    }
+    const message = next
+      ? t('invoice.form.numberTaken', { number: formatIdentifier(takenNumber), next: formatIdentifier(next) })
+      : t('invoice.form.numberTakenNoNext', { number: formatIdentifier(takenNumber) });
+    if (next && !store.getState().invoiceForm.header.inv_no_typed) {
+      // A request for a suggestion that is still on its way is no longer wanted.
+      dropNumberRequest();
+      dispatch(numberCancelled());
+      dispatch(updateHeader({ inv_no: next, inv_no_typed: false }));
+      dispatch(clearValidationError('inv_no'));
+    } else {
+      dispatch(setValidationError({ field: 'inv_no', message }));
+    }
+    return message;
+  }, [store, dispatch, dropNumberRequest]);
 
   /**
    * Submit the form (create or update). The lock is taken before the first
    * await, so a second tap while the first is still being checked or sent does
    * nothing and gets 'busy'.
    */
-  const submitForm = useCallback(async (onFailure?: (title: string, message: string) => void): Promise<SubmitResult> => {
-    const report = onFailure ?? showAlert;
+  const submitForm = useCallback(async (
+    onFailure?: (title: string, message: string, info?: SubmitFailureInfo) => void
+  ): Promise<SubmitResult> => {
+    const report = onFailure ?? ((title: string, message: string) => showAlert(title, message));
     // A failed update reads "update", as the button did.
     const failedTitleKey = isCreateMode ? 'invoice.form.saveFailedTitle' : 'invoice.review.updateFailedTitle';
     if (saveLock.current) return 'busy';
@@ -579,6 +645,14 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     dispatch(setIsSaving(true));
 
     try {
+      // An edit saves the invoice its route is for. The form holds another one (a second form was opened over
+      // this one): nothing is sent, and no other invoice is changed by this form's figures (J1).
+      if (!isCreateMode && invoiceId && holdsAnotherInvoice(store.getState().invoiceForm.invoice_id, invoiceId)) {
+        const message = t('invoice.edit.otherInvoiceMessage');
+        report(t('invoice.edit.otherInvoiceTitle'), message);
+        return { success: false, error: message };
+      }
+
       const validation = await runSchema('full');
       if (!validation.isValid) {
         report(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
@@ -591,6 +665,11 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       if (isCreateMode) {
         const check = await checkGrnStillInvoiceable(header.gr_id, items);
         if (!check.ok) {
+          if (check.linesChanged) {
+            // The lines changed: the message goes with "Reload lines" (I3), which reads them again.
+            report(t('invoice.form.saveFailedTitle'), check.message, { reloadLines: true });
+            return { success: false, error: check.message, reloadLines: true };
+          }
           report(t('invoice.form.saveFailedTitle'), check.message);
           return { success: false, error: check.message };
         }
@@ -618,6 +697,12 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           total: result.data?.total ?? null,
         };
       }
+      if (result.numberTaken) {
+        // I4: say which number is taken and which is free, and take the person to the step with the field.
+        const message = await handleNumberTaken(result.numberTaken.number);
+        report(t('invoice.form.numberTakenTitle'), message, { numberTaken: true });
+        return { success: false, error: message, numberTaken: true };
+      }
       report(t(failedTitleKey), serverText(result.message, t('common.checkConnection'), { write: true, form: true }));
       return { success: false, error: result.message };
     } catch (error) {
@@ -629,7 +714,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       dispatch(setIsSaving(false));
       saveLock.current = false;
     }
-  }, [header, items, invoiceId, isCreateMode, dispatch, runSchema]);
+  }, [header, items, invoiceId, isCreateMode, store, dispatch, runSchema, handleNumberTaken]);
 
   const restoreSavedLines = useCallback(() => {
     dispatch(restoreSavedGrn());
@@ -659,6 +744,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     isCreateMode,
     getIsChanged,
     hasLineEdits,
+    hasTypedRates,
     savedGrId: baseline?.gr_id ?? null,
     savedGrn,
 

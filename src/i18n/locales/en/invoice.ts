@@ -45,6 +45,16 @@ export const invoice = {
     openFailedTitle: "Couldn't open the invoice",
     openFailedMessage: 'The invoice link is incomplete. Open the invoice again from the list.',
     loadFailedTitle: "Couldn't load the invoice",
+    // Another invoice's form (or a new invoice) is already open: this one is not opened over it.
+    finishOtherTitle: 'Another invoice is open',
+    finishOtherEdit: 'Finish or cancel the edit of invoice {{number}} first.',
+    finishOtherEditNoNumber: 'Finish or cancel the invoice edit that is already open first.',
+    finishOtherNew: 'Finish or cancel the new invoice first.',
+    // The refusal's button: takes the person to the form that is open.
+    openIt: 'Open it',
+    // The form holds another invoice than the screen's own (a second form was opened over it).
+    otherInvoiceTitle: 'This form is for another invoice',
+    otherInvoiceMessage: 'Another invoice was opened over this one, so nothing was saved. Go back to the invoice and open Edit again.',
   },
   // Step 1: details
   form: {
@@ -91,6 +101,10 @@ export const invoice = {
     checkInvoiceTitle: 'Check the invoice',
     fillRequired: 'Fill in the required fields, then try again.',
     saveFailedTitle: "Couldn't save the invoice",
+    // The invoice number is taken (another phone saved it first, or an edit moved the invoice to a used number).
+    numberTakenTitle: 'Invoice number already used',
+    numberTaken: 'Invoice number {{number}} is already used. The next free number is {{next}}.',
+    numberTakenNoNext: 'Invoice number {{number}} is already used. Type a different number.',
   },
   // The sheet that lists the GRNs that can be invoiced
   grnPicker: {
@@ -196,6 +210,8 @@ export const invoice = {
     surchargeTooLarge: "The extra charge can't be more than {{amount}}.",
     discountReasonRequired: 'Discount reason (required)',
     discountReasonPlaceholder: 'Why is this discount given?',
+    // Under the reason while the discount is the saved one: the server keeps the stored reason then.
+    discountReasonLocked: 'Change the discount to give a new reason',
     zeroChargeReasonRequired: 'Reason for zero charge (required)',
     zeroChargeReasonPlaceholder: 'Why is the charge 0?',
     roundingAdjustment: 'Rounding adjustment',
@@ -258,7 +274,11 @@ export const invoice = {
     grnNotInvoiceable:
       'This GRN can no longer be invoiced. It may already have an invoice, or it is no longer fully dispatched. Check the invoice list.',
     grnChanged:
-      'The dispatches of this GRN changed after you selected it. Go back to the details step and select the GRN again.',
+      'The dispatches of this GRN changed after you selected it. Reload the lines to bring the invoice up to date.',
+    reloadLines: 'Reload lines',
+    reloadLinesTitle: 'Reload the lines?',
+    reloadLinesMessage: 'The lines are read again from the GRN. Rates you typed on the lines will be lost.',
+    linesReloaded: 'Lines reloaded from the GRN. Check the amounts, then save.',
     pdfCreateFailed: "Couldn't create the PDF. Try again.",
     pdfShareFailed: "Couldn't share the PDF. Try again.",
   },
@@ -310,6 +330,9 @@ export const invoice = {
     deleteConfirm: 'Delete invoice',
     deletedTitle: 'Invoice {{number}} deleted.',
     deleteFailedTitle: "Couldn't delete invoice",
+    // The page is opened on an invoice that was deleted (on another phone, or just now).
+    deletedGoneTitle: 'Invoice deleted',
+    deletedGoneMessage: 'This invoice was deleted, so it cannot be opened, edited or shared any more.',
     shareFailedTitle: "Couldn't share invoice",
     shareFailedMessage: "Couldn't share the invoice PDF. Check your connection and try again.",
     shareMissingData: 'This invoice is missing its number or financial year. Reload it and try again.',

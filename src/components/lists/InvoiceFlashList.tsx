@@ -43,6 +43,8 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 // State
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
+import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
+import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -323,6 +325,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   const handleCreateInvoice = useCallback(() => {
     if (openingFormRef.current) return;
+    // Another invoice form is open (maybe hidden under other screens): say so before anything is reset (J1).
+    const blocker = openFormBlocking({ kind: 'create' });
+    if (blocker) {
+      showOpenFormRefusal(blocker);
+      return;
+    }
     openingFormRef.current = true;
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
