@@ -17,6 +17,11 @@ export const central: Translation<typeof source> = {
     emptyMessage: 'તમે જેની સાથે કામ કરો છો તે કોલ્ડ સ્ટોરેજ ઉમેરો. તમે શું જોઈ શકો તે દરેક કોલ્ડ સ્ટોરેજ પોતે નક્કી કરે છે.',
     loading: 'તમારાં કોલ્ડ સ્ટોરેજ લોડ થઈ રહ્યાં છે',
     opening: '{{facility}} ખોલી રહ્યા છીએ…',
+    // Draft for the owner's wording review (My facilities after sign-out, 2026-10-20).
+    signingOut: 'લૉગઆઉટ થઈ રહ્યું છે…',
+    signingOutTitle: 'હજુ લૉગઆઉટ થઈ રહ્યું છે',
+    signingOutMessage: 'આ ફોન હજુ લૉગઆઉટ પૂરું કરી રહ્યો છે. થોડી સેકન્ડ પછી ફરી પ્રયાસ કરો.',
+    stillOpening: '{{facility}} હજુ ખૂલી રહ્યું છે. પૂરું થવા દો.',
     cellLabel: '{{name}}, {{status}}',
     cellLabelCity: '{{name}}, {{city}}, {{status}}',
     cellHint: 'આ કોલ્ડ સ્ટોરેજ ખોલે છે',

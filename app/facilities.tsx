@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -74,12 +74,21 @@ export default function FacilitiesScreen() {
   // showing the list. One chance per start; "Switch facility" spends it before coming here.
   const autoOpenSpent = central.autoOpenSpent;
   const hasOutcome = central.outcome !== null;
+  const leaving = central.leaving > 0;
+  const focused = useIsFocused();
   useEffect(() => {
     if (list === null || autoOpenSpent) return;
+    if (!focused) {
+      // Left for another screen while a sign-out was finishing: the chance is gone.
+      if (leaving) setCentralState({ autoOpenSpent: true });
+      return;
+    }
+    // Not while a sign-out is still finishing: the open would be refused with a dialog nobody asked for.
+    if (leaving) return;
     setCentralState({ autoOpenSpent: true });
     const sole = soleApprovedFacility(list);
     if (sole && !opening && !hasOutcome) void openFacility(sole.origin, sole.name);
-  }, [list, autoOpenSpent, opening, hasOutcome]);
+  }, [list, autoOpenSpent, leaving, focused, opening, hasOutcome]);
 
   // The answer of an open. It is held outside this screen, because opening a facility
   // rebuilds the navigation tree and the screen that started it may be gone.
@@ -139,6 +148,8 @@ export default function FacilitiesScreen() {
     ]);
   };
 
+  // Rows stay pressable while busy: a tap is answered by a dialog saying why it waits
+  // (openFacility), not by silence. After a sign-out they are dimmed under a strip.
   const busy = opening !== null || signingOut;
   const personName = central.user?.name || tr('central.facilities.accountLabel');
   const personPhone = formatMobile(central.user?.phoneNumber);
@@ -149,9 +160,12 @@ export default function FacilitiesScreen() {
     const isOpening = opening === item.origin;
     return (
       <Pressable
-        style={({ pressed }) => [styles.cell, pressed && styles.cellPressed]}
-        onPress={() => { void openFacility(item.origin, item.name); }}
-        disabled={busy}
+        style={({ pressed }) => [styles.cell, leaving && styles.cellDimmed, pressed && styles.cellPressed]}
+        onPress={() => {
+          // A tap during the wait is the person's own choice: the automatic open is not for them any more.
+          setCentralState({ autoOpenSpent: true });
+          void openFacility(item.origin, item.name);
+        }}
         accessibilityRole="button"
         accessibilityLabel={
           item.city
@@ -159,7 +173,7 @@ export default function FacilitiesScreen() {
             : tr('central.facilities.cellLabel', { name: item.name, status })
         }
         accessibilityHint={tr('central.facilities.cellHint')}
-        accessibilityState={{ disabled: busy, busy: isOpening }}
+        accessibilityState={{ busy: isOpening || leaving }}
         testID={`facility-${item.origin}`}
       >
         <View style={styles.avatar}>
@@ -186,6 +200,12 @@ export default function FacilitiesScreen() {
     <View style={styles.screen}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <CentralHeader title={tr('central.facilities.title')} />
+      {leaving ? (
+        <View style={styles.strip} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="facilities-signing-out">
+          <ActivityIndicator size="small" color={t.status.neutral.text} />
+          <Text style={styles.stripText}>{tr('central.facilities.signingOut')}</Text>
+        </View>
+      ) : null}
 
       <FlatList
         data={list ?? []}
@@ -288,6 +308,17 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.card,
   },
   cellPressed: { backgroundColor: t.surface.cardPressed },
+  cellDimmed: { opacity: t.interaction.disabledOpacity },
+  // Under the header, pushing the list down (style guide: banners never cover content)
+  strip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.status.neutral.background,
+  },
+  stripText: { ...typography.subhead, color: t.status.neutral.text, flex: 1 },
   avatar: {
     width: layout.avatar.md,
     height: layout.avatar.md,

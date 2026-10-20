@@ -20,6 +20,11 @@ export const central = {
     emptyMessage: 'Add the cold storage you work with. Each one decides what you can see.',
     loading: 'Loading your facilities',
     opening: 'Opening {{facility}}…',
+    // Shown when a facility is tapped while the phone is still signing out, or another one is still opening
+    signingOut: 'Signing out…',
+    signingOutTitle: 'Still signing out',
+    signingOutMessage: 'This phone is still finishing the sign-out. Try again in a few seconds.',
+    stillOpening: 'Still opening {{facility}}. Wait for it to finish.',
     // {{status}} is one of the status words below, or of auth.enrollment.status.
     cellLabel: '{{name}}, {{status}}',
     cellLabelCity: '{{name}}, {{city}}, {{status}}',

@@ -492,7 +492,6 @@ function ThemedContent() {
                   <NavigationStack key={language} screenBackground={screenBackground} />
                 </BelowOfflineBanner>
               </BottomSheetModalProvider>
-              <AlertHost />
               <ToastHost />
             </GestureHandlerRootView>
           </SafeAreaProvider>
@@ -696,6 +695,8 @@ function RootLayout() {
     <Provider store={store}>
       <PersistGate loading={<SplashScreen />} persistor={persistor}>
         <BootstrapApp />
+        {/* Here, not in ThemedContent: the bootstrap screens (config error, server choice) show dialogs too, and the queue must not lose its host. It needs only Redux (theme). */}
+        <AlertHost />
       </PersistGate>
     </Provider>
   );
